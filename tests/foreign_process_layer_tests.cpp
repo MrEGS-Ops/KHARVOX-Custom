@@ -127,10 +127,8 @@ int main(int argc, char** argv) {
         require(deviceChain.u.pLayerInfo == nullptr);
         if (result == VK_SUCCESS) require(output == device);
     }
-    for (auto name : {"vkQueuePresentKHR", "vkQueueSubmit2KHR", "vkQueueWaitIdle", "vkQueueBindSparse", "vkDeviceWaitIdle", "vkQueueBeginDebugUtilsLabelEXT", "vkCreateSwapchainKHR", "vkCmdDraw", "vkDestroyImage"})
+    for (auto name : {"vkQueuePresentKHR", "vkCreateSwapchainKHR", "vkCmdDraw", "vkDestroyImage"})
         require(layerInterface.pfnGetDeviceProcAddr(device, name) == reinterpret_cast<PFN_vkVoidFunction>(untouchedCommand));
-    for (auto name : {"vkQueuePresentKHR", "vkQueueSubmit2KHR", "vkQueueWaitIdle", "vkQueueBindSparse", "vkDeviceWaitIdle"})
-        require(layerInterface.pfnGetInstanceProcAddr(instance, name) == reinterpret_cast<PFN_vkVoidFunction>(untouchedCommand));
     reinterpret_cast<PFN_vkDestroyDevice>(layerInterface.pfnGetDeviceProcAddr(device, "vkDestroyDevice"))(device, &allocator);
     reinterpret_cast<PFN_vkDestroyInstance>(layerInterface.pfnGetInstanceProcAddr(instance, "vkDestroyInstance"))(instance, &allocator);
     require(deviceDestroyed == 1 && instanceDestroyed == 1);

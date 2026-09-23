@@ -1,5 +1,4 @@
 #include "LaserWorldPose.h"
-#include "MuzzleBranchHook.h"
 #include "LaserSourcePolicy.h"
 #include "../common/AerRenderOrder.h"
 #include "../common/DiagnosticLogging.h"
@@ -98,7 +97,7 @@ bool customHandsRequested() {
 }
 std::atomic<bool> installed{};
 std::atomic<bool> fovHookInstalled{};
-kharvox::MuzzleBranchHook muzzleFireAxisOverride;
+std::atomic<bool> muzzleFireAxisOverride{};
 volatile LONG* handsHitReactionsEnable{};
 SRWLOCK handsHitReactionsLock = SRWLOCK_INIT;
 bool handsHitReactionsSuppressed{};
@@ -121,6 +120,7 @@ std::array<std::atomic<KharvoxWeaponAmmoState>,
 std::atomic<uintptr_t> weaponAmmoSnapshotPlayer{};
 std::atomic<unsigned long long> weaponAmmoSnapshotTick{};
 std::atomic<unsigned> unknownWeaponRescanCalls{};
+unsigned char* muzzleFireAxisBranch{};
 using HandsFovScaleFn = float(__fastcall*)(void*);
 HandsFovScaleFn originalHandsFovScale{};
 unsigned calibratedGeneration{};
@@ -222,10 +222,7 @@ bool installMuzzleFireAxisOverride(unsigned char* image) {
         log("RVA 0xD5EFF3 useMuzzleAsFireAxis branch signature mismatch; VR shot direction disabled");
         return false;
     }
-    if(!muzzleFireAxisOverride.install(branch,{0x0F,0x85,0x6A,0x06,0x00,0x00})){
-        log("useMuzzleAsFireAxis branch hook installation failed");
-        return false;
-    }
+    muzzleFireAxisBranch = branch;
     log("native idHands useMuzzleAsFireAxis branch armed at RVA 0xD5EFF3");
     return true;
 }
@@ -402,7 +399,20 @@ void setWeaponKickSuppressed(bool suppress) {
 }
 
 void setMuzzleFireAxisOverride(bool enabled) {
-    if(!muzzleFireAxisOverride.set(enabled))return;
+    if (!muzzleFireAxisBranch || muzzleFireAxisOverride.load(std::memory_order_acquire) == enabled) return;
+    constexpr unsigned char original[]{0x0F,0x85,0x6A,0x06,0x00,0x00};
+    // NOP + JMP preserves the original six-byte footprint and displacement.
+    constexpr unsigned char forced[]{0x90,0xE9,0x6A,0x06,0x00,0x00};
+    DWORD oldProtect{};
+    if (!VirtualProtect(muzzleFireAxisBranch, sizeof(original), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        log("useMuzzleAsFireAxis branch protection failed");
+        return;
+    }
+    std::memcpy(muzzleFireAxisBranch, enabled ? forced : original, sizeof(original));
+    FlushInstructionCache(GetCurrentProcess(), muzzleFireAxisBranch, sizeof(original));
+    DWORD ignored{};
+    VirtualProtect(muzzleFireAxisBranch, sizeof(original), oldProtect, &ignored);
+    muzzleFireAxisOverride.store(enabled, std::memory_order_release);
     log(std::string("VR shot direction -> native muzzle origin/axis ") + (enabled ? "ENABLED" : "disabled"));
 }
 

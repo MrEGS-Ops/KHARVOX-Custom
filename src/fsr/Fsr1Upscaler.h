@@ -26,7 +26,6 @@ public:
     bool active() const;
     // Caller must prove all submissions using these images have completed.
     void releaseAfterCompletion();
-    void discardRecordedFrame();
 
     // Copies one current cached eye, performs official FSR 1 EASU followed by
     // RCAS, and returns a transfer-source image of outputExtent.
