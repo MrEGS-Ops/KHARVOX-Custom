@@ -679,6 +679,15 @@ internal static class SelfTest
         Require(Environment.GetEnvironmentVariable("KHARVOX_ENABLE_LAYER") == previousEnable,
             "layer opt-in does not modify launcher environment");
 
+        var previousReShadeDisable = Environment.GetEnvironmentVariable(
+            "DISABLE_XR_APILAYER_reshade_1");
+        KharvoxRunner.DisableConflictingOpenXrApiLayers(game);
+        Require(game.EnvironmentVariables["DISABLE_XR_APILAYER_reshade_1"] == "1",
+            "DOOM disables the conflicting ReShade OpenXR layer");
+        Require(Environment.GetEnvironmentVariable("DISABLE_XR_APILAYER_reshade_1")
+            == previousReShadeDisable,
+            "ReShade isolation does not modify the launcher or global environment");
+
         var testKey = @"Software\KHARVOX\SelfTest\" + Guid.NewGuid().ToString("N");
         using var hive = Microsoft.Win32.RegistryKey.OpenBaseKey(
             Microsoft.Win32.RegistryHive.CurrentUser, Microsoft.Win32.RegistryView.Registry64);
@@ -860,7 +869,12 @@ internal static class SelfTest
         Require(!form.CreateLaunchOptions().HandsJump, "Hands Jump can still be disabled");
         handsJump.Checked = true;
         Require(form.CreateLaunchOptions().HandsJump, "Hands Jump launch option");
+        var swapJumpCrouch = Field<CheckBox>("swapJumpCrouch");
+        Require(!swapJumpCrouch.Checked, "Jump/Crouch swap defaults off");
+        swapJumpCrouch.Checked = true;
+        Require(form.CreateLaunchOptions().SwapJumpCrouch, "Jump/Crouch swap reaches launch options");
         typeof(MainForm).GetMethod("SaveSettings", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(form, null);
+        Require(LauncherSettingsStore.Load(Path.Combine(testRoot, "ui-settings.json")).SwapJumpCrouch, "Jump/Crouch swap persisted");
         Require(LauncherSettingsStore.Load(Path.Combine(testRoot, "ui-settings.json")).HandsJump, "Hands Jump persisted");
         Require(LauncherSettingsStore.Load(Path.Combine(testRoot, "ui-settings.json")).DisableAa, "AA override persists");
         Require(LauncherSettingsStore.Load(Path.Combine(testRoot, "ui-settings.json")).CaptureEyes,"eye capture persists");

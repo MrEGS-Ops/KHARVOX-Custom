@@ -211,7 +211,7 @@ struct State {
     XrSpace rightAimSpace{XR_NULL_HANDLE}; XrSpace leftAimSpace{XR_NULL_HANDLE}; XrSpace rightGripSpace{XR_NULL_HANDLE}; XrSpace leftGripSpace{XR_NULL_HANDLE}; ControllerPose rightController{}; ControllerPose leftController{}; ControllerPose rightGripController{}; ControllerPose leftGripController{}; XrVector2f leftStick{}; XrVector2f rightStick{};
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
-    bool leftHanded{},leftHandSwapSticks{};
+    bool leftHanded{},leftHandSwapSticks{},swapJumpCrouch{};
     bool actionsReady{}; bool hapticActionsReady{}; bool hapticBindingsSuggested{}; bool hapticFrequencyUnspecified{}; bool firstControllerHapticAppliedLogged{}; bool firePressed{},primaryFireDown{},jumpPressed{},crouchPressed{};
     unsigned long long psvr2FireStartedTick{}; KharvoxWeaponKind psvr2FireWeapon{KharvoxWeaponKind::Unknown};
     std::array<kharvox::XInputHapticOutputState,2> hapticOutputStates{};
@@ -2457,9 +2457,9 @@ void updateGameplayActions(XrTime displayTime){
         log("[INPUT] Hands Jump -> native gamepad A jump pulse; leftUp="
             +std::to_string(s.leftGripController.linearVelocity.y)+" rightUp="
             +std::to_string(s.rightGripController.linearVelocity.y)+"m/s");
-    const bool gamepadADown=jumpGameplayDown||handsJumpDown||crouchUiDown;
-    const bool gamepadBDown=crouchGameplayDown||jumpUiDown;
-    KharvoxCameraSetCrouchState(crouchGameplayDown);
+    const bool gamepadADown=(s.swapJumpCrouch?crouchGameplayDown:jumpGameplayDown)||handsJumpDown||crouchUiDown;
+    const bool gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)||jumpUiDown;
+    KharvoxCameraSetCrouchState(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown);
     s.jumpPressed=jumpDown;
     s.crouchPressed=crouchDown;
     const bool nativeUseDown=gameplay&&displayTime<s.usePulseUntil;
@@ -2516,12 +2516,14 @@ void updateGameplayActions(XrTime displayTime){
 }
 bool createGameplayActions(){
     s.leftHanded=environmentEnabled("KHARVOX_LEFT_HANDED");
+    s.swapJumpCrouch=environmentEnabled("KHARVOX_SWAP_JUMP_CROUCH");
     s.favoriteBackWeapon=loadBackWeaponKind();
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
     s.leftHandSwapSticks=s.leftHanded&&!_stricmp(leftHandSwap,"buttons-and-sticks");
     log(std::string("[INPUT] handedness=")+(s.leftHanded?"LEFT":"right")
-        +" swap="+(s.leftHandSwapSticks?"buttons-and-sticks":s.leftHanded?"buttons":"none"));
+        +" swap="+(s.leftHandSwapSticks?"buttons-and-sticks":s.leftHanded?"buttons":"none")
+        +" jumpCrouch="+(s.swapJumpCrouch?"swapped":"normal"));
     log(std::string("[BACK-WEAPON] configured Shoulder Weapon=")
         +backWeaponKindKey(s.favoriteBackWeapon)
         +(s.leftHanded

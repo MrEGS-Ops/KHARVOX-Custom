@@ -829,6 +829,7 @@ internal sealed class InfoForm : Form
             "Stick down (hold)   Weapon wheel\n" +
             "                    Aim with left stick\n" +
             "Stick click         Use / Melee / Glory Kill");
+        AddBullet(page, "Swap Jump/Crouch in MOVEMENT makes A jump and B crouch during gameplay. Menu Confirm/Cancel and Hands Jump stay unchanged.");
         AddHeading(page, "Motion weapon wheel");
         AddBullet(page, "Hold the weapon-selection stick down as usual, then move the right weapon hand sideways or vertically to select a slot. Release the opening stick to confirm. In Left Hand mode, move the left weapon hand instead.");
         AddBullet(page, "The selection stick takes priority only while deflected beyond its 0.3 radial deadzone. Center it to resume hand selection immediately. Sector clicks vibrate the controller used for selection: left for stick, right for motion with the default mapping. Tracking loss clears the motion origin; recovery captures a new hand position.");
@@ -841,6 +842,7 @@ internal sealed class InfoForm : Form
         AddBullet(page, "Uses the trigger, grip and stick-click swap described above.");
         AddBullet(page, "Right Stick moves; Left Stick turns and controls weapon selection.");
         AddBullet(page, "Left Y jumps and Left X crouches.");
+        AddBullet(page, "Swap Jump/Crouch reverses these two gameplay actions in this mode as well.");
         AddBullet(page, "Right A opens the Dossier and Right B switches the weapon modification.");
     }
 

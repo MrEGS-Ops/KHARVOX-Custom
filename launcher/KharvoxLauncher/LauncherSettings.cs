@@ -4,7 +4,7 @@ namespace KharvoxLauncher;
 
 internal sealed class LauncherSettings
 {
-    internal const int CurrentVersion = 33;
+    internal const int CurrentVersion = 34;
 
     public int SettingsVersion { get; set; }
     public int Preset { get; set; }
@@ -37,6 +37,7 @@ internal sealed class LauncherSettings
     public bool CaptureEyes { get; set; }
     public bool DisableAa { get; set; }
     public bool HandsJump { get; set; } = true;
+    public bool SwapJumpCrouch { get; set; }
     public bool DisableVrIntro { get; set; } = false;
     public bool ShowHands { get; set; } = LauncherPresetPolicy.DefaultEnableHands;
     public int HandCalibrationMode { get; set; }
@@ -55,7 +56,7 @@ internal sealed class LauncherSettings
         decimal physicalGlorykillSpeed, int physicalGlorykillHands, bool leftHanded,
         int leftHandSwapMode, bool laserSight, bool hudDebugging, bool extendedLogging,
         bool showHands, int handCalibrationMode,
-        bool enableBhaptics, bool usePsvr2Toolkit, bool handsJump = true, bool disableAa = false, bool captureEyes = false)
+        bool enableBhaptics, bool usePsvr2Toolkit, bool handsJump = true, bool disableAa = false, bool captureEyes = false, bool swapJumpCrouch = false)
     {
         SettingsVersion = CurrentVersion;
         Preset = preset;
@@ -87,6 +88,7 @@ internal sealed class LauncherSettings
         ExtendedLogging = extendedLogging;
         ShowHands = showHands;
         HandsJump = handsJump;
+        SwapJumpCrouch = swapJumpCrouch;
         DisableAa = disableAa;
         CaptureEyes = captureEyes;
 
@@ -149,6 +151,7 @@ internal static class LauncherSettingsStore
         if (settings.SettingsVersion < 30)
             settings.DisableAa = false;
         if (settings.SettingsVersion < 31) settings.DisableVrIntro = false;
+        if (settings.SettingsVersion < 34) settings.SwapJumpCrouch = false;
         // Adopt the release renderer once for existing Custom profiles. Later AER choices remain valid.
         if (settings.SettingsVersion < 33 && settings.Preset == 3
             && string.Equals(settings.RendererMode, "AER", StringComparison.OrdinalIgnoreCase))
