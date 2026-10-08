@@ -70,6 +70,14 @@ internal static class Program
             return 3;
         }
 
+        if (config.Schema != 1)
+        {
+            Console.Error.WriteLine(
+                "Unsupported Supervisor config schema: " + config.Schema
+                + " (expected 1)");
+            return 4;
+        }
+
         if (!config.Enabled) return 0;
         config.PollIntervalMs = Math.Max(25, Math.Min(5000, config.PollIntervalMs));
         config.MetricsIntervalMs = Math.Max(250, Math.Min(60000, config.MetricsIntervalMs));
