@@ -239,6 +239,8 @@ struct State {
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
     bool chainsawArmed{true},pausePressed{};
+    bool equipmentButtonPressed{},physicalGrenadeArmed{};
+    XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
     bool immersiveCinematics{immersiveCinematicsRequested()};
@@ -2029,6 +2031,7 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
+        s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
@@ -2221,8 +2224,9 @@ void updateGameplayActions(XrTime displayTime){
     if(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress&&gameplay
         &&!weaponWheelActive&&!s.twoHandCalibrationMode&&backWeaponTrackingValid
         &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown){
+        const kharvox::BackWeaponZonePolicy dynamicShoulderPolicy{};
         const auto& bounds=s.backWeaponState.zoneActive
-            ?kharvox::BackWeaponZonePolicy{}.exit:kharvox::BackWeaponZonePolicy{}.enter;
+            ?dynamicShoulderPolicy.exit:dynamicShoulderPolicy.enter;
         if(kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,bounds)
             &&activeBackWeapon!=s.favoriteBackWeapon){
             s.favoriteBackWeapon=activeBackWeapon;
@@ -2571,6 +2575,39 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeMeleeDown=gameplay&&displayTime>=s.usePulseUntil
         &&(meleeDown||displayTime<s.meleePulseUntil);
     const bool equipmentDown=readFloatAction(s.doomEquipment)>.55f;
+    bool gameplayEquipmentDown=gameplay&&equipmentDown;
+    if(s.customMods.physicalGrenadeThrow){
+        if(gameplay&&equipmentDown&&!s.equipmentButtonPressed){
+            s.physicalGrenadeArmed=true;
+            s.equipmentThrowPulseUntil=0;
+            log("[INPUT] Physical grenade armed; hold equipment and throw/release");
+        }
+        if(gameplay&&!equipmentDown&&s.equipmentButtonPressed&&s.physicalGrenadeArmed){
+            const auto& throwController=supportGripController();
+            const bool velocityValid=throwController.valid&&throwController.linearVelocityValid;
+            const float speed=velocityValid?std::sqrt(
+                throwController.linearVelocity.x*throwController.linearVelocity.x
+                +throwController.linearVelocity.y*throwController.linearVelocity.y
+                +throwController.linearVelocity.z*throwController.linearVelocity.z):0.f;
+            if(!velocityValid||speed>=.55f){
+                s.equipmentThrowPulseUntil=displayTime+100000000;
+                log(std::string("[INPUT] Physical grenade release -> native equipment pulse speed=")
+                    +std::to_string(speed)+"m/s"
+                    +(velocityValid?"":" (velocity unavailable fallback)"));
+            }else{
+                log(std::string("[INPUT] Physical grenade release ignored; throw speed=")
+                    +std::to_string(speed)+"m/s threshold=0.55m/s");
+            }
+            s.physicalGrenadeArmed=false;
+        }
+        if(!gameplay){s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;}
+        gameplayEquipmentDown=gameplay&&displayTime<s.equipmentThrowPulseUntil;
+        s.equipmentButtonPressed=equipmentDown;
+    }else{
+        s.equipmentButtonPressed=equipmentDown;
+        s.physicalGrenadeArmed=false;
+        s.equipmentThrowPulseUntil=0;
+    }
     const bool missionInfoDown=readBooleanAction(s.doomMissionInfo);
     if(missionInfoDown!=s.missionInfoPressed)
         log(std::string(nativeUiMenu?"[FULLSCREEN-UI] ":"[INPUT] ")+leftFaceButtonHandName()
@@ -2597,7 +2634,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool rightTriggerDown=gameplay?fireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
         const bool leftTriggerDown=weaponModDown||(nativeUiMenu&&nativeUiLeftTriggerDown);
         const bool rightThumbDown=nativeMeleeDown||(nativeUiMenu&&meleeDown);
-        const bool leftShoulderDown=(gameplay&&equipmentDown)||(nativeUiMenu&&nativeUiLeftShoulderDown);
+        const bool leftShoulderDown=gameplayEquipmentDown||(nativeUiMenu&&nativeUiLeftShoulderDown);
         const bool rightShoulderDown=nativeWeaponSelectDown
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
