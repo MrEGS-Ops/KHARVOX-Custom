@@ -37,6 +37,9 @@ bool KharvoxCameraNativeTwoViewActive();
 bool KharvoxCameraCutsceneActive();
 bool KharvoxCameraBossSequenceActive();
 bool KharvoxCameraSyncAttackActive();
+// Temporary Glory Kill playback override. A value <= 0 clears it.
+// The camera hook restores DOOM's baseline timescale when the sync attack ends.
+void KharvoxCameraSetGloryKillTimescaleOverride(float timescale);
 bool KharvoxCameraLedgeTransitionActive();
 // True only when DOOM's native player command tracker currently permits both
 // view control and weapon buttons. This distinguishes playable first-person
