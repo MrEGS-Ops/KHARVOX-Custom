@@ -33,7 +33,7 @@ internal static class Program
 
     private static int RunSavedSettings()
     {
-        var logPath = Path.Combine(Path.GetTempPath(), "KHARVOX-launcher-run.log");
+        var logPath = RuntimeStorage.LogPath("KHARVOX-launcher-run.log");
         var logLock = new object();
         void Log(string message)
         {
@@ -77,9 +77,9 @@ internal static class Program
             Log(ex.ToString());
             Log("ExitCode=1");
             if (ex is HeadsetUnavailableException)
-                MessageBox.Show(ex.Message, "KHARVOX � Headset unavailable", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(ex.Message, "KHARVOX – Headset unavailable", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             if (ex is RenderMemoryCapacityException)
-                MessageBox.Show(ex.Message, "KHARVOX – Render Scale too high",
+                MessageBox.Show(ex.Message, "KHARVOX â€“ Render Scale too high",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 1;
         }
