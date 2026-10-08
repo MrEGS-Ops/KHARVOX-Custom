@@ -10,7 +10,7 @@ internal static class NativeValidation
         var layers = Path.Combine(runtime, "validation");
         foreach (var file in new[] { "VkLayer_khronos_validation.dll", "VkLayer_khronos_validation.json" })
             if (!File.Exists(Path.Combine(layers, file))) throw new FileNotFoundException("Native diagnostic layer is missing.", file);
-        var log = Path.Combine(Path.GetTempPath(), "KHARVOX-NATIVE-VALIDATION-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log");
+        var log = RuntimeStorage.LogPath("KHARVOX-NATIVE-VALIDATION-" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".log");
         File.WriteAllLines(Path.Combine(layers, "vk_layer_settings.txt"), new[] {
             "khronos_validation.debug_action = VK_DBG_LAYER_ACTION_LOG_MSG",
             "khronos_validation.report_flags = error,warn,info",
