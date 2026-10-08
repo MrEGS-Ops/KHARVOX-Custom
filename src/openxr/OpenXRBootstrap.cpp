@@ -2168,13 +2168,21 @@ void updateGameplayActions(XrTime displayTime){
     if(!gameplay){s.dashButtonPressed=false;s.dashCooldownUntil=0;}
 
     if(s.weaponWheelRemapEnabled){
-        if(gameplay&&crouchStickDown&&!s.crouchStickPressed){
-            s.crouchToggleActive=!s.crouchToggleActive;
-            log(std::string("[INPUT] right stick down -> crouch ")
-                +(s.crouchToggleActive?"ON":"OFF"));
+        if(s.customMods.physicalCrouch){
+            if(s.crouchToggleActive){
+                s.crouchToggleActive=false;
+                log("[INPUT] Physical Crouch enabled -> right-stick crouch toggle released");
+            }
+            s.crouchStickPressed=crouchStickDown;
+        }else{
+            if(gameplay&&crouchStickDown&&!s.crouchStickPressed){
+                s.crouchToggleActive=!s.crouchToggleActive;
+                log(std::string("[INPUT] right stick down -> crouch ")
+                    +(s.crouchToggleActive?"ON":"OFF"));
+            }
+            s.crouchStickPressed=crouchStickDown;
+            if(!gameplay)s.crouchToggleActive=false;
         }
-        s.crouchStickPressed=crouchStickDown;
-        if(!gameplay)s.crouchToggleActive=false;
     }else{
         s.crouchToggleActive=false;
         s.crouchStickPressed=false;
