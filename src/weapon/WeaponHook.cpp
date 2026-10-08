@@ -108,6 +108,7 @@ bool weaponKickSuppressed{};
 LONG weaponKickPreviousValue{};
 std::atomic<KharvoxWeaponKind> activeWeaponKind{KharvoxWeaponKind::Unknown};
 std::atomic<bool> gaussSiegeChargeActive{};
+std::atomic<bool> weaponHolstered{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
 using InventoryItemFn = void*(__fastcall*)(void*, int);
@@ -2009,6 +2010,15 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         && renderObject && KharvoxCameraGameplayActive();
     const float* submittedOrigin = origin;
     const float* submittedAxis = axis;
+    float holsteredOrigin[3]{};
+    if (weaponPresentation && weaponHolstered.load(std::memory_order_acquire)
+        && origin) {
+        // Keep the native weapon state/animation alive but place only its
+        // first-person presentation far outside the visible play space.
+        std::memcpy(holsteredOrigin, origin, sizeof(holsteredOrigin));
+        holsteredOrigin[2] -= 100000.0f;
+        submittedOrigin = holsteredOrigin;
+    }
     float pairedOrigin[3]{}, pairedAxis[9]{};
     if (weaponPresentation && synchronizeAerAnimatedWeaponProp(
             reinterpret_cast<uintptr_t>(renderObject)
@@ -2709,6 +2719,17 @@ void invalidateAerWeaponPairCache() {
 
 bool KharvoxWeaponGaussSiegeChargeActive() {
     return gaussSiegeChargeActive.load(std::memory_order_acquire);
+}
+
+void KharvoxWeaponSetHolstered(bool holstered) {
+    const bool previous = weaponHolstered.exchange(holstered, std::memory_order_acq_rel);
+    if (previous != holstered)
+        log(std::string("[HOLSTER] weapon presentation ")
+            + (holstered ? "stowed; empty hands active" : "restored"));
+}
+
+bool KharvoxWeaponHolstered() {
+    return weaponHolstered.load(std::memory_order_acquire);
 }
 
 KharvoxWeaponKind KharvoxWeaponCurrentKind() {
