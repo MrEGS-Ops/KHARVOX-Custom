@@ -2826,7 +2826,8 @@ KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind) {
 
 bool KharvoxWeaponGetLaserMuzzlePose(float origin[3], float direction[3],
     float bodyOrigin[3], float bodyAxis[9], unsigned long long sourcePose, int sourceEye) {
-    if(!origin||!direction||!bodyOrigin||!bodyAxis||!KharvoxWeaponIsTrackingActive())return false;
+    if(!origin||!direction||!bodyOrigin||!bodyAxis||!KharvoxWeaponIsTrackingActive()
+        ||weaponHolstered.load(std::memory_order_acquire))return false;
     LaserSourceSnapshot sample{};
     {
         std::lock_guard lock(laserSourceMutex);
