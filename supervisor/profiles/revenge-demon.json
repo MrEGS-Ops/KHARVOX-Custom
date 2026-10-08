@@ -9,7 +9,7 @@
   "MetricsIntervalMs": 1000,
   "Notes": "Collects the narrow revenge-demon bridge/state stream once KHARVOX exposes the killer fingerprint needed by the gameplay mod.",
   "Files": [
-    { "Name": "RevengeDemonBridge", "Path": "supervisor-bridge/revenge-demon.json", "Mode": "snapshot", "Optional": true },
+    { "Name": "RevengeDemonBridge", "Path": "supervisor-bridge/revenge-demon.json", "Mode": "snapshot", "Optional": true, "PersistPath": "supervisor-state/revenge-demon-last.json" },
     { "Name": "KHARVOX", "Path": "logs/KHARVOX.log", "Mode": "tail", "Optional": true }
   ]
 }
