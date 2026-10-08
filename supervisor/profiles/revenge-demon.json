@@ -1,0 +1,15 @@
+{
+  "Schema": 1,
+  "Enabled": true,
+  "ProcessName": "DOOMx64vk",
+  "PollIntervalMs": 50,
+  "OutputFile": "logs/KHARVOX-Supervisor-RevengeDemon.ndjson",
+  "IncludeProcessLifecycle": true,
+  "IncludeProcessMetrics": false,
+  "MetricsIntervalMs": 1000,
+  "Notes": "Collects the narrow revenge-demon bridge/state stream once KHARVOX exposes the killer fingerprint needed by the gameplay mod.",
+  "Files": [
+    { "Name": "RevengeDemonBridge", "Path": "supervisor-bridge/revenge-demon.json", "Mode": "snapshot", "Optional": true },
+    { "Name": "KHARVOX", "Path": "logs/KHARVOX.log", "Mode": "tail", "Optional": true }
+  ]
+}
