@@ -2778,6 +2778,64 @@ bool KharvoxCameraPlayerWeaponControlActive() {
 #endif
 }
 
+void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
+    constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
+    static std::atomic<std::uint32_t> normalFlags{};
+    static std::atomic<bool> normalFlagsValid{};
+    static std::atomic<std::uint32_t> chargeOnlyMask{};
+    static std::atomic<bool> previouslyActive{};
+
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    if (!playerControlClassifierSupported.load(std::memory_order_acquire)
+        || !owner || owner > UINTPTR_MAX - inhibitFlagsOffset - sizeof(std::uint32_t)) {
+        normalFlagsValid.store(false, std::memory_order_release);
+        chargeOnlyMask.store(0, std::memory_order_release);
+        previouslyActive.store(false, std::memory_order_release);
+        return;
+    }
+
+    auto flagsAddress = reinterpret_cast<volatile LONG*>(owner + inhibitFlagsOffset);
+    if (!readableMemory(const_cast<const LONG*>(flagsAddress), sizeof(LONG))) return;
+
+#if defined(_MSC_VER)
+    __try {
+#endif
+        const auto current = static_cast<std::uint32_t>(
+            InterlockedCompareExchange(flagsAddress, 0, 0));
+        if (!active) {
+            normalFlags.store(current, std::memory_order_release);
+            normalFlagsValid.store(true, std::memory_order_release);
+            chargeOnlyMask.store(0, std::memory_order_release);
+            if (previouslyActive.exchange(false, std::memory_order_acq_rel))
+                log("[GAUSS] slow-charge movement override released");
+            return;
+        }
+
+        previouslyActive.store(true, std::memory_order_release);
+        if (!normalFlagsValid.load(std::memory_order_acquire)) return;
+        const auto baseline = normalFlags.load(std::memory_order_acquire);
+        const std::uint32_t knownNonMovement =
+            kharvox::playerWeaponControlInhibitMask;
+        const auto discovered = (current & ~baseline) & ~knownNonMovement;
+        const auto oldMask = chargeOnlyMask.fetch_or(
+            discovered, std::memory_order_acq_rel);
+        const auto movementMask = oldMask | discovered;
+        if (discovered && (discovered & ~oldMask)) {
+            std::ostringstream out;
+            out << "[GAUSS] learned Siege charge-only inhibit mask=0x"
+                << std::hex << movementMask << " current=0x" << current
+                << " baseline=0x" << baseline;
+            log(out.str());
+        }
+        if (movementMask)
+            InterlockedAnd(flagsAddress, static_cast<LONG>(~movementMask));
+#if defined(_MSC_VER)
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        chargeOnlyMask.store(0, std::memory_order_release);
+    }
+#endif
+}
+
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]) {
     if (!origin || !axis || !bodyCameraValid.load(std::memory_order_acquire)) return false;
     for (int index = 0; index < 9; ++index)
