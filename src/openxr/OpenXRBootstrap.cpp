@@ -2569,8 +2569,8 @@ void updateGameplayActions(XrTime displayTime){
         kharvox::MotionWeaponWheelInput wheelInput{};
         wheelInput.wheelActive=weaponWheelActive;
         wheelInput.trackingValid=wCtrl.valid&&wCtrl.positionTracked&&s.head.valid;
-        wheelInput.stickBypass=s.behindHeadWheelActive
-            ||kharvox::motionWheelStickBypass(s.leftStick.x,s.leftStick.y);
+        wheelInput.stickBypass=kharvox::motionWheelStickBypass(
+            s.leftStick.x,s.leftStick.y);
         wheelInput.config.nativeStickDeadzone=nativeDoomRightStickDeadzone;
         wheelInput.handPosition={wCtrl.position.x,wCtrl.position.y,wCtrl.position.z};
         wheelInput.hmdOrientation={s.head.orientation.x,s.head.orientation.y,s.head.orientation.z,s.head.orientation.w};
