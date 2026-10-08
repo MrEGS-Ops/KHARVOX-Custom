@@ -4969,10 +4969,20 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // found. The pure policy and renderer are already prepared for it. Every
     // authored camera sequence is excluded explicitly: Glory Kills and ledge
     // assists can still report both gameplay and world-camera active.
-    const auto handVisibility=kharvox::hands::selectHandVisibility({
+    const auto handAssets=s.handRenderer.availability();
+    auto handVisibility=kharvox::hands::selectHandVisibility({
         nativeFrameValid?nativeFrame.pose.leftHanded:s.leftHanded,
-        nativeFrameValid?nativeFrame.pose.twoHanded:s.twoHandLatched,false,s.handRenderer.availability(),
+        nativeFrameValid?nativeFrame.pose.twoHanded:s.twoHandLatched,false,handAssets,
         s.showHands,handGameplayActive});
+    if(s.showHands&&handGameplayActive&&KharvoxWeaponHolstered()){
+        handVisibility.left=handAssets.leftFist
+            ?kharvox::hands::HandModelKind::Fist
+            :kharvox::hands::HandModelKind::None;
+        handVisibility.right=handAssets.rightFist
+            ?kharvox::hands::HandModelKind::Fist
+            :kharvox::hands::HandModelKind::None;
+        handVisibility.preserveNativeOffHand=false;
+    }
     auto handPose=[](const ControllerPose&controller){
         kharvox::hands::HandPose pose{};
         pose.position[0]=controller.position.x;pose.position[1]=controller.position.y;
