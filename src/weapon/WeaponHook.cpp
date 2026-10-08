@@ -107,6 +107,7 @@ SRWLOCK weaponKickLock = SRWLOCK_INIT;
 bool weaponKickSuppressed{};
 LONG weaponKickPreviousValue{};
 std::atomic<KharvoxWeaponKind> activeWeaponKind{KharvoxWeaponKind::Unknown};
+std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
 using InventoryItemFn = void*(__fastcall*)(void*, int);
@@ -963,6 +964,40 @@ bool weaponObjectDirectlyNames(void* weaponData, const char* declName) {
     return false;
 }
 
+bool weaponObjectContainsAsciiInsensitive(void* weaponData, const char* token) {
+    constexpr size_t weaponDeclScanBytes = 0x2000;
+    if (!weaponData || !token || !*token
+        || !readableRange(weaponData, weaponDeclScanBytes)) return false;
+    std::string needle(token);
+    std::transform(needle.begin(), needle.end(), needle.begin(),
+        [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+    const auto contains = [&](std::string candidate) {
+        std::transform(candidate.begin(), candidate.end(), candidate.begin(),
+            [](unsigned char c){ return static_cast<char>(std::tolower(c)); });
+        return candidate.find(needle) != std::string::npos;
+    };
+    const auto bytes = static_cast<const unsigned char*>(weaponData);
+    for (size_t start = 0; start < weaponDeclScanBytes;) {
+        while (start < weaponDeclScanBytes
+            && (bytes[start] < 0x20 || bytes[start] > 0x7e)) ++start;
+        size_t end = start;
+        while (end < weaponDeclScanBytes
+            && bytes[end] >= 0x20 && bytes[end] <= 0x7e) ++end;
+        if (end > start && contains(std::string(
+                reinterpret_cast<const char*>(bytes + start), end - start)))
+            return true;
+        start = end + 1;
+    }
+    for (size_t offset = 0; offset + sizeof(uintptr_t) <= weaponDeclScanBytes;
+         offset += sizeof(uintptr_t)) {
+        uintptr_t pointer{};
+        std::memcpy(&pointer, bytes + offset, sizeof(pointer));
+        std::string candidate;
+        if (readableAsciiString(pointer, candidate) && contains(candidate)) return true;
+    }
+    return false;
+}
+
 SniperPresentationKind sniperPresentationKind(void* weaponData) {
     if (weaponObjectDirectlyNames(
             weaponData, "weapon/zion/player/sp/heavy_rifle_heavy_zoom"))
@@ -1100,6 +1135,13 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
         address, static_cast<int>(kind), kind != KharvoxWeaponKind::Unknown};
     if (kharvox::weaponIdentityNeedsReset(previous, current)) invalidateAerWeaponPairCache();
     previous = current;
+    const bool siegeCharge = kind == KharvoxWeaponKind::GaussCannon
+        && weaponObjectContainsAsciiInsensitive(weaponData, "siege");
+    const bool previousSiege = gaussSiegeChargeActive.exchange(
+        siegeCharge, std::memory_order_acq_rel);
+    if (previousSiege != siegeCharge)
+        log(std::string("[GAUSS] Siege charge decl ")
+            + (siegeCharge ? "ACTIVE" : "released"));
     activeWeaponKind.store(kind, std::memory_order_release);
     activeWeaponData.store(address, std::memory_order_release);
     if (!changed && kind == KharvoxWeaponKind::Unknown) return;
@@ -2663,6 +2705,10 @@ void invalidateAerWeaponPairCache() {
         kharvox::invalidateAerWeaponPairState(previous),
         std::memory_order_release, std::memory_order_acquire)) { }
 }
+}
+
+bool KharvoxWeaponGaussSiegeChargeActive() {
+    return gaussSiegeChargeActive.load(std::memory_order_acquire);
 }
 
 KharvoxWeaponKind KharvoxWeaponCurrentKind() {
