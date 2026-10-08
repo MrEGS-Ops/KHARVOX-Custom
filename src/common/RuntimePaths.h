@@ -10,10 +10,9 @@ inline constexpr bool earlyXrRelease=true, descriptorReuse=true, freshShadows=tr
     gpuInputCopies=true, uncachedShadows=true, compiledImagePlans=true, snapshotBatch=true;
 }
 inline std::wstring logPath(const wchar_t* name) {
-    wchar_t temp[32768]{};
-    const auto length=GetTempPathW(32768,temp);
-    if(!length||length>=32768) return {}; // Never fall back to the release/game directory.
-    std::wstring file(name), directory(temp);
+    std::wstring file(name);
+    auto directory = runtimeDirectory() + L"\\logs\\";
+    CreateDirectoryW((runtimeDirectory() + L"\\logs").c_str(), nullptr);
     const auto dot=file.find_last_of(L'.');
     if(dot!=std::wstring::npos&&file.substr(dot)==L".log") {
         for(size_t i=0;i<dot;++i) {
@@ -22,7 +21,7 @@ inline std::wstring logPath(const wchar_t* name) {
         }
         if(file.rfind(L"KHARVOX-",0)!=0)file=L"KHARVOX-"+file;
     } else {
-        directory+=L"KHARVOX-Diagnostics\\";
+        directory+=L"diagnostics\\";
         CreateDirectoryW(directory.c_str(),nullptr);
     }
     return directory+file;
