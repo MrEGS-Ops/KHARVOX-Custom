@@ -47,6 +47,9 @@ bool KharvoxCameraLedgeTransitionActive();
 // view control and weapon buttons. This distinguishes playable first-person
 // scripted intervals from passive scenes which merely render a weapon model.
 bool KharvoxCameraPlayerWeaponControlActive();
+// While Gauss Siege is charging, learn and clear only charge-added movement
+// inhibit bits. Calling with false updates the normal gameplay baseline.
+void KharvoxCameraSetGaussChargeMovementOverride(bool active);
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHeadRenderPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHudCenterRenderPose(float origin[3], float axis[9]);
