@@ -45,6 +45,8 @@ internal sealed class KharvoxLaunchOptions
     public bool EnableBhaptics { get; }
     public bool UsePsvr2Toolkit { get; }
     public string BackWeapon { get; }
+    public bool WeaponWheelRemapEnabled { get; }
+    public int GloryKillSlowmoLevel { get; }
 
     public KharvoxLaunchOptions(bool immersiveMode, bool cinematicFreelook,
         bool otherCinematicsInQuad, bool cinewindowFollowsHeadset,
@@ -61,7 +63,9 @@ internal sealed class KharvoxLaunchOptions
         string handCalibrationMode,
         bool enableBhaptics,
         bool usePsvr2Toolkit,
-        string backWeapon, bool handsJump = false, bool disableAa = false, bool captureEyes = false, bool disableVrIntro = false, bool swapJumpCrouch = false)
+        string backWeapon, bool handsJump = false, bool disableAa = false, bool captureEyes = false,
+        bool disableVrIntro = false, bool swapJumpCrouch = false,
+        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10)
     {
         ImmersiveMode = immersiveMode; CinematicFreelook = cinematicFreelook;
         OtherCinematicsInQuad = otherCinematicsInQuad;
@@ -102,6 +106,8 @@ internal sealed class KharvoxLaunchOptions
         EnableBhaptics = enableBhaptics;
         UsePsvr2Toolkit = usePsvr2Toolkit;
         BackWeapon = NormalizeBackWeapon(backWeapon);
+        WeaponWheelRemapEnabled = weaponWheelRemapEnabled;
+        GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, gloryKillSlowmoLevel));
     }
 
     private static string NormalizeBackWeapon(string? key) =>
@@ -130,7 +136,7 @@ internal sealed class KharvoxLaunchOptions
         $"physicalGlorykill={(PhysicalGlorykill ? "enabled" : "disabled")} punchSpeed={PhysicalGlorykillSpeed.ToString(CultureInfo.InvariantCulture)}m/s punchHands={PhysicalGlorykillHands} " +
         $"handedness={(LeftHanded ? "left" : "right")} leftHandSwap={(LeftHanded ? LeftHandSwapMode : "none")} " +
         $"laserSight={(LaserSight ? "enabled" : "disabled")} " +
-        $"backWeapon={BackWeapon} " +
+        $"backWeapon={BackWeapon} weaponWheelRemap={(WeaponWheelRemapEnabled ? "enabled" : "native")} gloryKillSlowmoLevel={GloryKillSlowmoLevel} " +
         $"hudDebugging={(HudDebugging ? "enabled" : "disabled")} " +
         $"extendedLogging={(ExtendedLogging ? "enabled" : "disabled")} " +
         $"disableAa={DisableAa} " +
@@ -510,7 +516,9 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_LEFT_HAND_SWAP"] = options.LeftHandSwapMode;
             psi.EnvironmentVariables["KHARVOX_SWAP_JUMP_CROUCH"] = options.SwapJumpCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
-            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = "1";
+            psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = options.WeaponWheelRemapEnabled ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = options.WeaponWheelRemapEnabled ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] = options.GloryKillSlowmoLevel.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
             psi.EnvironmentVariables["KHARVOX_HANDS_PROJECTION_SCALE"] = "1";
@@ -547,6 +555,8 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
+                " weaponWheelRemap=" + (options.WeaponWheelRemapEnabled ? "enabled" : "native") +
+                " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (options.VirtualGunstock ? "enabled" : "disabled") +
                 " physicalGlorykill=" + (options.PhysicalGlorykill ? "enabled" : "disabled") +
@@ -1720,6 +1730,14 @@ internal static class KharvoxRunner
             "+r_windowWidth", renderWidth.ToString(Invariant),
             "+r_windowHeight", renderHeight.ToString(Invariant)
         ]);
+        // 10 preserves DOOM's native adaptive Glory Kill slow-motion.
+        // 0-9 disable the sync system's adaptive slowdown; levels 1-9 are
+        // then driven by the clean CameraHook timescale override.
+        if (options.GloryKillSlowmoLevel < 10)
+            args.AddRange(["+sync_noAdaptiveTick", "1",
+                "+sync_alwaysSlowMo", "0",
+                "+sync_lastEnemyEncounterSlowMo", "0"]);
+
         // Leave the game's AA setting untouched in SFS unless Debug AA-off
         // was explicitly selected. AER retains spatial SMAA by default.
         if (options.DisableAa || !RendererSelection.IsSfs(options.RendererMode))
