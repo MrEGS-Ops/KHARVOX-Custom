@@ -2143,8 +2143,9 @@ void updateGameplayActions(XrTime displayTime){
     // When Behind-Head Weapon Wheel owns selection, the old wheel input is
     // genuinely free. Use a fresh edge for dash only; neutral stick = no dash.
     const bool freedWeaponWheelButtonDown=s.weaponWheelRemapEnabled
-        ?physicalAButtonDown:crouchStickDown;
+        &&physicalAButtonDown;
     if(s.customMods.directionalDash&&s.customMods.behindHeadWeaponWheel
+        &&s.weaponWheelRemapEnabled
         &&gameplay&&freedWeaponWheelButtonDown&&!s.dashButtonPressed
         &&displayTime>=s.dashCooldownUntil){
         const auto dashStick=movementDirectionRelativeStick(s.leftStick,gameplay);
@@ -2155,8 +2156,7 @@ void updateGameplayActions(XrTime displayTime){
                     dashStick.x,dashStick.y)){
                 s.dashCooldownUntil=displayTime+650000000;
                 log(std::string("[DASH] freed ")
-                    +(s.weaponWheelRemapEnabled?"A":turnStickName())
-                    +" wheel control -> horizontal dash transformedStick=("
+                    +"A wheel control -> horizontal dash transformedStick=("
                     +std::to_string(dashStick.x)+","
                     +std::to_string(dashStick.y)+")");
             }
