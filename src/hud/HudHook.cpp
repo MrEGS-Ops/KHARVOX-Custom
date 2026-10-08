@@ -3406,7 +3406,7 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
     bool offscreen = kharvox::shouldPlaceHudOffscreen(
         crosshair, ledgeTransitionActive);
     const bool cinematicSurface=KharvoxCameraCutsceneActive() && !crosshair && !ledgeTransitionActive;
-    if(customMods.disableHud && gameplayHudActive() && !crosshair)
+    if(customMods.disableHud && gameplayHudActive())
         offscreen = true;
     const bool observeCinematicMenu=kharvox::shouldObserveCinematicMenuSurface(
         cinematicSurface,crosshair,ledgeTransitionActive,
