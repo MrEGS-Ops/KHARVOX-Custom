@@ -67,6 +67,18 @@ public sealed class MainForm : Form
     private readonly CheckBox usePsvr2Toolkit = MakeCheck("Use PSVR2 Toolkit", false);
     private readonly CheckBox useFsrUpscaling = MakeCheck("Use FSR Upscaling", false);
     private readonly CheckBox weaponWheelRemap = MakeCheck("Weapon Wheel Remap", true);
+    private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
+    private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
+    private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
+    private readonly CheckBox customBackOfHandHud = MakeCheck("Back-of-Hand HUD", false);
+    private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus + RS", false);
+    private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
+    private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
+    private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
+    private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Shoulder Holster", false);
+    private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
+    private readonly CheckBox customMotionGloryKillSpeed = MakeCheck("Punch-Driven Glory Kill Speed", false);
+    private readonly CheckBox customPhysicalChainsawGestures = MakeCheck("Physical Chainsaw Gestures", false);
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
@@ -324,13 +336,14 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(18, 10, 18, 8),
-            RowCount = 2,
-            ColumnCount = 2
+            RowCount = 14,
+            ColumnCount = 2,
+            AutoScroll = true
         };
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 187));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+        for (var i = 0; i < 14; i++)
+            customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
 
         weaponWheelRemap.Dock = DockStyle.Fill;
         weaponWheelRemap.CheckedChanged += OptionChanged;
@@ -341,7 +354,7 @@ public sealed class MainForm : Form
 
         customModsGrid.Controls.Add(new Label
         {
-            Text = "Glory Kill Slow-Mo",
+            Text = "Glory Kill Speed",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 1);
@@ -355,13 +368,39 @@ public sealed class MainForm : Form
         };
         gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
-        gloryKillSlowmo.AccessibleName = "Glory Kill Slow-Mo";
+        gloryKillSlowmo.AccessibleName = "Glory Kill Speed";
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
         statusToolTip.SetToolTip(gloryKillSlowmo,
-            "0 = full speed/off. 1-9 = custom slow-motion strength. 10 = official DOOM native Glory Kill slow-motion.");
+            "0 = full speed. 1-9 = progressively slower custom Glory Kill speed. 10 = official DOOM native Glory Kill speed.");
         gloryKillRow.Controls.Add(gloryKillSlowmo, 0, 0);
         gloryKillRow.Controls.Add(gloryKillSlowmoValue, 1, 0);
         customModsGrid.Controls.Add(gloryKillRow, 1, 1);
+
+        var customChecks = new (CheckBox Box, string Tip)[]
+        {
+            (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
+            (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
+            (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
+            (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose."),
+            (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
+            (customDirectionalDash, "Add a separate horizontal dash using the existing jump/impulse path without changing normal double-jump."),
+            (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
+            (customRevengeDemon, "Re-identify the exact demon that killed you after checkpoint reload and mark/empower it. Supervisor-assisted experimental feature."),
+            (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, then draw that exact weapon back out."),
+            (customPhysicalGrenadeThrow, "Hold equipment/grenade input and use controller motion at release to determine throw direction/strength."),
+            (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
+            (customPhysicalChainsawGestures, "Experimental gesture checkpoints for chainsaw kill animations. Supervisor-assisted while animation states are being mapped.")
+        };
+        for (var i = 0; i < customChecks.Length; i++)
+        {
+            var check = customChecks[i].Box;
+            check.Dock = DockStyle.Fill;
+            check.CheckedChanged += CustomModChanged;
+            statusToolTip.SetToolTip(check, customChecks[i].Tip);
+            customModsGrid.Controls.Add(check, 0, i + 2);
+            customModsGrid.SetColumnSpan(check, 2);
+        }
+
         customMods.Controls.Add(customModsGrid);
         customOptionsForm = CreateCustomOptionsForm(customMods);
 
@@ -534,11 +573,17 @@ public sealed class MainForm : Form
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
+        LoadCustomModSettings();
         RefreshRenderScaleAvailability();
         if (string.IsNullOrWhiteSpace(doomPath.Text) || !File.Exists(Path.Combine(doomPath.Text, "DOOMx64vk.exe")))
             doomPath.Text = KharvoxRunner.FindDoomInstall() ?? string.Empty;
         RefreshDoomProcessState();
-        FormClosing += (_, _) => { runtimeStatusTimer.Stop(); SaveSettings(); };
+        FormClosing += (_, _) =>
+        {
+            runtimeStatusTimer.Stop();
+            SaveSettings();
+            SaveCustomModSettings();
+        };
     }
 
     protected override void OnLoad(EventArgs e)
@@ -801,6 +846,51 @@ public sealed class MainForm : Form
         OptionChanged(sender, e);
     }
 
+    private void CustomModChanged(object? sender, EventArgs e)
+    {
+        SaveCustomModSettings();
+        OptionChanged(sender, e);
+    }
+
+    private CustomModSettings ReadCustomModSettingsFromControls() => new()
+    {
+        DisableHud = customDisableHud.Checked,
+        DisableWeaponWheel = customDisableWeaponWheel.Checked,
+        GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
+        BackOfHandHud = customBackOfHandHud.Checked,
+        HandFocusedRs = customHandFocusedRs.Checked,
+        DirectionalDash = customDirectionalDash.Checked,
+        PhysicalCrouch = customPhysicalCrouch.Checked,
+        RevengeDemon = customRevengeDemon.Checked,
+        DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
+        PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
+        MotionGloryKillSpeed = customMotionGloryKillSpeed.Checked,
+        PhysicalChainsawGestures = customPhysicalChainsawGestures.Checked
+    };
+
+    private void SaveCustomModSettings()
+    {
+        try { CustomModSettingsStore.Save(ReadCustomModSettingsFromControls()); }
+        catch { /* Custom mods are optional and must never block launching. */ }
+    }
+
+    private void LoadCustomModSettings()
+    {
+        var mods = CustomModSettingsStore.Load();
+        customDisableHud.Checked = mods.DisableHud;
+        customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
+        customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
+        customBackOfHandHud.Checked = mods.BackOfHandHud;
+        customHandFocusedRs.Checked = mods.HandFocusedRs;
+        customDirectionalDash.Checked = mods.DirectionalDash;
+        customPhysicalCrouch.Checked = mods.PhysicalCrouch;
+        customRevengeDemon.Checked = mods.RevengeDemon;
+        customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
+        customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
+        customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
+        customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+    }
+
     private static void AddField(TableLayoutPanel grid, int row, string label, Control control)
     {
         grid.Controls.Add(new Label { Text = label, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft }, 0, row);
@@ -918,8 +1008,8 @@ public sealed class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(520, 190),
-            MinimumSize = new Size(460, 180),
+            ClientSize = new Size(620, 560),
+            MinimumSize = new Size(520, 420),
             StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
