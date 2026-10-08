@@ -26,6 +26,8 @@ void KharvoxCameraRecordAerWorldSource(const kharvox::AerWorldView& source);
 bool KharvoxCameraUsesAerGameplaySource();
 kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
+// Optional controller-driven interaction focus ray in DOOM world coordinates.
+void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
 void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
     bool requested, bool active);
