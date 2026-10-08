@@ -1,0 +1,14 @@
+{
+  "Schema": 1,
+  "Enabled": false,
+  "ProcessName": "DOOMx64vk",
+  "PollIntervalMs": 100,
+  "OutputFile": "logs/KHARVOX-Supervisor.ndjson",
+  "IncludeProcessLifecycle": true,
+  "IncludeProcessMetrics": true,
+  "MetricsIntervalMs": 1000,
+  "Notes": "Generic KHARVOX supervisor. File watches are config-driven; no rebuild is needed to change what is collected.",
+  "Files": [
+    { "Name": "KHARVOX", "Path": "logs/KHARVOX.log", "Mode": "tail", "Optional": true }
+  ]
+}
