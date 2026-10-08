@@ -73,6 +73,7 @@ public sealed class MainForm : Form
     private readonly CheckBox customBackOfHandHud = MakeCheck("Back-of-Hand HUD", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus + RS", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
+    private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Weapon Wheel", false);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Shoulder Holster", false);
@@ -336,13 +337,13 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(18, 10, 18, 8),
-            RowCount = 14,
+            RowCount = 15,
             ColumnCount = 2,
             AutoScroll = true
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 14; i++)
+        for (var i = 0; i < 15; i++)
             customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
 
         weaponWheelRemap.Dock = DockStyle.Fill;
@@ -383,7 +384,8 @@ public sealed class MainForm : Form
             (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
             (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
-            (customDirectionalDash, "Add a separate horizontal dash using the existing jump/impulse path without changing normal double-jump."),
+            (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. With Behind-Head Weapon Wheel enabled, the freed weapon-wheel control becomes dash."),
+            (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
             (customRevengeDemon, "Re-identify the exact demon that killed you after checkpoint reload and mark/empower it. Supervisor-assisted experimental feature."),
             (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, then draw that exact weapon back out."),
@@ -860,6 +862,7 @@ public sealed class MainForm : Form
         BackOfHandHud = customBackOfHandHud.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
+        BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
@@ -883,6 +886,7 @@ public sealed class MainForm : Form
         customBackOfHandHud.Checked = mods.BackOfHandHud;
         customHandFocusedRs.Checked = mods.HandFocusedRs;
         customDirectionalDash.Checked = mods.DirectionalDash;
+        customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
         customPhysicalCrouch.Checked = mods.PhysicalCrouch;
         customRevengeDemon.Checked = mods.RevengeDemon;
         customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
