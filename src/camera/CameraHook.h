@@ -50,6 +50,9 @@ bool KharvoxCameraPlayerWeaponControlActive();
 // While Gauss Siege is charging, learn and clear only charge-added movement
 // inhibit bits. Calling with false updates the normal gameplay baseline.
 void KharvoxCameraSetGaussChargeMovementOverride(bool active);
+// Applies one horizontal dash through the validated idPhysics_Player object.
+// forward/lateral are normalized body-relative intent values.
+bool KharvoxCameraApplyDirectionalDash(float forward, float lateral, float speedUnitsPerSecond);
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHeadRenderPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHudCenterRenderPose(float origin[3], float axis[9]);
