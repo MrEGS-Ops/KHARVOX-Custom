@@ -2147,17 +2147,18 @@ void updateGameplayActions(XrTime displayTime){
     if(s.customMods.directionalDash&&s.customMods.behindHeadWeaponWheel
         &&gameplay&&freedWeaponWheelButtonDown&&!s.dashButtonPressed
         &&displayTime>=s.dashCooldownUntil){
+        const auto dashStick=movementDirectionRelativeStick(s.leftStick,gameplay);
         const float dashMagnitude=std::sqrt(
-            s.leftStick.x*s.leftStick.x+s.leftStick.y*s.leftStick.y);
+            dashStick.x*dashStick.x+dashStick.y*dashStick.y);
         if(dashMagnitude>=.20f){
             if(KharvoxCameraApplyDirectionalDash(
-                    s.leftStick.x,s.leftStick.y)){
+                    dashStick.x,dashStick.y)){
                 s.dashCooldownUntil=displayTime+650000000;
                 log(std::string("[DASH] freed ")
                     +(s.weaponWheelRemapEnabled?"A":turnStickName())
-                    +" wheel control -> horizontal dash stick=("
-                    +std::to_string(s.leftStick.x)+","
-                    +std::to_string(s.leftStick.y)+")");
+                    +" wheel control -> horizontal dash transformedStick=("
+                    +std::to_string(dashStick.x)+","
+                    +std::to_string(dashStick.y)+")");
             }
         }else{
             log("[DASH] freed wheel button pressed with neutral stick; ignored");
