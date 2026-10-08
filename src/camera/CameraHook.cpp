@@ -663,6 +663,8 @@ int configuredGloryKillSlowmoLevel() {
     return level;
 }
 
+std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
+
 float gloryKillCustomTimescale(int level) {
     if (level <= 0) return 1.0f;
     const float strength = std::clamp(static_cast<float>(level), 1.0f, 9.0f);
@@ -790,13 +792,17 @@ volatile LONG* resolveTimescaleCvarCurrent() {
 
 void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     const int level = configuredGloryKillSlowmoLevel();
-    if (level <= 0 || level >= 10) return;
+    const float motionOverride = gloryKillMotionTimescaleOverride.load(std::memory_order_acquire);
+    const bool configuredOverride = level > 0 && level < 10;
+    const bool motionOverrideActive = motionOverride > 0.0f;
+    if (!configuredOverride && !motionOverrideActive && syncAttackActive) return;
 
     static SRWLOCK lock = SRWLOCK_INIT;
     static bool applied{};
     static bool baselineValid{};
     static LONG baselineBits{};
     static int loggedLevel{-1};
+    static float loggedMotionOverride{-1.0f};
     auto current = resolveTimescaleCvarCurrent();
     if (!current) return;
 
@@ -809,6 +815,13 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         }
         baselineBits = InterlockedCompareExchange(current, 0, 0);
         baselineValid = true;
+        gloryKillMotionTimescaleOverride.store(0.0f, std::memory_order_release);
+        loggedMotionOverride = -1.0f;
+        ReleaseSRWLockExclusive(&lock);
+        return;
+    }
+
+    if (!configuredOverride && !motionOverrideActive) {
         ReleaseSRWLockExclusive(&lock);
         return;
     }
@@ -819,12 +832,19 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         applied = true;
     }
 
-    const float target = gloryKillCustomTimescale(level);
+    const float target = motionOverrideActive
+        ? std::clamp(motionOverride, 0.40f, 1.0f)
+        : gloryKillCustomTimescale(level);
     LONG targetBits{};
     std::memcpy(&targetBits, &target, sizeof(targetBits));
     InterlockedExchange(current, targetBits);
 
-    if (loggedLevel != level) {
+    if (motionOverrideActive) {
+        if (std::abs(loggedMotionOverride - target) > 0.001f) {
+            loggedMotionOverride = target;
+            logGlorySlowmo("motion override forcedTimescale=" + std::to_string(target));
+        }
+    } else if (loggedLevel != level) {
         loggedLevel = level;
         logGlorySlowmo("level=" + std::to_string(level)
             + " forcedTimescale=" + std::to_string(target));
@@ -2471,6 +2491,12 @@ bool KharvoxCameraNativeTwoViewActive() {
 }
 
 bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_order_acquire); }
+
+void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
+    const float value = timescale > 0.0f
+        ? std::clamp(timescale, 0.40f, 1.0f) : 0.0f;
+    gloryKillMotionTimescaleOverride.store(value, std::memory_order_release);
+}
 
 bool KharvoxCameraSyncAttackActive() {
     // idPlayer+0x3DC9 is the exact flag DOOM's native usability path checks
