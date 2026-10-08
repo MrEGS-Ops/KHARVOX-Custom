@@ -389,7 +389,7 @@ public sealed class MainForm : Form
             (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
             (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
-            (customRevengeDemon, "Re-identify the exact demon that killed you after checkpoint reload and mark/empower it. Supervisor-assisted experimental feature."),
+            (customRevengeDemon, "Experimental exact-killer workflow. This build captures and persists death-time entity-reference data through the Supervisor so the exact attacker field can be resolved without guessing; empowerment/outline remains fail-closed until that resolver is validated."),
             (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, then draw that exact weapon back out."),
             (customPhysicalGrenadeThrow, "Hold equipment/grenade input and use controller motion at release to determine throw direction/strength."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
