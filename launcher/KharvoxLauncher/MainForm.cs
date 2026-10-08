@@ -853,16 +853,16 @@ public sealed class MainForm : Form
 
     private void CustomModChanged(object? sender, EventArgs e)
     {
-        if (!applyingCustomModDependencies)
-            ApplyCustomModDependencies(sender as CheckBox);
+        if (applyingCustomModDependencies) return;
+        ApplyCustomModDependencies(sender as CheckBox);
         SaveCustomModSettings();
         OptionChanged(sender, e);
     }
 
     private void WeaponWheelRemapChanged(object? sender, EventArgs e)
     {
-        if (!applyingCustomModDependencies)
-            ApplyCustomModDependencies(weaponWheelRemap);
+        if (applyingCustomModDependencies) return;
+        ApplyCustomModDependencies(weaponWheelRemap);
         SaveCustomModSettings();
         OptionChanged(sender, e);
     }
@@ -948,20 +948,28 @@ public sealed class MainForm : Form
     private void LoadCustomModSettings()
     {
         var mods = CustomModSettingsStore.Load();
-        customDisableHud.Checked = mods.DisableHud;
-        customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
-        customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
-        customBackOfHandHud.Checked = mods.BackOfHandHud;
-        customHandFocusedRs.Checked = mods.HandFocusedRs;
-        customDirectionalDash.Checked = mods.DirectionalDash;
-        customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
-        customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWheelHandSelection;
-        customPhysicalCrouch.Checked = mods.PhysicalCrouch;
-        customRevengeDemon.Checked = mods.RevengeDemon;
-        customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
-        customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
-        customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
-        customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+        applyingCustomModDependencies = true;
+        try
+        {
+            customDisableHud.Checked = mods.DisableHud;
+            customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
+            customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
+            customBackOfHandHud.Checked = mods.BackOfHandHud;
+            customHandFocusedRs.Checked = mods.HandFocusedRs;
+            customDirectionalDash.Checked = mods.DirectionalDash;
+            customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
+            customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWheelHandSelection;
+            customPhysicalCrouch.Checked = mods.PhysicalCrouch;
+            customRevengeDemon.Checked = mods.RevengeDemon;
+            customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
+            customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
+            customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
+            customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+        }
+        finally
+        {
+            applyingCustomModDependencies = false;
+        }
         ApplyCustomModDependencies(null);
         SaveCustomModSettings();
     }
