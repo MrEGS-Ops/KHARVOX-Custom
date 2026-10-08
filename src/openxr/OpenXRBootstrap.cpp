@@ -2569,8 +2569,9 @@ void updateGameplayActions(XrTime displayTime){
         kharvox::MotionWeaponWheelInput wheelInput{};
         wheelInput.wheelActive=weaponWheelActive;
         wheelInput.trackingValid=wCtrl.valid&&wCtrl.positionTracked&&s.head.valid;
-        wheelInput.stickBypass=kharvox::motionWheelStickBypass(
-            s.leftStick.x,s.leftStick.y);
+        wheelInput.stickBypass=(s.behindHeadWheelActive
+            &&!s.customMods.behindHeadWheelHandSelection)
+            ||kharvox::motionWheelStickBypass(s.leftStick.x,s.leftStick.y);
         wheelInput.config.nativeStickDeadzone=nativeDoomRightStickDeadzone;
         wheelInput.handPosition={wCtrl.position.x,wCtrl.position.y,wCtrl.position.z};
         wheelInput.hmdOrientation={s.head.orientation.x,s.head.orientation.y,s.head.orientation.z,s.head.orientation.w};
@@ -2857,6 +2858,7 @@ bool createGameplayActions(){
         +" handFocusRs="+(s.customMods.handFocusedRs?"on":"off")
         +" dash="+(s.customMods.directionalDash?"on":"off")
         +" behindHeadWheel="+(s.customMods.behindHeadWeaponWheel?"on":"off")
+        +" behindHeadHandSelect="+(s.customMods.behindHeadWheelHandSelection?"on":"off")
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
         +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
