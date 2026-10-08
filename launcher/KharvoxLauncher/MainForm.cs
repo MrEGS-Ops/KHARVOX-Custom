@@ -95,6 +95,7 @@ public sealed class MainForm : Form
     private readonly ToolTip statusToolTip = new();
     private readonly Panel renderScaleHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button launchButton = new();
+    private bool applyingCustomModDependencies;
     private Form? customOptionsForm;
     private DevModeForm? devModeForm;
     private CracktroForm? cracktroForm;
@@ -348,7 +349,7 @@ public sealed class MainForm : Form
             customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
 
         weaponWheelRemap.Dock = DockStyle.Fill;
-        weaponWheelRemap.CheckedChanged += OptionChanged;
+        weaponWheelRemap.CheckedChanged += WeaponWheelRemapChanged;
         statusToolTip.SetToolTip(weaponWheelRemap,
             "On: A tap/hold controls quick weapon / weapon wheel and right-stick down toggles crouch. Off: official KHARVOX controls.");
         customModsGrid.Controls.Add(weaponWheelRemap, 0, 0);
@@ -852,8 +853,68 @@ public sealed class MainForm : Form
 
     private void CustomModChanged(object? sender, EventArgs e)
     {
+        if (!applyingCustomModDependencies)
+            ApplyCustomModDependencies(sender as CheckBox);
         SaveCustomModSettings();
         OptionChanged(sender, e);
+    }
+
+    private void WeaponWheelRemapChanged(object? sender, EventArgs e)
+    {
+        if (!applyingCustomModDependencies)
+            ApplyCustomModDependencies(weaponWheelRemap);
+        SaveCustomModSettings();
+        OptionChanged(sender, e);
+    }
+
+    private void ApplyCustomModDependencies(CheckBox? changed)
+    {
+        if (applyingCustomModDependencies) return;
+        applyingCustomModDependencies = true;
+        try
+        {
+            // Dash consumes the A button that Behind-Head Weapon Wheel frees.
+            // Keep that relationship explicit instead of allowing a checkbox
+            // combination that can never work in-game.
+            if (changed == customDirectionalDash && customDirectionalDash.Checked)
+            {
+                weaponWheelRemap.Checked = true;
+                customBehindHeadWeaponWheel.Checked = true;
+                customDisableWeaponWheel.Checked = false;
+            }
+
+            // A hard "No Weapon Wheel" request wins over every wheel-dependent
+            // feature and therefore also releases Dash.
+            if (changed == customDisableWeaponWheel && customDisableWeaponWheel.Checked)
+            {
+                customBehindHeadWeaponWheel.Checked = false;
+                customDirectionalDash.Checked = false;
+            }
+
+            // If a required dependency is manually removed, turn the dependent
+            // feature off rather than silently leaving it selected but inert.
+            if (!customBehindHeadWeaponWheel.Checked || !weaponWheelRemap.Checked)
+                customDirectionalDash.Checked = false;
+
+            if (customBehindHeadWeaponWheel.Checked)
+                customDisableWeaponWheel.Checked = false;
+
+            // Final invariant pass also repairs older saved configs.
+            if (customDirectionalDash.Checked)
+            {
+                weaponWheelRemap.Checked = true;
+                customBehindHeadWeaponWheel.Checked = true;
+                customDisableWeaponWheel.Checked = false;
+            }
+
+            customBehindHeadWheelHandSelection.Enabled =
+                customBehindHeadWeaponWheel.Checked
+                && !customDisableWeaponWheel.Checked;
+        }
+        finally
+        {
+            applyingCustomModDependencies = false;
+        }
     }
 
     private CustomModSettings ReadCustomModSettingsFromControls() => new()
@@ -897,6 +958,8 @@ public sealed class MainForm : Form
         customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
         customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
         customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+        ApplyCustomModDependencies(null);
+        SaveCustomModSettings();
     }
 
     private static void AddField(TableLayoutPanel grid, int row, string label, Control control)
