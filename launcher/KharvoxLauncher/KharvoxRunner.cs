@@ -158,8 +158,10 @@ internal static class KharvoxRunner
     private static readonly object bhapticsLock = new();
     private static BhapticsBridgeSession? currentBhaptics;
     private static readonly object psvr2Lock = new();
+    private static readonly object supervisorLock = new();
     private static readonly object diagnosticLogLock = new();
     private static Psvr2BridgeSession? currentPsvr2;
+    private static KharvoxSupervisorSession? currentSupervisor;
     private static int launchInProgress;
     internal enum StartupState
     {
@@ -202,6 +204,7 @@ internal static class KharvoxRunner
             if (Volatile.Read(ref launchInProgress) != 0) return false;
             StopBhapticsInBackground();
             StopPsvr2InBackground();
+            StopSupervisor();
             return false;
         }
     }
@@ -271,6 +274,7 @@ internal static class KharvoxRunner
         var launchId = Guid.NewGuid().ToString("N").Substring(0, 12);
         var loaderLogPath = RuntimeStorage.LogPath("KHARVOX-vulkan-loader-v1.0.log");
         var gameExe = Path.Combine(options.GameDirectory ?? string.Empty, "DOOMx64vk.exe");
+        var customMods = CustomModSettingsStore.Load();
         if (!File.Exists(gameExe)) throw new FileNotFoundException(
             "Select the DOOM (2016) installation folder containing DOOMx64vk.exe.", gameExe);
 
@@ -311,6 +315,7 @@ internal static class KharvoxRunner
         EnsureNativeControllerBindings(options.BackWeapon);
         await StopBhapticsAsync().ConfigureAwait(false);
         await StopPsvr2Async().ConfigureAwait(false);
+        StopSupervisor();
         var bhaptics = BhapticsBridgeSession.TryStart(
             options.EnableBhaptics, runtimeDir, statusUpdate,
             bhapticsAppId, bhapticsApiKey, options.ExtendedLogging);
@@ -519,6 +524,18 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = options.WeaponWheelRemapEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = options.WeaponWheelRemapEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] = options.GloryKillSlowmoLevel.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_WEAPON_WHEEL"] = customMods.DisableWeaponWheel ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_GAUSS_SLOW_CHARGE"] = customMods.GaussChargeSlowMovement ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = customMods.BackOfHandHud ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = customMods.MotionGloryKillSpeed ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = customMods.PhysicalChainsawGestures ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
             psi.EnvironmentVariables["KHARVOX_HANDS_PROJECTION_SCALE"] = "1";
@@ -608,6 +625,12 @@ internal static class KharvoxRunner
             }
             const long logOffset = 0;
             EnsureNoRunningDoom();
+            var supervisor = KharvoxSupervisorSession.TryStart(customMods, runtimeDir, statusUpdate);
+            lock (supervisorLock)
+            {
+                currentSupervisor?.Dispose();
+                currentSupervisor = supervisor;
+            }
             if (options.ExtendedLogging)
                 AppendRegistryDiagnostics(logPath, launchId, "before-process-start", key,
                     manifestPath);
@@ -814,6 +837,7 @@ internal static class KharvoxRunner
             {
                 await StopBhapticsAsync().ConfigureAwait(false);
                 await StopPsvr2Async().ConfigureAwait(false);
+                StopSupervisor();
             }
         }
     }
@@ -1173,6 +1197,7 @@ internal static class KharvoxRunner
         {
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
+            StopSupervisor();
             return;
         }
         try
@@ -1185,7 +1210,19 @@ internal static class KharvoxRunner
             game.Dispose();
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
+            StopSupervisor();
         }
+    }
+
+    private static void StopSupervisor()
+    {
+        KharvoxSupervisorSession? session;
+        lock (supervisorLock)
+        {
+            session = currentSupervisor;
+            currentSupervisor = null;
+        }
+        session?.Dispose();
     }
 
     internal static async Task StopBhapticsAsync()
