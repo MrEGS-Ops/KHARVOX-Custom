@@ -1,0 +1,138 @@
+name: KHARVOX Custom Build
+
+on:
+  push:
+    branches: [clean/custom-core]
+  workflow_dispatch:
+
+concurrency:
+  group: kharvox-clean-custom
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Regenerate controller mapping
+        shell: powershell
+        run: .\assets\branding\generate-controller-mapping.ps1
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-bincache
+          key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
+
+      - name: Restore native incremental cache
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: kharvox-native-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            kharvox-native-${{ runner.os }}-
+
+      - name: Install SFS compiler dependencies
+        shell: powershell
+        run: |
+          $triplet = "x64-windows-static-md"
+          $binaryCache = Join-Path $PWD ".vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCache,readwrite"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet"
+          $root = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\$triplet"
+          if (!(Test-Path "$root\include\spirv_cross\spirv_glsl.hpp")) { throw "SPIRV-Cross headers missing" }
+          if (!(Test-Path "$root\lib\spirv-cross-glsl.lib")) { throw "SPIRV-Cross glsl lib missing" }
+          if (!(Test-Path "$root\include\glslang\Include\glslang_c_interface.h")) { throw "glslang headers missing" }
+          if (!(Test-Path "$root\lib\glslang.lib")) { throw "glslang lib missing" }
+          "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native
+        shell: powershell
+        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+
+      - name: Build native Release
+        shell: powershell
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Verify native SFS stamp
+        shell: powershell
+        run: |
+          $layer = "build\native\Release\KharvoxLayer.dll"
+          $stamp = "build\native\Release\native_sfs_build.txt"
+          if (!(Test-Path $layer)) { throw "KharvoxLayer.dll missing" }
+          if (!(Test-Path $stamp)) { throw "native_sfs_build.txt missing" }
+          $lines = Get-Content $stamp
+          $hash = (Get-FileHash -Algorithm SHA256 $layer).Hash
+          if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
+
+      - name: Restore launcher
+        shell: powershell
+        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
+
+      - name: Build launcher Release
+        shell: powershell
+        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Assemble full install and patch
+        shell: powershell
+        run: |
+          $native = Join-Path $PWD "build\native\Release"
+          $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
+          $out = Join-Path $PWD "out\watcher"
+          $full = Join-Path $out "full"
+          $patch = Join-Path $out "patch"
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $full,$patch | Out-Null
+          Copy-Item -Path (Join-Path $native "*") -Destination $full -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
+          Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt")) {
+            $source = Join-Path $native $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          foreach ($name in @("KharvoxLauncher.exe","KharvoxLauncher.exe.config")) {
+            $source = Join-Path $launcher $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          function Write-Manifest([string]$root,[string]$kind) {
+            $files = @()
+            Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
+              $relative = $_.FullName.Substring($root.Length + 1).Replace('\','/')
+              $files += [ordered]@{ path=$relative; size=$_.Length; sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() }
+            }
+            $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="clean/custom-core"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
+            $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
+            @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
+          }
+          Write-Manifest $full "full"
+          Write-Manifest $patch "patch"
+
+      - name: Upload full install
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Full-Build
+          path: out/watcher/full
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+
+      - name: Upload fast patch
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Dev-Patch
+          path: out/watcher/patch
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 30
