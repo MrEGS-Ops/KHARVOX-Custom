@@ -21,6 +21,7 @@ struct CustomModFlags {
     bool handFocusedRs{};
     bool directionalDash{};
     bool behindHeadWeaponWheel{};
+    bool behindHeadWheelLeftStickSelection{};
     bool physicalCrouch{};
     bool revengeDemon{};
     bool dynamicShoulderHolster{};
@@ -38,6 +39,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.handFocusedRs = customModEnvironmentEnabled("KHARVOX_MOD_HAND_FOCUS_RS");
     flags.directionalDash = customModEnvironmentEnabled("KHARVOX_MOD_DIRECTIONAL_DASH");
     flags.behindHeadWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_BEHIND_HEAD_WHEEL");
+    flags.behindHeadWheelLeftStickSelection = customModEnvironmentEnabled("KHARVOX_MOD_BEHIND_HEAD_WHEEL_STICK");
     flags.physicalCrouch = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_CROUCH");
     flags.revengeDemon = customModEnvironmentEnabled("KHARVOX_MOD_REVENGE_DEMON");
     flags.dynamicShoulderHolster = customModEnvironmentEnabled("KHARVOX_MOD_DYNAMIC_SHOULDER");
