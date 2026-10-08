@@ -74,6 +74,7 @@ public sealed class MainForm : Form
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus + RS", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
     private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Weapon Wheel", false);
+    private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Shoulder Holster", false);
@@ -337,13 +338,13 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(18, 10, 18, 8),
-            RowCount = 15,
+            RowCount = 16,
             ColumnCount = 2,
             AutoScroll = true
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 15; i++)
+        for (var i = 0; i < 16; i++)
             customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
 
         weaponWheelRemap.Dock = DockStyle.Fill;
@@ -386,6 +387,7 @@ public sealed class MainForm : Form
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
             (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. With Behind-Head Weapon Wheel enabled, the freed weapon-wheel control becomes dash."),
             (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
+            (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
             (customRevengeDemon, "Re-identify the exact demon that killed you after checkpoint reload and mark/empower it. Supervisor-assisted experimental feature."),
             (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, then draw that exact weapon back out."),
@@ -863,6 +865,7 @@ public sealed class MainForm : Form
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
         BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
+        BehindHeadWheelHandSelection = customBehindHeadWheelHandSelection.Checked,
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
@@ -887,6 +890,7 @@ public sealed class MainForm : Form
         customHandFocusedRs.Checked = mods.HandFocusedRs;
         customDirectionalDash.Checked = mods.DirectionalDash;
         customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
+        customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWheelHandSelection;
         customPhysicalCrouch.Checked = mods.PhysicalCrouch;
         customRevengeDemon.Checked = mods.RevengeDemon;
         customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
