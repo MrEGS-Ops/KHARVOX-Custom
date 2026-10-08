@@ -40,7 +40,7 @@ internal sealed class KharvoxSupervisorSession : IDisposable
                 UseShellExecute = false,
                 WorkingDirectory = runtimeDirectory,
                 CreateNoWindow = true,
-                Arguments = "--config "" + config.Replace(""", "\"") + """
+                Arguments = "--config \"" + config.Replace("\"", "\\\"") + "\""
             };
             var process = Process.Start(start);
             if (process is null)
