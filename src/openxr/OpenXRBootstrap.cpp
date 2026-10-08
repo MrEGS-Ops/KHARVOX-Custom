@@ -238,6 +238,7 @@ struct State {
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
+    bool dynamicShoulderHolstered{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
@@ -2032,6 +2033,7 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
+        s.dynamicShoulderHolstered=false;KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
@@ -2225,16 +2227,48 @@ void updateGameplayActions(XrTime displayTime){
         if(ammo==KharvoxWeaponAmmoState::Usable)backWeaponAmmoUsableMask|=mask;
     }
     const auto activeBackWeapon=backWeaponKindFromActive(activeWeaponKind);
+    const kharvox::BackWeaponZonePolicy dynamicShoulderPolicy{};
+    const auto& dynamicShoulderBounds=s.backWeaponState.zoneActive
+        ?dynamicShoulderPolicy.exit:dynamicShoulderPolicy.enter;
+    const bool dynamicShoulderInside=backWeaponTrackingValid
+        &&kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,dynamicShoulderBounds);
+
+    if(!s.customMods.dynamicShoulderHolster||!gameplay){
+        if(s.dynamicShoulderHolstered){
+            s.dynamicShoulderHolstered=false;
+            KharvoxWeaponSetHolstered(false);
+            log("[BACK-WEAPON] dynamic holster released because gameplay/mod context ended");
+        }
+    }else if(s.dynamicShoulderHolstered
+        &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown
+        &&activeBackWeapon!=s.favoriteBackWeapon){
+        // A normal weapon-wheel/number-key selection is an explicit request to
+        // leave empty-hands mode. Never keep a newly selected weapon invisible.
+        s.dynamicShoulderHolstered=false;
+        KharvoxWeaponSetHolstered(false);
+        log(std::string("[BACK-WEAPON] dynamic holster cancelled by weapon selection: ")
+            +backWeaponKindKey(activeBackWeapon));
+    }
+
     if(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress&&gameplay
-        &&!weaponWheelActive&&!s.twoHandCalibrationMode&&backWeaponTrackingValid
+        &&!weaponWheelActive&&!s.twoHandCalibrationMode&&dynamicShoulderInside
         &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown){
-        const kharvox::BackWeaponZonePolicy dynamicShoulderPolicy{};
-        const auto& bounds=s.backWeaponState.zoneActive
-            ?dynamicShoulderPolicy.exit:dynamicShoulderPolicy.enter;
-        if(kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,bounds)
-            &&activeBackWeapon!=s.favoriteBackWeapon){
-            s.favoriteBackWeapon=activeBackWeapon;
-            log(std::string("[BACK-WEAPON] dynamic shoulder slot assigned from active weapon: ")
+        if(s.dynamicShoulderHolstered){
+            // Reaching to the occupied shoulder slot draws the same native
+            // weapon without an inventory swap.
+            s.dynamicShoulderHolstered=false;
+            KharvoxWeaponSetHolstered(false);
+            log(std::string("[BACK-WEAPON] dynamic shoulder draw -> ")
+                +backWeaponKindKey(s.favoriteBackWeapon));
+        }else{
+            if(activeBackWeapon!=s.favoriteBackWeapon){
+                s.favoriteBackWeapon=activeBackWeapon;
+                log(std::string("[BACK-WEAPON] dynamic shoulder slot assigned from active weapon: ")
+                    +backWeaponKindKey(s.favoriteBackWeapon));
+            }
+            s.dynamicShoulderHolstered=true;
+            KharvoxWeaponSetHolstered(true);
+            log(std::string("[BACK-WEAPON] dynamic shoulder stow -> empty hands; weapon=")
                 +backWeaponKindKey(s.favoriteBackWeapon));
         }
     }
@@ -2245,7 +2279,9 @@ void updateGameplayActions(XrTime displayTime){
     backWeaponInput.calibrationMode=s.twoHandCalibrationMode;
     backWeaponInput.trackingValid=backWeaponTrackingValid;
     backWeaponInput.gripRelativeToHeadMeters=backWeaponGripRelativeToHead;
-    backWeaponInput.gripDown=secondaryFireGripDown;
+    backWeaponInput.gripDown=secondaryFireGripDown
+        &&!(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress
+            &&dynamicShoulderInside);
     backWeaponInput.triggerDown=triggerDown;
     backWeaponInput.favorite=s.favoriteBackWeapon;
     backWeaponInput.activeWeapon=activeBackWeapon;
@@ -2496,10 +2532,11 @@ void updateGameplayActions(XrTime displayTime){
         &&s.backWeaponPulse==kharvox::BackWeaponPulse::Bfg;
     const bool chainsawPulse=(gameplay&&displayTime<s.chainsawPulseUntil)
         ||(backWeaponPulseActive&&s.backWeaponPulse==kharvox::BackWeaponPulse::Chainsaw);
-    const bool weaponModDown=gameplay&&secondaryFireGripDown
-        &&!backWeaponOutput.gripConsumed;
+    const bool weaponModDown=gameplay&&!s.dynamicShoulderHolstered
+        &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
-    const bool fireDown=triggerDown&&!weaponWheelActive&&!calibrationFireBlocked;
+    const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
+        &&!weaponWheelActive&&!calibrationFireBlocked;
     // This is the primary-fire state after KHARVOX has removed weapon-wheel
     // and calibration ownership. Adaptive triggers must never consume the raw
     // OpenXR analog trigger value.
