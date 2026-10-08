@@ -13,6 +13,7 @@ internal sealed class CustomModSettings
     public bool BackOfHandHud { get; set; }
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
+    public bool BehindHeadWeaponWheel { get; set; }
     public bool PhysicalCrouch { get; set; }
     public bool RevengeDemon { get; set; }
     public bool DynamicShoulderHolster { get; set; }
