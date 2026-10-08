@@ -233,7 +233,9 @@ struct State {
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
+    bool weaponWheelRemapEnabled{true};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
+    bool crouchToggleActive{},crouchStickPressed{};
     bool chainsawArmed{true},pausePressed{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -1370,14 +1372,25 @@ void configureLaserSight(){
         +" diameter=0.004m; source-qualified scene-depth beam; no compositor overlay; Chainsaw and non-muzzle weapons disabled");
 }
 void configureMotionWeaponWheel(){
-    char text[16]{};
-    if(GetEnvironmentVariableA("KHARVOX_MOTION_WEAPON_WHEEL",text,sizeof(text))){
-        s.motionWheelEnabled=(!_stricmp(text,"1")||!_stricmp(text,"true")||!_stricmp(text,"yes")||!_stricmp(text,"on"));
-    }else{
-        s.motionWheelEnabled=true;
-    }
+    auto enabledOrDefault=[](const char* name,bool fallback){
+        char text[16]{};
+        if(!GetEnvironmentVariableA(name,text,sizeof(text)))return fallback;
+        return !_stricmp(text,"1")||!_stricmp(text,"true")
+            ||!_stricmp(text,"yes")||!_stricmp(text,"on");
+    };
+    s.weaponWheelRemapEnabled=
+        enabledOrDefault("KHARVOX_WEAPON_WHEEL_REMAP",true);
+    s.motionWheelEnabled=
+        enabledOrDefault("KHARVOX_MOTION_WEAPON_WHEEL",true)
+        &&s.weaponWheelRemapEnabled;
+    log(std::string("[INPUT] Weapon Wheel Remap ")
+        +(s.weaponWheelRemapEnabled
+            ?"ENABLED; A tap/hold uses KHARVOX quick-switch/wheel timing"
+            :"disabled; official KHARVOX controls restored"));
     log(std::string("[INPUT] Motion Weapon Wheel (Alyx Style) ")
-        +(s.motionWheelEnabled?"ENABLED; physical hand displacement drives selection; haptic clicks on sector change":"disabled"));
+        +(s.motionWheelEnabled
+            ?"ENABLED; physical hand displacement drives selection; haptic clicks on sector change"
+            :"disabled"));
 }
 float nativeManualTurnX(XrTime displayTime,bool active){
     const float x=active&&std::abs(s.rightStick.x)>=s.turnDeadzone?s.rightStick.x:0.f;
@@ -2012,6 +2025,7 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
+        s.crouchToggleActive=false;s.crouchStickPressed=false;
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
@@ -2065,7 +2079,28 @@ void updateGameplayActions(XrTime displayTime){
     }
     const float fireValue=readFloatAction(s.doomFire);
     const bool triggerDown=fireValue>.55f;
-    const bool weaponSelectDown=gameplay&&turnActive&&rightStickY<-.75f;
+
+    // Retained custom controller layout:
+    //   ON  -> A tap/hold = quick weapon/wheel; right-stick down toggles crouch.
+    //   OFF -> official KHARVOX controls unchanged.
+    const bool physicalAButtonDown=readBooleanAction(s.doomCrouch);
+    const bool crouchStickDown=turnActive&&rightStickY<-.75f;
+    const bool weaponSelectDown=gameplay
+        &&(s.weaponWheelRemapEnabled?physicalAButtonDown:crouchStickDown);
+
+    if(s.weaponWheelRemapEnabled){
+        if(gameplay&&crouchStickDown&&!s.crouchStickPressed){
+            s.crouchToggleActive=!s.crouchToggleActive;
+            log(std::string("[INPUT] right stick down -> crouch ")
+                +(s.crouchToggleActive?"ON":"OFF"));
+        }
+        s.crouchStickPressed=crouchStickDown;
+        if(!gameplay)s.crouchToggleActive=false;
+    }else{
+        s.crouchToggleActive=false;
+        s.crouchStickPressed=false;
+    }
+
     const bool secondaryFireGripDown=kharvox::updateGripPressed(
         readFloatAction(s.doomSecondaryFireGrip),s.secondaryFireGripPressed,
         s.primaryGripUsesValveIndex
@@ -2112,26 +2147,29 @@ void updateGameplayActions(XrTime displayTime){
     }
     if(!gameplay)s.bfgPulseUntil=0;
     const bool bfgPulse=gameplay&&displayTime<s.bfgPulseUntil;
+    const char* weaponSelectControl=s.weaponWheelRemapEnabled?"A":turnStickName();
     if(weaponSelectDown&&!s.weaponSelectPressed){
         s.weaponSelectPressedTime=displayTime;
         s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
-        log(std::string("[INPUT] ")+turnStickName()+" down; tap/hold weapon selection started");
+        log(std::string("[INPUT] ")+weaponSelectControl+" pressed; tap/hold weapon selection started");
     }
     if(weaponSelectDown&&!s.weaponSelectNativeStarted
         &&s.weaponSelectPressedTime>0&&displayTime-s.weaponSelectPressedTime>=400000000){
         s.weaponSelectNativeStarted=true;
-        log(std::string("[INPUT] ")+turnStickName()+" down hold -> native weapon wheel button started");
+        log(std::string("[INPUT] ")+weaponSelectControl+" hold -> native weapon wheel button started");
     }
     if(weaponSelectDown&&s.weaponSelectNativeStarted&&!s.weaponWheelOpened
         &&displayTime-s.weaponSelectPressedTime>=800000000){
         s.weaponWheelOpened=true;
-        log(std::string("[INPUT] weapon wheel active; ")+moveStickName()+" drives selection while "+turnStickName()+" remains down");
+        log(std::string("[INPUT] weapon wheel active; ")+moveStickName()
+            +" drives selection while "+weaponSelectControl+" remains held");
     }
     if(s.weaponSelectPressed&&!weaponSelectDown){
-        if(s.weaponSelectNativeStarted)log(std::string("[INPUT] weapon wheel/")+turnStickName()+" down released; selection confirmed");
+        if(s.weaponSelectNativeStarted)
+            log(std::string("[INPUT] weapon wheel/")+weaponSelectControl+" released; selection confirmed");
         else{
             s.weaponSwitchPulseUntil=displayTime+100000000;
-            log(std::string("[INPUT] ")+turnStickName()+" down tap -> switch weapon pulse");
+            log(std::string("[INPUT] ")+weaponSelectControl+" tap -> switch weapon pulse");
         }
         s.weaponSelectNativeStarted=false;
         s.weaponWheelOpened=false;s.weaponSelectPressedTime=0;
@@ -2141,9 +2179,10 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponWheelOpened=false;s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
     }
     s.weaponSelectPressed=weaponSelectDown;
-    const bool nativeWeaponSelectDown=gameplay&&((weaponSelectDown&&s.weaponSelectNativeStarted)
-        ||displayTime<s.weaponSwitchPulseUntil);
-    const bool weaponWheelActive=weaponSelectDown&&s.weaponWheelOpened;
+    const bool nativeWeaponSelectDown=gameplay
+        &&((weaponSelectDown&&s.weaponSelectNativeStarted)
+            ||displayTime<s.weaponSwitchPulseUntil);
+    const bool weaponWheelActive=gameplay&&weaponSelectDown&&s.weaponWheelOpened;
     const bool rawBackWeaponGripPress=secondaryFireGripDown
         &&!s.secondaryFireGripPressed;
     const auto& shoulderWeaponGripController=s.leftHanded
@@ -2332,7 +2371,7 @@ void updateGameplayActions(XrTime displayTime){
     auto nativeUiRightStick=centeredNativeUiStick(s.rightStick);
     nativeUiRightStick.y=rightStickY;
     XrVector2f wheelSelectionStick=s.leftStick;
-    if(s.motionWheelEnabled){
+    if(s.weaponWheelRemapEnabled&&s.motionWheelEnabled){
         // Motion follows the weapon hand as in PR #1; the selection stick is independent.
         const auto& wCtrl=weaponController();
         kharvox::MotionWeaponWheelInput wheelInput{};
@@ -2457,9 +2496,29 @@ void updateGameplayActions(XrTime displayTime){
         log("[INPUT] Hands Jump -> native gamepad A jump pulse; leftUp="
             +std::to_string(s.leftGripController.linearVelocity.y)+" rightUp="
             +std::to_string(s.rightGripController.linearVelocity.y)+"m/s");
-    const bool gamepadADown=(s.swapJumpCrouch?crouchGameplayDown:jumpGameplayDown)||handsJumpDown||crouchUiDown;
-    const bool gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)||jumpUiDown;
-    KharvoxCameraSetCrouchState(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown);
+    bool gamepadADown{};
+    bool gamepadBDown{};
+    bool cameraCrouchDown{};
+    if(s.weaponWheelRemapEnabled){
+        // Physical A is consumed by weapon selection. B/hands-jump remains
+        // jump, while right-stick-down owns a persistent crouch latch.
+        const bool gameplayJumpRequested=jumpGameplayDown||handsJumpDown;
+        if(gameplay&&gameplayJumpRequested&&s.crouchToggleActive){
+            s.crouchToggleActive=false;
+            log("[INPUT] jump request -> crouch OFF before native jump");
+        }
+        gamepadADown=gameplayJumpRequested||crouchUiDown;
+        gamepadBDown=s.crouchToggleActive||jumpUiDown;
+        cameraCrouchDown=s.crouchToggleActive;
+    }else{
+        // Exact official KHARVOX face-button routing.
+        gamepadADown=(s.swapJumpCrouch?crouchGameplayDown:jumpGameplayDown)
+            ||handsJumpDown||crouchUiDown;
+        gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)
+            ||jumpUiDown;
+        cameraCrouchDown=s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown;
+    }
+    KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
     s.crouchPressed=crouchDown;
     const bool nativeUseDown=gameplay&&displayTime<s.usePulseUntil;
