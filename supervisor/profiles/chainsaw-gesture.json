@@ -1,0 +1,15 @@
+{
+  "Schema": 1,
+  "Enabled": true,
+  "ProcessName": "DOOMx64vk",
+  "PollIntervalMs": 25,
+  "OutputFile": "logs/KHARVOX-Supervisor-ChainsawGesture.ndjson",
+  "IncludeProcessLifecycle": true,
+  "IncludeProcessMetrics": false,
+  "MetricsIntervalMs": 1000,
+  "Notes": "Collects chainsaw animation-state bridge snapshots and KHARVOX event lines for gesture checkpoint tuning.",
+  "Files": [
+    { "Name": "ChainsawBridge", "Path": "supervisor-bridge/chainsaw-gesture.json", "Mode": "snapshot", "Optional": true },
+    { "Name": "KHARVOX", "Path": "logs/KHARVOX.log", "Mode": "tail", "Optional": true }
+  ]
+}
