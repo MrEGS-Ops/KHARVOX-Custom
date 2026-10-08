@@ -109,7 +109,7 @@ public sealed class MainForm : Form
     internal MainForm(string settingsPath)
     {
         SettingsPath = settingsPath;
-        Text = "KHARVOX Launcher";
+        Text = "KHARVOX Launcher — Build " + RuntimeStorage.DisplayBuild;
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(548, 904);
@@ -1053,7 +1053,7 @@ public sealed class MainForm : Form
         {
             try
             {
-                File.AppendAllText(Path.Combine(Path.GetTempPath(), "KHARVOX-launcher-errors.log"),
+                File.AppendAllText(RuntimeStorage.LogPath("KHARVOX-launcher-errors.log"),
                     DateTime.Now.ToString("O") + Environment.NewLine + ex.ToString() + Environment.NewLine);
             }
             catch { /* Diagnostics must preserve the original error. */ }
