@@ -4,7 +4,7 @@ namespace KharvoxLauncher;
 
 internal sealed class LauncherSettings
 {
-    internal const int CurrentVersion = 34;
+    internal const int CurrentVersion = 35;
 
     public int SettingsVersion { get; set; }
     public int Preset { get; set; }
@@ -43,6 +43,8 @@ internal sealed class LauncherSettings
     public int HandCalibrationMode { get; set; }
     public bool EnableBhaptics { get; set; }
     public bool UsePsvr2Toolkit { get; set; }
+    public bool WeaponWheelRemapEnabled { get; set; } = true;
+    public int GloryKillSlowmoLevel { get; set; } = 10;
 
     public LauncherSettings() { }
 
@@ -56,7 +58,9 @@ internal sealed class LauncherSettings
         decimal physicalGlorykillSpeed, int physicalGlorykillHands, bool leftHanded,
         int leftHandSwapMode, bool laserSight, bool hudDebugging, bool extendedLogging,
         bool showHands, int handCalibrationMode,
-        bool enableBhaptics, bool usePsvr2Toolkit, bool handsJump = true, bool disableAa = false, bool captureEyes = false, bool swapJumpCrouch = false)
+        bool enableBhaptics, bool usePsvr2Toolkit, bool handsJump = true, bool disableAa = false,
+        bool captureEyes = false, bool swapJumpCrouch = false,
+        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10)
     {
         SettingsVersion = CurrentVersion;
         Preset = preset;
@@ -95,6 +99,8 @@ internal sealed class LauncherSettings
         HandCalibrationMode = handCalibrationMode is 1 or 2 ? 1 : 0;
         EnableBhaptics = enableBhaptics;
         UsePsvr2Toolkit = usePsvr2Toolkit;
+        WeaponWheelRemapEnabled = weaponWheelRemapEnabled;
+        GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, gloryKillSlowmoLevel));
     }
 }
 
@@ -152,6 +158,12 @@ internal static class LauncherSettingsStore
             settings.DisableAa = false;
         if (settings.SettingsVersion < 31) settings.DisableVrIntro = false;
         if (settings.SettingsVersion < 34) settings.SwapJumpCrouch = false;
+        if (settings.SettingsVersion < 35)
+        {
+            settings.WeaponWheelRemapEnabled = true;
+            settings.GloryKillSlowmoLevel = 10;
+        }
+        settings.GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, settings.GloryKillSlowmoLevel));
         // Adopt the release renderer once for existing Custom profiles. Later AER choices remain valid.
         if (settings.SettingsVersion < 33 && settings.Preset == 3
             && string.Equals(settings.RendererMode, "AER", StringComparison.OrdinalIgnoreCase))
