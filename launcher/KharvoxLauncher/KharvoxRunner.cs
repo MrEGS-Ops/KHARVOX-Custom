@@ -530,6 +530,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = customMods.BackOfHandHud ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
