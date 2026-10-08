@@ -2128,6 +2128,9 @@ void updateGameplayActions(XrTime displayTime){
     }
     constexpr XrDuration bfgGripHoldDuration=650000000;
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
+    const bool gaussSlowChargeActive=s.customMods.gaussChargeSlowMovement
+        &&gameplay&&KharvoxWeaponGaussSiegeChargeActive();
+    KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
     const bool bfgCalibrationAccess=s.twoHandCalibrationMode
         &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
         &&activeWeaponKind!=KharvoxWeaponKind::Bfg;
@@ -2336,7 +2339,12 @@ void updateGameplayActions(XrTime displayTime){
     const XrVector2f requestedMovement=nativeUiMenu?nativeUiLeftStick
         :manualMove?movementDirectionRelativeStick(s.leftStick,gameplay)
         :(gameplay?s.roomscaleStick:s.leftStick);
-    const XrVector2f movementStick=weaponWheelActive?XrVector2f{}:requestedMovement;
+    XrVector2f movementStick=weaponWheelActive?XrVector2f{}:requestedMovement;
+    if(gaussSlowChargeActive){
+        constexpr float gaussChargeMovementScale=.30f;
+        movementStick.x*=gaussChargeMovementScale;
+        movementStick.y*=gaussChargeMovementScale;
+    }
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
