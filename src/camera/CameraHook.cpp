@@ -26,6 +26,7 @@
 #include <atomic>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
 #include <fstream>
 #include <iomanip>
 #include <mutex>
@@ -628,6 +629,208 @@ bool readableMemory(const void* address, size_t bytes) {
     const auto end = begin + bytes;
     const auto regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
     return end >= begin && end <= regionEnd;
+}
+
+
+bool writableMemory(const void* address, size_t bytes) {
+    if (!address || !bytes) return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
+    if ((info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) return false;
+    const DWORD protection = info.Protect & 0xFF;
+    const bool writable = protection == PAGE_READWRITE
+        || protection == PAGE_WRITECOPY
+        || protection == PAGE_EXECUTE_READWRITE
+        || protection == PAGE_EXECUTE_WRITECOPY;
+    if (!writable) return false;
+    const auto begin = reinterpret_cast<uintptr_t>(address);
+    const auto end = begin + bytes;
+    const auto regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
+    return end >= begin && end <= regionEnd;
+}
+
+int configuredGloryKillSlowmoLevel() {
+    static const int level = [] {
+        char text[16]{};
+        const DWORD copied = GetEnvironmentVariableA(
+            "KHARVOX_GLORY_KILL_SLOWMO_LEVEL", text, sizeof(text));
+        if (!copied || copied >= sizeof(text)) return 10;
+        char* end{};
+        const long parsed = std::strtol(text, &end, 10);
+        if (end == text) return 10;
+        return std::clamp(static_cast<int>(parsed), 0, 10);
+    }();
+    return level;
+}
+
+float gloryKillCustomTimescale(int level) {
+    if (level <= 0) return 1.0f;
+    const float strength = std::clamp(static_cast<float>(level), 1.0f, 9.0f);
+    return 1.0f - 0.60f * (strength / 9.0f);
+}
+
+void logGlorySlowmo(const std::string& text) {
+    char temp[MAX_PATH]{};
+    GetTempPathA(MAX_PATH, temp);
+    std::ofstream out(std::string(temp) + "KHARVOX.log", std::ios::app);
+    out << "[KHARVOX][GLORY-SLOWMO] " << text << '\n';
+}
+
+volatile LONG* resolveTimescaleCvarCurrent() {
+    static std::atomic<int> state{};
+    static volatile LONG* current{};
+    int observed = state.load(std::memory_order_acquire);
+    if (observed) return observed > 0 ? current : nullptr;
+
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image || !readableMemory(image, sizeof(IMAGE_DOS_HEADER))) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+    const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE
+        || !readableMemory(image + dos->e_lfanew, sizeof(IMAGE_NT_HEADERS64))) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+    const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    constexpr char cvarName[] = "timescale";
+    std::vector<uintptr_t> nameAddresses;
+    const auto section = IMAGE_FIRST_SECTION(nt);
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& sec = section[index];
+        if ((sec.Characteristics & IMAGE_SCN_MEM_READ) == 0) continue;
+        const size_t bytes = std::max<size_t>(sec.Misc.VirtualSize, sec.SizeOfRawData);
+        unsigned char* begin = image + sec.VirtualAddress;
+        if (bytes < sizeof(cvarName) || !readableMemory(begin, bytes)) continue;
+        const auto first = reinterpret_cast<const char*>(begin);
+        const auto last = first + bytes;
+        const auto* cursor = first;
+        while (cursor + sizeof(cvarName) <= last) {
+            const auto* found = std::search(cursor, last,
+                cvarName, cvarName + sizeof(cvarName));
+            if (found == last) break;
+            nameAddresses.push_back(reinterpret_cast<uintptr_t>(found));
+            cursor = found + 1;
+        }
+    }
+    if (nameAddresses.empty()) {
+        logGlorySlowmo("timescale cvar name not found; custom levels unavailable");
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    uintptr_t bestCurrent{};
+    unsigned bestScore{};
+    bool ambiguous{};
+    constexpr uint32_t nameOffsets[]{0, 8, 16, 24, 32};
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& sec = section[index];
+        if ((sec.Characteristics & IMAGE_SCN_MEM_WRITE) == 0) continue;
+        const size_t bytes = std::max<size_t>(sec.Misc.VirtualSize, sec.SizeOfRawData);
+        unsigned char* begin = image + sec.VirtualAddress;
+        if (bytes < sizeof(uintptr_t) || !readableMemory(begin, bytes)) continue;
+
+        const uintptr_t sectionBegin = reinterpret_cast<uintptr_t>(begin);
+        const uintptr_t sectionEnd = sectionBegin + bytes;
+        for (uintptr_t address = (sectionBegin + 7u) & ~uintptr_t(7u);
+             address + sizeof(uintptr_t) <= sectionEnd; address += sizeof(uintptr_t)) {
+            uintptr_t pointed{};
+            std::memcpy(&pointed, reinterpret_cast<const void*>(address), sizeof(pointed));
+            if (std::find(nameAddresses.begin(), nameAddresses.end(), pointed)
+                == nameAddresses.end()) continue;
+
+            for (const uint32_t nameOffset : nameOffsets) {
+                if (address < reinterpret_cast<uintptr_t>(image) + nameOffset) continue;
+                const uintptr_t object = address - nameOffset;
+                const uintptr_t valueAddress = object + 0x34;
+                if (!writableMemory(reinterpret_cast<const void*>(valueAddress), sizeof(float)))
+                    continue;
+                float value{};
+                std::memcpy(&value, reinterpret_cast<const void*>(valueAddress), sizeof(value));
+                if (!std::isfinite(value) || value < 0.05f || value > 4.0f) continue;
+
+                unsigned score = 20;
+                if (nameOffset == 0) score += 40;
+                else if (nameOffset == 8) score += 20;
+                if (std::abs(value - 1.0f) < 0.01f) score += 35;
+                else if (value >= 0.5f && value <= 1.5f) score += 15;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCurrent = valueAddress;
+                    ambiguous = false;
+                } else if (score == bestScore && valueAddress != bestCurrent) {
+                    ambiguous = true;
+                }
+            }
+        }
+    }
+
+    if (!bestCurrent || bestScore < 55 || ambiguous) {
+        logGlorySlowmo("timescale cvar current value could not be resolved uniquely");
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    current = reinterpret_cast<volatile LONG*>(bestCurrent);
+    std::ostringstream message;
+    message << "timescale cvar current resolved RVA=0x"
+        << std::hex << (bestCurrent - reinterpret_cast<uintptr_t>(image))
+        << std::dec << " score=" << bestScore;
+    logGlorySlowmo(message.str());
+    state.store(1, std::memory_order_release);
+    return current;
+}
+
+void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
+    const int level = configuredGloryKillSlowmoLevel();
+    if (level <= 0 || level >= 10) return;
+
+    static SRWLOCK lock = SRWLOCK_INIT;
+    static bool applied{};
+    static bool baselineValid{};
+    static LONG baselineBits{};
+    static int loggedLevel{-1};
+    auto current = resolveTimescaleCvarCurrent();
+    if (!current) return;
+
+    AcquireSRWLockExclusive(&lock);
+
+    if (!syncAttackActive) {
+        if (applied) {
+            InterlockedExchange(current, baselineBits);
+            applied = false;
+        }
+        baselineBits = InterlockedCompareExchange(current, 0, 0);
+        baselineValid = true;
+        ReleaseSRWLockExclusive(&lock);
+        return;
+    }
+
+    if (!applied) {
+        if (!baselineValid)
+            baselineBits = InterlockedCompareExchange(current, 0, 0);
+        applied = true;
+    }
+
+    const float target = gloryKillCustomTimescale(level);
+    LONG targetBits{};
+    std::memcpy(&targetBits, &target, sizeof(targetBits));
+    InterlockedExchange(current, targetBits);
+
+    if (loggedLevel != level) {
+        loggedLevel = level;
+        logGlorySlowmo("level=" + std::to_string(level)
+            + " forcedTimescale=" + std::to_string(target));
+    }
+
+    ReleaseSRWLockExclusive(&lock);
 }
 
 bool executableMemory(const void* address) {
@@ -2275,22 +2478,25 @@ bool KharvoxCameraSyncAttackActive() {
     // Campaign Glory Kills hold it for their native sync-attack lifetime.
     constexpr uintptr_t syncAttackInstigatorOffset = 0x3DC9;
     const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
-    if (!syncAttackClassifierSupported.load(std::memory_order_acquire)
-        || !owner || owner > UINTPTR_MAX - syncAttackInstigatorOffset - 1
-        || !readableMemory(reinterpret_cast<const void*>(owner),
-            syncAttackInstigatorOffset + 1))
-        return false;
+    bool active = false;
+    if (syncAttackClassifierSupported.load(std::memory_order_acquire)
+        && owner && owner <= UINTPTR_MAX - syncAttackInstigatorOffset - 1
+        && readableMemory(reinterpret_cast<const void*>(owner),
+            syncAttackInstigatorOffset + 1)) {
 #if defined(_MSC_VER)
-    __try {
-        return *reinterpret_cast<const unsigned char*>(
-            owner + syncAttackInstigatorOffset) != 0;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
+        __try {
+            active = *reinterpret_cast<const unsigned char*>(
+                owner + syncAttackInstigatorOffset) != 0;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            active = false;
+        }
 #else
-    return *reinterpret_cast<const unsigned char*>(
-        owner + syncAttackInstigatorOffset) != 0;
+        active = *reinterpret_cast<const unsigned char*>(
+            owner + syncAttackInstigatorOffset) != 0;
 #endif
+    }
+    updateGloryKillSlowmoTimescale(active);
+    return active;
 }
 
 namespace {
