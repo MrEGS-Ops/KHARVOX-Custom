@@ -31,6 +31,7 @@
 #include <iomanip>
 #include <mutex>
 #include <sstream>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -2763,6 +2764,207 @@ BossObservation readHellGuardsMapCamera(uintptr_t owner,bool prime,char (&name)[
     }
     return unavailable?BossObservation::Unknown:BossObservation::Inactive;
 }
+
+bool writeRevengeDiscoverySnapshotInternal() {
+    const auto image = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    if (!image) return false;
+
+    // Reuse reflection/global validations already proven by the boss-sequence
+    // code. This bridge deliberately fails closed on any executable mismatch.
+    uint64_t spawnedField{}, declField{};
+    if (!readBossSequenceBytes(image + 0x3035ad8, &spawnedField, sizeof(spawnedField))
+        || spawnedField != 0x20000a54d0ull
+        || !readBossSequenceBytes(image + 0x307b400, &declField, sizeof(declField))
+        || declField != 0x8000006d0ull)
+        return false;
+
+    uintptr_t owner{};
+    if (!readNativeSequencePlayer(owner) || !owner) return false;
+
+    uintptr_t game{}, gameVtable{}, entries{}, entriesAgain{};
+    int count{}, countAgain{};
+    if (!readBossSequenceBytes(image + 0x5b0f6d0, &game, sizeof(game)) || !game
+        || !readBossSequenceBytes(game, &gameVtable, sizeof(gameVtable))
+        || gameVtable != image + 0x201e3d8
+        || !readBossSequenceBytes(game + 0xa54d8, &entries, sizeof(entries)) || !entries
+        || !readBossSequenceBytes(game + 0xa54e0, &count, sizeof(count))
+        || count < 1 || count > 32768)
+        return false;
+
+    struct ManagedEntry {
+        uint32_t id{}, check{};
+        uintptr_t entity{};
+        uint64_t remaining[2]{};
+    };
+    struct EntityIdentity {
+        uint32_t id{};
+        uintptr_t entity{}, decl{};
+        std::string name;
+    };
+
+    std::vector<ManagedEntry> refs(static_cast<size_t>(count));
+    if (!readBossSequenceBytes(entries, refs.data(), refs.size() * sizeof(ManagedEntry))
+        || !readBossSequenceBytes(game + 0xa54d8, &entriesAgain, sizeof(entriesAgain))
+        || entriesAgain != entries
+        || !readBossSequenceBytes(game + 0xa54e0, &countAgain, sizeof(countAgain))
+        || countAgain != count)
+        return false;
+
+    std::vector<EntityIdentity> entities;
+    entities.reserve(refs.size());
+    std::unordered_map<uintptr_t, size_t> byPointer;
+    byPointer.reserve(refs.size());
+
+    for (const auto& ref : refs) {
+        if (!ref.entity || ref.entity == owner || ref.id != ref.check
+            || ref.id == 0x1fffffe)
+            continue;
+        uintptr_t entityVtable{}, decl{}, text{};
+        if (!readBossSequenceBytes(ref.entity, &entityVtable, sizeof(entityVtable))
+            || !entityVtable
+            || !readBossSequenceBytes(ref.entity + 0x6d0, &decl, sizeof(decl)) || !decl
+            || !readBossSequenceBytes(decl + 8, &text, sizeof(text)) || !text)
+            continue;
+        std::array<char, 160> name{};
+        if (!readBossSequenceBytes(text, name.data(), name.size())) continue;
+        const auto end = static_cast<const char*>(
+            std::memchr(name.data(), 0, name.size()));
+        if (!end) continue;
+        EntityIdentity identity;
+        identity.id = ref.id;
+        identity.entity = ref.entity;
+        identity.decl = decl;
+        identity.name.assign(name.data(), end - name.data());
+        byPointer.emplace(identity.entity, entities.size());
+        entities.push_back(std::move(identity));
+    }
+
+    if (entities.empty()) return false;
+
+    auto jsonEscape = [](const std::string& value) {
+        std::string result;
+        result.reserve(value.size() + 16);
+        for (const unsigned char ch : value) {
+            switch (ch) {
+            case '\\': result += "\\\\"; break;
+            case '"': result += "\\\""; break;
+            case '\n': result += "\\n"; break;
+            case '\r': result += "\\r"; break;
+            case '\t': result += "\\t"; break;
+            default:
+                if (ch >= 0x20) result.push_back(static_cast<char>(ch));
+                break;
+            }
+        }
+        return result;
+    };
+
+    struct Match {
+        uintptr_t offset{};
+        const EntityIdentity* identity{};
+        bool managed{};
+    };
+    std::vector<Match> matches;
+    matches.reserve(64);
+    constexpr uintptr_t playerScanBytes = 0x16000;
+    constexpr size_t maximumMatches = 256;
+
+    for (uintptr_t offset = 0; offset + sizeof(uintptr_t) <= playerScanBytes;
+         offset += sizeof(uintptr_t)) {
+        uintptr_t pointer{};
+        if (!readBossSequenceBytes(owner + offset, &pointer, sizeof(pointer))) continue;
+        if (const auto it = byPointer.find(pointer); it != byPointer.end()) {
+            matches.push_back({offset, &entities[it->second], false});
+            if (matches.size() >= maximumMatches) break;
+        }
+
+        if (offset + 16 > playerScanBytes) continue;
+        struct ManagedRef {
+            uint32_t id{}, check{};
+            uintptr_t entity{};
+        } managed{};
+        if (!readBossSequenceBytes(owner + offset, &managed, sizeof(managed))
+            || !managed.entity || managed.id != managed.check
+            || managed.id == 0x1fffffe)
+            continue;
+        const auto it = byPointer.find(managed.entity);
+        if (it == byPointer.end()) continue;
+        const auto& identity = entities[it->second];
+        if (identity.id != managed.id) continue;
+
+        const bool duplicate = std::any_of(matches.begin(), matches.end(),
+            [&](const Match& match) {
+                return match.offset == offset && match.identity == &identity
+                    && match.managed;
+            });
+        if (!duplicate) {
+            matches.push_back({offset, &identity, true});
+            if (matches.size() >= maximumMatches) break;
+        }
+    }
+
+    const auto bridgeDirectory =
+        kharvox::runtimeDirectory() + L"\\supervisor-bridge";
+    CreateDirectoryW(bridgeDirectory.c_str(), nullptr);
+    const auto outputPath = bridgeDirectory + L"\\revenge-demon.json";
+    const auto temporaryPath = outputPath + L".tmp";
+
+    std::ofstream out(temporaryPath, std::ios::binary | std::ios::trunc);
+    if (!out) return false;
+
+    float origin[3]{};
+    const bool originValid =
+        playerPhysicsOwner.load(std::memory_order_acquire) == owner
+        && playerPhysicsOriginValid.load(std::memory_order_acquire);
+    if (originValid) {
+        for (int axis = 0; axis < 3; ++axis)
+            origin[axis] = playerPhysicsOrigin[axis].load(std::memory_order_relaxed);
+    }
+
+    out << "{\n"
+        << "  \"schema\":1,\n"
+        << "  \"kind\":\"death-reference-scan\",\n"
+        << "  \"resolvedKillerField\":false,\n"
+        << "  \"levelGeneration\":"
+        << levelTransitionGeneration.load(std::memory_order_acquire) << ",\n"
+        << "  \"player\":\"0x" << std::hex << owner << std::dec << "\",\n"
+        << "  \"playerOrigin\":"
+        << (originValid ? "[" + std::to_string(origin[0]) + ","
+                + std::to_string(origin[1]) + "," + std::to_string(origin[2]) + "]"
+            : "null")
+        << ",\n"
+        << "  \"spawnedEntityCount\":" << entities.size() << ",\n"
+        << "  \"matches\":[\n";
+
+    for (size_t index = 0; index < matches.size(); ++index) {
+        const auto& match = matches[index];
+        out << "    {\"offset\":\"0x" << std::hex << match.offset << std::dec
+            << "\",\"referenceKind\":\"" << (match.managed ? "managed" : "direct")
+            << "\",\"managedId\":" << match.identity->id
+            << ",\"entity\":\"0x" << std::hex << match.identity->entity << std::dec
+            << "\",\"decl\":\"" << jsonEscape(match.identity->name) << "\"}";
+        if (index + 1 != matches.size()) out << ',';
+        out << '\n';
+    }
+    out << "  ]\n}\n";
+    out.close();
+    if (!out) {
+        DeleteFileW(temporaryPath.c_str());
+        return false;
+    }
+
+    if (!MoveFileExW(temporaryPath.c_str(), outputPath.c_str(),
+            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        DeleteFileW(temporaryPath.c_str());
+        return false;
+    }
+
+    log("[REVENGE] death reference bridge snapshot published matches="
+        + std::to_string(matches.size()) + " entities="
+        + std::to_string(entities.size()));
+    return true;
+}
+
 BossObservation readCurrentBossSequenceAt(uintptr_t owner,uintptr_t referenceOffset,char (&name)[128]){
     const auto image=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     static const bool supported=[&]{
@@ -2796,6 +2998,10 @@ BossObservation readCurrentBossSequenceAt(uintptr_t owner,uintptr_t referenceOff
         ?BossObservation::Active:BossObservation::Inactive;
 }
 }
+bool KharvoxCameraWriteRevengeDiscoverySnapshot() {
+    return writeRevengeDiscoverySnapshotInternal();
+}
+
 bool KharvoxCameraBossSequenceActive(){
     char name[128]{};
     uintptr_t owner{},master{};
