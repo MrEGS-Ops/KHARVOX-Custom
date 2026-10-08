@@ -24,15 +24,15 @@ internal static class NativeLaunchRecovery
         if (!RendererSelection.IsNative(rendererMode)
             || !File.Exists(refusal)) return null;
 
-        diagnosticRoot ??= Path.GetTempPath();
-        var archive = Path.Combine(diagnosticRoot, "KHARVOX-native-failures",
+        diagnosticRoot ??= RuntimeStorage.LogsDirectory;
+        var archive = Path.Combine(diagnosticRoot, "native-failures",
             DateTime.UtcNow.ToString("yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture)
             + "-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(archive);
         foreach (var name in new[] { "KHARVOX-NATIVE-STEREO.log", "KHARVOX-NATIVE-FRAME-PACING.log", "renderer_status.txt", "native_multiview_status.txt", "native_cpu_recording_status.txt", "native_multiview_visible_status.txt", "native_hybrid_status.txt", "native_multiview_passes.tsv" })
         {
             var source = name.EndsWith(".log", StringComparison.Ordinal)
-                ? Path.Combine(diagnosticRoot, name) : Path.Combine(diagnosticRoot, "KHARVOX-Diagnostics", name);
+                ? Path.Combine(diagnosticRoot, name) : Path.Combine(diagnosticRoot, "diagnostics", name);
             if (!File.Exists(source) && !name.EndsWith(".log", StringComparison.Ordinal))
                 source = Path.Combine(runtimeDir, name);
             if (File.Exists(source)) File.Copy(source, Path.Combine(archive, name));
