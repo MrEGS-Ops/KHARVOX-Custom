@@ -2911,6 +2911,136 @@ bool KharvoxCameraApplyDirectionalDash(
     return true;
 }
 
+
+bool KharvoxCameraApplyDirectionalDash(float localRight, float localForward) {
+    using PhysicsGetAxisFn = const float*(__fastcall*)(void*, int);
+    using PhysicsSetLinearVelocityFn = void(__fastcall*)(void*, const float*, int);
+    using PhysicsGetLinearVelocityFn = const float*(__fastcall*)(void*, int);
+
+    const float inputLength = std::sqrt(
+        localRight * localRight + localForward * localForward);
+    if (!std::isfinite(inputLength) || inputLength < 0.20f
+        || !worldCameraActive.load(std::memory_order_acquire)
+        || !playerPhysicsOriginValid.load(std::memory_order_acquire))
+        return false;
+
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    if (!owner || owner > UINTPTR_MAX - 0x14E58) return false;
+    auto physics = reinterpret_cast<unsigned char*>(owner + 0x14E58);
+    if (!readableMemory(physics, sizeof(void*))) return false;
+    auto vtable = *reinterpret_cast<void***>(physics);
+    if (!vtable) return false;
+
+    // KHARVOX already independently validates GetOrigin at 0x80. The
+    // idPhysics interface keeps GetAxis immediately after it, then the two
+    // velocity setters, then GetLinearVelocity. Validate both read-only
+    // neighbours before ever calling the setter.
+    constexpr size_t getAxisSlot = 0x88 / sizeof(void*);
+    constexpr size_t setLinearVelocitySlot = 0x90 / sizeof(void*);
+    constexpr size_t getLinearVelocitySlot = 0xA0 / sizeof(void*);
+    if (!readableMemory(vtable, (getLinearVelocitySlot + 1) * sizeof(void*)))
+        return false;
+
+    auto getAxis = reinterpret_cast<PhysicsGetAxisFn>(vtable[getAxisSlot]);
+    auto setLinearVelocity = reinterpret_cast<PhysicsSetLinearVelocityFn>(
+        vtable[setLinearVelocitySlot]);
+    auto getLinearVelocity = reinterpret_cast<PhysicsGetLinearVelocityFn>(
+        vtable[getLinearVelocitySlot]);
+    if (!executableMemory(reinterpret_cast<const void*>(getAxis))
+        || !executableMemory(reinterpret_cast<const void*>(setLinearVelocity))
+        || !executableMemory(reinterpret_cast<const void*>(getLinearVelocity)))
+        return false;
+
+    float currentVelocity[3]{};
+    bool layoutValid = false;
+#if defined(_MSC_VER)
+    __try {
+#endif
+        const float* axis = getAxis(physics, 0);
+        const float* velocity = getLinearVelocity(physics, 0);
+        if (readableMemory(axis, 9 * sizeof(float))
+            && readableMemory(velocity, 3 * sizeof(float))) {
+            float axisScore = 0.0f;
+            for (int row = 0; row < 3; ++row) {
+                float lengthSquared = 0.0f;
+                for (int column = 0; column < 3; ++column) {
+                    const float value = axis[row * 3 + column];
+                    if (!std::isfinite(value) || std::abs(value) > 2.0f) {
+                        lengthSquared = 100.0f;
+                        break;
+                    }
+                    lengthSquared += value * value;
+                }
+                if (lengthSquared > 0.70f && lengthSquared < 1.30f)
+                    axisScore += 1.0f;
+            }
+            layoutValid = axisScore >= 2.5f;
+            for (int index = 0; index < 3 && layoutValid; ++index) {
+                currentVelocity[index] = velocity[index];
+                layoutValid = std::isfinite(currentVelocity[index])
+                    && std::abs(currentVelocity[index]) < 10000.0f;
+            }
+        }
+#if defined(_MSC_VER)
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        layoutValid = false;
+    }
+#endif
+    if (!layoutValid) {
+        static std::atomic<bool> logged{};
+        if (!logged.exchange(true, std::memory_order_acq_rel))
+            log("[DASH] idPhysics velocity layout validation failed; directional dash disabled safely");
+        return false;
+    }
+
+    float bodyOrigin[3]{}, bodyAxis[9]{};
+    if (!KharvoxCameraGetBodyPose(bodyOrigin, bodyAxis)) return false;
+    const float right = localRight / inputLength;
+    const float forward = localForward / inputLength;
+
+    // idTech body axis row 0 is forward, row 1 is left, row 2 is up.
+    // Stick +X means right, hence the minus sign on row 1.
+    float dashDirection[3]{
+        bodyAxis[0] * forward - bodyAxis[3] * right,
+        bodyAxis[1] * forward - bodyAxis[4] * right,
+        bodyAxis[2] * forward - bodyAxis[5] * right
+    };
+    dashDirection[2] = 0.0f;
+    const float horizontalLength = std::sqrt(
+        dashDirection[0] * dashDirection[0]
+        + dashDirection[1] * dashDirection[1]);
+    if (!std::isfinite(horizontalLength) || horizontalLength < 0.001f)
+        return false;
+    dashDirection[0] /= horizontalLength;
+    dashDirection[1] /= horizontalLength;
+
+    constexpr float dashHorizontalSpeed = 650.0f;
+    float targetVelocity[3]{
+        dashDirection[0] * dashHorizontalSpeed,
+        dashDirection[1] * dashHorizontalSpeed,
+        currentVelocity[2]
+    };
+
+    bool applied = false;
+#if defined(_MSC_VER)
+    __try {
+#endif
+        setLinearVelocity(physics, targetVelocity, 0);
+        applied = true;
+#if defined(_MSC_VER)
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        applied = false;
+    }
+#endif
+    if (applied) {
+        log("[DASH] native horizontal dash applied vx="
+            + std::to_string(targetVelocity[0]) + " vy="
+            + std::to_string(targetVelocity[1]) + " preservedVz="
+            + std::to_string(targetVelocity[2]));
+    }
+    return applied;
+}
+
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]) {
     if (!origin || !axis || !bodyCameraValid.load(std::memory_order_acquire)) return false;
     for (int index = 0; index < 9; ++index)
