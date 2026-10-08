@@ -1,0 +1,49 @@
+name: Temporary clean-core verification
+
+on:
+  push:
+    branches: [clean/custom-core]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Regenerate controller mapping
+        shell: powershell
+        run: .\assets\branding\generate-controller-mapping.ps1
+
+      - name: Install SFS compiler dependencies
+        shell: powershell
+        run: |
+          $triplet = "x64-windows-static-md"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet"
+          $root = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\$triplet"
+          if (!(Test-Path "$root\include\spirv_cross\spirv_glsl.hpp")) { throw "SPIRV-Cross headers missing" }
+          if (!(Test-Path "$root\lib\spirv-cross-glsl.lib")) { throw "SPIRV-Cross glsl lib missing" }
+          if (!(Test-Path "$root\include\glslang\Include\glslang_c_interface.h")) { throw "glslang headers missing" }
+          if (!(Test-Path "$root\lib\glslang.lib")) { throw "glslang lib missing" }
+          "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native
+        shell: powershell
+        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+
+      - name: Build native Release
+        shell: powershell
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Restore launcher
+        shell: powershell
+        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
+
+      - name: Build launcher Release
+        shell: powershell
+        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
