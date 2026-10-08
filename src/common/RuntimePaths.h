@@ -4,6 +4,7 @@
 #include <string>
 
 namespace kharvox {
+inline std::wstring runtimeDirectory();
 // Validated Beta renderer defaults; no deployment marker files required.
 namespace rendererDefaults {
 inline constexpr bool earlyXrRelease=true, descriptorReuse=true, freshShadows=true,
