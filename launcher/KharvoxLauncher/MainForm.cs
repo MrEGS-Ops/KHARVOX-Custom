@@ -66,6 +66,9 @@ public sealed class MainForm : Form
     private readonly CheckBox enableBhaptics = MakeCheck("Enable bHaptics", false);
     private readonly CheckBox usePsvr2Toolkit = MakeCheck("Use PSVR2 Toolkit", false);
     private readonly CheckBox useFsrUpscaling = MakeCheck("Use FSR Upscaling", false);
+    private readonly CheckBox weaponWheelRemap = MakeCheck("Weapon Wheel Remap", true);
+    private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
+    private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
     private readonly System.Windows.Forms.Timer runtimeStatusTimer = new() { Interval = 500 };
     private readonly NumericUpDown renderScale = MakeNumber(50, decimal.MaxValue, AerDefaultRenderScale, 0, 10);
@@ -78,6 +81,7 @@ public sealed class MainForm : Form
     private readonly ToolTip statusToolTip = new();
     private readonly Panel renderScaleHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button launchButton = new();
+    private Form? customOptionsForm;
     private DevModeForm? devModeForm;
     private CracktroForm? cracktroForm;
     private bool nextCracktroIsAmiga;
@@ -315,6 +319,52 @@ public sealed class MainForm : Form
         options.Controls.Add(optionGrid);
         root.Controls.Add(options);
 
+        var customMods = MakeGroup("KHARVOX CUSTOM MODS");
+        var customModsGrid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(18, 10, 18, 8),
+            RowCount = 2,
+            ColumnCount = 2
+        };
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 187));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+
+        weaponWheelRemap.Dock = DockStyle.Fill;
+        weaponWheelRemap.CheckedChanged += OptionChanged;
+        statusToolTip.SetToolTip(weaponWheelRemap,
+            "On: A tap/hold controls quick weapon / weapon wheel and right-stick down toggles crouch. Off: official KHARVOX controls.");
+        customModsGrid.Controls.Add(weaponWheelRemap, 0, 0);
+        customModsGrid.SetColumnSpan(weaponWheelRemap, 2);
+
+        customModsGrid.Controls.Add(new Label
+        {
+            Text = "Glory Kill Slow-Mo",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 1);
+        var gloryKillRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            RowCount = 1,
+            ColumnCount = 2
+        };
+        gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
+        gloryKillSlowmo.AccessibleName = "Glory Kill Slow-Mo";
+        gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
+        statusToolTip.SetToolTip(gloryKillSlowmo,
+            "0 = full speed/off. 1-9 = custom slow-motion strength. 10 = official DOOM native Glory Kill slow-motion.");
+        gloryKillRow.Controls.Add(gloryKillSlowmo, 0, 0);
+        gloryKillRow.Controls.Add(gloryKillSlowmoValue, 1, 0);
+        customModsGrid.Controls.Add(gloryKillRow, 1, 1);
+        customMods.Controls.Add(customModsGrid);
+        customOptionsForm = CreateCustomOptionsForm(customMods);
+
         var tuning = MakeGroup("MOVEMENT");
         var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 8, 18, 7), RowCount = 5, ColumnCount = 2 };
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 187));
@@ -450,10 +500,11 @@ public sealed class MainForm : Form
         footerLabel.MouseEnter += (_, _) => footerLabel.ForeColor = Color.Gainsboro;
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
         var footer = new TableLayoutPanel {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 126));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
@@ -464,7 +515,22 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.Gray
         }, 0, 0);
-        footer.Controls.Add(footerLabel, 1, 0);
+        var customModsButton = new Button
+        {
+            Text = "Custom Mods…",
+            Dock = DockStyle.Fill,
+            Margin = new Padding(3, 0, 3, 0),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(24, 24, 27),
+            ForeColor = Color.Gainsboro,
+            Font = new Font(Font.FontFamily, 8F),
+            TabStop = false
+        };
+        customModsButton.FlatAppearance.BorderColor = Color.DimGray;
+        customModsButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(42, 42, 46);
+        customModsButton.Click += (_, _) => ShowCustomOptions();
+        footer.Controls.Add(customModsButton, 1, 0);
+        footer.Controls.Add(footerLabel, 2, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
@@ -721,6 +787,12 @@ public sealed class MainForm : Form
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
         physicalGlorykillSpeedValue.Text = SelectedPhysicalGlorykillSpeed()
             .ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
+        gloryKillSlowmoValue.Text = gloryKillSlowmo.Value switch
+        {
+            0 => "0 (Off)",
+            10 => "10 (Native)",
+            _ => gloryKillSlowmo.Value.ToString()
+        };
     }
 
     private void SpeedSliderChanged(object? sender, EventArgs e)
@@ -841,6 +913,79 @@ public sealed class MainForm : Form
         nextCracktroIsAmiga = !nextCracktroIsAmiga;
     }
 
+    private Form CreateCustomOptionsForm(Control content)
+    {
+        var form = new Form
+        {
+            Text = "KHARVOX Custom Mods",
+            ClientSize = new Size(520, 190),
+            MinimumSize = new Size(460, 180),
+            StartPosition = FormStartPosition.CenterParent,
+            BackColor = Color.Black,
+            ForeColor = Color.WhiteSmoke,
+            Font = new Font("Segoe UI", 9F),
+            AutoScaleMode = AutoScaleMode.Dpi,
+            ShowInTaskbar = false,
+            MaximizeBox = false
+        };
+        if (Icon is not null) form.Icon = Icon;
+
+        var root = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(12),
+            RowCount = 2,
+            ColumnCount = 1,
+            BackColor = Color.Black
+        };
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        content.Dock = DockStyle.Fill;
+        root.Controls.Add(content, 0, 0);
+
+        var closeButton = new Button
+        {
+            Text = "Close",
+            Anchor = AnchorStyles.Right,
+            Size = new Size(92, 28),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(24, 24, 27),
+            ForeColor = Color.Gainsboro
+        };
+        closeButton.FlatAppearance.BorderColor = Color.DimGray;
+        closeButton.Click += (_, _) => form.Hide();
+
+        var closeRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.RightToLeft,
+            WrapContents = false,
+            Margin = Padding.Empty,
+            Padding = new Padding(0, 5, 0, 0)
+        };
+        closeRow.Controls.Add(closeButton);
+        root.Controls.Add(closeRow, 0, 1);
+        form.Controls.Add(root);
+
+        form.FormClosing += (_, e) =>
+        {
+            if (e.CloseReason != CloseReason.UserClosing) return;
+            e.Cancel = true;
+            form.Hide();
+        };
+        return form;
+    }
+
+    private void ShowCustomOptions()
+    {
+        if (customOptionsForm is null || customOptionsForm.IsDisposed) return;
+        if (!customOptionsForm.Visible) customOptionsForm.Show(this);
+        if (customOptionsForm.WindowState == FormWindowState.Minimized)
+            customOptionsForm.WindowState = FormWindowState.Normal;
+        customOptionsForm.BringToFront();
+        customOptionsForm.Activate();
+    }
+
     private void ShowDevMode()
     {
         devModeForm ??= new DevModeForm(
@@ -956,7 +1101,9 @@ public sealed class MainForm : Form
         calibrateHands.Checked ? "rotation" : "off",
         enableBhaptics.Checked,
         usePsvr2Toolkit.Checked,
-        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, swapJumpCrouch.Checked);
+        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked,
+        disableVrIntro.Checked, swapJumpCrouch.Checked, weaponWheelRemap.Checked,
+        gloryKillSlowmo.Value);
 
     private void SetRunningState(bool running)
     {
@@ -1051,6 +1198,9 @@ public sealed class MainForm : Form
             enableBhaptics.Checked = s.SettingsVersion >= 17 && s.EnableBhaptics;
             usePsvr2Toolkit.Checked = s.SettingsVersion >= 21 && s.UsePsvr2Toolkit;
             useFsrUpscaling.Checked = s.SettingsVersion >= 22 && s.UseFsrUpscaling;
+            weaponWheelRemap.Checked = s.SettingsVersion >= 35 ? s.WeaponWheelRemapEnabled : true;
+            gloryKillSlowmo.Value = ClampInt(s.SettingsVersion >= 35 ? s.GloryKillSlowmoLevel : 10,
+                gloryKillSlowmo.Minimum, gloryKillSlowmo.Maximum);
             preset.SelectedIndex = ClampInt(s.Preset, 0, 3);
         }
         catch
@@ -1083,6 +1233,8 @@ public sealed class MainForm : Form
             enableBhaptics.Checked = false;
             usePsvr2Toolkit.Checked = false;
             useFsrUpscaling.Checked = false;
+            weaponWheelRemap.Checked = true;
+            gloryKillSlowmo.Value = 10;
             cinematicFreelook.Checked = true;
             otherCinematicsInQuad.Checked = false;
             cinewindowFollowsHeadset.Checked = false;
@@ -1125,7 +1277,8 @@ public sealed class MainForm : Form
                 showHands.Checked,
                 calibrateHands.Checked ? 1 : 0,
                 enableBhaptics.Checked,
-                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, swapJumpCrouch.Checked);
+                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked,
+                swapJumpCrouch.Checked, weaponWheelRemap.Checked, gloryKillSlowmo.Value);
             s.DisableVrIntro = disableVrIntro.Checked;
             LauncherSettingsStore.Save(SettingsPath, s);
         }
