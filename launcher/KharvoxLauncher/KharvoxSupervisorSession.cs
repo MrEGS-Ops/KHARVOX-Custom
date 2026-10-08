@@ -74,7 +74,8 @@ internal sealed class KharvoxSupervisorSession : IDisposable
                 Name = "RevengeDemonBridge",
                 Path = "supervisor-bridge/revenge-demon.json",
                 Mode = "snapshot",
-                Optional = true
+                Optional = true,
+                PersistPath = "supervisor-state/revenge-demon-last.json"
             });
         if (mods.PhysicalChainsawGestures)
             files.Add(new
