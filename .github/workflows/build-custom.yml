@@ -5,6 +5,10 @@ on:
     branches: [clean/custom-core]
   workflow_dispatch:
 
+permissions:
+  contents: read
+  actions: write
+
 concurrency:
   group: kharvox-clean-custom
   cancel-in-progress: true
@@ -137,3 +141,34 @@ jobs:
           if-no-files-found: error
           compression-level: 1
           retention-days: 30
+
+      - name: Keep only latest 5 successful builds
+        if: success()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "User-Agent" = "KHARVOX-Build-Retention"
+          }
+          $base = "https://api.github.com/repos/${{ github.repository }}"
+          $workflow = "${{ github.workflow_ref }}".Split("@")[0].Split("/")[-1]
+          $branch = [Uri]::EscapeDataString("${{ github.ref_name }}")
+          $uri = "$base/actions/workflows/$workflow/runs?branch=$branch&status=success&per_page=100"
+          $runs = @((Invoke-RestMethod -Headers $headers -Uri $uri).workflow_runs |
+            Sort-Object run_number -Descending)
+
+          $keep = 5
+          if ($runs.Count -le $keep) {
+            Write-Host "Only $($runs.Count) successful builds exist; nothing to delete."
+            exit 0
+          }
+
+          foreach ($run in ($runs | Select-Object -Skip $keep)) {
+            if ([int64]$run.id -eq [int64]"${{ github.run_id }}") { continue }
+            Write-Host "Deleting old successful build run #$($run.run_number) id=$($run.id)"
+            Invoke-RestMethod -Method Delete -Headers $headers -Uri "$base/actions/runs/$($run.id)"
+          }
