@@ -670,9 +670,9 @@ float gloryKillCustomTimescale(int level) {
 }
 
 void logGlorySlowmo(const std::string& text) {
-    char temp[MAX_PATH]{};
-    GetTempPathA(MAX_PATH, temp);
-    std::ofstream out(std::string(temp) + "KHARVOX.log", std::ios::app);
+    const auto path = kharvox::logPathA("KHARVOX.log");
+    if (path.empty()) return;
+    std::ofstream out(path, std::ios::app);
     out << "[KHARVOX][GLORY-SLOWMO] " << text << '\n';
 }
 
