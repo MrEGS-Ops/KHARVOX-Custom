@@ -84,11 +84,20 @@ jobs:
         shell: powershell
         run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
 
+      - name: Restore supervisor
+        shell: powershell
+        run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj
+
+      - name: Build supervisor Release
+        shell: powershell
+        run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
+
       - name: Assemble full install and patch
         shell: powershell
         run: |
           $native = Join-Path $PWD "build\native\Release"
           $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
+          $supervisor = Join-Path $PWD "supervisor\KharvoxSupervisor\bin\Release\net48"
           $out = Join-Path $PWD "out\watcher"
           $full = Join-Path $out "full"
           $patch = Join-Path $out "patch"
@@ -97,6 +106,13 @@ jobs:
           Copy-Item -Path (Join-Path $native "*") -Destination $full -Recurse -Force
           Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe") -Destination $full -Force
           Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $full -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $full -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $full "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $full "supervisor-profiles") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
           Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
@@ -110,6 +126,13 @@ jobs:
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
             Copy-Item -LiteralPath $source -Destination $patch -Force
           }
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $patch -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $patch "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $patch "supervisor-profiles") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
           function Write-Manifest([string]$root,[string]$kind) {
             $files = @()
