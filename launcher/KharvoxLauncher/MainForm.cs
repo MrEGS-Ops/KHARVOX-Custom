@@ -386,7 +386,7 @@ public sealed class MainForm : Form
             (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
             (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
-            (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. With Behind-Head Weapon Wheel enabled, the freed weapon-wheel control becomes dash."),
+            (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. Enabling Dash automatically enables Weapon Wheel Remap + Behind-Head Weapon Wheel and disables No Weapon Wheel, because those options free A for Dash."),
             (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
             (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
@@ -891,19 +891,23 @@ public sealed class MainForm : Form
                 customDirectionalDash.Checked = false;
             }
 
-            // If a required dependency is manually removed, turn the dependent
-            // feature off rather than silently leaving it selected but inert.
-            if (!customBehindHeadWeaponWheel.Checked || !weaponWheelRemap.Checked)
+            // If the user explicitly removes a dependency, that manual
+            // action wins and Dash is released. During initial config repair,
+            // however, an already-selected Dash enables what it needs.
+            if ((changed == customBehindHeadWeaponWheel
+                    && !customBehindHeadWeaponWheel.Checked)
+                || (changed == weaponWheelRemap && !weaponWheelRemap.Checked))
                 customDirectionalDash.Checked = false;
-
-            if (customBehindHeadWeaponWheel.Checked)
-                customDisableWeaponWheel.Checked = false;
 
             // Final invariant pass also repairs older saved configs.
             if (customDirectionalDash.Checked)
             {
                 weaponWheelRemap.Checked = true;
                 customBehindHeadWeaponWheel.Checked = true;
+                customDisableWeaponWheel.Checked = false;
+            }
+            else if (customBehindHeadWeaponWheel.Checked)
+            {
                 customDisableWeaponWheel.Checked = false;
             }
 
