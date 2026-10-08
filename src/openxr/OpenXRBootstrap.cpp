@@ -240,6 +240,7 @@ struct State {
     bool physicalCrouchActive{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
+    bool chainsawGestureActive{},chainsawGestureMoving{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -2396,6 +2397,34 @@ void updateGameplayActions(XrTime displayTime){
             log(o.str());
             break;
         }
+    }
+    if(s.customMods.physicalChainsawGestures&&syncAttackActive
+        &&activeWeaponKind==KharvoxWeaponKind::Chainsaw){
+        const auto& chainsawController=weaponController();
+        const bool tracked=chainsawController.valid&&chainsawController.linearVelocityValid;
+        const float downSpeed=tracked?std::max(0.f,-chainsawController.linearVelocity.y):0.f;
+        const float sideSpeed=tracked?std::abs(chainsawController.linearVelocity.x):0.f;
+        const float gestureSpeed=std::max(downSpeed,sideSpeed);
+        const bool moving=gestureSpeed>=.25f;
+        const float normalized=std::clamp((gestureSpeed-.25f)/(1.75f-.25f),0.f,1.f);
+        const float timescale=moving?(.25f+.75f*normalized):.12f;
+        KharvoxCameraSetGloryKillTimescaleOverride(timescale);
+        if(!s.chainsawGestureActive){
+            s.chainsawGestureActive=true;
+            log("[CHAINSAW-GESTURE] kill gate active; downward/sideways hand motion drives playback");
+        }
+        if(moving!=s.chainsawGestureMoving){
+            s.chainsawGestureMoving=moving;
+            log(std::string("[CHAINSAW-GESTURE] ")
+                +(moving?"motion -> advancing":"hand stopped -> idle cutting hold")
+                +" speed="+std::to_string(gestureSpeed)+"m/s timescale="
+                +std::to_string(timescale));
+        }
+    }else if(s.chainsawGestureActive){
+        s.chainsawGestureActive=false;
+        s.chainsawGestureMoving=false;
+        KharvoxCameraSetGloryKillTimescaleOverride(0.f);
+        log("[CHAINSAW-GESTURE] kill gate released");
     }
     if(!gameplay){s.usePulseUntil=0;s.meleePulseUntil=0;}
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
