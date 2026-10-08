@@ -929,6 +929,10 @@ public sealed class MainForm : Form
                 customBehindHeadWeaponWheel.Checked = true;
                 customDisableWeaponWheel.Checked = false;
             }
+            else if (customDisableWeaponWheel.Checked)
+            {
+                customBehindHeadWeaponWheel.Checked = false;
+            }
             else if (customBehindHeadWeaponWheel.Checked)
             {
                 customDisableWeaponWheel.Checked = false;
