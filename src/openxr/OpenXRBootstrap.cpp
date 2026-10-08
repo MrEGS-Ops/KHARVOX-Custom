@@ -42,6 +42,7 @@
 #include "../hands/HandRenderer.h"
 #include "../hands/HandDepthPolicy.h"
 #include "../common/RuntimePaths.h"
+#include "../common/CustomModFlags.h"
 #include "OpenXRRuntimePolicy.h"
 #include "RuntimeVulkanDispatch.h"
 #include "NativeXrReleasePolicy.h"
@@ -236,6 +237,7 @@ struct State {
     bool weaponWheelRemapEnabled{true};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
+    bool physicalCrouchActive{};
     bool chainsawArmed{true},pausePressed{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -280,6 +282,7 @@ struct State {
     std::array<float,3> previousRoomscaleWorldDirection{}; XrVector3f previousRoomscaleTrackingDirection{};
     bool cinematicBodyPoseHeld{};
     bool previousRoomscaleCommand{};
+    kharvox::CustomModFlags customMods{kharvox::loadCustomModFlags()};
     PFN_xrGetVulkanGraphicsRequirements2KHR requirements2{}; PFN_xrGetVulkanGraphicsDevice2KHR graphicsDevice2{}; PFN_xrCreateVulkanInstanceKHR createVulkanInstance{}; PFN_xrCreateVulkanDeviceKHR createVulkanDevice{}; PFN_xrGetVulkanGraphicsRequirementsKHR requirements1{}; PFN_xrGetVulkanGraphicsDeviceKHR graphicsDevice1{};
     PFN_xrGetVulkanInstanceExtensionsKHR instanceExtensions{}; PFN_xrGetVulkanDeviceExtensionsKHR deviceExtensions{};
 };
@@ -2025,7 +2028,7 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
-        s.crouchToggleActive=false;s.crouchStickPressed=false;
+        s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
@@ -2154,6 +2157,7 @@ void updateGameplayActions(XrTime displayTime){
         log(std::string("[INPUT] ")+weaponSelectControl+" pressed; tap/hold weapon selection started");
     }
     if(weaponSelectDown&&!s.weaponSelectNativeStarted
+        &&!s.customMods.disableWeaponWheel
         &&s.weaponSelectPressedTime>0&&displayTime-s.weaponSelectPressedTime>=400000000){
         s.weaponSelectNativeStarted=true;
         log(std::string("[INPUT] ")+weaponSelectControl+" hold -> native weapon wheel button started");
@@ -2182,7 +2186,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeWeaponSelectDown=gameplay
         &&((weaponSelectDown&&s.weaponSelectNativeStarted)
             ||displayTime<s.weaponSwitchPulseUntil);
-    const bool weaponWheelActive=gameplay&&weaponSelectDown&&s.weaponWheelOpened;
+    const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
+        &&weaponSelectDown&&s.weaponWheelOpened;
     const bool rawBackWeaponGripPress=secondaryFireGripDown
         &&!s.secondaryFireGripPressed;
     const auto& shoulderWeaponGripController=s.leftHanded
@@ -2212,6 +2217,19 @@ void updateGameplayActions(XrTime displayTime){
         if(ammo!=KharvoxWeaponAmmoState::Unknown)backWeaponAmmoKnownMask|=mask;
         if(ammo==KharvoxWeaponAmmoState::Usable)backWeaponAmmoUsableMask|=mask;
     }
+    const auto activeBackWeapon=backWeaponKindFromActive(activeWeaponKind);
+    if(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress&&gameplay
+        &&!weaponWheelActive&&!s.twoHandCalibrationMode&&backWeaponTrackingValid
+        &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown){
+        const auto& bounds=s.backWeaponState.zoneActive
+            ?kharvox::BackWeaponZonePolicy{}.exit:kharvox::BackWeaponZonePolicy{}.enter;
+        if(kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,bounds)
+            &&activeBackWeapon!=s.favoriteBackWeapon){
+            s.favoriteBackWeapon=activeBackWeapon;
+            log(std::string("[BACK-WEAPON] dynamic shoulder slot assigned from active weapon: ")
+                +backWeaponKindKey(s.favoriteBackWeapon));
+        }
+    }
     kharvox::BackWeaponInput backWeaponInput{};
     backWeaponInput.shoulderGestureEnabled=true;
     backWeaponInput.gameplayActive=gameplay;
@@ -2222,7 +2240,7 @@ void updateGameplayActions(XrTime displayTime){
     backWeaponInput.gripDown=secondaryFireGripDown;
     backWeaponInput.triggerDown=triggerDown;
     backWeaponInput.favorite=s.favoriteBackWeapon;
-    backWeaponInput.activeWeapon=backWeaponKindFromActive(activeWeaponKind);
+    backWeaponInput.activeWeapon=activeBackWeapon;
     backWeaponInput.nowNanoseconds=static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime));
     backWeaponInput.ammoKnownMask=backWeaponAmmoKnownMask;
     backWeaponInput.ammoUsableMask=backWeaponAmmoUsableMask;
@@ -2329,14 +2347,17 @@ void updateGameplayActions(XrTime displayTime){
         }else log(std::string("[INPUT] ")+weaponHandName()+" thumbstick released");
         s.meleePressed=meleeUseDown;
     }
-    const bool physicalPunchContext=s.physicalGlorykillEnabled&&gameplay
-        &&!fullscreenMenu&&!weaponWheelActive;
+    const bool syncAttackActive=KharvoxCameraSyncAttackActive();
+    const bool physicalPunchContext=(s.physicalGlorykillEnabled||s.customMods.motionGloryKillSpeed)
+        &&gameplay&&!fullscreenMenu&&!weaponWheelActive;
     const std::array<const ControllerPose*,2> punchControllers{{&s.rightController,&s.leftController}};
     const std::array<const char*,2> punchHandNames{{"right","left"}};
     if(!physicalPunchContext){
         s.physicalPunchArmed={false,false};
     }else{
-        const float rearmSpeed=s.physicalGlorykillSpeed*.45f;
+        const float punchThreshold=s.customMods.motionGloryKillSpeed&&syncAttackActive
+            ?0.90f:s.physicalGlorykillSpeed;
+        const float rearmSpeed=punchThreshold*.45f;
         for(size_t hand=0;hand<punchControllers.size();++hand){
             const bool handAllowed=hand==0
                 ?s.physicalGlorykillHands!=PhysicalGlorykillHands::Left
@@ -2347,16 +2368,27 @@ void updateGameplayActions(XrTime displayTime){
             const auto forward=normalizeVector(rotateVector(controller.orientation,{0,0,-1}));
             const float forwardSpeed=dotVector(controller.linearVelocity,forward);
             if(forwardSpeed<=rearmSpeed)s.physicalPunchArmed[hand]=true;
-            if(!s.physicalPunchArmed[hand]||forwardSpeed<s.physicalGlorykillSpeed
+            if(!s.physicalPunchArmed[hand]||forwardSpeed<punchThreshold
                 ||displayTime<s.physicalPunchCooldownUntil)continue;
             s.physicalPunchArmed={false,false};
             s.physicalPunchCooldownUntil=displayTime+350000000;
-            s.meleePulseUntil=std::max(s.meleePulseUntil,displayTime+200000000);
             std::ostringstream o;
-            o<<"[INPUT] Physical Glorykill "<<punchHandNames[hand]
-             <<" punch -> native JOY8 melee/glory pulse forwardSpeed="
-             <<std::fixed<<std::setprecision(2)<<forwardSpeed<<"m/s threshold="
-             <<s.physicalGlorykillSpeed<<"m/s";
+            if(s.customMods.motionGloryKillSpeed&&syncAttackActive){
+                const float normalized=std::clamp((forwardSpeed-.90f)/(4.0f-.90f),0.f,1.f);
+                const float timescale=.40f+.60f*normalized;
+                KharvoxCameraSetGloryKillTimescaleOverride(timescale);
+                o<<"[INPUT] Glory Kill second punch "<<punchHandNames[hand]
+                 <<" forwardSpeed="<<std::fixed<<std::setprecision(2)<<forwardSpeed
+                 <<"m/s -> timescale="<<timescale;
+            }else if(s.physicalGlorykillEnabled){
+                s.meleePulseUntil=std::max(s.meleePulseUntil,displayTime+200000000);
+                o<<"[INPUT] Physical Glorykill "<<punchHandNames[hand]
+                 <<" punch -> native JOY8 melee/glory pulse forwardSpeed="
+                 <<std::fixed<<std::setprecision(2)<<forwardSpeed<<"m/s threshold="
+                 <<s.physicalGlorykillSpeed<<"m/s";
+            }else{
+                continue;
+            }
             log(o.str());
             break;
         }
@@ -2496,6 +2528,19 @@ void updateGameplayActions(XrTime displayTime){
         log("[INPUT] Hands Jump -> native gamepad A jump pulse; leftUp="
             +std::to_string(s.leftGripController.linearVelocity.y)+" rightUp="
             +std::to_string(s.rightGripController.linearVelocity.y)+"m/s");
+    if(s.customMods.physicalCrouch&&gameplay&&s.trackingHeadPositionValid
+        &&s.headZeroPositionValid){
+        const float heightDelta=s.trackingHeadPosition.y-s.headZeroPosition.y;
+        const bool previous=s.physicalCrouchActive;
+        if(!s.physicalCrouchActive&&heightDelta<=-.28f)s.physicalCrouchActive=true;
+        else if(s.physicalCrouchActive&&heightDelta>=-.20f)s.physicalCrouchActive=false;
+        if(previous!=s.physicalCrouchActive)
+            log(std::string("[INPUT] Physical Crouch ")
+                +(s.physicalCrouchActive?"ON":"OFF")+" heightDelta="
+                +std::to_string(heightDelta)+"m");
+    }else if(!gameplay){
+        s.physicalCrouchActive=false;
+    }
     bool gamepadADown{};
     bool gamepadBDown{};
     bool cameraCrouchDown{};
@@ -2508,15 +2553,16 @@ void updateGameplayActions(XrTime displayTime){
             log("[INPUT] jump request -> crouch OFF before native jump");
         }
         gamepadADown=gameplayJumpRequested||crouchUiDown;
-        gamepadBDown=s.crouchToggleActive||jumpUiDown;
-        cameraCrouchDown=s.crouchToggleActive;
+        gamepadBDown=s.crouchToggleActive||s.physicalCrouchActive||jumpUiDown;
+        cameraCrouchDown=s.crouchToggleActive||s.physicalCrouchActive;
     }else{
         // Exact official KHARVOX face-button routing.
-        gamepadADown=(s.swapJumpCrouch?crouchGameplayDown:jumpGameplayDown)
+        gamepadADown=(s.swapJumpCrouch?(crouchGameplayDown||s.physicalCrouchActive):jumpGameplayDown)
             ||handsJumpDown||crouchUiDown;
-        gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)
+        gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:(crouchGameplayDown||s.physicalCrouchActive))
             ||jumpUiDown;
-        cameraCrouchDown=s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown;
+        cameraCrouchDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)
+            ||s.physicalCrouchActive;
     }
     KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
@@ -2577,6 +2623,19 @@ bool createGameplayActions(){
     s.leftHanded=environmentEnabled("KHARVOX_LEFT_HANDED");
     s.swapJumpCrouch=environmentEnabled("KHARVOX_SWAP_JUMP_CROUCH");
     s.favoriteBackWeapon=loadBackWeaponKind();
+    s.customMods=kharvox::loadCustomModFlags();
+    log(std::string("[CUSTOM-MODS] hud=")+(s.customMods.disableHud?"off":"normal")
+        +" wheel="+(s.customMods.disableWeaponWheel?"disabled":"normal")
+        +" gaussSlow="+(s.customMods.gaussChargeSlowMovement?"on":"off")
+        +" backHandHud="+(s.customMods.backOfHandHud?"on":"off")
+        +" handFocusRs="+(s.customMods.handFocusedRs?"on":"off")
+        +" dash="+(s.customMods.directionalDash?"on":"off")
+        +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
+        +" revenge="+(s.customMods.revengeDemon?"on":"off")
+        +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
+        +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
+        +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
+        +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off"));
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
     s.leftHandSwapSticks=s.leftHanded&&!_stricmp(leftHandSwap,"buttons-and-sticks");
