@@ -238,6 +238,9 @@ struct State {
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
+    bool behindHeadWheelActive{};
+    bool dashButtonPressed{};
+    XrTime dashCooldownUntil{};
     bool dynamicShoulderHolstered{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
@@ -2033,6 +2036,7 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
+        s.behindHeadWheelActive=false;s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
@@ -2089,13 +2093,78 @@ void updateGameplayActions(XrTime displayTime){
     const float fireValue=readFloatAction(s.doomFire);
     const bool triggerDown=fireValue>.55f;
 
-    // Retained custom controller layout:
-    //   ON  -> A tap/hold = quick weapon/wheel; right-stick down toggles crouch.
-    //   OFF -> official KHARVOX controls unchanged.
+    // Retained custom controller layout. Behind-Head Weapon Wheel can
+    // replace the physical weapon-select control entirely, freeing the old
+    // wheel control for dash without changing jump/double-jump.
     const bool physicalAButtonDown=readBooleanAction(s.doomCrouch);
     const bool crouchStickDown=turnActive&&rightStickY<-.75f;
+
+    bool behindHeadWheelRequested=false;
+    if(s.customMods.behindHeadWeaponWheel&&!s.customMods.disableWeaponWheel
+        &&gameplay&&s.trackingHeadPositionValid&&s.headZeroValid
+        &&s.headZeroPositionValid){
+        const auto& gestureController=s.leftHanded
+            ?s.leftGripController:s.rightGripController;
+        if(gestureController.valid){
+            const auto grip=controllerRelativeToBodyTrackingOrigin(
+                gestureController).position;
+            const auto head=positionRelativeToBodyTrackingOrigin(
+                s.trackingHeadPosition);
+            const float lateral=grip.x-head.x;
+            const float vertical=grip.y-head.y;
+            const float behind=grip.z-head.z;
+            const bool inside=s.behindHeadWheelActive
+                ?(std::abs(lateral)<=.55f&&vertical>=-.30f&&vertical<=.48f
+                    &&behind>=.04f&&behind<=.90f)
+                :(std::abs(lateral)<=.42f&&vertical>=-.18f&&vertical<=.36f
+                    &&behind>=.13f&&behind<=.75f);
+            if(inside!=s.behindHeadWheelActive){
+                s.behindHeadWheelActive=inside;
+                log(std::string("[WEAPON-WHEEL] behind-head gesture ")
+                    +(inside?"ENTER -> native wheel open/hold":"EXIT -> release/confirm")
+                    +" lateral="+std::to_string(lateral)
+                    +" vertical="+std::to_string(vertical)
+                    +" behind="+std::to_string(behind));
+            }
+            behindHeadWheelRequested=s.behindHeadWheelActive;
+        }else{
+            s.behindHeadWheelActive=false;
+        }
+    }else{
+        s.behindHeadWheelActive=false;
+    }
+
+    const bool legacyWeaponSelectDown=s.weaponWheelRemapEnabled
+        ?physicalAButtonDown:crouchStickDown;
     const bool weaponSelectDown=gameplay
-        &&(s.weaponWheelRemapEnabled?physicalAButtonDown:crouchStickDown);
+        &&(s.customMods.behindHeadWeaponWheel
+            ?behindHeadWheelRequested:legacyWeaponSelectDown);
+
+    // When Behind-Head Weapon Wheel owns selection, the old wheel input is
+    // genuinely free. Use a fresh edge for dash only; neutral stick = no dash.
+    const bool freedWeaponWheelButtonDown=s.weaponWheelRemapEnabled
+        ?physicalAButtonDown:crouchStickDown;
+    if(s.customMods.directionalDash&&s.customMods.behindHeadWeaponWheel
+        &&gameplay&&freedWeaponWheelButtonDown&&!s.dashButtonPressed
+        &&displayTime>=s.dashCooldownUntil){
+        const float dashMagnitude=std::sqrt(
+            s.leftStick.x*s.leftStick.x+s.leftStick.y*s.leftStick.y);
+        if(dashMagnitude>=.20f){
+            if(KharvoxCameraApplyDirectionalDash(
+                    s.leftStick.x,s.leftStick.y)){
+                s.dashCooldownUntil=displayTime+650000000;
+                log(std::string("[DASH] freed ")
+                    +(s.weaponWheelRemapEnabled?"A":turnStickName())
+                    +" wheel control -> horizontal dash stick=("
+                    +std::to_string(s.leftStick.x)+","
+                    +std::to_string(s.leftStick.y)+")");
+            }
+        }else{
+            log("[DASH] freed wheel button pressed with neutral stick; ignored");
+        }
+    }
+    s.dashButtonPressed=freedWeaponWheelButtonDown;
+    if(!gameplay){s.dashButtonPressed=false;s.dashCooldownUntil=0;}
 
     if(s.weaponWheelRemapEnabled){
         if(gameplay&&crouchStickDown&&!s.crouchStickPressed){
@@ -2159,19 +2228,29 @@ void updateGameplayActions(XrTime displayTime){
     }
     if(!gameplay)s.bfgPulseUntil=0;
     const bool bfgPulse=gameplay&&displayTime<s.bfgPulseUntil;
-    const char* weaponSelectControl=s.weaponWheelRemapEnabled?"A":turnStickName();
+    const bool gestureWheel=s.customMods.behindHeadWeaponWheel
+        &&s.behindHeadWheelActive;
+    const char* weaponSelectControl=gestureWheel?"behind-head gesture"
+        :(s.weaponWheelRemapEnabled?"A":turnStickName());
     if(weaponSelectDown&&!s.weaponSelectPressed){
         s.weaponSelectPressedTime=displayTime;
-        s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
-        log(std::string("[INPUT] ")+weaponSelectControl+" pressed; tap/hold weapon selection started");
+        s.weaponSelectNativeStarted=gestureWheel;
+        s.weaponWheelOpened=gestureWheel;
+        if(gestureWheel)
+            log("[WEAPON-WHEEL] behind-head gesture -> wheel active immediately; left stick selects");
+        else
+            log(std::string("[INPUT] ")+weaponSelectControl
+                +" pressed; tap/hold weapon selection started");
     }
-    if(weaponSelectDown&&!s.weaponSelectNativeStarted
+    if(weaponSelectDown&&!gestureWheel&&!s.weaponSelectNativeStarted
         &&!s.customMods.disableWeaponWheel
         &&s.weaponSelectPressedTime>0&&displayTime-s.weaponSelectPressedTime>=400000000){
         s.weaponSelectNativeStarted=true;
-        log(std::string("[INPUT] ")+weaponSelectControl+" hold -> native weapon wheel button started");
+        log(std::string("[INPUT] ")+weaponSelectControl
+            +" hold -> native weapon wheel button started");
     }
-    if(weaponSelectDown&&s.weaponSelectNativeStarted&&!s.weaponWheelOpened
+    if(weaponSelectDown&&!gestureWheel&&s.weaponSelectNativeStarted
+        &&!s.weaponWheelOpened
         &&displayTime-s.weaponSelectPressedTime>=800000000){
         s.weaponWheelOpened=true;
         log(std::string("[INPUT] weapon wheel active; ")+moveStickName()
@@ -2179,7 +2258,8 @@ void updateGameplayActions(XrTime displayTime){
     }
     if(s.weaponSelectPressed&&!weaponSelectDown){
         if(s.weaponSelectNativeStarted)
-            log(std::string("[INPUT] weapon wheel/")+weaponSelectControl+" released; selection confirmed");
+            log(std::string("[INPUT] weapon wheel/")+weaponSelectControl
+                +" released; selection confirmed");
         else{
             s.weaponSwitchPulseUntil=displayTime+100000000;
             log(std::string("[INPUT] ")+weaponSelectControl+" tap -> switch weapon pulse");
@@ -2251,7 +2331,8 @@ void updateGameplayActions(XrTime displayTime){
     }
 
     if(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress&&gameplay
-        &&!weaponWheelActive&&!s.twoHandCalibrationMode&&dynamicShoulderInside
+        &&!weaponWheelActive&&!s.behindHeadWheelActive
+        &&!s.twoHandCalibrationMode&&dynamicShoulderInside
         &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown){
         if(s.dynamicShoulderHolstered){
             // Reaching to the occupied shoulder slot draws the same native
@@ -2280,6 +2361,7 @@ void updateGameplayActions(XrTime displayTime){
     backWeaponInput.trackingValid=backWeaponTrackingValid;
     backWeaponInput.gripRelativeToHeadMeters=backWeaponGripRelativeToHead;
     backWeaponInput.gripDown=secondaryFireGripDown
+        &&!s.behindHeadWheelActive
         &&!(s.customMods.dynamicShoulderHolster&&rawBackWeaponGripPress
             &&dynamicShoulderInside);
     backWeaponInput.triggerDown=triggerDown;
@@ -2486,8 +2568,8 @@ void updateGameplayActions(XrTime displayTime){
         kharvox::MotionWeaponWheelInput wheelInput{};
         wheelInput.wheelActive=weaponWheelActive;
         wheelInput.trackingValid=wCtrl.valid&&wCtrl.positionTracked&&s.head.valid;
-        wheelInput.stickBypass=kharvox::motionWheelStickBypass(
-            s.leftStick.x,s.leftStick.y);
+        wheelInput.stickBypass=s.behindHeadWheelActive
+            ||kharvox::motionWheelStickBypass(s.leftStick.x,s.leftStick.y);
         wheelInput.config.nativeStickDeadzone=nativeDoomRightStickDeadzone;
         wheelInput.handPosition={wCtrl.position.x,wCtrl.position.y,wCtrl.position.z};
         wheelInput.hmdOrientation={s.head.orientation.x,s.head.orientation.y,s.head.orientation.z,s.head.orientation.w};
@@ -2773,6 +2855,7 @@ bool createGameplayActions(){
         +" backHandHud="+(s.customMods.backOfHandHud?"on":"off")
         +" handFocusRs="+(s.customMods.handFocusedRs?"on":"off")
         +" dash="+(s.customMods.directionalDash?"on":"off")
+        +" behindHeadWheel="+(s.customMods.behindHeadWeaponWheel?"on":"off")
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
         +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
