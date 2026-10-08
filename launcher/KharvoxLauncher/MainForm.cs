@@ -384,14 +384,14 @@ public sealed class MainForm : Form
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
             (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
-            (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose."),
+            (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose. Enabling this automatically disables No HUD because they use the same gameplay-HUD surfaces."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
             (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. Enabling Dash automatically enables Weapon Wheel Remap + Behind-Head Weapon Wheel and disables No Weapon Wheel, because those options free A for Dash."),
             (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
             (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
             (customRevengeDemon, "Experimental exact-killer workflow. This build captures and persists death-time entity-reference data through the Supervisor so the exact attacker field can be resolved without guessing; empowerment/outline remains fail-closed until that resolver is validated."),
-            (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, then draw that exact weapon back out."),
+            (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, hide it for true Fist + Fist empty hands, then draw that exact weapon back out. Enabling this automatically enables KHARVOX Hands."),
             (customPhysicalGrenadeThrow, "Hold equipment/grenade input and use controller motion at release to determine throw direction/strength."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
             (customPhysicalChainsawGestures, "Experimental gesture checkpoints for chainsaw kill animations. Supervisor-assisted while animation states are being mapped.")
@@ -466,11 +466,7 @@ public sealed class MainForm : Form
         disableAa.CheckedChanged += OptionChanged;
         captureEyes.CheckedChanged += OptionChanged;
 
-        showHands.CheckedChanged += (_, _) =>
-        {
-            if (!showHands.Checked) calibrateHands.Checked = false;
-            OptionChanged(showHands, EventArgs.Empty);
-        };
+        showHands.CheckedChanged += ShowHandsChanged;
         calibrateHands.CheckedChanged += HandCalibrationModeChanged;
 
         runtimeStatusTimer.Tick += (_, _) => RefreshRuntimeStatus();
@@ -867,6 +863,17 @@ public sealed class MainForm : Form
         OptionChanged(sender, e);
     }
 
+    private void ShowHandsChanged(object? sender, EventArgs e)
+    {
+        if (!showHands.Checked) calibrateHands.Checked = false;
+        if (!applyingCustomModDependencies)
+        {
+            ApplyCustomModDependencies(showHands);
+            SaveCustomModSettings();
+        }
+        OptionChanged(sender, e);
+    }
+
     private void ApplyCustomModDependencies(CheckBox? changed)
     {
         if (applyingCustomModDependencies) return;
@@ -891,6 +898,22 @@ public sealed class MainForm : Form
                 customDirectionalDash.Checked = false;
             }
 
+            // No HUD and Back-of-Hand HUD use the same gameplay-HUD surfaces.
+            // The option explicitly enabled most recently wins.
+            if (changed == customDisableHud && customDisableHud.Checked)
+                customBackOfHandHud.Checked = false;
+            else if (changed == customBackOfHandHud && customBackOfHandHud.Checked)
+                customDisableHud.Checked = false;
+
+            // The dynamic holster's empty-hands presentation depends on KHARVOX
+            // hand assets. Enabling it supplies that dependency automatically;
+            // explicitly turning Hands off releases the holster mod.
+            if (changed == customDynamicShoulderHolster
+                && customDynamicShoulderHolster.Checked)
+                showHands.Checked = true;
+            else if (changed == showHands && !showHands.Checked)
+                customDynamicShoulderHolster.Checked = false;
+
             // If the user explicitly removes a dependency, that manual
             // action wins and Dash is released. During initial config repair,
             // however, an already-selected Dash enables what it needs.
@@ -910,6 +933,12 @@ public sealed class MainForm : Form
             {
                 customDisableWeaponWheel.Checked = false;
             }
+
+            if (customDynamicShoulderHolster.Checked)
+                showHands.Checked = true;
+
+            if (customDisableHud.Checked)
+                customBackOfHandHud.Checked = false;
 
             customBehindHeadWheelHandSelection.Enabled =
                 customBehindHeadWeaponWheel.Checked
