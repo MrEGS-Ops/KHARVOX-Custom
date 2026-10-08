@@ -1496,6 +1496,12 @@ void __fastcall campaignDeathShowHook(void* deathScreen, int transitionType) {
     if (!deathMenuActive.exchange(true, std::memory_order_acq_rel))
         log("native CampaignDeath screen shown; Death-menu QUAD active (transition="
             + std::to_string(transitionType) + ")");
+    if (customMods.revengeDemon) {
+        const bool published = KharvoxCameraWriteRevengeDiscoverySnapshot();
+        log(published
+            ? "[REVENGE] death-time Supervisor bridge snapshot published"
+            : "[REVENGE] death-time Supervisor bridge snapshot unavailable; no speculative killer selected");
+    }
     originalCampaignDeathShow(deathScreen, transitionType);
 }
 
