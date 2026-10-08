@@ -106,6 +106,7 @@ jobs:
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
             Copy-Item -LiteralPath $source -Destination $patch -Force
           }
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
           function Write-Manifest([string]$root,[string]$kind) {
             $files = @()
             Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
