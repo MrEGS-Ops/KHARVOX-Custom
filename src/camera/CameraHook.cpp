@@ -2836,6 +2836,81 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
 #endif
 }
 
+bool KharvoxCameraApplyDirectionalDash(
+    float forward, float lateral, float speedUnitsPerSecond) {
+    using PhysicsGetLinearVelocityFn = const float*(__fastcall*)(void*, int);
+    using PhysicsSetLinearVelocityFn = void(__fastcall*)(void*, const float*, int);
+
+    if(!worldCameraActive.load(std::memory_order_acquire)
+        ||!playerPhysicsOriginValid.load(std::memory_order_acquire)
+        ||!std::isfinite(forward)||!std::isfinite(lateral)
+        ||!std::isfinite(speedUnitsPerSecond)) return false;
+
+    const float intentLength=std::sqrt(forward*forward+lateral*lateral);
+    if(intentLength<0.05f) return false;
+    forward/=intentLength;
+    lateral/=intentLength;
+    speedUnitsPerSecond=std::clamp(speedUnitsPerSecond,100.f,900.f);
+
+    const uintptr_t owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    if(!owner||owner>UINTPTR_MAX-0x14E58)return false;
+    auto physics=reinterpret_cast<unsigned char*>(owner+0x14E58);
+    if(!readableMemory(physics,sizeof(void*)))return false;
+    auto vtable=*reinterpret_cast<void***>(physics);
+
+    // DOOM 2016's idPhysics_Player GetOrigin slot is independently validated
+    // at +0x80. The idTech physics ABI places SetLinearVelocity two slots and
+    // GetLinearVelocity four slots later. Validate the read-only getter first;
+    // if this executable diverges, fail closed before calling the setter.
+    constexpr size_t setLinearVelocitySlot=0x90/sizeof(void*);
+    constexpr size_t getLinearVelocitySlot=0xA0/sizeof(void*);
+    if(!readableMemory(vtable,(getLinearVelocitySlot+1)*sizeof(void*)))return false;
+    auto setVelocity=reinterpret_cast<PhysicsSetLinearVelocityFn>(
+        vtable[setLinearVelocitySlot]);
+    auto getVelocity=reinterpret_cast<PhysicsGetLinearVelocityFn>(
+        vtable[getLinearVelocitySlot]);
+    if(!executableMemory(reinterpret_cast<const void*>(setVelocity))
+        ||!executableMemory(reinterpret_cast<const void*>(getVelocity)))return false;
+
+    const float* current{};
+#if defined(_MSC_VER)
+    __try { current=getVelocity(physics,0); }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+#else
+    current=getVelocity(physics,0);
+#endif
+    if(!readableMemory(current,3*sizeof(float))
+        ||!std::isfinite(current[0])||!std::isfinite(current[1])||!std::isfinite(current[2])
+        ||std::abs(current[0])>5000.f||std::abs(current[1])>5000.f||std::abs(current[2])>5000.f)
+        return false;
+
+    float bodyOrigin[3]{},bodyAxis[9]{};
+    if(!KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis))return false;
+    float velocity[3]{
+        bodyAxis[0]*forward*speedUnitsPerSecond
+            +bodyAxis[3]*lateral*speedUnitsPerSecond,
+        bodyAxis[1]*forward*speedUnitsPerSecond
+            +bodyAxis[4]*lateral*speedUnitsPerSecond,
+        current[2]
+    };
+
+#if defined(_MSC_VER)
+    __try { setVelocity(physics,velocity,0); }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return false; }
+#else
+    setVelocity(physics,velocity,0);
+#endif
+
+    static std::atomic<unsigned> dashCount{};
+    const auto count=++dashCount;
+    if(count<=8||count%64==0)
+        log("[DASH] horizontal velocity applied forward="+std::to_string(forward)
+            +" lateral="+std::to_string(lateral)
+            +" speed="+std::to_string(speedUnitsPerSecond)
+            +" preservedVertical="+std::to_string(current[2]));
+    return true;
+}
+
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]) {
     if (!origin || !axis || !bodyCameraValid.load(std::memory_order_acquire)) return false;
     for (int index = 0; index < 9; ++index)
