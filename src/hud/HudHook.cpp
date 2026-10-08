@@ -9,6 +9,7 @@
 
 #include "../camera/CameraHook.h"
 #include "../common/RuntimePaths.h"
+#include "../common/CustomModFlags.h"
 
 #include <windows.h>
 #include <intrin.h>
@@ -56,6 +57,7 @@ struct RoleCalibration {
 std::array<RoleCalibration, hudRoleCount> roleCalibrations{};
 int selectedCalibrationRole{2};
 std::atomic<bool> installed{};
+const kharvox::CustomModFlags customMods = kharvox::loadCustomModFlags();
 constexpr float defaultWorldUnitsPerMeter = 39.3701f;
 constexpr float defaultHudDistanceMeters = 1.0f;
 constexpr float defaultHudQuadScale = 3.0f;
@@ -3395,9 +3397,11 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
         &capturedCrosshairContext, 0, 0));
     const bool crosshair = capturedCrosshair && current == capturedCrosshair;
     const bool ledgeTransitionActive = KharvoxCameraLedgeTransitionActive();
-    const bool offscreen = kharvox::shouldPlaceHudOffscreen(
+    bool offscreen = kharvox::shouldPlaceHudOffscreen(
         crosshair, ledgeTransitionActive);
     const bool cinematicSurface=KharvoxCameraCutsceneActive() && !crosshair && !ledgeTransitionActive;
+    if(customMods.disableHud && gameplayHudActive() && !crosshair)
+        offscreen = true;
     const bool observeCinematicMenu=kharvox::shouldObserveCinematicMenuSurface(
         cinematicSurface,crosshair,ledgeTransitionActive,
         playerUpgradePickupSessionActive.load(std::memory_order_acquire)
@@ -3556,7 +3560,17 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
         kharvox::OffhandHudConfig config;{std::lock_guard<std::mutex> lock(offhandHudMutex);config=offhandHudConfig;}
         float grip[3]{},handAxis[9]{};
         if((config.enabled||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
-            const auto& values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
+            auto values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
+            if(customMods.backOfHandHud){
+                // Reuse the calibrated offhand HUD but move the panel to the
+                // opposite face of the hand and flip its local pitch. This
+                // keeps the existing stereo/canvas ownership path intact.
+                values.centimeters[2]=std::clamp(values.centimeters[2]+4.f,-100.f,100.f);
+                values.degrees[0]=std::remainder(values.degrees[0]+180.f,360.f);
+                static std::atomic<bool> backOfHandLogged{};
+                if(!backOfHandLogged.exchange(true))
+                    log("[OFFHAND-HUD] Back-of-Hand HUD transform enabled");
+            }
             kharvox::offhandHudBasis(handAxis,values,offhandAxis);
             kharvox::offhandHudOrigin(grip,handAxis,offhandAxis,values,handSurface,hudWorldUnitsPerMeter,desiredOrigin);
             offhand=true;offhandScale=values.scale;
