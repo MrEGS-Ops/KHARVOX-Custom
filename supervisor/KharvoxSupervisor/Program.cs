@@ -25,6 +25,7 @@ internal sealed class FileWatchConfig
     public string Path { get; set; } = string.Empty;
     public string Mode { get; set; } = "tail";
     public bool Optional { get; set; } = true;
+    public string PersistPath { get; set; } = string.Empty;
 }
 
 internal static class Program
@@ -214,6 +215,19 @@ internal static class Program
                 ["path"] = path,
                 ["content"] = text
             });
+            if (!string.IsNullOrWhiteSpace(watch.PersistPath))
+            {
+                var persistPath = ResolvePath(watch.PersistPath);
+                Directory.CreateDirectory(
+                    Path.GetDirectoryName(persistPath) ?? AppContext.BaseDirectory);
+                File.WriteAllText(persistPath, text, Encoding.UTF8);
+                WriteEvent(outputPath, "file-persisted", new Dictionary<string, object>
+                {
+                    ["name"] = watch.Name,
+                    ["source"] = path,
+                    ["persistedTo"] = persistPath
+                });
+            }
             return;
         }
 
