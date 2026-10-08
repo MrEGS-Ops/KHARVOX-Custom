@@ -2654,6 +2654,38 @@ void updateGameplayActions(XrTime displayTime){
     };
     publishHudHandPose(true,s.rightGripController);
     publishHudHandPose(false,s.leftGripController);
+
+    if(s.customMods.handFocusedRs&&gameplay){
+        const auto& controller=weaponController();
+        float bodyOrigin[3]{},bodyAxis[9]{};
+        if(controller.valid&&s.headZeroValid
+            &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
+            const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
+            const auto trackingForward=normalizeVector(
+                rotateVector(relative.orientation,{0,0,-1}));
+            const float localOrigin[3]{
+                -relative.position.z*s.worldScale,
+                -relative.position.x*s.worldScale,
+                relative.position.y*s.worldScale};
+            const float localDirection[3]{
+                -trackingForward.z,-trackingForward.x,trackingForward.y};
+            float worldOrigin[3]{},worldDirection[3]{};
+            for(int axis=0;axis<3;++axis){
+                worldOrigin[axis]=bodyOrigin[axis]
+                    +bodyAxis[axis]*localOrigin[0]
+                    +bodyAxis[3+axis]*localOrigin[1]
+                    +bodyAxis[6+axis]*localOrigin[2];
+                worldDirection[axis]=bodyAxis[axis]*localDirection[0]
+                    +bodyAxis[3+axis]*localDirection[1]
+                    +bodyAxis[6+axis]*localDirection[2];
+            }
+            KharvoxCameraSetFocusHandPose(worldOrigin,worldDirection,true);
+        }else{
+            KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        }
+    }else{
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+    }
     updateWeapon6Dof();
 }
 bool createGameplayActions(){
