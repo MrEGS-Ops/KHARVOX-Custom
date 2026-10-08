@@ -38,6 +38,8 @@ bool KharvoxWeaponInstallHook();
 bool KharvoxWeaponIsTrackingActive();
 bool KharvoxWeaponCollectibleAnimationActive();
 KharvoxWeaponKind KharvoxWeaponCurrentKind();
+// True while the live Gauss weapon decl is a charged Siege-mode state.
+bool KharvoxWeaponGaussSiegeChargeActive();
 // Called from the proven idPlayer gameplay-camera path. Internally throttled;
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
