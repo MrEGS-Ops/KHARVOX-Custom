@@ -87,6 +87,9 @@ std::array<std::atomic<float>, 3> stableBodyViewOffsetLocal{};
 std::atomic<uintptr_t> stableBodyViewOffsetOwner{};
 std::atomic<bool> stableBodyViewOffsetValid{};
 std::atomic<bool> crouchRequested{};
+std::array<std::atomic<float>,3> focusHandOrigin{};
+std::array<std::atomic<float>,3> focusHandDirection{};
+std::atomic<bool> focusHandValid{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -277,6 +280,15 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     float hmdAxis[9]{};
     if (!KharvoxCameraGetHeadRenderPose(hmdOrigin, hmdAxis)) return;
 
+    float focusOrigin[3]{hmdOrigin[0],hmdOrigin[1],hmdOrigin[2]};
+    float focusDirection[3]{hmdAxis[0],hmdAxis[1],hmdAxis[2]};
+    if(focusHandValid.load(std::memory_order_acquire)){
+        for(int axis=0;axis<3;++axis){
+            focusOrigin[axis]=focusHandOrigin[axis].load(std::memory_order_relaxed);
+            focusDirection[axis]=focusHandDirection[axis].load(std::memory_order_relaxed);
+        }
+    }
+
     auto bytes = static_cast<unsigned char*>(rawFocusTrace);
     auto start = reinterpret_cast<float*>(bytes + 0xB0);
     auto nearEnd = reinterpret_cast<float*>(bytes + 0xBC);
@@ -299,9 +311,9 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     // retain both native trace lengths, but replace the body-view origin and
     // direction with the HMD render pose. This never changes player/view yaw.
     for (int axis = 0; axis < 3; ++axis) {
-        start[axis] = hmdOrigin[axis];
-        nearEnd[axis] = hmdOrigin[axis] + hmdAxis[axis] * nearDistance;
-        farEnd[axis] = hmdOrigin[axis] + hmdAxis[axis] * farDistance;
+        start[axis] = focusOrigin[axis];
+        nearEnd[axis] = focusOrigin[axis] + focusDirection[axis] * nearDistance;
+        farEnd[axis] = focusOrigin[axis] + focusDirection[axis] * farDistance;
     }
 
 }
@@ -2266,6 +2278,33 @@ unsigned long long KharvoxCameraDiagnosticPoseId() {
 
 void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
+}
+
+void KharvoxCameraSetFocusHandPose(
+    const float origin[3], const float direction[3], bool valid) {
+    if(!valid||!origin||!direction){
+        focusHandValid.store(false,std::memory_order_release);
+        return;
+    }
+    float lengthSquared{};
+    for(int axis=0;axis<3;++axis){
+        if(!std::isfinite(origin[axis])||!std::isfinite(direction[axis])){
+            focusHandValid.store(false,std::memory_order_release);
+            return;
+        }
+        lengthSquared+=direction[axis]*direction[axis];
+    }
+    if(lengthSquared<0.000001f){
+        focusHandValid.store(false,std::memory_order_release);
+        return;
+    }
+    const float inverseLength=1.0f/std::sqrt(lengthSquared);
+    focusHandValid.store(false,std::memory_order_release);
+    for(int axis=0;axis<3;++axis){
+        focusHandOrigin[axis].store(origin[axis],std::memory_order_relaxed);
+        focusHandDirection[axis].store(direction[axis]*inverseLength,std::memory_order_relaxed);
+    }
+    focusHandValid.store(true,std::memory_order_release);
 }
 
 void KharvoxCameraSetImmersiveCinematicFov(
