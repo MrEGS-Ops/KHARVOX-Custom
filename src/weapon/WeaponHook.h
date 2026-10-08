@@ -40,6 +40,10 @@ bool KharvoxWeaponCollectibleAnimationActive();
 KharvoxWeaponKind KharvoxWeaponCurrentKind();
 // True while the live Gauss weapon decl is a charged Siege-mode state.
 bool KharvoxWeaponGaussSiegeChargeActive();
+// Presentation-only holster state: keeps DOOM's selected weapon alive while
+// moving its VR render out of view. Input suppression is handled by OpenXR.
+void KharvoxWeaponSetHolstered(bool holstered);
+bool KharvoxWeaponHolstered();
 // Called from the proven idPlayer gameplay-camera path. Internally throttled;
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
