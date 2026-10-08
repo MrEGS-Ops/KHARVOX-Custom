@@ -845,7 +845,7 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     }
 
     const float target = motionOverrideActive
-        ? std::clamp(motionOverride, 0.40f, 1.0f)
+        ? std::clamp(motionOverride, 0.10f, 1.0f)
         : gloryKillCustomTimescale(level);
     LONG targetBits{};
     std::memcpy(&targetBits, &target, sizeof(targetBits));
@@ -2533,7 +2533,7 @@ bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_orde
 
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
     const float value = timescale > 0.0f
-        ? std::clamp(timescale, 0.40f, 1.0f) : 0.0f;
+        ? std::clamp(timescale, 0.10f, 1.0f) : 0.0f;
     gloryKillMotionTimescaleOverride.store(value, std::memory_order_release);
 }
 
