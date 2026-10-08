@@ -269,7 +269,7 @@ internal static class KharvoxRunner
         var dllPath = Path.Combine(runtimeDir, "KharvoxLayer.dll");
         var manifestPath = Path.Combine(runtimeDir, "KharvoxLayer.json");
         var launchId = Guid.NewGuid().ToString("N").Substring(0, 12);
-        var loaderLogPath = Path.Combine(Path.GetTempPath(), "KHARVOX-vulkan-loader-v1.0.log");
+        var loaderLogPath = RuntimeStorage.LogPath("KHARVOX-vulkan-loader-v1.0.log");
         var gameExe = Path.Combine(options.GameDirectory ?? string.Empty, "DOOMx64vk.exe");
         if (!File.Exists(gameExe)) throw new FileNotFoundException(
             "Select the DOOM (2016) installation folder containing DOOMx64vk.exe.", gameExe);
@@ -287,7 +287,7 @@ internal static class KharvoxRunner
             {
                 try
                 {
-                    AppendDiagnostic(Path.Combine(Path.GetTempPath(), "KHARVOX.log"),
+                    AppendDiagnostic(RuntimeStorage.LogPath("KHARVOX.log"),
                         launchId, "preflight " + preflight.StructuredLogEntry());
                 }
                 catch { }
@@ -535,13 +535,13 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_USE_FSR1"] = fsr1Enabled ? "1" : "0";
             BhapticsBridgeSession.ApplyToGame(psi, bhaptics);
             Psvr2BridgeSession.ApplyToGame(psi, psvr2);
-            var logPath = Path.Combine(Path.GetTempPath(), "KHARVOX.log");
+            var logPath = RuntimeStorage.LogPath("KHARVOX.log");
             // Remove a stale capture even when logging is disabled so a later
             // support request cannot accidentally attach an older run.
             try { File.Delete(loaderLogPath); } catch { }
             if (File.Exists(logPath))
             {
-                try { File.Copy(logPath, Path.Combine(Path.GetTempPath(), "KHARVOX-previous-launch.log"), true); }
+                try { File.Copy(logPath, RuntimeStorage.LogPath("KHARVOX-previous-launch.log"), true); }
                 catch { }
             }
             VulkanSfs.ClearEnvironment(psi);
@@ -775,11 +775,11 @@ internal static class KharvoxRunner
                 using var userHive = RegistryKey.OpenBaseKey(RegistryHive.CurrentUser, RegistryView.Registry64);
                 using var key = userHive.OpenSubKey(RegistryPath, true);
                 if (options.ExtendedLogging && key is not null)
-                    AppendRegistryDiagnostics(Path.Combine(Path.GetTempPath(), "KHARVOX.log"),
+                    AppendRegistryDiagnostics(RuntimeStorage.LogPath("KHARVOX.log"),
                         launchId, "before-final-cleanup", key, manifestPath);
                 if (key is not null) DisableKharvoxLayerRegistrations(key, string.Empty);
                 if (options.ExtendedLogging && key is not null)
-                    AppendRegistryDiagnostics(Path.Combine(Path.GetTempPath(), "KHARVOX.log"),
+                    AppendRegistryDiagnostics(RuntimeStorage.LogPath("KHARVOX.log"),
                         launchId, "after-final-cleanup", key, manifestPath);
             }
             catch { }
@@ -804,9 +804,9 @@ internal static class KharvoxRunner
                     {
                         var target = FindDoomWindow(currentGame);
                         var focused = target != IntPtr.Zero && FocusWindow(target, currentGame.Id);
-                        AppendFocusLog(Path.Combine(Path.GetTempPath(), "KHARVOX.log"), "post-intro-handoff", focused, foregroundPid, 1);
+                        AppendFocusLog(RuntimeStorage.LogPath("KHARVOX.log"), "post-intro-handoff", focused, foregroundPid, 1);
                     }
-                    else AppendFocusLog(Path.Combine(Path.GetTempPath(), "KHARVOX.log"), "post-handoff-other-app-preserved", false, foregroundPid, 0);
+                    else AppendFocusLog(RuntimeStorage.LogPath("KHARVOX.log"), "post-handoff-other-app-preserved", false, foregroundPid, 0);
                 }
                 catch (InvalidOperationException) { }
             }
