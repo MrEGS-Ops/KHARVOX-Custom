@@ -81,7 +81,14 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customMotionGloryKillSpeed = MakeCheck("Punch-Driven Glory Kill Speed", false);
     private readonly CheckBox customPhysicalChainsawGestures = MakeCheck("Physical Chainsaw Gestures", false);
+    // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
+    private readonly ComboBox gloryKillSpeedMenu = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        Width = 180,
+        FlatStyle = FlatStyle.Flat
+    };
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
     private readonly System.Windows.Forms.Timer runtimeStatusTimer = new() { Interval = 500 };
@@ -169,12 +176,8 @@ public sealed partial class MainForm : Form
                 banner.Image = new Bitmap(embeddedImage);
             }
         }
-        var headerHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black };
-        headerHost.Controls.Add(banner);
-        var mainConfigBar = BuildConfigurationBar(configurationStatusMain);
-        headerHost.Controls.Add(mainConfigBar);
-        mainConfigBar.BringToFront();
-        root.Controls.Add(headerHost);
+        // Reputation belongs only to Custom Mods, not the main launcher.
+        root.Controls.Add(banner);
 
         var profileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Padding = new Padding(8, 2, 8, 2) };
         profileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
@@ -348,56 +351,43 @@ public sealed partial class MainForm : Form
         options.Controls.Add(optionGrid);
         root.Controls.Add(options);
 
-        var customMods = MakeGroup("KHARVOX CUSTOM MODS");
+        var customMods = MakeGroup("VR MODS");
         customMods.ForeColor = Color.White;
         var customModsGrid = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
             BackColor = PanelColor,
             ForeColor = Color.White,
-            Padding = new Padding(18, 10, 18, 8),
-            RowCount = 16,
+            Padding = new Padding(12, 8, 10, 6),
             ColumnCount = 2,
-            AutoScroll = true
+            AutoScroll = false
         };
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220));
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 16; i++)
-            customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
 
-        weaponWheelRemap.Dock = DockStyle.Fill;
-        weaponWheelRemap.ForeColor = Color.White;
-        weaponWheelRemap.CheckedChanged += WeaponWheelRemapChanged;
-        statusToolTip.SetToolTip(weaponWheelRemap,
-            "On: A tap/hold controls quick weapon / weapon wheel and right-stick down toggles crouch. Off: official KHARVOX controls.");
-        customModsGrid.Controls.Add(weaponWheelRemap, 0, 0);
-        customModsGrid.SetColumnSpan(weaponWheelRemap, 2);
-
+        gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
+        gloryKillSpeedMenu.Items.Add("0 — Full speed");
+        for (var speed = 1; speed < 10; speed++)
+            gloryKillSpeedMenu.Items.Add(speed + " — Slower");
+        gloryKillSpeedMenu.Items.Add("10 — Native");
+        gloryKillSpeedMenu.SelectedIndexChanged += (_, _) =>
+        {
+            if (gloryKillSpeedMenu.SelectedIndex >= 0
+                && gloryKillSlowmo.Value != gloryKillSpeedMenu.SelectedIndex)
+                gloryKillSlowmo.Value = gloryKillSpeedMenu.SelectedIndex;
+        };
+        gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
+        statusToolTip.SetToolTip(gloryKillSpeedMenu,
+            "0 = full speed, 1–9 = custom Glory Kill slow motion, 10 = native DOOM timing.");
         customModsGrid.Controls.Add(new Label
         {
-            Text = "Glory Kill Speed",
-            ForeColor = Color.White,
+            Text = "Glory Kill speed",
             Dock = DockStyle.Fill,
+            ForeColor = Color.Gainsboro,
             TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 1);
-        var gloryKillRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty,
-            RowCount = 1,
-            ColumnCount = 2
-        };
-        gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
-        gloryKillSlowmo.AccessibleName = "Glory Kill Speed";
-        gloryKillSlowmoValue.ForeColor = Color.White;
-        gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
-        statusToolTip.SetToolTip(gloryKillSlowmo,
-            "0 = full speed. 1-9 = progressively slower custom Glory Kill speed. 10 = official DOOM native Glory Kill speed.");
-        gloryKillRow.Controls.Add(gloryKillSlowmo, 0, 0);
-        gloryKillRow.Controls.Add(gloryKillSlowmoValue, 1, 0);
-        customModsGrid.Controls.Add(gloryKillRow, 1, 1);
+        }, 0, 0);
+        gloryKillSpeedMenu.Dock = DockStyle.Fill;
+        customModsGrid.Controls.Add(gloryKillSpeedMenu, 1, 0);
 
         var customChecks = new (CheckBox Box, string Tip)[]
         {
@@ -416,22 +406,59 @@ public sealed partial class MainForm : Form
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
             (customPhysicalChainsawGestures, "Experimental gesture checkpoints for chainsaw kill animations. Supervisor-assisted while animation states are being mapped.")
         };
-        for (var i = 0; i < customChecks.Length; i++)
+
+        // Number alphabetically, so requires/disables references are usable.
+        // This is UI-only; existing checkbox identities and dependencies stay
+        // exactly as they were.
+        var allCustomMods = customChecks
+            .Concat(new[] { (Box: weaponWheelRemap,
+                Tip: "Use the KHARVOX weapon wheel control remap.") })
+            .OrderBy(x => x.Box.Text, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        var modNumber = allCustomMods.Select((entry, i) => (entry.Box, Number: i + 1))
+            .ToDictionary(x => x.Box, x => x.Number);
+        string Number(CheckBox box) => "#" + modNumber[box];
+        for (var i = 0; i < allCustomMods.Length; i++)
         {
-            var check = customChecks[i].Box;
+            var (check, tip) = allCustomMods[i];
+            string dependencies = "";
+            if (check == customDirectionalDash)
+                dependencies = " — Requires " + Number(weaponWheelRemap)
+                    + ", " + Number(customBehindHeadWeaponWheel)
+                    + "; disables " + Number(customDisableWeaponWheel);
+            else if (check == customDisableWeaponWheel)
+                dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)
+                    + ", " + Number(customDirectionalDash);
+            else if (check == customDisableHud)
+                dependencies = " — Disables " + Number(customBackOfHandHud);
+            else if (check == customBackOfHandHud)
+                dependencies = " — Disables " + Number(customDisableHud);
+            else if (check == customBehindHeadWeaponWheel)
+                dependencies = " — Disables " + Number(customDisableWeaponWheel);
+            else if (check == customBehindHeadWheelHandSelection)
+                dependencies = " — Requires " + Number(customBehindHeadWeaponWheel);
+            else if (check == customDynamicShoulderHolster)
+                dependencies = " — Requires Enable Hands (main launcher)";
+            check.Text = (i + 1).ToString("00") + ". " + check.Text + dependencies;
             check.Dock = DockStyle.Fill;
+            check.AutoSize = false;
             check.ForeColor = Color.White;
-            check.CheckedChanged += CustomModChanged;
-            statusToolTip.SetToolTip(check, customChecks[i].Tip);
-            customModsGrid.Controls.Add(check, 0, i + 2);
+            check.Margin = new Padding(2, 0, 1, 0);
+            check.CheckedChanged += check == weaponWheelRemap
+                ? WeaponWheelRemapChanged : CustomModChanged;
+            statusToolTip.SetToolTip(check, tip
+                + (dependencies.Length == 0 ? "" : Environment.NewLine
+                    + dependencies.TrimStart(' ', '—')));
+            customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            customModsGrid.Controls.Add(check, 0, i + 1);
             customModsGrid.SetColumnSpan(check, 2);
         }
-
+        customModsGrid.RowStyles.Insert(0, new RowStyle(SizeType.Absolute, 32));
+        customModsGrid.RowCount = allCustomMods.Length + 1;
         customMods.Controls.Add(customModsGrid);
 
-        // Resource mods will appear here as each KHARVOX-authored patch is validated.
-        // Keep the external loader installer separate from the game and VR hooks.
-        customMods.Text = "VR MODS";
+        // The content currently occupies 15 x 28px plus compact speed menu.
+        // Fit to it instead of putting another nested scrollbar on the form.
         var doomMods = MakeGroup("DOOM MODS");
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
@@ -440,15 +467,17 @@ public sealed partial class MainForm : Form
             Padding = new Padding(12, 10, 12, 8), BackColor = PanelColor
         };
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        doomGrid.Controls.Add(new Label
+        var loaderDescription = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "DOOM resource mods use DOOMModLoader. Downloaded from the author's official GitHub release on first use."
-        }, 0, 0);
+            Text = "DOOM resource mods require DOOMModLoader."
+                + Environment.NewLine + "First install downloads from the official GitHub release."
+        };
+        doomGrid.Controls.Add(loaderDescription, 0, 0);
         var loaderStatusLabel = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Gainsboro,
@@ -456,7 +485,7 @@ public sealed partial class MainForm : Form
         };
         var loaderInstallButton = new Button
         {
-            Dock = DockStyle.Left, Width = 220, FlatStyle = FlatStyle.Flat,
+            Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.White
         };
         loaderInstallButton.FlatAppearance.BorderColor = Color.DimGray;
@@ -469,19 +498,21 @@ public sealed partial class MainForm : Form
                     loaderStatusLabel.Text = "DOOMModLoader v"
                         + DoomModLoaderInstaller.Version + " — Verified";
                     loaderStatusLabel.ForeColor = Color.LightGreen;
-                    loaderInstallButton.Text = "Verify Installation";
+                    loaderInstallButton.Text = "Verify";
                     break;
                 case DoomModLoaderInstaller.InstallationState.RepairRequired:
                     loaderStatusLabel.Text = "DOOMModLoader — Repair required";
                     loaderStatusLabel.ForeColor = Color.Orange;
-                    loaderInstallButton.Text = "Repair Installation…";
+                    loaderInstallButton.Text = "Repair…";
                     break;
                 default:
                     loaderStatusLabel.Text = "DOOMModLoader — Not installed";
                     loaderStatusLabel.ForeColor = Color.Gainsboro;
-                    loaderInstallButton.Text = "Install DOOMModLoader…";
+                    loaderInstallButton.Text = "Install…";
                     break;
             }
+            loaderDescription.Visible = result.State != DoomModLoaderInstaller.InstallationState.Verified;
+            doomGrid.RowStyles[0].Height = loaderDescription.Visible ? 58 : 0;
             statusToolTip.SetToolTip(loaderStatusLabel, result.Details);
             statusToolTip.SetToolTip(loaderInstallButton, result.Details);
         };
@@ -511,8 +542,17 @@ public sealed partial class MainForm : Form
                 installerDialog.ShowDialog(customOptionsForm);
             refreshLoaderStatus();
         };
-        doomGrid.Controls.Add(loaderStatusLabel, 0, 1);
-        doomGrid.Controls.Add(loaderInstallButton, 0, 2);
+        var loaderRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Padding = Padding.Empty, Margin = Padding.Empty
+        };
+        loaderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        loaderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
+        loaderStatusLabel.AutoEllipsis = true;
+        loaderRow.Controls.Add(loaderStatusLabel, 0, 0);
+        loaderRow.Controls.Add(loaderInstallButton, 1, 0);
+        doomGrid.Controls.Add(loaderRow, 0, 1);
         doomGrid.Controls.Add(new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
@@ -527,9 +567,9 @@ public sealed partial class MainForm : Form
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
-            AutoScroll = true,
+            AutoScroll = false,
             Margin = Padding.Empty,
-            Padding = new Padding(2, 4, 2, 4),
+            Padding = new Padding(2, 2, 2, 2),
             BackColor = PanelColor
         };
         var plannedDoomChecks = new (string Name, string Description)[]
@@ -550,7 +590,7 @@ public sealed partial class MainForm : Form
                 AutoSize = true,
                 Enabled = false,
                 Checked = false,
-                Margin = new Padding(3, 6, 3, 6),
+                Margin = new Padding(3, 3, 3, 3),
                 ForeColor = Color.Gainsboro
             };
             statusToolTip.SetToolTip(placeholder,
@@ -650,12 +690,12 @@ public sealed partial class MainForm : Form
             Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
         customMods.Dock = DockStyle.Fill;
         doomMods.Dock = DockStyle.Fill;
-        modColumns.Controls.Add(customMods, 0, 0);
-        modColumns.Controls.Add(doomMods, 1, 0);
+        modColumns.Controls.Add(doomMods, 0, 0);
+        modColumns.Controls.Add(customMods, 1, 0);
         customOptionsForm = CreateCustomOptionsForm(modColumns);
 
         var tuning = MakeGroup("MOVEMENT");
@@ -1090,6 +1130,9 @@ public sealed partial class MainForm : Form
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
         physicalGlorykillSpeedValue.Text = SelectedPhysicalGlorykillSpeed()
             .ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
+        if (gloryKillSpeedMenu.Items.Count > gloryKillSlowmo.Value
+            && gloryKillSpeedMenu.SelectedIndex != gloryKillSlowmo.Value)
+            gloryKillSpeedMenu.SelectedIndex = gloryKillSlowmo.Value;
         gloryKillSlowmoValue.Text = gloryKillSlowmo.Value switch
         {
             0 => "0 (Off)",
