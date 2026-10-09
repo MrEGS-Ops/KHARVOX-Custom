@@ -39,11 +39,17 @@ internal static class CustomModSettingsStore
         {
             if (!File.Exists(path)) return new CustomModSettings();
             var value = Serializer.Deserialize<CustomModSettings>(File.ReadAllText(path));
-            return value ?? new CustomModSettings();
+            if (value is null || value.Schema != CustomModSettings.CurrentSchema)
+                throw new InvalidDataException("Invalid custom-mod settings schema.");
+            return value;
         }
-        catch
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+            || ex is InvalidDataException || ex is ArgumentException
+            || ex is System.Web.HttpException)
         {
-            return new CustomModSettings();
+            throw new InvalidDataException(
+                "KHARVOX VR mod settings are unreadable. The existing file has not been changed."
+                + Environment.NewLine + "Repair or restore: " + path, ex);
         }
     }
 

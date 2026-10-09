@@ -1482,10 +1482,13 @@ public sealed class MainForm : Form
                         + "Selection is saved and will apply on the next DOOM launch.");
                     option.CheckedChanged += (_, _) =>
                     {
-                        var saved = DoomUserMods.LoadSelections();
-                        if (option.Checked) saved.Add(mod.Id);
-                        else saved.Remove(mod.Id);
-                        try { DoomUserMods.SaveSelections(saved); }
+                        try
+                        {
+                            var saved = DoomUserMods.LoadSelections();
+                            if (option.Checked) saved.Add(mod.Id);
+                            else saved.Remove(mod.Id);
+                            DoomUserMods.SaveSelections(saved);
+                        }
                         catch (Exception ex)
                         {
                             MessageBox.Show(customOptionsForm, ex.Message,
@@ -1515,10 +1518,10 @@ public sealed class MainForm : Form
                     missingOption.CheckedChanged += (_, _) =>
                     {
                         if (missingOption.Checked) return;
-                        var saved = DoomUserMods.LoadSelections();
-                        saved.Remove(missingId);
                         try
                         {
+                            var saved = DoomUserMods.LoadSelections();
+                            saved.Remove(missingId);
                             DoomUserMods.SaveSelections(saved);
                             BeginInvoke((Action)RefreshUserDoomMods);
                         }

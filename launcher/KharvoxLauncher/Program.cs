@@ -39,8 +39,17 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "-run", StringComparison.OrdinalIgnoreCase)))
             return RunSavedSettings();
 
-        Application.Run(new MainForm());
-        return 0;
+        try
+        {
+            Application.Run(new MainForm());
+            return 0;
+        }
+        catch (InvalidDataException ex)
+        {
+            MessageBox.Show(ex.Message, "KHARVOX — Settings need repair",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 2;
+        }
     }
 
     private static int RunSavedSettings()

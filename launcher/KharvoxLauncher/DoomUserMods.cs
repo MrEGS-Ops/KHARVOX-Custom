@@ -86,13 +86,19 @@ internal static class DoomUserMods
             if (!File.Exists(file)) return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var selection = new JavaScriptSerializer().Deserialize<SelectionFileData>(
                 File.ReadAllText(file));
-            return new HashSet<string>(selection?.Selected ?? Array.Empty<string>(),
-                StringComparer.OrdinalIgnoreCase);
+            if (selection is null || selection.Schema != 1 || selection.Selected is null)
+                throw new InvalidDataException("Invalid DOOM mod selection schema.");
+            return new HashSet<string>(selection.Selected, StringComparer.OrdinalIgnoreCase);
         }
-        catch
+        catch (Exception error) when (error is IOException
+            || error is UnauthorizedAccessException || error is InvalidDataException
+            || error is ArgumentException || error is System.Web.HttpException)
         {
-            // Corrupt config must never silently enable unknown mods.
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            // Empty selections would remove already-installed mods on the next
+            // launch. Preserve the user's file and require a conscious repair.
+            throw new InvalidDataException(
+                "KHARVOX cannot read DOOM mod selections. The existing mod setup is unchanged."
+                + Environment.NewLine + "Repair or restore: " + (path ?? SelectionsFile), error);
         }
     }
 
@@ -150,8 +156,11 @@ internal static class DoomUserMods
             if (!LoadSelections(settings).SetEquals(persisted))
                 throw new InvalidOperationException("Checkbox deselection did not persist.");
             File.WriteAllText(settings, "{invalid");
-            if (LoadSelections(settings).Count != 0)
-                throw new InvalidOperationException("Invalid selection config must fail closed.");
+            var rejected = false;
+            try { LoadSelections(settings); } catch (InvalidDataException) { rejected = true; }
+            if (!rejected || File.ReadAllText(settings) != "{invalid")
+                throw new InvalidOperationException(
+                    "Invalid selections must fail loudly and preserve the corrupt input.");
 
             Console.WriteLine("DOOM user mod discovery and selection tests passed.");
             return 0;
