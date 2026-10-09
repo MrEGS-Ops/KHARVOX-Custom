@@ -97,6 +97,10 @@ public sealed class MainForm : Form
     private readonly Button launchButton = new();
     private bool applyingCustomModDependencies;
     private Form? customOptionsForm;
+    private FlowLayoutPanel? userDoomModChecks;
+    private Label? userDoomModStatus;
+    private FileSystemWatcher? userDoomModWatcher;
+    private readonly System.Windows.Forms.Timer userDoomModDebounce = new() { Interval = 450 };
     private DevModeForm? devModeForm;
     private CracktroForm? cracktroForm;
     private bool nextCracktroIsAmiga;
@@ -543,6 +547,83 @@ public sealed class MainForm : Form
                 planned.Description + " Placeholder only — not implemented.");
             plannedDoomMods.Controls.Add(placeholder);
         }
+        plannedDoomMods.Controls.Add(new Label
+        {
+            Text = "USER MODS",
+            AutoSize = false, Width = 340, Height = 30,
+            ForeColor = Color.White,
+            Font = new Font(Font, FontStyle.Bold),
+            TextAlign = ContentAlignment.BottomLeft,
+            Margin = new Padding(3, 12, 3, 3)
+        });
+        var userButtons = new FlowLayoutPanel
+        {
+            Width = 350, Height = 39, WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = Padding.Empty
+        };
+        var openUserFolder = new Button
+        {
+            Text = "Open Mods Folder", Size = new Size(180, 30),
+            FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
+            BackColor = Color.FromArgb(43, 43, 47)
+        };
+        openUserFolder.FlatAppearance.BorderColor = Color.DimGray;
+        statusToolTip.SetToolTip(openUserFolder,
+            "Drop .zip files or unpacked mod folders in KHARVOX/mods/doom/user.");
+        openUserFolder.Click += (_, _) =>
+        {
+            try
+            {
+                Directory.CreateDirectory(DoomUserMods.Folder);
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", "\"" + DoomUserMods.Folder + "\"")
+                {
+                    UseShellExecute = true
+                })?.Dispose();
+                RefreshUserDoomMods();
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show(customOptionsForm,
+                    "Could not open mods folder: " + error.Message,
+                    "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        var rescanUserMods = new Button
+        {
+            Text = "Rescan", Size = new Size(105, 30),
+            FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
+            BackColor = Color.FromArgb(43, 43, 47)
+        };
+        rescanUserMods.FlatAppearance.BorderColor = Color.DimGray;
+        rescanUserMods.Click += (_, _) => RefreshUserDoomMods();
+        userButtons.Controls.Add(openUserFolder);
+        userButtons.Controls.Add(rescanUserMods);
+        plannedDoomMods.Controls.Add(userButtons);
+
+        userDoomModStatus = new Label
+        {
+            Text = "Drop ZIPs or unpacked mod folders here.",
+            AutoSize = false, Width = 342, Height = 50,
+            ForeColor = Color.Silver, Margin = new Padding(3, 2, 3, 3)
+        };
+        plannedDoomMods.Controls.Add(userDoomModStatus);
+        userDoomModChecks = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = false, AutoSize = true,
+            MinimumSize = new Size(340, 0),
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor
+        };
+        plannedDoomMods.Controls.Add(userDoomModChecks);
+        userDoomModDebounce.Tick += (_, _) =>
+        {
+            userDoomModDebounce.Stop();
+            if (customOptionsForm?.Visible == true) RefreshUserDoomMods();
+        };
+
         doomGrid.Controls.Add(plannedDoomMods, 0, 4);
         doomMods.Controls.Add(doomGrid);
 
@@ -732,6 +813,9 @@ public sealed class MainForm : Form
         FormClosing += (_, _) =>
         {
             runtimeStatusTimer.Stop();
+            userDoomModDebounce.Stop();
+            userDoomModWatcher?.Dispose();
+            userDoomModWatcher = null;
             SaveSettings();
             SaveCustomModSettings();
         };
@@ -1332,9 +1416,112 @@ public sealed class MainForm : Form
         return form;
     }
 
+    private void QueueUserDoomModScan()
+    {
+        // Watcher callbacks run off-thread; debounce bursts of Explorer writes.
+        if (IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                if (IsDisposed) return;
+                userDoomModDebounce.Stop();
+                userDoomModDebounce.Start();
+            }));
+        }
+        catch (InvalidOperationException) { }
+    }
+
+    private void EnsureUserDoomModWatcher()
+    {
+        if (userDoomModWatcher is not null) return;
+        Directory.CreateDirectory(DoomUserMods.Folder);
+        userDoomModWatcher = new FileSystemWatcher(DoomUserMods.Folder)
+        {
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
+                | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = false
+        };
+        userDoomModWatcher.Created += (_, _) => QueueUserDoomModScan();
+        userDoomModWatcher.Deleted += (_, _) => QueueUserDoomModScan();
+        userDoomModWatcher.Renamed += (_, _) => QueueUserDoomModScan();
+        userDoomModWatcher.Changed += (_, _) => QueueUserDoomModScan();
+        userDoomModWatcher.Error += (_, _) => QueueUserDoomModScan();
+        userDoomModWatcher.EnableRaisingEvents = true;
+    }
+
+    private void RefreshUserDoomMods()
+    {
+        if (userDoomModChecks is null || userDoomModStatus is null) return;
+        try
+        {
+            var detected = DoomUserMods.Scan(doomPath.Text);
+            var selections = DoomUserMods.LoadSelections();
+            var list = userDoomModChecks;
+            list.SuspendLayout();
+            try
+            {
+                foreach (Control child in list.Controls.Cast<Control>().ToArray())
+                {
+                    list.Controls.Remove(child);
+                    child.Dispose();
+                }
+
+                foreach (var mod in detected)
+                {
+                    var option = new CheckBox
+                    {
+                        Text = mod.Name + (mod.IsFromDoom ? "  [DOOM Mods]" : ""),
+                        Checked = selections.Contains(mod.Id),
+                        AutoSize = true,
+                        MaximumSize = new Size(335, 0),
+                        ForeColor = Color.Gainsboro,
+                        Margin = new Padding(3, 4, 3, 4)
+                    };
+                    statusToolTip.SetToolTip(option, mod.FullPath + Environment.NewLine
+                        + "Selection is saved. Resource loading is not active yet.");
+                    option.CheckedChanged += (_, _) =>
+                    {
+                        var saved = DoomUserMods.LoadSelections();
+                        if (option.Checked) saved.Add(mod.Id);
+                        else saved.Remove(mod.Id);
+                        try { DoomUserMods.SaveSelections(saved); }
+                        catch (Exception ex)
+                        {
+                            MessageBox.Show(customOptionsForm, ex.Message,
+                                "KHARVOX — Unable to save mod selection",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+                    };
+                    list.Controls.Add(option);
+                }
+            }
+            finally { list.ResumeLayout(); }
+
+            userDoomModStatus.Text = detected.Count == 0
+                ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
+                : detected.Count + " mod(s) found. Selections saved; resource loading not yet active.";
+        }
+        catch (Exception error)
+        {
+            userDoomModStatus.Text = "Could not scan mods: " + error.Message;
+        }
+    }
+
     private void ShowCustomOptions()
     {
         if (customOptionsForm is null || customOptionsForm.IsDisposed) return;
+        try
+        {
+            EnsureUserDoomModWatcher();
+            RefreshUserDoomMods();
+        }
+        catch (Exception error)
+        {
+            if (userDoomModStatus is not null)
+                userDoomModStatus.Text = "Cannot access mods folder: " + error.Message;
+        }
+
         if (!customOptionsForm.Visible) customOptionsForm.Show(this);
         if (customOptionsForm.WindowState == FormWindowState.Minimized)
             customOptionsForm.WindowState = FormWindowState.Normal;
