@@ -45,7 +45,7 @@ internal static class CustomModSettingsStore
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
             || ex is InvalidDataException || ex is ArgumentException
-            || ex is System.Web.HttpException)
+            || ex is InvalidOperationException)
         {
             throw new InvalidDataException(
                 "KHARVOX VR mod settings are unreadable. The existing file has not been changed."

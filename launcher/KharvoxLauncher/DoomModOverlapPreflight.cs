@@ -50,7 +50,7 @@ internal static class DoomModOverlapPreflight
 
     internal static void EnsureNoResourceOverlap(IEnumerable<DoomUserMods.ModEntry> mods)
     {
-        var owners = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var owners = new Dictionary<string, DoomUserMods.ModEntry>(StringComparer.OrdinalIgnoreCase);
         var allConflicts = new List<string>();
         foreach (var mod in mods)
         {
@@ -65,11 +65,12 @@ internal static class DoomModOverlapPreflight
                 if (!insideMod.Add(path))
                     throw new InvalidDataException(
                         "Duplicate game resource within mod " + mod.Name + ": " + path);
-                if (owners.TryGetValue(path, out var previous) && previous != mod.Name)
+                if (owners.TryGetValue(path, out var previous)
+                    && !string.Equals(previous.Id, mod.Id, StringComparison.OrdinalIgnoreCase))
                     allConflicts.Add(path + Environment.NewLine
-                        + "  Mod A: " + previous + Environment.NewLine
-                        + "  Mod B: " + mod.Name);
-                else owners[path] = mod.Name;
+                        + "  Mod A: " + previous.Name + " [" + previous.Id + "]"
+                        + Environment.NewLine + "  Mod B: " + mod.Name + " [" + mod.Id + "]");
+                else owners[path] = mod;
             }
         }
         if (allConflicts.Count != 0)

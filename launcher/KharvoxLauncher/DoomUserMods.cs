@@ -92,7 +92,7 @@ internal static class DoomUserMods
         }
         catch (Exception error) when (error is IOException
             || error is UnauthorizedAccessException || error is InvalidDataException
-            || error is ArgumentException || error is System.Web.HttpException)
+            || error is ArgumentException || error is InvalidOperationException)
         {
             // Empty selections would remove already-installed mods on the next
             // launch. Preserve the user's file and require a conscious repair.
