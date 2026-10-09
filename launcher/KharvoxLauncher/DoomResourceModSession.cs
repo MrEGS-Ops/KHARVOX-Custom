@@ -285,7 +285,7 @@ internal static class DoomResourceModSession
             var completed = await Task.WhenAny(
                 Task.Run(() => process.WaitForExit()), Task.Delay(LoaderTimeout))
                 .ConfigureAwait(false);
-            if (completed is not Task<int> && !process.HasExited)
+            if (!process.HasExited)
             {
                 try { process.Kill(); } catch { }
                 process.WaitForExit();
@@ -338,7 +338,7 @@ internal static class DoomResourceModSession
         }
     }
 
-    internal static async Task PrepareAsync(string runtimeDir, string gameDir,
+    internal static async Task<bool> PrepareAsync(string runtimeDir, string gameDir,
         Action<string>? statusUpdate)
     {
         var selectedIds = DoomUserMods.LoadSelections();
@@ -357,7 +357,7 @@ internal static class DoomResourceModSession
         var manifest = LoadManifest(statePath);
 
         // If nothing has ever been installed by KHARVOX, leave DOOM completely alone.
-        if (selected.Length == 0 && manifest is null) return;
+        if (selected.Length == 0 && manifest is null) return false;
 
         if (!DoomModLoaderInstaller.IsInstalled)
             throw new InvalidOperationException(
@@ -374,11 +374,14 @@ internal static class DoomResourceModSession
             && manifest.Fingerprint == fingerprint)
         {
             statusUpdate?.Invoke("DOOM resource mods already match selected checkboxes.");
-            return;
+            return selected.Length != 0;
         }
 
         statusUpdate?.Invoke("Preparing " + selected.Length + " selected DOOM mods...");
         Stage(runtimeDir, selected);
+        if (Fingerprint(selected) != fingerprint)
+            throw new InvalidOperationException(
+                "A source DOOM mod changed while it was being copied. Try launching again.");
 
         // A loader failure cannot leave partially rebuilt KHARVOX patches
         // silently active: back up and restore the exact pre-run resources.
@@ -429,13 +432,16 @@ internal static class DoomResourceModSession
         finally
         {
             // Preserve the backup if recovery failed; never delete the only copy.
-            var latest = LoadManifest(statePath);
-            var resources = GetGeneratedResources(gameDir);
-            if (latest is not null && SameFiles(latest.Files, resources)
-                && Directory.Exists(backup))
+            try
             {
-                try { Directory.Delete(backup, true); } catch { }
+                var latest = LoadManifest(statePath);
+                var resources = GetGeneratedResources(gameDir);
+                if (latest is not null && SameFiles(latest.Files, resources)
+                    && Directory.Exists(backup))
+                    Directory.Delete(backup, true);
             }
+            catch { /* Never shadow a failed apply/recovery with cleanup errors. */ }
         }
+        return selected.Length != 0;
     }
 }
