@@ -1640,10 +1640,12 @@ public sealed class MainForm : Form
             await KharvoxRunner.LaunchAsync(options, () => OnUi(() => {
                 SetRunningState(true);
                 launchButton.Enabled = true;
-                status.Text = "Game running";
+                // Keep the final renderer verification status instead of
+                // overwriting warnings with the generic "Game running".
             }), message => OnUi(() => status.Text = message));
-            SetRunningState(KharvoxRunner.IsRunning);
-            status.Text = KharvoxRunner.IsRunning ? "Game running" : "DOOM ended.";
+            var gameStillRunning = KharvoxRunner.IsRunning;
+            SetRunningState(gameStillRunning);
+            if (!gameStillRunning) status.Text = "DOOM ended.";
         }
         catch (Exception ex)
         {

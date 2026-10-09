@@ -86,11 +86,15 @@ internal static class Program
                     () => Log("Startup result=healthy; launcher is closing and DOOM remains running."),
                     message => Log("Status: " + message)))
                 .GetAwaiter().GetResult();
-            if (options.EnableBhaptics)
+            var supervisorRequired = CustomModSettingsStore.Load().SupervisorRequired;
+            if (options.EnableBhaptics || options.UsePsvr2Toolkit || supervisorRequired)
             {
-                Log("bHaptics enabled; launcher remains as bridge owner until DOOM exits.");
+                Log("Helper services enabled; launcher remains their owner until DOOM exits.");
+                // IsRunning performs supervisor/bridge cleanup after the
+                // game exits; don't orphan helpers by exiting -run early.
                 while (KharvoxRunner.IsRunning) Thread.Sleep(500);
                 KharvoxRunner.StopBhapticsAsync().GetAwaiter().GetResult();
+                KharvoxRunner.StopPsvr2Async().GetAwaiter().GetResult();
             }
             Log("ExitCode=0");
             return 0;

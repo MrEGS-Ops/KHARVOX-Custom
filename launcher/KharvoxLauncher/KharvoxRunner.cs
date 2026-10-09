@@ -727,6 +727,7 @@ internal static class KharvoxRunner
                 // game start into a false-positive feature status here.
                 if (!nativeStereoEnabled && !fsr1Enabled && !sfsEnabled)
                     WriteRendererStatus(runtimeDir, "Renderer: AER 1.0");
+                statusUpdate?.Invoke("VR image confirmed — DOOM running.");
                 gameDetected?.Invoke();
                 launchSucceeded = true;
                 return;
@@ -743,7 +744,7 @@ internal static class KharvoxRunner
                     AppendDiagnostic(logPath, launchId,
                         "OpenXR session synchronized with shouldRender=false; preserving responsive DOOM process and skipping automatic restart");
                 WriteRendererStatus(runtimeDir, sfsEnabled ? "Renderer: SFS" : "Renderer: OpenXR runtime not visible; waiting for frames");
-                statusUpdate?.Invoke("OpenXR session is running but the runtime is not presenting frames. DOOM remains running; return focus to the headset/runtime.");
+                statusUpdate?.Invoke("VR unconfirmed — OpenXR runtime is not presenting frames. DOOM remains running; return focus to the headset/runtime.");
                 gameDetected?.Invoke();
                 launchSucceeded = true;
                 return;
@@ -754,7 +755,7 @@ internal static class KharvoxRunner
                 AppendDiagnostic(logPath, launchId,
                     "startup unconfirmed state=" + startup + "; preserving DOOM process");
                 WriteRendererStatus(runtimeDir, "Renderer: startup not confirmed; DOOM remains running");
-                statusUpdate?.Invoke("VR startup could not be confirmed. DOOM remains running; check the headset and runtime.");
+                statusUpdate?.Invoke("VR unconfirmed — DOOM remains running; check the headset and runtime.");
                 gameDetected?.Invoke();
                 launchSucceeded = true;
                 return;
