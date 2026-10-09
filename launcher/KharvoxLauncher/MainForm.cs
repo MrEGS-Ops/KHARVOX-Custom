@@ -414,7 +414,89 @@ public sealed class MainForm : Form
         }
 
         customMods.Controls.Add(customModsGrid);
-        customOptionsForm = CreateCustomOptionsForm(customMods);
+
+        // Resource mods will appear here as each KHARVOX-authored patch is validated.
+        // Keep the external loader installer separate from the game and VR hooks.
+        customMods.Text = "VR MODS";
+        var doomMods = MakeGroup("DOOM MODS");
+        doomMods.ForeColor = Color.White;
+        var doomGrid = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
+            Padding = new Padding(12, 10, 12, 8), BackColor = PanelColor
+        };
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        doomGrid.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill, ForeColor = Color.Silver,
+            Text = "DOOM resource mods use DOOMModLoader. Downloaded from the author's official GitHub release on first use."
+        }, 0, 0);
+        var loaderStatusLabel = new Label
+        {
+            Dock = DockStyle.Fill, ForeColor = Color.Gainsboro,
+            TextAlign = ContentAlignment.MiddleLeft
+        };
+        var loaderInstallButton = new Button
+        {
+            Dock = DockStyle.Left, Width = 220, FlatStyle = FlatStyle.Flat,
+            BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.White
+        };
+        loaderInstallButton.FlatAppearance.BorderColor = Color.DimGray;
+        Action refreshLoaderStatus = () =>
+        {
+            var installed = DoomModLoaderInstaller.IsInstalled;
+            loaderStatusLabel.Text = installed
+                ? "DOOMModLoader v" + DoomModLoaderInstaller.Version + " — Installed"
+                : "DOOMModLoader — Not installed";
+            loaderInstallButton.Text = installed ? "Recheck installation" : "Install DOOMModLoader…";
+        };
+        refreshLoaderStatus();
+        loaderInstallButton.Click += (_, _) =>
+        {
+            if (KharvoxRunner.IsRunning)
+            {
+                MessageBox.Show(customOptionsForm,
+                    "End DOOM before installing or changing resource tools.",
+                    "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (DoomModLoaderInstaller.IsInstalled)
+            {
+                MessageBox.Show(customOptionsForm,
+                    "DOOMModLoader is installed at:" + Environment.NewLine
+                    + DoomModLoaderInstaller.ExecutablePath,
+                    "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            using (var installerDialog = new DoomModLoaderInstallDialog())
+                installerDialog.ShowDialog(customOptionsForm);
+            refreshLoaderStatus();
+        };
+        doomGrid.Controls.Add(loaderStatusLabel, 0, 1);
+        doomGrid.Controls.Add(loaderInstallButton, 0, 2);
+        doomGrid.Controls.Add(new Label
+        {
+            Dock = DockStyle.Fill, ForeColor = Color.Gray,
+            Text = "KHARVOX-built DOOM resource mods will appear below as they are completed and tested."
+        }, 0, 3);
+        doomMods.Controls.Add(doomGrid);
+
+        var modColumns = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        customMods.Dock = DockStyle.Fill;
+        doomMods.Dock = DockStyle.Fill;
+        modColumns.Controls.Add(customMods, 0, 0);
+        modColumns.Controls.Add(doomMods, 1, 0);
+        customOptionsForm = CreateCustomOptionsForm(modColumns);
 
         var tuning = MakeGroup("MOVEMENT");
         var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 8, 18, 7), RowCount = 5, ColumnCount = 2 };
@@ -1131,8 +1213,8 @@ public sealed class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(620, 560),
-            MinimumSize = new Size(520, 420),
+            ClientSize = new Size(980, 620),
+            MinimumSize = new Size(750, 480),
             StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
