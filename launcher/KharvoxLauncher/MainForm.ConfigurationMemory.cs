@@ -224,8 +224,28 @@ public sealed partial class MainForm
                 }
             }
 
+            var currentSnapshot = CaptureConfiguration();
+            // Same checkbox/settings values with a changed fingerprint mean
+            // that a selected mod changed on disk. Keep this informational.
+            if (verdict == KharvoxConfigMarks.Verdict.Unmarked
+                && lastAcceptedConfiguration is not null
+                && lastAcceptedConfiguration.DoomMods.SetEquals(currentSnapshot.DoomMods)
+                && lastAcceptedConfiguration.Values.Count == currentSnapshot.Values.Count
+                && lastAcceptedConfiguration.Values.All(previous =>
+                    currentSnapshot.Values.TryGetValue(previous.Key, out var value)
+                    && Equals(previous.Value, value)))
+            {
+                foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+                {
+                    indicator.Text = "? MOD CHANGED";
+                    statusToolTip.SetToolTip(indicator,
+                        "One or more selected mods changed on disk."
+                        + Environment.NewLine
+                        + "This exact combination is now unmarked until you rate it.");
+                }
+            }
             lastConfigurationKey = key;
-            lastAcceptedConfiguration = CaptureConfiguration();
+            lastAcceptedConfiguration = currentSnapshot;
         }
         catch (Exception error)
         {
