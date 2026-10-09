@@ -3,7 +3,8 @@ param(
     [string]$Branch = "clean/custom-core",
     [string]$InstallRoot = "",
     [int]$PollSeconds = 30,
-    [switch]$NoLaunch
+    [switch]$NoLaunch,
+    [switch]$SelfTest
 )
 
 $ErrorActionPreference = "Stop"
@@ -329,6 +330,68 @@ function Install-Patch($run) {
         }
     }
     Start-Launcher
+}
+
+function Invoke-WatcherSelfTest {
+    $temp = Join-Path ([IO.Path]::GetTempPath()) ("KHARVOX-Watcher-SelfTest-" + [Guid]::NewGuid().ToString("N"))
+    $script:InstallRoot = Join-Path $temp "installation"
+    $payloadRoot = Join-Path $temp "payload"
+    try {
+        New-Item -ItemType Directory -Force -Path $InstallRoot,$payloadRoot | Out-Null
+        $userMod = Join-Path $InstallRoot "mods/doom/user/personal.zip"
+        New-Item -ItemType Directory -Force -Path (Split-Path $userMod -Parent) | Out-Null
+        [IO.File]::WriteAllText($userMod, "MY PERSONAL MOD")
+        [IO.File]::WriteAllText((Join-Path $InstallRoot "KharvoxLauncher.exe"), "old-launcher")
+        $manifestFiles = @()
+        foreach ($name in @("KharvoxLauncher.exe", "KharvoxLayer.dll", "KharvoxSupervisor.exe")) {
+            $source = Join-Path $payloadRoot $name
+            [IO.File]::WriteAllText($source, "new-$name")
+            $manifestFiles += [pscustomobject]@{
+                path=$name
+                size=(Get-Item -LiteralPath $source).Length
+                sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+            }
+        }
+        $run = [pscustomobject]@{ run_number=77; head_sha="1234567890123456789012345678901234567890" }
+        $payload = [pscustomobject]@{
+            Root=$payloadRoot
+            Manifest=[pscustomobject]@{
+                schema=1; kind="full"; run="77"; commit=$run.head_sha; files=$manifestFiles
+            }
+        }
+        Verify-Payload $payload $run "full"
+        Install-VerifiedPayload $payload $run "full"
+        if ([IO.File]::ReadAllText($userMod) -ne "MY PERSONAL MOD" -or
+            [IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLauncher.exe")) -ne "new-KharvoxLauncher.exe") {
+            throw "Full install failed to preserve user data or update launcher."
+        }
+
+        # Simulate a missing source during the second copy stage. The first
+        # replacement must be reverted, not left as a mixed installation.
+        [IO.File]::WriteAllText((Join-Path $payloadRoot "KharvoxLauncher.exe"), "broken-update")
+        Remove-Item -LiteralPath (Join-Path $payloadRoot "KharvoxLayer.dll") -Force
+        $failed = $false
+        try { Install-VerifiedPayload $payload $run "patch" } catch { $failed = $true }
+        if (!$failed -or
+            [IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLauncher.exe")) -ne "new-KharvoxLauncher.exe" -or
+            [IO.File]::ReadAllText($userMod) -ne "MY PERSONAL MOD") {
+            throw "Failed update didn't correctly roll back or lost user data."
+        }
+
+        $blocked = $false
+        try { $null = Resolve-ValidatedChild $InstallRoot "../outside.txt" }
+        catch { $blocked = $true }
+        if (!$blocked) { throw "Unsafe manifest path escaped the installation root." }
+
+        Write-Host "KHARVOX watcher preservation, rollback, and path self-tests passed."
+    } finally {
+        Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($SelfTest) {
+    Invoke-WatcherSelfTest
+    exit 0
 }
 
 Write-Status "KHARVOX Custom Watcher" Cyan
