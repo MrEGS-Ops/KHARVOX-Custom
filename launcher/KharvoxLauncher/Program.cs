@@ -34,6 +34,10 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        if (args.Any(argument => string.Equals(argument, "--self-test-custom-mods-ui",
+                StringComparison.OrdinalIgnoreCase)))
+            return MainForm.RunCustomModsUiSelfTest();
+
         if (args.Any(argument => string.Equals(argument, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest.Run();
 
