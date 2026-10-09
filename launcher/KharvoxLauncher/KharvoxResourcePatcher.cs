@@ -32,6 +32,7 @@ internal static class KharvoxResourcePatcher
         internal int ResourceCount;
         internal int Replaced;
         internal int Added;
+        internal int ConfigsMerged;
         internal string IndexPath = "";
         internal string PatchPath = "";
         internal string[] Skipped = Array.Empty<string>();
@@ -278,6 +279,97 @@ internal static class KharvoxResourcePatcher
         return true;
     }
 
+    private const int MaxMergeConfigSize = 2 * 1024 * 1024;
+
+    private static bool IsMergeableConfig(string path)
+    {
+        var extension = Path.GetExtension(path);
+        return extension.Equals(".json", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ini", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".cfg", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static byte[] ReadBounded(Stream stream, long expectedSize)
+    {
+        if (expectedSize < 0 || expectedSize > MaxMergeConfigSize)
+            throw new InvalidDataException("Config is too large for safe automatic merging.");
+        using (stream)
+        using (var buffer = new MemoryStream())
+        {
+            stream.CopyTo(buffer);
+            if (buffer.Length != expectedSize || buffer.Length > MaxMergeConfigSize)
+                throw new InvalidDataException("Config resource content length mismatch.");
+            return buffer.ToArray();
+        }
+    }
+
+    private static byte[] ReadOriginalConfig(string indexPath, Record entry)
+    {
+        if (entry.PlainSize > MaxMergeConfigSize || entry.StoredSize > MaxMergeConfigSize)
+            throw new NotSupportedException("Original config too large for merging.");
+
+        var parent = Path.GetDirectoryName(Path.GetFullPath(indexPath))!;
+        var stem = Path.GetFileNameWithoutExtension(indexPath);
+        if (stem.Length >= 4 && stem[stem.Length - 4] == '_'
+            && stem.Substring(stem.Length - 3).All(char.IsDigit))
+            stem = stem.Substring(0, stem.Length - 4);
+
+        string dataName;
+        if (entry.PatchNumber == 0) dataName = stem + ".resources";
+        else if (entry.PatchNumber == 1) dataName = stem + ".patch";
+        else dataName = stem + "_" + entry.PatchNumber.ToString("D3") + ".patch";
+        var dataPath = Path.Combine(parent, dataName);
+        using (var stream = File.OpenRead(dataPath))
+        {
+            var marker = new byte[4];
+            if (stream.Read(marker, 0, marker.Length) != marker.Length
+                || !marker.SequenceEqual(Signature)
+                || entry.Offset < 4
+                || entry.Offset > stream.Length
+                || entry.StoredSize > stream.Length - entry.Offset)
+                throw new InvalidDataException("Original DOOM config data reference is invalid.");
+
+            stream.Position = entry.Offset;
+            var stored = new byte[entry.StoredSize];
+            if (stream.Read(stored, 0, stored.Length) != stored.Length)
+                throw new InvalidDataException("Original config is truncated.");
+            if (entry.PlainSize == entry.StoredSize) return stored;
+            using (var input = new MemoryStream(stored, writable: false))
+            using (var decompressor = new DeflateStream(input, CompressionMode.Decompress))
+                return ReadBounded(decompressor, entry.PlainSize);
+        }
+    }
+
+    private static Record CopyRecord(Record value) => new Record
+    {
+        Id = value.Id,
+        Type = value.Type,
+        ShortName = value.ShortName,
+        FileName = value.FileName,
+        Offset = value.Offset,
+        PlainSize = value.PlainSize,
+        StoredSize = value.StoredSize,
+        Flags = value.Flags,
+        PatchNumber = value.PatchNumber
+    };
+
+    private static void WriteChangedResource(Stream target, Record[] entries,
+        byte outputPatchNumber, byte[] data)
+    {
+        var aligned = (target.Position + 15) & ~15L;
+        while (target.Position < aligned) target.WriteByte(0);
+        var offset = target.Position;
+        target.Write(data, 0, data.Length);
+        foreach (var item in entries)
+        {
+            item.Offset = data.Length == 0 ? 0 : offset;
+            item.PlainSize = data.Length;
+            item.StoredSize = data.Length;
+            item.PatchNumber = outputPatchNumber;
+            if (data.Length == 0) item.FileName = "";
+        }
+    }
+
     internal static Result Build(string originalIndex, IEnumerable<string> selectedMods,
         byte outputPatchNumber, string outputIndex, string outputData,
         Action<string>? update = null)
@@ -286,13 +378,18 @@ internal static class KharvoxResourcePatcher
             throw new ArgumentOutOfRangeException(nameof(outputPatchNumber));
         if (File.Exists(outputIndex) || File.Exists(outputData))
             throw new IOException("Destination files already exist.");
-        var records = ReadIndex(originalIndex);
+        var originals = ReadIndex(originalIndex);
+        var originalLookup = originals.Where(x => x.FileName.Length != 0)
+            .GroupBy(x => x.FileName.Replace('\\', '/').ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        var records = originals.Select(CopyRecord).ToList();
         var lookups = records.Where(x => x.FileName.Length != 0)
             .GroupBy(x => x.FileName.Replace('\\', '/').ToLowerInvariant())
             .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
         // Never choose an implicit winner based on mod enumeration order.
         // The user should disable an overlapping mod or explicitly resolve it.
         var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        var mergedConfig = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var result = new Result { ResourceCount = records.Count,
             IndexPath = outputIndex, PatchPath = outputData };
         var skipped = new List<string>();
@@ -306,11 +403,33 @@ internal static class KharvoxResourcePatcher
                 {
                     if (seen.TryGetValue(resource.Path, out var firstSource))
                     {
+                        string reason;
+                        if (IsMergeableConfig(resource.Path)
+                            && mergedConfig.TryGetValue(resource.Path, out var previouslyApplied)
+                            && originalLookup.TryGetValue(resource.Path, out var original))
+                        {
+                            var baseline = ReadOriginalConfig(originalIndex, original);
+                            var incoming = ReadBounded(resource.Open(), resource.Size);
+                            if (KharvoxSimpleConfigMerge.TryMerge(resource.Path,
+                                    baseline, previouslyApplied, incoming,
+                                    out var merged, out reason))
+                            {
+                                WriteChangedResource(target, lookups[resource.Path],
+                                    outputPatchNumber, merged);
+                                mergedConfig[resource.Path] = merged;
+                                result.ConfigsMerged++;
+                                update?.Invoke("Merged simple config " + resource.Path);
+                                continue;
+                            }
+                        }
+                        else reason = "Unsupported resource type or no original config available.";
+
                         throw new InvalidOperationException(
                             "DOOM mod conflict: two enabled mods modify the same resource."
                             + Environment.NewLine + "Resource: " + resource.Path
                             + Environment.NewLine + "Mod 1: " + firstSource
                             + Environment.NewLine + "Mod 2: " + resource.Source
+                            + Environment.NewLine + "Reason: " + reason
                             + Environment.NewLine + "Uncheck one of these mods in KHARVOX."
                             + Environment.NewLine + "No file was installed or overwritten.");
                     }
@@ -344,24 +463,32 @@ internal static class KharvoxResourcePatcher
                     }
                     else result.Replaced += matches.Length;
 
-                    var aligned = (target.Position + 15) & ~15L;
-                    while (target.Position < aligned) target.WriteByte(0);
-                    var offset = target.Position;
-                    using (var input = resource.Open())
+                    if (IsMergeableConfig(resource.Path)
+                        && resource.Size <= MaxMergeConfigSize)
                     {
-                        input.CopyTo(target);
+                        // Keep small structured config data for a possible
+                        // three-way merge; ordinary resources still stream.
+                        var bytes = ReadBounded(resource.Open(), resource.Size);
+                        WriteChangedResource(target, matches, outputPatchNumber, bytes);
+                        mergedConfig[resource.Path] = bytes;
                     }
-                    var written = target.Position - offset;
-                    if (written != resource.Size || written > int.MaxValue)
-                        throw new InvalidDataException("Mod resource size mismatch.");
-
-                    foreach (var record in matches)
+                    else
                     {
-                        record.Offset = written == 0 ? 0 : offset;
-                        record.PlainSize = (int)written;
-                        record.StoredSize = (int)written;
-                        record.PatchNumber = outputPatchNumber;
-                        if (written == 0) record.FileName = "";
+                        var aligned = (target.Position + 15) & ~15L;
+                        while (target.Position < aligned) target.WriteByte(0);
+                        var offset = target.Position;
+                        using (var input = resource.Open()) input.CopyTo(target);
+                        var written = target.Position - offset;
+                        if (written != resource.Size || written > int.MaxValue)
+                            throw new InvalidDataException("Mod resource size mismatch.");
+                        foreach (var record in matches)
+                        {
+                            record.Offset = written == 0 ? 0 : offset;
+                            record.PlainSize = (int)written;
+                            record.StoredSize = (int)written;
+                            record.PatchNumber = outputPatchNumber;
+                            if (written == 0) record.FileName = "";
+                        }
                     }
                     update?.Invoke("Patched " + resource.Path);
                 }
