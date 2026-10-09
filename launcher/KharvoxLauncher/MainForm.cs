@@ -335,9 +335,12 @@ public sealed class MainForm : Form
         root.Controls.Add(options);
 
         var customMods = MakeGroup("KHARVOX CUSTOM MODS");
+        customMods.ForeColor = Color.White;
         var customModsGrid = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            BackColor = PanelColor,
+            ForeColor = Color.White,
             Padding = new Padding(18, 10, 18, 8),
             RowCount = 16,
             ColumnCount = 2,
@@ -349,6 +352,7 @@ public sealed class MainForm : Form
             customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, i == 1 ? 42 : 30));
 
         weaponWheelRemap.Dock = DockStyle.Fill;
+        weaponWheelRemap.ForeColor = Color.White;
         weaponWheelRemap.CheckedChanged += WeaponWheelRemapChanged;
         statusToolTip.SetToolTip(weaponWheelRemap,
             "On: A tap/hold controls quick weapon / weapon wheel and right-stick down toggles crouch. Off: official KHARVOX controls.");
@@ -358,6 +362,7 @@ public sealed class MainForm : Form
         customModsGrid.Controls.Add(new Label
         {
             Text = "Glory Kill Speed",
+            ForeColor = Color.White,
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 1);
@@ -372,6 +377,7 @@ public sealed class MainForm : Form
         gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         gloryKillRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 86));
         gloryKillSlowmo.AccessibleName = "Glory Kill Speed";
+        gloryKillSlowmoValue.ForeColor = Color.White;
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
         statusToolTip.SetToolTip(gloryKillSlowmo,
             "0 = full speed. 1-9 = progressively slower custom Glory Kill speed. 10 = official DOOM native Glory Kill speed.");
@@ -400,6 +406,7 @@ public sealed class MainForm : Form
         {
             var check = customChecks[i].Box;
             check.Dock = DockStyle.Fill;
+            check.ForeColor = Color.White;
             check.CheckedChanged += CustomModChanged;
             statusToolTip.SetToolTip(check, customChecks[i].Tip);
             customModsGrid.Controls.Add(check, 0, i + 2);
@@ -1156,7 +1163,7 @@ public sealed class MainForm : Form
             Size = new Size(92, 28),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.FromArgb(24, 24, 27),
-            ForeColor = Color.Gainsboro
+            ForeColor = Color.White
         };
         closeButton.FlatAppearance.BorderColor = Color.DimGray;
         closeButton.Click += (_, _) => form.Hide();
