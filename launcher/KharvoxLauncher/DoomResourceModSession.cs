@@ -338,6 +338,85 @@ internal static class DoomResourceModSession
         }
     }
 
+    internal static int RunSelfTest()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "KHARVOX-DML-Staging-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var runtime = Path.Combine(root, "runtime");
+            var game = Path.Combine(root, "game");
+            var user = Path.Combine(root, "user");
+            Directory.CreateDirectory(runtime);
+            Directory.CreateDirectory(user);
+            Directory.CreateDirectory(Path.Combine(game, "base"));
+            var fileMod = Path.Combine(user, "SomeMod.zip");
+            var otherMod = Path.Combine(user, "AnotherMod");
+            File.WriteAllText(fileMod, "zip bytes placeholder");
+            Directory.CreateDirectory(otherMod);
+            File.WriteAllText(Path.Combine(otherMod, "resource.decl"), "value=1");
+            var entries = new[]
+            {
+                new DoomUserMods.ModEntry("user:somemod.zip", "SomeMod.zip", fileMod, false),
+                new DoomUserMods.ModEntry("user:anothermod", "AnotherMod", otherMod, false)
+            };
+            var firstHash = Fingerprint(entries);
+            Stage(runtime, entries);
+            var active = ActiveFolder(runtime);
+            if (Directory.GetFileSystemEntries(active).Length != 2)
+                throw new InvalidOperationException("Expected both checked mods in staging.");
+            Stage(runtime, new[] { entries[0] });
+            if (Directory.GetFileSystemEntries(active).Length != 1
+                || !File.Exists(fileMod) || !File.Exists(
+                    Path.Combine(otherMod, "resource.decl")))
+                throw new InvalidOperationException(
+                    "Unchecking a mod must remove only the staging copy.");
+            if (Fingerprint(entries) != firstHash)
+                throw new InvalidOperationException("Source hash changed without edits.");
+            File.WriteAllText(Path.Combine(otherMod, "resource.decl"), "value=2");
+            if (Fingerprint(entries) == firstHash)
+                throw new InvalidOperationException("Edited mod content must invalidate cache.");
+            Stage(runtime, Array.Empty<DoomUserMods.ModEntry>());
+            if (Directory.GetFileSystemEntries(active).Length != 0)
+                throw new InvalidOperationException("Unchecking every mod must empty staging.");
+
+            var foreign = Path.Combine(game, "base", "gameresources_002.patch");
+            File.WriteAllText(foreign, "third-party patch");
+            var existing = GetGeneratedResources(game);
+            if (existing.Count != 1)
+                throw new InvalidOperationException("Foreign resource patch not detected.");
+            var blocked = false;
+            try { VerifyOwnership(null, existing, game); }
+            catch (InvalidOperationException) { blocked = true; }
+            if (!blocked)
+                throw new InvalidOperationException("Unowned resources must block the loader.");
+            var owned = new Manifest
+            {
+                GameDirectory = Path.GetFullPath(game),
+                Files = existing,
+                Fingerprint = firstHash
+            };
+            VerifyOwnership(owned, existing, game);
+            File.WriteAllText(foreign, "mutated outside KHARVOX");
+            blocked = false;
+            try { VerifyOwnership(owned, GetGeneratedResources(game), game); }
+            catch (InvalidOperationException) { blocked = true; }
+            if (!blocked)
+                throw new InvalidOperationException("Modified owned resources must block apply.");
+            Console.WriteLine("DOOM staging, uncheck, checksum and patch ownership tests passed.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("DOOM staging self-test failed: " + error);
+            return 1;
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
+
     internal static async Task<bool> PrepareAsync(string runtimeDir, string gameDir,
         Action<string>? statusUpdate)
     {
