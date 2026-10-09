@@ -37,6 +37,16 @@ internal static class KharvoxResourcePatcher
         internal string SecondMod = "";
     }
 
+    internal enum ConflictChoice { Cancel, UseFirst, UseSecond }
+
+    internal sealed class ConflictProposal
+    {
+        internal string ResourcePath = "";
+        internal string FirstMod = "";
+        internal string SecondMod = "";
+        internal string Reason = "";
+    }
+
     internal sealed class Result
     {
         internal int ResourceCount;
@@ -380,10 +390,42 @@ internal static class KharvoxResourcePatcher
         }
     }
 
+    private static void WriteInputResource(Stream target, InputResource resource,
+        Record[] matches, byte outputPatchNumber,
+        Dictionary<string, byte[]> configCache)
+    {
+        if (IsMergeableConfig(resource.Path) && resource.Size <= MaxMergeConfigSize)
+        {
+            var bytes = ReadBounded(resource.Open(), resource.Size);
+            WriteChangedResource(target, matches, outputPatchNumber, bytes);
+            configCache[resource.Path] = bytes;
+        }
+        else
+        {
+            configCache.Remove(resource.Path);
+            var aligned = (target.Position + 15) & ~15L;
+            while (target.Position < aligned) target.WriteByte(0);
+            var offset = target.Position;
+            using (var input = resource.Open()) input.CopyTo(target);
+            var written = target.Position - offset;
+            if (written != resource.Size || written > int.MaxValue)
+                throw new InvalidDataException("Mod resource size mismatch.");
+            foreach (var record in matches)
+            {
+                record.Offset = written == 0 ? 0 : offset;
+                record.PlainSize = (int)written;
+                record.StoredSize = (int)written;
+                record.PatchNumber = outputPatchNumber;
+                if (written == 0) record.FileName = "";
+            }
+        }
+    }
+
     internal static Result Build(string originalIndex, IEnumerable<string> selectedMods,
         byte outputPatchNumber, string outputIndex, string outputData,
         Action<string>? update = null,
-        Func<MergeProposal, bool>? approveMerge = null)
+        Func<MergeProposal, bool>? approveMerge = null,
+        Func<ConflictProposal, ConflictChoice>? resolveConflict = null)
     {
         if (outputPatchNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(outputPatchNumber));
@@ -450,14 +492,41 @@ internal static class KharvoxResourcePatcher
                         }
                         else reason = "Unsupported resource type or no original config available.";
 
-                        throw new InvalidOperationException(
-                            "DOOM mod conflict: two enabled mods modify the same resource."
-                            + Environment.NewLine + "Resource: " + resource.Path
-                            + Environment.NewLine + "Mod 1: " + firstSource
-                            + Environment.NewLine + "Mod 2: " + resource.Source
-                            + Environment.NewLine + "Reason: " + reason
-                            + Environment.NewLine + "Uncheck one of these mods in KHARVOX."
-                            + Environment.NewLine + "No file was installed or overwritten.");
+                        var conflict = new ConflictProposal
+                        {
+                            ResourcePath = resource.Path,
+                            FirstMod = firstSource,
+                            SecondMod = resource.Source,
+                            Reason = reason
+                        };
+                        if (resolveConflict is null)
+                            throw new InvalidOperationException(
+                                "DOOM mod conflict: two enabled mods modify the same resource."
+                                + Environment.NewLine + "Resource: " + resource.Path
+                                + Environment.NewLine + "Mod 1: " + firstSource
+                                + Environment.NewLine + "Mod 2: " + resource.Source
+                                + Environment.NewLine + "Reason: " + reason
+                                + Environment.NewLine + "Choose which mod wins before installing."
+                                + Environment.NewLine + "No file was installed or overwritten.");
+                        var choice = resolveConflict(conflict);
+                        if (choice == ConflictChoice.Cancel)
+                            throw new OperationCanceledException(
+                                "DOOM mod conflict resolution cancelled. Nothing was installed.");
+                        if (choice == ConflictChoice.UseFirst)
+                        {
+                            conflicts.Add(resource.Path + " — selected " + firstSource);
+                            continue;
+                        }
+                        if (choice != ConflictChoice.UseSecond)
+                            throw new InvalidOperationException("Unknown conflict choice.");
+                        // The user's explicit decision overwrites only this
+                        // resource, not any unrelated files or mod selections.
+                        WriteInputResource(target, resource, lookups[resource.Path],
+                            outputPatchNumber, mergedConfig);
+                        seen[resource.Path] = resource.Source;
+                        conflicts.Add(resource.Path + " — selected " + resource.Source);
+                        update?.Invoke("Conflict resolved for " + resource.Path);
+                        continue;
                     }
                     seen.Add(resource.Path, resource.Source);
                     if (resource.Path == "mod.decl"
@@ -489,33 +558,8 @@ internal static class KharvoxResourcePatcher
                     }
                     else result.Replaced += matches.Length;
 
-                    if (IsMergeableConfig(resource.Path)
-                        && resource.Size <= MaxMergeConfigSize)
-                    {
-                        // Keep small structured config data for a possible
-                        // three-way merge; ordinary resources still stream.
-                        var bytes = ReadBounded(resource.Open(), resource.Size);
-                        WriteChangedResource(target, matches, outputPatchNumber, bytes);
-                        mergedConfig[resource.Path] = bytes;
-                    }
-                    else
-                    {
-                        var aligned = (target.Position + 15) & ~15L;
-                        while (target.Position < aligned) target.WriteByte(0);
-                        var offset = target.Position;
-                        using (var input = resource.Open()) input.CopyTo(target);
-                        var written = target.Position - offset;
-                        if (written != resource.Size || written > int.MaxValue)
-                            throw new InvalidDataException("Mod resource size mismatch.");
-                        foreach (var record in matches)
-                        {
-                            record.Offset = written == 0 ? 0 : offset;
-                            record.PlainSize = (int)written;
-                            record.StoredSize = (int)written;
-                            record.PatchNumber = outputPatchNumber;
-                            if (written == 0) record.FileName = "";
-                        }
-                    }
+                    WriteInputResource(target, resource, matches, outputPatchNumber,
+                        mergedConfig);
                     update?.Invoke("Patched " + resource.Path);
                 }
             }
@@ -745,6 +789,62 @@ internal static class KharvoxResourcePatcher
             }
             if (!conflictRejected || File.Exists(conflictIndex) || File.Exists(conflictPatch))
                 throw new InvalidDataException("Same-field health override must fail without partial output.");
+
+            // A conflict over non-mergeable data requires an explicit winner.
+            // Picking either mod applies only that resource; cancellation or
+            // a missing callback never succeeds silently.
+            var firstWinnerIndex = Path.Combine(root, "winner-first.pindex");
+            var firstWinnerPatch = Path.Combine(root, "winner-first.patch");
+            var firstWinner = Build(index, new[] { folder, zipPath }, 1,
+                firstWinnerIndex, firstWinnerPatch,
+                resolveConflict: conflict =>
+                    conflict.ResourcePath.EndsWith("ai/imp.decl",
+                        StringComparison.Ordinal)
+                    ? ConflictChoice.UseFirst : ConflictChoice.Cancel);
+            if (firstWinner.Conflicts.Length != 1)
+                throw new InvalidDataException("First-winner decision not logged.");
+            var firstWinningResource = ReadIndex(firstWinnerIndex)
+                .First(x => x.ShortName == "ai/imp");
+            using (var input = File.OpenRead(firstWinnerPatch))
+            {
+                input.Position = firstWinningResource.Offset;
+                var actual = new byte[7];
+                if (input.Read(actual, 0, actual.Length) != actual.Length
+                    || Encoding.UTF8.GetString(actual) != "new-imp")
+                    throw new InvalidDataException("Explicit first-mod selection was ignored.");
+            }
+
+            var secondWinnerIndex = Path.Combine(root, "winner-second.pindex");
+            var secondWinnerPatch = Path.Combine(root, "winner-second.patch");
+            var secondWinner = Build(index, new[] { folder, zipPath }, 1,
+                secondWinnerIndex, secondWinnerPatch,
+                resolveConflict: _ => ConflictChoice.UseSecond);
+            if (secondWinner.Conflicts.Length != 1)
+                throw new InvalidDataException("Second-winner decision not logged.");
+            var secondWinningResource = ReadIndex(secondWinnerIndex)
+                .First(x => x.ShortName == "ai/imp");
+            using (var input = File.OpenRead(secondWinnerPatch))
+            {
+                input.Position = secondWinningResource.Offset;
+                var actual = new byte[7];
+                if (input.Read(actual, 0, actual.Length) != actual.Length
+                    || Encoding.UTF8.GetString(actual) != "zip-imp")
+                    throw new InvalidDataException("Explicit second-mod selection was ignored.");
+            }
+
+            var cancelledChoice = false;
+            var cancelledChoiceIndex = Path.Combine(root, "cancel-winner.pindex");
+            var cancelledChoiceData = Path.Combine(root, "cancel-winner.patch");
+            try
+            {
+                Build(index, new[] { folder, zipPath }, 1,
+                    cancelledChoiceIndex, cancelledChoiceData,
+                    resolveConflict: _ => ConflictChoice.Cancel);
+            }
+            catch (OperationCanceledException) { cancelledChoice = true; }
+            if (!cancelledChoice || File.Exists(cancelledChoiceIndex)
+                || File.Exists(cancelledChoiceData))
+                throw new InvalidDataException("Cancelled winner choice left a patch behind.");
 
             var unsupported = Path.Combine(root, "Unsupported");
             Directory.CreateDirectory(unsupported);
