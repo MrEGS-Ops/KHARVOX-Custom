@@ -174,16 +174,33 @@ internal static class KharvoxModContentFingerprints
 
             var folder = Path.Combine(root, "Unpacked");
             Directory.CreateDirectory(Path.Combine(folder, "data"));
-            File.WriteAllText(Path.Combine(folder, "data", "config.ini"), "health=100");
+            var ini = Path.Combine(folder, "data", "config.ini");
+            var baselineTime = DateTime.UtcNow.AddMinutes(-15);
+            File.WriteAllText(ini, "health=100");
+            File.SetLastWriteTimeUtc(ini, baselineTime);
             var original = Digest(folder);
             if (original != Digest(folder))
                 throw new InvalidDataException("Cached unpacked-mod hash is unstable.");
-            File.WriteAllText(Path.Combine(folder, "data", "config.ini"), "health=200");
+            File.WriteAllText(ini, "health=200");
+            File.SetLastWriteTimeUtc(ini, baselineTime.AddMinutes(1));
             if (original == Digest(folder))
                 throw new InvalidDataException("Modified unpacked mod was not detected.");
-            File.WriteAllText(Path.Combine(folder, "data", "config.ini"), "health=100");
+            File.WriteAllText(ini, "health=100");
+            File.SetLastWriteTimeUtc(ini, baselineTime.AddMinutes(2));
             if (original != Digest(folder))
                 throw new InvalidDataException("Restored unpacked mod lost its identity.");
+
+            // Some filesystem writes can preserve BOTH size and timestamps.
+            // A manual Rescan / FileSystemWatcher event forces hashing anyway.
+            File.WriteAllText(ini, "health=300");
+            File.SetLastWriteTimeUtc(ini, baselineTime.AddMinutes(2));
+            Invalidate();
+            if (original == Digest(folder))
+                throw new InvalidDataException("Forced rescan failed to detect same-metadata edit.");
+            File.WriteAllText(ini, "health=100");
+            File.SetLastWriteTimeUtc(ini, baselineTime.AddMinutes(3));
+            if (original != Digest(folder))
+                throw new InvalidDataException("Restored old contents failed after forced rescan.");
             File.WriteAllText(Path.Combine(folder, "extra.txt"), "new");
             if (original == Digest(folder))
                 throw new InvalidDataException("New file in unpacked mod went unnoticed.");
