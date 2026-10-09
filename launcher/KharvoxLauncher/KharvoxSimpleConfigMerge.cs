@@ -85,8 +85,9 @@ internal static class KharvoxSimpleConfigMerge
             var key = line.Substring(0, at).Trim();
             if (key.Length == 0 || key[0] == '#' || key[0] == ';'
                 || key.Contains('[') || key.Contains(']') || key.Any(char.IsWhiteSpace)
-                || !result.TryAdd(key, line.Substring(at + 1).Trim()))
+                || result.ContainsKey(key))
                 throw new FormatException("Unsupported or duplicate setting on line " + lineNumber);
+            result.Add(key, line.Substring(at + 1).Trim());
         }
         return result;
     }

@@ -15,6 +15,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-resource-patcher",
                 StringComparison.OrdinalIgnoreCase)))
             return KharvoxResourcePatcher.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-config-merge",
+                StringComparison.OrdinalIgnoreCase)))
+            return KharvoxSimpleConfigMerge.RunSelfTest();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
