@@ -163,6 +163,7 @@ internal static class KharvoxResourcePatcher
     private sealed class InputResource
     {
         internal string Path = "";
+        internal string Source = "";
         internal Func<Stream> Open = null!;
         internal long Size;
     }
@@ -202,6 +203,7 @@ internal static class KharvoxResourcePatcher
                         yield return new InputResource
                         {
                             Path = canonical,
+                            Source = input,
                             Size = entry.Length,
                             Open = () => entry.Open()
                         };
@@ -223,6 +225,7 @@ internal static class KharvoxResourcePatcher
                     yield return new InputResource
                     {
                         Path = canonical,
+                        Source = input,
                         Size = info.Length,
                         Open = () => File.OpenRead(file)
                     };
@@ -287,7 +290,9 @@ internal static class KharvoxResourcePatcher
         var lookups = records.Where(x => x.FileName.Length != 0)
             .GroupBy(x => x.FileName.Replace('\\', '/').ToLowerInvariant())
             .ToDictionary(g => g.Key, g => g.ToArray(), StringComparer.Ordinal);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // Never choose an implicit winner based on mod enumeration order.
+        // The user should disable an overlapping mod or explicitly resolve it.
+        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
         var result = new Result { ResourceCount = records.Count,
             IndexPath = outputIndex, PatchPath = outputData };
         var skipped = new List<string>();
@@ -299,11 +304,17 @@ internal static class KharvoxResourcePatcher
                 target.Write(Signature, 0, Signature.Length);
                 foreach (var resource in FromMods(selectedMods))
                 {
-                    if (!seen.Add(resource.Path))
+                    if (seen.TryGetValue(resource.Path, out var firstSource))
                     {
-                        conflicts.Add(resource.Path);
-                        continue; // First selected mod wins.
+                        throw new InvalidOperationException(
+                            "DOOM mod conflict: two enabled mods modify the same resource."
+                            + Environment.NewLine + "Resource: " + resource.Path
+                            + Environment.NewLine + "Mod 1: " + firstSource
+                            + Environment.NewLine + "Mod 2: " + resource.Source
+                            + Environment.NewLine + "Uncheck one of these mods in KHARVOX."
+                            + Environment.NewLine + "No file was installed or overwritten.");
                     }
+                    seen.Add(resource.Path, resource.Source);
                     if (resource.Path == "mod.decl"
                         || resource.Path == "fileids.txt"
                         || resource.Path.StartsWith("video/", StringComparison.Ordinal)
@@ -455,6 +466,22 @@ internal static class KharvoxResourcePatcher
                     || Encoding.UTF8.GetString(bytes) != "zip-imp")
                     throw new InvalidDataException("Compressed ZIP data does not match.");
             }
+
+            // Never silently pick a winner when two selected mods replace
+            // the same resource. They must be resolved by the user, not order.
+            var overlapRejected = false;
+            var overlapIndex = Path.Combine(root, "overlap.pindex");
+            var overlapData = Path.Combine(root, "overlap.patch");
+            try { Build(index, new[] { folder, zipPath }, 1, overlapIndex, overlapData); }
+            catch (InvalidOperationException error)
+            {
+                overlapRejected = error.Message.Contains("Mod 1:")
+                    && error.Message.Contains("Mod 2:")
+                    && error.Message.Contains("ai/imp.decl");
+            }
+            if (!overlapRejected || File.Exists(overlapIndex) || File.Exists(overlapData))
+                throw new InvalidDataException(
+                    "Overlapping resource mods must stop with an explicit source-aware conflict.");
 
             var unsupported = Path.Combine(root, "Unsupported");
             Directory.CreateDirectory(unsupported);
