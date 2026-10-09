@@ -446,9 +446,16 @@ internal sealed class DoomModLoaderInstallDialog : Form
             Installed = DoomModLoaderInstaller.IsInstalled;
             if (!Installed)
                 throw new InvalidDataException("Installed executable verification failed.");
-            statusLabel.Text = "Installation verified. Ready for future DOOM resource mods.";
+            statusLabel.Text = "Verified. DOOMModLoader is ready.";
             progressBar.Value = 100;
-            actionButton.Text = "Done";
+            // A full bar in a still-open download dialog looks hung. Close
+            // promptly after successful installation; the parent status row
+            // immediately changes to green "Verified".
+            DialogResult = DialogResult.OK;
+            BeginInvoke((Action)(() =>
+            {
+                if (!IsDisposed) Close();
+            }));
         }
         catch (OperationCanceledException)
         {
