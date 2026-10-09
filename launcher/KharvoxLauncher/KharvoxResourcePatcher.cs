@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using System.Web.Script.Serialization;
 
 namespace KharvoxLauncher;
 
@@ -609,6 +610,71 @@ internal static class KharvoxResourcePatcher
             if (!overlapRejected || File.Exists(overlapIndex) || File.Exists(overlapData))
                 throw new InvalidDataException(
                     "Overlapping resource mods must stop with an explicit source-aware conflict.");
+
+            // Two config mods touching separate fields in one existing game
+            // resource must combine; conflicting changes to one field must stop.
+            var jsonRoot = Path.Combine(root, "json-merge");
+            var jsonIndex = Path.Combine(jsonRoot, "gameresources.index");
+            var jsonBaseData = Path.Combine(jsonRoot, "gameresources.resources");
+            Directory.CreateDirectory(jsonRoot);
+            var baseline = Encoding.UTF8.GetBytes("{\"health\":100,\"armor\":50}");
+            using (var baseStream = File.Create(jsonBaseData))
+            {
+                baseStream.Write(Signature, 0, Signature.Length);
+                for (var i = 4; i < 16; i++) baseStream.WriteByte(0);
+                baseStream.Write(baseline, 0, baseline.Length);
+            }
+            WriteIndex(jsonIndex, new[]
+            {
+                new Record
+                {
+                    Id = 21, Type = "file", ShortName = "config/player",
+                    FileName = "config/player.json", Offset = 16,
+                    PlainSize = baseline.Length, StoredSize = baseline.Length
+                }
+            });
+            var healthMod = Path.Combine(root, "HealthMod");
+            var armorMod = Path.Combine(root, "ArmorMod");
+            var otherHealthMod = Path.Combine(root, "OtherHealthMod");
+            foreach (var folderPath in new[] { healthMod, armorMod, otherHealthMod })
+                Directory.CreateDirectory(Path.Combine(folderPath, "config"));
+            File.WriteAllText(Path.Combine(healthMod, "config", "player.json"),
+                "{\"health\":200,\"armor\":50}");
+            File.WriteAllText(Path.Combine(armorMod, "config", "player.json"),
+                "{\"health\":100,\"armor\":150}");
+            File.WriteAllText(Path.Combine(otherHealthMod, "config", "player.json"),
+                "{\"health\":300,\"armor\":50}");
+            var mergedIndex = Path.Combine(root, "merged.pindex");
+            var mergedPatch = Path.Combine(root, "merged.patch");
+            var mergedResult = Build(jsonIndex, new[] { healthMod, armorMod },
+                1, mergedIndex, mergedPatch);
+            var mergedEntry = ReadIndex(mergedIndex).Single();
+            using (var mergedStream = File.OpenRead(mergedPatch))
+            {
+                mergedStream.Position = mergedEntry.Offset;
+                var config = new byte[mergedEntry.PlainSize];
+                if (mergedStream.Read(config, 0, config.Length) != config.Length)
+                    throw new InvalidDataException("Merged config patch is truncated.");
+                var value = new JavaScriptSerializer().DeserializeObject(
+                    Encoding.UTF8.GetString(config)) as Dictionary<string, object>;
+                if (value is null || Convert.ToInt32(value["health"]) != 200
+                    || Convert.ToInt32(value["armor"]) != 150
+                    || mergedResult.ConfigsMerged != 1)
+                    throw new InvalidDataException("Independent health/armor config merging failed.");
+            }
+            var conflictRejected = false;
+            var conflictIndex = Path.Combine(root, "conflict.pindex");
+            var conflictPatch = Path.Combine(root, "conflict.patch");
+            try { Build(jsonIndex, new[] { healthMod, otherHealthMod }, 1,
+                conflictIndex, conflictPatch); }
+            catch (InvalidOperationException error)
+            {
+                conflictRejected = error.Message.Contains("$.health")
+                    && error.Message.Contains("Mod 1:")
+                    && error.Message.Contains("Mod 2:");
+            }
+            if (!conflictRejected || File.Exists(conflictIndex) || File.Exists(conflictPatch))
+                throw new InvalidDataException("Same-field health override must fail without partial output.");
 
             var unsupported = Path.Combine(root, "Unsupported");
             Directory.CreateDirectory(unsupported);
