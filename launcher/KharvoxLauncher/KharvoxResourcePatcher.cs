@@ -436,7 +436,7 @@ internal static class KharvoxResourcePatcher
             {
                 var entry = archive.CreateEntry(
                     "generated/decls/entitydef/ai/imp.decl", CompressionLevel.Optimal);
-                using (var writer = new StreamWriter(entry.Open(), Encoding.UTF8))
+                using (var writer = new StreamWriter(entry.Open(), new UTF8Encoding(false)))
                     writer.Write("zip-imp");
             }
             var zipIndex = Path.Combine(root, "ziptest.pindex");
@@ -445,13 +445,13 @@ internal static class KharvoxResourcePatcher
             var zipEntries = ReadIndex(zipIndex)
                 .Where(x => x.ShortName == "ai/imp").ToArray();
             if (zipResult.Replaced != 2 || zipEntries.Length != 2
-                || zipEntries.Any(x => x.PatchNumber != 2 || x.PlainSize != 10))
+                || zipEntries.Any(x => x.PatchNumber != 2 || x.PlainSize != 7))
                 throw new InvalidDataException("Compressed ZIP patch failed.");
             using (var stream = File.OpenRead(zipData))
             {
                 stream.Position = zipEntries[0].Offset;
-                var bytes = new byte[10];
-                if (stream.Read(bytes, 0, 10) != 10
+                var bytes = new byte[7];
+                if (stream.Read(bytes, 0, 7) != 7
                     || Encoding.UTF8.GetString(bytes) != "zip-imp")
                     throw new InvalidDataException("Compressed ZIP data does not match.");
             }
