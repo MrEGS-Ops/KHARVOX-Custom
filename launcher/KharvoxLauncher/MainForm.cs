@@ -448,11 +448,28 @@ public sealed class MainForm : Form
         loaderInstallButton.FlatAppearance.BorderColor = Color.DimGray;
         Action refreshLoaderStatus = () =>
         {
-            var installed = DoomModLoaderInstaller.IsInstalled;
-            loaderStatusLabel.Text = installed
-                ? "DOOMModLoader v" + DoomModLoaderInstaller.Version + " — Installed"
-                : "DOOMModLoader — Not installed";
-            loaderInstallButton.Text = installed ? "Recheck installation" : "Install DOOMModLoader…";
+            var result = DoomModLoaderInstaller.CheckInstallation();
+            switch (result.State)
+            {
+                case DoomModLoaderInstaller.InstallationState.Verified:
+                    loaderStatusLabel.Text = "DOOMModLoader v"
+                        + DoomModLoaderInstaller.Version + " — Verified";
+                    loaderStatusLabel.ForeColor = Color.LightGreen;
+                    loaderInstallButton.Text = "Verify Installation";
+                    break;
+                case DoomModLoaderInstaller.InstallationState.RepairRequired:
+                    loaderStatusLabel.Text = "DOOMModLoader — Repair required";
+                    loaderStatusLabel.ForeColor = Color.Orange;
+                    loaderInstallButton.Text = "Repair Installation…";
+                    break;
+                default:
+                    loaderStatusLabel.Text = "DOOMModLoader — Not installed";
+                    loaderStatusLabel.ForeColor = Color.Gainsboro;
+                    loaderInstallButton.Text = "Install DOOMModLoader…";
+                    break;
+            }
+            statusToolTip.SetToolTip(loaderStatusLabel, result.Details);
+            statusToolTip.SetToolTip(loaderInstallButton, result.Details);
         };
         refreshLoaderStatus();
         loaderInstallButton.Click += (_, _) =>
@@ -464,12 +481,16 @@ public sealed class MainForm : Form
                     "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            if (DoomModLoaderInstaller.IsInstalled)
+            var installation = DoomModLoaderInstaller.CheckInstallation();
+            if (installation.State == DoomModLoaderInstaller.InstallationState.Verified)
             {
                 MessageBox.Show(customOptionsForm,
-                    "DOOMModLoader is installed at:" + Environment.NewLine
-                    + DoomModLoaderInstaller.ExecutablePath,
-                    "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    installation.Details + Environment.NewLine + Environment.NewLine
+                    + "Executable SHA-256 matches its official-release installation record."
+                    + Environment.NewLine + DoomModLoaderInstaller.ExecutablePath,
+                    "KHARVOX — Integrity Verified", MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                refreshLoaderStatus();
                 return;
             }
             using (var installerDialog = new DoomModLoaderInstallDialog())
