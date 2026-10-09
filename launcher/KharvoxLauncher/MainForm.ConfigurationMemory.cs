@@ -4,7 +4,6 @@ namespace KharvoxLauncher;
 // launch-UI concern, not VR gameplay/controller remapping.
 public sealed partial class MainForm
 {
-    private readonly Label configurationStatusMain = MakeConfigurationStatus();
     private readonly Label configurationStatusMods = MakeConfigurationStatus();
     private bool configurationTrackingReady;
     private bool restoringConfiguration;
@@ -31,48 +30,38 @@ public sealed partial class MainForm
         AccessibleName = "Current KHARVOX configuration is unmarked"
     };
 
-    private FlowLayoutPanel BuildConfigurationBar(Label state)
+    private Button BuildCompactConfigurationControl()
     {
-        var bar = new FlowLayoutPanel
+        var button = new Button
         {
-            Dock = DockStyle.Bottom,
-            Height = 34,
-            WrapContents = false,
-            FlowDirection = FlowDirection.RightToLeft,
-            BackColor = Color.Black,
-            Padding = new Padding(4, 2, 4, 2),
-            Margin = Padding.Empty
+            Text = "? Unmarked  ▾", Width = 126, Height = 27, AutoSize = false,
+            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(39, 39, 42),
+            ForeColor = Color.Silver, Font = new Font("Segoe UI", 8.25F, FontStyle.Bold),
+            AccessibleName = "Mark this configuration good, bad or unmarked"
         };
-
-        Button Action(string title, KharvoxConfigMarks.Verdict mark, int width)
+        button.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 85);
+        configurationStatusMods.Visible = false;
+        var menu = new ContextMenuStrip
         {
-            var button = new Button
-            {
-                Text = title,
-                Width = width,
-                Height = 27,
-                Margin = new Padding(3, 0, 0, 0),
-                FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(42, 42, 46),
-                ForeColor = Color.Gainsboro,
-                Font = new Font("Segoe UI", 8F)
-            };
-            button.FlatAppearance.BorderColor = Color.DimGray;
-            button.Click += (_, _) => MarkCurrentConfiguration(mark);
-            return button;
-        }
-
-        // Right-aligned controls keep the KHARVOX banner visible.
-        bar.Controls.Add(Action("Clear", KharvoxConfigMarks.Verdict.Unmarked, 48));
-        bar.Controls.Add(Action("Mark Bad", KharvoxConfigMarks.Verdict.Bad, 76));
-        bar.Controls.Add(Action("Mark Good", KharvoxConfigMarks.Verdict.Good, 82));
-        state.Margin = new Padding(0, 0, 7, 0);
-        bar.Controls.Add(state);
-        statusToolTip.SetToolTip(state,
-            "Your personal label for the exact currently selected KHARVOX settings and mods."
-            + Environment.NewLine + "Good / Bad are your own notes, not automated game compatibility results.");
-        return bar;
+            BackColor = Color.FromArgb(35, 35, 38),
+            ForeColor = Color.Gainsboro, ShowImageMargin = false
+        };
+        menu.Items.Add("✓  Mark Good", null,
+            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Good));
+        menu.Items.Add("✕  Mark Bad", null,
+            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Bad));
+        menu.Items.Add(new ToolStripSeparator());
+        menu.Items.Add("?  Clear Mark", null,
+            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Unmarked));
+        button.Click += (_, _) => menu.Show(button, new Point(0, button.Height));
+        configurationStatusButton = button;
+        statusToolTip.SetToolTip(button,
+            "Personal rating for these settings and mod contents."
+            + Environment.NewLine + "Click to mark this combination Good, Bad or Unmarked.");
+        return button;
     }
+
+    private Button? configurationStatusButton;
 
     private IEnumerable<Control> ConfigurationInputs()
     {
@@ -166,14 +155,21 @@ public sealed partial class MainForm
             KharvoxConfigMarks.Verdict.Bad => ("✕ BAD", Color.FromArgb(255, 117, 117)),
             _ => ("? UNMARKED", Color.Silver)
         };
-        foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+        configurationStatusMods.Text = label;
+        configurationStatusMods.ForeColor = colour;
+        if (configurationStatusButton is { } button)
         {
-            indicator.Text = label;
-            indicator.ForeColor = colour;
-            indicator.AccessibleName = "Current KHARVOX configuration: " + label;
-            statusToolTip.SetToolTip(indicator,
-                "Personal configuration rating: " + label
-                + ". You can change this rating using Mark Good, Mark Bad or Clear.");
+            button.Text = verdict switch
+            {
+                KharvoxConfigMarks.Verdict.Good => "✓ Good  ▾",
+                KharvoxConfigMarks.Verdict.Bad => "✕ Bad  ▾",
+                _ => "? Unmarked  ▾"
+            };
+            button.ForeColor = colour;
+            button.AccessibleName = "Current configuration: " + label
+                + ". Click to change its personal rating.";
+            statusToolTip.SetToolTip(button, "Personal rating: " + label
+                + ". Click to mark Good, Bad or Unmarked.");
         }
     }
 
@@ -238,13 +234,12 @@ public sealed partial class MainForm
                     currentSnapshot.Values.TryGetValue(previous.Key, out var value)
                     && Equals(previous.Value, value)))
             {
-                foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+                configurationStatusMods.Text = "? MOD CHANGED";
+                if (configurationStatusButton is { } button)
                 {
-                    indicator.Text = "? MOD CHANGED";
-                    statusToolTip.SetToolTip(indicator,
-                        "One or more selected mods changed on disk."
-                        + Environment.NewLine
-                        + "This exact combination is now unmarked until you rate it.");
+                    button.Text = "? Mod changed  ▾";
+                    statusToolTip.SetToolTip(button, "Selected mod content changed."
+                        + Environment.NewLine + "This exact combination is unmarked.");
                 }
             }
             lastConfigurationKey = key;
@@ -252,11 +247,12 @@ public sealed partial class MainForm
         }
         catch (Exception error)
         {
-            foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+            configurationStatusMods.Text = "! UNKNOWN";
+            if (configurationStatusButton is { } button)
             {
-                indicator.Text = "! UNKNOWN";
-                indicator.ForeColor = Color.Orange;
-                statusToolTip.SetToolTip(indicator, error.Message);
+                button.Text = "! Unknown  ▾";
+                button.ForeColor = Color.Orange;
+                statusToolTip.SetToolTip(button, error.Message);
             }
             // An unreadable state is not equivalent to an unmarked state.
             // Don't erase saved information or block the core launcher.
