@@ -310,6 +310,15 @@ internal static class KharvoxRunner
         EnsureNoRunningDoom();
         if (FileVersionInfo.GetVersionInfo(dllPath).ProductVersion != "1.1.1")
             throw new InvalidOperationException("The 1.11 launcher requires its matching 1.11 KharvoxLayer.dll. Extract the complete release into its own folder.");
+
+        // Resource mods are installed before DOOM starts, while the exclusive
+        // launch gate and game-not-running checks are active. No controller or
+        // native KHARVOX remapping code is changed by this integration.
+        var activeDoomResourceMods = await DoomResourceModSession.PrepareAsync(
+            runtimeDir, options.GameDirectory!, statusUpdate).ConfigureAwait(false);
+        if (activeDoomResourceMods)
+            statusUpdate?.Invoke("DOOM resource mods active (developer mode required).");
+
         using var gameIntro = await VrGameIntroSession.StartAsync(runtimeDir, statusUpdate, disableVrIntro: options.DisableVrIntro).ConfigureAwait(false);
         WriteManifest(manifestPath, dllPath);
         EnsureNativeControllerBindings(options.BackWeapon);
@@ -462,6 +471,11 @@ internal static class KharvoxRunner
                 RedirectStandardOutput = options.ExtendedLogging,
                 RedirectStandardError = options.ExtendedLogging
             };
+            // DML's -nopatchgame keeps the game executable untouched. Game data
+            // mods require DOOM's developer mode unless a separately installed
+            // compatible patch has already disabled that requirement.
+            if (activeDoomResourceMods)
+                psi.Arguments += " +devMode_enable 1";
             EnableLayerForGame(psi);
             DisableConflictingOpenXrApiLayers(psi);
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
