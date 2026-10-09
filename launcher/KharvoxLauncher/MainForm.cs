@@ -365,6 +365,7 @@ public sealed partial class MainForm : Form
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
         gloryKillSpeedMenu.Items.Add("0 — Full speed");
@@ -443,10 +444,13 @@ public sealed partial class MainForm : Form
             check.Text = (i + 1).ToString("00") + ". " + check.Text + dependencies;
             check.Dock = DockStyle.Fill;
             check.AutoSize = false;
+            check.AutoEllipsis = true;
             check.ForeColor = Color.White;
             check.Margin = new Padding(2, 0, 1, 0);
-            check.CheckedChanged += check == weaponWheelRemap
-                ? WeaponWheelRemapChanged : CustomModChanged;
+            if (check == weaponWheelRemap)
+                check.CheckedChanged += WeaponWheelRemapChanged;
+            else
+                check.CheckedChanged += CustomModChanged;
             statusToolTip.SetToolTip(check, tip
                 + (dependencies.Length == 0 ? "" : Environment.NewLine
                     + dependencies.TrimStart(' ', '—')));
@@ -454,7 +458,6 @@ public sealed partial class MainForm : Form
             customModsGrid.Controls.Add(check, 0, i + 1);
             customModsGrid.SetColumnSpan(check, 2);
         }
-        customModsGrid.RowStyles.Insert(0, new RowStyle(SizeType.Absolute, 32));
         customModsGrid.RowCount = allCustomMods.Length + 1;
         customMods.Controls.Add(customModsGrid);
 
@@ -557,7 +560,7 @@ public sealed partial class MainForm : Form
         doomGrid.Controls.Add(new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "PLANNED DOOM MODS — preview only (not yet selectable)",
+            Text = "PLANNED MODS — preview only",
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 3);
 
@@ -1540,11 +1543,16 @@ public sealed partial class MainForm : Form
                     child.Dispose();
                 }
 
-                foreach (var mod in detected)
+                var orderedMods = detected
+                    .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+                    .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+                for (var index = 0; index < orderedMods.Length; index++)
                 {
+                    var mod = orderedMods[index];
                     var option = new CheckBox
                     {
-                        Text = mod.Name + (mod.IsFromDoom ? "  [DOOM Mods]" : ""),
+                        Text = (index + 1).ToString("00") + ". " + mod.Name
+                            + (mod.IsFromDoom ? "  [DOOM Mods]" : ""),
                         Checked = selections.Contains(mod.Id),
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
@@ -1577,12 +1585,16 @@ public sealed partial class MainForm : Form
                 // a visible, checked missing entry so it can be unchecked.
                 var found = new HashSet<string>(detected.Select(x => x.Id),
                     StringComparer.OrdinalIgnoreCase);
-                foreach (var missingId in selections.Except(found,
-                             StringComparer.OrdinalIgnoreCase))
+                var missingList = selections.Except(found,
+                        StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray();
+                for (var missingIndex = 0; missingIndex < missingList.Length; missingIndex++)
                 {
+                    var missingId = missingList[missingIndex];
                     var missingOption = new CheckBox
                     {
-                        Text = missingId + " — missing (uncheck to remove)",
+                        Text = (orderedMods.Length + missingIndex + 1).ToString("00")
+                            + ". " + missingId + " — missing (uncheck to remove)",
                         Checked = true,
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
