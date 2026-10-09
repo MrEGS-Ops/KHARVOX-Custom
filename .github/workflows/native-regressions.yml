@@ -1,0 +1,40 @@
+name: KHARVOX Native Regression Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kharvox-native-regression
+  cancel-in-progress: true
+
+jobs:
+  native-tests:
+    runs-on: windows-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout KHARVOX source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Configure native regression targets
+        shell: powershell
+        run: |
+          cmake -S . -B build/regression -A x64 -DBUILD_TESTING=ON -DKHARVOX_BUILD_LAYER=OFF -DKHARVOX_BUILD_SFS_COMPILER=OFF
+
+      - name: Compile native regression targets
+        shell: powershell
+        run: cmake --build build/regression --config Release --parallel 4
+
+      - name: Run CPU and policy regression tests
+        shell: powershell
+        run: |
+          # Hosted Windows runners have no guaranteed HMD or Vulkan GPU.
+          # GPU integration checks remain for real-headset test machines.
+          ctest --test-dir build/regression -C Release --output-on-failure --parallel 4 -E "(gpu|foreign-process-layer|vr-cube-intro)"
+          if ($LASTEXITCODE -ne 0) { throw "Native regression tests failed: $LASTEXITCODE" }
