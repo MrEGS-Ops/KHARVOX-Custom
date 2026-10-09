@@ -105,6 +105,7 @@ public sealed partial class MainForm : Form
     private bool applyingCustomModDependencies;
     private Form? customOptionsForm;
     private FlowLayoutPanel? userDoomModChecks;
+    private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
     private FileSystemWatcher? userDoomModWatcher;
     private readonly System.Windows.Forms.Timer userDoomModDebounce = new() { Interval = 450 };
@@ -674,6 +675,7 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         plannedDoomMods.Controls.Add(userDoomModChecks);
+        doomModItemsPanel = plannedDoomMods;
         userDoomModDebounce.Tick += (_, _) =>
         {
             userDoomModDebounce.Stop();
@@ -1427,8 +1429,8 @@ public sealed partial class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(980, 620),
-            MinimumSize = new Size(750, 480),
+            ClientSize = new Size(1080, 710),
+            MinimumSize = new Size(900, 580),
             StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
@@ -1443,18 +1445,14 @@ public sealed partial class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
-            RowCount = 3,
+            RowCount = 2,
             ColumnCount = 1,
             BackColor = Color.Black
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
-        var customConfigBar = BuildConfigurationBar(configurationStatusMods);
-        customConfigBar.Dock = DockStyle.Fill;
-        root.Controls.Add(customConfigBar, 0, 0);
         content.Dock = DockStyle.Fill;
-        root.Controls.Add(content, 0, 1);
+        root.Controls.Add(content, 0, 0);
 
         var closeButton = new Button
         {
@@ -1477,9 +1475,11 @@ public sealed partial class MainForm : Form
             Padding = new Padding(0, 5, 0, 0)
         };
         closeRow.Controls.Add(closeButton);
-        root.Controls.Add(closeRow, 0, 2);
+        closeRow.Controls.Add(BuildCompactConfigurationControl());
+        root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
-
+        form.Shown += (_, _) => FitCustomOptionsToContent(
+            userDoomModChecks?.Controls.Count ?? 0);
         form.FormClosing += (_, e) =>
         {
             if (e.CloseReason != CloseReason.UserClosing) return;
@@ -1617,6 +1617,7 @@ public sealed partial class MainForm : Form
             // This is a passive update: changes on disk may alter reputation,
             // but should never interrupt browsing with a "known bad" popup.
             CheckLiveConfiguration(promptOnBad: false);
+            FitCustomOptionsToContent(detected.Count + countMissing);
             userDoomModStatus.Text = countMissing != 0
                 ? countMissing + " selected mod(s) missing. Uncheck or restore them before launching."
                 : detected.Count == 0
@@ -1629,6 +1630,27 @@ public sealed partial class MainForm : Form
         }
     }
 
+    private void FitCustomOptionsToContent(int userModCount)
+    {
+        if (customOptionsForm is null || customOptionsForm.IsDisposed) return;
+
+        var work = Screen.FromControl(customOptionsForm).WorkingArea;
+        var chromeHeight = customOptionsForm.Height - customOptionsForm.ClientSize.Height;
+        var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
+        // VR column is intentionally fixed-height; DOOM's mod list adds one
+        // line per discovered resource. Use available desktop height first.
+        var preferredHeight = Math.Max(710, 555 + Math.Max(0, userModCount) * 30);
+        var height = Math.Min(preferredHeight, maxClientHeight);
+        var width = Math.Min(1080, Math.Max(900, work.Width - 45));
+        customOptionsForm.ClientSize = new Size(width, height);
+
+        // On small displays or with a very large mod collection, clipping
+        // controls would be worse than a scrollbar. Ordinarily no scrollbars
+        // are present; this is an accessibility fallback only when needed.
+        if (doomModItemsPanel is not null)
+            doomModItemsPanel.AutoScroll = preferredHeight > maxClientHeight;
+    }
+
     private void ShowCustomOptions()
     {
         if (customOptionsForm is null || customOptionsForm.IsDisposed) return;
@@ -1636,6 +1658,7 @@ public sealed partial class MainForm : Form
         {
             EnsureUserDoomModWatcher();
             RefreshUserDoomMods();
+            FitCustomOptionsToContent(userDoomModChecks?.Controls.Count ?? 0);
         }
         catch (Exception error)
         {
