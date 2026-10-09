@@ -18,6 +18,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-custom-settings",
                 StringComparison.OrdinalIgnoreCase)))
             return CustomModSettingsStore.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-config-marks",
+                StringComparison.OrdinalIgnoreCase)))
+            return KharvoxConfigMarks.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-resource-patcher",
                 StringComparison.OrdinalIgnoreCase)))
             return KharvoxResourcePatcher.RunSelfTest();
