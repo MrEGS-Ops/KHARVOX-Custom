@@ -452,10 +452,7 @@ internal sealed class DoomModLoaderInstallDialog : Form
             // promptly after successful installation; the parent status row
             // immediately changes to green "Verified".
             DialogResult = DialogResult.OK;
-            BeginInvoke((Action)(() =>
-            {
-                if (!IsDisposed) Close();
-            }));
+            Close();
         }
         catch (OperationCanceledException)
         {
