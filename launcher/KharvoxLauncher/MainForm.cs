@@ -586,11 +586,16 @@ public sealed partial class MainForm : Form
             ("6. Demon Spawn Density", "More enemies in compatible encounters."),
             ("7. Limited Supplies", "Reduced ammunition and health pickups.")
         };
-        foreach (var planned in plannedDoomChecks)
+        var orderedPlanned = plannedDoomChecks
+            .OrderBy(item => item.Name.Substring(item.Name.IndexOf('.') + 1).Trim(),
+                StringComparer.OrdinalIgnoreCase).ToArray();
+        for (var plannedIndex = 0; plannedIndex < orderedPlanned.Length; plannedIndex++)
         {
+            var planned = orderedPlanned[plannedIndex];
+            var title = planned.Name.Substring(planned.Name.IndexOf('.') + 1).Trim();
             var placeholder = new CheckBox
             {
-                Text = planned.Name,
+                Text = (plannedIndex + 1).ToString("00") + ". " + title,
                 AutoSize = true,
                 Enabled = false,
                 Checked = false,
@@ -1651,9 +1656,11 @@ public sealed partial class MainForm : Form
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
         // line per discovered resource. Use available desktop height first.
-        var preferredHeight = Math.Max(710, 555 + Math.Max(0, userModCount) * 30);
+        var preferredHeight = Math.Max(655, 525 + Math.Max(0, userModCount) * 30);
         var height = Math.Min(preferredHeight, maxClientHeight);
-        var width = Math.Min(1080, Math.Max(900, work.Width - 45));
+        var width = Math.Min(1080, Math.Max(620, work.Width - 45));
+        customOptionsForm.MinimumSize = new Size(Math.Min(900, work.Width),
+            Math.Min(580, work.Height));
         customOptionsForm.ClientSize = new Size(width, height);
 
         // On small displays or with a very large mod collection, clipping
