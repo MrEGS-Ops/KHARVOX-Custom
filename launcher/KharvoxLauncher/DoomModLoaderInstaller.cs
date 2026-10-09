@@ -25,11 +25,93 @@ internal static class DoomModLoaderInstaller
     internal static string ExecutablePath =>
         Path.Combine(InstallDirectory, "DOOMModLoader.exe");
 
+    internal enum InstallationState
+    {
+        Missing,
+        Verified,
+        RepairRequired
+    }
+
+    internal sealed class InstallationStatus
+    {
+        public InstallationState State { get; }
+        public string Details { get; }
+
+        internal InstallationStatus(InstallationState state, string details)
+        {
+            State = state;
+            Details = details;
+        }
+    }
+
+    private const string SourceRecordName = "KHARVOX-SOURCE.txt";
+    private const string ArchiveHashPrefix = "Downloaded archive SHA-256: ";
+    private const string ExecutableHashPrefix = "Installed executable SHA-256: ";
+
+    // Detect a missing, intact or tampered/stale installation. The executable
+    // checksum is captured only after the archive has passed the pinned official
+    // GitHub release checksum, then compared again on every status refresh.
+    internal static InstallationStatus CheckInstallation()
+    {
+        if (!Directory.Exists(InstallDirectory))
+            return new InstallationStatus(InstallationState.Missing, "Not installed");
+
+        if (!File.Exists(ExecutablePath))
+            return new InstallationStatus(InstallationState.RepairRequired,
+                "DOOMModLoader.exe is missing");
+
+        var recordPath = Path.Combine(InstallDirectory, SourceRecordName);
+        if (!File.Exists(recordPath))
+            return new InstallationStatus(InstallationState.RepairRequired,
+                "Installation verification record is missing");
+
+        try
+        {
+            var lines = File.ReadAllLines(recordPath);
+            if (!lines.Contains("DOOMModLoader v" + Version)
+                || !lines.Contains(SourcePage)
+                || !lines.Contains(ArchiveHashPrefix + ExpectedSha256))
+                return new InstallationStatus(InstallationState.RepairRequired,
+                    "Release version or source record does not match");
+
+            var hashes = lines.Where(line => line.StartsWith(
+                ExecutableHashPrefix, StringComparison.Ordinal)).ToArray();
+            if (hashes.Length != 1)
+                return new InstallationStatus(InstallationState.RepairRequired,
+                    "Executable verification hash is missing");
+
+            var recordedHash = hashes[0].Substring(ExecutableHashPrefix.Length);
+            if (recordedHash.Length != 64 || !recordedHash.All(Uri.IsHexDigit))
+                return new InstallationStatus(InstallationState.RepairRequired,
+                    "Executable verification hash is invalid");
+
+            var actualHash = CalculateSha256(ExecutablePath);
+            if (!string.Equals(recordedHash, actualHash,
+                    StringComparison.OrdinalIgnoreCase))
+                return new InstallationStatus(InstallationState.RepairRequired,
+                    "Executable SHA-256 mismatch");
+
+            return new InstallationStatus(InstallationState.Verified,
+                "DOOMModLoader v" + Version + " — executable verified");
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+            || ex is System.Security.SecurityException)
+        {
+            return new InstallationStatus(InstallationState.RepairRequired,
+                "Unable to verify installation: " + ex.GetType().Name);
+        }
+    }
+
     internal static bool IsInstalled =>
-        File.Exists(ExecutablePath)
-        && File.Exists(Path.Combine(InstallDirectory, "KHARVOX-SOURCE.txt"))
-        && File.ReadAllText(Path.Combine(InstallDirectory, "KHARVOX-SOURCE.txt"))
-            .Contains(ExpectedSha256);
+        CheckInstallation().State == InstallationState.Verified;
+
+    private static string CalculateSha256(string path)
+    {
+        using (var sha = SHA256.Create())
+        using (var stream = File.OpenRead(path))
+            return BitConverter.ToString(sha.ComputeHash(stream))
+                .Replace("-", "").ToLowerInvariant();
+    }
 
     internal sealed class InstallProgress
     {
@@ -111,15 +193,10 @@ internal static class DoomModLoaderInstaller
 
             cancellationToken.ThrowIfCancellationRequested();
             progress.Report(new InstallProgress("Verifying official SHA-256 signature...", 92));
-            using (var sha = SHA256.Create())
-            using (var downloaded = File.OpenRead(downloadedZip))
-            {
-                var actual = BitConverter.ToString(sha.ComputeHash(downloaded))
-                    .Replace("-", "").ToLowerInvariant();
-                if (!string.Equals(actual, ExpectedSha256, StringComparison.Ordinal))
-                    throw new InvalidDataException(
-                        "Download SHA-256 mismatch. No files were installed.");
-            }
+            if (!string.Equals(CalculateSha256(downloadedZip), ExpectedSha256,
+                    StringComparison.Ordinal))
+                throw new InvalidDataException(
+                    "Download SHA-256 mismatch. No files were installed.");
 
             progress.Report(new InstallProgress("Unpacking into KHARVOX tools folder...", 94));
             var unpacked = Path.Combine(staging, "unpacked");
@@ -171,10 +248,13 @@ internal static class DoomModLoaderInstaller
             var installedFiles = Path.GetDirectoryName(executable[0])!;
             var finalized = Path.Combine(staging, "finalized");
             Directory.Move(installedFiles, finalized);
-            File.WriteAllText(Path.Combine(finalized, "KHARVOX-SOURCE.txt"),
+            var extractedExe = Path.Combine(finalized, "DOOMModLoader.exe");
+            var executableHash = CalculateSha256(extractedExe);
+            File.WriteAllText(Path.Combine(finalized, SourceRecordName),
                 "DOOMModLoader v" + Version + Environment.NewLine
                 + SourcePage + Environment.NewLine
-                + "Downloaded archive SHA-256: " + ExpectedSha256 + Environment.NewLine);
+                + ArchiveHashPrefix + ExpectedSha256 + Environment.NewLine
+                + ExecutableHashPrefix + executableHash + Environment.NewLine);
             cancellationToken.ThrowIfCancellationRequested();
             progress.Report(new InstallProgress("Finishing installation...", 98));
 
@@ -199,8 +279,14 @@ internal static class DoomModLoaderInstaller
                 throw;
             }
 
+            // Verify the final on-disk file before reporting success.
+            var finalStatus = CheckInstallation();
+            if (finalStatus.State != InstallationState.Verified)
+                throw new InvalidDataException(
+                    "Installed loader failed integrity verification: " + finalStatus.Details);
+
             progress.Report(new InstallProgress(
-                "DOOMModLoader installed in KHARVOX/tools/doommodloader.", 100));
+                "DOOMModLoader verified in KHARVOX/tools/doommodloader.", 100));
         }
         finally
         {
@@ -227,7 +313,10 @@ internal sealed class DoomModLoaderInstallDialog : Form
 
     internal DoomModLoaderInstallDialog()
     {
-        Text = "KHARVOX — Install DOOMModLoader";
+        var repairing = DoomModLoaderInstaller.CheckInstallation().State
+            == DoomModLoaderInstaller.InstallationState.RepairRequired;
+        Text = repairing ? "KHARVOX — Repair DOOMModLoader"
+            : "KHARVOX — Install DOOMModLoader";
         ClientSize = new Size(520, 230);
         MinimumSize = new Size(480, 265);
         MaximumSize = new Size(800, 350);
@@ -263,7 +352,9 @@ internal sealed class DoomModLoaderInstallDialog : Form
         statusLabel = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "No download will begin until you select Download & Install.",
+            Text = repairing
+                ? "A damaged or outdated installation was detected. Repair will re-download and verify it."
+                : "No download will begin until you select Download & Install.",
             AutoEllipsis = true
         };
         layout.Controls.Add(statusLabel, 0, 1);
@@ -278,7 +369,7 @@ internal sealed class DoomModLoaderInstallDialog : Form
         };
         actionButton = new Button
         {
-            Text = "Download && Install",
+            Text = repairing ? "Repair Installation" : "Download && Install",
             AutoSize = true,
             BackColor = Color.FromArgb(55, 55, 59),
             ForeColor = Color.White,
@@ -333,8 +424,10 @@ internal sealed class DoomModLoaderInstallDialog : Form
         try
         {
             await DoomModLoaderInstaller.InstallAsync(progress, cancellation.Token);
-            Installed = true;
-            statusLabel.Text = "Installed successfully. Ready for future DOOM resource mods.";
+            Installed = DoomModLoaderInstaller.IsInstalled;
+            if (!Installed)
+                throw new InvalidDataException("Installed executable verification failed.");
+            statusLabel.Text = "Installation verified. Ready for future DOOM resource mods.";
             progressBar.Value = 100;
             actionButton.Text = "Done";
         }
