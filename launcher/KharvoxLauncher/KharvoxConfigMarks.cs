@@ -158,6 +158,34 @@ internal static class KharvoxConfigMarks
             Set(one, Verdict.Unmarked, file);
             if (Lookup(one, file) != Verdict.Unmarked || Lookup(two, file) != Verdict.Good)
                 throw new InvalidDataException("Removing a mark affected another combination.");
+            // A mod updated under exactly the same filename must not inherit
+            // the old Good/Bad mark, while restoring the old bytes restores it.
+            var options = new KharvoxLaunchOptions(
+                false, false, false, false, "AER", 100m, false, "C:/Games/DOOM",
+                "Smooth", "head", 230m, 45m, .35m, false, "pistol",
+                "barrel", false, false, 2m, "both", false, "buttons",
+                false, false, false, true, "off", false, false, "shotgun");
+            var custom = new CustomModSettings();
+            var oldMod = new[] { new KeyValuePair<string, string>(
+                "user:demonmod.zip", "OLD-SHA256") };
+            var updatedMod = new[] { new KeyValuePair<string, string>(
+                "user:demonmod.zip", "NEW-SHA256") };
+            var oldKey = Fingerprint(options, custom, oldMod);
+            var newKey = Fingerprint(options, custom, updatedMod);
+            if (oldKey == newKey)
+                throw new InvalidDataException("Updated mod content reused an old config ID.");
+            Set(oldKey, Verdict.Bad, file);
+            if (Lookup(newKey, file) != Verdict.Unmarked)
+                throw new InvalidDataException("New mod version inherited an old bad rating.");
+            Set(newKey, Verdict.Good, file);
+            if (Lookup(Fingerprint(options, custom, oldMod), file) != Verdict.Bad
+                || Lookup(Fingerprint(options, custom, updatedMod), file) != Verdict.Good)
+                throw new InvalidDataException("Restoring a prior mod version lost its rating.");
+            var baseline = Fingerprint(options, custom,
+                Array.Empty<KeyValuePair<string, string>>());
+            if (baseline == oldKey || baseline == newKey)
+                throw new InvalidDataException("No-mod configuration collided with modded profile.");
+
             File.WriteAllText(file, "{broken");
             var failedSafely = false;
             try { Set(two, Verdict.Bad, file); }
