@@ -1624,11 +1624,21 @@ public sealed class MainForm : Form
         try
         {
             var options = CreateLaunchOptions();
-            await KharvoxRunner.LaunchAsync(options, () => {
+            void OnUi(Action update)
+            {
+                if (IsDisposed || !IsHandleCreated) return;
+                if (InvokeRequired)
+                {
+                    try { BeginInvoke((Action)(() => { if (!IsDisposed) update(); })); }
+                    catch (InvalidOperationException) { }
+                }
+                else update();
+            }
+            await KharvoxRunner.LaunchAsync(options, () => OnUi(() => {
                 SetRunningState(true);
                 launchButton.Enabled = true;
                 status.Text = "Game running";
-            }, message => status.Text = message);
+            }), message => OnUi(() => status.Text = message));
             SetRunningState(KharvoxRunner.IsRunning);
             status.Text = KharvoxRunner.IsRunning ? "Game running" : "DOOM ended.";
         }
