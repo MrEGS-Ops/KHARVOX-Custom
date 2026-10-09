@@ -291,7 +291,14 @@ function Start-Launcher {
     if ($NoLaunch) { return }
     $launcher = Join-Path $InstallRoot "KharvoxLauncher.exe"
     if (!(Test-Path -LiteralPath $launcher)) { return }
-    if (Get-Process -Name "KharvoxLauncher" -ErrorAction SilentlyContinue) { return }
+    # Do not mistake another KHARVOX installation for this one.
+    $expected = [IO.Path]::GetFullPath($launcher)
+    $instances = @(Get-CimInstance Win32_Process -Filter "Name = 'KharvoxLauncher.exe'" -ErrorAction Stop)
+    foreach ($instance in $instances) {
+        if (![string]::IsNullOrWhiteSpace([string]$instance.ExecutablePath) -and
+            [string]::Equals([IO.Path]::GetFullPath([string]$instance.ExecutablePath),
+                $expected, [StringComparison]::OrdinalIgnoreCase)) { return }
+    }
     try {
         Start-Process -FilePath $launcher -WorkingDirectory $InstallRoot
         Write-Status "KHARVOX Launcher started." Green
