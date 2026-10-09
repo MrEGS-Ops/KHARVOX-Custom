@@ -1479,7 +1479,7 @@ public sealed class MainForm : Form
                         Margin = new Padding(3, 4, 3, 4)
                     };
                     statusToolTip.SetToolTip(option, mod.FullPath + Environment.NewLine
-                        + "Selection is saved. Resource loading is not active yet.");
+                        + "Selection is saved and will apply on the next DOOM launch.");
                     option.CheckedChanged += (_, _) =>
                     {
                         var saved = DoomUserMods.LoadSelections();
@@ -1495,12 +1495,52 @@ public sealed class MainForm : Form
                     };
                     list.Controls.Add(option);
                 }
+
+                // An enabled mod may have been deleted outside KHARVOX. Keep
+                // a visible, checked missing entry so it can be unchecked.
+                var found = new HashSet<string>(detected.Select(x => x.Id),
+                    StringComparer.OrdinalIgnoreCase);
+                foreach (var missingId in selections.Except(found,
+                             StringComparer.OrdinalIgnoreCase))
+                {
+                    var missingOption = new CheckBox
+                    {
+                        Text = missingId + " — missing (uncheck to remove)",
+                        Checked = true,
+                        AutoSize = true,
+                        MaximumSize = new Size(335, 0),
+                        ForeColor = Color.Orange,
+                        Margin = new Padding(3, 4, 3, 4)
+                    };
+                    missingOption.CheckedChanged += (_, _) =>
+                    {
+                        if (missingOption.Checked) return;
+                        var saved = DoomUserMods.LoadSelections();
+                        saved.Remove(missingId);
+                        try
+                        {
+                            DoomUserMods.SaveSelections(saved);
+                            BeginInvoke((Action)RefreshUserDoomMods);
+                        }
+                        catch (Exception error)
+                        {
+                            MessageBox.Show(customOptionsForm, error.Message,
+                                "KHARVOX — Unable to save selection",
+                                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        }
+                    };
+                    list.Controls.Add(missingOption);
+                }
             }
             finally { list.ResumeLayout(); }
 
-            userDoomModStatus.Text = detected.Count == 0
-                ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
-                : detected.Count + " mod(s) found. Selections saved; resource loading not yet active.";
+            var countMissing = selections.Count(x => !detected.Any(entry =>
+                string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
+            userDoomModStatus.Text = countMissing != 0
+                ? countMissing + " selected mod(s) missing. Uncheck or restore them before launching."
+                : detected.Count == 0
+                    ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
+                    : detected.Count + " mod(s) detected. Checked mods apply on the next launch.";
         }
         catch (Exception error)
         {
