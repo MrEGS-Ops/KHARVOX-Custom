@@ -92,6 +92,12 @@ jobs:
         shell: powershell
         run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
 
+      - name: Test supervisor tail reader
+        shell: powershell
+        run: |
+          & .\supervisor\KharvoxSupervisor\bin\Release\net48\KharvoxSupervisor.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Supervisor tail self-test failed" }
+
       - name: Assemble full install and patch
         shell: powershell
         run: |

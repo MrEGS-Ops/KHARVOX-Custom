@@ -37,6 +37,8 @@ internal static class Program
         public long Position;
         public DateTime LastWriteUtc;
         public string LastSnapshot = string.Empty;
+        public readonly List<byte> PendingLine = new();
+        public bool SkippingLongLine;
     }
 
     private static int Main(string[] args)
@@ -49,6 +51,8 @@ internal static class Program
                 configPath = Path.GetFullPath(args[++i]);
             else if (string.Equals(args[i], "--once", StringComparison.OrdinalIgnoreCase))
                 once = true;
+            else if (string.Equals(args[i], "--self-test", StringComparison.OrdinalIgnoreCase))
+                return RunTailSelfTest();
         }
 
         SupervisorConfig config;
@@ -239,21 +243,121 @@ internal static class Program
             return;
         }
 
+        // Keep incomplete lines as bytes so a partial write (including a split
+        // UTF-8 character) cannot turn into two corrupted diagnostic records.
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        if (stream.Length < cursor.Position) cursor.Position = 0;
-        stream.Position = cursor.Position;
-        using var reader = new StreamReader(stream, Encoding.UTF8, true, 4096, leaveOpen: true);
-        string? line;
-        while ((line = reader.ReadLine()) is not null)
+        if (stream.Length < cursor.Position)
         {
-            WriteEvent(outputPath, "file-line", new Dictionary<string, object>
+            cursor.Position = 0;
+            cursor.PendingLine.Clear();
+            cursor.SkippingLongLine = false;
+        }
+        stream.Position = cursor.Position;
+        const int maximumLineBytes = 256 * 1024;
+        var buffer = new byte[8192];
+        int count;
+        while ((count = stream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            for (var i = 0; i < count; i++)
             {
-                ["name"] = watch.Name,
-                ["path"] = path,
-                ["line"] = line
-            });
+                var current = buffer[i];
+                if (current == (byte)'\n')
+                {
+                    if (cursor.SkippingLongLine)
+                    {
+                        WriteEvent(outputPath, "file-line-skipped", new Dictionary<string, object>
+                        {
+                            ["name"] = watch.Name,
+                            ["path"] = path,
+                            ["reason"] = "line exceeded 256 KiB"
+                        });
+                        cursor.SkippingLongLine = false;
+                    }
+                    else
+                    {
+                        var lineBytes = cursor.PendingLine.Count;
+                        if (lineBytes > 0 && cursor.PendingLine[lineBytes - 1] == (byte)'\r')
+                            lineBytes--;
+                        var line = Encoding.UTF8.GetString(cursor.PendingLine.ToArray(), 0, lineBytes);
+                        WriteEvent(outputPath, "file-line", new Dictionary<string, object>
+                        {
+                            ["name"] = watch.Name,
+                            ["path"] = path,
+                            ["line"] = line
+                        });
+                    }
+                    cursor.PendingLine.Clear();
+                }
+                else if (!cursor.SkippingLongLine)
+                {
+                    if (cursor.PendingLine.Count >= maximumLineBytes)
+                    {
+                        cursor.PendingLine.Clear();
+                        cursor.SkippingLongLine = true;
+                    }
+                    else cursor.PendingLine.Add(current);
+                }
+            }
         }
         cursor.Position = stream.Position;
+    }
+
+    // Runs without DOOM or an installed config; exercised by the Windows build.
+    private static int RunTailSelfTest()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KHARVOX-Supervisor-Test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var inputPath = Path.Combine(directory, "tail.log");
+            var outputPath = Path.Combine(directory, "events.ndjson");
+            File.WriteAllBytes(inputPath, Array.Empty<byte>());
+            var watch = new FileWatchConfig { Name = "SelfTest", Path = inputPath, Mode = "tail" };
+            var cursors = new Dictionary<string, FileCursor>(StringComparer.OrdinalIgnoreCase);
+            PollFile(watch, cursors, outputPath); // existing file: start following from its end
+
+            const string line = "partial-⚔-complete";
+            var utf8 = Encoding.UTF8.GetBytes(line + "\r\n");
+            var split = Encoding.UTF8.GetByteCount("partial-") + 1;
+            using (var writer = new FileStream(inputPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                writer.Write(utf8, 0, split); // split inside the multibyte character
+            PollFile(watch, cursors, outputPath);
+            if (File.Exists(outputPath) && File.ReadAllLines(outputPath).Length != 0)
+                throw new InvalidOperationException("Partial line emitted before newline.");
+
+            using (var writer = new FileStream(inputPath, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
+                writer.Write(utf8, split, utf8.Length - split);
+            PollFile(watch, cursors, outputPath);
+            AssertTailLine(outputPath, 1, line);
+
+            // Truncation must discard any stale cursor and follow the new log.
+            File.WriteAllBytes(inputPath, Encoding.UTF8.GetBytes("reset\n"));
+            PollFile(watch, cursors, outputPath);
+            AssertTailLine(outputPath, 2, "reset");
+
+            Console.WriteLine("KHARVOX Supervisor tail self-test passed (partial write, UTF-8, CRLF, truncation).");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("KHARVOX Supervisor tail self-test FAILED: " + ex);
+            return 1;
+        }
+        finally
+        {
+            try { Directory.Delete(directory, true); } catch { }
+        }
+    }
+
+    private static void AssertTailLine(string outputPath, int expectedCount, string expectedLine)
+    {
+        var entries = File.ReadAllLines(outputPath);
+        if (entries.Length != expectedCount)
+            throw new InvalidOperationException("Expected " + expectedCount + " complete lines; found " + entries.Length);
+        var fields = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(entries[expectedCount - 1]);
+        if (!string.Equals(fields["event"] as string, "file-line", StringComparison.Ordinal)
+            || !string.Equals(fields["line"] as string, expectedLine, StringComparison.Ordinal))
+            throw new InvalidOperationException("Tail line content was corrupted.");
     }
 
     private static string ReadTextSafely(string path, int maximumBytes)
