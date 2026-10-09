@@ -196,13 +196,14 @@ internal static class KharvoxResourcePatcher
                         if (entry.Length > MaxResourceBytes)
                             throw new InvalidDataException("Resource exceeds the size limit.");
                         var canonical = Normalize(entry.FullName);
-                        // Materialize single resource only. No duplicate ZIP staging.
-                        var bytes = ReadResource(entry.Open(), entry.Length);
+                        // The enumerator keeps this ZIP open while Build consumes
+                        // each yielded entry. Stream compressed data straight into
+                        // the patch: no memory-sized copy and no staged ZIP files.
                         yield return new InputResource
                         {
                             Path = canonical,
-                            Size = bytes.Length,
-                            Open = () => new MemoryStream(bytes, false)
+                            Size = entry.Length,
+                            Open = () => entry.Open()
                         };
                     }
                 }
@@ -250,27 +251,6 @@ internal static class KharvoxResourcePatcher
             foreach (var sub in Directory.GetDirectories(current).OrderByDescending(x => x,
                          StringComparer.OrdinalIgnoreCase))
                 pending.Push(sub);
-        }
-    }
-
-    private static byte[] ReadResource(Stream stream, long expected)
-    {
-        using (stream)
-        using (var target = new MemoryStream())
-        {
-            var bytes = new byte[65536];
-            long length = 0;
-            int read;
-            while ((read = stream.Read(bytes, 0, bytes.Length)) != 0)
-            {
-                length += read;
-                if (length > MaxResourceBytes)
-                    throw new InvalidDataException("Uncompressed mod resource too large.");
-                target.Write(bytes, 0, read);
-            }
-            if (length != expected)
-                throw new InvalidDataException("Mod resource size changed during import.");
-            return target.ToArray();
         }
     }
 
@@ -447,6 +427,33 @@ internal static class KharvoxResourcePatcher
                 if (patch.Read(bytes, 0, 7) != 7 ||
                     Encoding.UTF8.GetString(bytes) != "new-imp")
                     throw new InvalidDataException("Patch resource bytes invalid.");
+            }
+
+            // A compressed ZIP is consumed directly, without extracting or
+            // duplicating it into KHARVOX's staging folder.
+            var zipPath = Path.Combine(root, "CompressedMod.zip");
+            using (var archive = ZipFile.Open(zipPath, ZipArchiveMode.Create))
+            {
+                var entry = archive.CreateEntry(
+                    "generated/decls/entitydef/ai/imp.decl", CompressionLevel.Optimal);
+                using (var writer = new StreamWriter(entry.Open(), Encoding.UTF8))
+                    writer.Write("zip-imp");
+            }
+            var zipIndex = Path.Combine(root, "ziptest.pindex");
+            var zipData = Path.Combine(root, "ziptest.patch");
+            var zipResult = Build(index, new[] { zipPath }, 2, zipIndex, zipData);
+            var zipEntries = ReadIndex(zipIndex)
+                .Where(x => x.ShortName == "ai/imp").ToArray();
+            if (zipResult.Replaced != 2 || zipEntries.Length != 2
+                || zipEntries.Any(x => x.PatchNumber != 2 || x.PlainSize != 10))
+                throw new InvalidDataException("Compressed ZIP patch failed.");
+            using (var stream = File.OpenRead(zipData))
+            {
+                stream.Position = zipEntries[0].Offset;
+                var bytes = new byte[10];
+                if (stream.Read(bytes, 0, 10) != 10
+                    || Encoding.UTF8.GetString(bytes) != "zip-imp")
+                    throw new InvalidDataException("Compressed ZIP data does not match.");
             }
 
             var unsupported = Path.Combine(root, "Unsupported");
