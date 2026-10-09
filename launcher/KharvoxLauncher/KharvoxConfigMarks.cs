@@ -6,7 +6,7 @@ namespace KharvoxLauncher;
 
 // Labels reflect the user's judgement, never a claim of automatic compatibility.
 // IDs are derived from the effective launcher options, built-in mods and the
-// selected DOOM resource mod IDs. Order of mods does not change the identity.
+// selected DOOM resource mod content. Order of mods does not change the identity.
 internal static class KharvoxConfigMarks
 {
     internal enum Verdict { Unmarked = 0, Good = 1, Bad = 2 }
@@ -32,7 +32,7 @@ internal static class KharvoxConfigMarks
 
     internal static string Fingerprint(
         KharvoxLaunchOptions launch, CustomModSettings mods,
-        IEnumerable<string> selectedDoomMods)
+        IEnumerable<KeyValuePair<string, string>> selectedDoomMods)
     {
         var fields = new SortedDictionary<string, string>(StringComparer.Ordinal);
         foreach (var property in typeof(KharvoxLaunchOptions).GetProperties())
@@ -47,14 +47,18 @@ internal static class KharvoxConfigMarks
                 continue;
             fields["mod." + property.Name] = FormatValue(property.GetValue(mods));
         }
-        foreach (var id in selectedDoomMods
-            .Select(s => s.Trim().ToLowerInvariant())
-            .OrderBy(s => s, StringComparer.Ordinal).Distinct(StringComparer.Ordinal))
-            fields["doom." + id] = "selected";
+        var selected = selectedDoomMods
+            .OrderBy(s => s.Key, StringComparer.OrdinalIgnoreCase).ToArray();
+        foreach (var selectedMod in selected)
+            fields["doom." + selectedMod.Key.Trim().ToLowerInvariant()] =
+                "sha256:" + selectedMod.Value;
 
         // Version this separately from the file schema. Adding or changing
         // gameplay fields should never misidentify an old marked combination.
-        var canonical = new StringBuilder("KHARVOX-CONFIG-ID-v1\n");
+        // No selected resource mods: keep old ratings valid. Existing ratings
+        // with resource mods MUST NOT be mistaken for content-aware ratings.
+        var canonical = new StringBuilder(selected.Length == 0
+            ? "KHARVOX-CONFIG-ID-v1\n" : "KHARVOX-CONFIG-ID-v2\n");
         foreach (var pair in fields)
             canonical.Append(pair.Key.Length).Append(':').Append(pair.Key)
                 .Append('=').Append(pair.Value.Length).Append(':')

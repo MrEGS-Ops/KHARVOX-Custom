@@ -607,7 +607,13 @@ public sealed partial class MainForm : Form
             BackColor = Color.FromArgb(43, 43, 47)
         };
         rescanUserMods.FlatAppearance.BorderColor = Color.DimGray;
-        rescanUserMods.Click += (_, _) => RefreshUserDoomMods();
+        rescanUserMods.Click += (_, _) =>
+        {
+            // A manual rescan catches ZIP replacements that preserve both
+            // length and timestamps and checks unpacked directory contents.
+            KharvoxModContentFingerprints.Invalidate();
+            RefreshUserDoomMods();
+        };
         userButtons.Controls.Add(openUserFolder);
         userButtons.Controls.Add(rescanUserMods);
         plannedDoomMods.Controls.Add(userButtons);
@@ -631,7 +637,9 @@ public sealed partial class MainForm : Form
         userDoomModDebounce.Tick += (_, _) =>
         {
             userDoomModDebounce.Stop();
+            KharvoxModContentFingerprints.Invalidate();
             if (customOptionsForm?.Visible == true) RefreshUserDoomMods();
+            else CheckLiveConfiguration(promptOnBad: false);
         };
 
         doomGrid.Controls.Add(plannedDoomMods, 0, 4);
@@ -1462,7 +1470,7 @@ public sealed partial class MainForm : Form
         {
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
                 | NotifyFilters.LastWrite | NotifyFilters.Size,
-            IncludeSubdirectories = false
+            IncludeSubdirectories = true
         };
         userDoomModWatcher.Created += (_, _) => QueueUserDoomModScan();
         userDoomModWatcher.Deleted += (_, _) => QueueUserDoomModScan();
@@ -1563,6 +1571,9 @@ public sealed partial class MainForm : Form
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
                 string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
+            // This is a passive update: changes on disk may alter reputation,
+            // but should never interrupt browsing with a "known bad" popup.
+            CheckLiveConfiguration(promptOnBad: false);
             userDoomModStatus.Text = countMissing != 0
                 ? countMissing + " selected mod(s) missing. Uncheck or restore them before launching."
                 : detected.Count == 0

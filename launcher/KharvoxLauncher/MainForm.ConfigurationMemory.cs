@@ -154,7 +154,8 @@ public sealed partial class MainForm
         // preset name or checkbox order alone does not change game behaviour.
         return KharvoxConfigMarks.Fingerprint(
             CreateLaunchOptions(), ReadCustomModSettingsFromControls(),
-            DoomUserMods.LoadSelections());
+            KharvoxModContentFingerprints.ResolveSelected(
+                doomPath.Text, DoomUserMods.LoadSelections()));
     }
 
     private void DisplayConfigurationVerdict(KharvoxConfigMarks.Verdict verdict)

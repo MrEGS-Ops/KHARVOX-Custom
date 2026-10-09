@@ -123,7 +123,7 @@ internal static class KharvoxModContentFingerprints
     private static List<(string Relative, string Full, long Length, long WriteTicks)>
         ListFiles(string root)
     {
-        var result = new List<(string, string, long, long)>();
+        var result = new List<(string Relative, string Full, long Length, long WriteTicks)>();
         var pending = new Stack<string>();
         pending.Push(root);
         var basePath = root.TrimEnd(Path.DirectorySeparatorChar,
