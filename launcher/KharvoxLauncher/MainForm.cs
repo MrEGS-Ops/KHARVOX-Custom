@@ -480,9 +480,49 @@ public sealed class MainForm : Form
         doomGrid.Controls.Add(loaderInstallButton, 0, 2);
         doomGrid.Controls.Add(new Label
         {
-            Dock = DockStyle.Fill, ForeColor = Color.Gray,
-            Text = "KHARVOX-built DOOM resource mods will appear below as they are completed and tested."
+            Dock = DockStyle.Fill, ForeColor = Color.Silver,
+            Text = "PLANNED DOOM MODS — preview only (not yet selectable)",
+            TextAlign = ContentAlignment.MiddleLeft
         }, 0, 3);
+
+        // Visual placeholders only. Never persist these or pass them to DOOMModLoader
+        // until we have developed and validated the actual resource patches.
+        var plannedDoomMods = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoScroll = true,
+            Margin = Padding.Empty,
+            Padding = new Padding(2, 4, 2, 4),
+            BackColor = PanelColor
+        };
+        var plannedDoomChecks = new (string Name, string Description)[]
+        {
+            ("1. Bigger Demons", "Individual demon scale multipliers — investigation pending."),
+            ("2. Demon Health Multipliers", "Individually configurable health and durability."),
+            ("3. Enhanced Demon Attacks", "Additional enemy moves and combat behaviours."),
+            ("4. Expanded Infighting", "More demon-versus-demon hostility options."),
+            ("5. Persistent Corpses & Gore", "Longer-lived dead bodies and dismemberment."),
+            ("6. Demon Spawn Density", "More enemies in compatible encounters."),
+            ("7. Limited Supplies", "Reduced ammunition and health pickups.")
+        };
+        foreach (var planned in plannedDoomChecks)
+        {
+            var placeholder = new CheckBox
+            {
+                Text = planned.Name,
+                AutoSize = true,
+                Enabled = false,
+                Checked = false,
+                Margin = new Padding(3, 6, 3, 6),
+                ForeColor = Color.Gainsboro
+            };
+            statusToolTip.SetToolTip(placeholder,
+                planned.Description + " Placeholder only — not implemented.");
+            plannedDoomMods.Controls.Add(placeholder);
+        }
+        doomGrid.Controls.Add(plannedDoomMods, 0, 4);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
