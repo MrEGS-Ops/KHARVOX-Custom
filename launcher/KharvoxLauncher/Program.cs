@@ -12,6 +12,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-doom-staging",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomResourceModSession.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-doom-overlap",
+                StringComparison.OrdinalIgnoreCase)))
+            return DoomModOverlapPreflight.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-resource-patcher",
                 StringComparison.OrdinalIgnoreCase)))
             return KharvoxResourcePatcher.RunSelfTest();

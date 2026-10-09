@@ -433,6 +433,10 @@ internal static class DoomResourceModSession
 
         if (selected.Length > MaxMods)
             throw new InvalidOperationException("Too many selected DOOM mods (maximum 128).");
+        // DML otherwise lets generated filenames determine the winner when
+        // more than one mod replaces a resource. Never hide those conflicts.
+        if (selected.Length > 1)
+            DoomModOverlapPreflight.EnsureNoResourceOverlap(selected);
         var statePath = StateFile(runtimeDir, gameDir);
         var manifest = LoadManifest(statePath);
 

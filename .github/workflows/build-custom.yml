@@ -98,6 +98,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-staging" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "DOOM staging self-test failed: $($test.ExitCode)" }
 
+      - name: Test active DML resource collision rejection
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-overlap" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DML overlap self-test failed: $($test.ExitCode)" }
+
       - name: Test independent DOOM resource patch writer
         shell: powershell
         run: |
