@@ -2,7 +2,7 @@ using System.Reflection;
 
 namespace KharvoxLauncher;
 
-public sealed class MainForm : Form
+public sealed partial class MainForm : Form
 {
     private const decimal AerDefaultRenderScale = 100m;
     private const decimal FixedTurnDeadzone = .35m;
@@ -169,7 +169,12 @@ public sealed class MainForm : Form
                 banner.Image = new Bitmap(embeddedImage);
             }
         }
-        root.Controls.Add(banner);
+        var headerHost = new Panel { Dock = DockStyle.Fill, BackColor = Color.Black };
+        headerHost.Controls.Add(banner);
+        var mainConfigBar = BuildConfigurationBar(configurationStatusMain);
+        headerHost.Controls.Add(mainConfigBar);
+        mainConfigBar.BringToFront();
+        root.Controls.Add(headerHost);
 
         var profileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Padding = new Padding(8, 2, 8, 2) };
         profileRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
@@ -184,7 +189,12 @@ public sealed class MainForm : Form
         });
         preset.Items.AddRange(["Recommended", "Comfort", "Intense", "Custom"]);
         preset.Dock = DockStyle.Fill;
-        preset.SelectedIndexChanged += (_, _) => ApplyPreset();
+        preset.SelectedIndexChanged += (_, _) =>
+        {
+            if (restoringConfiguration) return;
+            ApplyPreset();
+            if (preset.SelectedIndex != 3) CheckLiveConfiguration();
+        };
         profileRow.Controls.Add(preset);
         var infoButton = new Button
         {
@@ -809,6 +819,7 @@ public sealed class MainForm : Form
         RefreshRenderScaleAvailability();
         if (string.IsNullOrWhiteSpace(doomPath.Text) || !File.Exists(Path.Combine(doomPath.Text, "DOOMx64vk.exe")))
             doomPath.Text = KharvoxRunner.FindDoomInstall() ?? string.Empty;
+        StartConfigurationTracking();
         RefreshDoomProcessState();
         FormClosing += (_, _) =>
         {
@@ -952,7 +963,11 @@ public sealed class MainForm : Form
         RefreshRenderScaleAvailability();
         OptionChanged(sender, e);
     }
-    private void WeaponModeChanged(object? sender, EventArgs e) => UpdateWeaponModeDescription();
+    private void WeaponModeChanged(object? sender, EventArgs e)
+    {
+        UpdateWeaponModeDescription();
+        CheckLiveConfiguration();
+    }
     private void UpdateWeaponModeDescription()
     {
         var calibrating = weaponMode.SelectedIndex == 1;
@@ -1083,7 +1098,7 @@ public sealed class MainForm : Form
 
     private void CustomModChanged(object? sender, EventArgs e)
     {
-        if (applyingCustomModDependencies) return;
+        if (applyingCustomModDependencies || restoringConfiguration) return;
         ApplyCustomModDependencies(sender as CheckBox);
         SaveCustomModSettings();
         OptionChanged(sender, e);
@@ -1091,7 +1106,7 @@ public sealed class MainForm : Form
 
     private void WeaponWheelRemapChanged(object? sender, EventArgs e)
     {
-        if (applyingCustomModDependencies) return;
+        if (applyingCustomModDependencies || restoringConfiguration) return;
         ApplyCustomModDependencies(weaponWheelRemap);
         SaveCustomModSettings();
         OptionChanged(sender, e);
@@ -1311,9 +1326,12 @@ public sealed class MainForm : Form
 
     private void OptionChanged(object? sender, EventArgs e)
     {
-        if (!applyingPreset && Visible && preset.SelectedIndex >= 0 && preset.SelectedIndex != 3) preset.SelectedIndex = 3;
+        if (!restoringConfiguration && !applyingPreset && Visible
+            && preset.SelectedIndex >= 0 && preset.SelectedIndex != 3)
+            preset.SelectedIndex = 3;
         smoothSpeed.Enabled = turnMode.SelectedIndex == 0;
         snapAngle.Enabled = turnMode.SelectedIndex == 1;
+        CheckLiveConfiguration();
     }
 
     private void HandCalibrationModeChanged(object? sender, EventArgs e)
@@ -1374,14 +1392,18 @@ public sealed class MainForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(12),
-            RowCount = 2,
+            RowCount = 3,
             ColumnCount = 1,
             BackColor = Color.Black
         };
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        var customConfigBar = BuildConfigurationBar(configurationStatusMods);
+        customConfigBar.Dock = DockStyle.Fill;
+        root.Controls.Add(customConfigBar, 0, 0);
         content.Dock = DockStyle.Fill;
-        root.Controls.Add(content, 0, 0);
+        root.Controls.Add(content, 0, 1);
 
         var closeButton = new Button
         {
@@ -1404,7 +1426,7 @@ public sealed class MainForm : Form
             Padding = new Padding(0, 5, 0, 0)
         };
         closeRow.Controls.Add(closeButton);
-        root.Controls.Add(closeRow, 0, 1);
+        root.Controls.Add(closeRow, 0, 2);
         form.Controls.Add(root);
 
         form.FormClosing += (_, e) =>
@@ -1488,6 +1510,7 @@ public sealed class MainForm : Form
                             if (option.Checked) saved.Add(mod.Id);
                             else saved.Remove(mod.Id);
                             DoomUserMods.SaveSelections(saved);
+                            CheckLiveConfiguration();
                         }
                         catch (Exception ex)
                         {
@@ -1523,6 +1546,7 @@ public sealed class MainForm : Form
                             var saved = DoomUserMods.LoadSelections();
                             saved.Remove(missingId);
                             DoomUserMods.SaveSelections(saved);
+                            CheckLiveConfiguration();
                             BeginInvoke((Action)RefreshUserDoomMods);
                         }
                         catch (Exception error)
@@ -1743,6 +1767,7 @@ public sealed class MainForm : Form
             }
             doomPath.Text = dialog.SelectedPath;
             SaveSettings();
+            CheckLiveConfiguration();
         }
     }
 
