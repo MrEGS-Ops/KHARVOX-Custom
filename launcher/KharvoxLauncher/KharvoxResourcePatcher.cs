@@ -28,6 +28,15 @@ internal static class KharvoxResourcePatcher
         internal byte PatchNumber;
     }
 
+    // Approval is requested only after a structurally mergeable overlap
+    // has been identified. No silent auto-merge and no implicit load order.
+    internal sealed class MergeProposal
+    {
+        internal string ResourcePath = "";
+        internal string FirstMod = "";
+        internal string SecondMod = "";
+    }
+
     internal sealed class Result
     {
         internal int ResourceCount;
@@ -373,7 +382,8 @@ internal static class KharvoxResourcePatcher
 
     internal static Result Build(string originalIndex, IEnumerable<string> selectedMods,
         byte outputPatchNumber, string outputIndex, string outputData,
-        Action<string>? update = null)
+        Action<string>? update = null,
+        Func<MergeProposal, bool>? approveMerge = null)
     {
         if (outputPatchNumber < 1)
             throw new ArgumentOutOfRangeException(nameof(outputPatchNumber));
@@ -415,6 +425,21 @@ internal static class KharvoxResourcePatcher
                                     baseline, previouslyApplied, incoming,
                                     out var merged, out reason))
                             {
+                                var proposal = new MergeProposal
+                                {
+                                    ResourcePath = resource.Path,
+                                    FirstMod = firstSource,
+                                    SecondMod = resource.Source
+                                };
+                                if (approveMerge is null)
+                                    throw new InvalidOperationException(
+                                        "Merging overlapping mod files requires explicit approval."
+                                        + Environment.NewLine + "Resource: " + resource.Path
+                                        + Environment.NewLine + "No patch was installed.");
+                                if (!approveMerge(proposal))
+                                    throw new OperationCanceledException(
+                                        "DOOM resource merge was declined. Nothing was installed."
+                                        + Environment.NewLine + "Resource: " + resource.Path);
                                 WriteChangedResource(target, lookups[resource.Path],
                                     outputPatchNumber, merged);
                                 mergedConfig[resource.Path] = merged;
@@ -646,8 +671,16 @@ internal static class KharvoxResourcePatcher
                 "{\"health\":300,\"armor\":50}");
             var mergedIndex = Path.Combine(root, "merged.pindex");
             var mergedPatch = Path.Combine(root, "merged.patch");
+            var approvalCount = 0;
             var mergedResult = Build(jsonIndex, new[] { healthMod, armorMod },
-                1, mergedIndex, mergedPatch);
+                1, mergedIndex, mergedPatch,
+                approveMerge: proposal =>
+                {
+                    approvalCount++;
+                    return proposal.ResourcePath == "config/player.json"
+                        && proposal.FirstMod == healthMod
+                        && proposal.SecondMod == armorMod;
+                });
             var mergedEntry = ReadIndex(mergedIndex).Single();
             using (var mergedStream = File.OpenRead(mergedPatch))
             {
@@ -659,9 +692,46 @@ internal static class KharvoxResourcePatcher
                     Encoding.UTF8.GetString(config)) as Dictionary<string, object>;
                 if (value is null || Convert.ToInt32(value["health"]) != 200
                     || Convert.ToInt32(value["armor"]) != 150
-                    || mergedResult.ConfigsMerged != 1)
+                    || mergedResult.ConfigsMerged != 1 || approvalCount != 1)
                     throw new InvalidDataException("Independent health/armor config merging failed.");
             }
+            // Declining an otherwise valid merge must discard all generated
+            // output, without altering or removing either source mod.
+            var declinedIndex = Path.Combine(root, "declined.pindex");
+            var declinedPatch = Path.Combine(root, "declined.patch");
+            var declineAsked = false;
+            try
+            {
+                Build(jsonIndex, new[] { healthMod, armorMod }, 1,
+                    declinedIndex, declinedPatch, approveMerge: proposal =>
+                    {
+                        declineAsked = true;
+                        return false;
+                    });
+                throw new InvalidDataException("Rejected merge unexpectedly succeeded.");
+            }
+            catch (OperationCanceledException) { }
+            if (!declineAsked || File.Exists(declinedIndex) || File.Exists(declinedPatch))
+                throw new InvalidDataException("Declined merge left temporary output behind.");
+
+            // No UI or callback available is also a refusal by default.
+            var missingApprovalRejected = false;
+            try
+            {
+                Build(jsonIndex, new[] { healthMod, armorMod }, 1,
+                    Path.Combine(root, "unapproved.pindex"),
+                    Path.Combine(root, "unapproved.patch"));
+            }
+            catch (InvalidOperationException error)
+            {
+                missingApprovalRejected =
+                    error.Message.Contains("explicit approval");
+            }
+            if (!missingApprovalRejected
+                || File.Exists(Path.Combine(root, "unapproved.pindex"))
+                || File.Exists(Path.Combine(root, "unapproved.patch")))
+                throw new InvalidDataException("Auto-merge occurred without approval.");
+
             var conflictRejected = false;
             var conflictIndex = Path.Combine(root, "conflict.pindex");
             var conflictPatch = Path.Combine(root, "conflict.patch");
