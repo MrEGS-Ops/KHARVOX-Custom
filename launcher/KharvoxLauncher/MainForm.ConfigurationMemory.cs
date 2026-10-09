@@ -276,4 +276,82 @@ public sealed partial class MainForm
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
+    // Windows-only smoke test for visual structure. No DOOM install, OpenXR
+    // runtime, game process or controller remapping is needed.
+    internal static int RunCustomModsUiSelfTest()
+    {
+        var path = Path.Combine(Path.GetTempPath(),
+            "KHARVOX-UI-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            using var main = new MainForm(path);
+            var window = main.customOptionsForm ??
+                throw new InvalidOperationException("Custom Mods window was not created.");
+
+            IEnumerable<Control> Descendants(Control root)
+            {
+                foreach (Control child in root.Controls)
+                {
+                    yield return child;
+                    foreach (var nested in Descendants(child)) yield return nested;
+                }
+            }
+
+            var groups = Descendants(window).OfType<GroupBox>().ToArray();
+            var doom = groups.Single(x => x.Text == "DOOM MODS");
+            var vr = groups.Single(x => x.Text == "VR MODS");
+            if (doom.Parent is not TableLayoutPanel columns
+                || !ReferenceEquals(vr.Parent, columns)
+                || columns.GetColumn(doom) != 0 || columns.GetColumn(vr) != 1)
+                throw new InvalidDataException("DOOM / VR column ordering is incorrect.");
+
+            var layout = vr.Controls.OfType<TableLayoutPanel>().Single();
+            var checks = layout.Controls.OfType<CheckBox>()
+                .OrderBy(check => layout.GetRow(check)).ToArray();
+            if (checks.Length != 15 || layout.AutoScroll)
+                throw new InvalidDataException("VR mod list count or scrolling changed.");
+            var labels = checks.Select(check =>
+            {
+                var label = check.Text;
+                var delimiter = label.IndexOf(". ", StringComparison.Ordinal);
+                if (delimiter < 0) throw new InvalidDataException("Mod is not numbered.");
+                return label.Substring(delimiter + 2).Split('—')[0].Trim();
+            }).ToArray();
+            if (!labels.SequenceEqual(labels.OrderBy(x => x,
+                    StringComparer.OrdinalIgnoreCase)))
+                throw new InvalidDataException("VR mod names are not alphabetical.");
+            if (!checks.Any(x => x.Text.Contains("Requires #"))
+                || !checks.Any(x => x.Text.Contains("Disables #")))
+                throw new InvalidDataException("VR dependencies are not numbered.");
+
+            if (main.gloryKillSpeedMenu.DropDownStyle != ComboBoxStyle.DropDownList
+                || main.gloryKillSpeedMenu.Items.Count != 11)
+                throw new InvalidDataException("Glory Kill speed dropdown is missing.");
+            if (main.configurationStatusButton?.Parent is null
+                || Descendants(main).Any(x => x == main.configurationStatusButton))
+                throw new InvalidDataException(
+                    "Rating menu must only appear inside Custom Mods.");
+
+            var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
+            var loaderRow = doomGrid.GetControlFromPosition(0, 1)
+                as TableLayoutPanel;
+            if (loaderRow is null || loaderRow.ColumnCount != 2
+                || loaderRow.Controls.OfType<Button>().All(x =>
+                    loaderRow.GetColumn(x) != 1))
+                throw new InvalidDataException("DML action isn't right-aligned.");
+
+            Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine("KHARVOX Custom Mods UI test failed: " + ex);
+            return 1;
+        }
+        finally
+        {
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+    }
+
 }
