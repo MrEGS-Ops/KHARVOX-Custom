@@ -171,6 +171,9 @@ public sealed partial class MainForm
             indicator.Text = label;
             indicator.ForeColor = colour;
             indicator.AccessibleName = "Current KHARVOX configuration: " + label;
+            statusToolTip.SetToolTip(indicator,
+                "Personal configuration rating: " + label
+                + ". You can change this rating using Mark Good, Mark Bad or Clear.");
         }
     }
 
