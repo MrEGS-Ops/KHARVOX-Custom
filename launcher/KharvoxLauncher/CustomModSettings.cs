@@ -59,4 +59,36 @@ internal static class CustomModSettingsStore
         value.Schema = CustomModSettings.CurrentSchema;
         File.WriteAllText(path, Serializer.Serialize(value));
     }
+
+    internal static int RunSelfTest()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "KHARVOX-Custom-Settings-Test-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(root);
+            var path = Path.Combine(root, "custom-mods.json");
+            Save(new CustomModSettings { PhysicalCrouch = true }, path);
+            if (!Load(path).PhysicalCrouch)
+                throw new InvalidDataException("Valid custom mod option was lost.");
+            File.WriteAllText(path, "{BROKEN");
+            var refused = false;
+            try { Load(path); }
+            catch (InvalidDataException) { refused = true; }
+            if (!refused || File.ReadAllText(path) != "{BROKEN")
+                throw new InvalidDataException(
+                    "Damaged custom mod settings must fail without resetting the file.");
+            Console.WriteLine("KHARVOX custom VR mod settings safety tests passed.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("Custom VR mod config self-test failed: " + error);
+            return 1;
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
+    }
 }
