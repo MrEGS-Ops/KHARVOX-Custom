@@ -269,7 +269,7 @@ internal static class DoomResourceModSession
         {
             process.StartInfo = new ProcessStartInfo(loaderExe)
             {
-                Arguments = "-moddir \"" + modDir + "\" -nolaunchgame -nocheckforupdates -nopatchgame -nosnapmap",
+                Arguments = "-moddir \"" + modDir + "\" -nolaunchgame -nocheckforupdates -nopatchgame -nosnapmap -nouncapcutscenes",
                 WorkingDirectory = gameDir, // DOOMModLoader resolves ./base relative to this.
                 UseShellExecute = false,
                 CreateNoWindow = true,
@@ -294,6 +294,7 @@ internal static class DoomResourceModSession
             var output = await stdout.ConfigureAwait(false);
             var errors = await stderr.ConfigureAwait(false);
             var combined = output + Environment.NewLine + errors;
+            File.WriteAllText(RuntimeStorage.LogPath("KHARVOX-DOOMModLoader.log"), combined);
             if (process.ExitCode != 0
                 || (combined.IndexOf("Successfully installed mods!",
                         StringComparison.OrdinalIgnoreCase) < 0
@@ -484,7 +485,6 @@ internal static class DoomResourceModSession
                 statusUpdate?.Invoke("Applying DOOM resource mods...");
                 var output = await RunLoaderAsync(gameDir, ActiveFolder(runtimeDir),
                     DoomModLoaderInstaller.ExecutablePath).ConfigureAwait(false);
-                File.WriteAllText(RuntimeStorage.LogPath("KHARVOX-DOOMModLoader.log"), output);
                 var after = GetGeneratedResources(gameDir);
                 SaveManifest(statePath, new Manifest
                 {
