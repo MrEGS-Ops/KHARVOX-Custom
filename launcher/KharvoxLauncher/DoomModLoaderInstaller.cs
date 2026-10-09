@@ -143,6 +143,7 @@ internal static class DoomModLoaderInstaller
             ".doommodloader-backup-" + Guid.NewGuid().ToString("N"));
         var movedOriginal = false;
         var installedNew = false;
+        var verifiedNew = false;
 
         Directory.CreateDirectory(staging);
         try
@@ -284,15 +285,33 @@ internal static class DoomModLoaderInstaller
             if (finalStatus.State != InstallationState.Verified)
                 throw new InvalidDataException(
                     "Installed loader failed integrity verification: " + finalStatus.Details);
+            verifiedNew = true;
 
             progress.Report(new InstallProgress(
                 "DOOMModLoader verified in KHARVOX/tools/doommodloader.", 100));
         }
         finally
         {
+            // Repair is transactional: an invalid replacement must never
+            // overwrite the previous installation. Keep the backup on disk
+            // if restoration fails rather than deleting the only copy.
+            if (!verifiedNew && installedNew)
+            {
+                try
+                {
+                    if (Directory.Exists(InstallDirectory))
+                        Directory.Delete(InstallDirectory, true);
+                    if (movedOriginal && Directory.Exists(backup))
+                    {
+                        Directory.Move(backup, InstallDirectory);
+                        movedOriginal = false;
+                    }
+                }
+                catch { /* Retain the previous copy in the backup directory. */ }
+            }
             try { if (Directory.Exists(staging)) Directory.Delete(staging, true); }
             catch { /* Stale staging can be cleaned at a later launch. */ }
-            if (installedNew && movedOriginal)
+            if (verifiedNew && movedOriginal)
             {
                 try { Directory.Delete(backup, true); }
                 catch { /* Previous version retained as a safe backup. */ }
