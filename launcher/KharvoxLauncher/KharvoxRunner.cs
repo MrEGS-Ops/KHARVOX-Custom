@@ -314,8 +314,9 @@ internal static class KharvoxRunner
         // Resource mods are installed before DOOM starts, while the exclusive
         // launch gate and game-not-running checks are active. No controller or
         // native KHARVOX remapping code is changed by this integration.
-        var activeDoomResourceMods = await DoomResourceModSession.PrepareAsync(
-            runtimeDir, options.GameDirectory!, statusUpdate).ConfigureAwait(false);
+        var activeDoomResourceMods = await Task.Run(() =>
+            DoomResourceModSession.PrepareAsync(
+                runtimeDir, options.GameDirectory!, statusUpdate)).ConfigureAwait(false);
         if (activeDoomResourceMods)
             statusUpdate?.Invoke("DOOM resource mods active (developer mode required).");
 
