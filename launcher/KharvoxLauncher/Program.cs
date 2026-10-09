@@ -6,6 +6,9 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "--vr-intro") return VrIntroHost.Run(args.Skip(1).ToArray());
+        if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
+                StringComparison.OrdinalIgnoreCase)))
+            return DoomUserMods.RunSelfTest();
 
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);

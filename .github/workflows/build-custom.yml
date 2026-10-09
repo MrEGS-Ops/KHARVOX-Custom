@@ -84,6 +84,13 @@ jobs:
         shell: powershell
         run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
 
+      - name: Test DOOM user mod discovery and selection persistence
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-user-mods" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "User mod discovery self-test failed: $($test.ExitCode)" }
+
       - name: Restore supervisor
         shell: powershell
         run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj

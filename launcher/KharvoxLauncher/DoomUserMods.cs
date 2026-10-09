@@ -27,7 +27,7 @@ internal static class DoomUserMods
         }
     }
 
-    private sealed class SelectionFileData
+    internal sealed class SelectionFileData
     {
         public int Schema { get; set; } = 1;
         public string[] Selected { get; set; } = Array.Empty<string>();
@@ -111,5 +111,59 @@ internal static class DoomUserMods
             File.Replace(temporary, file, null);
         else
             File.Move(temporary, file);
+    }
+
+    internal static int RunSelfTest()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "KHARVOX-Doom-Mod-Discovery-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var user = Path.Combine(root, "user");
+            var game = Path.Combine(root, "game");
+            var original = Path.Combine(game, "Mods");
+            Directory.CreateDirectory(user);
+            Directory.CreateDirectory(original);
+            File.WriteAllText(Path.Combine(user, "B_Mod.ZIP"), "placeholder");
+            Directory.CreateDirectory(Path.Combine(user, "MyUnpackedMod"));
+            File.WriteAllText(Path.Combine(user, "readme.txt"), "not a mod");
+            File.WriteAllText(Path.Combine(original, "Existing.zip"), "placeholder");
+            Directory.CreateDirectory(Path.Combine(original, "OldMod"));
+            var found = Scan(game, user);
+            if (found.Count != 4
+                || found.Count(x => x.IsFromDoom) != 2
+                || found.Count(x => !x.IsFromDoom) != 2
+                || !found.Any(x => x.Id == "user:b_mod.zip")
+                || !found.Any(x => x.Id == "game:existing.zip"))
+                throw new InvalidOperationException(
+                    "Expected 2 user and 2 existing DOOM mods, ignoring text files.");
+
+            var settings = Path.Combine(root, "selections.json");
+            var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                { "user:b_mod.zip", "game:existing.zip" };
+            SaveSelections(selected, settings);
+            var persisted = LoadSelections(settings);
+            if (!selected.SetEquals(persisted))
+                throw new InvalidOperationException("Checkbox selections did not round-trip.");
+            persisted.Remove("user:b_mod.zip");
+            SaveSelections(persisted, settings);
+            if (!LoadSelections(settings).SetEquals(persisted))
+                throw new InvalidOperationException("Checkbox deselection did not persist.");
+            File.WriteAllText(settings, "{invalid");
+            if (LoadSelections(settings).Count != 0)
+                throw new InvalidOperationException("Invalid selection config must fail closed.");
+
+            Console.WriteLine("DOOM user mod discovery and selection tests passed.");
+            return 0;
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine("DOOM user mod discovery self-test failed: " + error);
+            return 1;
+        }
+        finally
+        {
+            try { Directory.Delete(root, true); } catch { }
+        }
     }
 }
