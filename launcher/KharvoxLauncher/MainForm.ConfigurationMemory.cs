@@ -1,0 +1,259 @@
+namespace KharvoxLauncher;
+
+// Live, user-authored compatibility memory. This is deliberately a separate
+// launch-UI concern, not VR gameplay/controller remapping.
+public sealed partial class MainForm
+{
+    private readonly Label configurationStatusMain = MakeConfigurationStatus();
+    private readonly Label configurationStatusMods = MakeConfigurationStatus();
+    private bool configurationTrackingReady;
+    private bool restoringConfiguration;
+    private bool showingConfigurationWarning;
+    private string lastConfigurationKey = "";
+    private ConfigurationSnapshot? lastAcceptedConfiguration;
+
+    private sealed class ConfigurationSnapshot
+    {
+        internal Dictionary<Control, object> Values = new();
+        internal HashSet<string> DoomMods = new(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static Label MakeConfigurationStatus() => new()
+    {
+        Text = "? UNMARKED",
+        AutoSize = false,
+        Width = 136,
+        Height = 28,
+        TextAlign = ContentAlignment.MiddleCenter,
+        ForeColor = Color.Silver,
+        BackColor = Color.FromArgb(32, 32, 35),
+        Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+        AccessibleName = "Current KHARVOX configuration is unmarked"
+    };
+
+    private FlowLayoutPanel BuildConfigurationBar(Label state)
+    {
+        var bar = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Bottom,
+            Height = 34,
+            WrapContents = false,
+            FlowDirection = FlowDirection.RightToLeft,
+            BackColor = Color.Black,
+            Padding = new Padding(4, 2, 4, 2),
+            Margin = Padding.Empty
+        };
+
+        Button Action(string title, KharvoxConfigMarks.Verdict mark, int width)
+        {
+            var button = new Button
+            {
+                Text = title,
+                Width = width,
+                Height = 27,
+                Margin = new Padding(3, 0, 0, 0),
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(42, 42, 46),
+                ForeColor = Color.Gainsboro,
+                Font = new Font("Segoe UI", 8F)
+            };
+            button.FlatAppearance.BorderColor = Color.DimGray;
+            button.Click += (_, _) => MarkCurrentConfiguration(mark);
+            return button;
+        }
+
+        // Right-aligned controls keep the KHARVOX banner visible.
+        bar.Controls.Add(Action("Clear", KharvoxConfigMarks.Verdict.Unmarked, 48));
+        bar.Controls.Add(Action("Mark Bad", KharvoxConfigMarks.Verdict.Bad, 76));
+        bar.Controls.Add(Action("Mark Good", KharvoxConfigMarks.Verdict.Good, 82));
+        state.Margin = new Padding(0, 0, 7, 0);
+        bar.Controls.Add(state);
+        statusToolTip.SetToolTip(state,
+            "Your personal label for the exact currently selected KHARVOX settings and mods."
+            + Environment.NewLine + "Good / Bad are your own notes, not automated game compatibility results.");
+        return bar;
+    }
+
+    private IEnumerable<Control> ConfigurationInputs()
+    {
+        foreach (var control in new Control[]
+        {
+            doomPath, preset, rendererMode, turnMode, movementDirection, weaponMode,
+            calibrationWeapon, gripAlignment, leftHandSwapMode, physicalGlorykillHands,
+            backWeapon, renderScale, snapAngle, smoothSpeed, physicalGlorykillSpeed,
+            gloryKillSlowmo, intense, cinematicFreelook, otherCinematicsInQuad,
+            cinewindowFollowsHeadset, virtualGunstock, physicalGlorykill, laserSight,
+            leftHanded, swapJumpCrouch, hudDebugging, extendedLogging, captureEyes,
+            disableAa, handsJump, disableVrIntro, showHands, calibrateHands,
+            enableBhaptics, usePsvr2Toolkit, useFsrUpscaling, weaponWheelRemap,
+            customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
+            customBackOfHandHud, customHandFocusedRs, customDirectionalDash,
+            customBehindHeadWeaponWheel, customBehindHeadWheelHandSelection,
+            customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
+            customPhysicalGrenadeThrow, customMotionGloryKillSpeed,
+            customPhysicalChainsawGestures
+        }) yield return control;
+    }
+
+    private ConfigurationSnapshot CaptureConfiguration()
+    {
+        var snapshot = new ConfigurationSnapshot
+        {
+            DoomMods = DoomUserMods.LoadSelections()
+        };
+        foreach (var control in ConfigurationInputs())
+        {
+            snapshot.Values[control] = control switch
+            {
+                CheckBox check => check.Checked,
+                ComboBox combo => combo.SelectedIndex,
+                TrackBar slider => slider.Value,
+                NumericUpDown number => number.Value,
+                TextBox field => field.Text,
+                _ => throw new InvalidOperationException(
+                    "Unsupported KHARVOX configuration control.")
+            };
+        }
+        return snapshot;
+    }
+
+    private void RestoreConfiguration(ConfigurationSnapshot snapshot)
+    {
+        restoringConfiguration = true;
+        try
+        {
+            // Programmatic WinForms changes raise the same events as clicks.
+            // Suppress reputation warnings until every value is restored.
+            foreach (var entry in snapshot.Values)
+            {
+                switch (entry.Key)
+                {
+                    case CheckBox check: check.Checked = (bool)entry.Value; break;
+                    case ComboBox combo: combo.SelectedIndex = (int)entry.Value; break;
+                    case TrackBar slider: slider.Value = (int)entry.Value; break;
+                    case NumericUpDown number: number.Value = (decimal)entry.Value; break;
+                    case TextBox field: field.Text = (string)entry.Value; break;
+                }
+            }
+            DoomUserMods.SaveSelections(new HashSet<string>(snapshot.DoomMods,
+                StringComparer.OrdinalIgnoreCase));
+            SaveCustomModSettings();
+            SaveSettings();
+            // Refresh after the checkbox event has finished; don't dispose a
+            // mod checkbox while its own CheckedChanged event is executing.
+            if (IsHandleCreated && !IsDisposed)
+                BeginInvoke((Action)RefreshUserDoomMods);
+            UpdateSpeedSliderLabels();
+        }
+        finally { restoringConfiguration = false; }
+    }
+
+    private string ConfigurationKey()
+    {
+        // Properties describe the actual effective launch settings. The
+        // preset name or checkbox order alone does not change game behaviour.
+        return KharvoxConfigMarks.Fingerprint(
+            CreateLaunchOptions(), ReadCustomModSettingsFromControls(),
+            DoomUserMods.LoadSelections());
+    }
+
+    private void DisplayConfigurationVerdict(KharvoxConfigMarks.Verdict verdict)
+    {
+        var (label, colour) = verdict switch
+        {
+            KharvoxConfigMarks.Verdict.Good => ("✓ GOOD", Color.FromArgb(119, 224, 144)),
+            KharvoxConfigMarks.Verdict.Bad => ("✕ BAD", Color.FromArgb(255, 117, 117)),
+            _ => ("? UNMARKED", Color.Silver)
+        };
+        foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+        {
+            indicator.Text = label;
+            indicator.ForeColor = colour;
+            indicator.AccessibleName = "Current KHARVOX configuration: " + label;
+        }
+    }
+
+    private void StartConfigurationTracking()
+    {
+        configurationTrackingReady = true;
+        CheckLiveConfiguration(promptOnBad: false);
+    }
+
+    // Called synchronously from each option/checkbox event, not at Launch.
+    private void CheckLiveConfiguration(bool promptOnBad = true)
+    {
+        if (!configurationTrackingReady || restoringConfiguration
+            || showingConfigurationWarning || applyingPreset || applyingCustomModDependencies)
+            return;
+        try
+        {
+            var key = ConfigurationKey();
+            var verdict = KharvoxConfigMarks.Lookup(key);
+            DisplayConfigurationVerdict(verdict);
+
+            if (string.Equals(key, lastConfigurationKey, StringComparison.Ordinal))
+                return;
+
+            if (promptOnBad && verdict == KharvoxConfigMarks.Verdict.Bad
+                && lastAcceptedConfiguration is not null)
+            {
+                showingConfigurationWarning = true;
+                DialogResult choice;
+                try
+                {
+                    choice = MessageBox.Show(this,
+                        "You've previously marked this exact KHARVOX configuration as BAD."
+                        + Environment.NewLine + Environment.NewLine
+                        + "These settings and selected mods may cause problems or prevent DOOM from running."
+                        + Environment.NewLine + Environment.NewLine
+                        + "PROCEED (OK): Keep this configuration so you can continue experimenting."
+                        + Environment.NewLine
+                        + "CANCEL: Undo the change that brought you back to this configuration.",
+                        "KHARVOX — Known bad configuration",
+                        MessageBoxButtons.OKCancel, MessageBoxIcon.Warning,
+                        MessageBoxDefaultButton.Button2);
+                }
+                finally { showingConfigurationWarning = false; }
+
+                if (choice != DialogResult.OK)
+                {
+                    RestoreConfiguration(lastAcceptedConfiguration);
+                    DisplayConfigurationVerdict(KharvoxConfigMarks.Lookup(lastConfigurationKey));
+                    return;
+                }
+            }
+
+            lastConfigurationKey = key;
+            lastAcceptedConfiguration = CaptureConfiguration();
+        }
+        catch (Exception error)
+        {
+            foreach (var indicator in new[] { configurationStatusMain, configurationStatusMods })
+            {
+                indicator.Text = "! UNKNOWN";
+                indicator.ForeColor = Color.Orange;
+                statusToolTip.SetToolTip(indicator, error.Message);
+            }
+            // An unreadable state is not equivalent to an unmarked state.
+            // Don't erase saved information or block the core launcher.
+        }
+    }
+
+    private void MarkCurrentConfiguration(KharvoxConfigMarks.Verdict verdict)
+    {
+        if (!configurationTrackingReady) return;
+        try
+        {
+            var key = ConfigurationKey();
+            KharvoxConfigMarks.Set(key, verdict);
+            lastConfigurationKey = key;
+            lastAcceptedConfiguration = CaptureConfiguration();
+            DisplayConfigurationVerdict(verdict);
+        }
+        catch (Exception error)
+        {
+            MessageBox.Show(this, error.Message, "KHARVOX — Cannot save configuration mark",
+                MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+}
