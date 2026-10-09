@@ -47,10 +47,18 @@ function Wait-ForDoomExit {
 }
 
 function Stop-Launcher {
-    $launchers = @(Get-Process -Name "KharvoxLauncher" -ErrorAction SilentlyContinue)
-    foreach ($process in $launchers) {
+    # Only touch the launcher belonging to this installation. Experimental
+    # KHARVOX builds in other directories must remain running.
+    $expected = [IO.Path]::GetFullPath((Join-Path $InstallRoot "KharvoxLauncher.exe"))
+    $instances = @(Get-CimInstance Win32_Process -Filter "Name = 'KharvoxLauncher.exe'" -ErrorAction Stop)
+    foreach ($instance in $instances) {
+        if ([string]::IsNullOrWhiteSpace([string]$instance.ExecutablePath) -or
+            ![string]::Equals([IO.Path]::GetFullPath([string]$instance.ExecutablePath),
+                $expected, [StringComparison]::OrdinalIgnoreCase)) { continue }
+        $process = Get-Process -Id $instance.ProcessId -ErrorAction SilentlyContinue
+        if (!$process) { continue }
         try {
-            Write-Status "Closing KHARVOX Launcher before update..." DarkYellow
+            Write-Status "Closing this installation's KHARVOX Launcher before update..." DarkYellow
             if (-not $process.CloseMainWindow()) {
                 $process.Kill()
             } elseif (-not $process.WaitForExit(5000)) {
@@ -58,6 +66,8 @@ function Stop-Launcher {
             }
         } catch {
             try { $process.Kill() } catch {}
+        } finally {
+            $process.Dispose()
         }
     }
 }
@@ -110,20 +120,59 @@ function Download-And-Expand([string]$ArtifactName) {
     }
 }
 
+function Resolve-ValidatedChild([string]$Root, [string]$Relative) {
+    $normalized = $Relative.Replace("/", "\")
+    if ([string]::IsNullOrWhiteSpace($normalized) -or
+        [IO.Path]::IsPathRooted($normalized) -or
+        $normalized.Contains(":") -or
+        @($normalized.Split("\") | Where-Object { $_ -eq "" -or $_ -eq "." -or $_ -eq ".." }).Count -gt 0) {
+        throw "Unsafe artifact path: $Relative"
+    }
+    $base = [IO.Path]::GetFullPath($Root).TrimEnd('\','/')
+    $resolved = [IO.Path]::GetFullPath((Join-Path $base $normalized))
+    if (!$resolved.StartsWith($base + "\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Artifact path escapes its root: $Relative"
+    }
+    # Avoid writing through existing junctions/symlinks, whether in the
+    # extracted archive or in the destination install tree.
+    $walk = $base
+    foreach ($segment in $normalized.Split("\")) {
+        $walk = Join-Path $walk $segment
+        if (Test-Path -LiteralPath $walk) {
+            $info = Get-Item -LiteralPath $walk -Force
+            if ($info.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                throw "Linked artifact path is not allowed: $Relative"
+            }
+        }
+    }
+    return $resolved
+}
+
 function Verify-Payload($payload, $run, [string]$ExpectedKind) {
     $manifest = $payload.Manifest
-    if ([string]$manifest.kind -ne $ExpectedKind) {
-        throw "Artifact kind mismatch. Expected $ExpectedKind, got $($manifest.kind)"
+    if ([int]$manifest.schema -ne 1 -or [string]$manifest.kind -ne $ExpectedKind) {
+        throw "Unexpected artifact format or kind (expected $ExpectedKind)."
     }
-    if ([string]$manifest.commit -ne [string]$run.head_sha) {
-        throw "Artifact commit $($manifest.commit) does not match latest successful run $($run.head_sha)"
+    if ([string]$manifest.commit -ne [string]$run.head_sha -or
+        [string]$manifest.run -ne [string]$run.run_number) {
+        throw "Artifact identity does not match the latest successful GitHub run."
     }
-
-    foreach ($file in @($manifest.files)) {
-        $relative = ([string]$file.path).Replace("/", "\")
-        $path = Join-Path $payload.Root $relative
+    $files = @($manifest.files)
+    if ($files.Count -lt 3 -or $files.Count -gt 4096) {
+        throw "Unexpected artifact file count: $($files.Count)"
+    }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($file in $files) {
+        $relative = [string]$file.path
+        if (!$seen.Add($relative.Replace("/", "\"))) { throw "Duplicate artifact path: $relative" }
+        $path = Resolve-ValidatedChild $payload.Root $relative
+        # Check destination too, BEFORE altering any existing installation.
+        $null = Resolve-ValidatedChild $InstallRoot $relative
         if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
             throw "Artifact file missing: $relative"
+        }
+        if ([int64]$file.size -ne (Get-Item -LiteralPath $path).Length) {
+            throw "Artifact file size mismatch: $relative"
         }
         $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
         if ($hash -ne ([string]$file.sha256).ToLowerInvariant()) {
@@ -132,39 +181,108 @@ function Verify-Payload($payload, $run, [string]$ExpectedKind) {
     }
 }
 
-function Copy-PayloadFiles($payload, [string]$Destination) {
-    foreach ($file in @($payload.Manifest.files)) {
-        $relative = ([string]$file.path).Replace("/", "\")
-        $source = Join-Path $payload.Root $relative
-        $target = Join-Path $Destination $relative
-        $parent = Split-Path $target -Parent
-        if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        Copy-Item -LiteralPath $source -Destination $target -Force
-        try { Unblock-File -LiteralPath $target -ErrorAction SilentlyContinue } catch {}
-    }
-
-    foreach ($metadata in @("PATCH-MANIFEST.json","PATCH-BUILD.txt")) {
-        $source = Join-Path $payload.Root $metadata
-        if (Test-Path -LiteralPath $source) {
-            Copy-Item -LiteralPath $source -Destination (Join-Path $Destination $metadata) -Force
+function Install-VerifiedPayload($payload, $run, [string]$Mode) {
+    # A full install is also an overlay: NEVER delete the installation root.
+    # Unknown folders (mods, tools, logs, user settings) must be preserved.
+    New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
+    $rollbackRoot = Join-Path $InstallRoot ".rollback"
+    New-Item -ItemType Directory -Force -Path $rollbackRoot | Out-Null
+    $pending = Join-Path $rollbackRoot (".pending-" + [Guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Force -Path $pending | Out-Null
+    $existing = @{}
+    $targets = @()
+    $statePath = Join-Path $InstallRoot $StateName
+    $oldState = Join-Path $pending "watcher-state-backup.json"
+    $hadState = Test-Path -LiteralPath $statePath -PathType Leaf
+    if ($hadState) { Copy-Item -LiteralPath $statePath -Destination $oldState }
+    $complete = $false
+    try {
+        # Backup every target before writing anything. Include the previously
+        # absent files so failure can remove partially added binaries.
+        foreach ($file in @($payload.Manifest.files)) {
+            $relative = [string]$file.path
+            $target = Resolve-ValidatedChild $InstallRoot $relative
+            $source = Resolve-ValidatedChild $payload.Root $relative
+            $targets += [pscustomobject]@{ Relative=$relative; Target=$target; Source=$source }
+            $present = Test-Path -LiteralPath $target -PathType Leaf
+            $existing[$relative] = $present
+            if ($present) {
+                $copy = Resolve-ValidatedChild $pending ("files/" + $relative)
+                New-Item -ItemType Directory -Force -Path (Split-Path $copy -Parent) | Out-Null
+                Copy-Item -LiteralPath $target -Destination $copy -Force
+            }
         }
-    }
-}
-
-function Backup-PatchTargets($payload) {
-    if (!(Test-Path -LiteralPath $InstallRoot)) { return }
-    $backup = Join-Path $InstallRoot ".rollback\previous"
-    Remove-Item -Recurse -Force $backup -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Force -Path $backup | Out-Null
-
-    foreach ($file in @($payload.Manifest.files)) {
-        $relative = ([string]$file.path).Replace("/", "\")
-        $source = Join-Path $InstallRoot $relative
-        if (!(Test-Path -LiteralPath $source -PathType Leaf)) { continue }
-        $target = Join-Path $backup $relative
-        $parent = Split-Path $target -Parent
-        if ($parent) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
-        Copy-Item -LiteralPath $source -Destination $target -Force
+        foreach ($item in $targets) {
+            New-Item -ItemType Directory -Force -Path (Split-Path $item.Target -Parent) | Out-Null
+            Copy-Item -LiteralPath $item.Source -Destination $item.Target -Force
+            try { Unblock-File -LiteralPath $item.Target -ErrorAction SilentlyContinue } catch {}
+        }
+        foreach ($metadata in @("PATCH-MANIFEST.json","PATCH-BUILD.txt")) {
+            $source = Resolve-ValidatedChild $payload.Root $metadata
+            $target = Resolve-ValidatedChild $InstallRoot $metadata
+            if (Test-Path -LiteralPath $source) {
+                $backupMetadata = Resolve-ValidatedChild $pending ("metadata/" + $metadata)
+                if (Test-Path -LiteralPath $target) {
+                    New-Item -ItemType Directory -Force -Path (Split-Path $backupMetadata -Parent) | Out-Null
+                    Copy-Item -LiteralPath $target -Destination $backupMetadata -Force
+                }
+                Copy-Item -LiteralPath $source -Destination $target -Force
+            }
+        }
+        Save-State $run $Mode
+        $complete = $true
+        Write-Status "Installed $Mode build #$($run.run_number) ($(([string]$run.head_sha).Substring(0,7))); user files preserved." Green
+    } catch {
+        Write-Status "Update failed. Restoring the previous binaries and settings..." Red
+        $rollbackErrors = @()
+        foreach ($item in $targets) {
+            try {
+                if ($existing.ContainsKey($item.Relative) -and $existing[$item.Relative]) {
+                    $copy = Resolve-ValidatedChild $pending ("files/" + $item.Relative)
+                    if (Test-Path -LiteralPath $copy) {
+                        Copy-Item -LiteralPath $copy -Destination $item.Target -Force
+                    } else { throw "Missing backup for $($item.Relative)" }
+                } elseif (Test-Path -LiteralPath $item.Target -PathType Leaf) {
+                    Remove-Item -LiteralPath $item.Target -Force
+                }
+            } catch { $rollbackErrors += $_.Exception.Message }
+        }
+        foreach ($metadata in @("PATCH-MANIFEST.json","PATCH-BUILD.txt")) {
+            try {
+                $target = Resolve-ValidatedChild $InstallRoot $metadata
+                $copy = Resolve-ValidatedChild $pending ("metadata/" + $metadata)
+                if (Test-Path -LiteralPath $copy) {
+                    Copy-Item -LiteralPath $copy -Destination $target -Force
+                } elseif (Test-Path -LiteralPath $target) {
+                    Remove-Item -LiteralPath $target -Force
+                }
+            } catch { $rollbackErrors += $_.Exception.Message }
+        }
+        try {
+            if ($hadState) {
+                Copy-Item -LiteralPath $oldState -Destination $statePath -Force
+            } elseif (Test-Path -LiteralPath $statePath) {
+                Remove-Item -LiteralPath $statePath -Force
+            }
+        } catch { $rollbackErrors += $_.Exception.Message }
+        if ($rollbackErrors.Count -gt 0) {
+            throw "Update failed and rollback was incomplete. Recovery files are in $pending. Errors: $($rollbackErrors -join '; ')"
+        }
+        throw
+    } finally {
+        if ($complete -and (Test-Path -LiteralPath $pending)) {
+            # This backup is the previous working build. Keep it for manual recovery.
+            $previous = Join-Path $rollbackRoot "previous"
+            try {
+                if (Test-Path -LiteralPath $previous) {
+                    Remove-Item -Recurse -Force -LiteralPath $previous
+                }
+                Move-Item -LiteralPath $pending -Destination $previous
+            } catch { Write-Status "Could not rotate rollback snapshot: $($_.Exception.Message)" DarkYellow }
+        } elseif (!$complete -and $rollbackErrors.Count -eq 0 -and
+                  (Test-Path -LiteralPath $pending)) {
+            Remove-Item -Recurse -Force -LiteralPath $pending -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -182,42 +300,32 @@ function Start-Launcher {
 }
 
 function Install-Full($run) {
-    Wait-ForDoomExit
-    Stop-Launcher
     $payload = $null
     try {
         $payload = Download-And-Expand $FullArtifact
         Verify-Payload $payload $run "full"
-
-        if (Test-Path -LiteralPath $InstallRoot) {
-            Remove-Item -Recurse -Force $InstallRoot
-        }
-        New-Item -ItemType Directory -Force -Path $InstallRoot | Out-Null
-        Copy-PayloadFiles $payload $InstallRoot
-        Save-State $run "full"
-        Write-Status "Full KHARVOX build installed: run #$($run.run_number), $(([string]$run.head_sha).Substring(0,7))" Green
+        Wait-ForDoomExit
+        Stop-Launcher
+        Install-VerifiedPayload $payload $run "full"
     } finally {
         if ($payload -and $payload.Work) {
-            Remove-Item -Recurse -Force $payload.Work -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -Force -LiteralPath $payload.Work -ErrorAction SilentlyContinue
         }
     }
     Start-Launcher
 }
 
 function Install-Patch($run) {
-    Wait-ForDoomExit
-    Stop-Launcher
     $payload = $null
     try {
         $payload = Download-And-Expand $PatchArtifact
         Verify-Payload $payload $run "patch"
-        Backup-PatchTargets $payload
-        Copy-PayloadFiles $payload $InstallRoot
-        Save-State $run "patch"
-        Write-Status "Fast patch applied: run #$($run.run_number), $(([string]$run.head_sha).Substring(0,7))" Green
+        Wait-ForDoomExit
+        Stop-Launcher
+        Install-VerifiedPayload $payload $run "patch"
     } finally {
         if ($payload -and $payload.Work) {
-            Remove-Item -Recurse -Force $payload.Work -ErrorAction SilentlyContinue
+            Remove-Item -Recurse -Force -LiteralPath $payload.Work -ErrorAction SilentlyContinue
         }
     }
     Start-Launcher
