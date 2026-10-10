@@ -112,6 +112,7 @@ public sealed partial class MainForm : Form
     private Label? packagedDoomModHeader;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
+    private Label? userDoomModCount;
     private FileSystemWatcher? userDoomModWatcher;
     private readonly System.Windows.Forms.Timer userDoomModDebounce = new() { Interval = 450 };
     private DevModeForm? devModeForm;
@@ -645,12 +646,26 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor,
             AccessibleName = "User mods header divider"
         };
+        // The count belongs beside USER MODS, not on a second line above
+        // the checkboxes. Keep the divider as a short rule to its left.
+        userDoomModCount = new Label
+        {
+            AccessibleName = "Detected user mod count",
+            Text = FormatDetectedUserMods(0),
+            Dock = DockStyle.Right, Width = 99, AutoSize = false,
+            ForeColor = Color.Silver, BackColor = PanelColor,
+            TextAlign = ContentAlignment.MiddleRight,
+            Margin = Padding.Empty
+        };
+        userHeaderDivider.Controls.Add(userDoomModCount);
         userHeaderDivider.Paint += (_, e) =>
         {
             using var line = new Pen(Color.DimGray);
             var middle = userHeaderDivider.ClientSize.Height / 2;
-            e.Graphics.DrawLine(line, 0, middle,
-                Math.Max(0, userHeaderDivider.ClientSize.Width - 1), middle);
+            var lineEnd = userHeaderDivider.ClientSize.Width
+                - (userDoomModCount?.Width ?? 0) - 7;
+            if (lineEnd > 0)
+                e.Graphics.DrawLine(line, 0, middle, lineEnd, middle);
         };
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
@@ -1635,9 +1650,14 @@ public sealed partial class MainForm : Form
             : missing ? Color.Orange : Color.Gainsboro;
     }
 
+    private static string FormatDetectedUserMods(int count) =>
+        Math.Max(0, count).ToString(System.Globalization.CultureInfo.InvariantCulture)
+        + " detected";
+
     private void RefreshUserDoomMods()
     {
         if (userDoomModChecks is null || userDoomModStatus is null
+            || userDoomModCount is null
             || packagedDoomModChecks is null || packagedDoomModHeader is null) return;
         try
         {
@@ -1763,19 +1783,28 @@ public sealed partial class MainForm : Form
                 packagedRow.Visible = showPackaged;
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
-                string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
-            // This is a passive update: changes on disk may alter reputation,
-            // but should never interrupt browsing with a "known bad" popup.
-            CheckLiveConfiguration(promptOnBad: false);
-            FitCustomOptionsToContent(detected.Count + countMissing);
+                string.Equals(entry.Id, x.Id, StringComparison.OrdinalIgnoreCase)));
+            // Show the user-mod count in the USER MODS toolbar, excluding
+            // separately listed packaged KHARVOX resource mods.
+            userDoomModCount.Text = FormatDetectedUserMods(
+                detected.Count(entry => !entry.IsPackaged));
+            // Keep the old status row only for exceptional/empty states;
+            // don't waste an entire line repeating the normal count.
+            userDoomModStatus.Visible = countMissing != 0 || detected.Count == 0;
             userDoomModStatus.Text = countMissing != 0
                 ? countMissing + " selected mod(s) missing."
                 : detected.Count == 0
                     ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
-                    : detected.Count + " mod(s) detected.";
+                    : string.Empty;
+            // This is a passive update: changes on disk may alter reputation,
+            // but should never interrupt browsing with a "known bad" popup.
+            CheckLiveConfiguration(promptOnBad: false);
+            FitCustomOptionsToContent(detected.Count + countMissing);
         }
         catch (Exception error)
         {
+            if (userDoomModCount is not null) userDoomModCount.Text = "—";
+            userDoomModStatus.Visible = true;
             userDoomModStatus.Text = "Could not scan mods: " + error.Message;
         }
     }
