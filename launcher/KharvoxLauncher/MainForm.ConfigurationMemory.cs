@@ -375,6 +375,23 @@ public sealed partial class MainForm
                 }
             }
 
+            var footerClose = Descendants(window).OfType<Button>()
+                .SingleOrDefault(button => button.Text == "Close");
+            var footerRow = footerClose?.Parent as FlowLayoutPanel;
+            var creatorCredit = footerRow?.Controls.OfType<Label>()
+                .SingleOrDefault(label =>
+                    label.AccessibleName == "Custom Mods creator credit");
+            if (footerRow is null || footerRow.FlowDirection != FlowDirection.RightToLeft
+                || creatorCredit is null || creatorCredit.Text != "Made by MrEGS"
+                || creatorCredit.TextAlign != ContentAlignment.MiddleRight
+                || creatorCredit.ForeColor != Color.Gray
+                || !creatorCredit.Visible || creatorCredit.Height < 20
+                || creatorCredit.Right >= footerClose!.Left
+                || footerClose.Right > footerRow.ClientSize.Width
+                || footerRow.Controls.Count != 2)
+                throw new InvalidDataException(
+                    "Made by MrEGS credit must be next to Close in the Custom Mods footer.");
+
             // Exercise both verified and missing/repair-required DML states
             // without touching the real game or installing the loader.
             // A previously selected mod must remain checked while disabled,
@@ -654,6 +671,8 @@ public sealed partial class MainForm
                 button.Text == "Mod Folder");
             if (heading is null || refresh is null || folder is null
                 || !heading.Visible || heading.Height < 15
+                || !main.statusToolTip.GetToolTip(refresh).Contains("Rescan USER MODS")
+                || !main.statusToolTip.GetToolTip(refresh).Contains("updates automatically")
                 || refresh.Height < 18 || folder.Height < 18
                 || userHeader.GetColumn(refresh) != 2
                 || userHeader.GetColumn(folder) != 3
