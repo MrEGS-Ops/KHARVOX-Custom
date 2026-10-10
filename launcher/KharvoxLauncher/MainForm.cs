@@ -428,7 +428,15 @@ public sealed partial class MainForm : Form
         // exactly as they were.
         var allCustomMods = customChecks
             .Concat(new[] { (Box: weaponWheelRemap,
-                Tip: "Use the KHARVOX weapon wheel control remap.") })
+                Tip: "Remaps weapon selection for VR.\n"
+                    + "Tap A to quick-switch weapons. Hold A to open the weapon wheel, "
+                    + "use the left stick to choose, then release A to equip.\n"
+                    + "Pull the right thumbstick DOWN to toggle crouch; B stays Jump. "
+                    + "(Physical Crouch overrides the stick crouch toggle.)\n"
+                    + "With Behind-Head Weapon Wheel enabled, move the weapon hand "
+                    + "behind your head to open the wheel instead. A is then free "
+                    + "for Directional Dash when that mod is enabled.\n"
+                    + "Turn this off to restore the original KHARVOX controls.") })
             .OrderBy(x => x.Box.Text, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         var modNumber = allCustomMods.Select((entry, i) => (entry.Box, Number: i + 1))
