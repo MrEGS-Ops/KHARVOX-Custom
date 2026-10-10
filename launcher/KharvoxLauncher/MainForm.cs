@@ -115,6 +115,8 @@ public sealed partial class MainForm : Form
     private Label? userDoomModCount;
     private FileSystemWatcher? userDoomModWatcher;
     private readonly System.Windows.Forms.Timer userDoomModDebounce = new() { Interval = 450 };
+    private FileSystemWatcher? doomModLoaderWatcher;
+    private readonly System.Windows.Forms.Timer doomModLoaderDebounce = new() { Interval = 180 };
     private DevModeForm? devModeForm;
     private CracktroForm? cracktroForm;
     private bool nextCracktroIsAmiga;
@@ -761,6 +763,15 @@ public sealed partial class MainForm : Form
             if (customOptionsForm?.Visible == true) RefreshUserDoomMods();
             else CheckLiveConfiguration(promptOnBad: false);
         };
+        // DML is separate from the mod-list watcher. A missing/renamed
+        // loader file must grey out the existing checkboxes immediately,
+        // without rebuilding the list or clearing checked selections.
+        doomModLoaderDebounce.Tick += (_, _) =>
+        {
+            doomModLoaderDebounce.Stop();
+            if (customOptionsForm?.Visible == true)
+                RefreshDoomModLoaderAvailability();
+        };
 
         doomGrid.Controls.Add(doomModItems, 0, 3);
         doomMods.Controls.Add(doomGrid);
@@ -957,6 +968,9 @@ public sealed partial class MainForm : Form
             userDoomModDebounce.Stop();
             userDoomModWatcher?.Dispose();
             userDoomModWatcher = null;
+            doomModLoaderDebounce.Stop();
+            doomModLoaderWatcher?.Dispose();
+            doomModLoaderWatcher = null;
             SaveSettings();
             SaveCustomModSettings(notify: false);
         };
@@ -1640,6 +1654,91 @@ public sealed partial class MainForm : Form
         userDoomModWatcher.EnableRaisingEvents = true;
     }
 
+    // Watch from the application directory, NOT the loader directory.
+    // Deleting the entire "tools" or "doommodloader" folder must not destroy
+    // the watcher; restoring the folder must be detected without reopening
+    // Custom Mods. Events from unrelated KHARVOX files are filtered out.
+    internal static bool IsDoomModLoaderChange(string path, string installDirectory)
+    {
+        if (string.IsNullOrWhiteSpace(path)) return false;
+        try
+        {
+            var install = Path.GetFullPath(installDirectory).TrimEnd('\\', '/');
+            var tools = Path.GetDirectoryName(install);
+            var changed = Path.GetFullPath(path).TrimEnd('\\', '/');
+            return string.Equals(changed, tools, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(changed, install, StringComparison.OrdinalIgnoreCase)
+                || changed.StartsWith(install + Path.DirectorySeparatorChar,
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException) { return false; }
+        catch (NotSupportedException) { return false; }
+        catch (PathTooLongException) { return false; }
+    }
+
+    // Called for Created, Deleted, Changed and both ends of Rename events.
+    // Windows delivers these off the UI thread and often in short bursts.
+    private void QueueDoomModLoaderRefresh(string? path, string? oldPath = null)
+    {
+        if (!IsDoomModLoaderChange(path ?? string.Empty,
+                DoomModLoaderInstaller.InstallDirectory)
+            && !IsDoomModLoaderChange(oldPath ?? string.Empty,
+                DoomModLoaderInstaller.InstallDirectory)) return;
+        if (IsDisposed || !IsHandleCreated) return;
+        try
+        {
+            BeginInvoke((Action)(() =>
+            {
+                if (IsDisposed) return;
+                doomModLoaderDebounce.Stop();
+                doomModLoaderDebounce.Start();
+            }));
+        }
+        catch (InvalidOperationException) { }
+    }
+
+    private void EnsureDoomModLoaderWatcher()
+    {
+        if (doomModLoaderWatcher is not null) return;
+        // AppContext.BaseDirectory always exists while the launcher runs;
+        // do not create a fake DML folder just to monitor its existence.
+        var watcher = new FileSystemWatcher(AppContext.BaseDirectory)
+        {
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName
+                | NotifyFilters.LastWrite | NotifyFilters.Size,
+            IncludeSubdirectories = true
+        };
+        watcher.Created += (_, e) => QueueDoomModLoaderRefresh(e.FullPath);
+        watcher.Deleted += (_, e) => QueueDoomModLoaderRefresh(e.FullPath);
+        watcher.Changed += (_, e) => QueueDoomModLoaderRefresh(e.FullPath);
+        watcher.Renamed += (_, e) => QueueDoomModLoaderRefresh(e.FullPath, e.OldFullPath);
+        // A notification-buffer overflow can hide a deletion; recheck in
+        // that case rather than continuing to report a stale Verified state.
+        watcher.Error += (_, _) =>
+            QueueDoomModLoaderRefresh(DoomModLoaderInstaller.InstallDirectory);
+        watcher.EnableRaisingEvents = true;
+        doomModLoaderWatcher = watcher;
+    }
+
+    private static void ApplyDoomModLoaderGate(
+        FlowLayoutPanel? userMods, FlowLayoutPanel? packagedMods, bool verified)
+    {
+        foreach (var list in new[] { userMods, packagedMods })
+        {
+            if (list is null) continue;
+            foreach (var option in list.Controls.OfType<CheckBox>())
+                SetDoomModCheckboxAvailability(option, verified,
+                    missing: option.Tag is bool isMissing && isMissing);
+        }
+    }
+
+    private void RefreshDoomModLoaderAvailability()
+    {
+        refreshDoomModLoaderStatus?.Invoke();
+        ApplyDoomModLoaderGate(userDoomModChecks, packagedDoomModChecks,
+            DoomModLoaderInstaller.IsInstalled);
+    }
+
     // Reusable gate for every resource-mod checkbox (user, packaged or
     // missing). Never mutate Checked: saved choices must survive DML repair.
     private static void SetDoomModCheckboxAvailability(
@@ -1697,6 +1796,7 @@ public sealed partial class MainForm : Form
                         MaximumSize = new Size(335, 0),
                         Margin = new Padding(3, 2, 3, 2)
                     };
+                    option.Tag = false;
                     SetDoomModCheckboxAvailability(option, loaderVerified, missing: false);
                     statusToolTip.SetToolTip(option, mod.FullPath + Environment.NewLine
                         + (loaderVerified
@@ -1742,6 +1842,7 @@ public sealed partial class MainForm : Form
                         MaximumSize = new Size(335, 0),
                         Margin = new Padding(3, 2, 3, 2)
                     };
+                    missingOption.Tag = true;
                     SetDoomModCheckboxAvailability(missingOption,
                         loaderVerified, missing: true);
                     statusToolTip.SetToolTip(missingOption, loaderVerified
@@ -1842,6 +1943,7 @@ public sealed partial class MainForm : Form
         try
         {
             EnsureUserDoomModWatcher();
+            EnsureDoomModLoaderWatcher();
             RefreshUserDoomMods();
             FitCustomOptionsToContent((userDoomModChecks?.Controls.Count ?? 0) + (packagedDoomModChecks?.Controls.Count ?? 0));
         }
