@@ -23,17 +23,16 @@ public sealed partial class MainForm
         internal TableLayoutPanel Panel = null!;
         internal Label Number = null!;
         internal Label Grip = null!;
-        internal Label Status = null!;
         internal LinkLabel Dependency = null!;
     }
 
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
     {
-        ("HANDS & ARMS", "✋"),
-        ("LEGS & MOVEMENT", "👣"),
-        ("WEAPONS & COMBAT", "⌖"),
-        ("HUD & IMMERSION", "◉"),
-        ("DEMONS & AI", "☠")
+        ("HANDS & ARMS", "◈"),
+        ("LEGS & MOVEMENT", "↔"),
+        ("WEAPONS & COMBAT", "✣"),
+        ("HUD & IMMERSION", "▣"),
+        ("DEMONS & AI", "◆")
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
@@ -167,14 +166,14 @@ public sealed partial class MainForm
         {
             var header = new Label
             {
-                Text = symbol + "   " + title,
+                Text = symbol + "  " + title,
                 AccessibleName = title + " mod group",
                 Dock = DockStyle.Fill,
                 TextAlign = ContentAlignment.BottomLeft,
                 ForeColor = Color.LightSteelBlue,
                 BackColor = PanelColor,
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-                Margin = new Padding(2, 2, 0, 0)
+                Font = new Font("Segoe UI Symbol", 8.2f, FontStyle.Bold),
+                Margin = new Padding(2, 0, 0, 0)
             };
             modOrderHeaders.Add(header);
         }
@@ -250,24 +249,23 @@ public sealed partial class MainForm
             if (group != currentGroup)
             {
                 currentGroup = group;
-                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 20));
                 var header = modOrderHeaders[currentGroup];
                 grid.Controls.Add(header, 0, tableRow++);
                 grid.SetColumnSpan(header, 2);
             }
             var panel = new TableLayoutPanel
             {
-                ColumnCount = 4, RowCount = 2,
+                ColumnCount = 4, RowCount = 1,
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty, Padding = Padding.Empty,
                 BackColor = PanelColor, AllowDrop = true
             };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20));
-            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 25));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 0)); // dependency width per mod
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 19));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             var number = new Label
             {
                 Text = (i + 1).ToString("00") + ".",
@@ -286,20 +284,14 @@ public sealed partial class MainForm
                 TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.LightSteelBlue, BackColor = PanelColor,
                 Cursor = Cursors.SizeNS,
-                Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
                 Margin = Padding.Empty, Visible = false,
                 AllowDrop = true
-            };
-            var status = new Label
-            {
-                Dock = DockStyle.Fill, Margin = Padding.Empty,
-                ForeColor = Color.Silver, BackColor = PanelColor,
-                TextAlign = ContentAlignment.MiddleCenter
             };
             var dependency = new LinkLabel
             {
                 Dock = DockStyle.Fill, Margin = Padding.Empty,
-                Font = new Font("Segoe UI", 7.6f),
+                Font = new Font("Segoe UI", 8f),
                 LinkColor = Color.LightSkyBlue,
                 ActiveLinkColor = Color.White,
                 VisitedLinkColor = Color.LightSkyBlue,
@@ -309,16 +301,12 @@ public sealed partial class MainForm
                 AutoEllipsis = true
             };
             panel.Controls.Add(number, 0, 0);
-            panel.SetRowSpan(number, 2);
             panel.Controls.Add(grip, 3, 0);
-            panel.SetRowSpan(grip, 2);
-            panel.Controls.Add(status, 2, 0);
-            panel.SetRowSpan(status, 2);
-            panel.Controls.Add(dependency, 1, 1);
+            panel.Controls.Add(dependency, 2, 0);
             var slot = new ModOrderSlot
             {
                 Index = i, Group = group, Panel = panel,
-                Number = number, Grip = grip, Status = status,
+                Number = number, Grip = grip,
                 Dependency = dependency
             };
             dependency.LinkClicked += (_, e) => NavigateModDependency(e.Link.LinkData);
@@ -328,7 +316,6 @@ public sealed partial class MainForm
                 if (activeModDrag is null && !panel.ClientRectangle.Contains(
                     panel.PointToClient(Cursor.Position))) grip.Visible = false;
             };
-            status.MouseEnter += (_, _) => grip.Visible = true;
             modOrderSlots.Add(slot);
             void ShowGrip(object? sender, EventArgs e)
             {
@@ -371,7 +358,7 @@ public sealed partial class MainForm
                 }
             };
             foreach (Control target in new Control[] {
-                panel, number, grip, status, dependency })
+                panel, number, grip, dependency })
             {
                 target.DragEnter += (_, e) => AcceptDrag(slotIndex, e);
                 target.DragOver += (_, e) => AcceptDrag(slotIndex, e);
@@ -379,7 +366,7 @@ public sealed partial class MainForm
             }
             AttachModOrderContext(slot);
             panel.Paint += (_, e) => DrawModDropIndicator(slot, e);
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
             grid.Controls.Add(panel, 0, tableRow++);
             grid.SetColumnSpan(panel, 2);
         }
@@ -405,8 +392,8 @@ public sealed partial class MainForm
             };
         }
         grid.RowCount = tableRow;
-        grid.Height = 32 + ModGroupHeaders.Length * 24
-            + modOrderRows.Count * 44 + 14;
+        grid.Height = 32 + ModGroupHeaders.Length * 20
+            + modOrderRows.Count * 28 + 6;
         RefreshGroupedModRows();
     }
 
@@ -456,8 +443,12 @@ public sealed partial class MainForm
                 // checkboxes move between numbered rows.
                 item.Box.ContextMenuStrip = slot.Panel.ContextMenuStrip;
                 PopulateDependencyLinks(slot, item, dependencies, numbers);
-                SetModDevelopmentStatus(slot, item);
+                // No on-screen status badge: it cluttered the narrow layout.
+                // Development information remains accessible in the tooltip.
+                var state = DevelopmentState(item.Id);
                 statusToolTip.SetToolTip(item.Box, item.Tip
+                    + Environment.NewLine + "Development: " + state.State
+                    + " — " + state.Detail
                     + (dependencies.Length == 0 ? "" : Environment.NewLine
                         + dependencies.TrimStart(' ', '—')));
                 slot.Grip.AccessibleName = "Drag to reorder " + item.Caption
