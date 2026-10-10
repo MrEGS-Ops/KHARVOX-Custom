@@ -512,6 +512,9 @@ if(BUILD_TESTING)
 endif()
 
 if(BUILD_TESTING)
+ add_executable(KharvoxPhysicalGrenadeGestureTests tests/physical_grenade_gesture_tests.cpp)
+ target_compile_features(KharvoxPhysicalGrenadeGestureTests PRIVATE cxx_std_17)
+ add_test(NAME physical-grenade-gesture COMMAND KharvoxPhysicalGrenadeGestureTests)
  if(WIN32)
   add_executable(KharvoxNativeMappedCopyTests tests/native_mapped_copy_tests.cpp)
 

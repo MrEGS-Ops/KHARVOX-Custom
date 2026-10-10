@@ -51,6 +51,7 @@
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
+#include "PhysicalGrenadeGesturePolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -244,6 +245,7 @@ struct State {
     bool dynamicShoulderHolstered{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
+    kharvox::PhysicalGrenadeGestureState grenadeGesture{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
@@ -2039,6 +2041,7 @@ void updateGameplayActions(XrTime displayTime){
         s.behindHeadWheelActive=false;s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
+        s.grenadeGesture={};
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
@@ -2751,35 +2754,24 @@ void updateGameplayActions(XrTime displayTime){
     const bool equipmentDown=readFloatAction(s.doomEquipment)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown;
     if(s.customMods.physicalGrenadeThrow){
-        if(gameplay&&equipmentDown&&!s.equipmentButtonPressed){
-            s.physicalGrenadeArmed=true;
-            s.equipmentThrowPulseUntil=0;
-            log("[INPUT] Physical grenade armed; hold equipment and throw/release");
+        const auto& throwController=supportGripController();
+        const bool tracked=throwController.valid&&throwController.linearVelocityValid;
+        const float speed=tracked?std::sqrt(
+            throwController.linearVelocity.x*throwController.linearVelocity.x
+            +throwController.linearVelocity.y*throwController.linearVelocity.y
+            +throwController.linearVelocity.z*throwController.linearVelocity.z):0.f;
+        if(kharvox::updatePhysicalGrenadeGesture(s.grenadeGesture,
+            gameplay,equipmentDown,tracked,speed,
+            static_cast<std::int64_t>(displayTime))){
+            s.equipmentThrowPulseUntil=displayTime+100000000;
+            log("[INPUT] Physical grenade swing stopped while equipment held -> one native throw pulse; handSpeed="+std::to_string(speed));
         }
-        if(gameplay&&!equipmentDown&&s.equipmentButtonPressed&&s.physicalGrenadeArmed){
-            const auto& throwController=supportGripController();
-            const bool velocityValid=throwController.valid&&throwController.linearVelocityValid;
-            const float speed=velocityValid?std::sqrt(
-                throwController.linearVelocity.x*throwController.linearVelocity.x
-                +throwController.linearVelocity.y*throwController.linearVelocity.y
-                +throwController.linearVelocity.z*throwController.linearVelocity.z):0.f;
-            if(!velocityValid||speed>=.55f){
-                s.equipmentThrowPulseUntil=displayTime+100000000;
-                log(std::string("[INPUT] Physical grenade release -> native equipment pulse speed=")
-                    +std::to_string(speed)+"m/s"
-                    +(velocityValid?"":" (velocity unavailable fallback)"));
-            }else{
-                log(std::string("[INPUT] Physical grenade release ignored; throw speed=")
-                    +std::to_string(speed)+"m/s threshold=0.55m/s");
-            }
-            s.physicalGrenadeArmed=false;
-        }
-        if(!gameplay){s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;}
+        if(!gameplay) s.equipmentThrowPulseUntil=0;
         gameplayEquipmentDown=gameplay&&displayTime<s.equipmentThrowPulseUntil;
         s.equipmentButtonPressed=equipmentDown;
     }else{
         s.equipmentButtonPressed=equipmentDown;
-        s.physicalGrenadeArmed=false;
+        s.grenadeGesture={};
         s.equipmentThrowPulseUntil=0;
     }
     const bool missionInfoDown=readBooleanAction(s.doomMissionInfo);
