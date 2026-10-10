@@ -70,10 +70,9 @@ public sealed partial class MainForm
         mods.LocationChanged += (_, _) => FollowCustomModsMovement();
         mods.SizeChanged += (_, _) => FollowCustomModsMovement();
         mods.Activated += (_, _) => RaiseDockCompanion(this);
-        mods.VisibleChanged += (_, _) =>
-        {
-            if (!mods.Visible) customModsDocked = false;
-        };
+        // An owned WinForms window can become temporarily invisible when
+        // its owner is minimized. Keep docking active across restore.
+        // FollowLauncherMovement already ignores an intentionally hidden panel.
     }
 
     private void RaiseDockCompanion(Form companion)
