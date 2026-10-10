@@ -12,8 +12,17 @@ public sealed partial class MainForm
         internal string Caption = "";
         internal string Tip = "";
         internal int Group;
-        internal TableLayoutPanel? Panel;
-        internal Label? Grip;
+    }
+
+    // Number labels and drag handles belong to the POSITION, not the mod.
+    // These 15 physical slots remain anchored while their checkboxes move.
+    private sealed class ModOrderSlot
+    {
+        internal int Index;
+        internal int Group;
+        internal TableLayoutPanel Panel = null!;
+        internal Label Number = null!;
+        internal Label Grip = null!;
     }
 
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
@@ -26,6 +35,7 @@ public sealed partial class MainForm
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
+    private readonly List<ModOrderSlot> modOrderSlots = new();
     private readonly List<Label> modOrderHeaders = new();
     private TableLayoutPanel? modOrderGrid;
     private string? activeModDrag;
@@ -160,20 +170,9 @@ public sealed partial class MainForm
             modOrderHeaders.Add(header);
         }
 
+        // Checkbox identity and event subscriptions never change when moved.
         foreach (var item in modOrderRows)
         {
-            var row = new TableLayoutPanel
-            {
-                ColumnCount = 2, RowCount = 1,
-                Dock = DockStyle.Fill,
-                Margin = Padding.Empty, Padding = Padding.Empty,
-                BackColor = PanelColor,
-                AllowDrop = true
-            };
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 25));
-            row.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-
             var check = item.Box;
             check.Dock = DockStyle.Fill;
             check.AutoSize = false;
@@ -185,42 +184,131 @@ public sealed partial class MainForm
                 check.CheckedChanged += WeaponWheelRemapChanged;
             else
                 check.CheckedChanged += CustomModChanged;
-            row.Controls.Add(check, 0, 0);
+            check.MouseEnter += (_, _) =>
+            {
+                var slot = modOrderSlots.FirstOrDefault(x =>
+                    ReferenceEquals(x.Panel, check.Parent));
+                if (slot is not null && modOrderRows.Count(x => x.Group == slot.Group) > 1)
+                    slot.Grip.Visible = true;
+            };
+            check.MouseLeave += (_, _) =>
+            {
+                var slot = modOrderSlots.FirstOrDefault(x =>
+                    ReferenceEquals(x.Panel, check.Parent));
+                if (slot is not null && activeModDrag is null
+                    && !slot.Panel.ClientRectangle.Contains(
+                        slot.Panel.PointToClient(Cursor.Position)))
+                    slot.Grip.Visible = false;
+            };
+        }
 
+        // Drop targets are always the numbered slots; each target resolves its
+        // CURRENT occupant before applying within-group ordering.
+        void AcceptDrag(int targetIndex, DragEventArgs e)
+        {
+            var source = modOrderRows.FirstOrDefault(x => x.Id == activeModDrag);
+            var target = modOrderRows[targetIndex];
+            e.Effect = source is not null && !ReferenceEquals(source, target)
+                && source.Group == target.Group
+                ? DragDropEffects.Move : DragDropEffects.None;
+        }
+        void Drop(int targetIndex, DragEventArgs e)
+        {
+            var sourceId = activeModDrag;
+            var targetId = modOrderRows[targetIndex].Id;
+            if (sourceId is null || !MoveModWithinGroup(
+                modOrderRows, sourceId, targetId))
+            {
+                e.Effect = DragDropEffects.None;
+                return;
+            }
+            RefreshGroupedModRows();
+            try { SaveModOrder(); }
+            catch (Exception error) when (error is IOException
+                || error is UnauthorizedAccessException)
+            {
+                MessageBox.Show(customOptionsForm,
+                    "The new mod order is shown, but could not be saved: "
+                    + error.Message, "KHARVOX", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+        }
+
+        modOrderSlots.Clear();
+        grid.RowStyles.Clear();
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        var currentGroup = -1;
+        var tableRow = 1;
+        for (var i = 0; i < modOrderRows.Count; i++)
+        {
+            var slotIndex = i;
+            var group = modOrderRows[i].Group;
+            if (group != currentGroup)
+            {
+                currentGroup = group;
+                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+                var header = modOrderHeaders[currentGroup];
+                grid.Controls.Add(header, 0, tableRow++);
+                grid.SetColumnSpan(header, 2);
+            }
+            var panel = new TableLayoutPanel
+            {
+                ColumnCount = 3, RowCount = 1,
+                Dock = DockStyle.Fill,
+                Margin = Padding.Empty, Padding = Padding.Empty,
+                BackColor = PanelColor, AllowDrop = true
+            };
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 25));
+            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            var number = new Label
+            {
+                Text = (i + 1).ToString("00") + ".",
+                AccessibleName = "Mod position " + (i + 1),
+                ForeColor = Color.White, BackColor = PanelColor,
+                Font = new Font("Segoe UI", 9F, FontStyle.Regular),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(2, 0, 0, 0),
+                AllowDrop = true
+            };
             var grip = new Label
             {
-                Text = "⋮⋮", AccessibleName = "Drag to reorder " + item.Caption,
-                Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
+                Text = "⋮⋮", AccessibleName = "Drag mod in position " + (i + 1),
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.LightSteelBlue, BackColor = PanelColor,
                 Cursor = Cursors.SizeNS,
                 Font = new Font("Segoe UI", 11f, FontStyle.Bold),
                 Margin = Padding.Empty, Visible = false,
                 AllowDrop = true
             };
-            row.Controls.Add(grip, 1, 0);
-            item.Panel = row;
-            item.Grip = grip;
-            statusToolTip.SetToolTip(grip,
-                "Drag to change order within " + ModGroupHeaders[item.Group].Title);
-
-            // Child controls receive their own mouse enter events in WinForms.
-            // Keep the handle available when crossing from the checkbox.
+            panel.Controls.Add(number, 0, 0);
+            panel.Controls.Add(grip, 2, 0);
+            var slot = new ModOrderSlot
+            {
+                Index = i, Group = group, Panel = panel,
+                Number = number, Grip = grip
+            };
+            modOrderSlots.Add(slot);
             void ShowGrip(object? sender, EventArgs e)
             {
-                if (modOrderRows.Count(x => x.Group == item.Group) > 1)
+                if (modOrderRows.Count(row => row.Group == group) > 1)
                     grip.Visible = true;
             }
             void HideGrip(object? sender, EventArgs e)
             {
                 if (activeModDrag is null
-                    && !row.ClientRectangle.Contains(row.PointToClient(Cursor.Position)))
+                    && !panel.ClientRectangle.Contains(
+                        panel.PointToClient(Cursor.Position)))
                     grip.Visible = false;
             }
-            row.MouseEnter += ShowGrip;
-            check.MouseEnter += ShowGrip;
+            panel.MouseEnter += ShowGrip;
+            number.MouseEnter += ShowGrip;
             grip.MouseEnter += ShowGrip;
-            row.MouseLeave += HideGrip;
-            check.MouseLeave += HideGrip;
+            panel.MouseLeave += HideGrip;
+            number.MouseLeave += HideGrip;
             grip.MouseLeave += HideGrip;
 
             Point mouseDown = Point.Empty;
@@ -231,84 +319,74 @@ public sealed partial class MainForm
             grip.MouseMove += (_, e) =>
             {
                 if (e.Button != MouseButtons.Left || activeModDrag is not null
-                    || Math.Abs(e.X - mouseDown.X) < 5
-                    && Math.Abs(e.Y - mouseDown.Y) < 5) return;
-                activeModDrag = item.Id;
-                try { grip.DoDragDrop(item.Id, DragDropEffects.Move); }
+                    || (Math.Abs(e.X - mouseDown.X) < 5
+                        && Math.Abs(e.Y - mouseDown.Y) < 5)) return;
+                activeModDrag = modOrderRows[slotIndex].Id;
+                try { grip.DoDragDrop(activeModDrag, DragDropEffects.Move); }
                 finally
                 {
                     activeModDrag = null;
-                    grip.Visible = row.ClientRectangle.Contains(row.PointToClient(Cursor.Position));
+                    grip.Visible = panel.ClientRectangle.Contains(
+                        panel.PointToClient(Cursor.Position));
                 }
             };
-
-            void AcceptDrag(object? sender, DragEventArgs e)
+            foreach (Control target in new Control[] { panel, number, grip })
             {
-                var source = modOrderRows.FirstOrDefault(x => x.Id == activeModDrag);
-                e.Effect = source is not null && source != item
-                    && source.Group == item.Group
-                    ? DragDropEffects.Move : DragDropEffects.None;
+                target.DragEnter += (_, e) => AcceptDrag(slotIndex, e);
+                target.DragOver += (_, e) => AcceptDrag(slotIndex, e);
+                target.DragDrop += (_, e) => Drop(slotIndex, e);
             }
-            void Drop(object? sender, DragEventArgs e)
-            {
-                var fromId = activeModDrag;
-                if (fromId is null || !MoveModWithinGroup(modOrderRows, fromId, item.Id))
-                {
-                    e.Effect = DragDropEffects.None;
-                    return;
-                }
-                RefreshGroupedModRows();
-                try { SaveModOrder(); }
-                catch (Exception error) when (error is IOException
-                    || error is UnauthorizedAccessException)
-                {
-                    MessageBox.Show(customOptionsForm,
-                        "The new mod order is shown, but could not be saved: "
-                        + error.Message, "KHARVOX", MessageBoxButtons.OK,
-                        MessageBoxIcon.Warning);
-                }
-            }
-
-            foreach (Control target in new Control[] { row, check, grip })
-            {
-                target.AllowDrop = true;
-                target.DragEnter += AcceptDrag;
-                target.DragOver += AcceptDrag;
-                target.DragDrop += Drop;
-            }
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            grid.Controls.Add(panel, 0, tableRow++);
+            grid.SetColumnSpan(panel, 2);
         }
+        // Each checkbox is also a drop target. Look up its CURRENT slot.
+        foreach (var item in modOrderRows)
+        {
+            var check = item.Box;
+            void AcceptHere(object? sender, DragEventArgs e)
+            {
+                var targetIndex = modOrderSlots.FindIndex(x =>
+                    ReferenceEquals(x.Panel, check.Parent));
+                if (targetIndex >= 0) AcceptDrag(targetIndex, e);
+                else e.Effect = DragDropEffects.None;
+            }
+            check.DragEnter += AcceptHere;
+            check.DragOver += AcceptHere;
+            check.DragDrop += (_, e) =>
+            {
+                var targetIndex = modOrderSlots.FindIndex(x =>
+                    ReferenceEquals(x.Panel, check.Parent));
+                if (targetIndex >= 0) Drop(targetIndex, e);
+                else e.Effect = DragDropEffects.None;
+            };
+        }
+        grid.RowCount = tableRow;
+        grid.Height = 32 + ModGroupHeaders.Length * 24
+            + modOrderRows.Count * 28 + 14;
         RefreshGroupedModRows();
     }
 
     private void RefreshGroupedModRows()
     {
         var grid = modOrderGrid;
-        if (grid is null) return;
+        if (grid is null || modOrderSlots.Count != modOrderRows.Count) return;
         grid.SuspendLayout();
         try
         {
-            foreach (var row in modOrderRows)
-                if (row.Panel is not null) grid.Controls.Remove(row.Panel);
-            foreach (var header in modOrderHeaders) grid.Controls.Remove(header);
-            grid.RowStyles.Clear();
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            // First detach every checkbox; the 15 numbered rows, category
+            // headers and hover grips NEVER move or get renumbered.
+            foreach (var slot in modOrderSlots)
+                foreach (var check in slot.Panel.Controls.OfType<CheckBox>().ToArray())
+                    slot.Panel.Controls.Remove(check);
+
             var numbers = modOrderRows.Select((row, i) => (row.Box, Index: i + 1))
                 .ToDictionary(x => x.Box, x => x.Index);
             string Number(CheckBox check) => "#" + numbers[check];
-            var currentGroup = -1;
-            var tableRow = 1;
             for (var i = 0; i < modOrderRows.Count; i++)
             {
                 var item = modOrderRows[i];
-                if (item.Group != currentGroup)
-                {
-                    currentGroup = item.Group;
-                    grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
-                    var header = modOrderHeaders[currentGroup];
-                    grid.Controls.Add(header, 0, tableRow++);
-                    grid.SetColumnSpan(header, 2);
-                }
-
+                var slot = modOrderSlots[i];
                 string dependencies = "";
                 if (item.Box == customDirectionalDash)
                     dependencies = " — Requires " + Number(weaponWheelRemap)
@@ -327,16 +405,20 @@ public sealed partial class MainForm
                     dependencies = " — Requires " + Number(customBehindHeadWeaponWheel);
                 else if (item.Box == customDynamicShoulderHolster)
                     dependencies = " — Requires Enable Hands (main launcher)";
-                item.Box.Text = (i + 1).ToString("00") + ". " + item.Caption + dependencies;
+                // The mod's own caption and tooltip move to the new position,
+                // while the number label stays attached to the fixed slot.
+                item.Box.Text = item.Caption + dependencies;
+                slot.Panel.Controls.Add(item.Box, 1, 0);
                 statusToolTip.SetToolTip(item.Box, item.Tip
                     + (dependencies.Length == 0 ? "" : Environment.NewLine
                         + dependencies.TrimStart(' ', '—')));
-                grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-                grid.Controls.Add(item.Panel!, 0, tableRow++);
-                grid.SetColumnSpan(item.Panel!, 2);
+                slot.Grip.AccessibleName = "Drag to reorder " + item.Caption
+                    + " in position " + (i + 1);
+                statusToolTip.SetToolTip(slot.Grip,
+                    "Drag " + item.Caption + " within "
+                    + ModGroupHeaders[slot.Group].Title);
+                slot.Grip.Visible = false;
             }
-            grid.RowCount = tableRow;
-            grid.Height = 32 + ModGroupHeaders.Length * 24 + modOrderRows.Count * 28 + 14;
         }
         finally { grid.ResumeLayout(true); }
     }
