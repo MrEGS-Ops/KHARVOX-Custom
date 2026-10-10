@@ -103,6 +103,7 @@ public sealed partial class MainForm : Form
     private readonly Panel renderScaleHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button launchButton = new();
     private bool applyingCustomModDependencies;
+    private bool customModsSaveFailed;
     private Form? customOptionsForm;
     private FlowLayoutPanel? userDoomModChecks;
     private FlowLayoutPanel? doomModItemsPanel;
@@ -356,7 +357,7 @@ public sealed partial class MainForm : Form
         customMods.ForeColor = Color.White;
         var customModsGrid = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
+            Dock = DockStyle.Top,
             BackColor = PanelColor,
             ForeColor = Color.White,
             Padding = new Padding(12, 8, 10, 6),
@@ -400,11 +401,11 @@ public sealed partial class MainForm : Form
             (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
             (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
             (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
-            (customRevengeDemon, "Experimental exact-killer workflow. This build captures and persists death-time entity-reference data through the Supervisor so the exact attacker field can be resolved without guessing; empowerment/outline remains fail-closed until that resolver is validated."),
+            (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
             (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, hide it for true Fist + Fist empty hands, then draw that exact weapon back out. Enabling this automatically enables KHARVOX Hands."),
-            (customPhysicalGrenadeThrow, "Hold equipment/grenade input and use controller motion at release to determine throw direction/strength."),
+            (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
-            (customPhysicalChainsawGestures, "Experimental gesture checkpoints for chainsaw kill animations. Supervisor-assisted while animation states are being mapped.")
+            (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing.")
         };
 
         // Number alphabetically, so requires/disables references are usable.
@@ -457,6 +458,9 @@ public sealed partial class MainForm : Form
             customModsGrid.SetColumnSpan(check, 2);
         }
         customModsGrid.RowCount = allCustomMods.Length + 1;
+        // Fixed-height rows must not stretch into the remaining group height.
+        // This removes the stray gap before the final numbered mod.
+        customModsGrid.Height = 32 + allCustomMods.Length * 28 + 14;
         customMods.Controls.Add(customModsGrid);
 
         // The content currently occupies 15 x 28px plus compact speed menu.
@@ -884,7 +888,7 @@ public sealed partial class MainForm : Form
             userDoomModWatcher?.Dispose();
             userDoomModWatcher = null;
             SaveSettings();
-            SaveCustomModSettings();
+            SaveCustomModSettings(notify: false);
         };
     }
 
@@ -1267,9 +1271,17 @@ public sealed partial class MainForm : Form
             if (customDisableHud.Checked)
                 customBackOfHandHud.Checked = false;
 
+            // Mutual exclusions become visibly disabled, not just
+            // auto-unchecked. An unavailable control is greyed out until
+            // the conflicting choice is explicitly turned off.
+            customBackOfHandHud.Enabled = !customDisableHud.Checked;
+            customDisableHud.Enabled = !customBackOfHandHud.Checked;
+            customBehindHeadWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
+            customDirectionalDash.Enabled = !customDisableWeaponWheel.Checked;
+            customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
+                && !customDirectionalDash.Checked;
             customBehindHeadWheelHandSelection.Enabled =
-                customBehindHeadWeaponWheel.Checked
-                && !customDisableWeaponWheel.Checked;
+                customBehindHeadWeaponWheel.Checked && !customDisableWeaponWheel.Checked;
         }
         finally
         {
@@ -1295,10 +1307,24 @@ public sealed partial class MainForm : Form
         PhysicalChainsawGestures = customPhysicalChainsawGestures.Checked
     };
 
-    private void SaveCustomModSettings()
+    private void SaveCustomModSettings(bool notify = true)
     {
-        try { CustomModSettingsStore.Save(ReadCustomModSettingsFromControls()); }
-        catch { /* Custom mods are optional and must never block launching. */ }
+        try
+        {
+            CustomModSettingsStore.Save(ReadCustomModSettingsFromControls());
+            customModsSaveFailed = false;
+        }
+        catch (Exception error)
+        {
+            customModsSaveFailed = true;
+            status.Text = "VR mod changes NOT saved — check folder permissions.";
+            if (notify && Visible && !IsDisposed)
+                MessageBox.Show(this, "KHARVOX could not save your VR mod selections."
+                    + Environment.NewLine + "The next DOOM launch would use older selections."
+                    + Environment.NewLine + Environment.NewLine + error.Message,
+                    "KHARVOX — Settings not saved", MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+        }
     }
 
     private void LoadCustomModSettings()
@@ -1450,8 +1476,8 @@ public sealed partial class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(1080, 710),
-            MinimumSize = new Size(900, 580),
+            ClientSize = new Size(930, 600),
+            MinimumSize = new Size(730, 530),
             StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
@@ -1669,11 +1695,11 @@ public sealed partial class MainForm : Form
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
         // line per discovered resource. Use available desktop height first.
-        var preferredHeight = Math.Max(655, 525 + Math.Max(0, userModCount) * 30);
+        var preferredHeight = Math.Max(590, 510 + Math.Max(0, userModCount) * 30);
         var height = Math.Min(preferredHeight, maxClientHeight);
-        var width = Math.Min(1080, Math.Max(620, work.Width - 45));
-        customOptionsForm.MinimumSize = new Size(Math.Min(900, work.Width),
-            Math.Min(580, work.Height));
+        var width = Math.Min(930, Math.Max(620, work.Width - 45));
+        customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
+            Math.Min(530, work.Height));
         customOptionsForm.ClientSize = new Size(width, height);
 
         // On small displays or with a very large mod collection, clipping
@@ -1751,6 +1777,14 @@ public sealed partial class MainForm : Form
                 SetRunningState(lastKnownDoomRunning);
                 launchButton.Enabled = true;
             }
+            return;
+        }
+        if (customModsSaveFailed)
+        {
+            MessageBox.Show(this, "VR mod selections could not be saved."
+                + Environment.NewLine + "Correct the settings-file problem before launching.",
+                "KHARVOX — Unsaved mods", MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
             return;
         }
         SaveSettings();
