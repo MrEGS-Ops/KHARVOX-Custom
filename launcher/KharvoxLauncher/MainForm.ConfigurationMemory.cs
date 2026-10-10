@@ -543,16 +543,12 @@ public sealed partial class MainForm
                 || columns.GetColumn(doom) != 0 || columns.GetColumn(vr) != 1)
                 throw new InvalidDataException("DOOM / VR column ordering is incorrect.");
 
-            var layout = vr.Controls.OfType<TableLayoutPanel>().Single();
-            var checks = layout.Controls.OfType<CheckBox>()
-                .OrderBy(check => layout.GetRow(check)).ToArray();
-            if (checks.Length != 15 || layout.AutoScroll
-                || layout.GetRow(checks[14]) != layout.GetRow(checks[13]) + 1
-                || layout.RowStyles[layout.GetRow(checks[14])].Height != 28)
-                throw new InvalidDataException("VR mod list count or scrolling changed.");
-            // Assert the approved fixed display order, not alphabetical labels.
-            // Text may carry an experimental/diagnostic qualifier, but the
-            // checkbox identity, displayed position and numbering must be stable.
+            if (!RunModReorderPolicySelfTest())
+                throw new InvalidDataException("Mod group ordering policy failed.");
+            var scroll = vr.Controls.OfType<Panel>().Single();
+            var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
+            var orderedRows = main.modOrderRows.ToArray();
+            var checks = orderedRows.Select(row => row.Box).ToArray();
             var expectedChecks = new[]
             {
                 main.weaponWheelRemap,
@@ -571,21 +567,44 @@ public sealed partial class MainForm
                 main.customDisableWeaponWheel,
                 main.customRevengeDemon
             };
-            if (!checks.SequenceEqual(expectedChecks)
+            // A persisted layout may reorder WITHIN a group. Never allow a mod
+            // to cross into another category, disappear or become duplicated.
+            if (!scroll.AutoScroll || layout.AutoScroll
+                || checks.Length != 15 || checks.Distinct().Count() != 15
+                || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
+                    .SequenceEqual(expectedChecks)
+                || orderedRows.Where((row, index) => row.Group
+                    != (index < 6 ? 0 : index < 8 ? 1 : index < 12 ? 2
+                        : index < 14 ? 3 : 4)).Any()
+                || orderedRows.Any(row => row.Panel is null || row.Grip is null
+                    || row.Panel.Controls.OfType<CheckBox>().SingleOrDefault() != row.Box
+                    || layout.GetRow(row.Panel) < 1)
                 || checks.Where((check, index) => !check.Text.StartsWith(
                     (index + 1).ToString("00") + ". ", StringComparison.Ordinal)).Any()
-                || main.customHandFocusedRs.Text != "02. Hand Focus")
-                throw new InvalidDataException("VR mod priority order, numbers or Hand Focus label changed.");
+                || !main.customHandFocusedRs.Text.Contains(". Hand Focus")
+                || main.modOrderHeaders.Count != 5
+                || main.modOrderHeaders.Any(header =>
+                    layout.GetRow(header) < 1 || !header.Text.Contains("   "))
+                || layout.Height < 32 + 15 * 28 + 5 * 24)
+                throw new InvalidDataException(
+                    "VR group headings, drag grips, order or numbering changed.");
+            string ModNumber(CheckBox check) => "#"
+                + (Array.IndexOf(checks, check) + 1);
+            if (!main.customDirectionalDash.Text.Contains(
+                    "Requires " + ModNumber(main.weaponWheelRemap) + ", "
+                    + ModNumber(main.customBehindHeadWeaponWheel)
+                    + "; disables " + ModNumber(main.customDisableWeaponWheel))
+                || !main.customDisableWeaponWheel.Text.Contains(
+                    "Disables " + ModNumber(main.customBehindHeadWeaponWheel)
+                    + ", " + ModNumber(main.customDirectionalDash))
+                || !main.customDisableHud.Text.Contains(
+                    "Disables " + ModNumber(main.customBackOfHandHud))
+                || !main.customBackOfHandHud.Text.Contains(
+                    "Disables " + ModNumber(main.customDisableHud))
+                || !main.customBehindHeadWheelHandSelection.Text.Contains(
+                    "Requires " + ModNumber(main.customBehindHeadWeaponWheel)))
+                throw new InvalidDataException("Numbered VR dependencies no longer follow layout.");
 
-            // Dependency references must follow the visible numbers, not their
-            // previous alphabetical positions.
-            if (!main.customDirectionalDash.Text.Contains("Requires #1, #4; disables #14")
-                || !main.customDisableWeaponWheel.Text.Contains("Disables #4, #8")
-                || !main.customDisableHud.Text.Contains("Disables #3")
-                || !main.customBackOfHandHud.Text.Contains("Disables #13")
-                || !main.customBehindHeadWeaponWheel.Text.Contains("Disables #14")
-                || !main.customBehindHeadWheelHandSelection.Text.Contains("Requires #4"))
-                throw new InvalidDataException("VR dependencies must refer to current mod numbers.");
             var wheelRemapOption = checks.SingleOrDefault(option =>
                 option.Text.Contains("Weapon Wheel Remap"));
             var wheelRemapTip = wheelRemapOption is null ? string.Empty
@@ -863,6 +882,21 @@ public sealed partial class MainForm
             {
                 NexusModsPopup.TestOpenRequested = null;
             }
+            // Both title-bar X and footer Close route through the same
+            // launcher-focus restoration method. Reopening must stay possible.
+            var closeButton = Descendants(window).OfType<Button>()
+                .SingleOrDefault(button => button.Text == "Close");
+            if (closeButton is null) throw new InvalidDataException(
+                "Custom Mods Close button missing.");
+            main.Show();
+            window.Show(main);
+            Application.DoEvents();
+            closeButton.PerformClick();
+            Application.DoEvents();
+            if (window.Visible || !main.Visible || !main.ContainsFocus)
+                throw new InvalidDataException(
+                    "Closing Custom Mods must hide it and focus the launcher.");
+
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
         }
