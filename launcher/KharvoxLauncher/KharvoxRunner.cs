@@ -1716,6 +1716,13 @@ internal static class KharvoxRunner
         return (Math.Max(1, (int)(1280 * scale)), Math.Max(1, (int)(720 * scale)));
     }
 
+    // DOOM 2016's native Game Settings > Glory Kill Highlight option.
+    // Do not change stagger, Glory Kill availability, animation or timing.
+    // Read-only reference: DOOMLegacyMod's game CVar dump identifies
+    // g_setting_gk_highlight as "show or hide the GK highlight".
+    internal static IEnumerable<string> NativeGloryKillHighlightArguments() =>
+        ["+g_setting_gk_highlight", "0"];
+
     private static IEnumerable<string> BuildGameArguments(KharvoxLaunchOptions options,
         bool useSteam, decimal effectiveRenderScale, bool nativeStereoEnabled = false)
     {
@@ -1785,6 +1792,11 @@ internal static class KharvoxRunner
             "+r_windowWidth", renderWidth.ToString(Invariant),
             "+r_windowHeight", renderHeight.ToString(Invariant)
         ]);
+        // Always turn off DOOM's own blue/orange stagger outlines in VR.
+        // This does not require DOOMModLoader, alter user config files or
+        // introduce any on-screen launcher option.
+        args.AddRange(NativeGloryKillHighlightArguments());
+
         // 10 preserves DOOM's native adaptive Glory Kill slow-motion.
         // 0-9 disable the sync system's adaptive slowdown; levels 1-9 are
         // then driven by the clean CameraHook timescale override.
