@@ -386,10 +386,16 @@ public sealed partial class MainForm
             if (installer is null)
                 throw new InvalidDataException("DML install button isn't right-aligned.");
 
-            var packagedRow = doomGrid.GetControlFromPosition(0, 1);
-            var userHeader = doomGrid.GetControlFromPosition(0, 2)
-                as TableLayoutPanel;
-            var modListPanel = doomGrid.GetControlFromPosition(0, 3);
+            // GetControlFromPosition() may return null for intentionally hidden
+            // KHARVOX MODS controls, even though the row is occupied.
+            // Inspect actual child assignments rather than only visible cells.
+            var packagedRow = doomGrid.Controls.Cast<Control>().FirstOrDefault(control =>
+                doomGrid.GetRow(control) == 1);
+            var userHeader = doomGrid.Controls.Cast<Control>()
+                .OfType<TableLayoutPanel>().FirstOrDefault(control =>
+                    doomGrid.GetRow(control) == 2);
+            var modListPanel = doomGrid.Controls.Cast<Control>().FirstOrDefault(control =>
+                doomGrid.GetRow(control) == 3);
             if (packagedRow is null || userHeader is null || modListPanel is null
                 || userHeader.Parent != doomGrid || !userHeader.Visible
                 || userHeader.ColumnCount != 4
@@ -398,7 +404,12 @@ public sealed partial class MainForm
                     || userHeader.GetColumn(panel) != 1)
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
                     label.Text.IndexOf("PLANNED MODS", StringComparison.OrdinalIgnoreCase) >= 0))
-                throw new InvalidDataException("USER MODS header/section layout regressed.");
+                throw new InvalidDataException("USER MODS header/section layout regressed."
+                    + " packaged=" + (packagedRow is not null)
+                    + " header=" + (userHeader is not null)
+                    + " list=" + (modListPanel is not null)
+                    + " visible=" + (userHeader?.Visible ?? false)
+                    + " columns=" + userHeader?.ColumnCount);
             userHeader.PerformLayout();
             var heading = userHeader.Controls.OfType<Label>().SingleOrDefault(label =>
                 label.Text == "USER MODS");
