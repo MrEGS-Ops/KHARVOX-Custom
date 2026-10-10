@@ -371,6 +371,27 @@ public sealed partial class MainForm
                 }
             }
 
+            // Exercise both verified and missing/repair-required DML states
+            // without touching the real game or installing the loader.
+            // A previously selected mod must remain checked while disabled,
+            // then become selectable again after DML verification.
+            foreach (var isMissing in new[] { false, true })
+            {
+                using var selection = new CheckBox { Checked = true };
+                SetDoomModCheckboxAvailability(selection,
+                    loaderVerified: false, missing: isMissing);
+                if (selection.Enabled || !selection.Checked
+                    || selection.ForeColor != Color.Gray)
+                    throw new InvalidDataException(
+                        "Unverified DML must disable and grey all resource mods.");
+                SetDoomModCheckboxAvailability(selection,
+                    loaderVerified: true, missing: isMissing);
+                if (!selection.Enabled || !selection.Checked
+                    || selection.ForeColor != (isMissing ? Color.Orange : Color.Gainsboro))
+                    throw new InvalidDataException(
+                        "DML verification must restore mod selection without losing saved checks.");
+            }
+
             var groups = Descendants(window).OfType<GroupBox>().ToArray();
             var doom = groups.Single(x => x.Text == "DOOM MODS");
             var vr = groups.Single(x => x.Text == "VR MODS");
