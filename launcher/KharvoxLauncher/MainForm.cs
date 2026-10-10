@@ -108,6 +108,7 @@ public sealed partial class MainForm : Form
     private Form? customOptionsForm;
     private FlowLayoutPanel? userDoomModChecks;
     private FlowLayoutPanel? packagedDoomModChecks;
+    private Action? refreshDoomModLoaderStatus;
     private Label? packagedDoomModHeader;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
@@ -533,6 +534,7 @@ public sealed partial class MainForm : Form
             statusToolTip.SetToolTip(loaderStatusLabel, installHelp);
             statusToolTip.SetToolTip(loaderInstallButton, installHelp);
         };
+        refreshDoomModLoaderStatus = refreshLoaderStatus;
         refreshLoaderStatus();
         loaderInstallButton.Click += (_, _) =>
         {
@@ -1623,12 +1625,26 @@ public sealed partial class MainForm : Form
         userDoomModWatcher.EnableRaisingEvents = true;
     }
 
+    // Reusable gate for every resource-mod checkbox (user, packaged or
+    // missing). Never mutate Checked: saved choices must survive DML repair.
+    private static void SetDoomModCheckboxAvailability(
+        CheckBox option, bool loaderVerified, bool missing)
+    {
+        option.Enabled = loaderVerified;
+        option.ForeColor = !loaderVerified ? Color.Gray
+            : missing ? Color.Orange : Color.Gainsboro;
+    }
+
     private void RefreshUserDoomMods()
     {
         if (userDoomModChecks is null || userDoomModStatus is null
             || packagedDoomModChecks is null || packagedDoomModHeader is null) return;
         try
         {
+            // Keep the DML status and selection availability in sync on each
+            // open, manual refresh, disk rescan and post-install refresh.
+            refreshDoomModLoaderStatus?.Invoke();
+            var loaderVerified = DoomModLoaderInstaller.IsInstalled;
             var detected = DoomUserMods.Scan(doomPath.Text);
             var selections = DoomUserMods.LoadSelections();
             var list = userDoomModChecks;
@@ -1659,11 +1675,13 @@ public sealed partial class MainForm : Form
                         Checked = selections.Contains(mod.Id),
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
-                        ForeColor = Color.Gainsboro,
                         Margin = new Padding(3, 2, 3, 2)
                     };
+                    SetDoomModCheckboxAvailability(option, loaderVerified, missing: false);
                     statusToolTip.SetToolTip(option, mod.FullPath + Environment.NewLine
-                        + "Selection is saved and will apply on the next DOOM launch.");
+                        + (loaderVerified
+                            ? "Selection is saved and will apply on the next DOOM launch."
+                            : "Install or repair DOOMModLoader to enable resource-mod selection."));
                     option.CheckedChanged += (_, _) =>
                     {
                         try
@@ -1702,9 +1720,13 @@ public sealed partial class MainForm : Form
                         Checked = true,
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
-                        ForeColor = Color.Orange,
                         Margin = new Padding(3, 2, 3, 2)
                     };
+                    SetDoomModCheckboxAvailability(missingOption,
+                        loaderVerified, missing: true);
+                    statusToolTip.SetToolTip(missingOption, loaderVerified
+                        ? "Uncheck to remove this missing selection."
+                        : "Install or repair DOOMModLoader to edit mod selections.");
                     missingOption.CheckedChanged += (_, _) =>
                     {
                         if (missingOption.Checked) return;
@@ -1747,13 +1769,10 @@ public sealed partial class MainForm : Form
             CheckLiveConfiguration(promptOnBad: false);
             FitCustomOptionsToContent(detected.Count + countMissing);
             userDoomModStatus.Text = countMissing != 0
-                ? countMissing + " selected mod(s) missing. Uncheck or restore them before launching."
+                ? countMissing + " selected mod(s) missing."
                 : detected.Count == 0
                     ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
-                    : DoomModLoaderInstaller.CheckInstallation().State
-                        != DoomModLoaderInstaller.InstallationState.Verified
-                        ? detected.Count + " mod(s) detected."
-                        : detected.Count + " mod(s) detected.";
+                    : detected.Count + " mod(s) detected.";
         }
         catch (Exception error)
         {
