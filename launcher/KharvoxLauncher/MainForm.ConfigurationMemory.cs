@@ -306,7 +306,7 @@ public sealed partial class MainForm
             using var main = new MainForm(path);
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
-            if (window.ClientSize.Width > 930)
+            if (window.ClientSize.Width > 780)
                 throw new InvalidDataException("Custom Mods window is too wide.");
 
             IEnumerable<Control> Descendants(Control root)
@@ -351,7 +351,10 @@ public sealed partial class MainForm
                 || main.gloryKillSpeedMenu.Items.Count != 5
                 || !Equals(main.gloryKillSpeedMenu.Items[0], "1")
                 || !Equals(main.gloryKillSpeedMenu.Items[4], "5")
-                || GKMenuToEngine(1) != 10 || GKMenuToEngine(5) != 0)
+                || GKMenuToEngine(1) != 10 || GKMenuToEngine(5) != 0
+                || main.gloryKillSpeedMenu.Width > 40
+                || main.gloryKillSpeedMenu.DropDownWidth > 40
+                || main.gloryKillSpeedMenu.Dock != DockStyle.None)
                 throw new InvalidDataException("Glory Kill speed dropdown is missing.");
             if (main.configurationStatusButton?.Parent is null
                 || Descendants(main).Any(x => x == main.configurationStatusButton))
@@ -363,6 +366,11 @@ public sealed partial class MainForm
             window.Show();
             Application.DoEvents();
             window.PerformLayout();
+            if (window.ClientSize.Width > 780
+                || main.gloryKillSpeedMenu.Width > 40
+                || main.gloryKillSpeedMenu.DropDownWidth > 40)
+                throw new InvalidDataException(
+                    "Rendered Custom Mods window or Glory Kill selector too wide.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
             doomGrid.PerformLayout();
             if (doomGrid.RowCount != 4
