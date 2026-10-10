@@ -111,9 +111,16 @@ public sealed partial class MainForm
     {
         if (ReferenceEquals(highlightedDoomDropRow, target)) return;
         if (highlightedDoomDropRow is { IsDisposed: false } old)
+        {
+            old.BackColor = PanelColor;
             old.Invalidate();
+        }
         highlightedDoomDropRow = target;
-        target?.Invalidate();
+        if (target is not null)
+        {
+            target.BackColor = Color.FromArgb(44, 79, 110);
+            target.Invalidate();
+        }
     }
 
     private void ScrollDoomModsDuringDrag(DragEventArgs e)
@@ -134,7 +141,7 @@ public sealed partial class MainForm
     {
         var row = new Panel
         {
-            Width = 337, Height = 26,
+            Width = 337, Height = 27,
             Margin = new Padding(0, 0, 0, 0),
             Padding = Padding.Empty,
             BackColor = PanelColor,
@@ -144,8 +151,8 @@ public sealed partial class MainForm
         };
         option.Text = row.AccessibleName;
         option.AutoSize = false;
-        option.Size = new Size(311, 26);
-        option.Location = new Point(2, 0);
+        option.Size = new Size(311, 23);
+        option.Location = new Point(2, 2);
         option.AutoEllipsis = true;
         option.Margin = Padding.Empty;
         option.AllowDrop = true;
@@ -153,8 +160,8 @@ public sealed partial class MainForm
 
         var grip = new Label
         {
-            Text = "⋮⋮", Width = 22, Height = 26,
-            Left = 314, Top = 0,
+            Text = "⋮⋮", Width = 22, Height = 23,
+            Left = 314, Top = 2,
             BackColor = PanelColor, ForeColor = Color.LightSteelBlue,
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
