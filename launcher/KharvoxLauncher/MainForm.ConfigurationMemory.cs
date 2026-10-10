@@ -385,7 +385,7 @@ public sealed partial class MainForm
                 || creatorCredit is null || creatorCredit.Text != "Made by MrEGS"
                 || creatorCredit.TextAlign != ContentAlignment.MiddleRight
                 || creatorCredit.ForeColor != Color.Gray
-                || !creatorCredit.Visible || creatorCredit.Height < 20
+                || (window.Visible && !creatorCredit.Visible) || creatorCredit.Height < 20
                 || creatorCredit.Right >= footerClose!.Left
                 || footerClose.Right > footerRow.ClientSize.Width
                 || footerRow.Controls.Count != 2)
