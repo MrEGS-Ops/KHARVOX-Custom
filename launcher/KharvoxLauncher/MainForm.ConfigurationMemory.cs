@@ -35,9 +35,10 @@ public sealed partial class MainForm
     private Button? configurationGoodButton;
     private Button? configurationBadButton;
 
-    // Place this directly on the GroupBox caption line, not in the dialog
-    // footer or in the scrolling VR mod grid. A flexible horizontal rule
-    // separates the "VR MODS" title from three compact direct-action buttons.
+    // One visually continuous header: VR MODS ————— ? ✓ ✕
+    // The native GroupBox draws the title and border. This panel masks only
+    // the right part of that border, replacing it with a hairline and three
+    // borderless, DPI-independent vector marks.
     private void BuildConfigurationRatingHeader(GroupBox group)
     {
         configurationStatusMods.Visible = false;
@@ -45,70 +46,124 @@ public sealed partial class MainForm
         {
             AccessibleName = "VR Mods configuration rating header",
             BackColor = PanelColor,
-            Height = 25,
+            Height = 23,
             Margin = Padding.Empty,
             Padding = Padding.Empty,
             TabStop = false
         };
-        var layout = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 4,
-            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
-        };
-        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        for (var i = 0; i < 3; i++)
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
-
         var separator = new Panel
         {
             AccessibleName = "VR Mods rating header divider",
-            Dock = DockStyle.Fill,
-            BackColor = Color.DimGray,
-            Margin = new Padding(3, 12, 7, 12)
+            BackColor = Color.FromArgb(100, 100, 104),
+            Height = 1,
+            TabStop = false
         };
-        layout.Controls.Add(separator, 0, 0);
+        bar.Controls.Add(separator);
 
-        Button AddRatingButton(string glyph, string accessibleName,
-            KharvoxConfigMarks.Verdict verdict, int column)
+        Button AddRatingButton(string symbol, string accessibleName,
+            KharvoxConfigMarks.Verdict verdict)
         {
             var button = new Button
             {
-                Text = glyph,
+                // The symbol is used for accessibility/testing; paint it as a
+                // vector because the glyph fonts vary on different Windows PCs.
+                Text = "",
                 AccessibleName = accessibleName,
-                Dock = DockStyle.Fill,
+                AccessibleDescription = symbol,
+                Size = new Size(24, 22),
                 AutoSize = false,
                 FlatStyle = FlatStyle.Flat,
-                Font = new Font("Segoe UI Symbol", 10F, FontStyle.Bold),
-                TextAlign = ContentAlignment.MiddleCenter,
                 ForeColor = Color.Silver,
-                BackColor = Color.FromArgb(39, 39, 42),
-                Margin = new Padding(2, 1, 2, 1),
-                TabStop = true
+                BackColor = PanelColor,
+                TabStop = true,
+                UseVisualStyleBackColor = false
             };
-            button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.BorderColor = Color.DimGray;
+            button.FlatAppearance.BorderSize = 0;
+            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 55, 59);
+            button.FlatAppearance.MouseDownBackColor = Color.FromArgb(66, 66, 70);
             button.Click += (_, _) => MarkCurrentConfiguration(verdict);
-            layout.Controls.Add(button, column, 0);
+            button.Paint += (_, e) =>
+            {
+                e.Graphics.SmoothingMode =
+                    System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+                var cx = button.ClientSize.Width / 2f;
+                var cy = button.ClientSize.Height / 2f - 1;
+                using var stroke = new Pen(button.Enabled
+                    ? button.ForeColor : Color.Gray, 2f);
+                stroke.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+                stroke.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+                stroke.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+                if (symbol == "✓")
+                {
+                    e.Graphics.DrawLines(stroke, new[]
+                    {
+                        new PointF(cx - 6, cy), new PointF(cx - 2, cy + 4),
+                        new PointF(cx + 6, cy - 5)
+                    });
+                }
+                else if (symbol == "✕")
+                {
+                    e.Graphics.DrawLine(stroke, cx - 4.5f, cy - 4.5f,
+                        cx + 4.5f, cy + 4.5f);
+                    e.Graphics.DrawLine(stroke, cx + 4.5f, cy - 4.5f,
+                        cx - 4.5f, cy + 4.5f);
+                }
+                else
+                {
+                    TextRenderer.DrawText(e.Graphics, "?", button.Font,
+                        button.ClientRectangle, stroke.Color,
+                        TextFormatFlags.HorizontalCenter |
+                        TextFormatFlags.VerticalCenter |
+                        TextFormatFlags.NoPadding);
+                }
+                if (button.Tag is bool selected && selected)
+                {
+                    using var underline = new Pen(button.ForeColor, 2f);
+                    e.Graphics.DrawLine(underline, 6, button.Height - 2,
+                        button.Width - 6, button.Height - 2);
+                }
+            };
+            bar.Controls.Add(button);
             return button;
         }
 
         configurationUnmarkedButton = AddRatingButton("?", "Clear configuration rating",
-            KharvoxConfigMarks.Verdict.Unmarked, 1);
+            KharvoxConfigMarks.Verdict.Unmarked);
         configurationGoodButton = AddRatingButton("✓", "Mark configuration good",
-            KharvoxConfigMarks.Verdict.Good, 2);
+            KharvoxConfigMarks.Verdict.Good);
         configurationBadButton = AddRatingButton("✕", "Mark configuration bad",
-            KharvoxConfigMarks.Verdict.Bad, 3);
+            KharvoxConfigMarks.Verdict.Bad);
 
-        bar.Controls.Add(layout);
-        group.Controls.Add(bar);
-        configurationRatingHeader = bar;
         void FitHeader()
         {
             if (bar.IsDisposed) return;
-            const int startX = 87; // Left of the separator, after "VR MODS".
-            bar.SetBounds(startX, 0, Math.Max(110, group.ClientSize.Width - startX - 9), 25);
+            const int startX = 90; // Begin beyond the built-in VR MODS caption.
+            bar.SetBounds(startX, 0,
+                Math.Max(113, group.ClientSize.Width - startX - 8), 23);
+            const int iconWidth = 24;
+            const int gap = 3;
+            var left = bar.ClientSize.Width - iconWidth * 3 - gap * 2 - 1;
+            separator.SetBounds(0, 10, Math.Max(1, left - 8), 1);
+            configurationUnmarkedButton?.SetBounds(left, 0, iconWidth, 22);
+            configurationGoodButton?.SetBounds(left + iconWidth + gap, 0,
+                iconWidth, 22);
+            configurationBadButton?.SetBounds(left + (iconWidth + gap) * 2,
+                0, iconWidth, 22);
         }
+        bar.Resize += (_, _) => FitHeaderButtons();
+        // Keep layout work independent of resize events: avoid recursive
+        // SetBounds during GroupBox font/DPI changes.
+        void FitHeaderButtons()
+        {
+            var left = bar.ClientSize.Width - 24 * 3 - 3 * 2 - 1;
+            separator.SetBounds(0, 10, Math.Max(1, left - 8), 1);
+            configurationUnmarkedButton?.SetBounds(left, 0, 24, 22);
+            configurationGoodButton?.SetBounds(left + 27, 0, 24, 22);
+            configurationBadButton?.SetBounds(left + 54, 0, 24, 22);
+        }
+
+        group.Controls.Add(bar);
+        configurationRatingHeader = bar;
         group.SizeChanged += (_, _) => FitHeader();
         FitHeader();
         bar.BringToFront();
@@ -140,14 +195,15 @@ public sealed partial class MainForm
             if (button is null) continue;
             var active = verdict.HasValue && entry.Verdict == verdict.Value;
             button.Enabled = verdict.HasValue;
+            button.Tag = active;
             button.ForeColor = verdict.HasValue ? entry.Hue : Color.Gray;
-            button.BackColor = active ? Color.FromArgb(59, 59, 63)
-                : Color.FromArgb(39, 39, 42);
-            button.FlatAppearance.BorderColor = active ? entry.Hue : Color.DimGray;
-            button.FlatAppearance.BorderSize = active ? 2 : 1;
+            button.BackColor = active ? Color.FromArgb(44, 44, 48) : PanelColor;
+            // No permanent square frames; a 2-pixel underline shows selection.
+            button.FlatAppearance.BorderSize = 0;
             statusToolTip.SetToolTip(button,
                 entry.Action + "." + Environment.NewLine + status
                 + Environment.NewLine + "Ratings apply to this exact settings and mod combination.");
+            button.Invalidate();
         }
     }
 
