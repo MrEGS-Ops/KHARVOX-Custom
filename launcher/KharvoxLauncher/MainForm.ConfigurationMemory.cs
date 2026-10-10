@@ -584,58 +584,57 @@ public sealed partial class MainForm
                 .SingleOrDefault(panel =>
                     panel.AccessibleName == "User mods header divider");
             var countLabel = main.userDoomModCount;
-            var countDivider = divider?.Controls.OfType<TableLayoutPanel>()
-                .SingleOrDefault(layout =>
-                    layout.AccessibleName == "Centered user mod count divider");
-            var leftLine = countDivider?.Controls.OfType<Panel>()
-                .SingleOrDefault(panel =>
-                    panel.AccessibleName == "User mods count left divider");
-            var rightLine = countDivider?.Controls.OfType<Panel>()
-                .SingleOrDefault(panel =>
-                    panel.AccessibleName == "User mods count right divider");
-            countDivider?.PerformLayout();
-            if (divider is null || countDivider is null || countLabel is null
-                || countLabel.Parent != countDivider
+            // Verify the actual paint surface rather than just the control
+            // tree: our previous nested 1px panels passed layout checks but
+            // rendered as tiny isolated dashes on the user's Windows display.
+            if (divider is null || countLabel is null
+                || countLabel.Parent != divider
+                || divider.Controls.Count != 1
                 || countLabel.AccessibleName != "Detected user mod count"
-                || countLabel.Dock != DockStyle.Fill
                 || countLabel.TextAlign != ContentAlignment.MiddleCenter
-                || countDivider.ColumnCount != 3
-                || countDivider.GetColumn(countLabel) != 1
-                || countLabel.Width < 62
-                || countLabel.Width > countDivider.ClientSize.Width - 12
-                || leftLine is null || rightLine is null
-                || countDivider.GetColumn(leftLine) != 0
-                || countDivider.GetColumn(rightLine) != 2
-                || leftLine.BackColor != Color.DimGray
-                || rightLine.BackColor != Color.DimGray
-                || leftLine.Right > countLabel.Left
-                || rightLine.Left < countLabel.Right
+                || !countLabel.Visible || countLabel.Height < 18
+                || countLabel.Left < 0 || countLabel.Right > divider.ClientSize.Width
                 || Math.Abs(countLabel.Left + countLabel.Width / 2
-                    - countDivider.ClientSize.Width / 2) > 2
+                    - divider.ClientSize.Width / 2) > 1
                 || FormatDetectedUserMods(17) != "17 detected"
                 || FormatDetectedUserMods(0) != "0 detected"
-                || !countLabel.Text.EndsWith(" detected",
-                    StringComparison.Ordinal)
+                || !countLabel.Text.EndsWith(" detected", StringComparison.Ordinal)
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
                     label.Text.Contains("mod(s) detected.")))
                 throw new InvalidDataException(
-                    "Detected count must be centred between two header divider lines."
-                    + " divider=" + (divider is not null)
-                    + " countLayout=" + (countDivider is not null)
-                    + " countParent=" + (countLabel?.Parent == countDivider)
-                    + " col=" + (countLabel is null ? -1 : countDivider?.GetColumn(countLabel))
-                    + " labelWidth=" + countLabel?.Width
-                    + " labelText=" + countLabel?.Text
-                    + " center=" + (countLabel is null ? -1 :
-                        countLabel.Left + countLabel.Width / 2)
-                    + " layoutCenter=" + (countDivider is null ? -1 :
-                        countDivider.ClientSize.Width / 2)
-                    + " leftRight=" + leftLine?.Right
-                    + " labelLeft=" + countLabel?.Left
-                    + " rightLeft=" + rightLine?.Left
-                    + " labelRight=" + countLabel?.Right
-                    + " colors=" + leftLine?.BackColor + "/" + rightLine?.BackColor
-                    + " parentScroll=" + modListPanel?.AutoScrollOffset);
+                    "Detected count must fit the header with one continuous divider surface.");
+
+            // With enough horizontal space, confirm that both real line
+            // segments were painted on either side of the centered text.
+            var leftLength = countLabel.Left - 6;
+            var rightLength = divider.ClientSize.Width - countLabel.Right - 6;
+            if (leftLength >= 6 && rightLength >= 6 && divider.Height >= 18)
+            {
+                using var preview = new Bitmap(divider.Width, divider.Height);
+                divider.DrawToBitmap(preview, new Rectangle(0, 0,
+                    divider.Width, divider.Height));
+                var y = divider.Height / 2;
+                bool IsDividerInk(int x)
+                {
+                    for (var dy = -1; dy <= 1; dy++)
+                    {
+                        var py = y + dy;
+                        if (py < 0 || py >= preview.Height) continue;
+                        var pixel = preview.GetPixel(x, py);
+                        if (Math.Abs(pixel.R - Color.DimGray.R) <= 25
+                            && Math.Abs(pixel.G - Color.DimGray.G) <= 25
+                            && Math.Abs(pixel.B - Color.DimGray.B) <= 25)
+                            return true;
+                    }
+                    return false;
+                }
+                var leftX = (2 + countLabel.Left - 4) / 2;
+                var rightX = (countLabel.Right + 4
+                    + divider.ClientSize.Width - 2) / 2;
+                if (!IsDividerInk(leftX) || !IsDividerInk(rightX))
+                    throw new InvalidDataException(
+                        "USER MODS divider must paint visible hairlines on both sides.");
+            }
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
