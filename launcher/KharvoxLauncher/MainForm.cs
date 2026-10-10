@@ -106,6 +106,8 @@ public sealed partial class MainForm : Form
     private bool customModsSaveFailed;
     private Form? customOptionsForm;
     private FlowLayoutPanel? userDoomModChecks;
+    private FlowLayoutPanel? packagedDoomModChecks;
+    private Label? packagedDoomModHeader;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
     private FileSystemWatcher? userDoomModWatcher;
@@ -379,7 +381,7 @@ public sealed partial class MainForm : Form
         };
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
         statusToolTip.SetToolTip(gloryKillSpeedMenu,
-            "1 = native DOOM speed; 5 = fastest. The saved 0–10 settings migrate automatically.");
+            "1 = native DOOM speed; 2–4 = progressively faster; 5 = fastest.");
         customModsGrid.Controls.Add(new Label
         {
             Text = "Glory Kill speed",
@@ -476,13 +478,11 @@ public sealed partial class MainForm : Form
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
-            Padding = new Padding(12, 10, 12, 8), BackColor = PanelColor
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
+            Padding = new Padding(12, 4, 12, 4), BackColor = PanelColor
         };
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 0));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var loaderDescription = new Label
         {
@@ -566,73 +566,57 @@ public sealed partial class MainForm : Form
         loaderRow.Controls.Add(loaderStatusLabel, 0, 0);
         loaderRow.Controls.Add(loaderInstallButton, 1, 0);
         doomGrid.Controls.Add(loaderRow, 0, 1);
-        doomGrid.Controls.Add(new Label
-        {
-            Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "PLANNED MODS — preview only",
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 3);
-
-        // Visual placeholders only. Never persist these or pass them to DOOMModLoader
-        // until we have developed and validated the actual resource patches.
-        var plannedDoomMods = new FlowLayoutPanel
+        // There are no planned-mod placeholders. Actual packaged resource mods
+        // appear only when present, always above externally supplied user mods.
+        var doomModItems = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false,
             AutoScroll = false,
             Margin = Padding.Empty,
-            Padding = new Padding(2, 2, 2, 2),
+            Padding = new Padding(2, 0, 2, 0),
             BackColor = PanelColor
         };
-        var plannedDoomChecks = new (string Name, string Description)[]
+        packagedDoomModHeader = new Label
         {
-            ("1. Bigger Demons", "Individual demon scale multipliers — investigation pending."),
-            ("2. Demon Health Multipliers", "Individually configurable health and durability."),
-            ("3. Enhanced Demon Attacks", "Additional enemy moves and combat behaviours."),
-            ("4. Expanded Infighting", "More demon-versus-demon hostility options."),
-            ("5. Persistent Corpses & Gore", "Longer-lived dead bodies and dismemberment."),
-            ("6. Demon Spawn Density", "More enemies in compatible encounters."),
-            ("7. Limited Supplies", "Reduced ammunition and health pickups.")
-        };
-        var orderedPlanned = plannedDoomChecks
-            .OrderBy(item => item.Name.Substring(item.Name.IndexOf('.') + 1).Trim(),
-                StringComparer.OrdinalIgnoreCase).ToArray();
-        for (var plannedIndex = 0; plannedIndex < orderedPlanned.Length; plannedIndex++)
-        {
-            var planned = orderedPlanned[plannedIndex];
-            var title = planned.Name.Substring(planned.Name.IndexOf('.') + 1).Trim();
-            var placeholder = new CheckBox
-            {
-                Text = (plannedIndex + 1).ToString("00") + ". " + title,
-                AutoSize = true,
-                Enabled = false,
-                Checked = false,
-                Margin = new Padding(3, 3, 3, 3),
-                ForeColor = Color.Gainsboro
-            };
-            statusToolTip.SetToolTip(placeholder,
-                planned.Description + " Placeholder only — not implemented.");
-            plannedDoomMods.Controls.Add(placeholder);
-        }
-        plannedDoomMods.Controls.Add(new Label
-        {
-            Text = "USER MODS",
-            AutoSize = false, Width = 340, Height = 30,
+            Text = "KHARVOX MODS",
+            AutoSize = false, Width = 340, Height = 26,
             ForeColor = Color.White,
             Font = new Font(Font, FontStyle.Bold),
-            TextAlign = ContentAlignment.BottomLeft,
-            Margin = new Padding(3, 12, 3, 3)
-        });
-        var userButtons = new FlowLayoutPanel
-        {
-            Width = 350, Height = 39, WrapContents = false,
-            FlowDirection = FlowDirection.LeftToRight,
-            Margin = Padding.Empty
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(3, 0, 3, 0),
+            Visible = false
         };
+        packagedDoomModChecks = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown, WrapContents = false,
+            AutoScroll = false, AutoSize = true,
+            MinimumSize = new Size(340, 0),
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor, Visible = false
+        };
+        doomModItems.Controls.Add(packagedDoomModHeader);
+        doomModItems.Controls.Add(packagedDoomModChecks);
+
+        var userHeader = new FlowLayoutPanel
+        {
+            Width = 350, Height = 32, WrapContents = false,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        userHeader.Controls.Add(new Label
+        {
+            Text = "USER MODS",
+            AutoSize = false, Width = 112, Height = 29,
+            ForeColor = Color.White,
+            Font = new Font(Font, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(3, 0, 6, 0)
+        });
         var openUserFolder = new Button
         {
-            Text = "Open Mods Folder", Size = new Size(180, 30),
+            Text = "Mod Folder", Size = new Size(104, 28),
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
             BackColor = Color.FromArgb(43, 43, 47)
         };
@@ -660,11 +644,15 @@ public sealed partial class MainForm : Form
         };
         var rescanUserMods = new Button
         {
-            Text = "Rescan", Size = new Size(105, 30),
+            Text = "↻", Size = new Size(30, 28),
+            AccessibleName = "Rescan mods",
+            Font = new Font("Segoe UI Symbol", 15F),
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
-            BackColor = Color.FromArgb(43, 43, 47)
+            BackColor = Color.FromArgb(43, 43, 47),
+            Margin = new Padding(5, 0, 0, 0)
         };
         rescanUserMods.FlatAppearance.BorderColor = Color.DimGray;
+        statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
         rescanUserMods.Click += (_, _) =>
         {
             // A manual rescan catches ZIP replacements that preserve both
@@ -672,17 +660,17 @@ public sealed partial class MainForm : Form
             KharvoxModContentFingerprints.Invalidate();
             RefreshUserDoomMods();
         };
-        userButtons.Controls.Add(openUserFolder);
-        userButtons.Controls.Add(rescanUserMods);
-        plannedDoomMods.Controls.Add(userButtons);
+        userHeader.Controls.Add(openUserFolder);
+        userHeader.Controls.Add(rescanUserMods);
+        doomModItems.Controls.Add(userHeader);
 
         userDoomModStatus = new Label
         {
             Text = "Drop ZIPs or unpacked mod folders here.",
-            AutoSize = false, Width = 342, Height = 50,
-            ForeColor = Color.Silver, Margin = new Padding(3, 2, 3, 3)
+            AutoSize = true, MaximumSize = new Size(342, 0),
+            ForeColor = Color.Silver, Margin = new Padding(3, 0, 3, 0)
         };
-        plannedDoomMods.Controls.Add(userDoomModStatus);
+        doomModItems.Controls.Add(userDoomModStatus);
         userDoomModChecks = new FlowLayoutPanel
         {
             FlowDirection = FlowDirection.TopDown, WrapContents = false,
@@ -691,8 +679,8 @@ public sealed partial class MainForm : Form
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor
         };
-        plannedDoomMods.Controls.Add(userDoomModChecks);
-        doomModItemsPanel = plannedDoomMods;
+        doomModItems.Controls.Add(userDoomModChecks);
+        doomModItemsPanel = doomModItems;
         userDoomModDebounce.Tick += (_, _) =>
         {
             userDoomModDebounce.Stop();
@@ -701,7 +689,7 @@ public sealed partial class MainForm : Form
             else CheckLiveConfiguration(promptOnBad: false);
         };
 
-        doomGrid.Controls.Add(plannedDoomMods, 0, 4);
+        doomGrid.Controls.Add(doomModItems, 0, 2);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
@@ -1167,11 +1155,12 @@ public sealed partial class MainForm : Form
         if (gloryKillSpeedMenu.Items.Count > speedIndex
             && gloryKillSpeedMenu.SelectedIndex != speedIndex)
             gloryKillSpeedMenu.SelectedIndex = speedIndex;
-        gloryKillSlowmoValue.Text = gloryKillSlowmo.Value switch
+        var displayedGloryKillSpeed = GKEngineToMenu(gloryKillSlowmo.Value);
+        gloryKillSlowmoValue.Text = displayedGloryKillSpeed switch
         {
-            0 => "0 (Off)",
-            10 => "10 (Native)",
-            _ => gloryKillSlowmo.Value.ToString()
+            1 => "1 (Native)",
+            5 => "5 (Fastest)",
+            _ => displayedGloryKillSpeed.ToString()
         };
     }
 
@@ -1533,7 +1522,7 @@ public sealed partial class MainForm : Form
         root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
         form.Shown += (_, _) => FitCustomOptionsToContent(
-            userDoomModChecks?.Controls.Count ?? 0);
+            (userDoomModChecks?.Controls.Count ?? 0) + (packagedDoomModChecks?.Controls.Count ?? 0));
         form.FormClosing += (_, e) =>
         {
             if (e.CloseReason != CloseReason.UserClosing) return;
@@ -1579,23 +1568,29 @@ public sealed partial class MainForm : Form
 
     private void RefreshUserDoomMods()
     {
-        if (userDoomModChecks is null || userDoomModStatus is null) return;
+        if (userDoomModChecks is null || userDoomModStatus is null
+            || packagedDoomModChecks is null || packagedDoomModHeader is null) return;
         try
         {
             var detected = DoomUserMods.Scan(doomPath.Text);
             var selections = DoomUserMods.LoadSelections();
             var list = userDoomModChecks;
+            var packagedList = packagedDoomModChecks;
             list.SuspendLayout();
+            packagedList.SuspendLayout();
             try
             {
-                foreach (Control child in list.Controls.Cast<Control>().ToArray())
-                {
-                    list.Controls.Remove(child);
-                    child.Dispose();
-                }
+                foreach (var target in new[] { list, packagedList })
+                    foreach (Control child in target.Controls.Cast<Control>().ToArray())
+                    {
+                        target.Controls.Remove(child);
+                        child.Dispose();
+                    }
 
                 var orderedMods = detected
-                    .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+                    .OrderByDescending(mod => mod.IsPackaged)
+                    .ThenBy(mod => mod.IsFromDoom)
+                    .ThenBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
                     .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase).ToArray();
                 for (var index = 0; index < orderedMods.Length; index++)
                 {
@@ -1629,7 +1624,8 @@ public sealed partial class MainForm : Form
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }
                     };
-                    list.Controls.Add(option);
+                    if (mod.IsPackaged) packagedList.Controls.Add(option);
+                    else list.Controls.Add(option);
                 }
 
                 // An enabled mod may have been deleted outside KHARVOX. Keep
@@ -1670,10 +1666,18 @@ public sealed partial class MainForm : Form
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }
                     };
-                    list.Controls.Add(missingOption);
+                    if (missingId.StartsWith("kharvox:", StringComparison.OrdinalIgnoreCase))
+                        packagedList.Controls.Add(missingOption);
+                    else list.Controls.Add(missingOption);
                 }
             }
-            finally { list.ResumeLayout(); }
+            finally
+            {
+                list.ResumeLayout();
+                packagedList.ResumeLayout();
+            }
+            packagedDoomModHeader.Visible = packagedList.Controls.Count != 0;
+            packagedList.Visible = packagedList.Controls.Count != 0;
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
                 string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
@@ -1702,7 +1706,7 @@ public sealed partial class MainForm : Form
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
         // line per discovered resource. Use available desktop height first.
-        var preferredHeight = Math.Max(590, 510 + Math.Max(0, userModCount) * 30);
+        var preferredHeight = Math.Max(555, 155 + Math.Max(0, userModCount) * 29);
         var height = Math.Min(preferredHeight, maxClientHeight);
         var width = Math.Min(930, Math.Max(620, work.Width - 45));
         customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
@@ -1723,7 +1727,7 @@ public sealed partial class MainForm : Form
         {
             EnsureUserDoomModWatcher();
             RefreshUserDoomMods();
-            FitCustomOptionsToContent(userDoomModChecks?.Controls.Count ?? 0);
+            FitCustomOptionsToContent((userDoomModChecks?.Controls.Count ?? 0) + (packagedDoomModChecks?.Controls.Count ?? 0));
         }
         catch (Exception error)
         {
