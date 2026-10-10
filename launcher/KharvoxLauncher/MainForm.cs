@@ -478,19 +478,13 @@ public sealed partial class MainForm : Form
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 3,
-            Padding = new Padding(12, 4, 12, 4), BackColor = PanelColor
+            // Compact two-row layout: install/verify row, then mod list.
+            // Source and install details stay in the tooltips, not a tall banner.
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            Padding = new Padding(12, 2, 12, 2), BackColor = PanelColor
         };
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
-        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var loaderDescription = new Label
-        {
-            Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "DOOM resource mods require DOOMModLoader."
-                + Environment.NewLine + "First install downloads from the official GitHub release."
-        };
-        doomGrid.Controls.Add(loaderDescription, 0, 0);
         var loaderStatusLabel = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Gainsboro,
@@ -524,10 +518,11 @@ public sealed partial class MainForm : Form
                     loaderInstallButton.Text = "Install…";
                     break;
             }
-            loaderDescription.Visible = result.State != DoomModLoaderInstaller.InstallationState.Verified;
-            doomGrid.RowStyles[0].Height = loaderDescription.Visible ? 58 : 0;
-            statusToolTip.SetToolTip(loaderStatusLabel, result.Details);
-            statusToolTip.SetToolTip(loaderInstallButton, result.Details);
+            var installHelp = result.Details + Environment.NewLine
+                + "DOOM resource mods require DOOMModLoader. "
+                + "Install from the verified official release using this button.";
+            statusToolTip.SetToolTip(loaderStatusLabel, installHelp);
+            statusToolTip.SetToolTip(loaderInstallButton, installHelp);
         };
         refreshLoaderStatus();
         loaderInstallButton.Click += (_, _) =>
@@ -565,7 +560,7 @@ public sealed partial class MainForm : Form
         loaderStatusLabel.AutoEllipsis = true;
         loaderRow.Controls.Add(loaderStatusLabel, 0, 0);
         loaderRow.Controls.Add(loaderInstallButton, 1, 0);
-        doomGrid.Controls.Add(loaderRow, 0, 1);
+        doomGrid.Controls.Add(loaderRow, 0, 0);
         // There are no planned-mod placeholders. Actual packaged resource mods
         // appear only when present, always above externally supplied user mods.
         var doomModItems = new FlowLayoutPanel
@@ -601,14 +596,14 @@ public sealed partial class MainForm : Form
 
         var userHeader = new FlowLayoutPanel
         {
-            Width = 350, Height = 32, WrapContents = false,
+            Width = 350, Height = 29, WrapContents = false,
             FlowDirection = FlowDirection.LeftToRight,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
         userHeader.Controls.Add(new Label
         {
             Text = "USER MODS",
-            AutoSize = false, Width = 112, Height = 29,
+            AutoSize = false, Width = 112, Height = 27,
             ForeColor = Color.White,
             Font = new Font(Font, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
@@ -616,7 +611,7 @@ public sealed partial class MainForm : Form
         });
         var openUserFolder = new Button
         {
-            Text = "Mod Folder", Size = new Size(104, 28),
+            Text = "Mod Folder", Size = new Size(104, 26),
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
             BackColor = Color.FromArgb(43, 43, 47)
         };
@@ -644,14 +639,30 @@ public sealed partial class MainForm : Form
         };
         var rescanUserMods = new Button
         {
-            Text = "↻", Size = new Size(30, 28),
+            // Draw the refresh icon: relying on a Unicode arrow renders
+            // as a broken/fallback glyph with some Windows font setups.
+            Text = "", Size = new Size(30, 26),
             AccessibleName = "Rescan mods",
-            Font = new Font("Segoe UI Symbol", 15F),
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
             BackColor = Color.FromArgb(43, 43, 47),
             Margin = new Padding(5, 0, 0, 0)
         };
         rescanUserMods.FlatAppearance.BorderColor = Color.DimGray;
+        rescanUserMods.Paint += (_, e) =>
+        {
+            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using var stroke = new Pen(rescanUserMods.Enabled
+                ? Color.WhiteSmoke : Color.Gray, 2F);
+            var cx = rescanUserMods.ClientSize.Width / 2;
+            var cy = rescanUserMods.ClientSize.Height / 2;
+            e.Graphics.DrawArc(stroke, cx - 7, cy - 7, 14, 14, -60, 285);
+            e.Graphics.DrawLines(stroke, new[]
+            {
+                new Point(cx - 7, cy),
+                new Point(cx - 5, cy + 5),
+                new Point(cx, cy + 4)
+            });
+        };
         statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
         rescanUserMods.Click += (_, _) =>
         {
@@ -689,7 +700,7 @@ public sealed partial class MainForm : Form
             else CheckLiveConfiguration(promptOnBad: false);
         };
 
-        doomGrid.Controls.Add(doomModItems, 0, 2);
+        doomGrid.Controls.Add(doomModItems, 0, 1);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
@@ -1603,7 +1614,7 @@ public sealed partial class MainForm : Form
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
                         ForeColor = Color.Gainsboro,
-                        Margin = new Padding(3, 4, 3, 4)
+                        Margin = new Padding(3, 2, 3, 2)
                     };
                     statusToolTip.SetToolTip(option, mod.FullPath + Environment.NewLine
                         + "Selection is saved and will apply on the next DOOM launch.");
@@ -1646,7 +1657,7 @@ public sealed partial class MainForm : Form
                         AutoSize = true,
                         MaximumSize = new Size(335, 0),
                         ForeColor = Color.Orange,
-                        Margin = new Padding(3, 4, 3, 4)
+                        Margin = new Padding(3, 2, 3, 2)
                     };
                     missingOption.CheckedChanged += (_, _) =>
                     {
@@ -1706,7 +1717,7 @@ public sealed partial class MainForm : Form
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
         // line per discovered resource. Use available desktop height first.
-        var preferredHeight = Math.Max(555, 155 + Math.Max(0, userModCount) * 29);
+        var preferredHeight = Math.Max(550, 125 + Math.Max(0, userModCount) * 26);
         var height = Math.Min(preferredHeight, maxClientHeight);
         var width = Math.Min(930, Math.Max(620, work.Width - 45));
         customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
