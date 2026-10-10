@@ -16,11 +16,6 @@ public sealed partial class MainForm
         internal Label? Grip;
     }
 
-    private sealed class SavedModOrder
-    {
-        public string[] Ids { get; set; } = Array.Empty<string>();
-    }
-
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
     {
         ("HANDS & ARMS", "✋"),
@@ -43,9 +38,8 @@ public sealed partial class MainForm
         try
         {
             if (!File.Exists(ModOrderSettingsPath)) return Array.Empty<string>();
-            var saved = new JavaScriptSerializer().Deserialize<SavedModOrder>(
-                File.ReadAllText(ModOrderSettingsPath));
-            return saved?.Ids ?? Array.Empty<string>();
+            return new JavaScriptSerializer().Deserialize<string[]>(
+                File.ReadAllText(ModOrderSettingsPath)) ?? Array.Empty<string>();
         }
         catch (Exception e) when (e is IOException || e is UnauthorizedAccessException
             || e is ArgumentException || e is InvalidOperationException)
@@ -62,10 +56,8 @@ public sealed partial class MainForm
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-            var json = new JavaScriptSerializer().Serialize(new SavedModOrder
-            {
-                Ids = modOrderRows.Select(row => row.Id).ToArray()
-            });
+            var json = new JavaScriptSerializer().Serialize(
+                modOrderRows.Select(row => row.Id).ToArray());
             File.WriteAllText(temp, json);
             if (File.Exists(path)) File.Replace(temp, path, null);
             else File.Move(temp, path);
@@ -368,6 +360,9 @@ public sealed partial class MainForm
             || string.Join(",", rows.Select(x => x.Id)) != "a,b,d,c,e")
             return false;
         if (MoveModWithinGroup(rows, "e", "e")) return false;
-        return true;
+        var serialized = new JavaScriptSerializer().Serialize(
+            rows.Select(row => row.Id).ToArray());
+        var roundTrip = new JavaScriptSerializer().Deserialize<string[]>(serialized);
+        return roundTrip is not null && string.Join(",", roundTrip) == "a,b,d,c,e";
     }
 }
