@@ -29,6 +29,8 @@ jobs:
         run: |
           python tools/Generate-KHARVOX-Mods.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "Original resource mod generator self-test failed" }
+          python tools/Probe-KHARVOX-Immersion.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original immersion resource inventory test failed" }
 
       - name: Regenerate controller mapping
         shell: powershell
