@@ -833,22 +833,38 @@ public sealed partial class MainForm : Form
         };
         statusToolTip.SetToolTip(nexusModsLink,
             "Open Nexus Mods in a browser popup matching the Custom Mods window.");
-        nexusModsLink.LinkClicked += (_, _) =>
+        nexusModsLink.LinkClicked += async (_, _) =>
         {
+            if (!nexusModsLink.Enabled) return;
+            var originalText = nexusModsLink.Text;
             try
             {
+                // Provide immediate feedback even if the browser is slow or
+                // Windows relays the request to an existing Edge process.
+                nexusModsLink.Enabled = false;
+                nexusModsLink.Text = "Opening Nexus Mods…";
+                nexusModsLink.LinkArea = new LinkArea(0, nexusModsLink.Text.Length);
                 var dialog = customOptionsForm;
                 if (dialog is null || dialog.IsDisposed)
                     throw new InvalidOperationException("Custom Mods window is unavailable.");
                 var windowBounds = dialog.WindowState == FormWindowState.Normal
                     ? dialog.Bounds : dialog.RestoreBounds;
-                NexusModsPopup.Open(windowBounds);
+                var edgePopup = await NexusModsPopup.OpenAsync(windowBounds);
+                if (!edgePopup)
+                    statusToolTip.SetToolTip(nexusModsLink,
+                        "Edge popup wasn't available; Nexus Mods opened in your default browser.");
             }
             catch (Exception error)
             {
                 MessageBox.Show(customOptionsForm,
                     "Could not open Nexus Mods: " + error.Message,
                     "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                nexusModsLink.Text = originalText;
+                nexusModsLink.LinkArea = new LinkArea(0, originalText.Length);
+                nexusModsLink.Enabled = true;
             }
         };
         doomGrid.Controls.Add(nexusModsLink, 0, 4);
