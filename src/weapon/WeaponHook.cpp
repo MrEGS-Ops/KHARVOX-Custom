@@ -2011,14 +2011,6 @@ extern "C" void __fastcall weaponRenderUpdateHook(
     const float* submittedOrigin = origin;
     const float* submittedAxis = axis;
     float holsteredOrigin[3]{};
-    if (weaponPresentation && weaponHolstered.load(std::memory_order_acquire)
-        && origin) {
-        // Keep the native weapon state/animation alive but place only its
-        // first-person presentation far outside the visible play space.
-        std::memcpy(holsteredOrigin, origin, sizeof(holsteredOrigin));
-        holsteredOrigin[2] -= 100000.0f;
-        submittedOrigin = holsteredOrigin;
-    }
     float pairedOrigin[3]{}, pairedAxis[9]{};
     if (weaponPresentation && synchronizeAerAnimatedWeaponProp(
             reinterpret_cast<uintptr_t>(renderObject)
@@ -2026,6 +2018,14 @@ extern "C" void __fastcall weaponRenderUpdateHook(
             origin, axis, pairedOrigin, pairedAxis)) {
         submittedOrigin = pairedOrigin;
         submittedAxis = pairedAxis;
+    }
+    // Visibility MUST be the final positional override: otherwise the
+    // following AER pose sync could place a holstered gun back in view.
+    if (weaponPresentation && weaponHolstered.load(std::memory_order_acquire)
+        && submittedOrigin) {
+        std::memcpy(holsteredOrigin, submittedOrigin, sizeof(holsteredOrigin));
+        holsteredOrigin[2] -= 100000.0f;
+        submittedOrigin = holsteredOrigin;
     }
     if (weaponPresentation) {
         lastWeaponRenderObject.store(reinterpret_cast<uintptr_t>(renderObject),

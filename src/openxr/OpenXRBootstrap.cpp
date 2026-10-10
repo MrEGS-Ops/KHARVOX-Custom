@@ -2513,7 +2513,11 @@ void updateGameplayActions(XrTime displayTime){
             s.physicalPunchArmed={false,false};
             s.physicalPunchCooldownUntil=displayTime+350000000;
             std::ostringstream o;
-            if(s.customMods.motionGloryKillSpeed&&syncAttackActive){
+            // Chainsaw gestures exclusively own the kill timescale during a
+            // chainsaw sync attack. A punch must not overwrite that owner.
+            if(s.customMods.motionGloryKillSpeed&&syncAttackActive
+                &&!(s.customMods.physicalChainsawGestures
+                     &&activeWeaponKind==KharvoxWeaponKind::Chainsaw)){
                 const float normalized=std::clamp((forwardSpeed-.90f)/(4.0f-.90f),0.f,1.f);
                 const float timescale=.40f+.60f*normalized;
                 KharvoxCameraSetGloryKillTimescaleOverride(timescale);
@@ -2708,7 +2712,11 @@ void updateGameplayActions(XrTime displayTime){
             log(std::string("[INPUT] Physical Crouch ")
                 +(s.physicalCrouchActive?"ON":"OFF")+" heightDelta="
                 +std::to_string(heightDelta)+"m");
-    }else if(!gameplay){
+    }else{
+        // A stale headset pose must never leave physical crouch latched.
+        // Manual stick/button crouch is deliberately not affected.
+        if(s.physicalCrouchActive)
+            log("[INPUT] Physical Crouch OFF — lost HMD position tracking or gameplay");
         s.physicalCrouchActive=false;
     }
     bool gamepadADown{};
