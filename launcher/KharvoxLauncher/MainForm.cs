@@ -423,28 +423,10 @@ public sealed partial class MainForm : Form
         customRevengeDemon.Text = "Revenge Demon (Diagnostics)";
         customGaussChargeSlowMovement.Text = "Gauss Slow Movement (Experimental)";
         customDirectionalDash.Text = "Directional Dash (Experimental)";
-        // Display approved priority order, grouped by hands, legs, weapons,
-        // HUD, then demons. Keep checkbox identities, settings and behavior intact.
-        // Numbered requires/disables labels are resolved against this order.
-        var modDisplayOrder = new[]
-        {
-            weaponWheelRemap,
-            customHandFocusedRs,
-            customBackOfHandHud,
-            customBehindHeadWeaponWheel,
-            customBehindHeadWheelHandSelection,
-            customDynamicShoulderHolster,
-            customPhysicalCrouch,
-            customDirectionalDash,
-            customPhysicalGrenadeThrow,
-            customGaussChargeSlowMovement,
-            customMotionGloryKillSpeed,
-            customPhysicalChainsawGestures,
-            customDisableHud,
-            customDisableWeaponWheel,
-            customRevengeDemon
-        };
-        var allCustomMods = customChecks
+        // Original mod controls stay intact; this UI-only layout supplies
+        // category headers and persistent, within-category drag ordering.
+        // Dependency labels are rebuilt from visible positions on every move.
+        var availableCustomMods = customChecks
             .Concat(new[] { (Box: weaponWheelRemap,
                 Tip: "Remaps weapon selection for VR.\n"
                     + "Tap A to quick-switch weapons. Hold A to open the weapon wheel, "
@@ -455,54 +437,16 @@ public sealed partial class MainForm : Form
                     + "behind your head to open the wheel instead. A is then free "
                     + "for Directional Dash when that mod is enabled.\n"
                     + "Turn this off to restore the original KHARVOX controls.") })
-            .OrderBy(entry => Array.IndexOf(modDisplayOrder, entry.Box))
             .ToArray();
-        var modNumber = allCustomMods.Select((entry, i) => (entry.Box, Number: i + 1))
-            .ToDictionary(x => x.Box, x => x.Number);
-        string Number(CheckBox box) => "#" + modNumber[box];
-        for (var i = 0; i < allCustomMods.Length; i++)
+        InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
+        var customModsScroll = new Panel
         {
-            var (check, tip) = allCustomMods[i];
-            string dependencies = "";
-            if (check == customDirectionalDash)
-                dependencies = " — Requires " + Number(weaponWheelRemap)
-                    + ", " + Number(customBehindHeadWeaponWheel)
-                    + "; disables " + Number(customDisableWeaponWheel);
-            else if (check == customDisableWeaponWheel)
-                dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)
-                    + ", " + Number(customDirectionalDash);
-            else if (check == customDisableHud)
-                dependencies = " — Disables " + Number(customBackOfHandHud);
-            else if (check == customBackOfHandHud)
-                dependencies = " — Disables " + Number(customDisableHud);
-            else if (check == customBehindHeadWeaponWheel)
-                dependencies = " — Disables " + Number(customDisableWeaponWheel);
-            else if (check == customBehindHeadWheelHandSelection)
-                dependencies = " — Requires " + Number(customBehindHeadWeaponWheel);
-            else if (check == customDynamicShoulderHolster)
-                dependencies = " — Requires Enable Hands (main launcher)";
-            check.Text = (i + 1).ToString("00") + ". " + check.Text + dependencies;
-            check.Dock = DockStyle.Fill;
-            check.AutoSize = false;
-            check.AutoEllipsis = true;
-            check.ForeColor = Color.White;
-            check.Margin = new Padding(2, 0, 1, 0);
-            if (check == weaponWheelRemap)
-                check.CheckedChanged += WeaponWheelRemapChanged;
-            else
-                check.CheckedChanged += CustomModChanged;
-            statusToolTip.SetToolTip(check, tip
-                + (dependencies.Length == 0 ? "" : Environment.NewLine
-                    + dependencies.TrimStart(' ', '—')));
-            customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-            customModsGrid.Controls.Add(check, 0, i + 1);
-            customModsGrid.SetColumnSpan(check, 2);
-        }
-        customModsGrid.RowCount = allCustomMods.Length + 1;
-        // Fixed-height rows must not stretch into the remaining group height.
-        // This removes the stray gap before the final numbered mod.
-        customModsGrid.Height = 32 + allCustomMods.Length * 28 + 14;
-        customMods.Controls.Add(customModsGrid);
+            Dock = DockStyle.Fill, AutoScroll = true,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor
+        };
+        customModsScroll.Controls.Add(customModsGrid);
+        customMods.Controls.Add(customModsScroll);
         // Three independent rating buttons sit on the VR MODS header line.
         // Keep the content grid and checkbox order completely unchanged.
         BuildConfigurationRatingHeader(customMods);
@@ -1691,6 +1635,18 @@ public sealed partial class MainForm : Form
         nextCracktroIsAmiga = !nextCracktroIsAmiga;
     }
 
+    private void HideCustomOptionsAndFocusLauncher(Form form)
+    {
+        // Both the Close button and the title-bar X must restore focus to
+        // KHARVOX after hiding the sidecar. Preserve the form for reopening.
+        form.Hide();
+        if (IsDisposed || Disposing || !Visible
+            || WindowState == FormWindowState.Minimized) return;
+        BringToFront();
+        Activate();
+        Focus();
+    }
+
     private Form CreateCustomOptionsForm(Control content)
     {
         var form = new Form
@@ -1733,7 +1689,7 @@ public sealed partial class MainForm : Form
             ForeColor = Color.White
         };
         closeButton.FlatAppearance.BorderColor = Color.DimGray;
-        closeButton.Click += (_, _) => form.Hide();
+        closeButton.Click += (_, _) => HideCustomOptionsAndFocusLauncher(form);
 
         var closeRow = new FlowLayoutPanel
         {
@@ -1771,7 +1727,7 @@ public sealed partial class MainForm : Form
         {
             if (e.CloseReason != CloseReason.UserClosing) return;
             e.Cancel = true;
-            form.Hide();
+            HideCustomOptionsAndFocusLauncher(form);
         };
         return form;
     }
