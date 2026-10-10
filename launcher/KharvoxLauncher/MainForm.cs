@@ -445,6 +445,7 @@ public sealed partial class MainForm : Form
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor
         };
+        modOrderScroll = customModsScroll;
         customModsScroll.Controls.Add(customModsGrid);
         customMods.Controls.Add(customModsScroll);
         // Three independent rating buttons sit on the VR MODS header line.
