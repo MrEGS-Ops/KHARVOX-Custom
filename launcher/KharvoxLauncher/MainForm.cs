@@ -595,26 +595,48 @@ public sealed partial class MainForm : Form
         doomModItems.Controls.Add(packagedDoomModHeader);
         doomModItems.Controls.Add(packagedDoomModChecks);
 
-        var userHeader = new FlowLayoutPanel
+        // Four columns keep the actions flush right and place Mod Folder
+        // directly beneath the Install button, even when the window resizes.
+        var userHeader = new TableLayoutPanel
         {
-            Width = 350, Height = 29, WrapContents = false,
-            FlowDirection = FlowDirection.LeftToRight,
-            Margin = Padding.Empty, Padding = Padding.Empty
+            Width = 350, Height = 29, RowCount = 1, ColumnCount = 4,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor
         };
+        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 93));
+        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
+        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
         userHeader.Controls.Add(new Label
         {
             Text = "USER MODS",
-            AutoSize = false, Width = 112, Height = 27,
+            Dock = DockStyle.Fill,
             ForeColor = Color.White,
             Font = new Font(Font, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(3, 0, 6, 0)
-        });
+            Margin = new Padding(3, 0, 0, 0)
+        }, 0, 0);
+        var userHeaderDivider = new Panel
+        {
+            Dock = DockStyle.Fill,
+            Margin = new Padding(5, 0, 6, 0),
+            BackColor = PanelColor,
+            AccessibleName = "User mods header divider"
+        };
+        userHeaderDivider.Paint += (_, e) =>
+        {
+            using var line = new Pen(Color.DimGray);
+            var middle = userHeaderDivider.ClientSize.Height / 2;
+            e.Graphics.DrawLine(line, 0, middle,
+                Math.Max(0, userHeaderDivider.ClientSize.Width - 1), middle);
+        };
+        userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
         {
-            Text = "Mod Folder", Size = new Size(104, 26),
+            Text = "Mod Folder", Dock = DockStyle.Fill,
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
-            BackColor = Color.FromArgb(43, 43, 47)
+            BackColor = Color.FromArgb(43, 43, 47),
+            Margin = new Padding(0, 1, 0, 1)
         };
         openUserFolder.FlatAppearance.BorderColor = Color.DimGray;
         statusToolTip.SetToolTip(openUserFolder,
@@ -640,28 +662,39 @@ public sealed partial class MainForm : Form
         };
         var rescanUserMods = new Button
         {
-            // Draw the refresh icon: relying on a Unicode arrow renders
-            // as a broken/fallback glyph with some Windows font setups.
-            Text = "", Size = new Size(30, 26),
+            // Draw a vector icon instead of a platform-dependent font glyph.
+            Text = "", Dock = DockStyle.Fill,
             AccessibleName = "Rescan mods",
-            FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat, ForeColor = Color.LightSkyBlue,
             BackColor = Color.FromArgb(43, 43, 47),
-            Margin = new Padding(5, 0, 0, 0)
+            Margin = new Padding(2, 1, 4, 1)
         };
         rescanUserMods.FlatAppearance.BorderColor = Color.DimGray;
+        rescanUserMods.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 55, 63);
+        rescanUserMods.MouseEnter += (_, _) =>
+        {
+            rescanUserMods.ForeColor = Color.White;
+            rescanUserMods.Invalidate();
+        };
+        rescanUserMods.MouseLeave += (_, _) =>
+        {
+            rescanUserMods.ForeColor = Color.LightSkyBlue;
+            rescanUserMods.Invalidate();
+        };
+        rescanUserMods.EnabledChanged += (_, _) => rescanUserMods.Invalidate();
         rescanUserMods.Paint += (_, e) =>
         {
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using var stroke = new Pen(rescanUserMods.Enabled
-                ? Color.WhiteSmoke : Color.Gray, 2F);
+                ? rescanUserMods.ForeColor : Color.Gray, 2F);
             var cx = rescanUserMods.ClientSize.Width / 2;
             var cy = rescanUserMods.ClientSize.Height / 2;
-            e.Graphics.DrawArc(stroke, cx - 7, cy - 7, 14, 14, -60, 285);
+            e.Graphics.DrawArc(stroke, cx - 7, cy - 7, 14, 14, 40, 280);
             e.Graphics.DrawLines(stroke, new[]
             {
-                new Point(cx - 7, cy),
-                new Point(cx - 5, cy + 5),
-                new Point(cx, cy + 4)
+                new Point(cx + 1, cy - 7),
+                new Point(cx + 7, cy - 7),
+                new Point(cx + 7, cy - 1)
             });
         };
         statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
@@ -672,9 +705,22 @@ public sealed partial class MainForm : Form
             KharvoxModContentFingerprints.Invalidate();
             RefreshUserDoomMods();
         };
-        userHeader.Controls.Add(openUserFolder);
-        userHeader.Controls.Add(rescanUserMods);
+        userHeader.Controls.Add(rescanUserMods, 2, 0);
+        userHeader.Controls.Add(openUserFolder, 3, 0);
         doomModItems.Controls.Add(userHeader);
+        // FlowLayoutPanel children do not stretch automatically: keep this
+        // header as wide as the actual list, so the last button stays aligned
+        // with the DML Install button above it.
+        doomModItems.ClientSizeChanged += (_, _) =>
+        {
+            var available = doomModItems.ClientSize.Width
+                - doomModItems.Padding.Horizontal
+                - (doomModItems.VerticalScroll.Visible
+                    ? SystemInformation.VerticalScrollBarWidth : 0);
+            var targetWidth = Math.Max(232, available);
+            if (userHeader.Width != targetWidth)
+                userHeader.Width = targetWidth;
+        };
 
         userDoomModStatus = new Label
         {
