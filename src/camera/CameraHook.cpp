@@ -809,7 +809,9 @@ volatile LONG* resolveTimescaleCvarCurrent() {
 void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     const int level = configuredGloryKillSlowmoLevel();
     const float motionOverride = gloryKillMotionTimescaleOverride.load(std::memory_order_acquire);
-    const bool configuredOverride = level > 0 && level < 10;
+    // Zero now explicitly means fastest (1.0x) from the 1–5 UI.
+    // Level ten still leaves DOOM's native sync-attack timing untouched.
+    const bool configuredOverride = level >= 0 && level < 10;
     const bool motionOverrideActive = motionOverride > 0.0f;
     if (!configuredOverride && !motionOverrideActive && syncAttackActive) return;
 

@@ -368,19 +368,17 @@ public sealed partial class MainForm : Form
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
-        gloryKillSpeedMenu.Items.Add("0 — Full speed");
-        for (var speed = 1; speed < 10; speed++)
-            gloryKillSpeedMenu.Items.Add(speed + " — Slower");
-        gloryKillSpeedMenu.Items.Add("10 — Native");
+        for (var speed = 1; speed <= 5; speed++)
+            gloryKillSpeedMenu.Items.Add(speed.ToString());
         gloryKillSpeedMenu.SelectedIndexChanged += (_, _) =>
         {
             if (gloryKillSpeedMenu.SelectedIndex >= 0
-                && gloryKillSlowmo.Value != gloryKillSpeedMenu.SelectedIndex)
-                gloryKillSlowmo.Value = gloryKillSpeedMenu.SelectedIndex;
+                && gloryKillSlowmo.Value != GKMenuToEngine(gloryKillSpeedMenu.SelectedIndex + 1))
+                gloryKillSlowmo.Value = GKMenuToEngine(gloryKillSpeedMenu.SelectedIndex + 1);
         };
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
         statusToolTip.SetToolTip(gloryKillSpeedMenu,
-            "0 = full speed, 1–9 = custom Glory Kill slow motion, 10 = native DOOM timing.");
+            "1 = native DOOM speed; 5 = fastest. The saved 0–10 settings migrate automatically.");
         customModsGrid.Controls.Add(new Label
         {
             Text = "Glory Kill speed",
@@ -1135,14 +1133,29 @@ public sealed partial class MainForm : Form
     private decimal SelectedPhysicalGlorykillSpeed() =>
         GloryKillSpeedMinimum + physicalGlorykillSpeed.Value * GloryKillSpeedStep;
 
+    // Preserve the existing 0–10 native setting while exposing a compact
+    // 1–5 menu. Level 10 leaves DOOM's original timing alone; level 0
+    // explicitly forces 1.0x during sync kills.
+    private static int GKMenuToEngine(int menuValue) => menuValue switch
+    {
+        1 => 10, 2 => 7, 3 => 5, 4 => 3, 5 => 0,
+        _ => 10
+    };
+
+    private static int GKEngineToMenu(int engineValue) => engineValue switch
+    {
+        >= 10 => 1, >= 7 => 2, >= 5 => 3, >= 2 => 4, _ => 5
+    };
+
     private void UpdateSpeedSliderLabels()
     {
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
         physicalGlorykillSpeedValue.Text = SelectedPhysicalGlorykillSpeed()
             .ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
-        if (gloryKillSpeedMenu.Items.Count > gloryKillSlowmo.Value
-            && gloryKillSpeedMenu.SelectedIndex != gloryKillSlowmo.Value)
-            gloryKillSpeedMenu.SelectedIndex = gloryKillSlowmo.Value;
+        var speedIndex = GKEngineToMenu(gloryKillSlowmo.Value) - 1;
+        if (gloryKillSpeedMenu.Items.Count > speedIndex
+            && gloryKillSpeedMenu.SelectedIndex != speedIndex)
+            gloryKillSpeedMenu.SelectedIndex = speedIndex;
         gloryKillSlowmoValue.Text = gloryKillSlowmo.Value switch
         {
             0 => "0 (Off)",
