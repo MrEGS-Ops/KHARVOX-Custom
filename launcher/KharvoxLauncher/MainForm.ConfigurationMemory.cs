@@ -396,6 +396,56 @@ public sealed partial class MainForm
                         "DML verification must restore mod selection without losing saved checks.");
             }
 
+            // The watcher must survive the deletion and recreation of both
+            // the loader folder and its "tools" parent directory.
+            var install = Path.Combine(Path.GetTempPath(), "KHARVOX-DML-TEST",
+                "tools", "doommodloader");
+            if (!IsDoomModLoaderChange(install, install)
+                || !IsDoomModLoaderChange(Path.Combine(install, "DOOMModLoader.exe"), install)
+                || !IsDoomModLoaderChange(Path.Combine(install, "KHARVOX-SOURCE.txt"), install)
+                || !IsDoomModLoaderChange(Path.GetDirectoryName(install)!, install)
+                || IsDoomModLoaderChange(Path.Combine(Path.GetDirectoryName(install)!,
+                    "unrelated-tool", "file.txt"), install)
+                || IsDoomModLoaderChange(Path.Combine(Path.GetTempPath(),
+                    "KHARVOX-DML-TEST", "tools", "doommodloader-old"), install))
+                throw new InvalidDataException(
+                    "DML watcher must handle folder/file delete, restore and rename without reacting to other tools.");
+            // Both lists are updated in-place (no CheckedChanged events and
+            // no loss of saved checks) when the DML folder disappears.
+            using (var userList = new FlowLayoutPanel())
+            using (var packagedList = new FlowLayoutPanel())
+            {
+                var userChoice = new CheckBox { Checked = true, Tag = false };
+                var missingChoice = new CheckBox { Checked = true, Tag = true };
+                var packagedChoice = new CheckBox { Checked = true, Tag = false };
+                userList.Controls.Add(userChoice);
+                userList.Controls.Add(missingChoice);
+                packagedList.Controls.Add(packagedChoice);
+                ApplyDoomModLoaderGate(userList, packagedList, verified: false);
+                if (userList.Controls.OfType<CheckBox>()
+                        .Concat(packagedList.Controls.OfType<CheckBox>())
+                        .Any(choice => choice.Enabled || !choice.Checked
+                            || choice.ForeColor != Color.Gray))
+                    throw new InvalidDataException(
+                        "Deleting DML must immediately grey both mod lists without clearing checks.");
+                ApplyDoomModLoaderGate(userList, packagedList, verified: true);
+                if (!userChoice.Enabled || userChoice.ForeColor != Color.Gainsboro
+                    || !packagedChoice.Enabled || packagedChoice.ForeColor != Color.Gainsboro
+                    || !missingChoice.Enabled || missingChoice.ForeColor != Color.Orange
+                    || !userChoice.Checked || !packagedChoice.Checked || !missingChoice.Checked)
+                    throw new InvalidDataException(
+                        "Restored DML must re-enable selections and preserve missing-mod colour.");
+            }
+            main.EnsureDoomModLoaderWatcher();
+            if (main.doomModLoaderWatcher is null
+                || !main.doomModLoaderWatcher.IncludeSubdirectories
+                || !main.doomModLoaderWatcher.EnableRaisingEvents
+                || !string.Equals(Path.GetFullPath(main.doomModLoaderWatcher.Path),
+                    Path.GetFullPath(AppContext.BaseDirectory),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException(
+                    "DML watcher must stay anchored to the launcher even if tools is deleted.");
+
             var groups = Descendants(window).OfType<GroupBox>().ToArray();
             var doom = groups.Single(x => x.Text == "DOOM MODS");
             var vr = groups.Single(x => x.Text == "VR MODS");
