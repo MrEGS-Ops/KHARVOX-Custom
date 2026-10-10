@@ -40,6 +40,11 @@ internal static class KharvoxConfigMarks
             var raw = property.GetValue(launch);
             fields["launch." + property.Name] = FormatValue(raw);
         }
+        // A previous "0 / Off" meant no forced sync-attack speed.
+        // In the five-step menu, that internal value now means fastest.
+        // Do not recycle old Good/Bad marks for this changed behaviour.
+        if (launch.GloryKillSlowmoLevel == 0)
+            fields["semantic.gk-level-zero"] = "forced-fast-v2";
         foreach (var property in typeof(CustomModSettings).GetProperties())
         {
             if (property.Name == nameof(CustomModSettings.Schema)
