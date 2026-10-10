@@ -550,19 +550,42 @@ public sealed partial class MainForm
                 || layout.GetRow(checks[14]) != layout.GetRow(checks[13]) + 1
                 || layout.RowStyles[layout.GetRow(checks[14])].Height != 28)
                 throw new InvalidDataException("VR mod list count or scrolling changed.");
-            var labels = checks.Select(check =>
+            // Assert the approved fixed display order, not alphabetical labels.
+            // Text may carry an experimental/diagnostic qualifier, but the
+            // checkbox identity, displayed position and numbering must be stable.
+            var expectedChecks = new[]
             {
-                var label = check.Text;
-                var delimiter = label.IndexOf(". ", StringComparison.Ordinal);
-                if (delimiter < 0) throw new InvalidDataException("Mod is not numbered.");
-                return label.Substring(delimiter + 2).Split('—')[0].Trim();
-            }).ToArray();
-            if (!labels.SequenceEqual(labels.OrderBy(x => x,
-                    StringComparer.OrdinalIgnoreCase)))
-                throw new InvalidDataException("VR mod names are not alphabetical.");
-            if (!checks.Any(x => x.Text.Contains("Requires #"))
-                || !checks.Any(x => x.Text.Contains("Disables #")))
-                throw new InvalidDataException("VR dependencies are not numbered.");
+                main.weaponWheelRemap,
+                main.customHandFocusedRs,
+                main.customBackOfHandHud,
+                main.customBehindHeadWeaponWheel,
+                main.customBehindHeadWheelHandSelection,
+                main.customDynamicShoulderHolster,
+                main.customPhysicalCrouch,
+                main.customDirectionalDash,
+                main.customPhysicalGrenadeThrow,
+                main.customGaussChargeSlowMovement,
+                main.customMotionGloryKillSpeed,
+                main.customPhysicalChainsawGestures,
+                main.customDisableHud,
+                main.customDisableWeaponWheel,
+                main.customRevengeDemon
+            };
+            if (!checks.SequenceEqual(expectedChecks)
+                || checks.Where((check, index) => !check.Text.StartsWith(
+                    (index + 1).ToString("00") + ". ", StringComparison.Ordinal)).Any()
+                || main.customHandFocusedRs.Text != "02. Hand Focus")
+                throw new InvalidDataException("VR mod priority order, numbers or Hand Focus label changed.");
+
+            // Dependency references must follow the visible numbers, not their
+            // previous alphabetical positions.
+            if (!main.customDirectionalDash.Text.Contains("Requires #1, #4; disables #14")
+                || !main.customDisableWeaponWheel.Text.Contains("Disables #4, #8")
+                || !main.customDisableHud.Text.Contains("Disables #3")
+                || !main.customBackOfHandHud.Text.Contains("Disables #13")
+                || !main.customBehindHeadWeaponWheel.Text.Contains("Disables #14")
+                || !main.customBehindHeadWheelHandSelection.Text.Contains("Requires #4"))
+                throw new InvalidDataException("VR dependencies must refer to current mod numbers.");
             var wheelRemapOption = checks.SingleOrDefault(option =>
                 option.Text.Contains("Weapon Wheel Remap"));
             var wheelRemapTip = wheelRemapOption is null ? string.Empty
