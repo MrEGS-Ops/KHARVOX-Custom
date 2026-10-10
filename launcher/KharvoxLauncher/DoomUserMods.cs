@@ -8,6 +8,11 @@ internal static class DoomUserMods
     internal static string Folder =>
         Path.Combine(AppContext.BaseDirectory, "mods", "doom", "user");
 
+    // Packaged KHARVOX resource mods live separately from user-owned files.
+    // When the folder is empty, the launcher doesn't show a packaged-mod section.
+    internal static string PackagedFolder =>
+        Path.Combine(AppContext.BaseDirectory, "mods", "doom", "kharvox");
+
     internal static string SelectionsFile =>
         Path.Combine(AppContext.BaseDirectory, "mods", "doom", "user-selections.json");
 
@@ -17,13 +22,16 @@ internal static class DoomUserMods
         internal string Name { get; }
         internal string FullPath { get; }
         internal bool IsFromDoom { get; }
+        internal bool IsPackaged { get; }
 
-        internal ModEntry(string id, string name, string fullPath, bool isFromDoom)
+        internal ModEntry(string id, string name, string fullPath, bool isFromDoom,
+            bool isPackaged = false)
         {
             Id = id;
             Name = name;
             FullPath = fullPath;
             IsFromDoom = isFromDoom;
+            IsPackaged = isPackaged;
         }
     }
 
@@ -34,9 +42,11 @@ internal static class DoomUserMods
     }
 
     internal static IReadOnlyList<ModEntry> Scan(string? gameDirectory,
-        string? userDirectoryOverride = null)
+        string? userDirectoryOverride = null, string? packagedDirectoryOverride = null)
     {
         var result = new List<ModEntry>();
+        ScanFolder(packagedDirectoryOverride ?? PackagedFolder, "kharvox:", false,
+            result, isPackaged: true);
         ScanFolder(userDirectoryOverride ?? Folder, "user:", false, result);
         if (!string.IsNullOrWhiteSpace(gameDirectory))
         {
@@ -47,13 +57,15 @@ internal static class DoomUserMods
                 ScanFolder(gameMods, "game:", true, result);
         }
 
-        return result.OrderBy(x => x.IsFromDoom)
+        return result.OrderByDescending(x => x.IsPackaged)
+            .ThenBy(x => x.IsFromDoom)
             .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
     private static void ScanFolder(
-        string folder, string prefix, bool isFromDoom, List<ModEntry> entries)
+        string folder, string prefix, bool isFromDoom, List<ModEntry> entries,
+        bool isPackaged = false)
     {
         if (!Directory.Exists(folder)) return;
         // Direct children only. Internal mod resource directories are not mods.
@@ -74,7 +86,7 @@ internal static class DoomUserMods
                     StringComparison.Ordinal)) continue;
 
             entries.Add(new ModEntry(prefix + name.ToLowerInvariant(),
-                name, path, isFromDoom));
+                name, path, isFromDoom, isPackaged));
         }
     }
 
@@ -128,21 +140,28 @@ internal static class DoomUserMods
             var user = Path.Combine(root, "user");
             var game = Path.Combine(root, "game");
             var original = Path.Combine(game, "Mods");
+            var packaged = Path.Combine(root, "packaged");
             Directory.CreateDirectory(user);
             Directory.CreateDirectory(original);
+            Directory.CreateDirectory(packaged);
+            File.WriteAllText(Path.Combine(packaged, "KHARVOX-Example.zip"),
+                "placeholder");
             File.WriteAllText(Path.Combine(user, "B_Mod.ZIP"), "placeholder");
             Directory.CreateDirectory(Path.Combine(user, "MyUnpackedMod"));
             File.WriteAllText(Path.Combine(user, "readme.txt"), "not a mod");
             File.WriteAllText(Path.Combine(original, "Existing.zip"), "placeholder");
             Directory.CreateDirectory(Path.Combine(original, "OldMod"));
-            var found = Scan(game, user);
-            if (found.Count != 4
+            var found = Scan(game, user, packaged);
+            if (found.Count != 5
+                || found.Count(x => x.IsPackaged) != 1
                 || found.Count(x => x.IsFromDoom) != 2
-                || found.Count(x => !x.IsFromDoom) != 2
+                || found.Count(x => !x.IsFromDoom && !x.IsPackaged) != 2
+                || !found[0].IsPackaged
+                || !found.Any(x => x.Id == "kharvox:kharvox-example.zip")
                 || !found.Any(x => x.Id == "user:b_mod.zip")
                 || !found.Any(x => x.Id == "game:existing.zip"))
                 throw new InvalidOperationException(
-                    "Expected 2 user and 2 existing DOOM mods, ignoring text files.");
+                    "Expected KHARVOX packaged mods first, then user and DOOM mods.");
 
             var settings = Path.Combine(root, "selections.json");
             var selected = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
