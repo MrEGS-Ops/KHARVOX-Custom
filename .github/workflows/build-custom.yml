@@ -36,6 +36,21 @@ jobs:
         shell: powershell
         run: .\assets\branding\generate-controller-mapping.ps1
 
+      - name: Restore launcher
+        shell: powershell
+        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
+
+      - name: Build launcher Release
+        shell: powershell
+        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Test Custom Mods UI structure
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
@@ -93,21 +108,6 @@ jobs:
           $lines = Get-Content $stamp
           $hash = (Get-FileHash -Algorithm SHA256 $layer).Hash
           if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
-
-      - name: Restore launcher
-        shell: powershell
-        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
-
-      - name: Build launcher Release
-        shell: powershell
-        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
-
-      - name: Test Custom Mods UI structure
-        shell: powershell
-        run: |
-          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
 
       - name: Test DOOM user mod discovery and selection persistence
         shell: powershell
