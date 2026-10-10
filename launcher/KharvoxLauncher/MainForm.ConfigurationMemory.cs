@@ -359,12 +359,25 @@ public sealed partial class MainForm
                     "Rating menu must only appear inside Custom Mods.");
 
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
-            var loaderRow = doomGrid.GetControlFromPosition(0, 1)
+            // The compact DOOM panel has its loader status/action in row 0,
+            // with the installed mods list directly beneath it in row 1.
+            if (doomGrid.RowCount != 2)
+                throw new InvalidDataException("DOOM mod panel is not compact.");
+            var loaderRow = doomGrid.GetControlFromPosition(0, 0)
                 as TableLayoutPanel;
             if (loaderRow is null || loaderRow.ColumnCount != 2
                 || loaderRow.Controls.OfType<Button>().All(x =>
                     loaderRow.GetColumn(x) != 1))
                 throw new InvalidDataException("DML action isn't right-aligned.");
+            var modListPanel = doomGrid.GetControlFromPosition(0, 1);
+            if (modListPanel is null
+                || !Descendants(modListPanel).OfType<Button>().Any(button =>
+                    button.Text == "Mod Folder")
+                || !Descendants(modListPanel).OfType<Button>().Any(button =>
+                    button.AccessibleName == "Rescan mods")
+                || Descendants(modListPanel).OfType<Label>().Any(label =>
+                    label.Text.Contains("PLANNED MODS", StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException("DOOM mod controls/layout regressed.");
 
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
