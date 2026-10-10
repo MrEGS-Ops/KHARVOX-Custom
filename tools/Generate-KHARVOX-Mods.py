@@ -10,9 +10,11 @@ import argparse
 import os
 from pathlib import Path
 import re
+import struct
 import sys
 import tempfile
 import zipfile
+import zlib
 
 AI = "generated/decls/aiglobalsettings/default.decl;aiGlobalSettings"
 GIB = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl;goreBehavior"
@@ -82,6 +84,85 @@ def load_original(root: Path, relative: str) -> tuple[bytes, str]:
     return data, text
 
 
+
+def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
+    """Read only an unchanged v5 original game resource; never extract to game."""
+    index = game / "base" / "gameresources.index"
+    resources = game / "base" / "gameresources.resources"
+    if not index.is_file() or not resources.is_file():
+        raise ModGenerationError(
+            "DOOM v5 gameresources.index/resources not found in " + str(game / "base"))
+    with index.open("rb") as stream:
+        if stream.read(4) != b"\x05SER":
+            raise ModGenerationError("Unrecognized game resource index")
+        total = index.stat().st_size
+        size = struct.unpack(">I", stream.read(4))[0]
+        if total < 36 or size != total - 32 or stream.read(24) != bytes(24):
+            raise ModGenerationError("Malformed original game resource index header")
+        count = struct.unpack(">I", stream.read(4))[0]
+        if count > 200000:
+            raise ModGenerationError("Invalid resource record count")
+        def read_name() -> str:
+            raw = stream.read(4)
+            if len(raw) != 4:
+                raise ModGenerationError("Truncated game index")
+            length = struct.unpack("<I", raw)[0]
+            if length > 16384:
+                raise ModGenerationError("Invalid game resource name length")
+            value = stream.read(length)
+            if len(value) != length:
+                raise ModGenerationError("Truncated game resource name")
+            return value.decode("utf-8")
+        found = []
+        for _ in range(count):
+            record_id = stream.read(4)
+            if len(record_id) != 4:
+                raise ModGenerationError("Truncated game resource record")
+            category = read_name()
+            short_name = read_name()
+            filename = read_name()
+            fields = stream.read(21)
+            if len(fields) != 21:
+                raise ModGenerationError("Truncated game resource offsets")
+            offset, plain, stored, flags, patch = struct.unpack(">qiiiB", fields)
+            if filename.casefold() == relative.casefold():
+                found.append((offset, plain, stored, patch))
+        if stream.tell() != total or len(found) != 1:
+            raise ModGenerationError(
+                "Original resource is absent/ambiguous in game index: " + relative)
+    offset, plain, stored, patch = found[0]
+    if patch != 0:
+        raise ModGenerationError(
+            "Target declaration is currently patched. Restore original resources first.")
+    if not 3 <= plain <= 2_000_000 or not 1 <= stored <= 2_000_000:
+        raise ModGenerationError("Unexpected original resource size")
+    with resources.open("rb") as stream:
+        if stream.read(4) != b"\x05SER":
+            raise ModGenerationError("Unrecognized original resource container")
+        if offset < 4 or offset + stored > resources.stat().st_size:
+            raise ModGenerationError("Original resource byte range is invalid")
+        stream.seek(offset)
+        raw = stream.read(stored)
+    if plain == stored:
+        data = raw
+    else:
+        try:
+            decompressor = zlib.decompressobj(-zlib.MAX_WBITS)
+            data = decompressor.decompress(raw, plain + 1)
+            data += decompressor.flush()
+            if not decompressor.eof or decompressor.unused_data:
+                raise ValueError("Incomplete compressed record")
+        except (zlib.error, ValueError) as exc:
+            raise ModGenerationError(
+                "DOOM original declaration uses unsupported compression: " +
+                relative) from exc
+    if len(data) != plain:
+        raise ModGenerationError("Original declaration length mismatch")
+    try:
+        return data, data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise ModGenerationError("Original declaration is not UTF-8 text") from exc
+
 def make_archive(path: Path, resource: str, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(
@@ -102,14 +183,15 @@ def make_archive(path: Path, resource: str, data: bytes) -> None:
             os.unlink(temporary)
 
 
-def build(root: Path, out: Path, mods: tuple[str, ...],
+def build(root: Path | None, out: Path, mods: tuple[str, ...],
           attackers: int, cooldown: float, min_limbs: int,
-          max_limbs: int, impulse: int) -> None:
+          max_limbs: int, impulse: int, game: Path | None = None) -> None:
     # Validate ALL inputs before writing output; never silently enable mods.
     pending: list[tuple[Path, str, bytes]] = []
     for name in mods:
         resource, filename = MODS[name]
-        original, text = load_original(root, resource)
+        original, text = (load_from_game(game, resource)
+                          if game is not None else load_original(root, resource))
         changed = (aggressive(text, attackers, cooldown) if name == "aggressive"
                    else enhanced_gibs(text, min_limbs, max_limbs, impulse))
         if b"\r\n" in original:
@@ -169,6 +251,8 @@ def main() -> int:
     p.add_argument("--self-test", action="store_true")
     p.add_argument("--list", action="store_true")
     p.add_argument("--source-dir", type=Path)
+    p.add_argument("--game-dir", type=Path,
+                   help="Unmodified Steam DOOM 2016 folder containing base/")
     p.add_argument("--output-dir", type=Path)
     p.add_argument("--only", choices=["aggressive", "gibs", "both"], default="both")
     p.add_argument("--attackers", type=int, default=6)
@@ -184,8 +268,8 @@ def main() -> int:
         for mod, (resource, filename) in MODS.items():
             print(f"{mod}: original {resource}\n  produces {filename}")
         return 0
-    if not a.source_dir or not a.output_dir:
-        p.error("Provide --source-dir and --output-dir (see --list)")
+    if not a.output_dir or (a.source_dir is None) == (a.game_dir is None):
+        p.error("Provide --output-dir and exactly one of --source-dir or --game-dir")
     if not 1 <= a.attackers <= 16 or not 0 <= a.cooldown <= 20:
         p.error("--attackers range is 1-16; --cooldown is 0-20 seconds")
     if not 1 <= a.min_limbs <= a.max_limbs <= 8:
@@ -195,7 +279,7 @@ def main() -> int:
     selected = tuple(MODS) if a.only == "both" else (a.only,)
     try:
         build(a.source_dir, a.output_dir, selected, a.attackers,
-              a.cooldown, a.min_limbs, a.max_limbs, a.gib_impulse)
+              a.cooldown, a.min_limbs, a.max_limbs, a.gib_impulse, game=a.game_dir)
     except (ModGenerationError, OSError, zipfile.BadZipFile) as exc:
         print("Stopped safely: " + str(exc), file=sys.stderr)
         return 1
