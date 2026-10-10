@@ -2,7 +2,7 @@ param(
     [string]$Repository = "MrEGS-Ops/KHARVOX-Custom",
     [string]$Branch = "clean/custom-core",
     [string]$InstallRoot = "",
-    [int]$PollSeconds = 30,
+    [int]$PollSeconds = 300,
     [switch]$NoLaunch,
     [switch]$SelfTest
 )
@@ -21,6 +21,47 @@ if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
 function Write-Status([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::Gray) {
     $stamp = Get-Date -Format "HH:mm:ss"
     Write-Host "[$stamp] $Message" -ForegroundColor $Color
+}
+
+# Render the actual remaining interval instead of an imprecise
+# "next check in 5 minutes" notice. An explicitly supplied -PollSeconds
+# controls both the real polling interval and the displayed countdown.
+function Format-NextCheckCountdown([int]$RemainingSeconds) {
+    $remaining = [Math]::Max(0, $RemainingSeconds)
+    $minutes = [int][Math]::Floor($remaining / 60)
+    $seconds = $remaining % 60
+    return ("Next check in {0:00}:{1:00} left" -f $minutes, $seconds)
+}
+
+function Wait-UntilNextCheck([int]$Seconds) {
+    $wait = [Math]::Max(10, $Seconds)
+    $deadline = [DateTime]::UtcNow.AddSeconds($wait)
+    $interactiveConsole = $false
+    try { $interactiveConsole = -not [Console]::IsOutputRedirected } catch {}
+    if (-not $interactiveConsole) {
+        # Redirected logs should not be flooded with 300 nearly identical
+        # lines or terminal carriage returns.
+        Write-Status (Format-NextCheckCountdown $wait) DarkGray
+        Start-Sleep -Seconds $wait
+        return
+    }
+    $previousLength = 0
+    try {
+        while ($true) {
+            $remaining = [Math]::Max(0,
+                [int][Math]::Ceiling(($deadline - [DateTime]::UtcNow).TotalSeconds))
+            $message = Format-NextCheckCountdown $remaining
+            Write-Host -NoNewline (("`r" + $message).PadRight($previousLength + 1))
+            $previousLength = $message.Length + 1
+            if ($remaining -eq 0) { break }
+            # Based on an absolute deadline, so time spent writing or a slow
+            # console cannot cause the next GitHub check to drift.
+            Start-Sleep -Milliseconds 250
+        }
+    } finally {
+        # Clear the single status line before the next timestamped message.
+        Write-Host -NoNewline ("`r" + (" " * $previousLength) + "`r")
+    }
 }
 
 function Get-LatestSuccessfulRun {
@@ -340,6 +381,13 @@ function Install-Patch($run) {
 }
 
 function Invoke-WatcherSelfTest {
+    if ((Format-NextCheckCountdown 300) -ne "Next check in 05:00 left" -or
+        (Format-NextCheckCountdown 59) -ne "Next check in 00:59 left" -or
+        (Format-NextCheckCountdown 0) -ne "Next check in 00:00 left" -or
+        (Format-NextCheckCountdown -5) -ne "Next check in 00:00 left" -or
+        (Format-NextCheckCountdown 3723) -ne "Next check in 62:03 left") {
+        throw "Next-check countdown formatting regressed."
+    }
     $temp = Join-Path ([IO.Path]::GetTempPath()) ("KHARVOX-Watcher-SelfTest-" + [Guid]::NewGuid().ToString("N"))
     $script:InstallRoot = Join-Path $temp "installation"
     $payloadRoot = Join-Path $temp "payload"
@@ -427,5 +475,5 @@ while ($true) {
         Write-Status "Watcher update failed: $($_.Exception.Message)" Red
     }
 
-    Start-Sleep -Seconds ([Math]::Max(10, $PollSeconds))
+    Wait-UntilNextCheck $PollSeconds
 }
