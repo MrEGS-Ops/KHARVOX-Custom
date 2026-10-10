@@ -418,11 +418,9 @@ public sealed partial class MainForm : Form
             (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing.")
         };
 
-        // Label incomplete experiments honestly; flags and saved identities
-        // remain unchanged. These are NOT claims of completed gameplay mods.
-        customRevengeDemon.Text = "Revenge Demon (Diagnostics)";
-        customGaussChargeSlowMovement.Text = "Gauss Slow Movement (Experimental)";
-        customDirectionalDash.Text = "Directional Dash (Experimental)";
+        // Preserve the approved mod titles. A separate per-mod status marker
+        // identifies diagnostic-only, incomplete and experimental features.
+        // This avoids long suffixes crowding the narrow Custom Mods panel.
         // Original mod controls stay intact; this UI-only layout supplies
         // category headers and persistent, within-category drag ordering.
         // Dependency labels are rebuilt from visible positions on every move.
