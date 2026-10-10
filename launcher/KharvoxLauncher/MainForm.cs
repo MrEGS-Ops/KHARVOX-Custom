@@ -660,19 +660,19 @@ public sealed partial class MainForm : Form
         };
         countDivider.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 74));
         countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         var countLineLeft = new Panel
         {
             AccessibleName = "User mods count left divider",
             Dock = DockStyle.Fill, BackColor = Color.DimGray,
-            Margin = new Padding(0, 15, 6, 16)
+            Margin = new Padding(0, 15, 3, 16)
         };
         var countLineRight = new Panel
         {
             AccessibleName = "User mods count right divider",
             Dock = DockStyle.Fill, BackColor = Color.DimGray,
-            Margin = new Padding(6, 15, 0, 16)
+            Margin = new Padding(3, 15, 0, 16)
         };
         userDoomModCount = new Label
         {
@@ -686,7 +686,18 @@ public sealed partial class MainForm : Form
         countDivider.Controls.Add(countLineLeft, 0, 0);
         countDivider.Controls.Add(userDoomModCount, 1, 0);
         countDivider.Controls.Add(countLineRight, 2, 0);
+        // The middle toolbar gap shrinks on smaller Windows/DPI settings.
+        // Never let a fixed 90px count cell overlap the divider lines.
+        void FitCountDivider()
+        {
+            var available = countDivider.ClientSize.Width;
+            var desired = Math.Min(74, Math.Max(0, available - 12));
+            if (Math.Abs(countDivider.ColumnStyles[1].Width - desired) > 0.5f)
+                countDivider.ColumnStyles[1].Width = desired;
+        }
+        countDivider.SizeChanged += (_, _) => FitCountDivider();
         userHeaderDivider.Controls.Add(countDivider);
+        FitCountDivider();
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
         {
