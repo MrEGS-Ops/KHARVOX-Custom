@@ -417,10 +417,30 @@ public sealed partial class MainForm
                 || main.gloryKillSpeedMenu.DropDownWidth > 40
                 || main.gloryKillSpeedMenu.Dock != DockStyle.None)
                 throw new InvalidDataException("Glory Kill speed dropdown is missing.");
-            if (main.configurationStatusButton?.Parent is null
-                || Descendants(main).Any(x => x == main.configurationStatusButton))
+            var ratingBar = main.configurationRatingHeader;
+            var ratingButtons = new[]
+            {
+                main.configurationUnmarkedButton,
+                main.configurationGoodButton,
+                main.configurationBadButton
+            };
+            if (ratingBar?.Parent != vr
+                || ratingBar.AccessibleName != "VR Mods configuration rating header"
+                || ratingButtons.Any(button => button is null)
+                || ratingButtons[0]!.Text != "?"
+                || ratingButtons[1]!.Text != "✓"
+                || ratingButtons[2]!.Text != "✕"
+                || ratingButtons.Any(button => Descendants(main).Contains(button!))
+                || ratingButtons.Any(button => !Descendants(ratingBar).Contains(button!)))
                 throw new InvalidDataException(
-                    "Rating menu must only appear inside Custom Mods.");
+                    "Three rating symbols must be in VR MODS, not the launcher or footer.");
+            var ratingLayout = ratingBar.Controls.OfType<TableLayoutPanel>().Single();
+            if (ratingLayout.ColumnCount != 4 || ratingButtons.Any(button =>
+                    ratingLayout.GetColumn(button!) < 1)
+                || ratingLayout.Controls.OfType<Panel>().All(panel =>
+                    panel.AccessibleName != "VR Mods rating header divider"))
+                throw new InvalidDataException(
+                    "Rating controls or divider missing from VR MODS heading.");
 
             // The Windows Forms layout must be realized to catch rows that
             // look correct in source but render empty at runtime.
@@ -432,6 +452,17 @@ public sealed partial class MainForm
                 || main.gloryKillSpeedMenu.DropDownWidth > 40)
                 throw new InvalidDataException(
                     "Rendered Custom Mods window or Glory Kill selector too wide.");
+            ratingBar.PerformLayout();
+            if (!ratingBar.Visible || ratingBar.Top > 7
+                || ratingBar.Left < 75 || ratingBar.Right > vr.ClientSize.Width
+                || ratingBar.Height < 21
+                || ratingButtons.Any(button => !button!.Visible
+                    || button.Width < 16 || button.Height < 18
+                    || string.IsNullOrEmpty(main.statusToolTip.GetToolTip(button)))
+                || ratingButtons[0]!.Left >= ratingButtons[1]!.Left
+                || ratingButtons[1]!.Left >= ratingButtons[2]!.Left)
+                throw new InvalidDataException(
+                    "Rating buttons are clipped, misaligned or lack tooltips.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
             doomGrid.PerformLayout();
             if (doomGrid.RowCount != 4
