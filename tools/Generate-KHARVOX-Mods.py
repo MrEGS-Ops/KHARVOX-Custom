@@ -233,6 +233,38 @@ def self_test() -> None:
             assert b"maxLimbsToRemove = 5;" in data
             assert b"gibImpulse = 48;" in data
             assert b"\r\n" in data
+        # Synthetic DOOM v5 resource-index test. No proprietary game files.
+        game = Path(tmp) / "DOOM"
+        base = game / "base"
+        base.mkdir(parents=True)
+        baseline = (root / AI).read_bytes()
+        compressor = zlib.compressobj(level=6, wbits=-zlib.MAX_WBITS)
+        compressed = compressor.compress(baseline) + compressor.flush()
+        if len(compressed) >= len(baseline):
+            raise AssertionError("Fixture must exercise compressed resources")
+        (base / "gameresources.resources").write_bytes(
+            b"\x05SER" + bytes(12) + compressed)
+        def encoded_name(value: str) -> bytes:
+            data = value.encode("utf-8")
+            return struct.pack("<I", len(data)) + data
+        record = (
+            struct.pack(">i", 1)
+            + encoded_name("aiGlobalSettings")
+            + encoded_name("default")
+            + encoded_name(AI)
+            + struct.pack(">qiiiB", 16, len(baseline), len(compressed), 0, 0)
+        )
+        header = (b"\x05SER" + struct.pack(">I", 4 + len(record))
+                  + bytes(24) + struct.pack(">I", 1))
+        (base / "gameresources.index").write_bytes(header + record)
+        if load_from_game(game, AI)[0] != baseline:
+            raise AssertionError("Original v5 game declaration export mismatch")
+        game_output = Path(tmp) / "game-generated"
+        build(None, game_output, ("aggressive",), 6, .5, 2, 5, 48, game=game)
+        with zipfile.ZipFile(game_output / MODS["aggressive"][1]) as generated:
+            if b"maxSimultaneousUsers = 6;" not in generated.read(AI):
+                raise AssertionError("Generator did not patch local game baseline")
+
         for bad in (
             lambda: aggressive("tokenData = {}", 6, .5),
             lambda: enhanced_gibs("edit = {}", 2, 5, 48)
