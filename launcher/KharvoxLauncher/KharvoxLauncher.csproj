@@ -26,6 +26,11 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\assets\ui\fluent-refresh.png"><LogicalName>Kharvox.Icons.Refresh</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\ui\fluent-refresh-hover.png"><LogicalName>Kharvox.Icons.RefreshHover</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\ui\fluent-question.png"><LogicalName>Kharvox.Icons.Question</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\ui\fluent-check.png"><LogicalName>Kharvox.Icons.Check</LogicalName></EmbeddedResource>
+    <EmbeddedResource Include="..\..\assets\ui\fluent-cross.png"><LogicalName>Kharvox.Icons.Cross</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\branding\kharvox-logo-dark.png">
       <LogicalName>Kharvox.Branding.Logo</LogicalName>
     </EmbeddedResource>
@@ -63,6 +68,7 @@
     <Reference Include="System.IO.Compression.FileSystem" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\third-party\fluentui-system-icons\LICENSE"><LogicalName>Kharvox.Licenses.FluentIcons</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\third-party\pocketmod\LICENSE.txt"><LogicalName>Kharvox.Licenses.Pocketmod</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\LICENSE.txt"><LogicalName>Kharvox.Licenses.KHARVOX</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\Docs\THIRD_PARTY_NOTICES.txt"><LogicalName>Kharvox.Licenses.Notices</LogicalName></EmbeddedResource>

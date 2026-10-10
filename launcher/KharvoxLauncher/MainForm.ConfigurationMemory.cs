@@ -35,10 +35,9 @@ public sealed partial class MainForm
     private Button? configurationGoodButton;
     private Button? configurationBadButton;
 
-    // One visually continuous header: VR MODS ————— ? ✓ ✕
-    // The native GroupBox draws the title and border. This panel masks only
-    // the right part of that border, replacing it with a hairline and three
-    // borderless, DPI-independent vector marks.
+    // The native GroupBox draws its own top-border line. Keep it visible
+    // from the VR MODS caption all the way to these stock icon buttons: no
+    // extra divider of a different color, thickness or vertical alignment.
     private void BuildConfigurationRatingHeader(GroupBox group)
     {
         configurationStatusMods.Visible = false;
@@ -46,35 +45,25 @@ public sealed partial class MainForm
         {
             AccessibleName = "VR Mods configuration rating header",
             BackColor = PanelColor,
-            Height = 23,
-            Margin = Padding.Empty,
-            Padding = Padding.Empty,
+            Size = new Size(80, 23),
+            Margin = Padding.Empty, Padding = Padding.Empty,
             TabStop = false
         };
-        var separator = new Panel
-        {
-            AccessibleName = "VR Mods rating header divider",
-            BackColor = Color.FromArgb(100, 100, 104),
-            Height = 1,
-            TabStop = false
-        };
-        bar.Controls.Add(separator);
-
-        Button AddRatingButton(string symbol, string accessibleName,
+        Button AddRatingButton(Image image, string symbol, string accessibleName,
             KharvoxConfigMarks.Verdict verdict)
         {
             var button = new Button
             {
-                // The symbol is used for accessibility/testing; paint it as a
-                // vector because the glyph fonts vary on different Windows PCs.
                 Text = "",
+                Image = image,
+                ImageAlign = ContentAlignment.MiddleCenter,
                 AccessibleName = accessibleName,
                 AccessibleDescription = symbol,
                 Size = new Size(24, 22),
                 AutoSize = false,
                 FlatStyle = FlatStyle.Flat,
-                ForeColor = Color.Silver,
                 BackColor = PanelColor,
+                Margin = Padding.Empty,
                 TabStop = true,
                 UseVisualStyleBackColor = false
             };
@@ -82,86 +71,33 @@ public sealed partial class MainForm
             button.FlatAppearance.MouseOverBackColor = Color.FromArgb(55, 55, 59);
             button.FlatAppearance.MouseDownBackColor = Color.FromArgb(66, 66, 70);
             button.Click += (_, _) => MarkCurrentConfiguration(verdict);
-            button.Paint += (_, e) =>
-            {
-                e.Graphics.SmoothingMode =
-                    System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-                var cx = button.ClientSize.Width / 2f;
-                var cy = button.ClientSize.Height / 2f - 1;
-                using var stroke = new Pen(button.Enabled
-                    ? button.ForeColor : Color.Gray, 2f);
-                stroke.StartCap = System.Drawing.Drawing2D.LineCap.Round;
-                stroke.EndCap = System.Drawing.Drawing2D.LineCap.Round;
-                stroke.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
-                if (symbol == "✓")
-                {
-                    e.Graphics.DrawLines(stroke, new[]
-                    {
-                        new PointF(cx - 6, cy), new PointF(cx - 2, cy + 4),
-                        new PointF(cx + 6, cy - 5)
-                    });
-                }
-                else if (symbol == "✕")
-                {
-                    e.Graphics.DrawLine(stroke, cx - 4.5f, cy - 4.5f,
-                        cx + 4.5f, cy + 4.5f);
-                    e.Graphics.DrawLine(stroke, cx + 4.5f, cy - 4.5f,
-                        cx - 4.5f, cy + 4.5f);
-                }
-                else
-                {
-                    TextRenderer.DrawText(e.Graphics, "?", button.Font,
-                        button.ClientRectangle, stroke.Color,
-                        TextFormatFlags.HorizontalCenter |
-                        TextFormatFlags.VerticalCenter |
-                        TextFormatFlags.NoPadding);
-                }
-                if (button.Tag is bool selected && selected)
-                {
-                    using var underline = new Pen(button.ForeColor, 2f);
-                    e.Graphics.DrawLine(underline, 6, button.Height - 2,
-                        button.Width - 6, button.Height - 2);
-                }
-            };
             bar.Controls.Add(button);
             return button;
         }
 
-        configurationUnmarkedButton = AddRatingButton("?", "Clear configuration rating",
-            KharvoxConfigMarks.Verdict.Unmarked);
-        configurationGoodButton = AddRatingButton("✓", "Mark configuration good",
-            KharvoxConfigMarks.Verdict.Good);
-        configurationBadButton = AddRatingButton("✕", "Mark configuration bad",
-            KharvoxConfigMarks.Verdict.Bad);
+        configurationUnmarkedButton = AddRatingButton(StockUiIcons.Question,
+            "?", "Clear configuration rating", KharvoxConfigMarks.Verdict.Unmarked);
+        configurationGoodButton = AddRatingButton(StockUiIcons.Check,
+            "✓", "Mark configuration good", KharvoxConfigMarks.Verdict.Good);
+        configurationBadButton = AddRatingButton(StockUiIcons.Cross,
+            "✕", "Mark configuration bad", KharvoxConfigMarks.Verdict.Bad);
 
         void FitHeader()
         {
             if (bar.IsDisposed) return;
-            const int startX = 90; // Begin beyond the built-in VR MODS caption.
-            bar.SetBounds(startX, 0,
-                Math.Max(113, group.ClientSize.Width - startX - 8), 23);
             const int iconWidth = 24;
             const int gap = 3;
-            var left = bar.ClientSize.Width - iconWidth * 3 - gap * 2 - 1;
-            separator.SetBounds(0, 10, Math.Max(1, left - 8), 1);
-            configurationUnmarkedButton?.SetBounds(left, 0, iconWidth, 22);
-            configurationGoodButton?.SetBounds(left + iconWidth + gap, 0,
+            const int width = iconWidth * 3 + gap * 2 + 2;
+            // Leave the native GroupBox border untouched from the caption to
+            // the first icon. Only mask the part immediately under the icons.
+            bar.SetBounds(Math.Max(90, group.ClientSize.Width - width - 10),
+                0, width, 23);
+            configurationUnmarkedButton?.SetBounds(1, 0, iconWidth, 22);
+            configurationGoodButton?.SetBounds(1 + iconWidth + gap, 0,
                 iconWidth, 22);
-            configurationBadButton?.SetBounds(left + (iconWidth + gap) * 2,
+            configurationBadButton?.SetBounds(1 + (iconWidth + gap) * 2,
                 0, iconWidth, 22);
         }
-        bar.Resize += (_, _) => FitHeaderButtons();
-        // Keep layout work independent of resize events: avoid recursive
-        // SetBounds during GroupBox font/DPI changes.
-        void FitHeaderButtons()
-        {
-            var left = bar.ClientSize.Width - 24 * 3 - 3 * 2 - 1;
-            separator.SetBounds(0, 10, Math.Max(1, left - 8), 1);
-            configurationUnmarkedButton?.SetBounds(left, 0, 24, 22);
-            configurationGoodButton?.SetBounds(left + 27, 0, 24, 22);
-            configurationBadButton?.SetBounds(left + 54, 0, 24, 22);
-        }
-
         group.Controls.Add(bar);
         configurationRatingHeader = bar;
         group.SizeChanged += (_, _) => FitHeader();
@@ -195,10 +131,10 @@ public sealed partial class MainForm
             if (button is null) continue;
             var active = verdict.HasValue && entry.Verdict == verdict.Value;
             button.Enabled = verdict.HasValue;
-            button.Tag = active;
-            button.ForeColor = verdict.HasValue ? entry.Hue : Color.Gray;
-            button.BackColor = active ? Color.FromArgb(44, 44, 48) : PanelColor;
-            // No permanent square frames; a 2-pixel underline shows selection.
+            // The upstream Fluent UI PNG carries the symbol, so there is no
+            // Paint handler, fallback character or home-made icon geometry.
+            // The active rating is indicated by a subtle background highlight.
+            button.BackColor = active ? Color.FromArgb(59, 59, 63) : PanelColor;
             button.FlatAppearance.BorderSize = 0;
             statusToolTip.SetToolTip(button,
                 entry.Action + "." + Environment.NewLine + status
@@ -486,18 +422,21 @@ public sealed partial class MainForm
                 || ratingButtons[0]!.AccessibleDescription != "?"
                 || ratingButtons[1]!.AccessibleDescription != "✓"
                 || ratingButtons[2]!.AccessibleDescription != "✕"
+                || ratingButtons[0]!.Image != StockUiIcons.Question
+                || ratingButtons[1]!.Image != StockUiIcons.Check
+                || ratingButtons[2]!.Image != StockUiIcons.Cross
                 || ratingButtons.Any(button => button!.Text.Length != 0
                     || button.FlatAppearance.BorderSize != 0)
                 || ratingButtons.Any(button => Descendants(main).Contains(button!))
                 || ratingButtons.Any(button => !Descendants(ratingBar).Contains(button!)))
                 throw new InvalidDataException(
-                    "Three rating symbols must be in VR MODS, not the launcher or footer.");
-            var ratingDivider = ratingBar.Controls.OfType<Panel>()
-                .SingleOrDefault(panel =>
-                    panel.AccessibleName == "VR Mods rating header divider");
-            if (ratingDivider is null || ratingBar.Controls.OfType<Button>().Count() != 3)
+                    "Stock image rating buttons must live in the VR MODS caption.");
+            // No custom divider: the actual native GroupBox border must supply
+            // the entire horizontal rule (identical thickness and colour).
+            if (ratingBar.Controls.Count != 3
+                || ratingBar.Controls.OfType<Panel>().Any())
                 throw new InvalidDataException(
-                    "Minimal rating controls or thin divider missing from VR MODS heading.");
+                    "A custom line is obscuring the native VR MODS border.");
 
             // The Windows Forms layout must be realized to catch rows that
             // look correct in source but render empty at runtime.
@@ -511,13 +450,12 @@ public sealed partial class MainForm
                     "Rendered Custom Mods window or Glory Kill selector too wide.");
             ratingBar.PerformLayout();
             if (!ratingBar.Visible || ratingBar.Top > 7
-                || ratingBar.Left < 75 || ratingBar.Right > vr.ClientSize.Width
+                || ratingBar.Left < vr.ClientSize.Width / 2
+                || ratingBar.Right > vr.ClientSize.Width
                 || ratingBar.Height < 21
-                || ratingDivider.Height != 1 || ratingDivider.Top != 10
-                || ratingDivider.Left != 0
-                || ratingDivider.Right >= ratingButtons[0]!.Left
                 || ratingButtons.Any(button => !button!.Visible
                     || button.Width != 24 || button.Height != 22
+                    || button.Image is null
                     || button.FlatAppearance.BorderSize != 0
                     || string.IsNullOrEmpty(main.statusToolTip.GetToolTip(button)))
                 || ratingButtons[0]!.Left >= ratingButtons[1]!.Left

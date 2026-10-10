@@ -119,3 +119,11 @@ shader profile. These are not part of this source distribution. Compiler
 transformations and AMD support do not establish that these profiles were
 independently authored.
 KHARVOX is not endorsed by the original author.
+
+## Fluent UI System Icons — launcher controls
+
+- Upstream: https://github.com/microsoft/fluentui-system-icons
+- License: MIT; Copyright (c) 2020 Microsoft Corporation
+- Included original icon shapes: Arrow Clockwise, Question Circle, Checkmark, Dismiss (20px regular).
+- The icons are rasterized and recolored into transparent PNG assets at assets/ui/ for refresh, unknown/clear rating, good rating, and bad rating. No Fluent UI runtime or font is required.
+- The full MIT notice is retained in third-party/fluentui-system-icons/LICENSE and embedded in the launcher assembly.

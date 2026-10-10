@@ -684,6 +684,8 @@ public sealed partial class MainForm : Form
         {
             // Draw a vector icon instead of a platform-dependent font glyph.
             Text = "", Dock = DockStyle.Fill,
+            Image = StockUiIcons.Refresh,
+            ImageAlign = ContentAlignment.MiddleCenter,
             AccessibleName = "Rescan mods",
             FlatStyle = FlatStyle.Flat, ForeColor = Color.LightSkyBlue,
             BackColor = Color.FromArgb(43, 43, 47),
@@ -694,44 +696,17 @@ public sealed partial class MainForm : Form
         rescanUserMods.MouseEnter += (_, _) =>
         {
             rescanUserMods.ForeColor = Color.White;
-            rescanUserMods.Invalidate();
+            rescanUserMods.Image = StockUiIcons.RefreshHover;
         };
         rescanUserMods.MouseLeave += (_, _) =>
         {
             rescanUserMods.ForeColor = Color.LightSkyBlue;
-            rescanUserMods.Invalidate();
+            rescanUserMods.Image = StockUiIcons.Refresh;
         };
-        rescanUserMods.EnabledChanged += (_, _) => rescanUserMods.Invalidate();
-        rescanUserMods.Paint += (_, e) =>
+        rescanUserMods.EnabledChanged += (_, _) =>
         {
-            // A single clockwise arc with the arrowhead attached to its
-            // actual endpoint; the previous fixed points left a detached,
-            // incomplete-looking hook at some Windows DPI settings.
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var stroke = new Pen(rescanUserMods.Enabled
-                ? rescanUserMods.ForeColor : Color.Gray, 2.0f);
-            stroke.StartCap = System.Drawing.Drawing2D.LineCap.Round;
-            stroke.EndCap = System.Drawing.Drawing2D.LineCap.Round;
-            stroke.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
-            var cx = rescanUserMods.ClientSize.Width / 2f;
-            var cy = rescanUserMods.ClientSize.Height / 2f;
-            const float radius = 8f;
-            // Sweep clockwise from the lower-right to the upper-right.
-            const float end = 330f;
-            e.Graphics.DrawArc(stroke, cx - radius, cy - radius,
-                radius * 2f, radius * 2f, 45f, 285f);
-            var angle = end * (float)Math.PI / 180f;
-            var x = cx + radius * (float)Math.Cos(angle);
-            var y = cy + radius * (float)Math.Sin(angle);
-            // Tangent at the end of a clockwise arc.
-            var dx = -(float)Math.Sin(angle);
-            var dy = (float)Math.Cos(angle);
-            var wing1 = new PointF(x - dx * 5f - dy * 3.5f,
-                y - dy * 5f + dx * 3.5f);
-            var wing2 = new PointF(x - dx * 5f + dy * 3.5f,
-                y - dy * 5f - dx * 3.5f);
-            var tip = new PointF(x, y);
-            e.Graphics.DrawLines(stroke, new[] { wing1, tip, wing2 });
+            rescanUserMods.Image = rescanUserMods.Enabled
+                ? StockUiIcons.Refresh : StockUiIcons.RefreshHover;
         };
         statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
         rescanUserMods.Click += (_, _) =>
