@@ -2506,6 +2506,14 @@ void updateGameplayActions(XrTime displayTime){
                 ?s.physicalGlorykillHands!=PhysicalGlorykillHands::Left
                 :s.physicalGlorykillHands!=PhysicalGlorykillHands::Right;
             if(!handAllowed){s.physicalPunchArmed[hand]=false;continue;}
+            // During chainsaw sync kills, ignore punches altogether. The
+            // chainsaw gesture owns timescale AND melee routing; otherwise a
+            // punch could fall through to a normal melee pulse.
+            if(syncAttackActive&&s.customMods.physicalChainsawGestures
+                &&activeWeaponKind==KharvoxWeaponKind::Chainsaw){
+                s.physicalPunchArmed[hand]=false;
+                continue;
+            }
             const auto& controller=*punchControllers[hand];
             if(!controller.valid||!controller.linearVelocityValid){s.physicalPunchArmed[hand]=false;continue;}
             const auto forward=normalizeVector(rotateVector(controller.orientation,{0,0,-1}));
