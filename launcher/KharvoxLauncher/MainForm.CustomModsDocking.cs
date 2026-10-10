@@ -23,10 +23,68 @@ public sealed partial class MainForm
     private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter,
         int x, int y, int width, int height, uint flags);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr window, out NativeRect bounds);
+
+    // Windows 10/11 have invisible resize borders on both windows. Two
+    // adjacent WinForms Bounds therefore leave a visible desktop strip.
+    private const int DwmwaExtendedFrameBounds = 9;
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr window,
+        int attribute, out NativeRect bounds, int size);
+
+    internal static int CalculateVisibleSeamOverlap(int modsRightInset,
+        int launcherLeftInset) =>
+        Math.Min(48, Math.Max(0, modsRightInset) + Math.Max(0, launcherLeftInset));
+
+    private static int VisibleLeftInset(Form window)
+    {
+        if (!window.IsHandleCreated) return 0;
+        try
+        {
+            return GetWindowRect(window.Handle, out var outer)
+                && DwmGetWindowAttribute(window.Handle, DwmwaExtendedFrameBounds,
+                    out var frame, Marshal.SizeOf<NativeRect>()) == 0
+                ? Math.Max(0, Math.Min(24, frame.Left - outer.Left)) : 0;
+        }
+        catch (DllNotFoundException) { return 0; }
+        catch (EntryPointNotFoundException) { return 0; }
+    }
+
+    private static int VisibleRightInset(Form window)
+    {
+        if (!window.IsHandleCreated) return 0;
+        try
+        {
+            return GetWindowRect(window.Handle, out var outer)
+                && DwmGetWindowAttribute(window.Handle, DwmwaExtendedFrameBounds,
+                    out var frame, Marshal.SizeOf<NativeRect>()) == 0
+                ? Math.Max(0, Math.Min(24, outer.Right - frame.Right)) : 0;
+        }
+        catch (DllNotFoundException) { return 0; }
+        catch (EntryPointNotFoundException) { return 0; }
+    }
+
+    private int CurrentVisibleSeamOverlap() =>
+        customOptionsForm is { } mods
+            ? CalculateVisibleSeamOverlap(
+                VisibleRightInset(mods), VisibleLeftInset(this)) : 0;
+
     // Use actual outer window bounds, not ClientSize, to line up title bars,
     // bottom edges and the bordering frames with NO horizontal gap.
     internal static (Rectangle Launcher, Rectangle Mods) CalculateCustomModsDock(
-        Rectangle launcher, int requestedModsWidth, Rectangle workingArea)
+        Rectangle launcher, int requestedModsWidth, Rectangle workingArea,
+        int visibleSeamOverlap = 0)
     {
         if (launcher.Width < 1 || launcher.Height < 1
             || requestedModsWidth < 1 || workingArea.Width < 1
@@ -38,30 +96,33 @@ public sealed partial class MainForm
         // supported minimum first, then the mods sidecar as a last resort.
         const int minimumLauncherWidth = 280;
         const int minimumModsWidth = 540;
+        var seam = Math.Max(0, Math.Min(48, visibleSeamOverlap));
         var launcherWidth = Math.Min(launcher.Width, workingArea.Width);
         var modsWidth = requestedModsWidth;
-        if (launcherWidth + modsWidth > workingArea.Width)
+        if (launcherWidth + modsWidth - seam > workingArea.Width)
         {
             launcherWidth = Math.Max(Math.Min(minimumLauncherWidth, launcherWidth),
-                Math.Min(launcherWidth, workingArea.Width - modsWidth));
-            if (launcherWidth + modsWidth > workingArea.Width)
+                Math.Min(launcherWidth, workingArea.Width - modsWidth + seam));
+            if (launcherWidth + modsWidth - seam > workingArea.Width)
                 modsWidth = Math.Max(Math.Min(minimumModsWidth, modsWidth),
-                    workingArea.Width - launcherWidth);
-            if (launcherWidth + modsWidth > workingArea.Width)
+                    workingArea.Width - launcherWidth + seam);
+            if (launcherWidth + modsWidth - seam > workingArea.Width)
             {
-                // Very small displays cannot accommodate two useful panels;
-                // keep both visible even if the mod panel becomes narrow.
-                modsWidth = Math.Max(1, workingArea.Width - launcherWidth);
+                // Very small displays cannot accommodate two useful panels.
+                modsWidth = Math.Max(1, workingArea.Width - launcherWidth + seam);
             }
         }
 
         var height = Math.Min(launcher.Height, workingArea.Height);
         var top = Math.Max(workingArea.Top,
             Math.Min(launcher.Top, workingArea.Bottom - height));
-        var left = Math.Max(workingArea.Left + modsWidth,
+        var left = Math.Max(workingArea.Left + modsWidth - seam,
             Math.Min(launcher.Left, workingArea.Right - launcherWidth));
         var right = new Rectangle(left, top, launcherWidth, height);
-        var leftPanel = new Rectangle(left - modsWidth, top, modsWidth, height);
+        // Deliberate rectangle overlap closes the INvisible Win32 resize
+        // borders, so the two visible (DWM) frames actually touch.
+        var leftPanel = new Rectangle(left - modsWidth + seam,
+            top, modsWidth, height);
         return (right, leftPanel);
     }
 
@@ -99,7 +160,8 @@ public sealed partial class MainForm
             || WindowState == FormWindowState.Minimized) return;
 
         var workingArea = Screen.FromControl(this).WorkingArea;
-        var target = CalculateCustomModsDock(Bounds, mods.Width, workingArea);
+        var target = CalculateCustomModsDock(Bounds, mods.Width, workingArea,
+            CurrentVisibleSeamOverlap());
         syncingCustomModsDock = true;
         try
         {
@@ -141,10 +203,12 @@ public sealed partial class MainForm
             // Dragging the left window also moves the launcher, as though
             // they were one compound window. Resizing it keeps both heights
             // equal and the shared boundary touching.
+            var overlap = CurrentVisibleSeamOverlap();
             var desiredLauncher = new Rectangle(
-                mods.Right, mods.Top, Width, mods.Height);
+                mods.Right - overlap, mods.Top, Width, mods.Height);
             var area = Screen.FromRectangle(mods.Bounds).WorkingArea;
-            var layout = CalculateCustomModsDock(desiredLauncher, mods.Width, area);
+            var layout = CalculateCustomModsDock(desiredLauncher, mods.Width,
+                area, overlap);
             if (Bounds != layout.Launcher) Bounds = layout.Launcher;
             if (mods.Bounds != layout.Mods) mods.Bounds = layout.Mods;
         }
