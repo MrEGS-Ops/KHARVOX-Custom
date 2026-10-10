@@ -86,7 +86,7 @@ public sealed partial class MainForm : Form
     private readonly ComboBox gloryKillSpeedMenu = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
-        Width = 180,
+        Width = 54,
         FlatStyle = FlatStyle.Flat
     };
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
@@ -140,7 +140,7 @@ public sealed partial class MainForm : Form
         Text = "KHARVOX Launcher — Build " + RuntimeStorage.DisplayBuild;
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
-        ClientSize = new Size(548, 904);
+        ClientSize = new Size(510, 904);
         MinimumSize = new Size(280, 240);
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.FromArgb(0, 0, 0);
@@ -151,8 +151,8 @@ public sealed partial class MainForm : Form
         var root = new TableLayoutPanel
         {
             Location = Point.Empty,
-            Size = new Size(548, 904),
-            MinimumSize = new Size(548, 904),
+            Size = new Size(510, 904),
+            MinimumSize = new Size(510, 904),
             Padding = new Padding(18, 14, 18, 10),
             RowCount = 7,
             ColumnCount = 1
@@ -364,8 +364,8 @@ public sealed partial class MainForm : Form
             ColumnCount = 2,
             AutoScroll = false
         };
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
@@ -387,7 +387,9 @@ public sealed partial class MainForm : Form
             ForeColor = Color.Gainsboro,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
-        gloryKillSpeedMenu.Dock = DockStyle.Fill;
+        gloryKillSpeedMenu.Dock = DockStyle.None;
+        gloryKillSpeedMenu.Anchor = AnchorStyles.Left;
+        gloryKillSpeedMenu.Margin = new Padding(0, 2, 0, 0);
         customModsGrid.Controls.Add(gloryKillSpeedMenu, 1, 0);
 
         var customChecks = new (CheckBox Box, string Tip)[]
