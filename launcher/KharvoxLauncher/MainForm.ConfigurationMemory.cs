@@ -530,6 +530,21 @@ public sealed partial class MainForm
             userHeader.PerformLayout();
             var heading = userHeader.Controls.OfType<Label>().SingleOrDefault(label =>
                 label.Text == "USER MODS");
+            var divider = userHeader.Controls.OfType<Panel>()
+                .SingleOrDefault(panel =>
+                    panel.AccessibleName == "User mods header divider");
+            var countLabel = main.userDoomModCount;
+            if (divider is null || countLabel?.Parent != divider
+                || countLabel.AccessibleName != "Detected user mod count"
+                || countLabel.Dock != DockStyle.Right || countLabel.Width < 80
+                || FormatDetectedUserMods(17) != "17 detected"
+                || FormatDetectedUserMods(0) != "0 detected"
+                || !countLabel.Text.EndsWith(" detected",
+                    StringComparison.Ordinal)
+                || Descendants(modListPanel).OfType<Label>().Any(label =>
+                    label.Text.Contains("mod(s) detected.")))
+                throw new InvalidDataException(
+                    "Detected count must appear in USER MODS header, not on a separate list row.");
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
@@ -549,13 +564,6 @@ public sealed partial class MainForm
                 || installer.Left + loaderRow.Left != folder.Left + userHeader.Left)
                 throw new InvalidDataException(
                     "DML install and Mod Folder button alignment regressed.");
-            var status = Descendants(modListPanel).OfType<Label>()
-                .SingleOrDefault(label => label.Text.Contains("mod(s) detected."));
-            if (status is not null && status.Text != status.Text.Substring(
-                    0, status.Text.IndexOf("detected.", StringComparison.Ordinal)
-                    + "detected.".Length))
-                throw new InvalidDataException("Mod count includes unwanted suffix.");
-
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
         }
