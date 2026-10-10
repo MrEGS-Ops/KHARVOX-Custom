@@ -26,6 +26,17 @@ Updated: 2026-10-11
 - [ ] Check narrow docked layout, window focus on Close and user profiles/settings remain intact.
 - [ ] Verify status classifications against actual runtime behavior before marking additional mods Verified.
 
+## Build #171 screenshot feedback — condensed UI follow-up
+
+- [x] Replace 44px two-line VR mod rows with compact 28px single-line rows.
+- [x] Remove distracting visible development-status badges. Keep development status explained in a tooltip on each mod instead.
+- [x] Keep fixed 01–15 slots and clickable Requires/Disables references using narrow inline R/D labels.
+- [x] Replace unreliable group emoji rendering with consistent monochrome text symbols.
+- [x] Add hover-to-drag handles to the DOOM MODS list, preserve checkbox selection, and persist the displayed order across rescans/restarts.
+- [ ] Verify this layout and the drag/drop behaviour on Windows in the next build.
+
+**Safety:** DOOM MODS drag currently changes DISPLAY order only. It does not change DOOMModLoader installation order, generated resource precedence or conflict handling. KHARVOX still rejects overlapping resources. Actual load-order control remains in LATER until upstream loader behaviour has been verified.
+
 ## LATER — deliberately not implemented
 
 - [ ] **Custom mod profiles:** save/load named combinations of enabled mods, independent of ordering; show settings diff before applying.
