@@ -648,56 +648,55 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor,
             AccessibleName = "User mods header divider"
         };
-        // Center the detected count between USER MODS and Refresh, with
-        // matching thin border-colour rules on each side. Separate cells
-        // prevent text from covering lines at different Windows DPI scales.
-        var countDivider = new TableLayoutPanel
-        {
-            AccessibleName = "Centered user mod count divider",
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 3,
-            Margin = Padding.Empty, Padding = Padding.Empty,
-            BackColor = PanelColor
-        };
-        countDivider.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 74));
-        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        var countLineLeft = new Panel
-        {
-            AccessibleName = "User mods count left divider",
-            Dock = DockStyle.Fill, BackColor = Color.DimGray,
-            Margin = new Padding(0, 15, 3, 16)
-        };
-        var countLineRight = new Panel
-        {
-            AccessibleName = "User mods count right divider",
-            Dock = DockStyle.Fill, BackColor = Color.DimGray,
-            Margin = new Padding(3, 15, 0, 16)
-        };
+        // Paint the divider on ONE surface, from the heading towards the
+        // refresh button. A nested TableLayoutPanel previously gave the
+        // 1px divider panels zero usable height on Windows (visible as two
+        // tiny dashes even though the positioning test passed).
         userDoomModCount = new Label
         {
             AccessibleName = "Detected user mod count",
             Text = FormatDetectedUserMods(0),
-            Dock = DockStyle.Fill, AutoSize = false,
-            ForeColor = Color.Silver, BackColor = PanelColor,
+            AutoSize = false,
+            ForeColor = Color.Silver,
+            BackColor = PanelColor,
+            Font = new Font(Font.FontFamily, 8.5f, FontStyle.Regular),
             TextAlign = ContentAlignment.MiddleCenter,
+            AutoEllipsis = true,
             Margin = Padding.Empty
         };
-        countDivider.Controls.Add(countLineLeft, 0, 0);
-        countDivider.Controls.Add(userDoomModCount, 1, 0);
-        countDivider.Controls.Add(countLineRight, 2, 0);
-        // The middle toolbar gap shrinks on smaller Windows/DPI settings.
-        // Never let a fixed 90px count cell overlap the divider lines.
-        void FitCountDivider()
+        userHeaderDivider.Controls.Add(userDoomModCount);
+        void FitDetectedCount()
         {
-            var available = countDivider.ClientSize.Width;
-            var desired = Math.Min(74, Math.Max(0, available - 12));
-            if (Math.Abs(countDivider.ColumnStyles[1].Width - desired) > 0.5f)
-                countDivider.ColumnStyles[1].Width = desired;
+            if (userHeaderDivider.IsDisposed || userDoomModCount.IsDisposed)
+                return;
+            var width = userHeaderDivider.ClientSize.Width;
+            var measured = TextRenderer.MeasureText(userDoomModCount.Text,
+                userDoomModCount.Font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
+            // Text uses only as much width as it actually needs. Give the
+            // remaining width equally to the lines on either side.
+            var labelWidth = Math.Min(Math.Max(0, width - 10), measured.Width + 4);
+            userDoomModCount.SetBounds((width - labelWidth) / 2, 0,
+                labelWidth, userHeaderDivider.ClientSize.Height);
+            userHeaderDivider.Invalidate();
         }
-        countDivider.SizeChanged += (_, _) => FitCountDivider();
-        userHeaderDivider.Controls.Add(countDivider);
-        FitCountDivider();
+        userHeaderDivider.SizeChanged += (_, _) => FitDetectedCount();
+        userDoomModCount.TextChanged += (_, _) => FitDetectedCount();
+        userHeaderDivider.Paint += (_, e) =>
+        {
+            // A real, single-pixel drawn line has no panel margins to
+            // collapse when DPI, fonts or the dialog width change.
+            var leftEnd = userDoomModCount.Left - 4;
+            var rightStart = userDoomModCount.Right + 4;
+            var y = userHeaderDivider.ClientSize.Height / 2;
+            using var stroke = new Pen(Color.DimGray, 1f);
+            if (leftEnd > 2)
+                e.Graphics.DrawLine(stroke, 2, y, leftEnd, y);
+            if (rightStart < userHeaderDivider.ClientSize.Width - 2)
+                e.Graphics.DrawLine(stroke, rightStart, y,
+                    userHeaderDivider.ClientSize.Width - 2, y);
+        };
+        FitDetectedCount();
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
         {
