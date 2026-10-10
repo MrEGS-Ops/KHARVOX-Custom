@@ -478,11 +478,14 @@ public sealed partial class MainForm : Form
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
         {
-            // Compact two-row layout: install/verify row, then mod list.
-            // Source and install details stay in the tooltips, not a tall banner.
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 2,
+            // Keep the loader, packaged mods, USER MODS toolbar and user list
+            // in separate rows. Nested docked tables in a TopDown FlowLayoutPanel
+            // were collapsing the toolbar's content on real Windows displays.
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
             Padding = new Padding(12, 2, 12, 2), BackColor = PanelColor
         };
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var loaderStatusLabel = new Label
@@ -493,7 +496,9 @@ public sealed partial class MainForm : Form
         var loaderInstallButton = new Button
         {
             Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.White
+            BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.White,
+            Margin = new Padding(3, 2, 3, 2),
+            AccessibleName = "Install DOOMModLoader"
         };
         loaderInstallButton.FlatAppearance.BorderColor = Color.DimGray;
         Action refreshLoaderStatus = () =>
@@ -564,6 +569,15 @@ public sealed partial class MainForm : Form
         doomGrid.Controls.Add(loaderRow, 0, 0);
         // There are no planned-mod placeholders. Actual packaged resource mods
         // appear only when present, always above externally supplied user mods.
+        var packagedSection = new FlowLayoutPanel
+        {
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false, AutoScroll = false,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            Visible = false, BackColor = PanelColor
+        };
         var doomModItems = new FlowLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -592,17 +606,19 @@ public sealed partial class MainForm : Form
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor, Visible = false
         };
-        doomModItems.Controls.Add(packagedDoomModHeader);
-        doomModItems.Controls.Add(packagedDoomModChecks);
+        packagedSection.Controls.Add(packagedDoomModHeader);
+        packagedSection.Controls.Add(packagedDoomModChecks);
+        doomGrid.Controls.Add(packagedSection, 0, 1);
 
-        // Four columns keep the actions flush right and place Mod Folder
-        // directly beneath the Install button, even when the window resizes.
+        // USER MODS belongs in its own explicit 32px row, not in the
+        // auto-sized mod list. Last column equals loaderRow's 105px column.
         var userHeader = new TableLayoutPanel
         {
-            Width = 350, Height = 29, RowCount = 1, ColumnCount = 4,
+            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 4,
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor
         };
+        userHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 93));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
@@ -636,7 +652,7 @@ public sealed partial class MainForm : Form
             Text = "Mod Folder", Dock = DockStyle.Fill,
             FlatStyle = FlatStyle.Flat, ForeColor = Color.White,
             BackColor = Color.FromArgb(43, 43, 47),
-            Margin = new Padding(0, 1, 0, 1)
+            Margin = new Padding(3, 2, 3, 2)
         };
         openUserFolder.FlatAppearance.BorderColor = Color.DimGray;
         statusToolTip.SetToolTip(openUserFolder,
@@ -707,20 +723,7 @@ public sealed partial class MainForm : Form
         };
         userHeader.Controls.Add(rescanUserMods, 2, 0);
         userHeader.Controls.Add(openUserFolder, 3, 0);
-        doomModItems.Controls.Add(userHeader);
-        // FlowLayoutPanel children do not stretch automatically: keep this
-        // header as wide as the actual list, so the last button stays aligned
-        // with the DML Install button above it.
-        doomModItems.ClientSizeChanged += (_, _) =>
-        {
-            var available = doomModItems.ClientSize.Width
-                - doomModItems.Padding.Horizontal
-                - (doomModItems.VerticalScroll.Visible
-                    ? SystemInformation.VerticalScrollBarWidth : 0);
-            var targetWidth = Math.Max(232, available);
-            if (userHeader.Width != targetWidth)
-                userHeader.Width = targetWidth;
-        };
+        doomGrid.Controls.Add(userHeader, 0, 2);
 
         userDoomModStatus = new Label
         {
@@ -747,7 +750,7 @@ public sealed partial class MainForm : Form
             else CheckLiveConfiguration(promptOnBad: false);
         };
 
-        doomGrid.Controls.Add(doomModItems, 0, 1);
+        doomGrid.Controls.Add(doomModItems, 0, 3);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
@@ -1734,8 +1737,12 @@ public sealed partial class MainForm : Form
                 list.ResumeLayout();
                 packagedList.ResumeLayout();
             }
-            packagedDoomModHeader.Visible = packagedList.Controls.Count != 0;
-            packagedList.Visible = packagedList.Controls.Count != 0;
+            var showPackaged = packagedList.Controls.Count != 0;
+            packagedDoomModHeader.Visible = showPackaged;
+            packagedList.Visible = showPackaged;
+            // Collapses the full packaged row whenever KHARVOX ships no mods.
+            if (packagedList.Parent is Control packagedRow)
+                packagedRow.Visible = showPackaged;
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
                 string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
@@ -1749,8 +1756,8 @@ public sealed partial class MainForm : Form
                     ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
                     : DoomModLoaderInstaller.CheckInstallation().State
                         != DoomModLoaderInstaller.InstallationState.Verified
-                        ? detected.Count + " mod(s) detected. Install DOOMModLoader to use them."
-                        : detected.Count + " mod(s) detected. Checked mods apply on the next launch.";
+                        ? detected.Count + " mod(s) detected."
+                        : detected.Count + " mod(s) detected.";
         }
         catch (Exception error)
         {
