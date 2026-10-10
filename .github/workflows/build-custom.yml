@@ -51,6 +51,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
 
+      - name: Test native Glory Kill Highlight disabled
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-glorykill-highlight" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Native Glory Kill Highlight policy failed: $($test.ExitCode)" }
+
       - name: Restore vcpkg binary cache
         uses: actions/cache@v4
         with:
