@@ -30,38 +30,126 @@ public sealed partial class MainForm
         AccessibleName = "Current KHARVOX configuration is unmarked"
     };
 
-    private Button BuildCompactConfigurationControl()
+    private Panel? configurationRatingHeader;
+    private Button? configurationUnmarkedButton;
+    private Button? configurationGoodButton;
+    private Button? configurationBadButton;
+
+    // Place this directly on the GroupBox caption line, not in the dialog
+    // footer or in the scrolling VR mod grid. A flexible horizontal rule
+    // separates the "VR MODS" title from three compact direct-action buttons.
+    private void BuildConfigurationRatingHeader(GroupBox group)
     {
-        var button = new Button
-        {
-            Text = "? Unmarked  ▾", Width = 126, Height = 27, AutoSize = false,
-            FlatStyle = FlatStyle.Flat, BackColor = Color.FromArgb(39, 39, 42),
-            ForeColor = Color.Silver, Font = new Font("Segoe UI", 8.25F, FontStyle.Bold),
-            AccessibleName = "Mark this configuration good, bad or unmarked"
-        };
-        button.FlatAppearance.BorderColor = Color.FromArgb(80, 80, 85);
         configurationStatusMods.Visible = false;
-        var menu = new ContextMenuStrip
+        var bar = new Panel
         {
-            BackColor = Color.FromArgb(35, 35, 38),
-            ForeColor = Color.Gainsboro, ShowImageMargin = false
+            AccessibleName = "VR Mods configuration rating header",
+            BackColor = PanelColor,
+            Height = 25,
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
+            TabStop = false
         };
-        menu.Items.Add("✓  Mark Good", null,
-            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Good));
-        menu.Items.Add("✕  Mark Bad", null,
-            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Bad));
-        menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("?  Clear Mark", null,
-            (_, _) => MarkCurrentConfiguration(KharvoxConfigMarks.Verdict.Unmarked));
-        button.Click += (_, _) => menu.Show(button, new Point(0, button.Height));
-        configurationStatusButton = button;
-        statusToolTip.SetToolTip(button,
-            "Personal rating for these settings and mod contents."
-            + Environment.NewLine + "Click to mark this combination Good, Bad or Unmarked.");
-        return button;
+        var layout = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 4,
+            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        for (var i = 0; i < 3; i++)
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
+
+        var separator = new Panel
+        {
+            AccessibleName = "VR Mods rating header divider",
+            Dock = DockStyle.Fill,
+            BackColor = Color.DimGray,
+            Margin = new Padding(3, 12, 7, 12)
+        };
+        layout.Controls.Add(separator, 0, 0);
+
+        Button AddRatingButton(string glyph, string accessibleName,
+            KharvoxConfigMarks.Verdict verdict, int column)
+        {
+            var button = new Button
+            {
+                Text = glyph,
+                AccessibleName = accessibleName,
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                FlatStyle = FlatStyle.Flat,
+                Font = new Font("Segoe UI Symbol", 10F, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                ForeColor = Color.Silver,
+                BackColor = Color.FromArgb(39, 39, 42),
+                Margin = new Padding(2, 1, 2, 1),
+                TabStop = true
+            };
+            button.FlatAppearance.BorderSize = 1;
+            button.FlatAppearance.BorderColor = Color.DimGray;
+            button.Click += (_, _) => MarkCurrentConfiguration(verdict);
+            layout.Controls.Add(button, column, 0);
+            return button;
+        }
+
+        configurationUnmarkedButton = AddRatingButton("?", "Clear configuration rating",
+            KharvoxConfigMarks.Verdict.Unmarked, 1);
+        configurationGoodButton = AddRatingButton("✓", "Mark configuration good",
+            KharvoxConfigMarks.Verdict.Good, 2);
+        configurationBadButton = AddRatingButton("✕", "Mark configuration bad",
+            KharvoxConfigMarks.Verdict.Bad, 3);
+
+        bar.Controls.Add(layout);
+        group.Controls.Add(bar);
+        configurationRatingHeader = bar;
+        void FitHeader()
+        {
+            if (bar.IsDisposed) return;
+            const int startX = 87; // Left of the separator, after "VR MODS".
+            bar.SetBounds(startX, 0, Math.Max(110, group.ClientSize.Width - startX - 9), 25);
+        }
+        group.SizeChanged += (_, _) => FitHeader();
+        FitHeader();
+        bar.BringToFront();
+        UpdateConfigurationRatingButtons(KharvoxConfigMarks.Verdict.Unmarked);
     }
 
-    private Button? configurationStatusButton;
+    private void UpdateConfigurationRatingButtons(
+        KharvoxConfigMarks.Verdict? verdict, string? detail = null)
+    {
+        var buttons = new[]
+        {
+            (Button: configurationUnmarkedButton, Verdict: KharvoxConfigMarks.Verdict.Unmarked,
+                Hue: Color.Silver, Action: "Clear rating (unmarked)"),
+            (Button: configurationGoodButton, Verdict: KharvoxConfigMarks.Verdict.Good,
+                Hue: Color.FromArgb(119, 224, 144), Action: "Mark this configuration good"),
+            (Button: configurationBadButton, Verdict: KharvoxConfigMarks.Verdict.Bad,
+                Hue: Color.FromArgb(255, 117, 117), Action: "Mark this configuration bad")
+        };
+        var status = detail ?? (verdict switch
+        {
+            KharvoxConfigMarks.Verdict.Good => "Current rating: Good.",
+            KharvoxConfigMarks.Verdict.Bad => "Current rating: Bad.",
+            KharvoxConfigMarks.Verdict.Unmarked => "Current rating: Unmarked.",
+            _ => "The current rating cannot be determined."
+        });
+        foreach (var entry in buttons)
+        {
+            var button = entry.Button;
+            if (button is null) continue;
+            var active = verdict.HasValue && entry.Verdict == verdict.Value;
+            button.Enabled = verdict.HasValue;
+            button.ForeColor = verdict.HasValue ? entry.Hue : Color.Gray;
+            button.BackColor = active ? Color.FromArgb(59, 59, 63)
+                : Color.FromArgb(39, 39, 42);
+            button.FlatAppearance.BorderColor = active ? entry.Hue : Color.DimGray;
+            button.FlatAppearance.BorderSize = active ? 2 : 1;
+            statusToolTip.SetToolTip(button,
+                entry.Action + "." + Environment.NewLine + status
+                + Environment.NewLine + "Ratings apply to this exact settings and mod combination.");
+        }
+    }
 
     private IEnumerable<Control> ConfigurationInputs()
     {
@@ -157,20 +245,7 @@ public sealed partial class MainForm
         };
         configurationStatusMods.Text = label;
         configurationStatusMods.ForeColor = colour;
-        if (configurationStatusButton is { } button)
-        {
-            button.Text = verdict switch
-            {
-                KharvoxConfigMarks.Verdict.Good => "✓ Good  ▾",
-                KharvoxConfigMarks.Verdict.Bad => "✕ Bad  ▾",
-                _ => "? Unmarked  ▾"
-            };
-            button.ForeColor = colour;
-            button.AccessibleName = "Current configuration: " + label
-                + ". Click to change its personal rating.";
-            statusToolTip.SetToolTip(button, "Personal rating: " + label
-                + ". Click to mark Good, Bad or Unmarked.");
-        }
+        UpdateConfigurationRatingButtons(verdict);
     }
 
     private void StartConfigurationTracking()
@@ -185,13 +260,8 @@ public sealed partial class MainForm
         if (customModsSaveFailed)
         {
             configurationStatusMods.Text = "! UNSAVED";
-            if (configurationStatusButton is { } button)
-            {
-                button.Text = "! Unsaved";
-                button.ForeColor = Color.Orange;
-                statusToolTip.SetToolTip(button,
-                    "VR mod settings were not saved. Correct the error before rating this configuration.");
-            }
+            UpdateConfigurationRatingButtons(null,
+                "VR mod settings were not saved. Correct the error before rating this configuration.");
             return;
         }
         if (!configurationTrackingReady || restoringConfiguration
@@ -247,12 +317,8 @@ public sealed partial class MainForm
                     && Equals(previous.Value, value)))
             {
                 configurationStatusMods.Text = "? MOD CHANGED";
-                if (configurationStatusButton is { } button)
-                {
-                    button.Text = "? Mod changed  ▾";
-                    statusToolTip.SetToolTip(button, "Selected mod content changed."
-                        + Environment.NewLine + "This exact combination is unmarked.");
-                }
+                UpdateConfigurationRatingButtons(KharvoxConfigMarks.Verdict.Unmarked,
+                    "Selected mod content changed. This exact combination is unmarked.");
             }
             lastConfigurationKey = key;
             lastAcceptedConfiguration = currentSnapshot;
@@ -260,12 +326,7 @@ public sealed partial class MainForm
         catch (Exception error)
         {
             configurationStatusMods.Text = "! UNKNOWN";
-            if (configurationStatusButton is { } button)
-            {
-                button.Text = "! Unknown  ▾";
-                button.ForeColor = Color.Orange;
-                statusToolTip.SetToolTip(button, error.Message);
-            }
+            UpdateConfigurationRatingButtons(null, error.Message);
             // An unreadable state is not equivalent to an unmarked state.
             // Don't erase saved information or block the core launcher.
         }
