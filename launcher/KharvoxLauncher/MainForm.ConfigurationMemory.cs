@@ -533,6 +533,19 @@ public sealed partial class MainForm
             if (!checks.Any(x => x.Text.Contains("Requires #"))
                 || !checks.Any(x => x.Text.Contains("Disables #")))
                 throw new InvalidDataException("VR dependencies are not numbered.");
+            var wheelRemapOption = checks.SingleOrDefault(option =>
+                option.Text.Contains("Weapon Wheel Remap"));
+            var wheelRemapTip = wheelRemapOption is null ? string.Empty
+                : main.statusToolTip.GetToolTip(wheelRemapOption);
+            if (!wheelRemapTip.Contains("Tap A to quick-switch")
+                || !wheelRemapTip.Contains("Hold A to open the weapon wheel")
+                || !wheelRemapTip.Contains("left stick to choose")
+                || !wheelRemapTip.Contains("right thumbstick DOWN to toggle crouch")
+                || !wheelRemapTip.Contains("Behind-Head Weapon Wheel")
+                || !wheelRemapTip.Contains("Directional Dash")
+                || !wheelRemapTip.Contains("restore the original KHARVOX controls"))
+                throw new InvalidDataException(
+                    "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
             if (main.gloryKillSpeedMenu.DropDownStyle != ComboBoxStyle.DropDownList
                 || main.gloryKillSpeedMenu.Items.Count != 5
