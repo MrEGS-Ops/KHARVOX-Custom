@@ -13,52 +13,88 @@ using Microsoft.Win32;
 
 namespace KharvoxLauncher;
 
-// Opens the DOOM Nexus catalogue as a real Edge app window, positioned like
-// the current Custom Mods form. If Edge does not create a window, don't silently
-// succeed just because Process.Start returned a process handle.
+// Open Nexus in a NEW WINDOW of the Windows DEFAULT browser. Never launch
+// Edge unless Edge is the actual default, and never silently fall back to a
+// URL shell open (which typically reuses an existing browser tab).
 internal static class NexusModsPopup
 {
     internal const string PageUrl = "https://www.nexusmods.com/games/doom/mods";
 
-    // Used solely by the Windows UI smoke test. Intercepts the click before
-    // launching a real browser and confirms the link is wired up.
+    // Test-only interception: dispatch the genuine LinkClicked handler in CI
+    // without opening a browser on the runner.
     internal static Action<Rectangle>? TestOpenRequested;
 
-    internal static ProcessStartInfo MakePopupStartInfo(Rectangle customModsBounds,
-        string browserExecutable = "msedge.exe")
+    internal static ProcessStartInfo MakeDefaultBrowserStartInfo(
+        string browserExecutable, Rectangle customModsBounds)
     {
         if (customModsBounds.Width < 1 || customModsBounds.Height < 1)
             throw new ArgumentOutOfRangeException(nameof(customModsBounds));
+        if (string.IsNullOrWhiteSpace(browserExecutable))
+            throw new ArgumentException("The default browser executable is missing.",
+                nameof(browserExecutable));
 
-        var x = customModsBounds.X.ToString(CultureInfo.InvariantCulture);
-        var y = customModsBounds.Y.ToString(CultureInfo.InvariantCulture);
-        var w = customModsBounds.Width.ToString(CultureInfo.InvariantCulture);
-        var h = customModsBounds.Height.ToString(CultureInfo.InvariantCulture);
-        return new ProcessStartInfo
+        var exe = Path.GetFileNameWithoutExtension(browserExecutable).ToLowerInvariant();
+        // Firefox (including its forks) supports --new-window URL, Chromium
+        // browsers support --new-window URL too. Never use --app, --new-tab,
+        // kiosk, a forced Edge path or a plain URL shell-open fallback.
+        var firefoxFamily = exe == "firefox" || exe == "waterfox"
+            || exe == "librewolf" || exe == "floorp" || exe == "zen";
+        var chromiumFamily = exe == "chrome" || exe == "chromium"
+            || exe == "brave" || exe == "msedge" || exe == "vivaldi"
+            || exe == "opera" || exe == "opera_gx" || exe == "launcher"
+            || exe == "arc";
+        if (!firefoxFamily && !chromiumFamily)
+            throw new NotSupportedException(
+                "Your Windows default browser does not expose a known new-window command: "
+                + browserExecutable);
+
+        var argument = "--new-window \"" + PageUrl + "\"";
+        if (chromiumFamily)
         {
-            FileName = browserExecutable,
-            Arguments = "--new-window --app=\"" + PageUrl + "\""
-                + " --window-position=" + x + "," + y
-                + " --window-size=" + w + "," + h,
-            UseShellExecute = true
+            argument += " --window-position="
+                + customModsBounds.X.ToString(CultureInfo.InvariantCulture)
+                + "," + customModsBounds.Y.ToString(CultureInfo.InvariantCulture)
+                + " --window-size="
+                + customModsBounds.Width.ToString(CultureInfo.InvariantCulture)
+                + "," + customModsBounds.Height.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return new ProcessStartInfo(browserExecutable, argument)
+        {
+            UseShellExecute = true,
+            WorkingDirectory = Path.GetDirectoryName(browserExecutable) ?? ""
         };
     }
 
-    internal static bool TestPopupArguments()
+    internal static bool TestDefaultBrowserArguments()
     {
-        var b = new Rectangle(-780, 92, 780, 612);
-        var info = MakePopupStartInfo(b);
-        return info.UseShellExecute
-            && info.FileName == "msedge.exe"
-            && info.Arguments.Contains("--new-window")
-            && info.Arguments.Contains("--app=\"" + PageUrl + "\"")
-            && info.Arguments.Contains("--window-position=-780,92")
-            && info.Arguments.Contains("--window-size=780,612");
+        var bounds = new Rectangle(-780, 92, 780, 612);
+        var firefox = MakeDefaultBrowserStartInfo(
+            @"C:\Program Files\Mozilla Firefox\firefox.exe", bounds);
+        var chrome = MakeDefaultBrowserStartInfo(
+            @"C:\Program Files\Google\Chrome\Application\chrome.exe", bounds);
+        var brave = MakeDefaultBrowserStartInfo(
+            @"C:\Program Files\BraveSoftware\Brave-Browser\Application\brave.exe", bounds);
+        try
+        {
+            MakeDefaultBrowserStartInfo(@"C:\Windows\UnknownBrowser.exe", bounds);
+            return false;
+        }
+        catch (NotSupportedException) { }
+        return firefox.UseShellExecute && chrome.UseShellExecute
+            && firefox.FileName.EndsWith("firefox.exe", StringComparison.OrdinalIgnoreCase)
+            && chrome.FileName.EndsWith("chrome.exe", StringComparison.OrdinalIgnoreCase)
+            && firefox.Arguments.StartsWith("--new-window \"" + PageUrl + "\"",
+                StringComparison.Ordinal)
+            && !firefox.Arguments.Contains("--window-size")
+            && chrome.Arguments.Contains("--window-position=-780,92")
+            && chrome.Arguments.Contains("--window-size=780,612")
+            && brave.Arguments.Contains("--new-window")
+            && !firefox.Arguments.Contains("--app=")
+            && !chrome.Arguments.Contains("--app=")
+            && !firefox.Arguments.Contains("--new-tab");
     }
 
-    // Returns true for the requested same-sized Edge popup, false when the
-    // default browser had to be used. Both paths must visibly open a page or
-    // throw an error that the UI can report to the user.
     internal static async Task<bool> OpenAsync(Rectangle customModsBounds)
     {
         if (TestOpenRequested is { } probe)
@@ -67,33 +103,35 @@ internal static class NexusModsPopup
             return true;
         }
 
-        var executable = FindEdgeExecutable() ?? "msedge.exe";
-        var oldWindows = GetVisibleEdgeWindows();
-        try
+        var browserPath = FindDefaultBrowserExecutable()
+            ?? throw new InvalidOperationException(
+                "Could not locate your Windows default browser. Check Settings > Apps > Default apps.");
+        var command = MakeDefaultBrowserStartInfo(browserPath, customModsBounds);
+        var processName = Path.GetFileNameWithoutExtension(browserPath);
+        var before = GetVisibleBrowserWindows(processName);
+
+        // This is a direct executable launch. No Edge-first attempt, no
+        // six-second timeout and no slow default-URL fallback opening a tab.
+        using (var started = Process.Start(command))
         {
-            using var process = Process.Start(
-                MakePopupStartInfo(customModsBounds, executable));
-            if (process is null)
-                throw new Win32Exception("Windows did not start Edge.");
-        }
-        catch (Win32Exception)
-        {
-            OpenDefaultBrowser();
-            return false;
+            if (started is null)
+                throw new Win32Exception("Windows did not start your default browser.");
         }
 
-        // Edge typically relays CLI requests to its already running process.
-        // Process.Start can report success even when the actual new app window
-        // is still hidden, behind the launcher or never created.
-        for (var attempt = 0; attempt < 60; attempt++)
+        // Best-effort focus and matching screen geometry. Normal browser
+        // startup already foregrounds a new window; this also handles
+        // requests forwarded to an existing Firefox/Chromium process.
+        // Cap the foreground search at 1.2 seconds, rather than making users
+        // wait six seconds before falling back to a tab.
+        for (var attempt = 0; attempt < 12; attempt++)
         {
-            var newWindow = GetVisibleEdgeWindows()
-                .FirstOrDefault(window => !oldWindows.Contains(window));
+            var newWindow = GetVisibleBrowserWindows(processName)
+                .FirstOrDefault(handle => !before.Contains(handle));
             if (newWindow != IntPtr.Zero)
             {
                 ShowWindow(newWindow, 9); // SW_RESTORE
                 SetWindowPos(newWindow, IntPtr.Zero,
-                    customModsBounds.X, customModsBounds.Y,
+                    customModsBounds.Left, customModsBounds.Top,
                     customModsBounds.Width, customModsBounds.Height,
                     0x0040); // SWP_SHOWWINDOW
                 SetForegroundWindow(newWindow);
@@ -101,40 +139,32 @@ internal static class NexusModsPopup
             }
             await Task.Delay(100);
         }
-
-        // If Edge discarded the app-style request, the user must still get
-        // the page. Avoid an apparent no-op.
-        OpenDefaultBrowser();
-        return false;
+        // The new-window command has already been sent. On a cold startup the
+        // browser can appear later; don't launch the URL again as a tab.
+        return true;
     }
 
-    private static void OpenDefaultBrowser()
-    {
-        using var process = Process.Start(new ProcessStartInfo(PageUrl)
-            { UseShellExecute = true });
-        // ShellExecute URL handlers can legally return null even on success;
-        // no Process object is required here.
-    }
-
-    private static HashSet<IntPtr> GetVisibleEdgeWindows()
+    private static HashSet<IntPtr> GetVisibleBrowserWindows(string browserProcessName)
     {
         var result = new HashSet<IntPtr>();
-        EnumWindows((hwnd, _) =>
+        EnumWindows((handle, _) =>
         {
-            if (!IsWindowVisible(hwnd)) return true;
+            if (!IsWindowVisible(handle)) return true;
             var cls = new StringBuilder(64);
-            if (GetClassName(hwnd, cls, cls.Capacity) == 0
-                || !string.Equals(cls.ToString(), "Chrome_WidgetWin_1",
-                    StringComparison.Ordinal))
+            if (GetClassName(handle, cls, cls.Capacity) == 0)
                 return true;
-            GetWindowThreadProcessId(hwnd, out var pid);
+            var windowClass = cls.ToString();
+            if (windowClass != "Chrome_WidgetWin_1"
+                && windowClass != "MozillaWindowClass")
+                return true;
+            GetWindowThreadProcessId(handle, out var pid);
             if (pid == 0) return true;
             try
             {
                 using var process = Process.GetProcessById(unchecked((int)pid));
-                if (string.Equals(process.ProcessName, "msedge",
+                if (string.Equals(process.ProcessName, browserProcessName,
                     StringComparison.OrdinalIgnoreCase))
-                    result.Add(hwnd);
+                    result.Add(handle);
             }
             catch (ArgumentException) { }
             catch (InvalidOperationException) { }
@@ -144,31 +174,63 @@ internal static class NexusModsPopup
         return result;
     }
 
-    private static string? FindEdgeExecutable()
+    private static string? FindDefaultBrowserExecutable()
     {
-        const string key = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe";
-        foreach (var root in new[] { Registry.CurrentUser, Registry.LocalMachine })
+        // Windows UserChoice reflects the user's actual https preference.
+        // Its ProgID command handles per-user browser associations that a
+        // generic 'https' AssocQueryString can resolve to LaunchWinApp.exe.
+        try
         {
-            try
+            using var choice = Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\Shell\Associations\UrlAssociations\https\UserChoice");
+            var progId = choice?.GetValue("ProgId") as string;
+            if (!string.IsNullOrWhiteSpace(progId))
             {
-                using var entry = root.OpenSubKey(key);
-                var candidate = entry?.GetValue(null) as string;
-                if (!string.IsNullOrWhiteSpace(candidate) && File.Exists(candidate))
-                    return candidate;
+                using var command = Registry.ClassesRoot.OpenSubKey(
+                    progId + @"\shell\open\command");
+                var commandLine = command?.GetValue(null) as string;
+                var executable = ExtractExecutable(commandLine);
+                if (executable is not null) return executable;
             }
-            catch (System.Security.SecurityException) { }
         }
-        foreach (var baseDir in new[]
-            { Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-              Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles) })
+        catch (System.Security.SecurityException) { }
+
+        // Association API is a backup when the ProgID command is hidden or
+        // overridden. It is never used to select a non-default browser.
+        const uint executableAssociation = 2; // ASSOCSTR_EXECUTABLE
+        uint capacity = 1024;
+        var buffer = new StringBuilder((int)capacity);
+        if (AssocQueryString(0, executableAssociation, "https", "open",
+                buffer, ref capacity) == 0)
         {
-            if (string.IsNullOrWhiteSpace(baseDir)) continue;
-            var candidate = Path.Combine(baseDir, "Microsoft", "Edge",
-                "Application", "msedge.exe");
-            if (File.Exists(candidate)) return candidate;
+            var path = buffer.ToString();
+            if (File.Exists(path)) return path;
         }
         return null;
     }
+
+    private static string? ExtractExecutable(string? commandLine)
+    {
+        if (string.IsNullOrWhiteSpace(commandLine)) return null;
+        var command = Environment.ExpandEnvironmentVariables(commandLine.Trim());
+        var candidate = "";
+        if (command.StartsWith("\"", StringComparison.Ordinal))
+        {
+            var end = command.IndexOf('"', 1);
+            if (end > 1) candidate = command.Substring(1, end - 1);
+        }
+        else
+        {
+            var end = command.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (end >= 0) candidate = command.Substring(0, end + 4);
+        }
+        return File.Exists(candidate) ? candidate : null;
+    }
+
+    [DllImport("shlwapi.dll", CharSet = CharSet.Unicode)]
+    private static extern int AssocQueryString(uint flags, uint str,
+        string association, string extra, StringBuilder result,
+        ref uint resultSize);
 
     private delegate bool EnumWindowsProc(IntPtr hwnd, IntPtr lParam);
 
