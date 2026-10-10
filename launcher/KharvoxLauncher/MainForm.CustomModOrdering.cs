@@ -452,6 +452,9 @@ public sealed partial class MainForm
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;
                 slot.Panel.Controls.Add(item.Box, 1, 0);
+                // The right-click actions follow the current occupant as
+                // checkboxes move between numbered rows.
+                item.Box.ContextMenuStrip = slot.Panel.ContextMenuStrip;
                 PopulateDependencyLinks(slot, item, dependencies, numbers);
                 SetModDevelopmentStatus(slot, item);
                 statusToolTip.SetToolTip(item.Box, item.Tip
