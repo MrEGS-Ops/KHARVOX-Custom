@@ -23,6 +23,8 @@ public sealed partial class MainForm
         internal TableLayoutPanel Panel = null!;
         internal Label Number = null!;
         internal Label Grip = null!;
+        internal Label Status = null!;
+        internal LinkLabel Dependency = null!;
     }
 
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
@@ -35,6 +37,11 @@ public sealed partial class MainForm
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
+    private ModOrderRow[] modOrderDefaultRows = Array.Empty<ModOrderRow>();
+    private string[] defaultModIds = Array.Empty<string>();
+    private readonly Stack<string[]> modOrderUndo = new();
+    private Panel? modOrderScroll;
+    private int highlightedDropSlot = -1;
     private readonly List<ModOrderSlot> modOrderSlots = new();
     private readonly List<Label> modOrderHeaders = new();
     private TableLayoutPanel? modOrderGrid;
@@ -147,6 +154,8 @@ public sealed partial class MainForm
         if (tips.Count != defaults.Length || defaults.Select(row => row.Box).Distinct().Count()
                 != defaults.Length)
             throw new InvalidOperationException("VR mod order definitions are incomplete.");
+        modOrderDefaultRows = defaults;
+        defaultModIds = defaults.Select(item => item.Id).ToArray();
         modOrderRows.Clear();
         modOrderRows.AddRange(NormalizeModOrder(defaults, ReadModOrder()));
 
@@ -208,13 +217,17 @@ public sealed partial class MainForm
         {
             var source = modOrderRows.FirstOrDefault(x => x.Id == activeModDrag);
             var target = modOrderRows[targetIndex];
-            e.Effect = source is not null && !ReferenceEquals(source, target)
-                && source.Group == target.Group
-                ? DragDropEffects.Move : DragDropEffects.None;
+            var allowed = source is not null && !ReferenceEquals(source, target)
+                && source.Group == target.Group;
+            e.Effect = allowed ? DragDropEffects.Move : DragDropEffects.None;
+            SetDropIndicator(allowed ? targetIndex : -1);
+            if (allowed) ScrollModOrderDuringDrag(e);
         }
         void Drop(int targetIndex, DragEventArgs e)
         {
+            SetDropIndicator(-1);
             var sourceId = activeModDrag;
+            var before = modOrderRows.Select(row => row.Id).ToArray();
             var targetId = modOrderRows[targetIndex].Id;
             if (sourceId is null || !MoveModWithinGroup(
                 modOrderRows, sourceId, targetId))
@@ -222,16 +235,7 @@ public sealed partial class MainForm
                 e.Effect = DragDropEffects.None;
                 return;
             }
-            RefreshGroupedModRows();
-            try { SaveModOrder(); }
-            catch (Exception error) when (error is IOException
-                || error is UnauthorizedAccessException)
-            {
-                MessageBox.Show(customOptionsForm,
-                    "The new mod order is shown, but could not be saved: "
-                    + error.Message, "KHARVOX", MessageBoxButtons.OK,
-                    MessageBoxIcon.Warning);
-            }
+            FinishModOrderChange(before);
         }
 
         modOrderSlots.Clear();
@@ -253,15 +257,17 @@ public sealed partial class MainForm
             }
             var panel = new TableLayoutPanel
             {
-                ColumnCount = 3, RowCount = 1,
+                ColumnCount = 4, RowCount = 2,
                 Dock = DockStyle.Fill,
                 Margin = Padding.Empty, Padding = Padding.Empty,
                 BackColor = PanelColor, AllowDrop = true
             };
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20));
             panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 25));
-            panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
+            panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 18));
             var number = new Label
             {
                 Text = (i + 1).ToString("00") + ".",
@@ -284,13 +290,45 @@ public sealed partial class MainForm
                 Margin = Padding.Empty, Visible = false,
                 AllowDrop = true
             };
+            var status = new Label
+            {
+                Dock = DockStyle.Fill, Margin = Padding.Empty,
+                ForeColor = Color.Silver, BackColor = PanelColor,
+                TextAlign = ContentAlignment.MiddleCenter
+            };
+            var dependency = new LinkLabel
+            {
+                Dock = DockStyle.Fill, Margin = Padding.Empty,
+                Font = new Font("Segoe UI", 7.6f),
+                LinkColor = Color.LightSkyBlue,
+                ActiveLinkColor = Color.White,
+                VisitedLinkColor = Color.LightSkyBlue,
+                BackColor = PanelColor, ForeColor = Color.Gainsboro,
+                TextAlign = ContentAlignment.MiddleLeft,
+                LinkBehavior = LinkBehavior.HoverUnderline,
+                AutoEllipsis = true
+            };
             panel.Controls.Add(number, 0, 0);
-            panel.Controls.Add(grip, 2, 0);
+            panel.SetRowSpan(number, 2);
+            panel.Controls.Add(grip, 3, 0);
+            panel.SetRowSpan(grip, 2);
+            panel.Controls.Add(status, 2, 0);
+            panel.SetRowSpan(status, 2);
+            panel.Controls.Add(dependency, 1, 1);
             var slot = new ModOrderSlot
             {
                 Index = i, Group = group, Panel = panel,
-                Number = number, Grip = grip
+                Number = number, Grip = grip, Status = status,
+                Dependency = dependency
             };
+            dependency.LinkClicked += (_, e) => NavigateModDependency(e.Link.LinkData);
+            dependency.MouseEnter += (_, _) => grip.Visible = true;
+            dependency.MouseLeave += (_, _) =>
+            {
+                if (activeModDrag is null && !panel.ClientRectangle.Contains(
+                    panel.PointToClient(Cursor.Position))) grip.Visible = false;
+            };
+            status.MouseEnter += (_, _) => grip.Visible = true;
             modOrderSlots.Add(slot);
             void ShowGrip(object? sender, EventArgs e)
             {
@@ -304,6 +342,7 @@ public sealed partial class MainForm
                         panel.PointToClient(Cursor.Position)))
                     grip.Visible = false;
             }
+            panel.DragLeave += (_, _) => SetDropIndicator(-1);
             panel.MouseEnter += ShowGrip;
             number.MouseEnter += ShowGrip;
             grip.MouseEnter += ShowGrip;
@@ -326,17 +365,21 @@ public sealed partial class MainForm
                 finally
                 {
                     activeModDrag = null;
+                    SetDropIndicator(-1);
                     grip.Visible = panel.ClientRectangle.Contains(
                         panel.PointToClient(Cursor.Position));
                 }
             };
-            foreach (Control target in new Control[] { panel, number, grip })
+            foreach (Control target in new Control[] {
+                panel, number, grip, status, dependency })
             {
                 target.DragEnter += (_, e) => AcceptDrag(slotIndex, e);
                 target.DragOver += (_, e) => AcceptDrag(slotIndex, e);
                 target.DragDrop += (_, e) => Drop(slotIndex, e);
             }
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+            AttachModOrderContext(slot);
+            panel.Paint += (_, e) => DrawModDropIndicator(slot, e);
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
             grid.Controls.Add(panel, 0, tableRow++);
             grid.SetColumnSpan(panel, 2);
         }
@@ -363,7 +406,7 @@ public sealed partial class MainForm
         }
         grid.RowCount = tableRow;
         grid.Height = 32 + ModGroupHeaders.Length * 24
-            + modOrderRows.Count * 28 + 14;
+            + modOrderRows.Count * 44 + 14;
         RefreshGroupedModRows();
     }
 
@@ -407,8 +450,10 @@ public sealed partial class MainForm
                     dependencies = " — Requires Enable Hands (main launcher)";
                 // The mod's own caption and tooltip move to the new position,
                 // while the number label stays attached to the fixed slot.
-                item.Box.Text = item.Caption + dependencies;
+                item.Box.Text = item.Caption;
                 slot.Panel.Controls.Add(item.Box, 1, 0);
+                PopulateDependencyLinks(slot, item, dependencies, numbers);
+                SetModDevelopmentStatus(slot, item);
                 statusToolTip.SetToolTip(item.Box, item.Tip
                     + (dependencies.Length == 0 ? "" : Environment.NewLine
                         + dependencies.TrimStart(' ', '—')));
