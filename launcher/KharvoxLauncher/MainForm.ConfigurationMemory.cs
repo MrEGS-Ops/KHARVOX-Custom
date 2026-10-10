@@ -601,7 +601,8 @@ public sealed partial class MainForm
                 || countLabel.TextAlign != ContentAlignment.MiddleCenter
                 || countDivider.ColumnCount != 3
                 || countDivider.GetColumn(countLabel) != 1
-                || countLabel.Width < 80
+                || countLabel.Width < 62
+                || countLabel.Width > countDivider.ClientSize.Width - 12
                 || leftLine is null || rightLine is null
                 || countDivider.GetColumn(leftLine) != 0
                 || countDivider.GetColumn(rightLine) != 2
