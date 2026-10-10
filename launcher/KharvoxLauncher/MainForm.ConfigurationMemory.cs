@@ -390,7 +390,20 @@ public sealed partial class MainForm
                 || footerClose.Right > footerRow.ClientSize.Width
                 || footerRow.Controls.Count != 2)
                 throw new InvalidDataException(
-                    "Made by MrEGS credit must be next to Close in the Custom Mods footer.");
+                    "Made by MrEGS credit must be next to Close in the Custom Mods footer."
+                    + " row=" + (footerRow is not null)
+                    + " direction=" + footerRow?.FlowDirection
+                    + " credit=" + (creatorCredit is not null)
+                    + " text=" + creatorCredit?.Text
+                    + " align=" + creatorCredit?.TextAlign
+                    + " color=" + creatorCredit?.ForeColor
+                    + " visible=" + creatorCredit?.Visible
+                    + " height=" + creatorCredit?.Height
+                    + " creditRight=" + creatorCredit?.Right
+                    + " closeLeft=" + footerClose?.Left
+                    + " closeRight=" + footerClose?.Right
+                    + " rowWidth=" + footerRow?.ClientSize.Width
+                    + " count=" + footerRow?.Controls.Count);
 
             // Exercise both verified and missing/repair-required DML states
             // without touching the real game or installing the loader.
