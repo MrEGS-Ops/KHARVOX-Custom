@@ -6,6 +6,19 @@ internal static class Program
     private static int Main(string[] args)
     {
         if (args.Length > 0 && args[0] == "--vr-intro") return VrIntroHost.Run(args.Skip(1).ToArray());
+        if (args.Any(argument => string.Equals(argument, "--self-test-glorykill-highlight",
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            var nativeSetting = KharvoxRunner.NativeGloryKillHighlightArguments().ToArray();
+            if (nativeSetting.Length != 2 || nativeSetting[0] != "+g_setting_gk_highlight"
+                || nativeSetting[1] != "0")
+            {
+                Console.Error.WriteLine("Native DOOM Glory Kill Highlight must be Off.");
+                return 1;
+            }
+            Console.WriteLine("Native DOOM Glory Kill Highlight startup policy passed.");
+            return 0;
+        }
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
