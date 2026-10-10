@@ -408,6 +408,11 @@ public sealed partial class MainForm : Form
             (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing.")
         };
 
+        // Label incomplete experiments honestly; flags and saved identities
+        // remain unchanged. These are NOT claims of completed gameplay mods.
+        customRevengeDemon.Text = "Revenge Demon (Diagnostics)";
+        customGaussChargeSlowMovement.Text = "Gauss Slow Movement (Experimental)";
+        customDirectionalDash.Text = "Directional Dash (Experimental)";
         // Number alphabetically, so requires/disables references are usable.
         // This is UI-only; existing checkbox identities and dependencies stay
         // exactly as they were.
