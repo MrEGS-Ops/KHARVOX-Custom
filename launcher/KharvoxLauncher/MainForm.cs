@@ -630,7 +630,14 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         userHeader.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 93));
+        // The old 93px heading column left invisible padding after USER MODS
+        // and shifted "N detected" noticeably to the right. Measure the
+        // actual label text so its neighbouring free space is truly centred.
+        var userHeaderFont = new Font(Font, FontStyle.Bold);
+        var userHeaderWidth = TextRenderer.MeasureText("USER MODS",
+            userHeaderFont, Size.Empty,
+            TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width + 6;
+        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, userHeaderWidth));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
         userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
@@ -639,7 +646,7 @@ public sealed partial class MainForm : Form
             Text = "USER MODS",
             Dock = DockStyle.Fill,
             ForeColor = Color.White,
-            Font = new Font(Font, FontStyle.Bold),
+            Font = userHeaderFont,
             TextAlign = ContentAlignment.MiddleLeft,
             Margin = new Padding(3, 0, 0, 0)
         }, 0, 0);
