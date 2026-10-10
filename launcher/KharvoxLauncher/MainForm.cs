@@ -648,27 +648,45 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor,
             AccessibleName = "User mods header divider"
         };
-        // The count belongs beside USER MODS, not on a second line above
-        // the checkboxes. Keep the divider as a short rule to its left.
+        // Center the detected count between USER MODS and Refresh, with
+        // matching thin border-colour rules on each side. Separate cells
+        // prevent text from covering lines at different Windows DPI scales.
+        var countDivider = new TableLayoutPanel
+        {
+            AccessibleName = "Centered user mod count divider",
+            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 3,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor
+        };
+        countDivider.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
+        countDivider.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        var countLineLeft = new Panel
+        {
+            AccessibleName = "User mods count left divider",
+            Dock = DockStyle.Fill, BackColor = Color.DimGray,
+            Margin = new Padding(0, 15, 6, 16)
+        };
+        var countLineRight = new Panel
+        {
+            AccessibleName = "User mods count right divider",
+            Dock = DockStyle.Fill, BackColor = Color.DimGray,
+            Margin = new Padding(6, 15, 0, 16)
+        };
         userDoomModCount = new Label
         {
             AccessibleName = "Detected user mod count",
             Text = FormatDetectedUserMods(0),
-            Dock = DockStyle.Right, Width = 99, AutoSize = false,
+            Dock = DockStyle.Fill, AutoSize = false,
             ForeColor = Color.Silver, BackColor = PanelColor,
-            TextAlign = ContentAlignment.MiddleRight,
+            TextAlign = ContentAlignment.MiddleCenter,
             Margin = Padding.Empty
         };
-        userHeaderDivider.Controls.Add(userDoomModCount);
-        userHeaderDivider.Paint += (_, e) =>
-        {
-            using var line = new Pen(Color.DimGray);
-            var middle = userHeaderDivider.ClientSize.Height / 2;
-            var lineEnd = userHeaderDivider.ClientSize.Width
-                - (userDoomModCount?.Width ?? 0) - 7;
-            if (lineEnd > 0)
-                e.Graphics.DrawLine(line, 0, middle, lineEnd, middle);
-        };
+        countDivider.Controls.Add(countLineLeft, 0, 0);
+        countDivider.Controls.Add(userDoomModCount, 1, 0);
+        countDivider.Controls.Add(countLineRight, 2, 0);
+        userHeaderDivider.Controls.Add(countDivider);
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
         {
