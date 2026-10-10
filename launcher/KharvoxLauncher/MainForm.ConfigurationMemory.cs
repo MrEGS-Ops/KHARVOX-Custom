@@ -483,20 +483,21 @@ public sealed partial class MainForm
             if (ratingBar?.Parent != vr
                 || ratingBar.AccessibleName != "VR Mods configuration rating header"
                 || ratingButtons.Any(button => button is null)
-                || ratingButtons[0]!.Text != "?"
-                || ratingButtons[1]!.Text != "✓"
-                || ratingButtons[2]!.Text != "✕"
+                || ratingButtons[0]!.AccessibleDescription != "?"
+                || ratingButtons[1]!.AccessibleDescription != "✓"
+                || ratingButtons[2]!.AccessibleDescription != "✕"
+                || ratingButtons.Any(button => button!.Text.Length != 0
+                    || button.FlatAppearance.BorderSize != 0)
                 || ratingButtons.Any(button => Descendants(main).Contains(button!))
                 || ratingButtons.Any(button => !Descendants(ratingBar).Contains(button!)))
                 throw new InvalidDataException(
                     "Three rating symbols must be in VR MODS, not the launcher or footer.");
-            var ratingLayout = ratingBar.Controls.OfType<TableLayoutPanel>().Single();
-            if (ratingLayout.ColumnCount != 4 || ratingButtons.Any(button =>
-                    ratingLayout.GetColumn(button!) < 1)
-                || ratingLayout.Controls.OfType<Panel>().All(panel =>
-                    panel.AccessibleName != "VR Mods rating header divider"))
+            var ratingDivider = ratingBar.Controls.OfType<Panel>()
+                .SingleOrDefault(panel =>
+                    panel.AccessibleName == "VR Mods rating header divider");
+            if (ratingDivider is null || ratingBar.Controls.OfType<Button>().Count() != 3)
                 throw new InvalidDataException(
-                    "Rating controls or divider missing from VR MODS heading.");
+                    "Minimal rating controls or thin divider missing from VR MODS heading.");
 
             // The Windows Forms layout must be realized to catch rows that
             // look correct in source but render empty at runtime.
@@ -512,11 +513,16 @@ public sealed partial class MainForm
             if (!ratingBar.Visible || ratingBar.Top > 7
                 || ratingBar.Left < 75 || ratingBar.Right > vr.ClientSize.Width
                 || ratingBar.Height < 21
+                || ratingDivider.Height != 1 || ratingDivider.Top != 10
+                || ratingDivider.Left != 0
+                || ratingDivider.Right >= ratingButtons[0]!.Left
                 || ratingButtons.Any(button => !button!.Visible
-                    || button.Width < 16 || button.Height < 18
+                    || button.Width != 24 || button.Height != 22
+                    || button.FlatAppearance.BorderSize != 0
                     || string.IsNullOrEmpty(main.statusToolTip.GetToolTip(button)))
                 || ratingButtons[0]!.Left >= ratingButtons[1]!.Left
-                || ratingButtons[1]!.Left >= ratingButtons[2]!.Left)
+                || ratingButtons[1]!.Left >= ratingButtons[2]!.Left
+                || ratingButtons[2]!.Right > ratingBar.ClientSize.Width)
                 throw new InvalidDataException(
                     "Rating buttons are clipped, misaligned or lack tooltips.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
