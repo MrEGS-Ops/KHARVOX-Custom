@@ -584,9 +584,33 @@ public sealed partial class MainForm
                 .SingleOrDefault(panel =>
                     panel.AccessibleName == "User mods header divider");
             var countLabel = main.userDoomModCount;
-            if (divider is null || countLabel?.Parent != divider
+            var countDivider = divider?.Controls.OfType<TableLayoutPanel>()
+                .SingleOrDefault(layout =>
+                    layout.AccessibleName == "Centered user mod count divider");
+            var leftLine = countDivider?.Controls.OfType<Panel>()
+                .SingleOrDefault(panel =>
+                    panel.AccessibleName == "User mods count left divider");
+            var rightLine = countDivider?.Controls.OfType<Panel>()
+                .SingleOrDefault(panel =>
+                    panel.AccessibleName == "User mods count right divider");
+            countDivider?.PerformLayout();
+            if (divider is null || countDivider is null || countLabel is null
+                || countLabel.Parent != countDivider
                 || countLabel.AccessibleName != "Detected user mod count"
-                || countLabel.Dock != DockStyle.Right || countLabel.Width < 80
+                || countLabel.Dock != DockStyle.Fill
+                || countLabel.TextAlign != ContentAlignment.MiddleCenter
+                || countDivider.ColumnCount != 3
+                || countDivider.GetColumn(countLabel) != 1
+                || countLabel.Width < 80
+                || leftLine is null || rightLine is null
+                || countDivider.GetColumn(leftLine) != 0
+                || countDivider.GetColumn(rightLine) != 2
+                || leftLine.BackColor != Color.DimGray
+                || rightLine.BackColor != Color.DimGray
+                || leftLine.Right > countLabel.Left
+                || rightLine.Left < countLabel.Right
+                || Math.Abs(countLabel.Left + countLabel.Width / 2
+                    - countDivider.ClientSize.Width / 2) > 2
                 || FormatDetectedUserMods(17) != "17 detected"
                 || FormatDetectedUserMods(0) != "0 detected"
                 || !countLabel.Text.EndsWith(" detected",
@@ -594,7 +618,7 @@ public sealed partial class MainForm
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
                     label.Text.Contains("mod(s) detected.")))
                 throw new InvalidDataException(
-                    "Detected count must appear in USER MODS header, not on a separate list row.");
+                    "Detected count must be centred between two header divider lines.");
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
