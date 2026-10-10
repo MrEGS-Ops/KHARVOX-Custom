@@ -832,15 +832,15 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         statusToolTip.SetToolTip(nexusModsLink,
-            "Open Nexus Mods in a browser popup matching the Custom Mods window.");
+            "Open Nexus Mods in a new window of your default browser.");
         nexusModsLink.LinkClicked += async (_, _) =>
         {
             if (!nexusModsLink.Enabled) return;
             var originalText = nexusModsLink.Text;
             try
             {
-                // Provide immediate feedback even if the browser is slow or
-                // Windows relays the request to an existing Edge process.
+                // Provide immediate feedback while Windows opens a new
+                // window of the user's own default browser.
                 nexusModsLink.Enabled = false;
                 nexusModsLink.Text = "Opening Nexus Mods…";
                 nexusModsLink.LinkArea = new LinkArea(0, nexusModsLink.Text.Length);
@@ -849,10 +849,7 @@ public sealed partial class MainForm : Form
                     throw new InvalidOperationException("Custom Mods window is unavailable.");
                 var windowBounds = dialog.WindowState == FormWindowState.Normal
                     ? dialog.Bounds : dialog.RestoreBounds;
-                var edgePopup = await NexusModsPopup.OpenAsync(windowBounds);
-                if (!edgePopup)
-                    statusToolTip.SetToolTip(nexusModsLink,
-                        "Edge popup wasn't available; Nexus Mods opened in your default browser.");
+                await NexusModsPopup.OpenAsync(windowBounds);
             }
             catch (Exception error)
             {
