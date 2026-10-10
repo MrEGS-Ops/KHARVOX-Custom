@@ -376,7 +376,7 @@ public sealed partial class MainForm
                 || !Descendants(modListPanel).OfType<Button>().Any(button =>
                     button.AccessibleName == "Rescan mods")
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
-                    label.Text.Contains("PLANNED MODS", StringComparison.OrdinalIgnoreCase)))
+                    label.Text.IndexOf("PLANNED MODS", StringComparison.OrdinalIgnoreCase) >= 0))
                 throw new InvalidDataException("DOOM mod controls/layout regressed.");
 
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
