@@ -107,7 +107,7 @@ public sealed partial class MainForm
                 .SequenceEqual(defaultModIds);
         };
         foreach (Control target in new Control[] {
-            slot.Panel, slot.Number, slot.Grip, slot.Status, slot.Dependency })
+            slot.Panel, slot.Number, slot.Grip, slot.Dependency })
             target.ContextMenuStrip = menu;
     }
 
@@ -124,24 +124,28 @@ public sealed partial class MainForm
             "Not yet fully validated in the current game build.", Color.Khaki)
     };
 
-    private void SetModDevelopmentStatus(ModOrderSlot slot, ModOrderRow item)
-    {
-        var state = DevelopmentState(item.Id);
-        slot.Status.Text = state.Symbol;
-        slot.Status.ForeColor = state.Color;
-        slot.Status.AccessibleName = item.Caption + ": " + state.State;
-        statusToolTip.SetToolTip(slot.Status,
-            item.Caption + " — " + state.State + Environment.NewLine + state.Detail);
-    }
-
     private void PopulateDependencyLinks(ModOrderSlot slot, ModOrderRow item,
         string dependencies, IReadOnlyDictionary<CheckBox, int> numbers)
     {
         var label = slot.Dependency;
         label.Links.Clear();
-        label.Text = dependencies.TrimStart(' ', '—');
-        label.AccessibleName = item.Caption + " dependencies";
+        // Single-line compact references preserve each clickable #number;
+        // complete Requires/Disables wording stays available on hover.
+        var compact = dependencies.TrimStart(' ', '—')
+            .Replace("Requires ", "R ")
+            .Replace("Disables ", "D ")
+            .Replace("disables ", "D ")
+            .Replace("; ", "  ")
+            .Replace(", ", ",");
+        label.Text = compact;
+        label.AccessibleName = item.Caption + " — " + dependencies.TrimStart(' ', '—');
         label.Visible = label.Text.Length != 0;
+        var measured = TextRenderer.MeasureText(label.Text, label.Font,
+            Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPadding).Width;
+        // Keep the name readable: limit the occupied width and use
+        // ellipsis + tooltip for unusually long dependency descriptions.
+        slot.Panel.ColumnStyles[2].Width = label.Visible
+            ? Math.Min(133, measured + 6) : 0;
         if (!label.Visible) return;
         foreach (Match match in Regex.Matches(label.Text, @"#(\d+)"))
         {
@@ -152,8 +156,9 @@ public sealed partial class MainForm
             label.Links.Add(match.Index, match.Length, modOrderRows[position - 1].Box);
         }
         statusToolTip.SetToolTip(label,
-            "Click a blue mod number to locate and highlight that mod. "
-            + item.Tip + Environment.NewLine + label.Text);
+            "R = Requires; D = Disables. Click a blue #number to highlight that mod."
+            + Environment.NewLine + dependencies.TrimStart(' ', '—')
+            + Environment.NewLine + item.Tip);
     }
 
     private void NavigateModDependency(object? target)
@@ -216,7 +221,6 @@ public sealed partial class MainForm
                 ? Color.FromArgb(40, 74, 106) : PanelColor;
             slot.Panel.BackColor = background;
             slot.Number.BackColor = background;
-            slot.Status.BackColor = background;
             slot.Dependency.BackColor = background;
             if (slot.Panel.Controls.OfType<CheckBox>().FirstOrDefault() is { } check)
                 check.BackColor = background;
