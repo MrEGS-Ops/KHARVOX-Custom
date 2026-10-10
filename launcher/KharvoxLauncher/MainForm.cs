@@ -549,6 +549,7 @@ public sealed partial class MainForm : Form
             using (var installerDialog = new DoomModLoaderInstallDialog())
                 installerDialog.ShowDialog(customOptionsForm);
             refreshLoaderStatus();
+            RefreshUserDoomMods();
         };
         var loaderRow = new TableLayoutPanel
         {
@@ -1700,7 +1701,10 @@ public sealed partial class MainForm : Form
                 ? countMissing + " selected mod(s) missing. Uncheck or restore them before launching."
                 : detected.Count == 0
                     ? "No mods found. Add ZIPs or unpacked folders to KHARVOX/mods/doom/user."
-                    : detected.Count + " mod(s) detected. Checked mods apply on the next launch.";
+                    : DoomModLoaderInstaller.CheckInstallation().State
+                        != DoomModLoaderInstaller.InstallationState.Verified
+                        ? detected.Count + " mod(s) detected. Install DOOMModLoader to use them."
+                        : detected.Count + " mod(s) detected. Checked mods apply on the next launch.";
         }
         catch (Exception error)
         {
@@ -1717,7 +1721,9 @@ public sealed partial class MainForm : Form
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
         // line per discovered resource. Use available desktop height first.
-        var preferredHeight = Math.Max(550, 125 + Math.Max(0, userModCount) * 26);
+        // Leave room for each full checkbox row and the installer/status controls;
+        // compact spacing must not clip the bottom of a long mod list.
+        var preferredHeight = Math.Max(565, 170 + Math.Max(0, userModCount) * 27);
         var height = Math.Min(preferredHeight, maxClientHeight);
         var width = Math.Min(930, Math.Max(620, work.Width - 45));
         customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
