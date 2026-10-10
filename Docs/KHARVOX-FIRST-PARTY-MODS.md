@@ -8,9 +8,9 @@ Status: **development / opt-in**. No game assets or third-party Nexus mod files 
 | --- | --- | --- |
 | Aggressive Demons | Independently patch original aiGlobalSettings numeric fields | Baseline generator and synthetic test |
 | Enhanced Gibs | Independently patch original 8-gauge goreBehavior numeric fields | Baseline generator and synthetic test |
-| Immersion Controls | Investigate original highlights, materials and FX; separate pickup glow and outlines | Research; no placeholder checkbox |
+| Immersion Controls | Scan original resource index for candidate highlight, pickup and FX declarations | Read-only inventory and synthetic test; no runtime edits |
 | Skip Intro | Existing launcher option +com_skipIntroVideo 1 | Already passed; needs actual startup-video verification |
-| KHARVOX Visual Enhancements | VR-specific shaders across SFS/AER | Design pending stereo and performance profiling |
+| KHARVOX Visual Enhancements | Stereo-consistent linear colour policy | C++ reference policy and local unit tests; not yet connected to Vulkan |
 | Directional Dash | Native KHARVOX gameplay | Existing experimental track; not recreated here |
 
 Generator source: tools/Generate-KHARVOX-Mods.py. It reads original resources from the user's own *unmodified* DOOM installation. It can also accept declarations exported by the user. It does not use third-party mod data and does not write into the game directory.
@@ -52,9 +52,26 @@ Only existing numeric fields are altered. The generator retains the rest of the 
 
 Do not repackage 82 third-party material/FX files. Extract original assets from the user's installed game and determine a small, independent whitelist of specific highlight toggles. Preserve essential interaction cues, document supported fields and add field-level tests.
 
+## Immersion resource inventory
+
+The read-only inventory script tools/Probe-KHARVOX-Immersion.py lists material/FX resource candidates from the user's original game index:
+
+    python tools/Probe-KHARVOX-Immersion.py --game-dir "<DOOM install>"
+
+The tool makes no game or mod ZIP changes. We still need to verify which material
+fields control desired effects before generating a safe independently developed mod.
+
 ## KHARVOX Visual Enhancements
 
-Keep VR rendering changes in KHARVOX, not in a ReShade OpenGL injector. Prototype colour, contrast and light sharpening without screen-space depth dependence. Test both eyes in SFS/AER and budget GPU time. No unverified fisheye or monocular effects; disabled by default.
+The first C++ reference policy is src/visual/VisualTonePolicy.h. Its tests
+cover neutral identity, exposure, saturation, clamping, invalid numeric inputs
+and matching output between identical left/right-eye inputs. It is pure CPU
+math, not a rendered feature yet. GPU implementation needs a validated
+colour-space contract and a real Vulkan per-eye shader pass.
+
+Keep VR rendering changes in KHARVOX, not in a ReShade OpenGL injector.
+Test both eyes in SFS/AER and budget GPU time. No unverified fisheye or
+monocular effects; disabled by default.
 
 ## Copyright and scope
 
