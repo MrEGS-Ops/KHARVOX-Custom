@@ -540,10 +540,13 @@ public sealed partial class MainForm
                     "Rating buttons are clipped, misaligned or lack tooltips.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
             doomGrid.PerformLayout();
-            if (doomGrid.RowCount != 4
+            if (doomGrid.RowCount != 5
                 || doomGrid.RowStyles[2].SizeType != SizeType.Absolute
-                || doomGrid.RowStyles[2].Height != 32)
-                throw new InvalidDataException("DOOM mod toolbar row isn't fixed-height.");
+                || doomGrid.RowStyles[2].Height != 32
+                || doomGrid.RowStyles[4].SizeType != SizeType.Absolute
+                || doomGrid.RowStyles[4].Height != 27)
+                throw new InvalidDataException(
+                    "DOOM toolbar and bottom Nexus Mods link rows are not fixed-height.");
             var loaderRow = doomGrid.GetControlFromPosition(0, 0)
                 as TableLayoutPanel;
             if (loaderRow is null || loaderRow.ColumnCount != 2)
@@ -654,6 +657,22 @@ public sealed partial class MainForm
                 || installer.Left + loaderRow.Left != folder.Left + userHeader.Left)
                 throw new InvalidDataException(
                     "DML install and Mod Folder button alignment regressed.");
+
+            var nexusLink = doomGrid.Controls.OfType<LinkLabel>()
+                .SingleOrDefault(label => doomGrid.GetRow(label) == 4);
+            if (nexusLink is null || nexusLink.Parent != doomGrid
+                || !nexusLink.Visible || nexusLink.Height < 18
+                || nexusLink.AccessibleName != "Browse DOOM mods on Nexus Mods"
+                || nexusLink.AccessibleDescription
+                    != "https://www.nexusmods.com/games/doom/mods"
+                || nexusLink.LinkArea.Start != 0
+                || nexusLink.LinkArea.Length != nexusLink.Text.Length
+                || nexusLink.LinkBehavior != LinkBehavior.HoverUnderline
+                || nexusLink.Bottom > doomGrid.ClientSize.Height
+                || nexusLink.Top < modListPanel.Bottom
+                || nexusLink.LinkColor != Color.LightSkyBlue)
+                throw new InvalidDataException(
+                    "Nexus Mods hyperlink must remain clickable at the bottom of DOOM MODS.");
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
         }
