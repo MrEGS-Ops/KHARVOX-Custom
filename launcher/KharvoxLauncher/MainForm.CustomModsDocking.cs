@@ -107,8 +107,10 @@ public sealed partial class MainForm
             // First reposition the launcher if the sidecar would be offscreen,
             // then attach the sidecar to its actual left border.
             if (Bounds != target.Launcher) Bounds = target.Launcher;
+            // Preserve the pre-existing user-resize minimum: this change
+            // only makes 730px the DEFAULT, not a new narrower limit.
             mods.MinimumSize = new Size(
-                Math.Min(540, target.Mods.Width), Math.Min(400, target.Mods.Height));
+                Math.Min(730, target.Mods.Width), Math.Min(530, target.Mods.Height));
             mods.MaximumSize = Size.Empty;
             if (mods.Bounds != target.Mods) mods.Bounds = target.Mods;
         }
