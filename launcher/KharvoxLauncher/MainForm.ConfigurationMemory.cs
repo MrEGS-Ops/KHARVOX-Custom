@@ -668,21 +668,29 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "DML install and Mod Folder button alignment regressed.");
 
-            // Browser popup must use the Custom Mods window's OUTER bounds,
-            // including its location on a second or negative-coordinate
-            // monitor. No external browser is launched during this test.
-            if (!NexusModsPopup.TestPopupArguments())
+            // Test both Firefox and Chromium-family Windows default browsers.
+            // The link must request a new window, NOT a new tab and NOT a
+            // hardwired Edge app-mode launch, with no actual browser on CI.
+            if (!NexusModsPopup.TestDefaultBrowserArguments())
                 throw new InvalidDataException(
-                    "Nexus browser popup must match Custom Mods position and size.");
-            var popupArgs = NexusModsPopup.MakePopupStartInfo(window.Bounds).Arguments;
-            if (!popupArgs.Contains("--window-position="
+                    "Default-browser new-window command generation regressed.");
+            var firefoxCommand = NexusModsPopup.MakeDefaultBrowserStartInfo(
+                @"C:\Program Files\Mozilla Firefox\firefox.exe", window.Bounds);
+            var chromeCommand = NexusModsPopup.MakeDefaultBrowserStartInfo(
+                @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                window.Bounds);
+            if (!firefoxCommand.Arguments.Contains("--new-window")
+                || !chromeCommand.Arguments.Contains("--new-window")
+                || chromeCommand.Arguments.Contains("--new-tab")
+                || firefoxCommand.Arguments.Contains("--new-tab")
+                || !chromeCommand.Arguments.Contains("--window-position="
                     + window.Left.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + "," + window.Top.ToString(System.Globalization.CultureInfo.InvariantCulture))
-                || !popupArgs.Contains("--window-size="
+                || !chromeCommand.Arguments.Contains("--window-size="
                     + window.Width.ToString(System.Globalization.CultureInfo.InvariantCulture)
                     + "," + window.Height.ToString(System.Globalization.CultureInfo.InvariantCulture)))
                 throw new InvalidDataException(
-                    "Nexus popup geometry doesn't match the displayed Custom Mods window.");
+                    "Nexus new-window commands must match the displayed Custom Mods bounds.");
 
             var nexusLink = doomGrid.Controls.OfType<LinkLabel>()
                 .SingleOrDefault(label => doomGrid.GetRow(label) == 4);
