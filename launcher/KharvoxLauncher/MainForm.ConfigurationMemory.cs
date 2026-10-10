@@ -357,6 +357,10 @@ public sealed partial class MainForm
         try
         {
             using var main = new MainForm(path);
+            using var installPreview = new DoomModLoaderInstallDialog();
+            if (!installPreview.PromptMatchesAction)
+                throw new InvalidDataException(
+                    "DOOMModLoader instruction does not match its button caption.");
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
             if (window.ClientSize.Width > 780)
