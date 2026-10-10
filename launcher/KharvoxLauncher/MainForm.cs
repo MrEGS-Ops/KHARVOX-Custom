@@ -109,6 +109,7 @@ public sealed partial class MainForm : Form
     private FlowLayoutPanel? userDoomModChecks;
     private FlowLayoutPanel? packagedDoomModChecks;
     private Action? refreshDoomModLoaderStatus;
+    private const string DoomNexusModsUrl = "https://www.nexusmods.com/games/doom/mods";
     private Label? packagedDoomModHeader;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
@@ -486,16 +487,17 @@ public sealed partial class MainForm : Form
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
         {
-            // Keep the loader, packaged mods, USER MODS toolbar and user list
-            // in separate rows. Nested docked tables in a TopDown FlowLayoutPanel
-            // were collapsing the toolbar's content on real Windows displays.
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4,
+            // Keep loader, packaged mods, USER MODS controls and list in
+            // separate rows; pin the external browse link at the very bottom
+            // so it never becomes part of the scanned/scrolling mod list.
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
             Padding = new Padding(12, 2, 12, 2), BackColor = PanelColor
         };
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
         var loaderStatusLabel = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Gainsboro,
@@ -802,6 +804,43 @@ public sealed partial class MainForm : Form
         };
 
         doomGrid.Controls.Add(doomModItems, 0, 3);
+
+        // Low-key discovery link only; external content is not installed or
+        // automatically selected, and the link stays usable without DML.
+        var nexusModsLink = new LinkLabel
+        {
+            AccessibleName = "Browse DOOM mods on Nexus Mods",
+            AccessibleDescription = DoomNexusModsUrl,
+            Text = "Browse DOOM mods on Nexus Mods",
+            Font = new Font(Font.FontFamily, 8.5f, FontStyle.Regular),
+            LinkColor = Color.LightSkyBlue,
+            ActiveLinkColor = Color.White,
+            VisitedLinkColor = Color.LightSkyBlue,
+            LinkBehavior = LinkBehavior.HoverUnderline,
+            LinkArea = new LinkArea(0, "Browse DOOM mods on Nexus Mods".Length),
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(3, 1, 3, 2),
+            BackColor = PanelColor
+        };
+        statusToolTip.SetToolTip(nexusModsLink,
+            "Browse community DOOM (2016) mods in your web browser.");
+        nexusModsLink.LinkClicked += (_, _) =>
+        {
+            try
+            {
+                using var process = System.Diagnostics.Process.Start(
+                    new System.Diagnostics.ProcessStartInfo(DoomNexusModsUrl)
+                    { UseShellExecute = true });
+            }
+            catch (Exception error)
+            {
+                MessageBox.Show(customOptionsForm,
+                    "Could not open Nexus Mods: " + error.Message,
+                    "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        doomGrid.Controls.Add(nexusModsLink, 0, 4);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
