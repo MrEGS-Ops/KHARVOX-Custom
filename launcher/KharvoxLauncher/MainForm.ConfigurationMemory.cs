@@ -386,6 +386,36 @@ public sealed partial class MainForm
                 || dock.Launcher.X != 990)
                 throw new InvalidDataException(
                     "Docked Custom Mods must touch launcher and match its height.");
+            // Windows includes ~7-9px invisible resize borders in each
+            // window's Bounds. The old zero-overlap calculation left a
+            // conspicuous strip of desktop between their VISIBLE frames.
+            // Assert the DWM inset compensation removes it without resizing
+            // either window or breaking movement near the desktop edge.
+            var overlap = CalculateVisibleSeamOverlap(8, 9);
+            if (overlap != 17
+                || CalculateVisibleSeamOverlap(-5, 7) != 7
+                || CalculateVisibleSeamOverlap(80, 80) != 48)
+                throw new InvalidDataException(
+                    "DWM visible-frame seam overlap must be bounded and additive.");
+            var snapped = CalculateCustomModsDock(
+                new Rectangle(990, 57, 515, 910), window.Width, desktop, overlap);
+            if (snapped.Mods.Right - snapped.Launcher.Left != overlap
+                || snapped.Mods.Width != window.Width
+                || snapped.Mods.Top != snapped.Launcher.Top
+                || snapped.Mods.Bottom != snapped.Launcher.Bottom
+                || snapped.Launcher.Width != 515
+                // Derive visible-frame positions from the two insets:
+                || (snapped.Mods.Right - 8) != (snapped.Launcher.Left + 9))
+                throw new InvalidDataException(
+                    "DWM window frames must visibly touch with no desktop gap.");
+            var edgeSnapped = CalculateCustomModsDock(
+                new Rectangle(10, 20, 515, 860), window.Width, desktop, overlap);
+            if (edgeSnapped.Mods.Left < desktop.Left
+                || edgeSnapped.Mods.Right - edgeSnapped.Launcher.Left != overlap
+                || edgeSnapped.Mods.Bottom != edgeSnapped.Launcher.Bottom)
+                throw new InvalidDataException(
+                    "Invisible-border overlap must survive left screen-edge docking.");
+
             var cramped = CalculateCustomModsDock(
                 new Rectangle(10, 20, 515, 860), window.Width, desktop);
             if (cramped.Mods.Right != cramped.Launcher.Left
