@@ -334,6 +334,9 @@ internal sealed class DoomModLoaderInstallDialog : Form
     {
         var repairing = DoomModLoaderInstaller.CheckInstallation().State
             == DoomModLoaderInstaller.InstallationState.RepairRequired;
+        // One source for both the visible instruction and the action button.
+        // WinForms treats a single '&' as a mnemonic unless it is escaped.
+        var actionText = repairing ? "Repair Installation" : "Download & Install";
         Text = repairing ? "KHARVOX — Repair DOOMModLoader"
             : "KHARVOX — Install DOOMModLoader";
         ClientSize = new Size(520, 230);
@@ -371,9 +374,12 @@ internal sealed class DoomModLoaderInstallDialog : Form
         statusLabel = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = repairing
-                ? "A damaged or outdated installation was detected. Repair will re-download and verify it."
-                : "No download will begin until you select Download & Install.",
+            Text = "Select " + actionText + " to " +
+                (repairing ? "re-download and verify DOOMModLoader."
+                           : "download and install DOOMModLoader."),
+            // Labels interpret '&' as a mnemonic by default, which previously
+            // removed it from "Download & Install" in this instruction.
+            UseMnemonic = false,
             AutoEllipsis = true
         };
         layout.Controls.Add(statusLabel, 0, 1);
@@ -388,7 +394,7 @@ internal sealed class DoomModLoaderInstallDialog : Form
         };
         actionButton = new Button
         {
-            Text = repairing ? "Repair Installation" : "Download && Install",
+            Text = actionText.Replace("&", "&&"),
             AutoSize = true,
             BackColor = Color.FromArgb(55, 55, 59),
             ForeColor = Color.White,
@@ -427,6 +433,12 @@ internal sealed class DoomModLoaderInstallDialog : Form
         layout.Controls.Add(credit, 0, 4);
         Controls.Add(layout);
     }
+
+    // Kept simple for the Windows CI UI smoke test. It verifies the actual
+    // visible button caption, not the escaped WinForms source string.
+    internal bool PromptMatchesAction =>
+        !statusLabel.UseMnemonic &&
+        statusLabel.Text.Contains(actionButton.Text.Replace("&&", "&"));
 
     private async void ActionClicked(object? sender, EventArgs e)
     {
