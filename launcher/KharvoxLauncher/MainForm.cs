@@ -109,7 +109,7 @@ public sealed partial class MainForm : Form
     private FlowLayoutPanel? userDoomModChecks;
     private FlowLayoutPanel? packagedDoomModChecks;
     private Action? refreshDoomModLoaderStatus;
-    private const string DoomNexusModsUrl = "https://www.nexusmods.com/games/doom/mods";
+    private const string DoomNexusModsUrl = NexusModsPopup.PageUrl;
     private Label? packagedDoomModHeader;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
@@ -646,7 +646,8 @@ public sealed partial class MainForm : Form
         var userHeaderDivider = new Panel
         {
             Dock = DockStyle.Fill,
-            Margin = new Padding(5, 0, 6, 0),
+            Margin = Padding.Empty,
+            Padding = Padding.Empty,
             BackColor = PanelColor,
             AccessibleName = "User mods header divider"
         };
@@ -677,7 +678,7 @@ public sealed partial class MainForm : Form
                 TextFormatFlags.NoPadding | TextFormatFlags.SingleLine);
             // Text uses only as much width as it actually needs. Give the
             // remaining width equally to the lines on either side.
-            var labelWidth = Math.Min(Math.Max(0, width - 10), measured.Width + 4);
+            var labelWidth = Math.Min(Math.Max(0, width - 20), measured.Width + 2);
             userDoomModCount.SetBounds((width - labelWidth) / 2, 0,
                 labelWidth, userHeaderDivider.ClientSize.Height);
             userHeaderDivider.Invalidate();
@@ -688,15 +689,15 @@ public sealed partial class MainForm : Form
         {
             // A real, single-pixel drawn line has no panel margins to
             // collapse when DPI, fonts or the dialog width change.
-            var leftEnd = userDoomModCount.Left - 4;
-            var rightStart = userDoomModCount.Right + 4;
+            var leftEnd = userDoomModCount.Left - 6;
+            var rightStart = userDoomModCount.Right + 6;
             var y = userHeaderDivider.ClientSize.Height / 2;
             using var stroke = new Pen(Color.DimGray, 1f);
-            if (leftEnd > 2)
-                e.Graphics.DrawLine(stroke, 2, y, leftEnd, y);
-            if (rightStart < userHeaderDivider.ClientSize.Width - 2)
+            if (leftEnd > 0)
+                e.Graphics.DrawLine(stroke, 0, y, leftEnd, y);
+            if (rightStart < userHeaderDivider.ClientSize.Width)
                 e.Graphics.DrawLine(stroke, rightStart, y,
-                    userHeaderDivider.ClientSize.Width - 2, y);
+                    userHeaderDivider.ClientSize.Width, y);
         };
         FitDetectedCount();
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
@@ -824,14 +825,17 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         statusToolTip.SetToolTip(nexusModsLink,
-            "Browse community DOOM (2016) mods in your web browser.");
+            "Open Nexus Mods in a browser popup matching the Custom Mods window.");
         nexusModsLink.LinkClicked += (_, _) =>
         {
             try
             {
-                using var process = System.Diagnostics.Process.Start(
-                    new System.Diagnostics.ProcessStartInfo(DoomNexusModsUrl)
-                    { UseShellExecute = true });
+                var dialog = customOptionsForm;
+                if (dialog is null || dialog.IsDisposed)
+                    throw new InvalidOperationException("Custom Mods window is unavailable.");
+                var windowBounds = dialog.WindowState == FormWindowState.Normal
+                    ? dialog.Bounds : dialog.RestoreBounds;
+                NexusModsPopup.Open(windowBounds);
             }
             catch (Exception error)
             {
