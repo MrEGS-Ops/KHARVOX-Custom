@@ -205,12 +205,25 @@ public sealed partial class MainForm
     private void SetDropIndicator(int targetIndex)
     {
         if (highlightedDropSlot == targetIndex) return;
-        var old = highlightedDropSlot;
+        var previous = highlightedDropSlot;
         highlightedDropSlot = targetIndex;
-        if (old >= 0 && old < modOrderSlots.Count)
-            modOrderSlots[old].Panel.Invalidate();
-        if (targetIndex >= 0 && targetIndex < modOrderSlots.Count)
-            modOrderSlots[targetIndex].Panel.Invalidate();
+        void Redraw(int index)
+        {
+            if (index < 0 || index >= modOrderSlots.Count) return;
+            var slot = modOrderSlots[index];
+            var active = index == highlightedDropSlot;
+            var background = active
+                ? Color.FromArgb(40, 74, 106) : PanelColor;
+            slot.Panel.BackColor = background;
+            slot.Number.BackColor = background;
+            slot.Status.BackColor = background;
+            slot.Dependency.BackColor = background;
+            if (slot.Panel.Controls.OfType<CheckBox>().FirstOrDefault() is { } check)
+                check.BackColor = background;
+            slot.Panel.Invalidate();
+        }
+        Redraw(previous);
+        Redraw(targetIndex);
     }
 
     private void DrawModDropIndicator(ModOrderSlot slot, PaintEventArgs e)
