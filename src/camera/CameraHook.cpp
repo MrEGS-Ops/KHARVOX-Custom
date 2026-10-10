@@ -3068,6 +3068,8 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
     static std::atomic<bool> normalFlagsValid{};
     static std::atomic<std::uint32_t> chargeOnlyMask{};
     static std::atomic<bool> previouslyActive{};
+    static std::atomic<std::uint32_t> candidateMask{};
+    static std::atomic<unsigned> candidateStableFrames{};
 
     const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
     if (!playerControlClassifierSupported.load(std::memory_order_acquire)
@@ -3075,6 +3077,8 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
         normalFlagsValid.store(false, std::memory_order_release);
         chargeOnlyMask.store(0, std::memory_order_release);
         previouslyActive.store(false, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
         return;
     }
 
@@ -3091,6 +3095,8 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
         normalFlags.store(current, std::memory_order_release);
         normalFlagsValid.store(true, std::memory_order_release);
         chargeOnlyMask.store(0, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
         if (previouslyActive.exchange(false, std::memory_order_acq_rel))
             log("[GAUSS] slow-charge movement override released");
         return;
@@ -3102,18 +3108,35 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
     const std::uint32_t knownNonMovement =
         kharvox::playerWeaponControlInhibitMask;
     const auto discovered = (current & ~baseline) & ~knownNonMovement;
-    const auto oldMask = chargeOnlyMask.fetch_or(
-        discovered, std::memory_order_acq_rel);
-    const auto movementMask = oldMask | discovered;
-    if (discovered && (discovered & ~oldMask)) {
-        std::ostringstream out;
-        out << "[GAUSS] learned Siege charge-only inhibit mask=0x"
-            << std::hex << movementMask << " current=0x" << current
-            << " baseline=0x" << baseline;
-        log(out.str());
+    // This RVA is reverse-engineered. Never remove arbitrary newly-seen bits:
+    // require exactly ONE repeatable Gauss-only flag over four consecutive
+    // input frames. Unconfirmed masks fail closed, leaving DOOM's native lock.
+    if (!discovered || (discovered & (discovered - 1)) != 0) {
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+        return;
     }
-    if (movementMask && !clearInterlockedMaskSafely(flagsAddress, movementMask))
+    if (candidateMask.load(std::memory_order_acquire) != discovered) {
+        candidateMask.store(discovered, std::memory_order_release);
+        candidateStableFrames.store(1, std::memory_order_release);
+        return;
+    }
+    const unsigned stable = candidateStableFrames.load(std::memory_order_acquire);
+    if (stable < 4) {
+        candidateStableFrames.store(stable + 1, std::memory_order_release);
+        return;
+    }
+    const auto oldMask = chargeOnlyMask.load(std::memory_order_acquire);
+    if (oldMask && oldMask != discovered) return;
+    if (!oldMask) {
+        chargeOnlyMask.store(discovered, std::memory_order_release);
+        log("[GAUSS] stable single-bit inhibit mask candidate corroborated before clearing");
+    }
+    if (!clearInterlockedMaskSafely(flagsAddress, discovered)) {
         chargeOnlyMask.store(0, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+    }
 }
 
 bool KharvoxCameraApplyDirectionalDash(float localRight, float localForward) {
