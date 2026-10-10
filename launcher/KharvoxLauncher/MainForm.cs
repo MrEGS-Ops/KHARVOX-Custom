@@ -744,6 +744,7 @@ public sealed partial class MainForm : Form
             Image = StockUiIcons.Refresh,
             ImageAlign = ContentAlignment.MiddleCenter,
             AccessibleName = "Rescan mods",
+            AccessibleDescription = "Manually rescan USER MODS now. Usually changes are detected automatically.",
             FlatStyle = FlatStyle.Flat, ForeColor = Color.LightSkyBlue,
             BackColor = Color.FromArgb(43, 43, 47),
             Margin = new Padding(2, 1, 4, 1)
@@ -765,7 +766,8 @@ public sealed partial class MainForm : Form
             rescanUserMods.Image = rescanUserMods.Enabled
                 ? StockUiIcons.Refresh : StockUiIcons.RefreshHover;
         };
-        statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
+        statusToolTip.SetToolTip(rescanUserMods,
+            "Rescan USER MODS now, including replaced ZIP files. The list normally updates automatically.");
         rescanUserMods.Click += (_, _) =>
         {
             // A manual rescan catches ZIP replacements that preserve both
@@ -1698,6 +1700,21 @@ public sealed partial class MainForm : Form
             Padding = new Padding(0, 5, 0, 0)
         };
         closeRow.Controls.Add(closeButton);
+        // Keep credit subdued and anchored in the Custom Mods footer, just
+        // to the left of Close. Neither mod list nor window sizing is changed.
+        var customModsCredit = new Label
+        {
+            AccessibleName = "Custom Mods creator credit",
+            Text = "Made by MrEGS",
+            AutoSize = false,
+            Size = new Size(108, 28),
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.Gray,
+            BackColor = Color.Black,
+            Font = new Font(form.Font.FontFamily, 8.5f, FontStyle.Regular),
+            Margin = new Padding(0, 0, 12, 0)
+        };
+        closeRow.Controls.Add(customModsCredit);
         root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
         form.Shown += (_, _) => FitCustomOptionsToContent(
