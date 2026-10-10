@@ -71,7 +71,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
     private readonly CheckBox customBackOfHandHud = MakeCheck("Back-of-Hand HUD", false);
-    private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus + RS", false);
+    private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
     private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Weapon Wheel", false);
     private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
@@ -423,9 +423,27 @@ public sealed partial class MainForm : Form
         customRevengeDemon.Text = "Revenge Demon (Diagnostics)";
         customGaussChargeSlowMovement.Text = "Gauss Slow Movement (Experimental)";
         customDirectionalDash.Text = "Directional Dash (Experimental)";
-        // Number alphabetically, so requires/disables references are usable.
-        // This is UI-only; existing checkbox identities and dependencies stay
-        // exactly as they were.
+        // Display approved priority order, grouped by hands, legs, weapons,
+        // HUD, then demons. Keep checkbox identities, settings and behavior intact.
+        // Numbered requires/disables labels are resolved against this order.
+        var modDisplayOrder = new[]
+        {
+            weaponWheelRemap,
+            customHandFocusedRs,
+            customBackOfHandHud,
+            customBehindHeadWeaponWheel,
+            customBehindHeadWheelHandSelection,
+            customDynamicShoulderHolster,
+            customPhysicalCrouch,
+            customDirectionalDash,
+            customPhysicalGrenadeThrow,
+            customGaussChargeSlowMovement,
+            customMotionGloryKillSpeed,
+            customPhysicalChainsawGestures,
+            customDisableHud,
+            customDisableWeaponWheel,
+            customRevengeDemon
+        };
         var allCustomMods = customChecks
             .Concat(new[] { (Box: weaponWheelRemap,
                 Tip: "Remaps weapon selection for VR.\n"
@@ -437,7 +455,7 @@ public sealed partial class MainForm : Form
                     + "behind your head to open the wheel instead. A is then free "
                     + "for Directional Dash when that mod is enabled.\n"
                     + "Turn this off to restore the original KHARVOX controls.") })
-            .OrderBy(x => x.Box.Text, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(entry => Array.IndexOf(modDisplayOrder, entry.Box))
             .ToArray();
         var modNumber = allCustomMods.Select((entry, i) => (entry.Box, Number: i + 1))
             .ToDictionary(x => x.Box, x => x.Number);
