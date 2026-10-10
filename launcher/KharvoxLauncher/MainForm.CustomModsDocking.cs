@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace KharvoxLauncher;
@@ -8,6 +9,19 @@ public sealed partial class MainForm
 {
     private bool customModsDocked;
     private bool syncingCustomModsDock;
+    private bool raisingCustomModsDock;
+
+    // Both windows stay normal (never TopMost). Clicking either raises the
+    // OTHER without stealing keyboard focus from the window the user clicked.
+    // Windows only has one truly active window at a time.
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+    private const uint SwpNoActivate = 0x0010;
+    private static readonly IntPtr HwndTop = IntPtr.Zero;
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter,
+        int x, int y, int width, int height, uint flags);
 
     // Use actual outer window bounds, not ClientSize, to line up title bars,
     // bottom edges and the bordering frames with NO horizontal gap.
@@ -55,10 +69,28 @@ public sealed partial class MainForm
     {
         mods.LocationChanged += (_, _) => FollowCustomModsMovement();
         mods.SizeChanged += (_, _) => FollowCustomModsMovement();
+        mods.Activated += (_, _) => RaiseDockCompanion(this);
         mods.VisibleChanged += (_, _) =>
         {
             if (!mods.Visible) customModsDocked = false;
         };
+    }
+
+    private void RaiseDockCompanion(Form companion)
+    {
+        var mods = customOptionsForm;
+        if (!customModsDocked || raisingCustomModsDock || mods?.Visible != true
+            || !Visible || WindowState == FormWindowState.Minimized
+            || companion.IsDisposed || !companion.IsHandleCreated) return;
+        raisingCustomModsDock = true;
+        try
+        {
+            // Place the partner directly above unrelated windows but do NOT
+            // activate it, take focus from a textbox, or pin it TopMost.
+            SetWindowPos(companion.Handle, HwndTop, 0, 0, 0, 0,
+                SwpNoMove | SwpNoSize | SwpNoActivate);
+        }
+        finally { raisingCustomModsDock = false; }
     }
 
     private void PlaceCustomModsBesideLauncher()
@@ -88,6 +120,11 @@ public sealed partial class MainForm
         if (!customModsDocked || syncingCustomModsDock
             || customOptionsForm?.Visible != true) return;
         PlaceCustomModsBesideLauncher();
+    }
+
+    private void FollowLauncherMovementAndSize()
+    {
+        FollowLauncherMovement();
     }
 
     private void FollowCustomModsMovement()
