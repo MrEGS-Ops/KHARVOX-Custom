@@ -699,6 +699,35 @@ public sealed partial class MainForm
                 || nexusLink.LinkColor != Color.LightSkyBlue)
                 throw new InvalidDataException(
                     "Nexus Mods hyperlink must remain clickable at the bottom of DOOM MODS.");
+            // Previous tests only checked that a LinkLabel existed: the user
+            // could click it without a browser appearing. Fire the real
+            // LinkClicked event with the browser launch intercepted, and
+            // verify it requests this displayed form's actual outer bounds.
+            Rectangle? clickedBounds = null;
+            NexusModsPopup.TestOpenRequested = bounds => clickedBounds = bounds;
+            try
+            {
+                var clickMethod = typeof(LinkLabel).GetMethod("OnLinkClicked",
+                    System.Reflection.BindingFlags.Instance
+                    | System.Reflection.BindingFlags.NonPublic)
+                    ?? throw new InvalidDataException("LinkLabel click dispatch unavailable.");
+                if (nexusLink.Links.Count != 1)
+                    throw new InvalidDataException("Nexus link hit area is missing.");
+                clickMethod.Invoke(nexusLink, new object[]
+                {
+                    new LinkLabelLinkClickedEventArgs(nexusLink.Links[0])
+                });
+                Application.DoEvents();
+                if (clickedBounds != window.Bounds
+                    || nexusLink.Text != "Browse DOOM mods on Nexus Mods"
+                    || !nexusLink.Enabled)
+                    throw new InvalidDataException(
+                        "Clicking Nexus Mods must actually dispatch the popup launch.");
+            }
+            finally
+            {
+                NexusModsPopup.TestOpenRequested = null;
+            }
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
         }
