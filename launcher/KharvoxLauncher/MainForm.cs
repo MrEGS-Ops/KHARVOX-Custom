@@ -704,18 +704,34 @@ public sealed partial class MainForm : Form
         rescanUserMods.EnabledChanged += (_, _) => rescanUserMods.Invalidate();
         rescanUserMods.Paint += (_, e) =>
         {
+            // A single clockwise arc with the arrowhead attached to its
+            // actual endpoint; the previous fixed points left a detached,
+            // incomplete-looking hook at some Windows DPI settings.
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             using var stroke = new Pen(rescanUserMods.Enabled
-                ? rescanUserMods.ForeColor : Color.Gray, 2F);
-            var cx = rescanUserMods.ClientSize.Width / 2;
-            var cy = rescanUserMods.ClientSize.Height / 2;
-            e.Graphics.DrawArc(stroke, cx - 7, cy - 7, 14, 14, 40, 280);
-            e.Graphics.DrawLines(stroke, new[]
-            {
-                new Point(cx + 1, cy - 7),
-                new Point(cx + 7, cy - 7),
-                new Point(cx + 7, cy - 1)
-            });
+                ? rescanUserMods.ForeColor : Color.Gray, 2.0f);
+            stroke.StartCap = System.Drawing.Drawing2D.LineCap.Round;
+            stroke.EndCap = System.Drawing.Drawing2D.LineCap.Round;
+            stroke.LineJoin = System.Drawing.Drawing2D.LineJoin.Round;
+            var cx = rescanUserMods.ClientSize.Width / 2f;
+            var cy = rescanUserMods.ClientSize.Height / 2f;
+            const float radius = 8f;
+            // Sweep clockwise from the lower-right to the upper-right.
+            const float end = 330f;
+            e.Graphics.DrawArc(stroke, cx - radius, cy - radius,
+                radius * 2f, radius * 2f, 45f, 285f);
+            var angle = end * (float)Math.PI / 180f;
+            var x = cx + radius * (float)Math.Cos(angle);
+            var y = cy + radius * (float)Math.Sin(angle);
+            // Tangent at the end of a clockwise arc.
+            var dx = -(float)Math.Sin(angle);
+            var dy = (float)Math.Cos(angle);
+            var wing1 = new PointF(x - dx * 5f - dy * 3.5f,
+                y - dy * 5f + dx * 3.5f);
+            var wing2 = new PointF(x - dx * 5f + dy * 3.5f,
+                y - dy * 5f - dx * 3.5f);
+            var tip = new PointF(x, y);
+            e.Graphics.DrawLines(stroke, new[] { wing1, tip, wing2 });
         };
         statusToolTip.SetToolTip(rescanUserMods, "Refresh the list of installed mods.");
         rescanUserMods.Click += (_, _) =>
