@@ -188,12 +188,16 @@ public sealed partial class MainForm
             child.MouseLeave += HideGrip;
         }
 
-        Point down = Point.Empty;
-        grip.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) down = e.Location; };
+        Point dragOrigin = Point.Empty;
+        grip.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) dragOrigin = e.Location;
+        };
         grip.MouseMove += (_, e) =>
         {
             if (e.Button != MouseButtons.Left || activeDoomDragRow is not null
-                || (Math.Abs(e.X - down.X) < 5 && Math.Abs(e.Y - down.Y) < 5))
+                || (Math.Abs(e.X - dragOrigin.X) < 5
+                    && Math.Abs(e.Y - dragOrigin.Y) < 5))
                 return;
             activeDoomDragRow = row;
             try { grip.DoDragDrop(mod.Id, DragDropEffects.Move); }
