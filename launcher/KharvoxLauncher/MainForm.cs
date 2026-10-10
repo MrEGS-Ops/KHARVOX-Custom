@@ -1985,7 +1985,6 @@ public sealed partial class MainForm : Form
                         packagedList.Controls.Add(missingOption);
                     else list.Controls.Add(missingOption);
                 }
-            }
                 RenumberDoomDisplayRows();
             }
             finally
