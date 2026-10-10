@@ -3124,6 +3124,10 @@ bool KharvoxCameraApplyDirectionalDash(float localRight, float localForward) {
         || !playerPhysicsOriginValid.load(std::memory_order_acquire))
         return false;
 
+    // A valid physics pointer alone does not make scripted sequences safe.
+    if (KharvoxCameraCutsceneActive() || KharvoxCameraBossSequenceActive()
+        || KharvoxCameraSyncAttackActive() || !KharvoxCameraGameplayActive())
+        return false;
     const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
     if (!owner || owner > UINTPTR_MAX - 0x14E58) return false;
     auto physics = reinterpret_cast<unsigned char*>(owner + 0x14E58);

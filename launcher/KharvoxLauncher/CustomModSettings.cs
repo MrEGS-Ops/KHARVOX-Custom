@@ -57,7 +57,15 @@ internal static class CustomModSettingsStore
     {
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
-        File.WriteAllText(path, Serializer.Serialize(value));
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(temp, Serializer.Serialize(value));
+            if (File.Exists(path)) File.Replace(temp, path, null);
+            else File.Move(temp, path);
+        }
+        finally { if (File.Exists(temp)) File.Delete(temp); }
     }
 
     internal static int RunSelfTest()

@@ -182,6 +182,18 @@ public sealed partial class MainForm
     // Called synchronously from each option/checkbox event, not at Launch.
     private void CheckLiveConfiguration(bool promptOnBad = true)
     {
+        if (customModsSaveFailed)
+        {
+            configurationStatusMods.Text = "! UNSAVED";
+            if (configurationStatusButton is { } button)
+            {
+                button.Text = "! Unsaved";
+                button.ForeColor = Color.Orange;
+                statusToolTip.SetToolTip(button,
+                    "VR mod settings were not saved. Correct the error before rating this configuration.");
+            }
+            return;
+        }
         if (!configurationTrackingReady || restoringConfiguration
             || showingConfigurationWarning || applyingPreset || applyingCustomModDependencies)
             return;
@@ -262,6 +274,13 @@ public sealed partial class MainForm
     private void MarkCurrentConfiguration(KharvoxConfigMarks.Verdict verdict)
     {
         if (!configurationTrackingReady) return;
+        if (customModsSaveFailed)
+        {
+            MessageBox.Show(this, "Save VR mod settings before rating this configuration.",
+                "KHARVOX — Unsaved settings", MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+            return;
+        }
         try
         {
             var key = ConfigurationKey();
