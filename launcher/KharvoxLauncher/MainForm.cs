@@ -883,6 +883,7 @@ public sealed partial class MainForm : Form
         modColumns.Controls.Add(doomMods, 0, 0);
         modColumns.Controls.Add(customMods, 1, 0);
         customOptionsForm = CreateCustomOptionsForm(modColumns);
+        ConnectCustomModsDocking(customOptionsForm);
 
         var tuning = MakeGroup("MOVEMENT");
         var grid = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 8, 18, 7), RowCount = 5, ColumnCount = 2 };
@@ -1083,12 +1084,27 @@ public sealed partial class MainForm : Form
             var work = Screen.FromControl(this).WorkingArea;
             if (work != fittedWorkArea) FitWorkingArea(work);
         }
+        FollowLauncherMovement();
+    }
+
+    protected override void OnSizeChanged(EventArgs e)
+    {
+        base.OnSizeChanged(e);
+        FollowLauncherMovementAndSize();
+    }
+
+    protected override void OnActivated(EventArgs e)
+    {
+        base.OnActivated(e);
+        if (customOptionsForm is { } mods)
+            RaiseDockCompanion(mods);
     }
 
     protected override void OnDpiChanged(DpiChangedEventArgs e)
     {
         base.OnDpiChanged(e);
         FitWorkingArea(Screen.FromControl(this).WorkingArea);
+        FollowLauncherMovementAndSize();
     }
 
     internal void FitWorkingArea(Rectangle work)
@@ -1654,9 +1670,11 @@ public sealed partial class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(780, 600),
+            // Open at the SAME narrowest width the resize border allows:
+            // the user should not need to drag the edge inward every time.
+            ClientSize = new Size(714, 600),
             MinimumSize = new Size(730, 530),
-            StartPosition = FormStartPosition.CenterParent,
+            StartPosition = FormStartPosition.Manual,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
             Font = new Font("Segoe UI", 9F),
@@ -1717,8 +1735,12 @@ public sealed partial class MainForm : Form
         closeRow.Controls.Add(customModsCredit);
         root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
-        form.Shown += (_, _) => FitCustomOptionsToContent(
-            (userDoomModChecks?.Controls.Count ?? 0) + (packagedDoomModChecks?.Controls.Count ?? 0));
+        form.Shown += (_, _) =>
+        {
+            // The sidecar uses the main launcher height, not the number of
+            // checkboxes. Avoid a first-show content fit that undocks it.
+            PlaceCustomModsBesideLauncher();
+        };
         form.FormClosing += (_, e) =>
         {
             if (e.CloseReason != CloseReason.UserClosing) return;
@@ -2022,7 +2044,15 @@ public sealed partial class MainForm : Form
     {
         if (customOptionsForm is null || customOptionsForm.IsDisposed) return;
 
-        var work = Screen.FromControl(customOptionsForm).WorkingArea;
+        var work = Screen.FromControl(this).WorkingArea;
+        if (customModsDocked)
+        {
+            // Refreshing files while open must never alter docked geometry.
+            if (doomModItemsPanel is not null)
+                doomModItemsPanel.AutoScroll = 170 + Math.Max(0, userModCount) * 27
+                    > customOptionsForm.ClientSize.Height;
+            return;
+        }
         var chromeHeight = customOptionsForm.Height - customOptionsForm.ClientSize.Height;
         var maxClientHeight = Math.Max(480, work.Height - chromeHeight - 45);
         // VR column is intentionally fixed-height; DOOM's mod list adds one
@@ -2031,12 +2061,14 @@ public sealed partial class MainForm : Form
         // compact spacing must not clip the bottom of a long mod list.
         var preferredHeight = Math.Max(565, 170 + Math.Max(0, userModCount) * 27);
         var height = Math.Min(preferredHeight, maxClientHeight);
-        // This is a two-column options dialog, not a maximized dashboard.
-        // Keep a stable compact width even on very wide desktop monitors.
-        var width = Math.Min(780, Math.Max(620, work.Width - 45));
+        // Default to the EXISTING minimum resize width (730px outer),
+        // without changing the limit or shrinking text/control columns.
+        var outerWidth = Math.Min(730, work.Width);
+        var borderWidth = customOptionsForm.Width - customOptionsForm.ClientSize.Width;
         customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
             Math.Min(530, work.Height));
-        customOptionsForm.ClientSize = new Size(width, height);
+        customOptionsForm.ClientSize = new Size(
+            Math.Max(1, outerWidth - borderWidth), height);
 
         // On small displays or with a very large mod collection, clipping
         // controls would be worse than a scrollbar. Ordinarily no scrollbars
@@ -2061,9 +2093,14 @@ public sealed partial class MainForm : Form
                 userDoomModStatus.Text = "Cannot access mods folder: " + error.Message;
         }
 
+        // Treat Custom Mods as a left-hand sidecar of the launcher.
+        // Keep both title bars/bottom edges aligned with no seam gap.
+        customModsDocked = true;
+        PlaceCustomModsBesideLauncher();
         if (!customOptionsForm.Visible) customOptionsForm.Show(this);
         if (customOptionsForm.WindowState == FormWindowState.Minimized)
             customOptionsForm.WindowState = FormWindowState.Normal;
+        PlaceCustomModsBesideLauncher();
         customOptionsForm.BringToFront();
         customOptionsForm.Activate();
     }
