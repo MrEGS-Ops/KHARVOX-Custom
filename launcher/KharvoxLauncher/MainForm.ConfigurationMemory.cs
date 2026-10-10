@@ -545,7 +545,9 @@ public sealed partial class MainForm
 
             if (!RunModReorderPolicySelfTest())
                 throw new InvalidDataException("Mod group ordering policy failed.");
-            var scroll = vr.Controls.OfType<Panel>().Single();
+            // The VR group also has a separate rating-header Panel.
+            var scroll = vr.Controls.OfType<Panel>()
+                .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
             var checks = orderedRows.Select(row => row.Box).ToArray();
@@ -889,7 +891,7 @@ public sealed partial class MainForm
             if (closeButton is null) throw new InvalidDataException(
                 "Custom Mods Close button missing.");
             main.Show();
-            window.Show(main);
+            window.Activate();
             Application.DoEvents();
             closeButton.PerformClick();
             Application.DoEvents();
