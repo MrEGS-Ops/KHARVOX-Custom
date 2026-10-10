@@ -578,12 +578,18 @@ public sealed partial class MainForm
                 || orderedRows.Where((row, index) => row.Group
                     != (index < 6 ? 0 : index < 8 ? 1 : index < 12 ? 2
                         : index < 14 ? 3 : 4)).Any()
-                || orderedRows.Any(row => row.Panel is null || row.Grip is null
-                    || row.Panel.Controls.OfType<CheckBox>().SingleOrDefault() != row.Box
-                    || layout.GetRow(row.Panel) < 1)
-                || checks.Where((check, index) => !check.Text.StartsWith(
-                    (index + 1).ToString("00") + ". ", StringComparison.Ordinal)).Any()
-                || !main.customHandFocusedRs.Text.Contains(". Hand Focus")
+                || main.modOrderSlots.Count != 15
+                || main.modOrderSlots.Where((slot, index) =>
+                    slot.Index != index
+                    || slot.Number.Text != (index + 1).ToString("00") + "."
+                    || slot.Group != orderedRows[index].Group
+                    || slot.Panel.Controls.OfType<CheckBox>().SingleOrDefault()
+                        != orderedRows[index].Box
+                    || layout.GetRow(slot.Panel) < 1).Any()
+                || checks.Any(check => check.Text.StartsWith("01. ")
+                    || check.Text.StartsWith("02. "))
+                || !main.customHandFocusedRs.Text.StartsWith(
+                    "Hand Focus", StringComparison.Ordinal)
                 || main.modOrderHeaders.Count != 5
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("   "))
@@ -606,6 +612,34 @@ public sealed partial class MainForm
                 || !main.customBehindHeadWheelHandSelection.Text.Contains(
                     "Requires " + ModNumber(main.customBehindHeadWeaponWheel)))
                 throw new InvalidDataException("Numbered VR dependencies no longer follow layout.");
+
+            // Drag a referenced mod inside Hands & Arms and assert its new
+            // fixed slot number is reflected in other mods' labels AND tips.
+            // Restore the list in memory without touching user preferences.
+            var previousModOrder = main.modOrderRows.ToArray();
+            var movedMod = main.modOrderRows.Single(row =>
+                row.Box == main.customBehindHeadWeaponWheel);
+            var dropTarget = main.modOrderRows.First(row =>
+                row.Group == movedMod.Group && row.Id != movedMod.Id);
+            var priorNumber = ModNumber(main.customBehindHeadWeaponWheel);
+            if (!MoveModWithinGroup(main.modOrderRows, movedMod.Id, dropTarget.Id))
+                throw new InvalidDataException("Same-group mod drag refused.");
+            main.RefreshGroupedModRows();
+            var updatedNumber = "#" + (main.modOrderRows.FindIndex(row =>
+                row.Box == main.customBehindHeadWeaponWheel) + 1);
+            if (updatedNumber == priorNumber
+                || !main.customDisableWeaponWheel.Text.Contains(
+                    "Disables " + updatedNumber)
+                || !main.statusToolTip.GetToolTip(
+                    main.customDisableWeaponWheel).Contains(
+                        "Disables " + updatedNumber)
+                || main.modOrderSlots.Where((slot, index) =>
+                    slot.Number.Text != (index + 1).ToString("00") + ".").Any())
+                throw new InvalidDataException(
+                    "Dragged mod must change dependent references, never slot numbers.");
+            main.modOrderRows.Clear();
+            main.modOrderRows.AddRange(previousModOrder);
+            main.RefreshGroupedModRows();
 
             var wheelRemapOption = checks.SingleOrDefault(option =>
                 option.Text.Contains("Weapon Wheel Remap"));
