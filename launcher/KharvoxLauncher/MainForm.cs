@@ -1837,7 +1837,12 @@ public sealed partial class MainForm : Form
         foreach (var list in new[] { userMods, packagedMods })
         {
             if (list is null) continue;
-            foreach (var option in list.Controls.OfType<CheckBox>())
+            // Rows now contain a checkbox and a hover-only drag grip.
+            // Keep missing/deleted mod checkboxes editable as before.
+            var options = list.Controls.OfType<CheckBox>()
+                .Concat(list.Controls.OfType<Panel>()
+                    .SelectMany(row => row.Controls.OfType<CheckBox>()));
+            foreach (var option in options)
                 SetDoomModCheckboxAvailability(option, verified,
                     missing: option.Tag is bool isMissing && isMissing);
         }
@@ -1890,11 +1895,9 @@ public sealed partial class MainForm : Form
                         child.Dispose();
                     }
 
-                var orderedMods = detected
-                    .OrderByDescending(mod => mod.IsPackaged)
-                    .ThenBy(mod => mod.IsFromDoom)
-                    .ThenBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
-                    .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase).ToArray();
+                // Persistent DRAG DISPLAY order. Resource installation remains
+                // controlled by DOOMModLoader and conflict preflight as before.
+                var orderedMods = OrderDoomModRows(detected, ReadDoomDisplayOrder());
                 for (var index = 0; index < orderedMods.Length; index++)
                 {
                     var mod = orderedMods[index];
@@ -1930,8 +1933,9 @@ public sealed partial class MainForm : Form
                                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         }
                     };
-                    if (mod.IsPackaged) packagedList.Controls.Add(option);
-                    else list.Controls.Add(option);
+                    var draggableRow = CreateDoomDraggableRow(option, mod);
+                    if (mod.IsPackaged) packagedList.Controls.Add(draggableRow);
+                    else list.Controls.Add(draggableRow);
                 }
 
                 // An enabled mod may have been deleted outside KHARVOX. Keep
@@ -1981,6 +1985,8 @@ public sealed partial class MainForm : Form
                         packagedList.Controls.Add(missingOption);
                     else list.Controls.Add(missingOption);
                 }
+            }
+                RenumberDoomDisplayRows();
             }
             finally
             {
