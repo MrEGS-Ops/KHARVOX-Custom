@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core]
+    branches: [clean/custom-core, audit/mod-fixes-no-build]
   workflow_dispatch:
 
 permissions:
@@ -33,6 +33,16 @@ jobs:
         with:
           path: .vcpkg-bincache
           key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
+
+      - name: Compile and run native grenade gesture policy test
+        shell: powershell
+        run: |
+          cmake -S tests/policy -B build/gesture-policy -A x64
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy configure failed" }
+          cmake --build build/gesture-policy --config Release
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy compile failed" }
+          ctest --test-dir build/gesture-policy -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy tests failed" }
 
       - name: Restore native incremental cache
         uses: actions/cache@v4

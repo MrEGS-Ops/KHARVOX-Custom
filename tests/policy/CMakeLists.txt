@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.20)
+project(KharvoxGesturePolicyTests LANGUAGES CXX)
+enable_testing()
+add_executable(KharvoxPhysicalGrenadeGestureTests ../physical_grenade_gesture_tests.cpp)
+target_compile_features(KharvoxPhysicalGrenadeGestureTests PRIVATE cxx_std_17)
+add_test(NAME physical-grenade-gesture COMMAND KharvoxPhysicalGrenadeGestureTests)

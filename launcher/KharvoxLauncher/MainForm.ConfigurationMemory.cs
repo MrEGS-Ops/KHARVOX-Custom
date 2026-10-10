@@ -306,6 +306,8 @@ public sealed partial class MainForm
             using var main = new MainForm(path);
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
+            if (window.ClientSize.Width > 930)
+                throw new InvalidDataException("Custom Mods window is too wide.");
 
             IEnumerable<Control> Descendants(Control root)
             {
@@ -327,7 +329,9 @@ public sealed partial class MainForm
             var layout = vr.Controls.OfType<TableLayoutPanel>().Single();
             var checks = layout.Controls.OfType<CheckBox>()
                 .OrderBy(check => layout.GetRow(check)).ToArray();
-            if (checks.Length != 15 || layout.AutoScroll)
+            if (checks.Length != 15 || layout.AutoScroll
+                || layout.GetRow(checks[14]) != layout.GetRow(checks[13]) + 1
+                || layout.RowStyles[layout.GetRow(checks[14])].Height != 28)
                 throw new InvalidDataException("VR mod list count or scrolling changed.");
             var labels = checks.Select(check =>
             {
@@ -344,7 +348,10 @@ public sealed partial class MainForm
                 throw new InvalidDataException("VR dependencies are not numbered.");
 
             if (main.gloryKillSpeedMenu.DropDownStyle != ComboBoxStyle.DropDownList
-                || main.gloryKillSpeedMenu.Items.Count != 11)
+                || main.gloryKillSpeedMenu.Items.Count != 5
+                || !Equals(main.gloryKillSpeedMenu.Items[0], "1")
+                || !Equals(main.gloryKillSpeedMenu.Items[4], "5")
+                || GKMenuToEngine(1) != 10 || GKMenuToEngine(5) != 0)
                 throw new InvalidDataException("Glory Kill speed dropdown is missing.");
             if (main.configurationStatusButton?.Parent is null
                 || Descendants(main).Any(x => x == main.configurationStatusButton))
