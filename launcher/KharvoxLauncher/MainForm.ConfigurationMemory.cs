@@ -618,7 +618,23 @@ public sealed partial class MainForm
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
                     label.Text.Contains("mod(s) detected.")))
                 throw new InvalidDataException(
-                    "Detected count must be centred between two header divider lines.");
+                    "Detected count must be centred between two header divider lines."
+                    + " divider=" + (divider is not null)
+                    + " countLayout=" + (countDivider is not null)
+                    + " countParent=" + (countLabel?.Parent == countDivider)
+                    + " col=" + (countLabel is null ? -1 : countDivider?.GetColumn(countLabel))
+                    + " labelWidth=" + countLabel?.Width
+                    + " labelText=" + countLabel?.Text
+                    + " center=" + (countLabel is null ? -1 :
+                        countLabel.Left + countLabel.Width / 2)
+                    + " layoutCenter=" + (countDivider is null ? -1 :
+                        countDivider.ClientSize.Width / 2)
+                    + " leftRight=" + leftLine?.Right
+                    + " labelLeft=" + countLabel?.Left
+                    + " rightLeft=" + rightLine?.Left
+                    + " labelRight=" + countLabel?.Right
+                    + " colors=" + leftLine?.BackColor + "/" + rightLine?.BackColor
+                    + " parentScroll=" + modListPanel?.AutoScrollOffset);
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
