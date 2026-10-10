@@ -586,6 +586,16 @@ public sealed partial class MainForm
             var divider = userHeader.Controls.OfType<Panel>()
                 .SingleOrDefault(panel =>
                     panel.AccessibleName == "User mods header divider");
+            if (heading is null)
+                throw new InvalidDataException("USER MODS heading is missing.");
+            var measuredHeadingWidth = TextRenderer.MeasureText(heading.Text,
+                heading.Font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine).Width;
+            if (userHeader.ColumnStyles[0].SizeType != SizeType.Absolute
+                || userHeader.ColumnStyles[0].Width < measuredHeadingWidth + 4
+                || userHeader.ColumnStyles[0].Width > measuredHeadingWidth + 10)
+                throw new InvalidDataException(
+                    "USER MODS heading must fit tightly so the detected count is truly centred.");
             var countLabel = main.userDoomModCount;
             // Verify the actual paint surface rather than just the control
             // tree: our previous nested 1px panels passed layout checks but
