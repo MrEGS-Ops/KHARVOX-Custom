@@ -33,5 +33,6 @@ Updated: 2026-10-11
 - [ ] **Windows scaling/layout:** dedicated tests and visual refinements at 100%, 125%, 150% and 200% display scaling, especially docked narrow layouts.
 - [ ] **Context-sensitive VR haptics:** subtle feedback for holster zone, weapon draw and grenade throw gesture recognition.
 - [ ] **Per-mod calibration controls:** individual thresholds/sensitivity for physical crouch, grenade throwing, chainsaw gestures and other physical interactions.
+- [ ] **DOOM resource mod load-order manager (separate from VR mods):** add draggable numbered load positions in the DOOM MODS section, save user-defined ordering, and clearly distinguish display order from actual DOOMModLoader installation/override order. First verify upstream DOOMModLoader ordering and conflict-resolution behaviour; only then wire the order into KHARVOX staging/installation if supported or implementable safely. Show resource-overlap conflicts and which mod would take precedence before allowing any override. Never silently bypass current overlap checks or modify source archives. Include reset/undo and regression tests.
 
-These five backlog ideas are **planning only**; no code implementation or CI job should be inferred.
+These six backlog ideas are **planning only**; no code implementation or CI job should be inferred.
