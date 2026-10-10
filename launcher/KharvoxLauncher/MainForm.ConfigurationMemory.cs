@@ -365,6 +365,35 @@ public sealed partial class MainForm
                 throw new InvalidOperationException("Custom Mods window was not created.");
             if (window.ClientSize.Width > 780)
                 throw new InvalidDataException("Custom Mods window is too wide.");
+            // Start at the EXISTING resize minimum instead of forcing users
+            // to manually drag the dialog narrower each launch.
+            main.FitCustomOptionsToContent(11);
+            if (window.MinimumSize.Width != 730 || window.Width != 730)
+                throw new InvalidDataException(
+                    "Custom Mods must default to its original 730px minimum width."
+                    + " min=" + window.MinimumSize.Width
+                    + " actual=" + window.Width);
+            // Match actual outside borders exactly with no separator gap,
+            // including moving both windows when space is constrained.
+            var desktop = new Rectangle(0, 0, 1920, 1080);
+            var dock = CalculateCustomModsDock(
+                new Rectangle(990, 57, 515, 910), window.Width, desktop);
+            if (dock.Mods.Right != dock.Launcher.Left
+                || dock.Mods.Top != dock.Launcher.Top
+                || dock.Mods.Bottom != dock.Launcher.Bottom
+                || dock.Mods.Width != window.Width
+                || dock.Launcher.Width != 515
+                || dock.Launcher.X != 990)
+                throw new InvalidDataException(
+                    "Docked Custom Mods must touch launcher and match its height.");
+            var cramped = CalculateCustomModsDock(
+                new Rectangle(10, 20, 515, 860), window.Width, desktop);
+            if (cramped.Mods.Right != cramped.Launcher.Left
+                || cramped.Mods.Left < desktop.Left
+                || cramped.Mods.Top != cramped.Launcher.Top
+                || cramped.Mods.Bottom != cramped.Launcher.Bottom)
+                throw new InvalidDataException(
+                    "Docking near left screen edge must move the pair together.");
 
             IEnumerable<Control> Descendants(Control root)
             {
