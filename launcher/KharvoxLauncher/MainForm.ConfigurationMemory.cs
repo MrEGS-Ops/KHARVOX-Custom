@@ -371,13 +371,30 @@ public sealed partial class MainForm
                 throw new InvalidDataException("DML action isn't right-aligned.");
             var modListPanel = doomGrid.GetControlFromPosition(0, 1);
             if (modListPanel is null
-                || !Descendants(modListPanel).OfType<Button>().Any(button =>
-                    button.Text == "Mod Folder")
-                || !Descendants(modListPanel).OfType<Button>().Any(button =>
-                    button.AccessibleName == "Rescan mods")
                 || Descendants(modListPanel).OfType<Label>().Any(label =>
                     label.Text.IndexOf("PLANNED MODS", StringComparison.OrdinalIgnoreCase) >= 0))
                 throw new InvalidDataException("DOOM mod controls/layout regressed.");
+
+            var userHeader = Descendants(modListPanel)
+                .OfType<TableLayoutPanel>()
+                .SingleOrDefault(panel => panel.Controls.OfType<Label>()
+                    .Any(label => label.Text == "USER MODS"));
+            if (userHeader is null || userHeader.ColumnCount != 4
+                || userHeader.Controls.OfType<Panel>().All(panel =>
+                    panel.AccessibleName != "User mods header divider"
+                    || userHeader.GetColumn(panel) != 1))
+                throw new InvalidDataException("USER MODS divider/layout regressed.");
+            var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
+                button.AccessibleName == "Rescan mods");
+            var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
+                button.Text == "Mod Folder");
+            if (refresh is null || folder is null
+                || userHeader.GetColumn(refresh) != 2
+                || userHeader.GetColumn(folder) != 3
+                || userHeader.ColumnStyles[3].Width != loaderRow.ColumnStyles[1].Width
+                || refresh.ForeColor != Color.LightSkyBlue)
+                throw new InvalidDataException(
+                    "Refresh / Mod Folder alignment or colouring regressed.");
 
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
