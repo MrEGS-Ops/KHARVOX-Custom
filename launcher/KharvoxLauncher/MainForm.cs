@@ -86,7 +86,8 @@ public sealed partial class MainForm : Form
     private readonly ComboBox gloryKillSpeedMenu = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
-        Width = 54,
+        Width = 40,
+        DropDownWidth = 40,
         FlatStyle = FlatStyle.Flat
     };
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
@@ -367,7 +368,7 @@ public sealed partial class MainForm : Form
             AutoScroll = false
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 54));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
@@ -758,8 +759,10 @@ public sealed partial class MainForm : Form
             Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 42));
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 58));
+        // Give each column only what its actual controls need. The VR column
+        // should no longer waste most of the window width on blank space.
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         customMods.Dock = DockStyle.Fill;
         doomMods.Dock = DockStyle.Fill;
         modColumns.Controls.Add(doomMods, 0, 0);
@@ -1533,7 +1536,7 @@ public sealed partial class MainForm : Form
         var form = new Form
         {
             Text = "KHARVOX Custom Mods",
-            ClientSize = new Size(930, 600),
+            ClientSize = new Size(780, 600),
             MinimumSize = new Size(730, 530),
             StartPosition = FormStartPosition.CenterParent,
             BackColor = Color.Black,
@@ -1778,7 +1781,9 @@ public sealed partial class MainForm : Form
         // compact spacing must not clip the bottom of a long mod list.
         var preferredHeight = Math.Max(565, 170 + Math.Max(0, userModCount) * 27);
         var height = Math.Min(preferredHeight, maxClientHeight);
-        var width = Math.Min(930, Math.Max(620, work.Width - 45));
+        // This is a two-column options dialog, not a maximized dashboard.
+        // Keep a stable compact width even on very wide desktop monitors.
+        var width = Math.Min(780, Math.Max(620, work.Width - 45));
         customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
             Math.Min(530, work.Height));
         customOptionsForm.ClientSize = new Size(width, height);
