@@ -658,6 +658,22 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "DML install and Mod Folder button alignment regressed.");
 
+            // Browser popup must use the Custom Mods window's OUTER bounds,
+            // including its location on a second or negative-coordinate
+            // monitor. No external browser is launched during this test.
+            if (!NexusModsPopup.TestPopupArguments())
+                throw new InvalidDataException(
+                    "Nexus browser popup must match Custom Mods position and size.");
+            var popupArgs = NexusModsPopup.MakePopupStartInfo(window.Bounds).Arguments;
+            if (!popupArgs.Contains("--window-position="
+                    + window.Left.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "," + window.Top.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                || !popupArgs.Contains("--window-size="
+                    + window.Width.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    + "," + window.Height.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+                throw new InvalidDataException(
+                    "Nexus popup geometry doesn't match the displayed Custom Mods window.");
+
             var nexusLink = doomGrid.Controls.OfType<LinkLabel>()
                 .SingleOrDefault(label => doomGrid.GetRow(label) == 4);
             if (nexusLink is null || nexusLink.Parent != doomGrid
