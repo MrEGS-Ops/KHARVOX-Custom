@@ -24,6 +24,12 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Test independent KHARVOX resource mod generator
+        shell: powershell
+        run: |
+          python tools/Generate-KHARVOX-Mods.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original resource mod generator self-test failed" }
+
       - name: Regenerate controller mapping
         shell: powershell
         run: .\assets\branding\generate-controller-mapping.ps1
