@@ -1783,7 +1783,7 @@ public sealed partial class MainForm : Form
                 packagedRow.Visible = showPackaged;
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
-                string.Equals(entry.Id, x.Id, StringComparison.OrdinalIgnoreCase)));
+                string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
             // Show the user-mod count in the USER MODS toolbar, excluding
             // separately listed packaged KHARVOX resource mods.
             userDoomModCount.Text = FormatDetectedUserMods(
