@@ -543,8 +543,8 @@ public sealed partial class MainForm
                 || columns.GetColumn(doom) != 0 || columns.GetColumn(vr) != 1)
                 throw new InvalidDataException("DOOM / VR column ordering is incorrect.");
 
-            if (!RunModReorderPolicySelfTest())
-                throw new InvalidDataException("Mod group ordering policy failed.");
+            if (!RunModReorderPolicySelfTest() || !RunModPolishPolicySelfTest())
+                throw new InvalidDataException("Mod group ordering/status policy failed.");
             // The VR group also has a separate rating-header Panel.
             var scroll = vr.Controls.OfType<Panel>()
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
@@ -593,25 +593,37 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 5
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("   "))
-                || layout.Height < 32 + 15 * 28 + 5 * 24)
+                || layout.Height < 32 + 15 * 44 + 5 * 24
+                || main.modOrderSlots.Any(slot => slot.Dependency is null
+                    || slot.Status is null || slot.Grip is null)
+                || !main.modOrderSlots.Any(slot =>
+                    slot.Status.AccessibleName.Contains("Verified"))
+                || !main.modOrderSlots.Any(slot =>
+                    slot.Status.AccessibleName.Contains("Diagnostic only")))
                 throw new InvalidDataException(
                     "VR group headings, drag grips, order or numbering changed.");
             string ModNumber(CheckBox check) => "#"
                 + (Array.IndexOf(checks, check) + 1);
-            if (!main.customDirectionalDash.Text.Contains(
+            string LinksOf(CheckBox mod) => main.modOrderSlots[
+                Array.IndexOf(checks, mod)].Dependency.Text;
+            if (!LinksOf(main.customDirectionalDash).Contains(
                     "Requires " + ModNumber(main.weaponWheelRemap) + ", "
                     + ModNumber(main.customBehindHeadWeaponWheel)
                     + "; disables " + ModNumber(main.customDisableWeaponWheel))
-                || !main.customDisableWeaponWheel.Text.Contains(
+                || !LinksOf(main.customDisableWeaponWheel).Contains(
                     "Disables " + ModNumber(main.customBehindHeadWeaponWheel)
                     + ", " + ModNumber(main.customDirectionalDash))
-                || !main.customDisableHud.Text.Contains(
+                || !LinksOf(main.customDisableHud).Contains(
                     "Disables " + ModNumber(main.customBackOfHandHud))
-                || !main.customBackOfHandHud.Text.Contains(
+                || !LinksOf(main.customBackOfHandHud).Contains(
                     "Disables " + ModNumber(main.customDisableHud))
-                || !main.customBehindHeadWheelHandSelection.Text.Contains(
-                    "Requires " + ModNumber(main.customBehindHeadWeaponWheel)))
-                throw new InvalidDataException("Numbered VR dependencies no longer follow layout.");
+                || !LinksOf(main.customBehindHeadWheelHandSelection).Contains(
+                    "Requires " + ModNumber(main.customBehindHeadWeaponWheel))
+                || main.modOrderSlots.Where(slot =>
+                    slot.Dependency.Text.Contains("#")
+                    && slot.Dependency.Links.Count == 0).Any())
+                throw new InvalidDataException(
+                    "Clickable dependencies no longer match displayed mod positions.");
 
             // Drag a referenced mod inside Hands & Arms and assert its new
             // fixed slot number is reflected in other mods' labels AND tips.
@@ -628,7 +640,8 @@ public sealed partial class MainForm
             var updatedNumber = "#" + (main.modOrderRows.FindIndex(row =>
                 row.Box == main.customBehindHeadWeaponWheel) + 1);
             if (updatedNumber == priorNumber
-                || !main.customDisableWeaponWheel.Text.Contains(
+                || !main.modOrderSlots[main.modOrderRows.FindIndex(row =>
+                    row.Box == main.customDisableWeaponWheel)].Dependency.Text.Contains(
                     "Disables " + updatedNumber)
                 || !main.statusToolTip.GetToolTip(
                     main.customDisableWeaponWheel).Contains(
