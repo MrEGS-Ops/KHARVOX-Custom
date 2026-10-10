@@ -472,6 +472,9 @@ public sealed partial class MainForm : Form
         // This removes the stray gap before the final numbered mod.
         customModsGrid.Height = 32 + allCustomMods.Length * 28 + 14;
         customMods.Controls.Add(customModsGrid);
+        // Three independent rating buttons sit on the VR MODS header line.
+        // Keep the content grid and checkbox order completely unchanged.
+        BuildConfigurationRatingHeader(customMods);
 
         // The content currently occupies 15 x 28px plus compact speed menu.
         // Fit to it instead of putting another nested scrollbar on the form.
@@ -1582,7 +1585,6 @@ public sealed partial class MainForm : Form
             Padding = new Padding(0, 5, 0, 0)
         };
         closeRow.Controls.Add(closeButton);
-        closeRow.Controls.Add(BuildCompactConfigurationControl());
         root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
         form.Shown += (_, _) => FitCustomOptionsToContent(
