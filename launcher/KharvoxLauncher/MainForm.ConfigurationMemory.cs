@@ -358,43 +358,67 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Rating menu must only appear inside Custom Mods.");
 
+            // The Windows Forms layout must be realized to catch rows that
+            // look correct in source but render empty at runtime.
+            window.Show();
+            Application.DoEvents();
+            window.PerformLayout();
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
-            // The compact DOOM panel has its loader status/action in row 0,
-            // with the installed mods list directly beneath it in row 1.
-            if (doomGrid.RowCount != 2)
-                throw new InvalidDataException("DOOM mod panel is not compact.");
+            doomGrid.PerformLayout();
+            if (doomGrid.RowCount != 4
+                || doomGrid.RowStyles[2].SizeType != SizeType.Absolute
+                || doomGrid.RowStyles[2].Height != 32)
+                throw new InvalidDataException("DOOM mod toolbar row isn't fixed-height.");
             var loaderRow = doomGrid.GetControlFromPosition(0, 0)
                 as TableLayoutPanel;
-            if (loaderRow is null || loaderRow.ColumnCount != 2
-                || loaderRow.Controls.OfType<Button>().All(x =>
-                    loaderRow.GetColumn(x) != 1))
-                throw new InvalidDataException("DML action isn't right-aligned.");
-            var modListPanel = doomGrid.GetControlFromPosition(0, 1);
-            if (modListPanel is null
-                || Descendants(modListPanel).OfType<Label>().Any(label =>
-                    label.Text.IndexOf("PLANNED MODS", StringComparison.OrdinalIgnoreCase) >= 0))
-                throw new InvalidDataException("DOOM mod controls/layout regressed.");
+            if (loaderRow is null || loaderRow.ColumnCount != 2)
+                throw new InvalidDataException("DOOMModLoader status row changed.");
+            var installer = loaderRow.Controls.OfType<Button>().SingleOrDefault(button =>
+                loaderRow.GetColumn(button) == 1);
+            if (installer is null)
+                throw new InvalidDataException("DML install button isn't right-aligned.");
 
-            var userHeader = Descendants(modListPanel)
-                .OfType<TableLayoutPanel>()
-                .SingleOrDefault(panel => panel.Controls.OfType<Label>()
-                    .Any(label => label.Text == "USER MODS"));
-            if (userHeader is null || userHeader.ColumnCount != 4
+            var packagedRow = doomGrid.GetControlFromPosition(0, 1);
+            var userHeader = doomGrid.GetControlFromPosition(0, 2)
+                as TableLayoutPanel;
+            var modListPanel = doomGrid.GetControlFromPosition(0, 3);
+            if (packagedRow is null || userHeader is null || modListPanel is null
+                || userHeader.Parent != doomGrid || !userHeader.Visible
+                || userHeader.ColumnCount != 4
                 || userHeader.Controls.OfType<Panel>().All(panel =>
                     panel.AccessibleName != "User mods header divider"
-                    || userHeader.GetColumn(panel) != 1))
-                throw new InvalidDataException("USER MODS divider/layout regressed.");
+                    || userHeader.GetColumn(panel) != 1)
+                || Descendants(modListPanel).OfType<Label>().Any(label =>
+                    label.Text.IndexOf("PLANNED MODS", StringComparison.OrdinalIgnoreCase) >= 0))
+                throw new InvalidDataException("USER MODS header/section layout regressed.");
+            userHeader.PerformLayout();
+            var heading = userHeader.Controls.OfType<Label>().SingleOrDefault(label =>
+                label.Text == "USER MODS");
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.Text == "Mod Folder");
-            if (refresh is null || folder is null
+            if (heading is null || refresh is null || folder is null
+                || !heading.Visible || heading.Height < 15
+                || refresh.Height < 18 || folder.Height < 18
                 || userHeader.GetColumn(refresh) != 2
                 || userHeader.GetColumn(folder) != 3
                 || userHeader.ColumnStyles[3].Width != loaderRow.ColumnStyles[1].Width
+                || installer.Width != folder.Width || installer.Height != folder.Height
                 || refresh.ForeColor != Color.LightSkyBlue)
                 throw new InvalidDataException(
-                    "Refresh / Mod Folder alignment or colouring regressed.");
+                    "USER MODS heading, buttons, sizing or colour regressed.");
+            if (folder.Bounds.Right <= refresh.Bounds.Right
+                || refresh.Bounds.Right <= heading.Bounds.Right
+                || installer.Left + loaderRow.Left != folder.Left + userHeader.Left)
+                throw new InvalidDataException(
+                    "DML install and Mod Folder button alignment regressed.");
+            var status = Descendants(modListPanel).OfType<Label>()
+                .SingleOrDefault(label => label.Text.Contains("mod(s) detected."));
+            if (status is not null && status.Text != status.Text.Substring(
+                    0, status.Text.IndexOf("detected.", StringComparison.Ordinal)
+                    + "detected.".Length))
+                throw new InvalidDataException("Mod count includes unwanted suffix.");
 
             Console.WriteLine("KHARVOX Custom Mods layout smoke test passed.");
             return 0;
