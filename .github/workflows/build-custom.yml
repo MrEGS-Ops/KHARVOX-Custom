@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build]
   workflow_dispatch:
 
 permissions:
