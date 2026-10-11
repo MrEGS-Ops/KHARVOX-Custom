@@ -84,13 +84,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
-    private readonly ComboBox gloryKillSpeedMenu = new()
-    {
-        DropDownStyle = ComboBoxStyle.DropDownList,
-        Width = 40,
-        DropDownWidth = 40,
-        FlatStyle = FlatStyle.Flat
-    };
+    private readonly FlatGloryKillSlider gloryKillSpeedSlider = new();
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
     private readonly System.Windows.Forms.Timer runtimeStatusTimer = new() { Interval = 500 };
@@ -374,21 +368,17 @@ public sealed partial class MainForm : Form
             AutoScroll = false
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 40));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 138));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
-        gloryKillSpeedMenu.AccessibleName = "Glory Kill Speed";
-        for (var speed = 1; speed <= 5; speed++)
-            gloryKillSpeedMenu.Items.Add(speed.ToString());
-        gloryKillSpeedMenu.SelectedIndexChanged += (_, _) =>
+        gloryKillSpeedSlider.ValueChanged += (_, _) =>
         {
-            if (gloryKillSpeedMenu.SelectedIndex >= 0
-                && gloryKillSlowmo.Value != GKMenuToEngine(gloryKillSpeedMenu.SelectedIndex + 1))
-                gloryKillSlowmo.Value = GKMenuToEngine(gloryKillSpeedMenu.SelectedIndex + 1);
+            if (gloryKillSlowmo.Value != GKMenuToEngine(gloryKillSpeedSlider.Value))
+                gloryKillSlowmo.Value = GKMenuToEngine(gloryKillSpeedSlider.Value);
         };
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
-        statusToolTip.SetToolTip(gloryKillSpeedMenu,
-            "1 = native DOOM speed; 2–4 = progressively faster; 5 = fastest.");
+        statusToolTip.SetToolTip(gloryKillSpeedSlider,
+            "Glory Kill speed: 1 = native DOOM speed; 2–4 progressively faster; 5 = fastest. Use mouse or arrow keys.");
         customModsGrid.Controls.Add(new Label
         {
             Text = "Glory Kill speed",
@@ -396,10 +386,9 @@ public sealed partial class MainForm : Form
             ForeColor = Color.Gainsboro,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
-        gloryKillSpeedMenu.Dock = DockStyle.None;
-        gloryKillSpeedMenu.Anchor = AnchorStyles.Left;
-        gloryKillSpeedMenu.Margin = new Padding(0, 2, 0, 0);
-        customModsGrid.Controls.Add(gloryKillSpeedMenu, 1, 0);
+        gloryKillSpeedSlider.Dock = DockStyle.Fill;
+        gloryKillSpeedSlider.Margin = new Padding(0, 1, 0, 0);
+        customModsGrid.Controls.Add(gloryKillSpeedSlider, 1, 0);
 
         var customChecks = new (CheckBox Box, string Tip)[]
         {
@@ -567,7 +556,7 @@ public sealed partial class MainForm : Form
             WrapContents = false,
             AutoScroll = false,
             Margin = Padding.Empty,
-            Padding = new Padding(2, 0, 2, 0),
+            Padding = new Padding(2, 8, 2, 0),
             BackColor = PanelColor
         };
         packagedDoomModHeader = new Label
@@ -629,10 +618,7 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor,
             AccessibleName = "User mods header divider"
         };
-        // Paint the divider on ONE surface, from the heading towards the
-        // refresh button. A nested TableLayoutPanel previously gave the
-        // 1px divider panels zero usable height on Windows (visible as two
-        // tiny dashes even though the positioning test passed).
+        // Clean count only, no decorative lines on either side.
         userDoomModCount = new Label
         {
             AccessibleName = "Detected user mod count",
@@ -663,20 +649,6 @@ public sealed partial class MainForm : Form
         }
         userHeaderDivider.SizeChanged += (_, _) => FitDetectedCount();
         userDoomModCount.TextChanged += (_, _) => FitDetectedCount();
-        userHeaderDivider.Paint += (_, e) =>
-        {
-            // A real, single-pixel drawn line has no panel margins to
-            // collapse when DPI, fonts or the dialog width change.
-            var leftEnd = userDoomModCount.Left - 6;
-            var rightStart = userDoomModCount.Right + 6;
-            var y = userHeaderDivider.ClientSize.Height / 2;
-            using var stroke = new Pen(Color.DimGray, 1f);
-            if (leftEnd > 0)
-                e.Graphics.DrawLine(stroke, 0, y, leftEnd, y);
-            if (rightStart < userHeaderDivider.ClientSize.Width)
-                e.Graphics.DrawLine(stroke, rightStart, y,
-                    userHeaderDivider.ClientSize.Width, y);
-        };
         FitDetectedCount();
         userHeader.Controls.Add(userHeaderDivider, 1, 0);
         var openUserFolder = new Button
@@ -794,9 +766,9 @@ public sealed partial class MainForm : Form
             AccessibleDescription = DoomNexusModsUrl,
             Text = "Browse DOOM mods on Nexus Mods",
             Font = new Font(Font.FontFamily, 8.5f, FontStyle.Regular),
-            LinkColor = Color.LightSkyBlue,
-            ActiveLinkColor = Color.White,
-            VisitedLinkColor = Color.LightSkyBlue,
+            LinkColor = Color.Gray,
+            ActiveLinkColor = Color.Gainsboro,
+            VisitedLinkColor = Color.Gray,
             LinkBehavior = LinkBehavior.HoverUnderline,
             LinkArea = new LinkArea(0, "Browse DOOM mods on Nexus Mods".Length),
             Dock = DockStyle.Fill,
@@ -1320,10 +1292,9 @@ public sealed partial class MainForm : Form
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
         physicalGlorykillSpeedValue.Text = SelectedPhysicalGlorykillSpeed()
             .ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
-        var speedIndex = GKEngineToMenu(gloryKillSlowmo.Value) - 1;
-        if (gloryKillSpeedMenu.Items.Count > speedIndex
-            && gloryKillSpeedMenu.SelectedIndex != speedIndex)
-            gloryKillSpeedMenu.SelectedIndex = speedIndex;
+        var speedValue = GKEngineToMenu(gloryKillSlowmo.Value);
+        if (gloryKillSpeedSlider.Value != speedValue)
+            gloryKillSpeedSlider.Value = speedValue;
         var displayedGloryKillSpeed = GKEngineToMenu(gloryKillSlowmo.Value);
         gloryKillSlowmoValue.Text = displayedGloryKillSpeed switch
         {
