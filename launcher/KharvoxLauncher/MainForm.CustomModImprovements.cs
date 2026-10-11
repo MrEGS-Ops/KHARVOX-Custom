@@ -117,7 +117,7 @@ public sealed partial class MainForm
         "weapon-wheel-remap" => ("✓", "Verified",
             "Previously reported working in-game; retest this build.", Color.LightGreen),
         "revenge-demon" => ("D", "Diagnostic only",
-            "Collects Supervisor traces; does not yet empower a demon.", Color.LightSkyBlue),
+            "Collects Supervisor traces; does not yet empower a demon.", Color.FromArgb(186, 186, 190)),
         "haptic-overhaul" => ("!", "Incomplete",
             "The damage pulse policy is implemented, but live DOOM health/armour capture is not yet connected. Enabling this does not generate damage feedback until verified vitals are available.", Color.Orange),
         "gauss-slow-movement" => ("!", "Incomplete",
