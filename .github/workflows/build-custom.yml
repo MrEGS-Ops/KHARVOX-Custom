@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish, work/full-integrated-sfs-build]
   workflow_dispatch:
 
 permissions:
@@ -10,7 +10,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: kharvox-clean-custom
+  group: kharvox-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -257,27 +257,50 @@ jobs:
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $patch "assets") | Out-Null
           Copy-Item -Path "assets/freedoom" -Destination (Join-Path $patch "assets") -Recurse -Force
+
+          # Provision only the original upstream SFS profile, NOT Cactus's
+          # launcher/game binaries or any settings. The release ZIP is pinned
+          # by SHA256 in our audited restore utility. Fail closed if download,
+          # archive identity, shader validation or staging fails.
+          $upstreamUrl = "https://github.com/CactusVRStudios/KHARVOX/releases/download/v1.1.1/KHARVOX-v1.11.zip"
+          $sourceZip = Join-Path $env:RUNNER_TEMP "KHARVOX-Cactus-v1.11.zip"
+          Invoke-WebRequest -Uri $upstreamUrl -UseBasicParsing -OutFile $sourceZip
+          foreach ($package in @($full, $patch)) {
+            & ./tools/Restore-Cactus-SFS-Profile.ps1 -InstallRoot $package -ReleaseZip $sourceZip
+            if ($LASTEXITCODE -ne 0) { throw "Failed to provision SFS for $package" }
+            $sourceNotice = @(
+              "KHARVOX SFS SHADER PROFILE - ORIGINAL RELEASE"
+              "Source: CactusVRStudios/KHARVOX v1.1.1"
+              "Official release: $upstreamUrl"
+              "Original ZIP SHA256: 79666be1c330b7a737c2e2766b2207557ace7c9b453194972719ef3693dd4dc5"
+              "Only 75 shader profile files were extracted, no upstream executables or configuration."
+              "Original project: https://github.com/CactusVRStudios/KHARVOX"
+              "DOOM and any game-derived material retain their respective rights; do not assume general reuse rights from this package."
+            )
+            $sourceNotice | Set-Content -LiteralPath (Join-Path $package "SFS-PROFILE-SOURCE.txt") -Encoding UTF8
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "Integrated SFS validation failed: $package" }
+          }
           function Write-Manifest([string]$root,[string]$kind) {
             $files = @()
             Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
               $relative = $_.FullName.Substring($root.Length + 1).Replace('\','/')
               $files += [ordered]@{ path=$relative; size=$_.Length; sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() }
             }
-            $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="clean/custom-core"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
+            $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="${{ github.ref_name }}"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
             $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
             @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
           }
-          # Shader replacements are externally provisioned. Prevent a
-          # partially copied profile from being packaged as complete, and
-          # explicitly label packages without those local-only inputs.
-          & ./tools/verify_sfs_payload.ps1 -PackageRoot $full -WriteNotice
-          if ($LASTEXITCODE -ne 0) { throw "SFS payload verification failed" }
-          & ./tools/verify_sfs_payload.ps1 -PackageRoot $patch -WriteNotice
-          if ($LASTEXITCODE -ne 0) { throw "SFS patch verification failed" }
-          if (Test-Path (Join-Path $full "SFS-PROFILE-NOT-INCLUDED.txt")) {
-            Write-Host "::warning::KHARVOX artifact omits 75 external SFS shaders. AER available; restore a known-good profile for SFS."
-            "⚠️ SFS: This build does not contain the 75 external shader files. Use AER or restore a verified local sfs-profile." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          # Strict packaging is already checked above. Never upload a release
+          # that would be blocked immediately by VulkanSfs.EnsureAvailable().
+          foreach ($package in @($full, $patch)) {
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "SFS packaging incomplete: $package" }
+            if (!(Test-Path -LiteralPath (Join-Path $package "KharvoxLauncher.exe"))) {
+              throw "Launcher missing from integrated package: $package"
+            }
           }
+          "Integrated KHARVOX build: FULL and PATCH include 75 validated SFS shader replacements." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           Write-Manifest $full "full"
           Write-Manifest $patch "patch"
 
