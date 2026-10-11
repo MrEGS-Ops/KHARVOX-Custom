@@ -28,15 +28,15 @@ internal sealed class FlatGloryKillSlider : Control
         SetStyle(ControlStyles.AllPaintingInWmPaint
             | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer
             | ControlStyles.Selectable, true);
-        Size = new Size(134, 28);
-        MinimumSize = new Size(96, 24);
+        Size = new Size(174, 28);
+        MinimumSize = new Size(150, 24);
         BackColor = Color.FromArgb(30, 30, 33);
         ForeColor = Color.FromArgb(201, 201, 204);
         TabStop = true;
         AccessibleName = "Glory Kill speed slider (1 native, 5 fastest)";
     }
-    private Rectangle Track => new Rectangle(9, Height / 2 - 2,
-        Math.Max(1, Width - 29), 4);
+    private Rectangle Track => new Rectangle(12, Height / 2 - 2,
+        Math.Max(1, Width - 24), 4);
     private int Position(int number)
     {
         var t = Track;
@@ -54,20 +54,16 @@ internal sealed class FlatGloryKillSlider : Control
         using (var filled = new SolidBrush(Color.FromArgb(157, 157, 160)))
             g.FillRectangle(filled, new Rectangle(track.X, track.Y,
                 Math.Max(1, Position(Value) - track.Left), track.Height));
-        using (var ticks = new Pen(Color.FromArgb(128, 128, 132), 1.2f))
-            for (var n = 1; n <= 5; n++)
-                g.DrawLine(ticks, Position(n), Height / 2 + 5,
-                    Position(n), Height / 2 + 8);
-        var center = Position(Value);
-        using (var thumb = new SolidBrush(Color.FromArgb(208, 208, 210)))
-            g.FillEllipse(thumb, center - 5, Height / 2 - 6, 11, 11);
-        using (var pen = new Pen(Color.FromArgb(51, 51, 54), 1f))
-            g.DrawEllipse(pen, center - 5, Height / 2 - 6, 11, 11);
-        var number = Value.ToString();
-        TextRenderer.DrawText(g, number, new Font(Font, FontStyle.Bold),
-            new Rectangle(Width - 22, 0, 20, Height), ForeColor,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter
-            | TextFormatFlags.NoPadding);
+        // Five always-visible physical stops with a larger active thumb.
+        using var inactive = new SolidBrush(Color.FromArgb(123, 123, 127));
+        using var active = new SolidBrush(Color.FromArgb(224, 224, 226));
+        for (var n = 1; n <= 5; n++)
+        {
+            var cx = Position(n);
+            var radius = n == Value ? 6 : 3;
+            g.FillEllipse(n == Value ? active : inactive, cx - radius,
+                Height / 2 - radius, 2 * radius, 2 * radius);
+        }
         if (Focused && ShowFocusCues)
             ControlPaint.DrawFocusRectangle(g, ClientRectangle);
     }
