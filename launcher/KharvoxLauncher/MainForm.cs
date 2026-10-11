@@ -112,7 +112,7 @@ public sealed partial class MainForm : Form
     private Action? refreshDoomModLoaderStatus;
     private const string DoomNexusModsUrl = NexusModsPopup.PageUrl;
     private Label? packagedDoomModHeader;
-    private Label? packagedDoomModEmpty;
+    private FlowLayoutPanel? packagedDoomModEmpty;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
     private Label? userDoomModCount;
@@ -586,17 +586,17 @@ public sealed partial class MainForm : Form
         };
         var packagedToolbar = new TableLayoutPanel
         {
-            Width = 337, Height = 30, ColumnCount = 2, RowCount = 1,
+            Width = 406, Height = 30, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor
         };
         packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
+        packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
         packagedDoomModHeader.Width = 0;
         packagedDoomModHeader.Dock = DockStyle.Fill;
         var generateKharvoxMods = new Button
         {
-            Text = "Generate…", Dock = DockStyle.Fill,
+            Text = "Generate", Dock = DockStyle.Fill,
             AccessibleName = "Generate first-party KHARVOX resource mods",
             BackColor = Color.FromArgb(43,43,47),
             ForeColor = Color.Gainsboro, FlatStyle = FlatStyle.Flat,
@@ -657,19 +657,36 @@ public sealed partial class MainForm : Form
             }
             finally
             {
-                generateKharvoxMods.Text = "Generate…";
+                generateKharvoxMods.Text = "Generate";
                 generateKharvoxMods.Enabled = true;
             }
         };
         packagedToolbar.Controls.Add(packagedDoomModHeader, 0, 0);
         packagedToolbar.Controls.Add(generateKharvoxMods, 1, 0);
-        packagedDoomModEmpty = new Label
+        packagedDoomModEmpty = new FlowLayoutPanel
         {
-            Text = "No KHARVOX resource ZIPs generated yet.",
-            AutoSize = false, Width = 332, Height = 26,
-            ForeColor = Color.Gray, TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(4, 0, 0, 0)
+            Width = 406, Height = 55, AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false, BackColor = PanelColor,
+            Margin = Padding.Empty
         };
+        foreach (var prototype in new[] {
+            "Aggressive Demons", "Enhanced Gibs" })
+        {
+            var waiting = new CheckBox {
+                Text = prototype + " — generate to enable",
+                Checked = false, Enabled = false,
+                Width = 388, Height = 27,
+                AutoSize = false, ForeColor = Color.Gray,
+                Margin = new Padding(3, 0, 0, 0)
+            };
+            statusToolTip.SetToolTip(waiting,
+                "Experimental KHARVOX resource mod. Click Generate above "
+                + "to create this ZIP from your original installed DOOM files. "
+                + "Requires Python and DOOMModLoader. Not verified in-game.");
+            packagedDoomModEmpty.Controls.Add(waiting);
+        }
         packagedSection.Controls.Add(packagedToolbar);
         packagedSection.Controls.Add(packagedDoomModChecks);
         packagedSection.Controls.Add(packagedDoomModEmpty);
@@ -1530,7 +1547,8 @@ public sealed partial class MainForm : Form
                 && !customDirectionalDash.Checked;
             // R-only dependencies must never disable the child's checkbox.
             // Selecting Hand Selection enables its wheel dependency above.
-            customBehindHeadWheelHandSelection.Enabled = true;
+            customBehindHeadWheelHandSelection.Enabled =
+                !customDisableWeaponWheel.Checked; // disabled only by active D conflict
         }
         finally
         {
@@ -2154,11 +2172,11 @@ public sealed partial class MainForm : Form
         // compact spacing must not clip the bottom of a long mod list.
         var preferredHeight = Math.Max(565, 170 + Math.Max(0, userModCount) * 27);
         var height = Math.Min(preferredHeight, maxClientHeight);
-        // Default to the EXISTING minimum resize width (730px outer),
-        // without changing the limit or shrinking text/control columns.
-        var outerWidth = Math.Min(730, work.Width);
+        // Larger fixed-width sidecar keeps DOOM and VR labels legible.
+        // Its width is locked; height tracks the launcher while docked.
+        var outerWidth = Math.Min(890, work.Width);
         var borderWidth = customOptionsForm.Width - customOptionsForm.ClientSize.Width;
-        customOptionsForm.MinimumSize = new Size(Math.Min(730, work.Width),
+        customOptionsForm.MinimumSize = new Size(Math.Min(890, work.Width),
             Math.Min(530, work.Height));
         customOptionsForm.ClientSize = new Size(
             Math.Max(1, outerWidth - borderWidth), height);
