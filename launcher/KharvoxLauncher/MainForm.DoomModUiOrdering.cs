@@ -141,7 +141,7 @@ public sealed partial class MainForm
     {
         var row = new Panel
         {
-            Width = 337, Height = 27,
+            Width = 310, Height = 27,
             Margin = new Padding(0, 0, 0, 0),
             Padding = Padding.Empty,
             BackColor = PanelColor,
@@ -151,9 +151,11 @@ public sealed partial class MainForm
         };
         option.Text = row.AccessibleName;
         option.AutoSize = false;
-        option.Size = new Size(311, 23);
+        option.Size = new Size(283, 23);
         option.Location = new Point(2, 2);
         option.AutoEllipsis = true;
+        statusToolTip.SetToolTip(option, mod.Name
+            + " — Drag the text to change display order. Click the square to enable/disable.");
         option.Margin = Padding.Empty;
         option.AllowDrop = true;
         row.Controls.Add(option);
@@ -161,53 +163,51 @@ public sealed partial class MainForm
         var grip = new Label
         {
             Text = "⋮⋮", Width = 22, Height = 23,
-            Left = 314, Top = 2,
-            BackColor = PanelColor, ForeColor = Color.LightSteelBlue,
+            Left = 286, Top = 2,
+            BackColor = PanelColor, ForeColor = Color.FromArgb(151, 151, 154),
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
-            Cursor = Cursors.SizeNS, Visible = false,
+            Cursor = Cursors.SizeNS, Visible = true,
             AllowDrop = true,
             AccessibleName = "Reorder DOOM mod " + mod.Name
         };
         row.Controls.Add(grip);
+        row.Resize += (_, _) =>
+        {
+            option.Width = Math.Max(90, row.ClientSize.Width - 27);
+            grip.Left = row.ClientSize.Width - grip.Width - 2;
+        };
         var orderTip = "Drag to change the DOOM MODS display order. "
             + "DOOMModLoader installation precedence is NOT changed; "
             + "KHARVOX still blocks overlapping resource mods.";
         statusToolTip.SetToolTip(grip, orderTip);
 
-        void ShowGrip(object? sender, EventArgs e) => grip.Visible = true;
-        void HideGrip(object? sender, EventArgs e)
-        {
-            if (activeDoomDragRow is null
-                && !row.ClientRectangle.Contains(row.PointToClient(Cursor.Position)))
-                grip.Visible = false;
-        }
-        foreach (Control child in new Control[] { row, option, grip })
-        {
-            child.MouseEnter += ShowGrip;
-            child.MouseLeave += HideGrip;
-        }
-
+        // The old hover-only grip was too small to discover or reliably drag.
+        // Start a drag from the row TEXT as well as the permanent grip.
+        // Keep the checkbox hit area (first 21px) reserved for selection.
         Point dragOrigin = Point.Empty;
-        grip.MouseDown += (_, e) =>
+        void ArmDrag(object? sender, MouseEventArgs e)
         {
             if (e.Button == MouseButtons.Left) dragOrigin = e.Location;
-        };
-        grip.MouseMove += (_, e) =>
+        }
+        void TryDrag(object? sender, MouseEventArgs e)
         {
             if (e.Button != MouseButtons.Left || activeDoomDragRow is not null
                 || (Math.Abs(e.X - dragOrigin.X) < 5
-                    && Math.Abs(e.Y - dragOrigin.Y) < 5))
-                return;
+                    && Math.Abs(e.Y - dragOrigin.Y) < 5)) return;
+            if (ReferenceEquals(sender, option) && dragOrigin.X < 22) return;
             activeDoomDragRow = row;
-            try { grip.DoDragDrop(mod.Id, DragDropEffects.Move); }
+            try { ((Control)sender!).DoDragDrop(mod.Id, DragDropEffects.Move); }
             finally
             {
                 activeDoomDragRow = null;
                 SetDoomDragHighlight(null);
-                grip.Visible = row.ClientRectangle.Contains(row.PointToClient(Cursor.Position));
             }
-        };
+        }
+        grip.MouseDown += ArmDrag;
+        grip.MouseMove += TryDrag;
+        option.MouseDown += ArmDrag;
+        option.MouseMove += TryDrag;
 
         void Accept(object? sender, DragEventArgs e)
         {
@@ -257,7 +257,7 @@ public sealed partial class MainForm
                 return;
             var downwards = list.Controls.GetChildIndex(activeDoomDragRow)
                 < list.Controls.GetChildIndex(row);
-            using var stroke = new Pen(Color.LightSkyBlue, 2f);
+            using var stroke = new Pen(Color.FromArgb(180, 180, 184), 2f);
             var y = downwards ? row.Height - 2 : 1;
             e.Graphics.DrawLine(stroke, 1, y, row.Width - 2, y);
         };
