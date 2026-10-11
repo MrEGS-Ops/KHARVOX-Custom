@@ -793,17 +793,14 @@ public sealed partial class MainForm : Form
         };
         openUserFolder.FlatAppearance.BorderColor = Color.DimGray;
         statusToolTip.SetToolTip(openUserFolder,
-            "Drop .zip files or unpacked mod folders in KHARVOX/mods/doom/user.");
+            "Open a matching KHARVOX Mods Folder window. Drop .zip files from Firefox Downloads here.");
         openUserFolder.Click += (_, _) =>
         {
             try
             {
-                Directory.CreateDirectory(DoomUserMods.Folder);
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(
-                    "explorer.exe", "\"" + DoomUserMods.Folder + "\"")
-                {
-                    UseShellExecute = true
-                })?.Dispose();
+                var launcherBounds = WindowState == FormWindowState.Normal
+                    ? Bounds : RestoreBounds;
+                NexusFolderCompanion.OpenStandalone(DoomUserMods.Folder, launcherBounds);
                 RefreshUserDoomMods();
             }
             catch (Exception error)
