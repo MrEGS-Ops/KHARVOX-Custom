@@ -893,7 +893,10 @@ public sealed partial class MainForm
             // LinkClicked event with the browser launch intercepted, and
             // verify it requests this displayed form's actual outer bounds.
             Rectangle? clickedBounds = null;
+            Rectangle? requestedFolderBounds = null;
             NexusModsPopup.TestOpenRequested = bounds => clickedBounds = bounds;
+            NexusFolderCompanion.TestExplorerOpenRequested =
+                bounds => requestedFolderBounds = bounds;
             try
             {
                 var clickMethod = typeof(LinkLabel).GetMethod("OnLinkClicked",
@@ -908,6 +911,7 @@ public sealed partial class MainForm
                 });
                 Application.DoEvents();
                 if (clickedBounds != window.Bounds
+                    || requestedFolderBounds != main.Bounds
                     || nexusLink.Text != "Browse DOOM mods on Nexus Mods"
                     || !nexusLink.Enabled)
                     throw new InvalidDataException(
@@ -916,6 +920,7 @@ public sealed partial class MainForm
             finally
             {
                 NexusModsPopup.TestOpenRequested = null;
+                NexusFolderCompanion.TestExplorerOpenRequested = null;
             }
             // Both title-bar X and footer Close route through the same
             // launcher-focus restoration method. Reopening must stay possible.
