@@ -7,7 +7,7 @@ namespace KharvoxLauncher;
 public sealed partial class MainForm
 {
     private System.Windows.Forms.Timer? modLinkHighlightTimer;
-    private ModOrderSlot? highlightedModLinkSlot;
+    private readonly List<ModOrderSlot> highlightedModLinkSlots = new();
 
     private void FinishModOrderChange(string[]? before)
     {
@@ -153,45 +153,60 @@ public sealed partial class MainForm
         {
             if (!int.TryParse(match.Groups[1].Value, out var position)
                 || position < 1 || position > modOrderRows.Count) continue;
-            // The link data is a stable mod checkbox identity. We resolve its
-            // CURRENT position on click, so dragging can never stale the link.
             label.Links.Add(match.Index, match.Length, modOrderRows[position - 1].Box);
         }
+        var handsIndex = label.Text.IndexOf("#Hands", StringComparison.Ordinal);
+        if (handsIndex >= 0)
+            label.Links.Add(handsIndex, "#Hands".Length, showHands);
         statusToolTip.SetToolTip(label,
-            "R = Requires; D = Disables. Click a blue #number to highlight that mod."
-            + Environment.NewLine + dependencies.TrimStart(' ', '—')
+            "R = Requires; D = Disables. Hover to highlight ALL linked mods."
+            + Environment.NewLine
+            + (item.Box == customDynamicShoulderHolster
+                ? "Enable Hands in main launcher (VR Options)."
+                : dependencies.TrimStart(' ', '—'))
             + Environment.NewLine + item.Tip);
     }
 
-    private void NavigateModDependency(object? target)
+    // Every reference in a Requires / Disables group lights up together.
+    // Rebuild from current link targets so drag reordering cannot stale IDs.
+    private IReadOnlyList<ModOrderSlot> ReferencedSlots(ModOrderSlot source)
     {
-        if (target is not CheckBox mod) return;
-        var index = modOrderRows.FindIndex(item => item.Box == mod);
-        if (index < 0 || index >= modOrderSlots.Count) return;
-        var slot = modOrderSlots[index];
-        var scroll = modOrderScroll;
-        if (scroll is not null && !scroll.IsDisposed)
-        {
-            var screen = slot.Panel.PointToScreen(Point.Empty);
-            var top = scroll.PointToClient(screen).Y;
-            var desired = Math.Max(0, scroll.VerticalScroll.Value + top
-                - scroll.ClientSize.Height / 3);
-            scroll.AutoScrollPosition = new Point(0, desired);
-        }
-        HighlightDependencySlot(slot);
+        return source.Dependency.Links.Cast<LinkLabel.Link>()
+            .Select(link => link.LinkData as CheckBox)
+            .Where(box => box is not null && box != showHands)
+            .Select(box => modOrderRows.FindIndex(row => row.Box == box))
+            .Where(index => index >= 0 && index < modOrderSlots.Count)
+            .Distinct().Select(index => modOrderSlots[index]).ToArray();
     }
 
-    private void HighlightDependencySlot(ModOrderSlot slot)
+    private void HighlightDependencyReferences(ModOrderSlot source, bool persist)
     {
         ClearDependencyHighlight();
-        highlightedModLinkSlot = slot;
-        slot.Number.BackColor = Color.FromArgb(70, 113, 152);
-        slot.Number.ForeColor = Color.White;
-        slot.Panel.BackColor = Color.FromArgb(46, 60, 79);
-        slot.Panel.Invalidate();
-        modLinkHighlightTimer = new System.Windows.Forms.Timer { Interval = 1700 };
-        modLinkHighlightTimer.Tick += (_, _) => ClearDependencyHighlight();
-        modLinkHighlightTimer.Start();
+        foreach (var slot in ReferencedSlots(source))
+        {
+            highlightedModLinkSlots.Add(slot);
+            var tone = Color.FromArgb(79, 62, 40);
+            slot.Number.BackColor = tone;
+            slot.Number.ForeColor = Color.FromArgb(255, 213, 141);
+            slot.Panel.BackColor = tone;
+            slot.Dependency.BackColor = tone;
+            if (slot.Panel.Controls.OfType<CheckBox>().FirstOrDefault() is { } check)
+                check.BackColor = tone;
+            slot.Panel.Invalidate();
+        }
+        if (persist)
+        {
+            modLinkHighlightTimer = new System.Windows.Forms.Timer { Interval = 1800 };
+            modLinkHighlightTimer.Tick += (_, _) => ClearDependencyHighlight();
+            modLinkHighlightTimer.Start();
+            if (source.Dependency.Links.Cast<LinkLabel.Link>()
+                .Any(link => ReferenceEquals(link.LinkData, showHands)))
+            {
+                BringToFront();
+                Activate();
+                showHands.Focus();
+            }
+        }
     }
 
     private void ClearDependencyHighlight()
@@ -199,14 +214,18 @@ public sealed partial class MainForm
         modLinkHighlightTimer?.Stop();
         modLinkHighlightTimer?.Dispose();
         modLinkHighlightTimer = null;
-        if (highlightedModLinkSlot is { } slot && !slot.Panel.IsDisposed)
+        foreach (var slot in highlightedModLinkSlots)
         {
+            if (slot.Panel.IsDisposed) continue;
             slot.Number.BackColor = PanelColor;
             slot.Number.ForeColor = Color.White;
             slot.Panel.BackColor = PanelColor;
+            slot.Dependency.BackColor = PanelColor;
+            if (slot.Panel.Controls.OfType<CheckBox>().FirstOrDefault() is { } check)
+                check.BackColor = PanelColor;
             slot.Panel.Invalidate();
         }
-        highlightedModLinkSlot = null;
+        highlightedModLinkSlots.Clear();
     }
 
     private void SetDropIndicator(int targetIndex)
