@@ -267,6 +267,17 @@ jobs:
             $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
             @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
           }
+          # Shader replacements are externally provisioned. Prevent a
+          # partially copied profile from being packaged as complete, and
+          # explicitly label packages without those local-only inputs.
+          & .\\tools\\verify_sfs_payload.ps1 -PackageRoot $full -WriteNotice
+          if ($LASTEXITCODE -ne 0) { throw "SFS payload verification failed" }
+          & .\\tools\\verify_sfs_payload.ps1 -PackageRoot $patch -WriteNotice
+          if ($LASTEXITCODE -ne 0) { throw "SFS patch verification failed" }
+          if (Test-Path (Join-Path $full "SFS-PROFILE-NOT-INCLUDED.txt")) {
+            Write-Host "::warning::KHARVOX artifact omits 75 external SFS shaders. AER available; restore a known-good profile for SFS."
+            "⚠️ SFS: This build does not contain the 75 external shader files. Use AER or restore a verified local sfs-profile." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          }
           Write-Manifest $full "full"
           Write-Manifest $patch "patch"
 
