@@ -95,7 +95,13 @@ public sealed partial class MainForm : Form
     private readonly TrackBar physicalGlorykillSpeed = MakeSlider(0, 15, 9, 1, 1);
     private readonly Label physicalGlorykillSpeedValue = MakeSliderValueLabel();
     private readonly Label status = new() { AutoSize = false, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.Silver };
-    private readonly ToolTip statusToolTip = new();
+    // This tooltip serves two distinct top-level forms. ShowAlways prevents
+    // WinForms suppressing descriptions when the detached Custom Mods form is active.
+    private readonly ToolTip statusToolTip = new()
+    {
+        ShowAlways = true, InitialDelay = 380, ReshowDelay = 95,
+        AutoPopDelay = 14000, IsBalloon = false
+    };
     private readonly Panel renderScaleHost = new() { Dock = DockStyle.Fill, Margin = Padding.Empty };
     private readonly Button launchButton = new();
     private bool applyingCustomModDependencies;
@@ -1716,8 +1722,9 @@ public sealed partial class MainForm : Form
             Text = "KHARVOX Custom Mods",
             // Open at the SAME narrowest width the resize border allows:
             // the user should not need to drag the edge inward every time.
-            ClientSize = new Size(714, 600),
-            MinimumSize = new Size(730, 530),
+            ClientSize = new Size(876, 600),
+            MinimumSize = new Size(890, 530),
+            FormBorderStyle = FormBorderStyle.FixedSingle,
             StartPosition = FormStartPosition.Manual,
             BackColor = Color.Black,
             ForeColor = Color.WhiteSmoke,
