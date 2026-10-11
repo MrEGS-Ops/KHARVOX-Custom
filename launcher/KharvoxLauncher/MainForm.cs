@@ -2310,15 +2310,26 @@ public sealed partial class MainForm : Form
             var choice = MessageBox.Show(this,
                 "SFS needs 75 valid compiled shader files. This installation has "
                 + shaderCount + "." + Environment.NewLine + Environment.NewLine
-                + "The SFS profile is a separate runtime input; downloading a new "
-                + "native build does not generate it." + Environment.NewLine
-                + "Restore a verified matching profile into:" + Environment.NewLine
-                + profilePath + Environment.NewLine + Environment.NewLine
-                + "Switch to AER and launch DOOM now?",
-                "KHARVOX — SFS shaders missing", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Warning);
-            if (choice != DialogResult.Yes) return;
-            rendererMode.SelectedIndex = RendererSelection.Index("AER");
+                + "The SFS profile is a separate runtime input; a native build "
+                + "does not recreate its VR-corrected shaders." + Environment.NewLine
+                + "Required folder: " + profilePath + Environment.NewLine
+                + Environment.NewLine
+                + "YES — Locate the sfs-profile from an earlier WORKING KHARVOX installation and restore it."
+                + Environment.NewLine
+                + "NO — Use AER for this launch instead."
+                + Environment.NewLine
+                + "CANCEL — Do not launch.",
+                "KHARVOX — Repair missing SFS shaders",
+                MessageBoxButtons.YesNoCancel, MessageBoxIcon.Warning);
+            if (choice == DialogResult.Cancel) return;
+            if (choice == DialogResult.Yes)
+            {
+                if (!SfsProfileRecovery.ChooseAndRestore(this)) return;
+                // Keep the original strict validation after copying the files.
+                VulkanSfs.EnsureAvailable();
+            }
+            else
+                rendererMode.SelectedIndex = RendererSelection.Index("AER");
         }
         SaveSettings();
         launchOperationInProgress = true;
