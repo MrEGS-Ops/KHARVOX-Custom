@@ -23,8 +23,9 @@ if ($shaders.Count -eq 75) {
                 throw "Invalid SPIR-V file size: $($shader.Name)"
             }
             $magic = New-Object byte[] 4
-            if ($file.Read($magic,0,4) -ne 4
-                -or ([BitConverter]::ToUInt32($magic,0)) -ne 0x07230203) {
+            $read = $file.Read($magic,0,4)
+            $header = [BitConverter]::ToUInt32($magic,0)
+            if (($read -ne 4) -or ($header -ne 0x07230203)) {
                 throw "Invalid SPIR-V header: $($shader.Name)"
             }
         } finally { $file.Dispose() }
