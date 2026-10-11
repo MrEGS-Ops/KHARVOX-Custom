@@ -79,6 +79,17 @@ struct XInputHapticSignal {
     bool active{};
 };
 
+// Preserve the existing DOOM/weapon pulse when it is stronger, but give
+// damage a separate steady-frequency impact when the native effect is weak.
+// No additional controller write: this is mixed by the normal OpenXR writer.
+inline XInputHapticSignal mergeDamageImpactHapticSignal(
+    const XInputHapticSignal& existing,
+    float damageAmplitude, float damageFrequencyHz, bool damageActive) {
+    if (!damageActive || (existing.active && existing.amplitude >= damageAmplitude))
+        return existing;
+    return {damageAmplitude, damageFrequencyHz, true};
+}
+
 inline XInputHapticSignal selectNativeOrWeaponFireHapticSignal(
     const XInputHapticSignal& nativeSignal,
     bool weaponFireFallbackActive) {
