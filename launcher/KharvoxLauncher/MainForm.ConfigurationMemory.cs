@@ -363,14 +363,14 @@ public sealed partial class MainForm
                     "DOOMModLoader instruction does not match its button caption.");
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
-            if (window.ClientSize.Width > 780)
-                throw new InvalidDataException("Custom Mods window is too wide.");
-            // Start at the EXISTING resize minimum instead of forcing users
-            // to manually drag the dialog narrower each launch.
+            if (window.ClientSize.Width < 850 || window.ClientSize.Width > 900)
+                throw new InvalidDataException("Custom Mods initial width is incorrect.");
+            // Larger width is fixed while preserving docked move/height behavior.
             main.FitCustomOptionsToContent(11);
-            if (window.MinimumSize.Width != 730 || window.Width != 730)
+            if (window.MinimumSize.Width != 890 || window.Width != 890
+                || window.FormBorderStyle != FormBorderStyle.FixedSingle)
                 throw new InvalidDataException(
-                    "Custom Mods must default to its original 730px minimum width."
+                    "Custom Mods must use a fixed 890px starting width."
                     + " min=" + window.MinimumSize.Width
                     + " actual=" + window.Width);
             // Match actual outside borders exactly with no separator gap,
@@ -676,6 +676,10 @@ public sealed partial class MainForm
                 throw new InvalidDataException("Glory Kill speed slider is missing.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
+            if (!main.statusToolTip.ShowAlways
+                || main.statusToolTip.AutoPopDelay < 7000)
+                throw new InvalidDataException(
+                    "VR mod tooltips must remain readable in the detached panel.");
             var ratingBar = main.configurationRatingHeader;
             var ratingButtons = new[]
             {
@@ -715,8 +719,8 @@ public sealed partial class MainForm
             if (miniFace is null || !miniFace.Visible || miniFace.Width < 40
                 || miniFace.Height < 28)
                 throw new InvalidDataException("Centred DOOMguy Easter egg is missing.");
-            if (window.ClientSize.Width > 780
-                || main.gloryKillSpeedSlider.Width < 90)
+            if (window.ClientSize.Width < 850 || window.ClientSize.Width > 900
+                || main.gloryKillSpeedSlider.Width < 150)
                 throw new InvalidDataException(
                     "Rendered Custom Mods window or Glory Kill selector too wide.");
             ratingBar.PerformLayout();
