@@ -301,9 +301,9 @@ public sealed partial class MainForm : Form
         physicalGlorykillSpeed.AccessibleName = "Physical Glory Kill speed";
         physicalGlorykillSpeed.ValueChanged += SpeedSliderChanged;
         optionGrid.Controls.Add(physicalGlorykill, 0, 6);
-        var gloryKillSpeedSlider = MakeSpeedSlider(physicalGlorykillSpeed, physicalGlorykillSpeedValue);
-        optionGrid.Controls.Add(gloryKillSpeedSlider, 1, 6);
-        optionGrid.SetColumnSpan(gloryKillSpeedSlider, 2);
+        var physicalGloryKillSliderHost = MakeSpeedSlider(physicalGlorykillSpeed, physicalGlorykillSpeedValue);
+        optionGrid.Controls.Add(physicalGloryKillSliderHost, 1, 6);
+        optionGrid.SetColumnSpan(physicalGloryKillSliderHost, 2);
         physicalGlorykillHands.Items.AddRange(["Only Left Hand", "Only Right Hand", "Both Hands"]);
         physicalGlorykillHands.SelectedIndexChanged += OptionChanged;
         AddField(optionGrid, 7, "Glory Kill hands", MakeFixedWidth(physicalGlorykillHands, 126));
