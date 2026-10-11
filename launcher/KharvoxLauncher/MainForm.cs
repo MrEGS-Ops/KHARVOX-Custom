@@ -81,6 +81,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customMotionGloryKillSpeed = MakeCheck("Punch-Driven Glory Kill Speed", false);
     private readonly CheckBox customPhysicalChainsawGestures = MakeCheck("Physical Chainsaw Gestures", false);
+    private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
     private readonly ComboBox gloryKillSpeedMenu = new()
@@ -415,7 +416,8 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, hide it for true Fist + Fist empty hands, then draw that exact weapon back out. Enabling this automatically enables KHARVOX Hands."),
             (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
-            (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing.")
+            (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing."),
+            (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
         // Preserve the approved mod titles. A separate per-mod status marker
@@ -1467,7 +1469,8 @@ public sealed partial class MainForm : Form
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
         MotionGloryKillSpeed = customMotionGloryKillSpeed.Checked,
-        PhysicalChainsawGestures = customPhysicalChainsawGestures.Checked
+        PhysicalChainsawGestures = customPhysicalChainsawGestures.Checked,
+        HapticOverhaul = customHapticOverhaul.Checked
     };
 
     private void SaveCustomModSettings(bool notify = true)
@@ -1510,6 +1513,7 @@ public sealed partial class MainForm : Form
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
             customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+            customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
         {
