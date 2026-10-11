@@ -215,5 +215,18 @@ int main() {
     // refreshed at 25ms, not treated as a still-running 100ms native pulse.
     if (selectXInputHapticCommand(clickOutput, clickOnly, 125)
         != XInputHapticCommand::Apply) return 42;
+    const XInputHapticSignal normalWeak{0.3f, 220.f, true};
+    const XInputHapticSignal normalStrong{0.95f, 220.f, true};
+    const auto damageImpact = mergeDamageImpactHapticSignal(
+        normalWeak, 0.7f, 115.f, true);
+    if (!damageImpact.active || !near(damageImpact.amplitude, 0.7f)
+        || !near(damageImpact.frequencyHz, 115.f)) return 43;
+    const auto strongNative = mergeDamageImpactHapticSignal(
+        normalStrong, 0.7f, 115.f, true);
+    if (!near(strongNative.amplitude, 0.95f)
+        || !near(strongNative.frequencyHz, 220.f)) return 44;
+    const auto passive = mergeDamageImpactHapticSignal(
+        zero, 0.7f, 115.f, false);
+    if (passive.active) return 45;
     return 0;
 }
