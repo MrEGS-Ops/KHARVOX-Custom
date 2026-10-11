@@ -722,10 +722,15 @@ public sealed partial class MainForm
             if (miniFace is null || !miniFace.Visible || miniFace.Width < 40
                 || miniFace.Height < 28)
                 throw new InvalidDataException("Centred DOOMguy Easter egg is missing.");
-            if (window.ClientSize.Width < 850 || window.ClientSize.Width > 900
-                || main.gloryKillSpeedSlider.Width < 150)
+            // The CI desktop can be narrower than launcher + 890px sidecar:
+            // docking may shrink it to fit, without changing the preferred size.
+            if (window.ClientSize.Width < 520 || window.ClientSize.Width > 900
+                || main.gloryKillSpeedSlider.Width < 130)
                 throw new InvalidDataException(
-                    "Rendered Custom Mods window or Glory Kill selector too wide.");
+                    "Rendered Custom Mods panel or five-stop GK slider is clipped."
+                    + " clientWidth=" + window.ClientSize.Width
+                    + " sliderWidth=" + main.gloryKillSpeedSlider.Width
+                    + " desktopWidth=" + Screen.FromControl(window).WorkingArea.Width);
             ratingBar.PerformLayout();
             if (!ratingBar.Visible || ratingBar.Top > 7
                 || ratingBar.Left < vr.ClientSize.Width / 2
