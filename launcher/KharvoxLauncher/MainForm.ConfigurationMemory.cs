@@ -676,6 +676,9 @@ public sealed partial class MainForm
                 throw new InvalidDataException("Glory Kill speed slider is missing.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
+            if (!NexusFolderCompanion.RunFileDropPolicySelfTest())
+                throw new InvalidDataException(
+                    "ZIP drag/drop must preserve downloads and avoid overwriting existing mods.");
             if (!main.statusToolTip.ShowAlways
                 || main.statusToolTip.AutoPopDelay < 7000)
                 throw new InvalidDataException(
@@ -895,7 +898,7 @@ public sealed partial class MainForm
             Rectangle? clickedBounds = null;
             Rectangle? requestedFolderBounds = null;
             NexusModsPopup.TestOpenRequested = bounds => clickedBounds = bounds;
-            NexusFolderCompanion.TestExplorerOpenRequested =
+            NexusFolderCompanion.TestModsPanelOpenRequested =
                 bounds => requestedFolderBounds = bounds;
             try
             {
@@ -920,7 +923,7 @@ public sealed partial class MainForm
             finally
             {
                 NexusModsPopup.TestOpenRequested = null;
-                NexusFolderCompanion.TestExplorerOpenRequested = null;
+                NexusFolderCompanion.TestModsPanelOpenRequested = null;
             }
             // Both title-bar X and footer Close route through the same
             // launcher-focus restoration method. Reopening must stay possible.
