@@ -28,6 +28,7 @@ struct CustomModFlags {
     bool physicalGrenadeThrow{};
     bool motionGloryKillSpeed{};
     bool physicalChainsawGestures{};
+    bool hapticOverhaul{};
 };
 
 inline CustomModFlags loadCustomModFlags() {
@@ -54,6 +55,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
     flags.physicalChainsawGestures = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_GESTURES");
+    flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
     return flags;
 }
 
