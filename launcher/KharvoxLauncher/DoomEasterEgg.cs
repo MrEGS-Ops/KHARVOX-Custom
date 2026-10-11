@@ -36,13 +36,9 @@ internal sealed class DoomEasterEgg : IDisposable
             if (!File.Exists(path)) continue;
             try
             {
-                // Load into memory so the file isn't locked while the launcher runs.
-                using var stream = File.OpenRead(path);
-                using var original = Image.FromStream(stream);
-                using var copy = new MemoryStream();
-                original.Save(copy, ImageFormat.Gif);
-                copy.Position = 0;
-                animation = Image.FromStream(copy);
+                // Keep the GIF decoder alive for the lifetime of the window.
+                // The file is optional, user-supplied content, never bundled.
+                animation = Image.FromFile(path);
                 frameCount = animation.GetFrameCount(FrameDimension.Time);
                 break;
             }
@@ -124,9 +120,9 @@ internal sealed class DoomEasterEgg : IDisposable
             using var attrs = new ImageAttributes();
             attrs.SetColorMatrix(new ColorMatrix(new[]
             {
-                new[] { brightness, 0f, 0f, 0f, 0f },
-                new[] { brightness, 0f, 0f, 0f, 0f },
-                new[] { brightness, 0f, 0f, 0f, 0f },
+                new[] { brightness, brightness, brightness, 0f, 0f },
+                new[] { 0f, 0f, 0f, 0f, 0f },
+                new[] { 0f, 0f, 0f, 0f, 0f },
                 new[] { 0f, 0f, 0f, 1f, 0f },
                 new[] { 30f / 255f, 30f / 255f, 33f / 255f, 0f, 1f }
             }));
@@ -253,7 +249,7 @@ internal sealed class DoomFaceControl : Control
         }
         idle.Tick += (_, _) =>
         {
-            if (!Visible || !FindForm()?.Visible == true) return;
+            if (!Visible || FindForm()?.Visible != true) return;
             phase = (phase + 1) % 12;
             Invalidate();
         };
