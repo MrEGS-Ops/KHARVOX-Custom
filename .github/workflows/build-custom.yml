@@ -24,6 +24,28 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Parse all PowerShell shipping scripts before building
+        shell: powershell
+        run: |
+          foreach ($script in @(
+              "tools/verify_sfs_payload.ps1",
+              "tools/Restore-Cactus-SFS-Profile.ps1",
+              "tools/Get-KHARVOX-Custom-Watcher.ps1",
+              "tools/Generate-KHARVOX-Mods.py"
+          )) {
+            if ($script.EndsWith(".py")) { continue }
+            $tokens = $null
+            $problems = $null
+            $source = (Resolve-Path -LiteralPath $script).Path
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $source, [ref]$tokens, [ref]$problems) | Out-Null
+            if ($problems.Count -ne 0) {
+              foreach ($problem in $problems) { Write-Error "$script : $problem" }
+              throw "PowerShell syntax validation failed: $script"
+            }
+            Write-Host "PASS: $script parses correctly"
+          }
+
       - name: Test independent KHARVOX resource mod generator
         shell: powershell
         run: |
@@ -267,7 +289,7 @@ jobs:
           Invoke-WebRequest -Uri $upstreamUrl -UseBasicParsing -OutFile $sourceZip
           foreach ($package in @($full, $patch)) {
             & ./tools/Restore-Cactus-SFS-Profile.ps1 -InstallRoot $package -ReleaseZip $sourceZip
-            if ($LASTEXITCODE -ne 0) { throw "Failed to provision SFS for $package" }
+            # The restore function throws on error; it does not set LASTEXITCODE.
             $sourceNotice = @(
               "KHARVOX SFS SHADER PROFILE - ORIGINAL RELEASE"
               "Source: CactusVRStudios/KHARVOX v1.1.1"
