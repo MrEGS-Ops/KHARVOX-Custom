@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish]
   workflow_dispatch:
 
 permissions:
@@ -35,6 +35,22 @@ jobs:
       - name: Regenerate controller mapping
         shell: powershell
         run: .\assets\branding\generate-controller-mapping.ps1
+
+      - name: Fetch licensed Freedoom face art
+        shell: powershell
+        run: |
+          $sha = "3ac019628d70b812ffb722f7f2365771b76a9d29"
+          $url = "https://raw.githubusercontent.com/freedoom/freedoom/$sha"
+          $dest = "assets/freedoom"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          foreach ($name in @("stfst00.png", "stftl00.png", "stftr00.png", "stfevl0.png")) {
+            Invoke-WebRequest -UseBasicParsing -Uri "$url/graphics/$name" -OutFile "$dest/$name"
+            if ((Get-Item "$dest/$name").Length -lt 100) { throw "Freedoom sprite missing or empty: $name" }
+          }
+          Invoke-WebRequest -UseBasicParsing -Uri "$url/COPYING.adoc" -OutFile "$dest/COPYING.adoc"
+          if (!(Select-String -Path "$dest/COPYING.adoc" -Pattern "Redistribution and use")) {
+            throw "Freedoom attribution/license unavailable"
+          }
 
       - name: Restore launcher
         shell: powershell
@@ -218,6 +234,7 @@ jobs:
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $full "assets") -Recurse -Force
           foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt")) {
             $source = Join-Path $native $name
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
@@ -238,6 +255,8 @@ jobs:
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "assets") | Out-Null
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $patch "assets") -Recurse -Force
           function Write-Manifest([string]$root,[string]$kind) {
             $files = @()
             Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
