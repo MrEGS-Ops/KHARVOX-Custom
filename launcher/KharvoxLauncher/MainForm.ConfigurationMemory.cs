@@ -668,15 +668,12 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
-            if (main.gloryKillSpeedMenu.DropDownStyle != ComboBoxStyle.DropDownList
-                || main.gloryKillSpeedMenu.Items.Count != 5
-                || !Equals(main.gloryKillSpeedMenu.Items[0], "1")
-                || !Equals(main.gloryKillSpeedMenu.Items[4], "5")
+            if (main.gloryKillSpeedSlider.Value < 1
+                || main.gloryKillSpeedSlider.Value > 5
                 || GKMenuToEngine(1) != 10 || GKMenuToEngine(5) != 0
-                || main.gloryKillSpeedMenu.Width > 40
-                || main.gloryKillSpeedMenu.DropDownWidth > 40
-                || main.gloryKillSpeedMenu.Dock != DockStyle.None)
-                throw new InvalidDataException("Glory Kill speed dropdown is missing.");
+                || main.gloryKillSpeedSlider.Width < 90
+                || main.gloryKillSpeedSlider.ForeColor != Color.FromArgb(201, 201, 204))
+                throw new InvalidDataException("Glory Kill speed slider is missing.");
             var ratingBar = main.configurationRatingHeader;
             var ratingButtons = new[]
             {
@@ -712,8 +709,7 @@ public sealed partial class MainForm
             Application.DoEvents();
             window.PerformLayout();
             if (window.ClientSize.Width > 780
-                || main.gloryKillSpeedMenu.Width > 40
-                || main.gloryKillSpeedMenu.DropDownWidth > 40)
+                || main.gloryKillSpeedSlider.Width < 90)
                 throw new InvalidDataException(
                     "Rendered Custom Mods window or Glory Kill selector too wide.");
             ratingBar.PerformLayout();
@@ -810,37 +806,7 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Detected count must fit the header with one continuous divider surface.");
 
-            // With enough horizontal space, confirm that both real line
-            // segments were painted on either side of the centered text.
-            var leftLength = countLabel.Left - 6;
-            var rightLength = divider.ClientSize.Width - countLabel.Right - 6;
-            if (leftLength >= 6 && rightLength >= 6 && divider.Height >= 18)
-            {
-                using var preview = new Bitmap(divider.Width, divider.Height);
-                divider.DrawToBitmap(preview, new Rectangle(0, 0,
-                    divider.Width, divider.Height));
-                var y = divider.Height / 2;
-                bool IsDividerInk(int x)
-                {
-                    for (var dy = -1; dy <= 1; dy++)
-                    {
-                        var py = y + dy;
-                        if (py < 0 || py >= preview.Height) continue;
-                        var pixel = preview.GetPixel(x, py);
-                        if (Math.Abs(pixel.R - Color.DimGray.R) <= 25
-                            && Math.Abs(pixel.G - Color.DimGray.G) <= 25
-                            && Math.Abs(pixel.B - Color.DimGray.B) <= 25)
-                            return true;
-                    }
-                    return false;
-                }
-                var leftX = (2 + countLabel.Left - 4) / 2;
-                var rightX = (countLabel.Right + 4
-                    + divider.ClientSize.Width - 2) / 2;
-                if (!IsDividerInk(leftX) || !IsDividerInk(rightX))
-                    throw new InvalidDataException(
-                        "USER MODS divider must paint visible hairlines on both sides.");
-            }
+            // Plain centered detected text: no painted decoration on either side.
             var refresh = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
                 button.AccessibleName == "Rescan mods");
             var folder = userHeader.Controls.OfType<Button>().SingleOrDefault(button =>
@@ -899,7 +865,7 @@ public sealed partial class MainForm
                 || nexusLink.LinkBehavior != LinkBehavior.HoverUnderline
                 || nexusLink.Bottom > doomGrid.ClientSize.Height
                 || nexusLink.Top < modListPanel.Bottom
-                || nexusLink.LinkColor != Color.LightSkyBlue)
+                || nexusLink.LinkColor != Color.Gray)
                 throw new InvalidDataException(
                     "Nexus Mods hyperlink must remain clickable at the bottom of DOOM MODS.");
             // Previous tests only checked that a LinkLabel existed: the user
