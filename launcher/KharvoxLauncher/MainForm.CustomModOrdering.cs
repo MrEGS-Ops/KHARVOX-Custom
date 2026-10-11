@@ -311,10 +311,15 @@ public sealed partial class MainForm
                 Number = number, Grip = grip,
                 Dependency = dependency
             };
-            dependency.LinkClicked += (_, e) => NavigateModDependency(e.Link.LinkData);
-            dependency.MouseEnter += (_, _) => grip.Visible = true;
+            dependency.LinkClicked += (_, _) => HighlightDependencyReferences(slot, true);
+            dependency.MouseEnter += (_, _) =>
+            {
+                grip.Visible = true;
+                HighlightDependencyReferences(slot, false);
+            };
             dependency.MouseLeave += (_, _) =>
             {
+                ClearDependencyHighlight();
                 if (activeModDrag is null && !panel.ClientRectangle.Contains(
                     panel.PointToClient(Cursor.Position))) grip.Visible = false;
             };
