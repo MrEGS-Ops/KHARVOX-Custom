@@ -270,9 +270,9 @@ jobs:
           # Shader replacements are externally provisioned. Prevent a
           # partially copied profile from being packaged as complete, and
           # explicitly label packages without those local-only inputs.
-          & .\\tools\\verify_sfs_payload.ps1 -PackageRoot $full -WriteNotice
+          & ./tools/verify_sfs_payload.ps1 -PackageRoot $full -WriteNotice
           if ($LASTEXITCODE -ne 0) { throw "SFS payload verification failed" }
-          & .\\tools\\verify_sfs_payload.ps1 -PackageRoot $patch -WriteNotice
+          & ./tools/verify_sfs_payload.ps1 -PackageRoot $patch -WriteNotice
           if ($LASTEXITCODE -ne 0) { throw "SFS patch verification failed" }
           if (Test-Path (Join-Path $full "SFS-PROFILE-NOT-INCLUDED.txt")) {
             Write-Host "::warning::KHARVOX artifact omits 75 external SFS shaders. AER available; restore a known-good profile for SFS."
