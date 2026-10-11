@@ -213,7 +213,6 @@ internal sealed class ModDropWindow : Form
         if (!IsHandleCreated || IsDisposed || Disposing) return;
         try { BeginInvoke((Action)RefreshFiles); }
         catch (InvalidOperationException) { }
-        catch (ObjectDisposedException) { }
     }
     private void RefreshFiles()
     {
