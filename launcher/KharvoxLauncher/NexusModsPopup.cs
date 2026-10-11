@@ -97,10 +97,18 @@ internal static class NexusModsPopup
 
     internal static async Task<bool> OpenAsync(Rectangle customModsBounds)
     {
+        await OpenTrackedAsync(customModsBounds);
+        return true;
+    }
+
+    // Returns only a NEWLY opened popup HWND. Existing browser windows are
+    // deliberately excluded, so companion cleanup never tracks someone else's tab.
+    internal static async Task<IntPtr> OpenTrackedAsync(Rectangle customModsBounds)
+    {
         if (TestOpenRequested is { } probe)
         {
             probe(customModsBounds);
-            return true;
+            return IntPtr.Zero;
         }
 
         var browserPath = FindDefaultBrowserExecutable()
@@ -135,13 +143,13 @@ internal static class NexusModsPopup
                     customModsBounds.Width, customModsBounds.Height,
                     0x0040); // SWP_SHOWWINDOW
                 SetForegroundWindow(newWindow);
-                return true;
+                return newWindow;
             }
             await Task.Delay(100);
         }
-        // The new-window command has already been sent. On a cold startup the
-        // browser can appear later; don't launch the URL again as a tab.
-        return true;
+        // Do not track any existing window if a slow browser never exposes
+        // its new HWND. The link still sends the browser request normally.
+        return IntPtr.Zero;
     }
 
     private static HashSet<IntPtr> GetVisibleBrowserWindows(string browserProcessName)
