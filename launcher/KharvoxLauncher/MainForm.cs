@@ -1447,11 +1447,21 @@ public sealed partial class MainForm : Form
                 customDisableWeaponWheel.Checked = false;
             }
 
+            // Selecting a child option should automatically enable prerequisites
+            // rather than presenting an unavailable/greyed-out checkbox.
+            if (changed == customBehindHeadWheelHandSelection
+                && customBehindHeadWheelHandSelection.Checked)
+            {
+                customBehindHeadWeaponWheel.Checked = true;
+                customDisableWeaponWheel.Checked = false;
+            }
+
             // A hard "No Weapon Wheel" request wins over every wheel-dependent
             // feature and therefore also releases Dash.
             if (changed == customDisableWeaponWheel && customDisableWeaponWheel.Checked)
             {
                 customBehindHeadWeaponWheel.Checked = false;
+                customBehindHeadWheelHandSelection.Checked = false;
                 customDirectionalDash.Checked = false;
             }
 
@@ -1478,6 +1488,9 @@ public sealed partial class MainForm : Form
                     && !customBehindHeadWeaponWheel.Checked)
                 || (changed == weaponWheelRemap && !weaponWheelRemap.Checked))
                 customDirectionalDash.Checked = false;
+            if (changed == customBehindHeadWeaponWheel
+                && !customBehindHeadWeaponWheel.Checked)
+                customBehindHeadWheelHandSelection.Checked = false;
 
             // Final invariant pass also repairs older saved configs.
             if (customDirectionalDash.Checked)
@@ -1495,6 +1508,11 @@ public sealed partial class MainForm : Form
                 customDisableWeaponWheel.Checked = false;
             }
 
+            // Repair legacy saved states: child remains off until its user
+            // explicitly selects it, but selecting it auto-checks the parent.
+            if (!customBehindHeadWeaponWheel.Checked)
+                customBehindHeadWheelHandSelection.Checked = false;
+
             if (customDynamicShoulderHolster.Checked)
                 showHands.Checked = true;
 
@@ -1510,8 +1528,9 @@ public sealed partial class MainForm : Form
             customDirectionalDash.Enabled = !customDisableWeaponWheel.Checked;
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
-            customBehindHeadWheelHandSelection.Enabled =
-                customBehindHeadWeaponWheel.Checked && !customDisableWeaponWheel.Checked;
+            // R-only dependencies must never disable the child's checkbox.
+            // Selecting Hand Selection enables its wheel dependency above.
+            customBehindHeadWheelHandSelection.Enabled = true;
         }
         finally
         {
