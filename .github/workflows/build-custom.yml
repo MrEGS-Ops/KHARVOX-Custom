@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish]
   workflow_dispatch:
 
 permissions:
@@ -216,6 +216,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
           Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
           foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt")) {
             $source = Join-Path $native $name
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
@@ -234,6 +236,8 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $patch "supervisor-profiles") | Out-Null
           Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $patch "supervisor-profiles") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
           function Write-Manifest([string]$root,[string]$kind) {
             $files = @()
             Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
