@@ -910,7 +910,8 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         statusToolTip.SetToolTip(nexusModsLink,
-            "Open Nexus Mods in a new window of your default browser.");
+            "Open Nexus in your default browser and a matching Explorer mods folder. "
+            + "When the popup closes, its newly created folder window also closes.");
         nexusModsLink.LinkClicked += async (_, _) =>
         {
             if (!nexusModsLink.Enabled) return;
@@ -927,7 +928,14 @@ public sealed partial class MainForm : Form
                     throw new InvalidOperationException("Custom Mods window is unavailable.");
                 var windowBounds = dialog.WindowState == FormWindowState.Normal
                     ? dialog.Bounds : dialog.RestoreBounds;
-                await NexusModsPopup.OpenAsync(windowBounds);
+                var popupWindow = await NexusModsPopup.OpenTrackedAsync(windowBounds);
+                // The folder is a disposable COMPANION of this new browser
+                // popup; its bounds match the main KHARVOX launcher window.
+                // A reused pre-existing Explorer window is never closed.
+                var launcherBounds = WindowState == FormWindowState.Normal
+                    ? Bounds : RestoreBounds;
+                await NexusFolderCompanion.OpenForPopupAsync(
+                    DoomUserMods.Folder, launcherBounds, popupWindow);
             }
             catch (Exception error)
             {
