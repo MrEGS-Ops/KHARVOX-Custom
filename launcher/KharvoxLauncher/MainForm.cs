@@ -375,7 +375,7 @@ public sealed partial class MainForm : Form
             AutoScroll = false
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 138));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedSlider.ValueChanged += (_, _) =>
@@ -393,9 +393,31 @@ public sealed partial class MainForm : Form
             ForeColor = Color.Gainsboro,
             TextAlign = ContentAlignment.MiddleLeft
         }, 0, 0);
+        var speedScale = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, Margin = Padding.Empty,
+            Padding = Padding.Empty, ColumnCount = 3, RowCount = 1,
+            BackColor = PanelColor
+        };
+        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 33));
+        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
+        var slowCaption = new Label {
+            Text = "Slow", ForeColor = Color.Silver,
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = Padding.Empty
+        };
+        var fastCaption = new Label {
+            Text = "Fast", ForeColor = Color.Silver,
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight,
+            Margin = Padding.Empty
+        };
         gloryKillSpeedSlider.Dock = DockStyle.Fill;
-        gloryKillSpeedSlider.Margin = new Padding(0, 1, 0, 0);
-        customModsGrid.Controls.Add(gloryKillSpeedSlider, 1, 0);
+        gloryKillSpeedSlider.Margin = Padding.Empty;
+        speedScale.Controls.Add(slowCaption, 0, 0);
+        speedScale.Controls.Add(gloryKillSpeedSlider, 1, 0);
+        speedScale.Controls.Add(fastCaption, 2, 0);
+        customModsGrid.Controls.Add(speedScale, 1, 0);
 
         var customChecks = new (CheckBox Box, string Tip)[]
         {
