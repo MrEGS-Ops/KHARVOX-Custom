@@ -1,6 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$PackageRoot,
-    [switch]$WriteNotice
+    [switch]$WriteNotice,
+    [switch]$RequireComplete
 )
 $ErrorActionPreference = "Stop"
 $root = [IO.Path]::GetFullPath($PackageRoot)
@@ -8,6 +9,9 @@ $folder = Join-Path $root "sfs-profile"
 $shaders = if (Test-Path -LiteralPath $folder -PathType Container) {
     @(Get-ChildItem -LiteralPath $folder -File -Filter "*.spv")
 } else { @() }
+if ($RequireComplete -and $shaders.Count -ne 75) {
+    throw "Build packaging must contain all 75 SFS replacement shaders; found $($shaders.Count) in $folder"
+}
 if ($shaders.Count -ne 0 -and $shaders.Count -ne 75) {
     throw "Incomplete SFS profile: $($shaders.Count)/75 shader files in $folder. Do not publish as complete."
 }
