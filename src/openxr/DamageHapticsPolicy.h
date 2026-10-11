@@ -45,12 +45,13 @@ inline int detectVitalsDamage(DamageHapticState& state,
     if (!sample.valid || !sample.gameplay
         || sample.health < 0 || sample.health > 10000
         || sample.armour < 0 || sample.armour > 10000) {
-        state.previous = {};
-        state.hasBaseline = false;
+        state = {};
         return 0;
     }
     if (!state.hasBaseline || sample.epoch != state.previous.epoch
         || (state.previous.health == 0 && sample.health > 0)) {
+        // A new life, map or baseline must not inherit an old haptic pulse.
+        state = {};
         state.previous = sample;
         state.hasBaseline = true;
         return 0;
