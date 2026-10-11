@@ -56,6 +56,7 @@
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
 #include "XInputHapticsPolicy.h"
+#include "DamageHapticsPolicy.h"
 #include "MotionWeaponWheelPolicy.h"
 #include "../bhaptics/BhapticsIpcClient.h"
 #include "../psvr2/Psvr2IpcClient.h"
@@ -84,6 +85,25 @@ static DWORD portableGetFileAttributesW(LPCWSTR path) {
     return GetFileAttributesW(kharvox::runtimePath(name ? name + 1 : path).c_str());
 }
 #define GetFileAttributesW portableGetFileAttributesW
+
+// A verified DOOM health/armour hook may submit read-only player vitals.
+// Until such a hook exists the mailbox stays invalid and produces NO pulses.
+namespace {
+std::mutex hapticVitalsMailboxMutex;
+kharvox::PlayerVitalsSample hapticVitalsMailbox{};
+std::uint64_t hapticVitalsUpdatedAt{};
+}
+
+// No pointers are guessed, no game memory is modified, and no third-party
+// mod's settings are required. This is only a future in-process data boundary.
+extern "C" __declspec(dllexport) void __cdecl
+KharvoxHapticSubmitPlayerVitals(
+    int health, int armour, unsigned long long lifeGeneration, int isGameplay) {
+    std::lock_guard<std::mutex> guard(hapticVitalsMailboxMutex);
+    hapticVitalsMailbox = {health, armour, true,
+        isGameplay != 0, static_cast<std::uint64_t>(lifeGeneration)};
+    hapticVitalsUpdatedAt = GetTickCount64();
+}
 
 namespace {
 struct DoomSwapchain { VkExtent2D extent{}; VkFormat format{}; std::vector<VkImage> images; uint32_t stablePresents{}; bool copyRecoveryPending{}; };
@@ -218,6 +238,7 @@ struct State {
     unsigned long long psvr2FireStartedTick{}; KharvoxWeaponKind psvr2FireWeapon{KharvoxWeaponKind::Unknown};
     std::array<kharvox::XInputHapticOutputState,2> hapticOutputStates{};
     kharvox::XInputRumbleFrameAccumulator hapticFrameAccumulator{};
+    kharvox::DamageHapticState damageHaptics{};
     unsigned long long weaponFireHapticFallbackUntilTick{};
     unsigned long long nextHapticErrorLogTick{}; uint64_t hapticErrorCount{};
     FaceButtonRoute jumpButtonRoute{FaceButtonRoute::None};
@@ -761,6 +782,7 @@ void clearCapturedXInputRumble(){
     nativeXInputRumble.store(0,std::memory_order_release);
     pendingXInputRumblePeaks.store(0,std::memory_order_release);
     kharvox::resetXInputRumbleFrameAccumulator(s.hapticFrameAccumulator);
+    kharvox::resetDamageHaptics(s.damageHaptics);
     s.weaponFireHapticFallbackUntilTick=0;
     s.wheelClicks={};
 }
@@ -844,11 +866,22 @@ void updateXInputHaptics(){
         s.wheelStickHaptics={};
         pendingXInputRumblePeaks.store(0,std::memory_order_release);
         kharvox::resetXInputRumbleFrameAccumulator(s.hapticFrameAccumulator);
+        kharvox::resetDamageHaptics(s.damageHaptics);
         KharvoxBhapticsSubmitRumble(0,0);
         return;
     }
 
     const auto now=GetTickCount64();
+    kharvox::PlayerVitalsSample vitalSample{};
+    if (s.customMods.hapticOverhaul) {
+        std::lock_guard<std::mutex> guard(hapticVitalsMailboxMutex);
+        // Missing or stale reader data cannot masquerade as a damage event.
+        if (hapticVitalsUpdatedAt != 0 && now >= hapticVitalsUpdatedAt
+            && now - hapticVitalsUpdatedAt <= 250)
+            vitalSample = hapticVitalsMailbox;
+    }
+    const auto damageImpact = kharvox::updateDamageHaptics(
+        s.damageHaptics, vitalSample, now);
     const uint32_t current=nativeXInputRumble.load(std::memory_order_acquire);
     const uint32_t pending=pendingXInputRumblePeaks.exchange(
         0,std::memory_order_acq_rel);
@@ -878,7 +911,13 @@ void updateXInputHaptics(){
 
     const std::array<XrAction,2> actions{s.leftHaptic,s.rightHaptic};
     for(size_t hand=0;hand<actions.size();++hand){
-        const auto desired=kharvox::mixControllerClick(nativeDesired[hand],s.wheelClicks[hand],now);
+        const auto baseDesired=kharvox::mixControllerClick(
+            nativeDesired[hand],s.wheelClicks[hand],now);
+        const auto desired=kharvox::mergeDamageImpactHapticSignal(
+            baseDesired,damageImpact.amplitude,damageImpact.frequencyHz,
+            damageImpact.active);
+        const bool usingDamage=damageImpact.active
+            &&(!baseDesired.active || baseDesired.amplitude < damageImpact.amplitude);
         auto&outputState=s.hapticOutputStates[hand];
         const auto command=kharvox::selectXInputHapticCommand(
             outputState,desired,now);
@@ -895,8 +934,12 @@ void updateXInputHaptics(){
         }
 
         XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
-        const auto durationMilliseconds=kharvox::controllerHapticDurationMilliseconds(
+        const auto baseDuration=kharvox::controllerHapticDurationMilliseconds(
             nativeDesired[hand],s.wheelClicks[hand],now);
+        const auto durationMilliseconds=usingDamage
+            ?std::max<std::uint32_t>(1,std::min<std::uint32_t>(
+                100,damageImpact.remainingMilliseconds))
+            :baseDuration;
         vibration.duration=static_cast<XrDuration>(
             durationMilliseconds)*1000000;
         vibration.frequency=s.hapticFrequencyUnspecified
@@ -2880,7 +2923,8 @@ bool createGameplayActions(){
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
-        +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off"));
+        +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
+        +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
     s.leftHandSwapSticks=s.leftHanded&&!_stricmp(leftHandSwap,"buttons-and-sticks");
