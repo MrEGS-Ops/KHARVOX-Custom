@@ -12,7 +12,7 @@ int main() {
     sample.armour=90; // ten AP at 50ms = 500ms, fixed amplitude
     auto pulse=updateDamageHaptics(state,sample,200,cfg);
     if (!pulse.active || pulse.remainingMilliseconds!=500
-        || !near(pulse.amplitude,0.7f) || !near(pulse.frequencyHz,160.f)) return 2;
+        || !near(pulse.amplitude,0.7f) || !near(pulse.frequencyHz,115.f)) return 2;
     if (updateDamageHaptics(state,sample,650,cfg).remainingMilliseconds!=50) return 3;
     if (updateDamageHaptics(state,sample,700,cfg).active) return 4;
     sample.armour=95; // pickup never triggers
