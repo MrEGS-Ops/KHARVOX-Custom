@@ -15,7 +15,7 @@ public sealed partial class MainForm
     }
 
     // Number labels and drag handles belong to the POSITION, not the mod.
-    // These 15 physical slots remain anchored while their checkboxes move.
+    // These original 15 slots, plus new slots remain anchored while their checkboxes move.
     private sealed class ModOrderSlot
     {
         internal int Index;
@@ -32,7 +32,8 @@ public sealed partial class MainForm
         ("LEGS & MOVEMENT", "↔"),
         ("WEAPONS & COMBAT", "✣"),
         ("HUD & IMMERSION", "▣"),
-        ("DEMONS & AI", "◆")
+        ("DEMONS & AI", "◆"),
+        ("HAPTICS & FEEDBACK", "≈")
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
@@ -148,7 +149,8 @@ public sealed partial class MainForm
             Define(customPhysicalChainsawGestures, "physical-chainsaw", 2),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
-            Define(customRevengeDemon, "revenge-demon", 4)
+            Define(customRevengeDemon, "revenge-demon", 4),
+            Define(customHapticOverhaul, "haptic-overhaul", 5)
         };
         if (tips.Count != defaults.Length || defaults.Select(row => row.Box).Distinct().Count()
                 != defaults.Length)
@@ -404,7 +406,7 @@ public sealed partial class MainForm
         grid.SuspendLayout();
         try
         {
-            // First detach every checkbox; the 15 numbered rows, category
+            // First detach every checkbox; the numbered rows, category
             // headers and hover grips NEVER move or get renumbered.
             foreach (var slot in modOrderSlots)
                 foreach (var check in slot.Panel.Controls.OfType<CheckBox>().ToArray())
