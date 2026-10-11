@@ -28,12 +28,12 @@ public sealed partial class MainForm
 
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
     {
-        ("HANDS & ARMS", "◈"),
-        ("LEGS & MOVEMENT", "↔"),
-        ("WEAPONS & COMBAT", "✣"),
-        ("HUD & IMMERSION", "▣"),
-        ("DEMONS & AI", "◆"),
-        ("HAPTICS & FEEDBACK", "≈")
+        ("Hands & Arms", "✥"),
+        ("Legs & Movement", "➤"),
+        ("Weapons & Combat", "✦"),
+        ("HUD & Immersion", "▤"),
+        ("Demons & AI", "♜"),
+        ("Haptics & Feedback", "◎")
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
@@ -174,7 +174,7 @@ public sealed partial class MainForm
                 TextAlign = ContentAlignment.BottomLeft,
                 ForeColor = Color.FromArgb(157, 157, 162),
                 BackColor = PanelColor,
-                Font = new Font("Segoe UI Symbol", 8.2f, FontStyle.Bold),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold),
                 Margin = new Padding(2, 0, 0, 0)
             };
             modOrderHeaders.Add(header);
@@ -436,7 +436,7 @@ public sealed partial class MainForm
                 else if (item.Box == customBehindHeadWheelHandSelection)
                     dependencies = " — Requires " + Number(customBehindHeadWeaponWheel);
                 else if (item.Box == customDynamicShoulderHolster)
-                    dependencies = " — Requires Enable Hands (main launcher)";
+                    dependencies = " — Requires #Hands";
                 // The mod's own caption and tooltip move to the new position,
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;
@@ -448,11 +448,16 @@ public sealed partial class MainForm
                 // No on-screen status badge: it cluttered the narrow layout.
                 // Development information remains accessible in the tooltip.
                 var state = DevelopmentState(item.Id);
-                statusToolTip.SetToolTip(item.Box, item.Tip
+                var fullTip = item.Caption + Environment.NewLine + item.Tip
                     + Environment.NewLine + "Development: " + state.State
                     + " — " + state.Detail
                     + (dependencies.Length == 0 ? "" : Environment.NewLine
-                        + dependencies.TrimStart(' ', '—')));
+                        + (item.Box == customDynamicShoulderHolster
+                            ? "Requires: Enable Hands in main launcher"
+                            : dependencies.TrimStart(' ', '—')));
+                foreach (Control hoverTarget in new Control[] {
+                    item.Box, slot.Panel, slot.Number })
+                    statusToolTip.SetToolTip(hoverTarget, fullTip);
                 slot.Grip.AccessibleName = "Drag to reorder " + item.Caption
                     + " in position " + (i + 1);
                 statusToolTip.SetToolTip(slot.Grip,
