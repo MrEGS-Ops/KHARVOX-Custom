@@ -74,3 +74,29 @@ jobs:
           name: cactus-sfs-audit-metadata
           path: cactus_sfs_provenance_report.json
           if-no-files-found: ignore
+
+  test-official-profile-restore:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore only original shaders and preserve existing files
+        shell: powershell
+        run: |
+          $install = Join-Path $env:RUNNER_TEMP "KHARVOX-Test-181"
+          New-Item -ItemType Directory -Force -Path (Join-Path $install "sfs-profile") | Out-Null
+          "dummy executable (never launched)" | Set-Content -LiteralPath (Join-Path $install "KharvoxLauncher.exe")
+          "keep this existing file" | Set-Content -LiteralPath (Join-Path $install "sfs-profile/old-note.txt")
+          & ./tools/Restore-Cactus-SFS-Profile.ps1 -InstallRoot $install
+          $shaders = @(Get-ChildItem -LiteralPath (Join-Path $install "sfs-profile") -File -Filter '*.spv')
+          if ($shaders.Count -ne 75) { throw "Expected 75 restored shaders, found $($shaders.Count)" }
+          $backup = @(Get-ChildItem -LiteralPath $install -Directory -Filter 'sfs-profile-backup-*')
+          if ($backup.Count -ne 1 -or
+              !(Test-Path -LiteralPath (Join-Path $backup[0].FullName 'old-note.txt'))) {
+            throw "Restore did not preserve prior profile"
+          }
+          $oldContent = Get-Content -LiteralPath (Join-Path $backup[0].FullName 'old-note.txt')
+          if ($oldContent -ne 'keep this existing file') { throw 'Old profile changed' }
+          $launcherContent = Get-Content -LiteralPath (Join-Path $install 'KharvoxLauncher.exe')
+          if ($launcherContent -ne 'dummy executable (never launched)') { throw 'Launcher was overwritten' }
+          Write-Host "PASS: 75 shaders restored; original profile backed up; launcher untouched."
