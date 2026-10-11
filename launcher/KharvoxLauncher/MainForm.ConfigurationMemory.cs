@@ -440,6 +440,7 @@ public sealed partial class MainForm
             var creatorCredit = footerRow?.Controls.OfType<Label>()
                 .SingleOrDefault(label =>
                     label.AccessibleName == "Custom Mods creator credit");
+            var doomFace = footerRow?.Controls.OfType<DoomFaceControl>().SingleOrDefault();
             if (footerRow is null || footerRow.FlowDirection != FlowDirection.RightToLeft
                 || creatorCredit is null || creatorCredit.Text != "Made by MrEGS"
                 || creatorCredit.TextAlign != ContentAlignment.MiddleRight
@@ -447,7 +448,9 @@ public sealed partial class MainForm
                 || (window.Visible && !creatorCredit.Visible) || creatorCredit.Height < 20
                 || creatorCredit.Right >= footerClose!.Left
                 || footerClose.Right > footerRow.ClientSize.Width
-                || footerRow.Controls.Count != 2)
+                || footerRow.Controls.Count != 3
+                || doomFace is null || doomFace.AccessibleName != "Doomguy"
+                || doomFace.Width < 24 || doomFace.Right >= creatorCredit.Left)
                 throw new InvalidDataException(
                     "Made by MrEGS credit must be next to Close in the Custom Mods footer."
                     + " row=" + (footerRow is not null)
@@ -462,7 +465,8 @@ public sealed partial class MainForm
                     + " closeLeft=" + footerClose?.Left
                     + " closeRight=" + footerClose?.Right
                     + " rowWidth=" + footerRow?.ClientSize.Width
-                    + " count=" + footerRow?.Controls.Count);
+                    + " count=" + footerRow?.Controls.Count
+                    + " face=" + (doomFace is not null));
 
             // Exercise both verified and missing/repair-required DML states
             // without touching the real game or installing the loader.
