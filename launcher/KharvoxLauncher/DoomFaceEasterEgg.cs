@@ -9,7 +9,7 @@ namespace KharvoxLauncher;
 // Click once or twice to grin; click a third time to launch the micro arena.
 internal sealed class DoomFaceEasterEgg : Control
 {
-    private readonly Timer timer = new Timer { Interval = 165 };
+    private readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 165 };
     private int ticks, clicks, gaze, grinTicks;
     private DateTime lastClick;
     public DoomFaceEasterEgg()
@@ -128,7 +128,7 @@ internal sealed class DoomFaceEasterEgg : Control
 // executable or a replacement for the actual game.
 internal sealed class DoomMiniArena : Form
 {
-    private readonly Timer tick = new Timer { Interval = 35 };
+    private readonly System.Windows.Forms.Timer tick = new System.Windows.Forms.Timer { Interval = 35 };
     private int frame, hits;
     private float player = 0.5f;
     private readonly float[] enemies = { 0.17f, 0.36f, 0.62f, 0.84f };
