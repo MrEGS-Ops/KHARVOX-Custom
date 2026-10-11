@@ -52,7 +52,7 @@ jobs:
                           entry["profile_hashes"] = details
                           complete = entry
                   report.append(entry)
-                  print("RELEASE", tag, "SFS count", entry.get("profile_shader_count"), "all SPVs", entry.get("all_spv_count"), "ZIP bytes", entry["archive_size"], flush=True)
+                  print("RELEASE", tag, "SFS count", entry.get("profile_shader_count"), "all SPVs", entry.get("all_spv_count"), "ZIP bytes", entry["archive_size"], "ZIP SHA256", entry["archive_sha256"], "sample paths", entry["profile_paths"][:3], flush=True)
                   if complete: break
               except Exception as exc:
                   entry["error"] = type(exc).__name__+": "+str(exc)
