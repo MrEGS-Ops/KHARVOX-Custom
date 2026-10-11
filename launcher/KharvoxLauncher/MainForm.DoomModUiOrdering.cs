@@ -118,7 +118,7 @@ public sealed partial class MainForm
         highlightedDoomDropRow = target;
         if (target is not null)
         {
-            target.BackColor = Color.FromArgb(44, 79, 110);
+            target.BackColor = Color.FromArgb(67, 58, 47);
             target.Invalidate();
         }
     }
@@ -141,7 +141,7 @@ public sealed partial class MainForm
     {
         var row = new Panel
         {
-            Width = 310, Height = 27,
+            Width = 406, Height = 27,
             Margin = new Padding(0, 0, 0, 0),
             Padding = Padding.Empty,
             BackColor = PanelColor,
@@ -151,7 +151,7 @@ public sealed partial class MainForm
         };
         option.Text = row.AccessibleName;
         option.AutoSize = false;
-        option.Size = new Size(283, 23);
+        option.Size = new Size(379, 23);
         option.Location = new Point(2, 2);
         option.AutoEllipsis = true;
         statusToolTip.SetToolTip(option, mod.Name
@@ -163,11 +163,11 @@ public sealed partial class MainForm
         var grip = new Label
         {
             Text = "⋮⋮", Width = 22, Height = 23,
-            Left = 286, Top = 2,
+            Left = 382, Top = 2,
             BackColor = PanelColor, ForeColor = Color.FromArgb(151, 151, 154),
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
-            Cursor = Cursors.SizeNS, Visible = true,
+            Cursor = Cursors.SizeNS, Visible = false,
             AllowDrop = true,
             AccessibleName = "Reorder DOOM mod " + mod.Name
         };
@@ -181,6 +181,17 @@ public sealed partial class MainForm
             + "DOOMModLoader installation precedence is NOT changed; "
             + "KHARVOX still blocks overlapping resource mods.";
         statusToolTip.SetToolTip(grip, orderTip);
+        void RevealGrip(object? sender, EventArgs args) => grip.Visible = true;
+        void ConcealGrip(object? sender, EventArgs args)
+        {
+            if (activeDoomDragRow is null && !row.ClientRectangle.Contains(
+                row.PointToClient(Cursor.Position))) grip.Visible = false;
+        }
+        foreach (Control surface in new Control[] { row, option, grip })
+        {
+            surface.MouseEnter += RevealGrip;
+            surface.MouseLeave += ConcealGrip;
+        }
 
         // The old hover-only grip was too small to discover or reliably drag.
         // Start a drag from the row TEXT as well as the permanent grip.
@@ -202,6 +213,7 @@ public sealed partial class MainForm
             {
                 activeDoomDragRow = null;
                 SetDoomDragHighlight(null);
+                ConcealGrip(null, EventArgs.Empty);
             }
         }
         grip.MouseDown += ArmDrag;
