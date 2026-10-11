@@ -553,6 +553,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = customMods.MotionGloryKillSpeed ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = customMods.PhysicalChainsawGestures ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
             psi.EnvironmentVariables["KHARVOX_HANDS_PROJECTION_SCALE"] = "1";
