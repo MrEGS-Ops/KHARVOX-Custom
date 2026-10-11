@@ -106,6 +106,7 @@ public sealed partial class MainForm : Form
     private readonly Button launchButton = new();
     private bool applyingCustomModDependencies;
     private bool customModsSaveFailed;
+    private DoomEasterEgg? customModsEasterEgg;
     private Form? customOptionsForm;
     private FlowLayoutPanel? userDoomModChecks;
     private FlowLayoutPanel? packagedDoomModChecks;
@@ -362,9 +363,10 @@ public sealed partial class MainForm : Form
         options.Controls.Add(optionGrid);
         root.Controls.Add(options);
 
+        customModsEasterEgg = new DoomEasterEgg();
         var customMods = MakeGroup("VR MODS");
         customMods.ForeColor = Color.White;
-        var customModsGrid = new TableLayoutPanel
+        var customModsGrid = new DoomEggSurface(customModsEasterEgg)
         {
             Dock = DockStyle.Top,
             BackColor = PanelColor,
@@ -456,7 +458,7 @@ public sealed partial class MainForm : Form
         // Fit to it instead of putting another nested scrollbar on the form.
         var doomMods = MakeGroup("DOOM MODS");
         doomMods.ForeColor = Color.White;
-        var doomGrid = new TableLayoutPanel
+        var doomGrid = new DoomEggSurface(customModsEasterEgg)
         {
             // Keep loader, packaged mods, USER MODS controls and list in
             // separate rows; pin the external browse link at the very bottom
@@ -1718,6 +1720,17 @@ public sealed partial class MainForm : Form
             Margin = new Padding(0, 0, 12, 0)
         };
         closeRow.Controls.Add(customModsCredit);
+        // Hidden, discoverable only by clicking the tiny idle portrait.
+        // Three clicks inside four seconds trigger a short, silent vignette.
+        if (customModsEasterEgg is not null)
+        {
+            var doomFace = new DoomFaceControl(customModsEasterEgg)
+            {
+                Size = new Size(32, 28),
+                Margin = new Padding(0, 0, 3, 0)
+            };
+            closeRow.Controls.Add(doomFace);
+        }
         root.Controls.Add(closeRow, 0, 1);
         form.Controls.Add(root);
         form.Shown += (_, _) =>
@@ -1725,6 +1738,15 @@ public sealed partial class MainForm : Form
             // The sidecar uses the main launcher height, not the number of
             // checkboxes. Avoid a first-show content fit that undocks it.
             PlaceCustomModsBesideLauncher();
+        };
+        form.VisibleChanged += (_, _) =>
+        {
+            if (!form.Visible) customModsEasterEgg?.Stop();
+        };
+        form.Disposed += (_, _) =>
+        {
+            customModsEasterEgg?.Dispose();
+            customModsEasterEgg = null;
         };
         form.FormClosing += (_, e) =>
         {
