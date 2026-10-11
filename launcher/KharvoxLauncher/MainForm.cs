@@ -106,6 +106,7 @@ public sealed partial class MainForm : Form
     private Action? refreshDoomModLoaderStatus;
     private const string DoomNexusModsUrl = NexusModsPopup.PageUrl;
     private Label? packagedDoomModHeader;
+    private Label? packagedDoomModEmpty;
     private FlowLayoutPanel? doomModItemsPanel;
     private Label? userDoomModStatus;
     private Label? userDoomModCount;
@@ -547,7 +548,7 @@ public sealed partial class MainForm : Form
             FlowDirection = FlowDirection.TopDown,
             WrapContents = false, AutoScroll = false,
             Margin = Padding.Empty, Padding = Padding.Empty,
-            Visible = false, BackColor = PanelColor
+            Visible = true, BackColor = PanelColor
         };
         var doomModItems = new FlowLayoutPanel
         {
@@ -567,7 +568,7 @@ public sealed partial class MainForm : Form
             Font = new Font(Font, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleLeft,
             Margin = new Padding(3, 0, 3, 0),
-            Visible = false
+            Visible = true
         };
         packagedDoomModChecks = new FlowLayoutPanel
         {
@@ -577,8 +578,95 @@ public sealed partial class MainForm : Form
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor, Visible = false
         };
-        packagedSection.Controls.Add(packagedDoomModHeader);
+        var packagedToolbar = new TableLayoutPanel
+        {
+            Width = 337, Height = 30, ColumnCount = 2, RowCount = 1,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            BackColor = PanelColor
+        };
+        packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 114));
+        packagedDoomModHeader.Width = 0;
+        packagedDoomModHeader.Dock = DockStyle.Fill;
+        var generateKharvoxMods = new Button
+        {
+            Text = "Generate…", Dock = DockStyle.Fill,
+            AccessibleName = "Generate first-party KHARVOX resource mods",
+            BackColor = Color.FromArgb(43,43,47),
+            ForeColor = Color.Gainsboro, FlatStyle = FlatStyle.Flat,
+            Font = new Font(Font.FontFamily, 8.3f),
+            Margin = new Padding(1,2,3,2)
+        };
+        generateKharvoxMods.FlatAppearance.BorderColor = Color.DimGray;
+        statusToolTip.SetToolTip(generateKharvoxMods,
+            "Generate experimental Aggressive Demons and Enhanced Gibs ZIPs "
+            + "from YOUR installed, unmodified DOOM game resources. Requires Python 3.9+."
+            + " No resources are bundled or overwritten inside DOOM.");
+        generateKharvoxMods.Click += async (_, _) =>
+        {
+            if (KharvoxRunner.IsRunning)
+            {
+                MessageBox.Show(customOptionsForm, "Close DOOM before generating "
+                    + "first-party resource mods.", "KHARVOX",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (!FirstPartyDoomModGenerator.CanOffer(doomPath.Text))
+            {
+                MessageBox.Show(customOptionsForm,
+                    "Select your DOOM installation and use a full KHARVOX build "
+                    + "containing tools/Generate-KHARVOX-Mods.py.",
+                    "KHARVOX — Generator unavailable", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+                return;
+            }
+            if (MessageBox.Show(customOptionsForm,
+                "Generate the experimental Aggressive Demons and Enhanced Gibs "
+                + "resource ZIPs from the original installed DOOM resources?"
+                + Environment.NewLine + Environment.NewLine
+                + "Output: " + DoomUserMods.PackagedFolder
+                + Environment.NewLine
+                + "Existing ZIPs with these two names will be replaced; "
+                + "game files will not be modified. Both mods remain unchecked.",
+                "KHARVOX — Generate first-party mods",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
+                return;
+            generateKharvoxMods.Enabled = false;
+            generateKharvoxMods.Text = "Working…";
+            try
+            {
+                var report = await FirstPartyDoomModGenerator.GenerateAsync(doomPath.Text);
+                RefreshUserDoomMods();
+                MessageBox.Show(customOptionsForm, report
+                    + Environment.NewLine + "Select generated ZIPs to enable them "
+                    + "after checking resource conflicts.",
+                    "KHARVOX — Generated experimental mods",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            catch (Exception failure)
+            {
+                MessageBox.Show(customOptionsForm, failure.Message,
+                    "KHARVOX — Could not generate mods",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                generateKharvoxMods.Text = "Generate…";
+                generateKharvoxMods.Enabled = true;
+            }
+        };
+        packagedToolbar.Controls.Add(packagedDoomModHeader, 0, 0);
+        packagedToolbar.Controls.Add(generateKharvoxMods, 1, 0);
+        packagedDoomModEmpty = new Label
+        {
+            Text = "No KHARVOX resource ZIPs generated yet.",
+            AutoSize = false, Width = 332, Height = 26,
+            ForeColor = Color.Gray, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(4, 0, 0, 0)
+        };
+        packagedSection.Controls.Add(packagedToolbar);
         packagedSection.Controls.Add(packagedDoomModChecks);
+        packagedSection.Controls.Add(packagedDoomModEmpty);
         doomGrid.Controls.Add(packagedSection, 0, 1);
 
         // USER MODS belongs in its own explicit 32px row, not in the
@@ -1968,11 +2056,14 @@ public sealed partial class MainForm : Form
                 packagedList.ResumeLayout();
             }
             var showPackaged = packagedList.Controls.Count != 0;
-            packagedDoomModHeader.Visible = showPackaged;
+            packagedDoomModHeader.Visible = true;
             packagedList.Visible = showPackaged;
-            // Collapses the full packaged row whenever KHARVOX ships no mods.
+            if (packagedDoomModEmpty is not null)
+                packagedDoomModEmpty.Visible = !showPackaged;
+            // Always show the Generate control; missing ZIPs are no longer
+            // mistaken for native VR features that vanished from the build.
             if (packagedList.Parent is Control packagedRow)
-                packagedRow.Visible = showPackaged;
+                packagedRow.Visible = true;
 
             var countMissing = selections.Count(x => !detected.Any(entry =>
                 string.Equals(entry.Id, x, StringComparison.OrdinalIgnoreCase)));
