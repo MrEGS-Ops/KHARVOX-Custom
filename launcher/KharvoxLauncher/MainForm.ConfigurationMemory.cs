@@ -676,6 +676,9 @@ public sealed partial class MainForm
                 throw new InvalidDataException("Glory Kill speed slider is missing.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
+            if (!SfsProfileRecovery.RunSelfTest())
+                throw new InvalidDataException(
+                    "SFS recovery must preserve the original profile and back up replaced files.");
             if (!NexusFolderCompanion.RunFileDropPolicySelfTest())
                 throw new InvalidDataException(
                     "ZIP drag/drop must preserve downloads and avoid overwriting existing mods.");
