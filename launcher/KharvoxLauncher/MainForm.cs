@@ -1753,9 +1753,15 @@ public sealed partial class MainForm : Form
         closeButton.FlatAppearance.BorderColor = Color.DimGray;
         closeButton.Click += (_, _) => HideCustomOptionsAndFocusLauncher(form);
 
-        var closeRow = new FlowLayoutPanel
+        var footerBar = new Panel
         {
             Dock = DockStyle.Fill,
+            BackColor = Color.Black,
+            Margin = Padding.Empty
+        };
+        var closeRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Right, Width = 238,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             Margin = Padding.Empty,
@@ -1777,7 +1783,16 @@ public sealed partial class MainForm : Form
             Margin = new Padding(0, 0, 12, 0)
         };
         closeRow.Controls.Add(customModsCredit);
-        root.Controls.Add(closeRow, 0, 1);
+        footerBar.Controls.Add(closeRow);
+        // Deliberately centred within the entire sidecar, not one DOOM/VR column.
+        var doomguy = new DoomFaceEasterEgg();
+        void PlaceDoomguy() => doomguy.Location = new Point(
+            (footerBar.ClientSize.Width - doomguy.Width) / 2,
+            Math.Max(0, (footerBar.ClientSize.Height - doomguy.Height) / 2));
+        footerBar.Controls.Add(doomguy);
+        footerBar.SizeChanged += (_, _) => PlaceDoomguy();
+        PlaceDoomguy();
+        root.Controls.Add(footerBar, 0, 1);
         form.Controls.Add(root);
         form.Shown += (_, _) =>
         {
