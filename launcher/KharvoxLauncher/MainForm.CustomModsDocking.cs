@@ -168,11 +168,12 @@ public sealed partial class MainForm
             // First reposition the launcher if the sidecar would be offscreen,
             // then attach the sidecar to its actual left border.
             if (Bounds != target.Launcher) Bounds = target.Launcher;
-            // Fixed width: only the launcher/window docking moves this sidecar.
+            // FixedSingle prevents user resizing. A zero-height MaximumSize
+            // can collapse WinForms layout during CI and on some desktops,
+            // so never use MaximumSize to lock the width.
             mods.MinimumSize = new Size(
                 Math.Min(890, target.Mods.Width), Math.Min(530, target.Mods.Height));
-            mods.MaximumSize = new Size(
-                Math.Max(1, target.Mods.Width), 0);
+            mods.MaximumSize = Size.Empty;
             if (mods.Bounds != target.Mods) mods.Bounds = target.Mods;
         }
         finally { syncingCustomModsDock = false; }
