@@ -112,29 +112,44 @@ internal sealed class DoomEasterEgg : IDisposable
         if (animation is null) return;
         try
         {
-            // Preprocessed GIF is grayscale: dark pixels are background,
-            // bright pixels are edges. Map both into near-black charcoal.
+            // GIF white edges become translucent highlights; its black
+            // background becomes fully transparent. A 1px dark offset creates
+            // the "pressed into charcoal" / embossed watermark effect.
             var index = (int)(t * 12) % frameCount;
             animation.SelectActiveFrame(FrameDimension.Time, index);
-            var brightness = 7f / 255f * fade;
-            using var attrs = new ImageAttributes();
-            attrs.SetColorMatrix(new ColorMatrix(new[]
-            {
-                new[] { brightness, brightness, brightness, 0f, 0f },
-                new[] { 0f, 0f, 0f, 0f, 0f },
-                new[] { 0f, 0f, 0f, 0f, 0f },
-                new[] { 0f, 0f, 0f, 1f, 0f },
-                new[] { 30f / 255f, 30f / 255f, 33f / 255f, 0f, 1f }
-            }));
             var src = new Rectangle(0, 0, animation.Width, animation.Height);
+            using var shadowAttributes = new ImageAttributes();
+            shadowAttributes.SetColorMatrix(OutlineMatrix(
+                Color.FromArgb(19, 19, 22), 0.5f * fade));
+            using var highlightAttributes = new ImageAttributes();
+            highlightAttributes.SetColorMatrix(OutlineMatrix(
+                Color.FromArgb(41, 41, 45), 0.65f * fade));
+            g.DrawImage(animation, new Rectangle(area.X + 1, area.Y + 1,
+                    area.Width, area.Height), src.X, src.Y, src.Width, src.Height,
+                GraphicsUnit.Pixel, shadowAttributes);
             g.DrawImage(animation, area, src.X, src.Y, src.Width, src.Height,
-                GraphicsUnit.Pixel, attrs);
+                GraphicsUnit.Pixel, highlightAttributes);
         }
         catch (Exception)
         {
             // A malformed/unsupported animation must not take down the launcher.
             PaintFallback(g, area, t, fade);
         }
+    }
+
+    private static ColorMatrix OutlineMatrix(Color colour, float edgeOpacity)
+    {
+        // FFmpeg's grayscale GIF feeds the edge intensity in red. Using red
+        // as output alpha makes empty/background pixels fully transparent.
+        return new ColorMatrix(new[]
+        {
+            new[] { 0f, 0f, 0f, edgeOpacity, 0f },
+            new[] { 0f, 0f, 0f, 0f, 0f },
+            new[] { 0f, 0f, 0f, 0f, 0f },
+            new[] { 0f, 0f, 0f, 0f, 0f },
+            new[] { colour.R / 255f, colour.G / 255f,
+                colour.B / 255f, 0f, 1f }
+        });
     }
 
     private static void PaintFallback(Graphics g, Rectangle area, double t, float fade)
