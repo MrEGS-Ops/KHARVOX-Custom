@@ -12,7 +12,7 @@ struct DamageHapticConfig {
     std::uint32_t maximumDurationMilliseconds{600};
     std::uint32_t minimumQuietMilliseconds{65};
     float amplitude{0.7f};
-    float frequencyHz{160.0f};
+    float frequencyHz{115.0f};
 };
 
 struct PlayerVitalsSample {
