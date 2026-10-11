@@ -19,9 +19,11 @@ internal static class VulkanSfs
         return Directory.Exists(profile) ? Directory.GetFiles(profile, "*.spv").Length : 0;
     }
 
-    internal static bool HasCompleteShaderProfile(string? runtime = null)
+    internal static bool HasCompleteShaderProfile(string? runtime = null,
+        string? sourceIsProfileDirectory = null)
     {
-        var profile = Path.Combine(runtime ?? AppContext.BaseDirectory, "sfs-profile");
+        var profile = sourceIsProfileDirectory
+            ?? Path.Combine(runtime ?? AppContext.BaseDirectory, "sfs-profile");
         if (LocalShaderCount(runtime) != 75) return false;
         try
         {
