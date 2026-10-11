@@ -2299,6 +2299,27 @@ public sealed partial class MainForm : Form
                 MessageBoxIcon.Warning);
             return;
         }
+        // A fresh CI build cannot invent the separately supplied 75 SFS
+        // shaders. Offer a *user-approved* AER launch rather than showing a
+        // cryptic file-count exception after the launcher starts work.
+        if (RendererSelection.IsSfs(SelectedRendererKey())
+            && !VulkanSfs.HasCompleteShaderProfile())
+        {
+            var shaderCount = VulkanSfs.LocalShaderCount();
+            var profilePath = Path.Combine(AppContext.BaseDirectory, "sfs-profile");
+            var choice = MessageBox.Show(this,
+                "SFS needs 75 valid compiled shader files. This installation has "
+                + shaderCount + "." + Environment.NewLine + Environment.NewLine
+                + "The SFS profile is a separate runtime input; downloading a new "
+                + "native build does not generate it." + Environment.NewLine
+                + "Restore a verified matching profile into:" + Environment.NewLine
+                + profilePath + Environment.NewLine + Environment.NewLine
+                + "Switch to AER and launch DOOM now?",
+                "KHARVOX — SFS shaders missing", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (choice != DialogResult.Yes) return;
+            rendererMode.SelectedIndex = RendererSelection.Index("AER");
+        }
         SaveSettings();
         launchOperationInProgress = true;
         launchButton.Enabled = false;
