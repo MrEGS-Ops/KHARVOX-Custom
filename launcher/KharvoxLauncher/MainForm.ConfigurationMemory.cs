@@ -674,6 +674,8 @@ public sealed partial class MainForm
                 || main.gloryKillSpeedSlider.Width < 90
                 || main.gloryKillSpeedSlider.ForeColor != Color.FromArgb(201, 201, 204))
                 throw new InvalidDataException("Glory Kill speed slider is missing.");
+            if (!FirstPartyDoomModGenerator.RunSelfTest())
+                throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
             var ratingBar = main.configurationRatingHeader;
             var ratingButtons = new[]
             {
@@ -708,6 +710,11 @@ public sealed partial class MainForm
             window.Show();
             Application.DoEvents();
             window.PerformLayout();
+            var miniFace = Descendants(window).OfType<DoomFaceEasterEgg>()
+                .SingleOrDefault();
+            if (miniFace is null || !miniFace.Visible || miniFace.Width < 40
+                || miniFace.Height < 28)
+                throw new InvalidDataException("Centred DOOMguy Easter egg is missing.");
             if (window.ClientSize.Width > 780
                 || main.gloryKillSpeedSlider.Width < 90)
                 throw new InvalidDataException(
@@ -770,6 +777,15 @@ public sealed partial class MainForm
                     + " visible=" + (userHeader?.Visible ?? false)
                     + " columns=" + userHeader?.ColumnCount);
             userHeader.PerformLayout();
+            var packagedContent = packagedRow as FlowLayoutPanel;
+            var generatorButton = packagedContent?.Controls.OfType<TableLayoutPanel>()
+                .SelectMany(toolbar => toolbar.Controls.OfType<Button>())
+                .SingleOrDefault(button => button.AccessibleName
+                    == "Generate first-party KHARVOX resource mods");
+            if (generatorButton is null || !generatorButton.Visible
+                || !generatorButton.Text.Contains("Generate"))
+                throw new InvalidDataException(
+                    "First-party DOOM resource generator must be visible even without ZIPs.");
             var heading = userHeader.Controls.OfType<Label>().SingleOrDefault(label =>
                 label.Text == "USER MODS");
             var divider = userHeader.Controls.OfType<Panel>()
