@@ -167,31 +167,42 @@ public sealed partial class MainForm
             + Environment.NewLine + item.Tip);
     }
 
-    // Every reference in a Requires / Disables group lights up together.
-    // Rebuild from current link targets so drag reordering cannot stale IDs.
-    private IReadOnlyList<ModOrderSlot> ReferencedSlots(ModOrderSlot source)
+    // R = teal, D = muted red. Mixed dependency labels light up BOTH groups
+    // together but with different colors; no confusing all-amber grouping.
+    private IEnumerable<(ModOrderSlot Slot, bool Disables)> ReferencedSlots(
+        ModOrderSlot source)
     {
-        return source.Dependency.Links.Cast<LinkLabel.Link>()
-            .Select(link => link.LinkData as CheckBox)
-            .Where(box => box is not null && box != showHands)
-            .Select(box => modOrderRows.FindIndex(row => row.Box == box))
-            .Where(index => index >= 0 && index < modOrderSlots.Count)
-            .Distinct().Select(index => modOrderSlots[index]).ToArray();
+        var display = source.Dependency.Text;
+        var disableOffset = display.IndexOf("D ", StringComparison.Ordinal);
+        foreach (LinkLabel.Link link in source.Dependency.Links)
+        {
+            if (link.LinkData is not CheckBox box || box == showHands) continue;
+            var index = modOrderRows.FindIndex(row => row.Box == box);
+            if (index < 0 || index >= modOrderSlots.Count) continue;
+            yield return (modOrderSlots[index],
+                disableOffset >= 0 && link.Start >= disableOffset);
+        }
     }
 
     private void HighlightDependencyReferences(ModOrderSlot source, bool persist)
     {
         ClearDependencyHighlight();
-        foreach (var slot in ReferencedSlots(source))
+        foreach (var (slot, disables) in ReferencedSlots(source))
         {
+            if (highlightedModLinkSlots.Contains(slot)) continue;
             highlightedModLinkSlots.Add(slot);
-            var tone = Color.FromArgb(79, 62, 40);
-            slot.Number.BackColor = tone;
-            slot.Number.ForeColor = Color.FromArgb(255, 213, 141);
-            slot.Panel.BackColor = tone;
-            slot.Dependency.BackColor = tone;
+            var background = disables
+                ? Color.FromArgb(79, 42, 43) // muted red = disables
+                : Color.FromArgb(35, 69, 66); // muted teal = requires
+            var foreground = disables
+                ? Color.FromArgb(233, 153, 150)
+                : Color.FromArgb(157, 225, 213);
+            slot.Number.BackColor = background;
+            slot.Number.ForeColor = foreground;
+            slot.Panel.BackColor = background;
+            slot.Dependency.BackColor = background;
             if (slot.Panel.Controls.OfType<CheckBox>().FirstOrDefault() is { } check)
-                check.BackColor = tone;
+                check.BackColor = background;
             slot.Panel.Invalidate();
         }
         if (persist)
