@@ -895,7 +895,15 @@ public sealed partial class MainForm
                 || nexusLink.Top < modListPanel.Bottom
                 || nexusLink.LinkColor != Color.Gray)
                 throw new InvalidDataException(
-                    "Nexus Mods hyperlink must remain clickable at the bottom of DOOM MODS.");
+                    "Nexus Mods hyperlink must remain clickable at the bottom of DOOM MODS."
+                    + " visible=" + nexusLink?.Visible
+                    + " height=" + nexusLink?.Height
+                    + " top=" + nexusLink?.Top
+                    + " bottom=" + nexusLink?.Bottom
+                    + " gridHeight=" + doomGrid.ClientSize.Height
+                    + " modListBottom=" + modListPanel.Bottom
+                    + " available=" + nexusLink?.Enabled
+                    + " color=" + nexusLink?.LinkColor);
             // Previous tests only checked that a LinkLabel existed: the user
             // could click it without a browser appearing. Fire the real
             // LinkClicked event with the browser launch intercepted, and
