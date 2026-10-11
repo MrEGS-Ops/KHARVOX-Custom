@@ -24,7 +24,8 @@ internal static class VulkanSfs
     {
         var profile = sourceIsProfileDirectory
             ?? Path.Combine(runtime ?? AppContext.BaseDirectory, "sfs-profile");
-        if (LocalShaderCount(runtime) != 75) return false;
+        if (!Directory.Exists(profile)
+            || Directory.GetFiles(profile, "*.spv").Length != 75) return false;
         try
         {
             foreach (var path in Directory.GetFiles(profile, "*.spv"))
