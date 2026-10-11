@@ -280,12 +280,15 @@ internal sealed class ModDropWindow : Form
             ? DragDropEffects.Copy : DragDropEffects.None;
     }
 
-    private void DropFiles(object? sender, DragEventArgs e)
+    private async void DropFiles(object? sender, DragEventArgs e)
     {
         if (e.Data?.GetData(DataFormats.FileDrop) is not string[] paths) return;
+        status.Text = "Copying mod archives…";
         try
         {
-            var result = CopyZipFiles(folder, paths);
+            var selected = paths.ToArray();
+            var result = await Task.Run(() => CopyZipFiles(folder, selected));
+            if (IsDisposed || Disposing) return;
             RefreshFiles();
             status.Text = result.Copied + " ZIPs copied, " + result.Skipped
                 + " unsupported or unavailable. Original files retained.";
@@ -293,8 +296,10 @@ internal sealed class ModDropWindow : Form
         catch (Exception error) when (error is IOException
             or UnauthorizedAccessException or ArgumentException)
         {
-            MessageBox.Show(this, "Could not copy ZIP: " + error.Message,
-                "KHARVOX — Mod import", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            if (!IsDisposed && !Disposing)
+                MessageBox.Show(this, "Could not copy ZIP: " + error.Message,
+                    "KHARVOX — Mod import", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
         }
     }
 
