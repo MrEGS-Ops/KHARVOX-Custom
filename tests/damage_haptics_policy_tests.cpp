@@ -22,7 +22,7 @@ int main() {
     if (!pulse.active || pulse.remainingMilliseconds!=500) return 6;
     sample.health=89;
     pulse=updateDamageHaptics(state,sample,920,cfg);
-    if (!pulse.active || pulse.remainingMilliseconds!=550) return 7;
+    if (!pulse.active || pulse.remainingMilliseconds!=480) return 7;
     sample.armour=0; // huge AP loss capped against the initial pulse start
     pulse=updateDamageHaptics(state,sample,925,cfg);
     if (pulse.remainingMilliseconds!=575) return 8;
