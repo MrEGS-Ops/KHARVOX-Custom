@@ -1,0 +1,67 @@
+name: Security scan of KHARVOX Full Build 177
+on:
+  push:
+    branches: [work/security-scan-build-177]
+  workflow_dispatch:
+permissions:
+  actions: read
+  contents: read
+jobs:
+  clamav_scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Download original Build 177 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: KHARVOX-Full-Build
+          repository: MrEGS-Ops/KHARVOX-Custom
+          run-id: 38116882432
+          github-token: ${{ github.token }}
+          path: sample
+      - name: Verify launcher from known artifact
+        shell: bash
+        run: |
+          test -f sample/KharvoxLauncher.exe
+          sha256sum sample/KharvoxLauncher.exe
+      - name: Install ClamAV scanner
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y clamav clamav-freshclam
+          sudo systemctl stop clamav-freshclam || true
+          sudo freshclam || true
+          clamscan --version
+      - name: Scan extracted artifact without executing anything
+        shell: bash
+        run: |
+          clamscan --recursive --infected --scan-archive=yes sample
+  defender_scan:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Download original Build 177 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: KHARVOX-Full-Build
+          repository: MrEGS-Ops/KHARVOX-Custom
+          run-id: 38116882432
+          github-token: ${{ github.token }}
+          path: sample
+      - name: Microsoft Defender status and custom scan
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $folder = Join-Path $env:GITHUB_WORKSPACE 'sample'
+          if (!(Test-Path (Join-Path $folder 'KharvoxLauncher.exe'))) { throw 'Artifact download missing launcher' }
+          Get-FileHash -Algorithm SHA256 (Join-Path $folder 'KharvoxLauncher.exe') | Format-List
+          $status = Get-MpComputerStatus -ErrorAction Stop
+          $status | Select-Object AMServiceEnabled, AntivirusEnabled, AntivirusSignatureVersion, AntivirusSignatureLastUpdated | Format-List
+          if (!$status.AMServiceEnabled -or !$status.AntivirusEnabled) { throw 'Defender Antivirus is unavailable on this runner: no scan verdict.' }
+          Start-MpScan -ScanType CustomScan -ScanPath $folder -ErrorAction Stop
+          $detections = @(Get-MpThreatDetection -ErrorAction SilentlyContinue)
+          if ($detections.Count -gt 0) {
+            $detections | Format-List *
+            throw "Defender reported $($detections.Count) threat detection(s) on this runner"
+          }
+          Write-Host 'Defender completed custom scan, no reported detections.'
