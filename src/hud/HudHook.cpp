@@ -1898,7 +1898,7 @@ ProgQueueFn originalProgQueue{};
 bool __fastcall progQueue(void* queue,void* swf,void* gui,int time,const float* viewport,const float* extents){
     bool enabled=false;
     if(progHooksReady&&swf==progOwnerSwf){std::lock_guard<std::mutex> lock(offhandHudMutex);
-        enabled=offhandHudConfig.enabled||offhandCalibrationActive.load();}
+        enabled=offhandHudConfig.enabled||customMods.backOfHandHud||offhandCalibrationActive.load();}
     if(kharvox::drawProgMeterInline(enabled,reinterpret_cast<uintptr_t>(progOwnerSwf),reinterpret_cast<uintptr_t>(swf),
         reinterpret_cast<uintptr_t>(progSource.entity),reinterpret_cast<uintptr_t>(gui),progSource.surface)){
         // Native caller 161CE86 falls through to synchronous 161F0F0 when
@@ -3466,7 +3466,7 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
         bool managedOffhand=false;
         if(offhandCanvasHookReady&&ownedHandSurface>=0){
             std::lock_guard<std::mutex> guard(offhandHudMutex);
-            managedOffhand=offhandHudConfig.enabled||offhandCalibrationActive.load();
+            managedOffhand=offhandHudConfig.enabled||customMods.backOfHandHud||offhandCalibrationActive.load();
         }
         float handOrigin[3]{},handAxis[9]{};
         const bool tracked=!managedOffhand||getOffhandHudFrame(handOrigin,handAxis);
@@ -3565,7 +3565,7 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
     if(offhandCanvasHookReady&&!crosshair&&!offscreen&&handSurface>=0){
         kharvox::OffhandHudConfig config;{std::lock_guard<std::mutex> lock(offhandHudMutex);config=offhandHudConfig;}
         float grip[3]{},handAxis[9]{};
-        if((config.enabled||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
+        if((config.enabled||customMods.backOfHandHud||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
             auto values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
             if(customMods.backOfHandHud){
                 // Position the UI over the outer wrist. A 180-degree hand
