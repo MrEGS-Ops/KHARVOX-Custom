@@ -8,8 +8,8 @@ namespace kharvox {
 // Physical hip placements are deliberately distinct from the legacy
 // behind-the-shoulder Back Weapon zone. Measurements are HMD-relative metres.
 struct QuickHolsterZone {
-    BackWeaponZoneBounds enter{0.10f,0.53f,-1.07f,-0.38f,-0.26f,0.33f};
-    BackWeaponZoneBounds exit{0.04f,0.63f,-1.17f,-0.28f,-0.34f,0.43f};
+    BackWeaponZoneBounds enter{0.12f,0.51f,-1.04f,-0.48f,0.15f,0.56f};
+    BackWeaponZoneBounds exit{0.07f,0.60f,-1.14f,-0.38f,0.08f,0.66f};
 };
 
 struct QuickHolsters {
@@ -26,6 +26,8 @@ inline bool quickHipInside(const BackWeaponVec3& point, bool previouslyInside) {
     return backWeaponPointInside(point,previouslyInside?policy.exit:policy.enter);
 }
 
+// Hip weapon selection is a physical action, not the native quick-swap button.
+// Each slot holds its assigned weapon independently of the current hand.
 inline bool quickHolsterCanStow(const QuickHolsters& state, int side,
     BackWeaponKind equipped) {
     return side>=0&&side<=1
