@@ -1,48 +1,45 @@
 #pragma once
-#include <cmath>
 #include <cstdint>
 
 namespace kharvox {
+
+// One non-weapon-hand Grip has three distinct actions:
+//  1. Grip edge INSIDE chest pocket => cycle grenade and arm.
+//  2. Pull hand OUT while still gripping => grenade pin pulled.
+//  3. Release OUTSIDE => one equipment throw pulse.
+// Releasing inside cancels. Lost tracking cancels, never throws.
+enum class ChestGrenadeAction { None, Cycle, Throw };
 struct PhysicalGrenadeGestureState {
     bool held{};
-    bool blocked{};
-    bool thrown{};
-    bool swung{};
-    std::int64_t lastFastNs{};
+    bool armed{};
+    bool pulled{};
+    bool blockedUntilRelease{};
 };
 
-// True exactly once per button hold, when a deliberate swing has ended.
-// Missing tracking is fail-closed. DOOM still owns trajectory and velocity.
-inline bool updatePhysicalGrenadeGesture(PhysicalGrenadeGestureState& s,
-    bool gameplay, bool held, bool tracked, float speed, std::int64_t now) {
-    if (!gameplay || !held) {
-        s = {};
-        return false;
+inline ChestGrenadeAction updateChestGrenadeGesture(
+    PhysicalGrenadeGestureState& state,
+    bool gameplay, bool gripHeld, bool trackingValid, bool insideChest) {
+    if (!gameplay) { state={}; return ChestGrenadeAction::None; }
+    if (!trackingValid) {
+        state.armed=false; state.pulled=false;
+        state.blockedUntilRelease=gripHeld;
+        state.held=gripHeld;
+        return ChestGrenadeAction::None;
     }
-    if (!s.held) {
-        s.held = true;
-        s.blocked = !tracked;
-        return false;
+    if (!gripHeld) {
+        const bool shouldThrow=state.held&&state.armed&&state.pulled
+            &&!insideChest&&!state.blockedUntilRelease;
+        state={};
+        return shouldThrow?ChestGrenadeAction::Throw:ChestGrenadeAction::None;
     }
-    if (!tracked || !std::isfinite(speed) || speed < 0.f) {
-        s.blocked = true;
-        s.swung = false;
-        return false;
+    if (!state.held) {
+        state.held=true;
+        state.armed=insideChest;
+        state.pulled=false;
+        state.blockedUntilRelease=!insideChest;
+        return insideChest?ChestGrenadeAction::Cycle:ChestGrenadeAction::None;
     }
-    if (s.blocked || s.thrown) return false;
-    if (speed >= 1.0f) {
-        s.swung = true;
-        s.lastFastNs = now;
-    }
-    if (s.swung && now >= s.lastFastNs
-        && now - s.lastFastNs > 30000000LL
-        && now - s.lastFastNs < 700000000LL && speed <= 0.42f) {
-        s.thrown = true;
-        s.swung = false;
-        return true;
-    }
-    if (s.swung && now - s.lastFastNs >= 700000000LL)
-        s.swung = false;
-    return false;
+    if (state.armed&&!insideChest)state.pulled=true;
+    return ChestGrenadeAction::None;
 }
 } // namespace kharvox
