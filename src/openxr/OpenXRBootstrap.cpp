@@ -2195,7 +2195,7 @@ void updateGameplayActions(XrTime displayTime){
             ?readFloatAction(s.leftHanded?s.doomSupportGrip:s.doomSecondaryFireGrip)>.55f
             :selectedSide==1
                 &&readFloatAction(s.leftHanded?s.doomSecondaryFireGrip:s.doomSupportGrip)>.55f;
-        if(inside&&wheelGripHeld)s.wheelGripLatched=true;
+        if(wheelGripHeld&&(inside||s.behindHeadWheelActive))s.wheelGripLatched=true;
         if(!wheelGripHeld)s.wheelGripLatched=false;
         // The native wheel must not release/confirm merely because a wrist
         // wandered out. Pull the wrist out with Grip held to equip.
@@ -2422,9 +2422,9 @@ void updateGameplayActions(XrTime displayTime){
         }
     }else{
         const int stowed=s.quickHolsters.activeStowedSide;
-        if(stowed>=0&&(weaponWheelActive
-            ||(activeBackWeapon!=kharvox::BackWeaponKind::Unknown
-                &&activeBackWeapon!=s.quickHolsters.slots[stowed]))){
+        if(stowed>=0
+            &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown
+            &&activeBackWeapon!=s.quickHolsters.slots[stowed]){
             // A new wheel/keyboard weapon selection must not remain invisible.
             s.dynamicShoulderHolstered=false;
             s.quickHolsters.activeStowedSide=-1;
