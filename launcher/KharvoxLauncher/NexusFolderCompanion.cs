@@ -37,11 +37,11 @@ internal static class NexusFolderCompanion
             return Task.CompletedTask;
         }
         var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
-        trackedBrowser = browserPopup != IntPtr.Zero && IsWindow(browserPopup)
-            ? browserPopup : IntPtr.Zero;
+        // Preserve original positions: folder at original launcher bounds,
+        // browser at Custom Mods bounds. Reuse, but never re-dock or move them.
         ShowOrFocus(viewer, focus: false);
-        UpdateDock();
-        if (trackedBrowser != IntPtr.Zero) SetForegroundWindow(trackedBrowser);
+        if (browserPopup != IntPtr.Zero && IsWindow(browserPopup))
+            SetForegroundWindow(browserPopup);
         return Task.CompletedTask;
     }
 
@@ -55,7 +55,6 @@ internal static class NexusFolderCompanion
         }
         var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
         ShowOrFocus(viewer, focus: true);
-        UpdateDock();
     }
 
     private static void ShowOrFocus(ModDropWindow viewer, bool focus)
@@ -78,7 +77,6 @@ internal static class NexusFolderCompanion
             if (string.Equals(existing.FolderPath,
                 Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase))
             {
-                EnsureDockTimer();
                 return existing;
             }
             existing.Close();
@@ -93,7 +91,6 @@ internal static class NexusFolderCompanion
                 StopDockTimer();
             }
         };
-        EnsureDockTimer();
         return viewer;
     }
 
