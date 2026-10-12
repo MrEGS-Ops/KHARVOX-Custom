@@ -10,7 +10,11 @@ internal sealed class CustomModSettings
     public bool DisableHud { get; set; }
     public bool DisableWeaponWheel { get; set; }
     public bool GaussChargeSlowMovement { get; set; }
+    // Legacy field is read for compatibility; native HUD follows Cactus config.
     public bool BackOfHandHud { get; set; }
+    public bool BoxingGuard { get; set; }
+    public bool FastGloryKills { get; set; }
+    public bool FastChainsawKills { get; set; }
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }
@@ -24,7 +28,7 @@ internal sealed class CustomModSettings
     public bool PhysicalChainsawGestures { get; set; }
     public bool HapticOverhaul { get; set; }
 
-    public bool SupervisorRequired => RevengeDemon || PhysicalChainsawGestures;
+    public bool SupervisorRequired => RevengeDemon;
 }
 
 internal static class CustomModSettingsStore
