@@ -2240,6 +2240,10 @@ void updateGameplayActions(XrTime displayTime){
             // immediately fall through into weapon-mod fire, support-grip
             // two-hand acquisition, equipment use or the held BFG shortcut.
             s.wheelWeaponGripSuppressedUntilRelease=true;
+            // Suppress any grip already held by the newly assigned support hand
+            // until release. Prevents accidental equipment cycling or BFG select.
+            s.wheelSupportGripSuppressedUntilRelease=true;
+            s.bfgGripSuppressedUntilRelease=true;
             log(std::string("[QUICK-HOLSTERS] wheel selection assigned to ")
                 +(selectedSide==0?"right":"left")+" hip");
         }
