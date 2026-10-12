@@ -2,44 +2,45 @@
 #include <cstdint>
 
 namespace kharvox {
-
-// One non-weapon-hand Grip has three distinct actions:
-//  1. Grip edge INSIDE chest pocket => cycle grenade and arm.
-//  2. Pull hand OUT while still gripping => grenade pin pulled.
-//  3. Release OUTSIDE => one equipment throw pulse.
-// Releasing inside cancels. Lost tracking cancels, never throws.
+// Quick tap INSIDE chest = cycle on release. Long hold + withdrawal = prime.
+// Release OUTSIDE = throw once. Release inside after a hold = cancel.
+// The throw pulse still delegates projectile spawning/physics to KHARVOX/DOOM.
 enum class ChestGrenadeAction { None, Cycle, Throw };
 struct PhysicalGrenadeGestureState {
-    bool held{};
-    bool armed{};
-    bool pulled{};
-    bool blockedUntilRelease{};
+    bool held{},armed{},pulled{},blockedUntilRelease{};
+    std::int64_t pressStartedNs{};
 };
-
 inline ChestGrenadeAction updateChestGrenadeGesture(
-    PhysicalGrenadeGestureState& state,
-    bool gameplay, bool gripHeld, bool trackingValid, bool insideChest) {
-    if (!gameplay) { state={}; return ChestGrenadeAction::None; }
-    if (!trackingValid) {
-        state.armed=false; state.pulled=false;
+    PhysicalGrenadeGestureState& state, bool gameplay, bool gripHeld,
+    bool trackingValid, bool insideChest, std::int64_t now) {
+    constexpr std::int64_t tapMaximumNs=260000000LL;
+    if(!gameplay){state={};return ChestGrenadeAction::None;}
+    if(!trackingValid){
+        state.armed=false;state.pulled=false;
         state.blockedUntilRelease=gripHeld;
         state.held=gripHeld;
         return ChestGrenadeAction::None;
     }
-    if (!gripHeld) {
-        const bool shouldThrow=state.held&&state.armed&&state.pulled
+    if(!gripHeld){
+        const bool throwNow=state.held&&state.armed&&state.pulled
             &&!insideChest&&!state.blockedUntilRelease;
+        const bool cycleNow=state.held&&state.armed&&!state.pulled
+            &&insideChest&&!state.blockedUntilRelease
+            &&now>=state.pressStartedNs
+            &&now-state.pressStartedNs<=tapMaximumNs;
         state={};
-        return shouldThrow?ChestGrenadeAction::Throw:ChestGrenadeAction::None;
+        return throwNow?ChestGrenadeAction::Throw:
+            cycleNow?ChestGrenadeAction::Cycle:ChestGrenadeAction::None;
     }
-    if (!state.held) {
+    if(!state.held){
         state.held=true;
         state.armed=insideChest;
         state.pulled=false;
         state.blockedUntilRelease=!insideChest;
-        return insideChest?ChestGrenadeAction::Cycle:ChestGrenadeAction::None;
+        state.pressStartedNs=now;
+        return ChestGrenadeAction::None;
     }
-    if (state.armed&&!insideChest)state.pulled=true;
+    if(state.armed&&!insideChest)state.pulled=true;
     return ChestGrenadeAction::None;
 }
 } // namespace kharvox
