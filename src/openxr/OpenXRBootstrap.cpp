@@ -3150,9 +3150,39 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(false,s.leftGripController);
 
     if(s.customMods.handFocusedRs&&gameplay){
+        // Both guards raised in front of the face = temporary HEAD focus for
+        // easy Glory Kill targeting and punching. Enter after 180 ms to avoid
+        // false positives; hold head focus for 900 ms after hands drop.
+        auto boxingGuard=[&](const ControllerPose& controller,int side){
+            if(!controller.valid||!controller.positionTracked
+                ||!s.trackingHeadPositionValid||!s.headZeroValid)return false;
+            const auto hand=controllerRelativeToBodyTrackingOrigin(controller).position;
+            const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+            const float outward=side==0?hand.x-head.x:head.x-hand.x;
+            const float vertical=hand.y-head.y;
+            const float depth=hand.z-head.z;
+            return outward>=.04f&&outward<=.58f
+                &&vertical>=-.53f&&vertical<=.14f
+                &&depth>=-.78f&&depth<=-.06f;
+        };
+        const bool bothGuardsRaised=boxingGuard(s.rightGripController,0)
+            &&boxingGuard(s.leftGripController,1);
+        if(bothGuardsRaised){
+            if(!s.boxingPoseStartedAt)s.boxingPoseStartedAt=displayTime;
+            if(displayTime>=s.boxingPoseStartedAt+180000000LL){
+                if(!s.boxingHeadFocus)
+                    log("[FOCUS] guard pose held -> HEAD focus for Glory Kills");
+                s.boxingHeadFocus=true;
+                s.headFocusHeldUntil=displayTime+900000000LL;
+            }
+        }else s.boxingPoseStartedAt=0;
+        if(s.boxingHeadFocus&&displayTime>=s.headFocusHeldUntil){
+            s.boxingHeadFocus=false;
+            log("[FOCUS] guard pose released -> HAND focus restored after grace period");
+        }
         const auto& controller=weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
-        if(controller.valid&&s.headZeroValid
+        if(!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
             const auto trackingForward=normalizeVector(
@@ -3178,6 +3208,9 @@ void updateGameplayActions(XrTime displayTime){
             KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         }
     }else{
+        s.boxingPoseStartedAt=0;
+        s.headFocusHeldUntil=0;
+        s.boxingHeadFocus=false;
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
     }
     updateWeapon6Dof();
