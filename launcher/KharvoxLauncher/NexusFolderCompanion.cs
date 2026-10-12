@@ -14,45 +14,189 @@ namespace KharvoxLauncher;
 internal static class NexusFolderCompanion
 {
     internal static Action<Rectangle>? TestModsPanelOpenRequested;
-    private static readonly List<ModDropWindow> windows = new();
+    private static ModDropWindow? activeWindow;
+    private static Form? launcher;
+    private static Func<Rectangle?>? modsBoundsProvider;
+    private static IntPtr trackedBrowser;
+    private static System.Windows.Forms.Timer? dockTimer;
+
+    // The folder and Nexus share one dock controller and one folder instance.
+    internal static ModDropWindow? ActiveWindow =>
+        activeWindow is { IsDisposed: false } ? activeWindow : null;
+    internal static int ActiveWindowCount => ActiveWindow is null ? 0 : 1;
+
 
     internal static Task OpenForPopupAsync(string folder,
-        Rectangle launcherBounds, IntPtr browserPopup)
+        Rectangle launcherBounds, IntPtr browserPopup,
+        Form? anchor = null, Func<Rectangle?>? modsBounds = null)
     {
         if (TestModsPanelOpenRequested is { } test)
         {
             test(launcherBounds);
             return Task.CompletedTask;
         }
-        var viewer = Create(folder, launcherBounds);
-        if (browserPopup != IntPtr.Zero && IsWindow(browserPopup))
-            viewer.TrackBrowser(browserPopup);
-        viewer.Show();
-        if (browserPopup != IntPtr.Zero && IsWindow(browserPopup))
-            SetForegroundWindow(browserPopup);
+        var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
+        trackedBrowser = browserPopup != IntPtr.Zero && IsWindow(browserPopup)
+            ? browserPopup : IntPtr.Zero;
+        ShowOrFocus(viewer, focus: false);
+        UpdateDock();
+        if (trackedBrowser != IntPtr.Zero) SetForegroundWindow(trackedBrowser);
         return Task.CompletedTask;
     }
 
-    internal static void OpenStandalone(string folder, Rectangle launcherBounds)
+    internal static void OpenStandalone(string folder, Rectangle launcherBounds,
+        Form? anchor = null, Func<Rectangle?>? modsBounds = null)
     {
         if (TestModsPanelOpenRequested is { } test)
         {
             test(launcherBounds);
             return;
         }
-        var viewer = Create(folder, launcherBounds);
-        viewer.Show();
-        viewer.Activate();
+        var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
+        ShowOrFocus(viewer, focus: true);
+        UpdateDock();
     }
 
-    private static ModDropWindow Create(string folder, Rectangle launcherBounds)
+    private static void ShowOrFocus(ModDropWindow viewer, bool focus)
+    {
+        if (!viewer.Visible) viewer.Show();
+        viewer.RefreshItems();
+        if (viewer.WindowState == FormWindowState.Minimized)
+            viewer.WindowState = FormWindowState.Normal;
+        if (focus) { viewer.BringToFront(); viewer.Activate(); }
+    }
+
+    private static ModDropWindow CreateOrReuse(string folder,
+        Rectangle launcherBounds, Form? anchor, Func<Rectangle?>? modsBounds)
     {
         Directory.CreateDirectory(folder);
+        launcher = anchor ?? launcher;
+        modsBoundsProvider = modsBounds ?? modsBoundsProvider;
+        if (ActiveWindow is { } existing)
+        {
+            if (string.Equals(existing.FolderPath,
+                Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase))
+            {
+                EnsureDockTimer();
+                return existing;
+            }
+            existing.Close();
+        }
         var viewer = new ModDropWindow(folder, launcherBounds);
-        windows.Add(viewer);
-        viewer.FormClosed += (_, _) => windows.Remove(viewer);
+        activeWindow = viewer;
+        viewer.FormClosed += (_, _) =>
+        {
+            if (ReferenceEquals(activeWindow, viewer))
+            {
+                activeWindow = null;
+                StopDockTimer();
+            }
+        };
+        EnsureDockTimer();
         return viewer;
     }
+
+    private static void EnsureDockTimer()
+    {
+        if (dockTimer is not null) return;
+        dockTimer = new System.Windows.Forms.Timer { Interval = 300 };
+        dockTimer.Tick += (_, _) => UpdateDock();
+        dockTimer.Start();
+    }
+
+    private static void StopDockTimer()
+    {
+        dockTimer?.Stop();
+        dockTimer?.Dispose();
+        dockTimer = null;
+        trackedBrowser = IntPtr.Zero;
+        modsBoundsProvider = null;
+        launcher = null;
+    }
+
+    // A screen may not accommodate launcher + 890px VR MODS + folder + a
+    // full-width browser in one row. In that case share the free side column
+    // vertically, keeping both folder and browser visible and draggable.
+    internal static (Rectangle Folder, Rectangle Browser) CalculateDock(
+        Rectangle launcherBounds, Rectangle? visibleMods, Rectangle workArea,
+        bool browserOpen)
+    {
+        var leftEdge = visibleMods?.Left ?? launcherBounds.Left;
+        var roomLeft = Math.Max(0, leftEdge - workArea.Left);
+        var roomRight = Math.Max(0, workArea.Right - launcherBounds.Right);
+        var putLeft = roomLeft >= roomRight;
+        var available = putLeft ? roomLeft : roomRight;
+        var width = Math.Min(515, Math.Max(320, available));
+        if (available < 320)
+        {
+            // Avoid offscreen windows on monitors too narrow for four panels.
+            width = Math.Min(515, workArea.Width);
+        }
+        var top = Math.Max(workArea.Top, Math.Min(launcherBounds.Top,
+            workArea.Bottom - Math.Min(launcherBounds.Height, workArea.Height)));
+        var height = Math.Min(launcherBounds.Height, workArea.Bottom - top);
+        var x = putLeft ? leftEdge - width : launcherBounds.Right;
+        x = Math.Max(workArea.Left, Math.Min(x, workArea.Right - width));
+        var folder = new Rectangle(x, top, width, height);
+        var browser = Rectangle.Empty;
+        if (browserOpen)
+        {
+            var extraLeft = x - workArea.Left;
+            var extraRight = workArea.Right - folder.Right;
+            var canUseLeft = extraLeft >= 420;
+            var canUseRight = extraRight >= 420
+                && (putLeft || extraRight > extraLeft);
+            if (canUseLeft || canUseRight)
+            {
+                var browserWidth = Math.Min(760,
+                    canUseLeft && (!canUseRight || extraLeft >= extraRight)
+                        ? extraLeft : extraRight);
+                var bx = canUseLeft && (!canUseRight || extraLeft >= extraRight)
+                    ? folder.Left - browserWidth : folder.Right;
+                browser = new Rectangle(bx, top, browserWidth, height);
+            }
+            else
+            {
+                // One side column: ZIP list on top, Nexus beneath it.
+                var folderHeight = Math.Max(240, Math.Min(height - 300,
+                    (int)(height * 0.42)));
+                if (height < 540) folderHeight = Math.Max(150, height / 2);
+                folder = new Rectangle(x, top, width, folderHeight);
+                browser = new Rectangle(x, top + folderHeight,
+                    width, height - folderHeight);
+            }
+        }
+        return (folder, browser);
+    }
+
+    internal static Rectangle BrowserDockBounds(Rectangle fallback)
+    {
+        if (launcher is null || launcher.IsDisposed) return fallback;
+        var bounds = launcher.WindowState == FormWindowState.Normal
+            ? launcher.Bounds : launcher.RestoreBounds;
+        var mods = modsBoundsProvider?.Invoke();
+        return CalculateDock(bounds, mods, Screen.FromControl(launcher).WorkingArea,
+            browserOpen: true).Browser;
+    }
+
+    internal static void UpdateDock()
+    {
+        var viewer = ActiveWindow;
+        if (viewer is null || !viewer.Visible || launcher is null
+            || launcher.IsDisposed || !launcher.Visible
+            || launcher.WindowState == FormWindowState.Minimized) return;
+        if (trackedBrowser != IntPtr.Zero && !IsWindow(trackedBrowser))
+            trackedBrowser = IntPtr.Zero;
+        var bounds = launcher.WindowState == FormWindowState.Normal
+            ? launcher.Bounds : launcher.RestoreBounds;
+        var layout = CalculateDock(bounds, modsBoundsProvider?.Invoke(),
+            Screen.FromControl(launcher).WorkingArea, trackedBrowser != IntPtr.Zero);
+        if (viewer.WindowState == FormWindowState.Normal
+            && viewer.Bounds != layout.Folder) viewer.Bounds = layout.Folder;
+        if (trackedBrowser != IntPtr.Zero && !layout.Browser.IsEmpty)
+            NexusModsPopup.PositionTrackedBrowser(trackedBrowser, layout.Browser);
+    }
+
 
     internal static bool RunFileDropPolicySelfTest()
     {
@@ -90,18 +234,22 @@ internal sealed class ModDropWindow : Form
     private readonly string folder;
     private readonly ListView files;
     private readonly Label status;
-    private readonly System.Windows.Forms.Timer? browserWatch;
-    private readonly FileSystemWatcher folderWatch;
-    private IntPtr linkedBrowser;
-
+     private readonly FileSystemWatcher folderWatch;
+ 
     internal ModDropWindow(string directory, Rectangle bounds)
     {
         folder = directory;
         Text = "KHARVOX // MODS FOLDER";
         Bounds = bounds;
+        // Use the exact icon resource embedded in KharvoxLauncher.exe.
+        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        catch (ArgumentException) { Icon = SystemIcons.Application; }
+        ShowIcon = true;
+        KeyPreview = true;
+        ApplyDarkTitleBar();
         MinimumSize = new Size(300, 320);
         StartPosition = FormStartPosition.Manual;
-        BackColor = Color.FromArgb(20, 20, 23);
+        BackColor = Color.Black;
         ForeColor = Color.Gainsboro;
         Font = new Font("Segoe UI", 9F);
         ShowInTaskbar = true;
@@ -127,7 +275,7 @@ internal sealed class ModDropWindow : Form
         var instructions = new Label
         {
             Dock = DockStyle.Fill, ForeColor = Color.Silver,
-            Text = "Drag downloaded .ZIP files from Firefox here. Originals stay in Downloads.",
+            Text = "Drag or paste downloaded .ZIP file here.",
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true
         };
@@ -136,7 +284,7 @@ internal sealed class ModDropWindow : Form
         {
             Dock = DockStyle.Fill, View = View.Details,
             FullRowSelect = true, HideSelection = false, MultiSelect = true,
-            BackColor = Color.FromArgb(31, 31, 35),
+            BackColor = Color.FromArgb(19, 19, 22),
             ForeColor = Color.Gainsboro, BorderStyle = BorderStyle.FixedSingle,
             HeaderStyle = ColumnHeaderStyle.Nonclickable,
             AllowDrop = true
@@ -144,6 +292,7 @@ internal sealed class ModDropWindow : Form
         files.Columns.Add("Filename", 320);
         files.Columns.Add("Type", 82);
         files.Columns.Add("Size", 95);
+        InstallFileCommands();
         files.Resize += (_, _) =>
         {
             files.Columns[0].Width = Math.Max(160, files.ClientSize.Width - 200);
@@ -214,6 +363,9 @@ internal sealed class ModDropWindow : Form
         try { BeginInvoke((Action)RefreshFiles); }
         catch (InvalidOperationException) { }
     }
+    internal string FolderPath => Path.GetFullPath(folder);
+    internal void RefreshItems() => RefreshFiles();
+
     private void RefreshFiles()
     {
         if (IsDisposed) return;
@@ -230,6 +382,7 @@ internal sealed class ModDropWindow : Form
                 var item = new ListViewItem(name);
                 item.SubItems.Add(isDir ? "Folder" : Path.GetExtension(path).ToLowerInvariant());
                 item.SubItems.Add(isDir ? "" : new FileInfo(path).Length.ToString("N0") + " B");
+                item.Tag = path;
                 files.Items.Add(item);
             }
             status.Text = files.Items.Count + " items  •  " + folder;
@@ -303,23 +456,28 @@ internal sealed class ModDropWindow : Form
         }
     }
 
-    internal void TrackBrowser(IntPtr browser)
+    private void ApplyDarkTitleBar()
     {
-        linkedBrowser = browser;
-        var poll = new System.Windows.Forms.Timer { Interval = 500 };
-        poll.Tick += (_, _) =>
+        if (!IsHandleCreated) return;
+        var enabled = 1;
+        try
         {
-            if (linkedBrowser != IntPtr.Zero && IsWindow(linkedBrowser)) return;
-            poll.Stop();
-            poll.Dispose();
-            if (!IsDisposed && !Disposing) Close();
-        };
-        FormClosed += (_, _) => { poll.Stop(); poll.Dispose(); };
-        poll.Start();
+            if (DwmSetWindowAttribute(Handle, 20, ref enabled, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref enabled, sizeof(int));
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
     }
 
-    [DllImport("user32.dll")]
-    private static extern bool IsWindow(IntPtr window);
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyDarkTitleBar();
+    }
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute,
+        ref int value, int valueSize);
 
     protected override void Dispose(bool disposing)
     {
