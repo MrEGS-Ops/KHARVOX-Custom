@@ -3566,20 +3566,11 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
         kharvox::OffhandHudConfig config;{std::lock_guard<std::mutex> lock(offhandHudMutex);config=offhandHudConfig;}
         float grip[3]{},handAxis[9]{};
         if((config.enabled||customMods.backOfHandHud||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
-            auto values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
-            if(customMods.backOfHandHud){
-                // Position the UI over the outer wrist. A 180-degree hand
-                // pitch put the 512x300 panel edge-on (visible as a line) for
-                // common Quest grip poses. Preserve the 512:300 geometry and
-                // face the viewer while keeping its translation hand-bound.
-                values.centimeters[2]=std::clamp(values.centimeters[2]+4.f,-100.f,100.f);
-                static std::atomic<bool> backOfHandLogged{};
-                if(!backOfHandLogged.exchange(true))
-                    log("[OFFHAND-HUD] Back-of-Hand HUD transform enabled");
-            }
+            // Preserve the exact original KHARVOX v1.1.1 calibrated hand-HUD
+            // placement, rotation, 512:300 aspect and size. The custom-mod
+            // checkbox only enables the original rendering path.
+            const auto& values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
             kharvox::offhandHudBasis(handAxis,values,offhandAxis);
-            if(customMods.backOfHandHud)
-                std::memcpy(offhandAxis,headAxis,sizeof(offhandAxis));
             kharvox::offhandHudOrigin(grip,handAxis,offhandAxis,values,handSurface,hudWorldUnitsPerMeter,desiredOrigin);
             offhand=true;offhandScale=values.scale;
             if(offhandCalibrationActive.load()&&offhandSelectedSurface.load()==handSurface&&GetTickCount64()<offhandSelectionUntil.load())offhandScale*=1.15f;
