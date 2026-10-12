@@ -18,6 +18,9 @@ struct CustomModFlags {
     bool disableWeaponWheel{};
     bool gaussChargeSlowMovement{};
     bool backOfHandHud{};
+    bool boxingGuard{};
+    bool fastGloryKills{};
+    bool fastChainsawKills{};
     bool handFocusedRs{};
     bool directionalDash{};
     bool behindHeadWeaponWheel{};
@@ -37,7 +40,11 @@ inline CustomModFlags loadCustomModFlags() {
     flags.disableHud = customModEnvironmentEnabled("KHARVOX_MOD_DISABLE_HUD");
     flags.disableWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_DISABLE_WEAPON_WHEEL");
     flags.gaussChargeSlowMovement = customModEnvironmentEnabled("KHARVOX_MOD_GAUSS_SLOW_CHARGE");
-    flags.backOfHandHud = customModEnvironmentEnabled("KHARVOX_MOD_BACK_OF_HAND_HUD");
+    // Back-of-hand HUD is not a mod. Cactus offhand_hud.cfg owns its presentation.
+    flags.backOfHandHud = false;
+    flags.boxingGuard=customModEnvironmentEnabled("KHARVOX_MOD_BOXING_GUARD");
+    flags.fastGloryKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS");
+    flags.fastChainsawKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");
     flags.handFocusedRs = customModEnvironmentEnabled("KHARVOX_MOD_HAND_FOCUS_RS");
     flags.directionalDash = customModEnvironmentEnabled("KHARVOX_MOD_DIRECTIONAL_DASH");
     flags.behindHeadWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_BEHIND_HEAD_WHEEL");
@@ -56,7 +63,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.dynamicShoulderHolster = customModEnvironmentEnabled("KHARVOX_MOD_DYNAMIC_SHOULDER");
     flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
-    flags.physicalChainsawGestures = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_GESTURES");
+    flags.physicalChainsawGestures = false; // retired; fast/native toggle replaces gesture speed control
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
     return flags;
 }
