@@ -912,10 +912,11 @@ public sealed partial class MainForm
                     + " modListBottom=" + modListPanel.Bottom
                     + " available=" + nexusLink?.Enabled
                     + " color=" + nexusLink?.LinkColor);
-            // Previous tests only checked that a LinkLabel existed: the user
-            // could click it without a browser appearing. Fire the real
-            // LinkClicked event with the browser launch intercepted, and
-            // verify it requests this displayed form's actual outer bounds.
+            // Fire the real link with the browser launch intercepted. The
+            // requested popup must use the side dock, not cover Custom Mods.
+            var expectedBrowserBounds = NexusFolderCompanion.CalculateDock(
+                main.Bounds, window.Bounds,
+                Screen.FromControl(main).WorkingArea, browserOpen: true).Browser;
             Rectangle? clickedBounds = null;
             Rectangle? requestedFolderBounds = null;
             NexusModsPopup.TestOpenRequested = bounds => clickedBounds = bounds;
@@ -934,7 +935,7 @@ public sealed partial class MainForm
                     new LinkLabelLinkClickedEventArgs(nexusLink.Links[0])
                 });
                 Application.DoEvents();
-                if (clickedBounds != window.Bounds
+                if (clickedBounds != expectedBrowserBounds
                     || requestedFolderBounds != main.Bounds
                     || nexusLink.Text != "Browse DOOM mods on Nexus Mods"
                     || !nexusLink.Enabled)
@@ -945,6 +946,33 @@ public sealed partial class MainForm
             {
                 NexusModsPopup.TestOpenRequested = null;
                 NexusFolderCompanion.TestModsPanelOpenRequested = null;
+            }
+            // Opening the folder repeatedly, including via Browse Nexus, must
+            // not create additional folder instances or delete source ZIPs.
+            var isolated = Path.Combine(Path.GetTempPath(),
+                "KHARVOX-UI-folder-" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(isolated);
+            try
+            {
+                NexusFolderCompanion.OpenStandalone(isolated, main.Bounds);
+                var instance = NexusFolderCompanion.ActiveWindow;
+                NexusFolderCompanion.OpenStandalone(isolated, main.Bounds);
+                NexusFolderCompanion.OpenForPopupAsync(
+                    isolated, main.Bounds, IntPtr.Zero).GetAwaiter().GetResult();
+                if (instance is null
+                    || !ReferenceEquals(instance, NexusFolderCompanion.ActiveWindow)
+                    || NexusFolderCompanion.ActiveWindowCount != 1
+                    || !string.Equals(instance.BackColor.Name, Color.Black.Name,
+                        StringComparison.OrdinalIgnoreCase)
+                    || instance.ContextMenuStrip is null
+                    || instance.ContextMenuStrip.Items.Count < 4)
+                    throw new InvalidDataException(
+                        "MODS FOLDER must be dark, reusable and support a file context menu.");
+            }
+            finally
+            {
+                NexusFolderCompanion.ActiveWindow?.Close();
+                try { Directory.Delete(isolated, true); } catch { }
             }
             // Both title-bar X and footer Close route through the same
             // launcher-focus restoration method. Reopening must stay possible.
