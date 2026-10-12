@@ -157,7 +157,7 @@ public sealed partial class MainForm
             enableBhaptics, usePsvr2Toolkit, useFsrUpscaling, weaponWheelRemap,
             customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
             customBackOfHandHud, customHandFocusedRs, customDirectionalDash,
-            customBehindHeadWeaponWheel, customLeftWristWeaponWheel,
+            customBehindHeadWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
             customPhysicalGrenadeThrow, customMotionGloryKillSpeed,
             customPhysicalChainsawGestures, customHapticOverhaul
@@ -562,7 +562,6 @@ public sealed partial class MainForm
                 main.customHandFocusedRs,
                 main.customBackOfHandHud,
                 main.customBehindHeadWeaponWheel,
-                main.customLeftWristWeaponWheel,
                 main.customDynamicShoulderHolster,
                 main.customPhysicalCrouch,
                 main.customDirectionalDash,
@@ -578,13 +577,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 16 || checks.Distinct().Count() != 16
+                || checks.Length != 15 || checks.Distinct().Count() != 15
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 6 ? 0 : index < 8 ? 1 : index < 12 ? 2
-                        : index < 14 ? 3 : index < 15 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 16
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 11 ? 2
+                        : index < 13 ? 3 : index < 14 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 15
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -599,7 +598,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 32 + 16 * 28 + 6 * 20
+                || layout.Height < 32 + 15 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
@@ -616,14 +615,11 @@ public sealed partial class MainForm
                     + "  D " + ModNumber(main.customDisableWeaponWheel))
                 || !LinksOf(main.customDisableWeaponWheel).Contains(
                     "D " + ModNumber(main.customBehindHeadWeaponWheel)
-                    + "," + ModNumber(main.customLeftWristWeaponWheel)
                     + "," + ModNumber(main.customDirectionalDash))
                 || !LinksOf(main.customDisableHud).Contains(
                     "D " + ModNumber(main.customBackOfHandHud))
                 || !LinksOf(main.customBackOfHandHud).Contains(
                     "D " + ModNumber(main.customDisableHud))
-                || !LinksOf(main.customLeftWristWeaponWheel).Contains(
-                    "D " + ModNumber(main.customDisableWeaponWheel))
                 || main.modOrderSlots.Where(slot =>
                     slot.Dependency.Text.Contains("#")
                     && slot.Dependency.Links.Count == 0).Any())
@@ -667,7 +663,7 @@ public sealed partial class MainForm
                 || !wheelRemapTip.Contains("Hold A to open the weapon wheel")
                 || !wheelRemapTip.Contains("left stick to choose")
                 || !wheelRemapTip.Contains("right thumbstick DOWN to toggle crouch")
-                || !wheelRemapTip.Contains("Behind-Head Wrist Weapon Wheel")
+                || !wheelRemapTip.Contains("Behind-the-Head Weapon Wheel")
                 || !wheelRemapTip.Contains("Directional Dash is currently disabled")
                 || !wheelRemapTip.Contains("restore the original KHARVOX controls"))
                 throw new InvalidDataException(
@@ -1008,7 +1004,7 @@ public sealed partial class MainForm
         {
             main.showHands, main.calibrateHands,
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
-            main.swapJumpCrouch, main.customLeftWristWeaponWheel,
+            main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel
         };
         var original = tracked.Select(box => box.Checked).ToArray();
@@ -1021,7 +1017,7 @@ public sealed partial class MainForm
             main.applyingCustomModDependencies = true;
             main.calibrateHands.Checked = false;
             main.customDynamicShoulderHolster.Checked = false;
-            main.customLeftWristWeaponWheel.Checked = false;
+            main.customBehindHeadWeaponWheel.Checked = false;
             main.customDisableWeaponWheel.Checked = false;
             main.weaponWheelRemap.Checked = false;
             main.showHands.Checked = false;
@@ -1061,11 +1057,11 @@ public sealed partial class MainForm
                     "Weapon Wheel Button Remap must grey out ineffective Jump/Crouch swap without erasing it.");
             main.applyingCustomModDependencies = true;
             main.weaponWheelRemap.Checked = false;
-            main.customLeftWristWeaponWheel.Checked = true;
+            main.customBehindHeadWeaponWheel.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.swapJumpCrouch.Enabled || !main.swapJumpCrouch.Checked
-                || !main.customLeftWristWeaponWheel.Checked
+                || !main.customBehindHeadWeaponWheel.Checked
                 || !main.leftHanded.Enabled || main.leftHanded.Checked != originalLeftMode)
                 throw new InvalidDataException(
                     "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
