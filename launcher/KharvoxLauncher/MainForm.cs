@@ -933,11 +933,16 @@ public sealed partial class MainForm : Form
                     throw new InvalidOperationException("Custom Mods window is unavailable.");
                 var windowBounds = dialog.WindowState == FormWindowState.Normal
                     ? dialog.Bounds : dialog.RestoreBounds;
-                var popupWindow = await NexusModsPopup.OpenTrackedAsync(windowBounds);
-                // Reuse the existing KHARVOX folder instead of spawning another
-                // one. The folder and default-browser popup share a dock.
                 var launcherBounds = WindowState == FormWindowState.Normal
                     ? Bounds : RestoreBounds;
+                // Give Chromium the actual dock coordinates at launch rather
+                // than briefly covering the VR MODS sidecar.
+                var browserBounds = NexusFolderCompanion.CalculateDock(
+                    launcherBounds, windowBounds, Screen.FromControl(this).WorkingArea,
+                    browserOpen: true).Browser;
+                var popupWindow = await NexusModsPopup.OpenTrackedAsync(browserBounds);
+                // Reuse the existing KHARVOX folder instead of spawning another
+                // one. The folder and default-browser popup share a dock.
                 await NexusFolderCompanion.OpenForPopupAsync(
                     DoomUserMods.Folder, launcherBounds, popupWindow, this,
                     () => customOptionsForm?.Visible == true
