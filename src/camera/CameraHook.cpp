@@ -680,6 +680,7 @@ int configuredGloryKillSlowmoLevel() {
 }
 
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
+std::atomic<bool> boxingGuardTimeDilationRequested{};
 
 float gloryKillCustomTimescale(int level) {
     if (level <= 0) return 1.0f;
@@ -807,67 +808,61 @@ volatile LONG* resolveTimescaleCvarCurrent() {
 }
 
 void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
+    // One owner for the shared timescale cvar: a gentle pre-combat Boxing
+    // Guard slowdown, optionally a full-speed sync kill, or untouched native.
+    // Never let an expired sync-attack override defeat the guard slowdown.
     const int level = configuredGloryKillSlowmoLevel();
-    const float motionOverride = gloryKillMotionTimescaleOverride.load(std::memory_order_acquire);
-    // Zero now explicitly means fastest (1.0x) from the 1–5 UI.
-    // Level ten still leaves DOOM's native sync-attack timing untouched.
-    const bool configuredOverride = level >= 0 && level < 10;
-    const bool motionOverrideActive = motionOverride > 0.0f;
-    if (!configuredOverride && !motionOverrideActive && syncAttackActive) return;
+    const float motionOverride =
+        gloryKillMotionTimescaleOverride.load(std::memory_order_acquire);
+    const bool boxingRequested =
+        boxingGuardTimeDilationRequested.load(std::memory_order_acquire);
+    const bool guardSlowmo=boxingRequested&&!syncAttackActive;
+    const bool configuredOverride=level>=0&&level<10;
+    const bool motionOverrideActive=motionOverride>0.f;
+    const bool wantOverride=guardSlowmo
+        ||(syncAttackActive&&(configuredOverride||motionOverrideActive));
 
     static SRWLOCK lock = SRWLOCK_INIT;
     static bool applied{};
     static bool baselineValid{};
     static LONG baselineBits{};
-    static int loggedLevel{-1};
-    static float loggedMotionOverride{-1.0f};
-    auto current = resolveTimescaleCvarCurrent();
-    if (!current) return;
-
+    static float loggedTarget{-1.f};
+    auto current=resolveTimescaleCvarCurrent();
+    if(!current)return;
     AcquireSRWLockExclusive(&lock);
 
-    if (!syncAttackActive) {
-        if (applied) {
-            InterlockedExchange(current, baselineBits);
-            applied = false;
+    if(!wantOverride){
+        if(applied){
+            InterlockedExchange(current,baselineBits);
+            applied=false;
+            loggedTarget=-1.f;
         }
-        baselineBits = InterlockedCompareExchange(current, 0, 0);
-        baselineValid = true;
-        gloryKillMotionTimescaleOverride.store(0.0f, std::memory_order_release);
-        loggedMotionOverride = -1.0f;
+        if(!syncAttackActive){
+            baselineBits=InterlockedCompareExchange(current,0,0);
+            baselineValid=true;
+        }
         ReleaseSRWLockExclusive(&lock);
         return;
     }
-
-    if (!configuredOverride && !motionOverrideActive) {
-        ReleaseSRWLockExclusive(&lock);
-        return;
+    if(!applied){
+        if(!baselineValid)
+            baselineBits=InterlockedCompareExchange(current,0,0);
+        baselineValid=true;
+        applied=true;
     }
-
-    if (!applied) {
-        if (!baselineValid)
-            baselineBits = InterlockedCompareExchange(current, 0, 0);
-        applied = true;
+    constexpr float guardTimeScale=.87f; // slight slowdown, NEVER stop time
+    const float target=guardSlowmo?guardTimeScale
+        :motionOverrideActive?std::clamp(motionOverride,.10f,1.f)
+        :gloryKillCustomTimescale(level);
+    LONG bits{};
+    std::memcpy(&bits,&target,sizeof(bits));
+    InterlockedExchange(current,bits);
+    if(std::abs(loggedTarget-target)>.001f){
+        loggedTarget=target;
+        logGlorySlowmo(std::string(guardSlowmo
+            ?"boxing guard timescale=":"sync-kill timescale=")
+            +std::to_string(target));
     }
-
-    const float target = motionOverrideActive
-        ? std::clamp(motionOverride, 0.10f, 1.0f)
-        : gloryKillCustomTimescale(level);
-    LONG targetBits{};
-    std::memcpy(&targetBits, &target, sizeof(targetBits));
-    InterlockedExchange(current, targetBits);
-
-    if (motionOverrideActive) {
-        if (std::abs(loggedMotionOverride - target) > 0.001f) {
-            loggedMotionOverride = target;
-            logGlorySlowmo("motion override forcedTimescale=" + std::to_string(target));
-        }
-    } else if (loggedLevel != level) {
-        loggedLevel = level;
-        logGlorySlowmo("level=" + std::to_string(level)
-            + " forcedTimescale=" + std::to_string(target));
-    }
-
     ReleaseSRWLockExclusive(&lock);
 }
 
@@ -2609,6 +2604,10 @@ bool KharvoxCameraNativeTwoViewActive() {
 }
 
 bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_order_acquire); }
+
+void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
+    boxingGuardTimeDilationRequested.store(active,std::memory_order_release);
+}
 
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
     const float value = timescale > 0.0f
