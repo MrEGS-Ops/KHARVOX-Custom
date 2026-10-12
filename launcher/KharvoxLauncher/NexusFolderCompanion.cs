@@ -232,7 +232,7 @@ internal static class NexusFolderCompanion
             lastLauncherBounds=anchor;
             lastFolderBounds=viewer.Bounds;
             // Keep the folder behind its launcher, without activating it.
-            if(viewer.IsHandleCreated&&launcher.IsHandleCreated)
+            if(!viewer.ContainsFocus&&viewer.IsHandleCreated&&launcher.IsHandleCreated)
                 SetWindowPos(viewer.Handle,launcher.Handle,0,0,0,0,
                     0x0001|0x0002|0x0010);
 
