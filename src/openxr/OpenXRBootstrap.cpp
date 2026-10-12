@@ -260,6 +260,7 @@ struct State {
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
+    XrTime physicalCrouchPulseUntil{};
     bool behindHeadWheelActive{};
     bool dashButtonPressed{};
     XrTime dashCooldownUntil{};
@@ -2081,6 +2082,7 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
+        s.physicalCrouchPulseUntil=0;
         s.behindHeadWheelActive=false;s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
@@ -2159,11 +2161,13 @@ void updateGameplayActions(XrTime displayTime){
             const float lateral=grip.x-head.x;
             const float vertical=grip.y-head.y;
             const float behind=grip.z-head.z;
+            // Reach forward: no longer require the wrist to be well behind
+            // the head. The wider release zone prevents activation jitter.
             const bool inside=s.behindHeadWheelActive
                 ?(std::abs(lateral)<=.55f&&vertical>=-.30f&&vertical<=.48f
-                    &&behind>=.04f&&behind<=.90f)
+                    &&behind>=-.08f&&behind<=.78f)
                 :(std::abs(lateral)<=.42f&&vertical>=-.18f&&vertical<=.36f
-                    &&behind>=.13f&&behind<=.75f);
+                    &&behind>=.015f&&behind<=.60f);
             if(inside!=s.behindHeadWheelActive){
                 s.behindHeadWheelActive=inside;
                 log(std::string("[WEAPON-WHEEL] behind-head gesture ")
@@ -2762,6 +2766,11 @@ void updateGameplayActions(XrTime displayTime){
         const bool previous=s.physicalCrouchActive;
         if(!s.physicalCrouchActive&&heightDelta<=-.28f)s.physicalCrouchActive=true;
         else if(s.physicalCrouchActive&&heightDelta>=-.20f)s.physicalCrouchActive=false;
+        // DOOM handles crouch as a TOGGLE on the button's rising edge.
+        // Holding native B down throughout a real crouch cannot stand the
+        // player up; emit one short pulse both going down AND standing up.
+        if(previous!=s.physicalCrouchActive)
+            s.physicalCrouchPulseUntil=displayTime+90000000;
         if(previous!=s.physicalCrouchActive)
             log(std::string("[INPUT] Physical Crouch ")
                 +(s.physicalCrouchActive?"ON":"OFF")+" heightDelta="
@@ -2772,7 +2781,10 @@ void updateGameplayActions(XrTime displayTime){
         if(s.physicalCrouchActive)
             log("[INPUT] Physical Crouch OFF — lost HMD position tracking or gameplay");
         s.physicalCrouchActive=false;
+        s.physicalCrouchPulseUntil=0;
     }
+    const bool physicalCrouchNativePulse=gameplay
+        &&displayTime<s.physicalCrouchPulseUntil;
     bool gamepadADown{};
     bool gamepadBDown{};
     bool cameraCrouchDown{};
@@ -2785,13 +2797,13 @@ void updateGameplayActions(XrTime displayTime){
             log("[INPUT] jump request -> crouch OFF before native jump");
         }
         gamepadADown=gameplayJumpRequested||crouchUiDown;
-        gamepadBDown=s.crouchToggleActive||s.physicalCrouchActive||jumpUiDown;
+        gamepadBDown=s.crouchToggleActive||physicalCrouchNativePulse||jumpUiDown;
         cameraCrouchDown=s.crouchToggleActive||s.physicalCrouchActive;
     }else{
         // Exact official KHARVOX face-button routing.
-        gamepadADown=(s.swapJumpCrouch?(crouchGameplayDown||s.physicalCrouchActive):jumpGameplayDown)
+        gamepadADown=(s.swapJumpCrouch?(crouchGameplayDown||physicalCrouchNativePulse):jumpGameplayDown)
             ||handsJumpDown||crouchUiDown;
-        gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:(crouchGameplayDown||s.physicalCrouchActive))
+        gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown:(crouchGameplayDown||physicalCrouchNativePulse))
             ||jumpUiDown;
         cameraCrouchDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)
             ||s.physicalCrouchActive;
