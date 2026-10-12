@@ -5,12 +5,13 @@
 int main() {
     using namespace kharvox;
     const QuickHolsterZone zone{};
-    assert(quickHipInside({.27f,-.73f,.02f},false));
-    assert(!quickHipInside({.27f,-.25f,.02f},false)); // chest not hip
-    assert(!quickHipInside({.27f,-.73f,.65f},false)); // behind back
-    assert(!quickHipInside({-.27f,-.73f,.02f},false)); // wrong hip
-    assert(quickHipInside({.08f,-.73f,.02f},true)); // exit hysteresis
-    assert(!quickHipInside({NAN,-.73f,.02f},true)); // invalid tracking
+    assert(quickHipInside({.27f,-.75f,.35f},false));
+    assert(!quickHipInside({.27f,-.25f,.35f},false)); // chest not hip
+    assert(!quickHipInside({.27f,-.75f,.02f},false)); // forward accidental activation
+    assert(!quickHipInside({.27f,-.75f,.80f},false)); // behind back
+    assert(!quickHipInside({-.27f,-.75f,.35f},false)); // wrong hip
+    assert(quickHipInside({.10f,-.75f,.12f},true)); // exit hysteresis
+    assert(!quickHipInside({NAN,-.75f,.35f},true)); // invalid tracking
     QuickHolsters h{};
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
     h.lastSelectedWheelSide=0;
