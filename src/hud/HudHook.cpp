@@ -1898,7 +1898,7 @@ ProgQueueFn originalProgQueue{};
 bool __fastcall progQueue(void* queue,void* swf,void* gui,int time,const float* viewport,const float* extents){
     bool enabled=false;
     if(progHooksReady&&swf==progOwnerSwf){std::lock_guard<std::mutex> lock(offhandHudMutex);
-        enabled=offhandHudConfig.enabled||customMods.backOfHandHud||offhandCalibrationActive.load();}
+        enabled=offhandHudConfig.enabled||offhandCalibrationActive.load();}
     if(kharvox::drawProgMeterInline(enabled,reinterpret_cast<uintptr_t>(progOwnerSwf),reinterpret_cast<uintptr_t>(swf),
         reinterpret_cast<uintptr_t>(progSource.entity),reinterpret_cast<uintptr_t>(gui),progSource.surface)){
         // Native caller 161CE86 falls through to synchronous 161F0F0 when
@@ -3406,8 +3406,6 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
     bool offscreen = kharvox::shouldPlaceHudOffscreen(
         crosshair, ledgeTransitionActive);
     const bool cinematicSurface=KharvoxCameraCutsceneActive() && !crosshair && !ledgeTransitionActive;
-    if(customMods.disableHud && gameplayHudActive())
-        offscreen = true;
     const bool observeCinematicMenu=kharvox::shouldObserveCinematicMenuSurface(
         cinematicSurface,crosshair,ledgeTransitionActive,
         playerUpgradePickupSessionActive.load(std::memory_order_acquire)
@@ -3461,12 +3459,15 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
         const auto ownerVtable=*reinterpret_cast<const uintptr_t*>(current);
         weaponWheel=offhandCanvasHookReady&&ownerVtable>=image
             &&kharvox::ownedWeaponWheel(ownerVtable-image);
+        // No HUD is independent: suppress gameplay status surfaces, never the wheel.
+        if(customMods.disableHud && gameplayHudActive() && !weaponWheel)
+            offscreen=true;
         ownedHandSurface=kharvox::ownedOffhandHudSurface(ownerVtable>=image?ownerVtable-image:0,
             profile.callerRva,profile.width,profile.height,profile.scaleMilli);
         bool managedOffhand=false;
         if(offhandCanvasHookReady&&ownedHandSurface>=0){
             std::lock_guard<std::mutex> guard(offhandHudMutex);
-            managedOffhand=offhandHudConfig.enabled||customMods.backOfHandHud||offhandCalibrationActive.load();
+            managedOffhand=offhandHudConfig.enabled||offhandCalibrationActive.load();
         }
         float handOrigin[3]{},handAxis[9]{};
         const bool tracked=!managedOffhand||getOffhandHudFrame(handOrigin,handAxis);
@@ -3565,10 +3566,8 @@ bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOri
     if(offhandCanvasHookReady&&!crosshair&&!offscreen&&handSurface>=0){
         kharvox::OffhandHudConfig config;{std::lock_guard<std::mutex> lock(offhandHudMutex);config=offhandHudConfig;}
         float grip[3]{},handAxis[9]{};
-        if((config.enabled||customMods.backOfHandHud||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
-            // Preserve the exact original KHARVOX v1.1.1 calibrated hand-HUD
-            // placement, rotation, 512:300 aspect and size. The custom-mod
-            // checkbox only enables the original rendering path.
+        if((config.enabled||offhandCalibrationActive.load())&&getOffhandHudFrame(grip,handAxis)){
+            // Native Cactus v1.1.1 hand HUD calibration; no independent mod.
             const auto& values=config.modes[handSurface*2+(offhandHudLeftMode()?1:0)];
             kharvox::offhandHudBasis(handAxis,values,offhandAxis);
             kharvox::offhandHudOrigin(grip,handAxis,offhandAxis,values,handSurface,hudWorldUnitsPerMeter,desiredOrigin);
