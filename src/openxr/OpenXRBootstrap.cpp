@@ -270,6 +270,9 @@ struct State {
     int behindHeadWheelSide{-1}; // 0 right, 1 left
     bool wheelGripLatched{};
     bool wheelSelectionFrozen{};
+    kharvox::BackWeaponKind wheelOriginalWeapon{kharvox::BackWeaponKind::Unknown};
+    kharvox::BackWeaponKind wheelCancelRestore{kharvox::BackWeaponKind::Unknown};
+    XrTime wheelCancelRestoreAt{};
     bool wheelWeaponGripSuppressedUntilRelease{};
     bool wheelSupportGripSuppressedUntilRelease{};
     XrVector2f frozenWheelStick{};
@@ -2098,6 +2101,9 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalCrouchPulseUntil=0;
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
+        s.wheelOriginalWeapon=kharvox::BackWeaponKind::Unknown;
+        s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
+        s.wheelCancelRestoreAt=0;
         s.wheelWeaponGripSuppressedUntilRelease=false;
         s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
@@ -2202,18 +2208,28 @@ void updateGameplayActions(XrTime displayTime){
             :selectedSide==1&&readFloatAction(s.leftWeaponGrip)>.55f;
         if(wheelGripHeld&&(inside||s.behindHeadWheelActive))s.wheelGripLatched=true;
         if(!wheelGripHeld)s.wheelGripLatched=false;
-        // The native wheel must not release/confirm merely because a wrist
-        // wandered out. Pull the wrist out with Grip held to equip.
-        behindHeadWheelRequested=selectedSide>=0
-            &&(inside||(s.behindHeadWheelActive&&!s.wheelGripLatched));
-        if(behindHeadWheelRequested!=s.behindHeadWheelActive)
+        // Exit always closes the wheel. Grip HELD on exit confirms; no Grip
+        // cancels and restores the weapon selected before opening.
+        behindHeadWheelRequested=selectedSide>=0&&inside;
+        if(behindHeadWheelRequested&&!s.behindHeadWheelActive){
+            s.motionWheelState={}; // fresh anchor on every entry (drift reset)
+            s.wheelClicks={};
+            s.wheelSelectionFrozen=false;
+            s.wheelOriginalWeapon=backWeaponKindFromActive(KharvoxWeaponCurrentKind());
+            s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
+            s.wheelCancelRestoreAt=0;
             log(std::string("[WEAPON-WHEEL] ")
-                +(selectedSide==0?"right":"left")
-                +(behindHeadWheelRequested
-                    ?" wrist entered -> open"
-                    :" Grip-held pull -> confirm"));
+                +(selectedSide==0?"RIGHT":"LEFT")+" zone ENTER -> open, anchor reset");
+        }
+        if(!behindHeadWheelRequested&&s.behindHeadWheelActive){
+            if(!wheelGripHeld){
+                s.wheelCancelRestore=s.wheelOriginalWeapon;
+                s.wheelCancelRestoreAt=displayTime+150000000;
+                log("[WEAPON-WHEEL] zone EXIT without Grip -> CANCEL, restore previous weapon");
+            }else log("[WEAPON-WHEEL] zone EXIT with Grip -> CONFIRM");
+        }
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
-            &&s.wheelGripLatched&&selectedSide>=0){
+            &&wheelGripHeld&&selectedSide>=0){
             s.quickHolsters.lastSelectedWheelSide=selectedSide;
             // Confirmed wrist pull changes combat hands; never locomotion or UI.
             const bool selectedWeaponLeft=selectedSide==1;
@@ -2249,9 +2265,14 @@ void updateGameplayActions(XrTime displayTime){
         }
         s.behindHeadWheelActive=behindHeadWheelRequested;
         s.behindHeadWheelSide=behindHeadWheelRequested?selectedSide:-1;
-        if(!behindHeadWheelRequested){s.wheelGripLatched=false;s.wheelSelectionFrozen=false;}
+        if(!behindHeadWheelRequested){
+            s.motionWheelState={};
+            s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
+            s.wheelOriginalWeapon=kharvox::BackWeaponKind::Unknown;
+        }
     }else{
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
+        s.motionWheelState={};
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
     }
 
@@ -2418,6 +2439,26 @@ void updateGameplayActions(XrTime displayTime){
             ||displayTime<s.weaponSwitchPulseUntil);
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&weaponSelectDown&&s.weaponWheelOpened;
+    if(s.wheelCancelRestoreAt&&displayTime>=s.wheelCancelRestoreAt
+        &&!weaponWheelActive){
+        const auto original=s.wheelCancelRestore;
+        s.wheelCancelRestoreAt=0;
+        s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
+        if(original!=kharvox::BackWeaponKind::Unknown
+            &&original!=backWeaponKindFromActive(KharvoxWeaponCurrentKind())){
+            const WORD key=kharvox::backWeaponKeyboardVirtualKey(original);
+            if(key){
+                startBackWeaponKeyboardPulse(key,displayTime);
+            }else if(original==kharvox::BackWeaponKind::Bfg){
+                s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
+                s.backWeaponPulseUntil=displayTime+100000000;
+            }else if(original==kharvox::BackWeaponKind::Chainsaw){
+                s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
+                s.backWeaponPulseUntil=displayTime+100000000;
+            }
+            log(std::string("[WEAPON-WHEEL] CANCEL restored ")+backWeaponKindKey(original));
+        }
+    }
     const bool rawBackWeaponGripPress=secondaryFireGripDown
         &&!s.secondaryFireGripPressed&&!s.wheelWeaponGripSuppressedUntilRelease;
     const auto& shoulderWeaponGripController=s.weaponHandLeft
