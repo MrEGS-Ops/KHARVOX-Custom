@@ -224,6 +224,37 @@ inline std::uint64_t controllerHapticDurationMilliseconds(
     return xinputHapticPulseDurationMilliseconds;
 }
 
+// Tactile cues remain local to the correct physical hand. They do not
+// contribute to bHaptics, and cannot mask stronger weapon or damage rumble.
+struct ControllerZoneCue {
+    std::uint64_t untilMilliseconds{};
+    float amplitude{};
+    float frequencyHz{};
+};
+inline void queueControllerZoneCue(ControllerZoneCue& cue,
+    std::uint64_t now,std::uint32_t durationMilliseconds,
+    float amplitude,float frequencyHz){
+    cue.untilMilliseconds=now+durationMilliseconds;
+    cue.amplitude=std::clamp(amplitude,0.0f,1.0f);
+    cue.frequencyHz=frequencyHz;
+}
+inline XInputHapticSignal mixControllerZoneCue(
+    const XInputHapticSignal& base,
+    const ControllerZoneCue& cue,std::uint64_t now){
+    if(now>=cue.untilMilliseconds
+       ||(base.active&&base.amplitude>=cue.amplitude))return base;
+    return {cue.amplitude,cue.frequencyHz,true};
+}
+inline std::uint64_t controllerZoneCueDurationMilliseconds(
+    const XInputHapticSignal& base,
+    const ControllerZoneCue& cue,std::uint64_t now,
+    std::uint64_t fallback){
+    if(now<cue.untilMilliseconds
+       &&(!base.active||base.amplitude<cue.amplitude))
+        return std::max<std::uint64_t>(1,cue.untilMilliseconds-now);
+    return fallback;
+}
+
 struct XInputHapticOutputState {
     bool effectActive{};
     XInputHapticSignal lastApplied{};
