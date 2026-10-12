@@ -2608,6 +2608,11 @@ bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_orde
 void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
     boxingGuardTimeDilationRequested.store(active,std::memory_order_release);
 }
+void KharvoxCameraResetCombatTimeDilation() {
+    boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
+    gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
+    updateGloryKillSlowmoTimescale(false); // restore native game cvar
+}
 
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
     const float value = timescale > 0.0f
