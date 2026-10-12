@@ -258,6 +258,8 @@ struct State {
     PhysicalGlorykillHands physicalGlorykillHands{PhysicalGlorykillHands::Both};
     std::array<bool,2> physicalPunchArmed{};
     XrTime physicalPunchCooldownUntil{};
+    XrTime boxingPoseStartedAt{},headFocusHeldUntil{};
+    bool boxingHeadFocus{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
@@ -284,7 +286,10 @@ struct State {
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
     kharvox::PhysicalGrenadeGestureState grenadeGesture{};
+    XrTime grenadeCyclePulseUntil{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
+    bool chainsawKillLatched{};
+    XrTime lastChainsawAttackAt{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -2130,6 +2135,7 @@ void updateGameplayActions(XrTime displayTime){
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
+        s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
@@ -2145,7 +2151,9 @@ void updateGameplayActions(XrTime displayTime){
         s.dynamicShoulderHolstered=false;s.quickHolsters.activeStowedSide=-1;
         s.quickHolsterPhysicalGripHeld={};
         KharvoxWeaponSetHolstered(false);
-        s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
+        s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
+        s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
+        s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
         s.grenadeGesture={};
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
@@ -2365,7 +2373,7 @@ void updateGameplayActions(XrTime displayTime){
     if(!secondaryFireGripDown)s.wheelWeaponGripSuppressedUntilRelease=false;
     if(!supportGripDown)s.wheelSupportGripSuppressedUntilRelease=false;
     const bool cycleEquipment=s.equipmentGrip.update(supportGripDown,
-        gameplay&&!s.behindHeadWheelActive
+        gameplay&&!s.customMods.physicalGrenadeThrow&&!s.behindHeadWheelActive
             &&!s.wheelSupportGripSuppressedUntilRelease,
         supportGripController().valid&&weaponController().valid,
         s.twoHandLatched||s.twoHandCalibrationMode||supportGripInCaptureRange(),displayTime);
@@ -2377,8 +2385,12 @@ void updateGameplayActions(XrTime displayTime){
     }
     constexpr XrDuration bfgGripHoldDuration=650000000;
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
+    // Siege declaration identifies a MODE, not an ongoing charge.
+    // Require live primary and weapon-mod controls in addition to the mode.
     const bool gaussSlowChargeActive=s.customMods.gaussChargeSlowMovement
-        &&gameplay&&KharvoxWeaponGaussSiegeChargeActive();
+        &&gameplay&&KharvoxWeaponGaussSiegeChargeActive()
+        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
+        &&triggerDown&&secondaryFireGripDown;
     KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
     const bool bfgCalibrationAccess=s.twoHandCalibrationMode
         &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
@@ -2715,7 +2727,7 @@ void updateGameplayActions(XrTime displayTime){
         :(gameplay?s.roomscaleStick:s.leftStick);
     XrVector2f movementStick=weaponWheelActive?XrVector2f{}:requestedMovement;
     if(gaussSlowChargeActive){
-        constexpr float gaussChargeMovementScale=.30f;
+        constexpr float gaussChargeMovementScale=.45f;
         movementStick.x*=gaussChargeMovementScale;
         movementStick.y*=gaussChargeMovementScale;
     }
@@ -2735,6 +2747,20 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePressed=meleeUseDown;
     }
     const bool syncAttackActive=KharvoxCameraSyncAttackActive();
+    // DOOM may switch the active weapon declaration as sync-kill begins.
+    // Retain a recent Chainsaw attack only through the confirmed kill.
+    if(activeWeaponKind==KharvoxWeaponKind::Chainsaw&&triggerDown&&gameplay)
+        s.lastChainsawAttackAt=displayTime;
+    if(!syncAttackActive)s.chainsawKillLatched=false;
+    else if(!s.chainsawKillLatched
+        &&(activeWeaponKind==KharvoxWeaponKind::Chainsaw
+            ||(s.lastChainsawAttackAt>0&&displayTime>=s.lastChainsawAttackAt
+               &&displayTime-s.lastChainsawAttackAt<1500000000LL))){
+        s.chainsawKillLatched=true;
+        log("[CHAINSAW-GESTURE] chainsaw sync-kill detected; gesture owns playback");
+    }
+    const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
+        &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=(s.physicalGlorykillEnabled||s.customMods.motionGloryKillSpeed)
         &&gameplay&&!fullscreenMenu&&!weaponWheelActive;
     const std::array<const ControllerPose*,2> punchControllers{{&s.rightController,&s.leftController}};
@@ -2753,8 +2779,7 @@ void updateGameplayActions(XrTime displayTime){
             // During chainsaw sync kills, ignore punches altogether. The
             // chainsaw gesture owns timescale AND melee routing; otherwise a
             // punch could fall through to a normal melee pulse.
-            if(syncAttackActive&&s.customMods.physicalChainsawGestures
-                &&activeWeaponKind==KharvoxWeaponKind::Chainsaw){
+            if(chainsawSyncGesture){
                 s.physicalPunchArmed[hand]=false;
                 continue;
             }
@@ -2771,8 +2796,7 @@ void updateGameplayActions(XrTime displayTime){
             // Chainsaw gestures exclusively own the kill timescale during a
             // chainsaw sync attack. A punch must not overwrite that owner.
             if(s.customMods.motionGloryKillSpeed&&syncAttackActive
-                &&!(s.customMods.physicalChainsawGestures
-                     &&activeWeaponKind==KharvoxWeaponKind::Chainsaw)){
+                &&!chainsawSyncGesture){
                 const float normalized=std::clamp((forwardSpeed-.90f)/(4.0f-.90f),0.f,1.f);
                 const float timescale=.40f+.60f*normalized;
                 KharvoxCameraSetGloryKillTimescaleOverride(timescale);
@@ -2792,8 +2816,7 @@ void updateGameplayActions(XrTime displayTime){
             break;
         }
     }
-    if(s.customMods.physicalChainsawGestures&&syncAttackActive
-        &&activeWeaponKind==KharvoxWeaponKind::Chainsaw){
+    if(chainsawSyncGesture){
         const auto& chainsawController=weaponController();
         const bool tracked=chainsawController.valid&&chainsawController.linearVelocityValid;
         const float downSpeed=tracked?std::max(0.f,-chainsawController.linearVelocity.y):0.f;
