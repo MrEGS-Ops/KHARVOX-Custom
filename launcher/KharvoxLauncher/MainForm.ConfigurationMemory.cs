@@ -912,11 +912,7 @@ public sealed partial class MainForm
                     + " modListBottom=" + modListPanel.Bottom
                     + " available=" + nexusLink?.Enabled
                     + " color=" + nexusLink?.LinkColor);
-            // Fire the real link with the browser launch intercepted. The
-            // requested popup must use the side dock, not cover Custom Mods.
-            var expectedBrowserBounds = NexusFolderCompanion.CalculateDock(
-                main.Bounds, window.Bounds,
-                Screen.FromControl(main).WorkingArea, browserOpen: true).Browser;
+            // The browser must retain its original Custom Mods bounds.
             Rectangle? clickedBounds = null;
             Rectangle? requestedFolderBounds = null;
             NexusModsPopup.TestOpenRequested = bounds => clickedBounds = bounds;
@@ -935,7 +931,7 @@ public sealed partial class MainForm
                     new LinkLabelLinkClickedEventArgs(nexusLink.Links[0])
                 });
                 Application.DoEvents();
-                if (clickedBounds != expectedBrowserBounds
+                if (clickedBounds != window.Bounds
                     || requestedFolderBounds != main.Bounds
                     || nexusLink.Text != "Browse DOOM mods on Nexus Mods"
                     || !nexusLink.Enabled)
