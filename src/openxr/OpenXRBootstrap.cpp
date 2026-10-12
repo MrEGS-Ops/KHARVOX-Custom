@@ -3234,7 +3234,7 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(true,s.rightGripController);
     publishHudHandPose(false,s.leftGripController);
 
-    if(s.customMods.handFocusedRs&&gameplay){
+    if((s.customMods.handFocusedRs||s.customMods.boxingGuard)&&gameplay){
         // Both guards raised in front of the face = temporary HEAD focus for
         // easy Glory Kill targeting and punching. Enter after 180 ms to avoid
         // false positives; hold head focus for 900 ms after hands drop.
@@ -3250,7 +3250,8 @@ void updateGameplayActions(XrTime displayTime){
                 &&vertical>=-.53f&&vertical<=.14f
                 &&depth>=-.78f&&depth<=-.06f;
         };
-        const bool bothGuardsRaised=boxingGuard(s.rightGripController,0)
+        const bool bothGuardsRaised=s.customMods.boxingGuard
+            &&boxingGuard(s.rightGripController,0)
             &&boxingGuard(s.leftGripController,1);
         if(bothGuardsRaised){
             if(!s.boxingPoseStartedAt)s.boxingPoseStartedAt=displayTime;
@@ -3267,7 +3268,7 @@ void updateGameplayActions(XrTime displayTime){
         }
         const auto& controller=weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
-        if(!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
+        if(s.customMods.handFocusedRs&&!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
             const auto trackingForward=normalizeVector(
@@ -3298,6 +3299,19 @@ void updateGameplayActions(XrTime displayTime){
         s.boxingHeadFocus=false;
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
     }
+    // All three are independent mods. Boxing overrides fast kill timing only
+    // while head-focus boxing mode is active. Otherwise checkbox-controlled
+    // full-speed kills never alter locomotion or weapon controls.
+    const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus;
+    KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
+    float syncTimescale=0.f; // zero -> native DOOM sync-attack timing
+    if(gameplay&&syncAttackActive&&!boxingNow){
+        if(s.chainsawKillLatched)
+            syncTimescale=s.customMods.fastChainsawKills?1.f:0.f;
+        else if(s.customMods.fastGloryKills)
+            syncTimescale=1.f;
+    }
+    KharvoxCameraSetGloryKillTimescaleOverride(syncTimescale);
     updateWeapon6Dof();
 }
 bool createGameplayActions(){
