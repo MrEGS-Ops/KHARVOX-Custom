@@ -142,11 +142,12 @@ internal static class NexusFolderCompanion
         var browser = Rectangle.Empty;
         if (browserOpen)
         {
-            var extraLeft = x - workArea.Left;
-            var extraRight = workArea.Right - folder.Right;
+            // Only the side AWAY from launcher/Custom Mods is free.
+            // The apparent room across the launcher is occupied space.
+            var extraLeft = putLeft ? x - workArea.Left : 0;
+            var extraRight = putLeft ? 0 : workArea.Right - folder.Right;
             var canUseLeft = extraLeft >= 420;
-            var canUseRight = extraRight >= 420
-                && (putLeft || extraRight > extraLeft);
+            var canUseRight = extraRight >= 420;
             if (canUseLeft || canUseRight)
             {
                 var browserWidth = Math.Min(760,
