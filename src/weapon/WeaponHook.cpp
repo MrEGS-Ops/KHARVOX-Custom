@@ -2010,7 +2010,6 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         && renderObject && KharvoxCameraGameplayActive();
     const float* submittedOrigin = origin;
     const float* submittedAxis = axis;
-    float holsteredOrigin[3]{};
     float pairedOrigin[3]{}, pairedAxis[9]{};
     if (weaponPresentation && synchronizeAerAnimatedWeaponProp(
             reinterpret_cast<uintptr_t>(renderObject)
@@ -2019,14 +2018,10 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         submittedOrigin = pairedOrigin;
         submittedAxis = pairedAxis;
     }
-    // Visibility MUST be the final positional override: otherwise the
-    // following AER pose sync could place a holstered gun back in view.
-    if (weaponPresentation && weaponHolstered.load(std::memory_order_acquire)
-        && submittedOrigin) {
-        std::memcpy(holsteredOrigin, submittedOrigin, sizeof(holsteredOrigin));
-        holsteredOrigin[2] -= 100000.0f;
-        submittedOrigin = holsteredOrigin;
-    }
+    // Physical Quick Holsters move the 6DoF weapon SOURCE to the hip.
+    // Do not hide the render object below the world: that was leaving the
+    // player with an empty hand and no visible weapon in the hip.
+    // The controller source now supplies the body-relative anchored transform.
     if (weaponPresentation) {
         lastWeaponRenderObject.store(reinterpret_cast<uintptr_t>(renderObject),
                                      std::memory_order_release);
@@ -2725,7 +2720,7 @@ void KharvoxWeaponSetHolstered(bool holstered) {
     const bool previous = weaponHolstered.exchange(holstered, std::memory_order_acq_rel);
     if (previous != holstered)
         log(std::string("[HOLSTER] weapon presentation ")
-            + (holstered ? "stowed; empty hands active" : "restored"));
+            + (holstered ? "hip-mounted weapon pose active" : "hand-mounted weapon pose restored"));
 }
 
 bool KharvoxWeaponHolstered() {
