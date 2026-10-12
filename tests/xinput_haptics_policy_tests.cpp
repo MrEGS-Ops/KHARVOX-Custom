@@ -228,5 +228,28 @@ int main() {
     const auto passive = mergeDamageImpactHapticSignal(
         zero, 0.7f, 115.f, false);
     if (passive.active) return 45;
+
+    // Side-to-OpenXR mapping regression: side 0 RIGHT -> haptic index 1.
+    if (hapticOutputForPhysicalSide(0)!=1
+        || hapticOutputForPhysicalSide(1)!=0
+        || hapticOutputForPhysicalSide(-1)!=-1) return 46;
+    ControllerZoneCue zone{};
+    queueControllerZoneCue(zone,1000,35,.32f,155.f);
+    const auto zoneOn=mixControllerZoneCue(zero,zone,1000);
+    if (!zoneOn.active||!near(zoneOn.amplitude,.32f)
+        || controllerZoneCueDurationMilliseconds(zero,zone,1000,100)!=35)
+        return 47;
+    if (mixControllerZoneCue(zero,zone,1035).active) return 48;
+    // Game and damage rumble must never be reduced by the new cue.
+    if (!near(mixControllerZoneCue(normalStrong,zone,1010).amplitude,.95f))
+        return 49;
+    queueControllerZoneCue(zone,2000,70,.62f,195.f);
+    if (!near(mixControllerZoneCue(weak,zone,2010).amplitude,.62f)
+        || controllerZoneCueDurationMilliseconds(weak,zone,2010,100)!=60)
+        return 50;
+    // Quiet armed-grenade pulse cannot take over stronger wheel clicks.
+    queueControllerZoneCue(zone,3000,50,.20f,100.f);
+    if (!near(mixControllerZoneCue(clickOnly,zone,3010).amplitude,.5f))
+        return 51;
     return 0;
 }
