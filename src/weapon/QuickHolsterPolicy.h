@@ -8,8 +8,8 @@ namespace kharvox {
 // Physical hip placements are deliberately distinct from the legacy
 // behind-the-shoulder Back Weapon zone. Measurements are HMD-relative metres.
 struct QuickHolsterZone {
-    BackWeaponZoneBounds enter{0.12f,0.51f,-1.04f,-0.48f,0.15f,0.56f};
-    BackWeaponZoneBounds exit{0.07f,0.60f,-1.14f,-0.38f,0.08f,0.66f};
+    BackWeaponZoneBounds enter{0.12f,0.51f,-1.04f,-0.48f,0.02f,0.43f};
+    BackWeaponZoneBounds exit{0.07f,0.60f,-1.14f,-0.38f,-0.05f,0.53f};
 };
 
 struct QuickHolsters {
