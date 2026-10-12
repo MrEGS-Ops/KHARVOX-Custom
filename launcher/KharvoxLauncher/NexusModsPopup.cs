@@ -57,9 +57,10 @@ internal static class NexusModsPopup
     internal static bool PositionTrackedBrowser(IntPtr hwnd, Rectangle bounds)
     {
         if (hwnd == IntPtr.Zero || hwnd != trackedPopup || !IsWindow(hwnd)
-            || bounds.IsEmpty) return false;
+            || IsIconic(hwnd) || bounds.IsEmpty) return false;
+        // Follow geometry without raising, unminimising or stealing focus.
         return SetWindowPos(hwnd, IntPtr.Zero, bounds.X, bounds.Y,
-            bounds.Width, bounds.Height, 0x0010 | 0x0040);
+            bounds.Width, bounds.Height, 0x0010 | 0x0004);
     }
 
     internal static ProcessStartInfo MakeDefaultBrowserStartInfo(
@@ -305,6 +306,9 @@ internal static class NexusModsPopup
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
