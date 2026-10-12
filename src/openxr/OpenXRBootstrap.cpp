@@ -2473,8 +2473,8 @@ void updateGameplayActions(XrTime displayTime){
                     log(std::string("[QUICK-HOLSTERS] DRAW ")
                         +(side==0?"RIGHT":"LEFT")+" hip: "
                         +backWeaponKindKey(slot));
-                }else if(s.quickHolsters.lastSelectedWheelSide==side
-                    &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown){
+                }else if(kharvox::quickHolsterCanStow(
+                    s.quickHolsters,side,activeBackWeapon)){
                     slot=activeBackWeapon;
                     s.quickHolsters.activeStowedSide=side;
                     s.dynamicShoulderHolstered=true;
@@ -2774,7 +2774,8 @@ void updateGameplayActions(XrTime displayTime){
         s.wheelClicks[1-hapticHand]={};
         if(!weaponWheelActive||(!stickOwnsSelection&&!wheelInput.trackingValid))
             s.wheelClicks={};
-        else if(stickOwnsSelection?stickClick:wheelOutput.triggerHapticPulse)
+        else if(!s.wheelSelectionFrozen
+            &&(stickOwnsSelection?stickClick:wheelOutput.triggerHapticPulse))
             kharvox::queueControllerClick(s.wheelClicks[hapticHand],GetTickCount64());
     }
     const XrVector2f nativeRightStick=nativeUiMenu?nativeUiRightStick
