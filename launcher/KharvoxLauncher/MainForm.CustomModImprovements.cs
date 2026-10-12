@@ -162,7 +162,7 @@ public sealed partial class MainForm
             "R = Requires; D = Disables. Hover to highlight ALL linked mods."
             + Environment.NewLine
             + (item.Box == customDynamicShoulderHolster
-                ? "Enable Hands in main launcher (VR Options)."
+                ? "Enable Hands in main launcher (VR Options) is checked and locked while this mod is active."
                 : dependencies.TrimStart(' ', '—'))
             + Environment.NewLine + item.Tip);
     }
