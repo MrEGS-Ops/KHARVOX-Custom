@@ -194,6 +194,15 @@ public sealed partial class MainForm
                 check.CheckedChanged += WeaponWheelRemapChanged;
             else
                 check.CheckedChanged += CustomModChanged;
+            check.MouseHover += (_, _) =>
+            {
+                var slot = modOrderSlots.FirstOrDefault(x =>
+                    ReferenceEquals(x.Panel, check.Parent));
+                if(slot is null || !slot.Panel.Visible) return;
+                var tip=statusToolTip.GetToolTip(slot.Panel);
+                if(!string.IsNullOrWhiteSpace(tip))
+                    statusToolTip.Show(tip,slot.Panel,8,slot.Panel.Height+3,11000);
+            };
             check.MouseEnter += (_, _) =>
             {
                 var slot = modOrderSlots.FirstOrDefault(x =>
@@ -311,6 +320,19 @@ public sealed partial class MainForm
                 Number = number, Grip = grip,
                 Dependency = dependency
             };
+            // The detached top-level Custom Mods window does not reliably
+            // get native hover tooltips from a ToolTip created on MainForm.
+            // Explicitly show the description below the hovered row, even if
+            // its checkbox is disabled by a conflicting mod.
+            void ShowModTooltip(object? sender, EventArgs e)
+            {
+                if (!panel.IsHandleCreated || !panel.Visible) return;
+                var tip = statusToolTip.GetToolTip(panel);
+                if (string.IsNullOrWhiteSpace(tip)) return;
+                statusToolTip.Show(tip, panel, 8, panel.Height + 3, 11000);
+            }
+            foreach (Control hover in new Control[] { panel, number, dependency, grip })
+                hover.MouseHover += ShowModTooltip;
             dependency.LinkClicked += (_, _) => HighlightDependencyReferences(slot, true);
             dependency.MouseEnter += (_, _) =>
             {
