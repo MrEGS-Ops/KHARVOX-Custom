@@ -70,7 +70,8 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
-    private readonly CheckBox customBackOfHandHud = MakeCheck("KHARVOX Hand HUD (v1.1.1)", false);
+    // Native Cactus HUD is configured by offhand_hud.cfg, not a custom mod.
+    private readonly CheckBox customBoxingGuard = MakeCheck("Boxing Guard Mode", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
     private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-the-Head Weapon Wheel", false);
@@ -79,12 +80,11 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
-    private readonly CheckBox customMotionGloryKillSpeed = MakeCheck("Punch-Driven Glory Kill Speed", false);
-    private readonly CheckBox customPhysicalChainsawGestures = MakeCheck("Physical Chainsaw Gestures", false);
+    private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
+    private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
-    private readonly FlatGloryKillSlider gloryKillSpeedSlider = new();
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
     private readonly System.Windows.Forms.Timer runtimeStatusTimer = new() { Interval = 500 };
@@ -378,55 +378,22 @@ public sealed partial class MainForm : Form
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
-        gloryKillSpeedSlider.ValueChanged += (_, _) =>
-        {
-            if (gloryKillSlowmo.Value != GKMenuToEngine(gloryKillSpeedSlider.Value))
-                gloryKillSlowmo.Value = GKMenuToEngine(gloryKillSpeedSlider.Value);
-        };
-        gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
-        statusToolTip.SetToolTip(gloryKillSpeedSlider,
-            "Glory Kill speed: 1 = native DOOM speed; 2–4 progressively faster; 5 = fastest. Use mouse or arrow keys.");
-
-        // One compact row across the available MODS panel width. Never let a
-        // 250px fixed second column push the interactive slider out of view.
-        var speedScale = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, Margin = Padding.Empty,
-            Padding = Padding.Empty, ColumnCount = 2, RowCount = 1,
-            BackColor = PanelColor
-        };
-        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
-        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedScale.Controls.Add(new Label
-        {
-            Text = "Glory Kill speed",
-            Dock = DockStyle.Fill,
-            ForeColor = Color.Gainsboro,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = Padding.Empty
-        }, 0, 0);
-        gloryKillSpeedSlider.Dock = DockStyle.Fill;
-        gloryKillSpeedSlider.Margin = new Padding(0, 2, 0, 2);
-        speedScale.Controls.Add(gloryKillSpeedSlider, 1, 0);
-        customModsGrid.Controls.Add(speedScale, 0, 0);
-        customModsGrid.SetColumnSpan(speedScale, 2);
-
         var customChecks = new (CheckBox Box, string Tip)[]
         {
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
-            (customGaussChargeSlowMovement, "While Siege mode is active AND fire plus weapon-mod input are held, allow movement at 45% speed. Merely equipping Gauss will not slow movement."),
-            (customBackOfHandHud, "Enable the original KHARVOX v1.1.1 hand HUD: its original position, orientation and rectangular layout. No HUD disables it."),
-            (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Raise both hands in a boxing guard for 180ms to temporarily use head focus for Glory Kills; return to hand focus 900ms after lowering the guard."),
+            (customGaussChargeSlowMovement, "Movement assist while Gauss Siege charge is held. Designed for 45% stick movement, but DOOM may inhibit native movement; this is still under investigation."),
+            (customBoxingGuard, "Raise both hands in a guarding pose: head focus and slight time dilation activate after 180 ms, then return to hand focus 900 ms after the guard ends. Native Glory Kill speed while guarding. Peripheral blur is pending a tested renderer hook."),
+            (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Boxing Guard Mode independently switches to head focus when both guards are raised."),
             (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
             (customBehindHeadWeaponWheel, "Move EITHER hand behind its matching side of your head to open the wheel. Move that hand to select; hold that hand's Grip to lock and pull out to equip. Without Grip, leaving the zone cancels selection. Right side equips to right hand; left side equips to left hand. Grenades occupy the opposite hand. Movement, menu, jump and crouch controls stay unchanged."),
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
             (customDynamicShoulderHolster, "Experimental rearward left/right hip slots. Store a weapon on the matching hip and draw it with that hand's Grip. Drawing uses the stored weapon identity, NOT native last-weapon quick swap. Requires Enable Hands; that launcher setting is locked while this mod is active."),
-            (customPhysicalGrenadeThrow, "With the non-weapon hand, press Grip inside the small central chest zone to cycle grenade type and arm it. Pull out holding Grip, then release Grip outside to throw. Release inside to cancel. No swing threshold. Native DOOM still owns projectile trajectory."),
-            (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
-            (customPhysicalChainsawGestures, "Experimental: during a detected Chainsaw sync kill, recently holding attack with Chainsaw latches gesture control. Weapon-hand movement speeds kill playback; stopping slows to 12%. Requires a valid native sync-attack signal."),
+            (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
+            (customFastGloryKills, "Fast Glory Kills: full 1.0x animation speed when outside Boxing Guard; unchecked restores native timing."),
+            (customFastChainsawKills, "Fast Chainsaw Kills: full-speed chainsaw takedown while enabled, native DOOM chainsaw takedown timing when unchecked. No motion-control gesture required."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -1428,9 +1395,6 @@ public sealed partial class MainForm : Form
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
         physicalGlorykillSpeedValue.Text = SelectedPhysicalGlorykillSpeed()
             .ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " m/s";
-        var speedValue = GKEngineToMenu(gloryKillSlowmo.Value);
-        if (gloryKillSpeedSlider.Value != speedValue)
-            gloryKillSpeedSlider.Value = speedValue;
         var displayedGloryKillSpeed = GKEngineToMenu(gloryKillSlowmo.Value);
         gloryKillSlowmoValue.Text = displayedGloryKillSpeed switch
         {
@@ -1511,13 +1475,6 @@ public sealed partial class MainForm : Form
                 customDirectionalDash.Checked = false;
             }
 
-            // No HUD and Back-of-Hand HUD use the same gameplay-HUD surfaces.
-            // The option explicitly enabled most recently wins.
-            if (changed == customDisableHud && customDisableHud.Checked)
-                customBackOfHandHud.Checked = false;
-            else if (changed == customBackOfHandHud && customBackOfHandHud.Checked)
-                customDisableHud.Checked = false;
-
             // Dynamic Quick Holsters and hand calibration need rendered hands.
             // They force Enable Hands ON and keep it visibly locked while active.
             // The launcher checkbox unlocks when no feature requires it.
@@ -1556,18 +1513,17 @@ public sealed partial class MainForm : Form
             if (!customBehindHeadWeaponWheel.Checked)
                 customBehindHeadWheelHandSelection.Checked = false;
 
-            if (customDisableHud.Checked)
-                customBackOfHandHud.Checked = false;
-
             // Mutual exclusions become visibly disabled, not just
             // auto-unchecked. An unavailable control is greyed out until
             // the conflicting choice is explicitly turned off.
-            customBackOfHandHud.Enabled = !customDisableHud.Checked;
-            customDisableHud.Enabled = !customBackOfHandHud.Checked;
+
             customBehindHeadWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
             customDirectionalDash.Enabled = false; // unsafe native dash halted
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
+            // Original hand HUD is not controlled by these checkboxes.
+            // Full-speed Glory Kills are a binary option; no unverified slider.
+            gloryKillSlowmo.Value = customFastGloryKills.Checked ? 0 : 10;
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
@@ -1599,7 +1555,8 @@ public sealed partial class MainForm : Form
         DisableHud = customDisableHud.Checked,
         DisableWeaponWheel = customDisableWeaponWheel.Checked,
         GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
-        BackOfHandHud = customBackOfHandHud.Checked,
+        BackOfHandHud = false,
+        BoxingGuard = customBoxingGuard.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
         BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
@@ -1609,8 +1566,10 @@ public sealed partial class MainForm : Form
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
-        MotionGloryKillSpeed = customMotionGloryKillSpeed.Checked,
-        PhysicalChainsawGestures = customPhysicalChainsawGestures.Checked,
+        MotionGloryKillSpeed = false,
+        PhysicalChainsawGestures = false,
+        FastGloryKills = customFastGloryKills.Checked,
+        FastChainsawKills = customFastChainsawKills.Checked,
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1643,7 +1602,7 @@ public sealed partial class MainForm : Form
             customDisableHud.Checked = mods.DisableHud;
             customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
             customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
-            customBackOfHandHud.Checked = mods.BackOfHandHud;
+            customBoxingGuard.Checked = mods.BoxingGuard;
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;
             // Migrate saved left-only selection into the combined mod.
@@ -1653,8 +1612,8 @@ public sealed partial class MainForm : Form
             customRevengeDemon.Checked = mods.RevengeDemon;
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
-            customMotionGloryKillSpeed.Checked = mods.MotionGloryKillSpeed;
-            customPhysicalChainsawGestures.Checked = mods.PhysicalChainsawGestures;
+            customFastGloryKills.Checked = mods.FastGloryKills;
+            customFastChainsawKills.Checked = mods.FastChainsawKills;
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
