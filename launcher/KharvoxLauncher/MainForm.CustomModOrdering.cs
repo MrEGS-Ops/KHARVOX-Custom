@@ -139,6 +139,7 @@ public sealed partial class MainForm
             Define(customHandFocusedRs, "hand-focus", 0),
             Define(customBackOfHandHud, "back-of-hand-hud", 0),
             Define(customBehindHeadWeaponWheel, "behind-head-wheel", 0),
+            Define(customLeftWristWeaponWheel, "left-wrist-wheel", 0),
 
             Define(customDynamicShoulderHolster, "dynamic-shoulder-holster", 0),
             Define(customPhysicalCrouch, "physical-crouch", 1),
