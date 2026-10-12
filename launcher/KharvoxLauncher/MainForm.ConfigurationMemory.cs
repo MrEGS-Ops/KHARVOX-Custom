@@ -156,11 +156,11 @@ public sealed partial class MainForm
             disableAa, handsJump, disableVrIntro, showHands, calibrateHands,
             enableBhaptics, usePsvr2Toolkit, useFsrUpscaling, weaponWheelRemap,
             customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
-            customBackOfHandHud, customHandFocusedRs, customDirectionalDash,
+            customBoxingGuard, customHandFocusedRs, customDirectionalDash,
             customBehindHeadWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
-            customPhysicalGrenadeThrow, customMotionGloryKillSpeed,
-            customPhysicalChainsawGestures, customHapticOverhaul
+            customPhysicalGrenadeThrow, customFastGloryKills,
+            customFastChainsawKills, customHapticOverhaul
         }) yield return control;
     }
 
@@ -560,15 +560,15 @@ public sealed partial class MainForm
             {
                 main.weaponWheelRemap,
                 main.customHandFocusedRs,
-                main.customBackOfHandHud,
+                main.customBoxingGuard,
                 main.customBehindHeadWeaponWheel,
                 main.customDynamicShoulderHolster,
                 main.customPhysicalCrouch,
                 main.customDirectionalDash,
                 main.customPhysicalGrenadeThrow,
                 main.customGaussChargeSlowMovement,
-                main.customMotionGloryKillSpeed,
-                main.customPhysicalChainsawGestures,
+                main.customFastGloryKills,
+                main.customFastChainsawKills,
                 main.customDisableHud,
                 main.customDisableWeaponWheel,
                 main.customRevengeDemon,
@@ -616,10 +616,6 @@ public sealed partial class MainForm
                 || !LinksOf(main.customDisableWeaponWheel).Contains(
                     "D " + ModNumber(main.customBehindHeadWeaponWheel)
                     + "," + ModNumber(main.customDirectionalDash))
-                || !LinksOf(main.customDisableHud).Contains(
-                    "D " + ModNumber(main.customBackOfHandHud))
-                || !LinksOf(main.customBackOfHandHud).Contains(
-                    "D " + ModNumber(main.customDisableHud))
                 || main.modOrderSlots.Where(slot =>
                     slot.Dependency.Text.Contains("#")
                     && slot.Dependency.Links.Count == 0).Any())
@@ -669,12 +665,10 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
-            if (main.gloryKillSpeedSlider.Value < 1
-                || main.gloryKillSpeedSlider.Value > 5
-                || GKMenuToEngine(1) != 10 || GKMenuToEngine(5) != 0
-                || main.gloryKillSpeedSlider.Width < 90
-                || main.gloryKillSpeedSlider.ForeColor != Color.FromArgb(201, 201, 204))
-                throw new InvalidDataException("Glory Kill speed slider is missing.");
+            if (!main.customFastGloryKills.Text.Contains("Fast Glory Kills")
+                || !main.customFastChainsawKills.Text.Contains("Fast Chainsaw Kills")
+                || !main.customBoxingGuard.Text.Contains("Boxing Guard"))
+                throw new InvalidDataException("Native/full-speed GK, chainsaw and boxing switches are missing.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
             if (!SfsProfileRecovery.RunSelfTest())
@@ -729,11 +723,11 @@ public sealed partial class MainForm
             // The CI desktop can be narrower than launcher + 890px sidecar:
             // docking may shrink it to fit, without changing the preferred size.
             if (window.ClientSize.Width < 520 || window.ClientSize.Width > 900
-                || main.gloryKillSpeedSlider.Width < 130)
+                || main.customFastGloryKills.Width < 95)
                 throw new InvalidDataException(
-                    "Rendered Custom Mods panel or five-stop GK slider is clipped."
+                    "Rendered Custom Mods panel or Fast Glory Kills checkbox is clipped."
                     + " clientWidth=" + window.ClientSize.Width
-                    + " sliderWidth=" + main.gloryKillSpeedSlider.Width
+                    + " checkboxWidth=" + main.customFastGloryKills.Width
                     + " desktopWidth=" + Screen.FromControl(window).WorkingArea.Width);
             ratingBar.PerformLayout();
             if (!ratingBar.Visible || ratingBar.Top > 7
