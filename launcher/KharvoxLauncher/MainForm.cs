@@ -1504,10 +1504,18 @@ public sealed partial class MainForm : Form
 
             // A hard "No Weapon Wheel" request wins over every wheel-dependent
             // feature and therefore also releases Dash.
+            if (changed == customLeftWristWeaponWheel
+                && customLeftWristWeaponWheel.Checked)
+            {
+                leftHanded.Checked = true;
+                customDisableWeaponWheel.Checked = false;
+            }
+
             if (changed == customDisableWeaponWheel && customDisableWeaponWheel.Checked)
             {
                 customBehindHeadWeaponWheel.Checked = false;
                 customBehindHeadWheelHandSelection.Checked = false;
+                customLeftWristWeaponWheel.Checked = false;
                 customDirectionalDash.Checked = false;
             }
 
@@ -1548,6 +1556,7 @@ public sealed partial class MainForm : Form
             else if (customDisableWeaponWheel.Checked)
             {
                 customBehindHeadWeaponWheel.Checked = false;
+                customLeftWristWeaponWheel.Checked = false;
             }
             else if (customBehindHeadWeaponWheel.Checked)
             {
@@ -1561,6 +1570,8 @@ public sealed partial class MainForm : Form
 
             if (customDynamicShoulderHolster.Checked)
                 showHands.Checked = true;
+            if (customLeftWristWeaponWheel.Checked)
+                leftHanded.Checked = true;
 
             if (customDisableHud.Checked)
                 customBackOfHandHud.Checked = false;
@@ -1571,13 +1582,14 @@ public sealed partial class MainForm : Form
             customBackOfHandHud.Enabled = !customDisableHud.Checked;
             customDisableHud.Enabled = !customBackOfHandHud.Checked;
             customBehindHeadWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
+            customLeftWristWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
             customDirectionalDash.Enabled = !customDisableWeaponWheel.Checked;
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
+                && !customLeftWristWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
             // R-only dependencies must never disable the child's checkbox.
             // Selecting Hand Selection enables its wheel dependency above.
-            customBehindHeadWheelHandSelection.Enabled =
-                !customDisableWeaponWheel.Checked; // disabled only by active D conflict
+            customBehindHeadWheelHandSelection.Enabled = false; // merged into main wrist-wheel mod
         }
         finally
         {
