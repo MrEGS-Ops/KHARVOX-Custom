@@ -984,7 +984,8 @@ public sealed partial class MainForm
         {
             main.showHands, main.calibrateHands,
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
-            main.swapJumpCrouch, main.customLeftWristWeaponWheel
+            main.swapJumpCrouch, main.customLeftWristWeaponWheel,
+            main.customDisableWeaponWheel
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -997,6 +998,7 @@ public sealed partial class MainForm
             main.calibrateHands.Checked = false;
             main.customDynamicShoulderHolster.Checked = false;
             main.customLeftWristWeaponWheel.Checked = false;
+            main.customDisableWeaponWheel.Checked = false;
             main.weaponWheelRemap.Checked = false;
             main.showHands.Checked = false;
             main.swapJumpCrouch.Checked = true;
@@ -1039,6 +1041,7 @@ public sealed partial class MainForm
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.swapJumpCrouch.Enabled || !main.swapJumpCrouch.Checked
+                || !main.customLeftWristWeaponWheel.Checked
                 || !main.leftHanded.Enabled || main.leftHanded.Checked != originalLeftMode)
                 throw new InvalidDataException(
                     "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
