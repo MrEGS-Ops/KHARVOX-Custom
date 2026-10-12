@@ -74,7 +74,6 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
     private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-the-Head Weapon Wheel", false);
-    private readonly CheckBox customLeftWristWeaponWheel = MakeCheck("Left Wrist Weapon Wheel", false);
     private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
@@ -1517,7 +1516,6 @@ public sealed partial class MainForm : Form
             {
                 customBehindHeadWeaponWheel.Checked = false;
                 customBehindHeadWheelHandSelection.Checked = false;
-                customLeftWristWeaponWheel.Checked = false;
                 customDirectionalDash.Checked = false;
             }
 
@@ -1555,7 +1553,6 @@ public sealed partial class MainForm : Form
             else if (customDisableWeaponWheel.Checked)
             {
                 customBehindHeadWeaponWheel.Checked = false;
-                customLeftWristWeaponWheel.Checked = false;
             }
             else if (customBehindHeadWeaponWheel.Checked)
             {
@@ -1659,7 +1656,6 @@ public sealed partial class MainForm : Form
             customDirectionalDash.Checked = mods.DirectionalDash;
             // Migrate saved left-only selection into the combined mod.
             customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel || mods.LeftWristWeaponWheel;
-            customLeftWristWeaponWheel.Checked = customBehindHeadWeaponWheel.Checked;
             customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWeaponWheel;
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
