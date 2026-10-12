@@ -189,6 +189,8 @@ internal static class NexusFolderCompanion
             || launcher.WindowState == FormWindowState.Minimized) return;
         if (trackedBrowser != IntPtr.Zero && !IsWindow(trackedBrowser))
             trackedBrowser = IntPtr.Zero;
+        if (trackedBrowser == IntPtr.Zero)
+            trackedBrowser = NexusModsPopup.TryDiscoverPendingBrowser();
         var bounds = launcher.WindowState == FormWindowState.Normal
             ? launcher.Bounds : launcher.RestoreBounds;
         var layout = CalculateDock(bounds, modsBoundsProvider?.Invoke(),
