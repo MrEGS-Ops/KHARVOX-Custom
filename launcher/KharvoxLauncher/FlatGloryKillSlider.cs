@@ -28,8 +28,8 @@ internal sealed class FlatGloryKillSlider : Control
         SetStyle(ControlStyles.AllPaintingInWmPaint
             | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer
             | ControlStyles.Selectable, true);
-        Size = new Size(174, 28);
-        MinimumSize = new Size(150, 24);
+        Size = new Size(132, 28);
+        MinimumSize = new Size(108, 24);
         BackColor = Color.FromArgb(30, 30, 33);
         ForeColor = Color.FromArgb(201, 201, 204);
         TabStop = true;
