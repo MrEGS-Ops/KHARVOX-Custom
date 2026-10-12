@@ -13,3 +13,7 @@ add_test(NAME visual-tone-policy COMMAND KharvoxVisualTonePolicyTests)
 add_executable(KharvoxDamageHapticsPolicyTests ../damage_haptics_policy_tests.cpp)
 target_compile_features(KharvoxDamageHapticsPolicyTests PRIVATE cxx_std_17)
 add_test(NAME damage-haptics-policy COMMAND KharvoxDamageHapticsPolicyTests)
+
+add_executable(KharvoxQuickHolsterPolicyTests ../quick_holster_policy_tests.cpp)
+target_compile_features(KharvoxQuickHolsterPolicyTests PRIVATE cxx_std_17)
+add_test(NAME quick-holster-policy COMMAND KharvoxQuickHolsterPolicyTests)
