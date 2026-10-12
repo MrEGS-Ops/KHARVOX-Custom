@@ -70,10 +70,10 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
-    private readonly CheckBox customBackOfHandHud = MakeCheck("Back-of-Hand HUD", false);
+    private readonly CheckBox customBackOfHandHud = MakeCheck("KHARVOX Hand HUD (v1.1.1)", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
-    private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Wrist Weapon Wheel", false);
+    private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-the-Head Weapon Wheel", false);
     private readonly CheckBox customLeftWristWeaponWheel = MakeCheck("Left Wrist Weapon Wheel", false);
     private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
@@ -425,15 +425,14 @@ public sealed partial class MainForm : Form
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
             (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
-            (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose. Enabling this automatically disables No HUD because they use the same gameplay-HUD surfaces."),
+            (customBackOfHandHud, "Enable the original KHARVOX v1.1.1 hand HUD: its original position, orientation and rectangular layout. No HUD disables it."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
             (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
-            (customBehindHeadWeaponWheel, "Move the RIGHT wrist behind the head; aim by moving the wrist. Hold right Grip to lock the selection, then pull out to equip into the RIGHT hand. Grenades move to the LEFT hand. Movement, turning, face buttons, jump, crouch and menus do not change."),
-            (customLeftWristWeaponWheel, "Enable an additional LEFT wrist wheel. Move the left wrist to choose; hold left Grip to lock the selection, then pull out to equip into the LEFT hand. Grenades move to the RIGHT hand. Does not change the launcher's Left Hand mode, movement, turning, face buttons, jump, crouch or menus."),
+            (customBehindHeadWeaponWheel, "Move EITHER hand behind its matching side of your head to open the wheel. Move that hand to select; hold that hand's Grip to lock and pull out to equip. Without Grip, leaving the zone cancels selection. Right side equips to right hand; left side equips to left hand. Grenades occupy the opposite hand. Movement, menu, jump and crouch controls stay unchanged."),
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
-            (customDynamicShoulderHolster, "Experimental: two hip-only quick-holster zones. Store left-wheel weapons on the left hip and right-wheel weapons on the right hip; draw only by gripping inside the appropriate hip zone. Requires Enable Hands in the main launcher: automatically checks and greys it out until this mod is turned off."),
+            (customDynamicShoulderHolster, "Experimental rearward left/right hip slots. Store a weapon on the matching hip and draw it with that hand's Grip. Drawing uses the stored weapon identity, NOT native last-weapon quick swap. Requires Enable Hands; that launcher setting is locked while this mod is active."),
             (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
             (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing."),
@@ -453,10 +452,9 @@ public sealed partial class MainForm : Form
                     + "use the left stick to choose, then release A to equip.\n"
                     + "Pull the right thumbstick DOWN to toggle crouch; B stays Jump. "
                     + "(Physical Crouch overrides the stick crouch toggle.)\n"
-                    + "With Behind-Head Wrist Weapon Wheel enabled, move the right wrist "
-                    + "behind your head and select by moving it; hold right Grip to lock "
-                    + "the selection before pulling out. Left Wrist Weapon Wheel adds "
-                    + "the same gesture on your left without changing Left Hand mode.\n"
+                    + "Behind-the-Head Weapon Wheel enables BOTH hands: move either hand behind "
+                    + "its own side of your head, move to choose, hold Grip to lock "
+                    + "and pull out to equip. Leave without Grip to cancel.\n"
                     + "Directional Dash is currently disabled due an unsafe native physics path.\n"
                     + "While enabled, Swap Jump/Crouch in the main launcher is greyed out because this remap controls those buttons; its saved selection is preserved.\n"
                      + "Turn this off to restore the original KHARVOX controls.") })
@@ -1514,12 +1512,7 @@ public sealed partial class MainForm : Form
                 customDisableWeaponWheel.Checked = false;
             }
 
-            // A hard "No Weapon Wheel" request wins over every wheel-dependent
-            // feature and therefore also releases Dash.
-            if (changed == customLeftWristWeaponWheel
-                && customLeftWristWeaponWheel.Checked)
-                customDisableWeaponWheel.Checked = false;
-
+            // A hard "No Weapon Wheel" request releases the combined wheel.
             if (changed == customDisableWeaponWheel && customDisableWeaponWheel.Checked)
             {
                 customBehindHeadWeaponWheel.Checked = false;
@@ -1583,10 +1576,8 @@ public sealed partial class MainForm : Form
             customBackOfHandHud.Enabled = !customDisableHud.Checked;
             customDisableHud.Enabled = !customBackOfHandHud.Checked;
             customBehindHeadWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
-            customLeftWristWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
             customDirectionalDash.Enabled = false; // unsafe native dash halted
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
-                && !customLeftWristWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
@@ -1606,7 +1597,7 @@ public sealed partial class MainForm : Form
                 : "Swap gameplay Jump and Crouch while retaining menu controls.";
             // R-only dependencies must never disable the child's checkbox.
             // Selecting Hand Selection enables its wheel dependency above.
-            customBehindHeadWheelHandSelection.Enabled = false; // merged into main wrist-wheel mod
+            customBehindHeadWheelHandSelection.Enabled = false; // merged into main head-wheel mod
         }
         finally
         {
@@ -1623,7 +1614,7 @@ public sealed partial class MainForm : Form
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
         BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
-        LeftWristWeaponWheel = customLeftWristWeaponWheel.Checked,
+        LeftWristWeaponWheel = customBehindHeadWeaponWheel.Checked, // legacy config key
         BehindHeadWheelHandSelection = customBehindHeadWeaponWheel.Checked,
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
@@ -1666,8 +1657,9 @@ public sealed partial class MainForm : Form
             customBackOfHandHud.Checked = mods.BackOfHandHud;
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;
-            customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
-            customLeftWristWeaponWheel.Checked = mods.LeftWristWeaponWheel;
+            // Migrate saved left-only selection into the combined mod.
+            customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel || mods.LeftWristWeaponWheel;
+            customLeftWristWeaponWheel.Checked = customBehindHeadWeaponWheel.Checked;
             customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWeaponWheel;
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
