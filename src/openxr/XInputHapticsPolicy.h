@@ -224,6 +224,11 @@ inline std::uint64_t controllerHapticDurationMilliseconds(
     return xinputHapticPulseDurationMilliseconds;
 }
 
+// Wheel zone convention is 0=right,1=left, unlike the OpenXR output
+// array (0=left,1=right). Keep this mapping explicit and testable.
+inline int hapticOutputForPhysicalSide(int side){
+    return side==0?1:side==1?0:-1;
+}
 // Tactile cues remain local to the correct physical hand. They do not
 // contribute to bHaptics, and cannot mask stronger weapon or damage rumble.
 struct ControllerZoneCue {
