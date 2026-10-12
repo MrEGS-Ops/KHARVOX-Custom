@@ -20,6 +20,11 @@ internal static class NexusFolderCompanion
     private static Func<Rectangle?>? modsBoundsProvider;
     private static IntPtr trackedBrowser;
     private static System.Windows.Forms.Timer? dockTimer;
+    private static bool syncingCompanions;
+    private static Rectangle lastLauncherBounds, lastFolderBounds;
+    private static Rectangle lastModsBounds, lastBrowserBounds;
+    private static Point folderOffset, browserOffset;
+    private static bool browserOffsetKnown;
 
     // The folder and Nexus share one dock controller and one folder instance.
     internal static ModDropWindow? ActiveWindow =>
@@ -37,9 +42,13 @@ internal static class NexusFolderCompanion
             return Task.CompletedTask;
         }
         var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
-        // Preserve original positions: folder at original launcher bounds,
-        // browser at Custom Mods bounds. Reuse, but never re-dock or move them.
+        // Spawn positions are UNCHANGED. Attach the folder to the launcher
+        // and browser to Custom Mods so movement of the group moves all four.
+        if (browserPopup != IntPtr.Zero && IsWindow(browserPopup))
+            trackedBrowser = browserPopup;
         ShowOrFocus(viewer, focus: false);
+        EnsureDockTimer();
+        UpdateDock();
         if (browserPopup != IntPtr.Zero && IsWindow(browserPopup))
             SetForegroundWindow(browserPopup);
         return Task.CompletedTask;
@@ -55,6 +64,8 @@ internal static class NexusFolderCompanion
         }
         var viewer = CreateOrReuse(folder, launcherBounds, anchor, modsBounds);
         ShowOrFocus(viewer, focus: true);
+        EnsureDockTimer();
+        UpdateDock();
     }
 
     private static void ShowOrFocus(ModDropWindow viewer, bool focus)
@@ -77,12 +88,21 @@ internal static class NexusFolderCompanion
             if (string.Equals(existing.FolderPath,
                 Path.GetFullPath(folder), StringComparison.OrdinalIgnoreCase))
             {
+                EnsureDockTimer();
                 return existing;
             }
             existing.Close();
         }
         var viewer = new ModDropWindow(folder, launcherBounds);
         activeWindow = viewer;
+        lastLauncherBounds=launcher?.Bounds ?? launcherBounds;
+        lastFolderBounds=viewer.Bounds;
+        folderOffset=new Point(viewer.Left-lastLauncherBounds.Left,
+            viewer.Top-lastLauncherBounds.Top);
+        browserOffsetKnown=false;
+        lastModsBounds=Rectangle.Empty;
+        lastBrowserBounds=Rectangle.Empty;
+        EnsureDockTimer();
         viewer.FormClosed += (_, _) =>
         {
             if (ReferenceEquals(activeWindow, viewer))
@@ -110,6 +130,9 @@ internal static class NexusFolderCompanion
         trackedBrowser = IntPtr.Zero;
         modsBoundsProvider = null;
         launcher = null;
+        syncingCompanions=false;
+        browserOffsetKnown=false;
+        lastLauncherBounds=lastFolderBounds=lastModsBounds=lastBrowserBounds=Rectangle.Empty;
     }
 
     // A screen may not accommodate launcher + 890px VR MODS + folder + a
@@ -180,22 +203,89 @@ internal static class NexusFolderCompanion
 
     internal static void UpdateDock()
     {
-        var viewer = ActiveWindow;
-        if (viewer is null || !viewer.Visible || launcher is null
-            || launcher.IsDisposed || !launcher.Visible
-            || launcher.WindowState == FormWindowState.Minimized) return;
-        if (trackedBrowser != IntPtr.Zero && !IsWindow(trackedBrowser))
-            trackedBrowser = IntPtr.Zero;
-        if (trackedBrowser == IntPtr.Zero)
-            trackedBrowser = NexusModsPopup.TryDiscoverPendingBrowser();
-        var bounds = launcher.WindowState == FormWindowState.Normal
-            ? launcher.Bounds : launcher.RestoreBounds;
-        var layout = CalculateDock(bounds, modsBoundsProvider?.Invoke(),
-            Screen.FromControl(launcher).WorkingArea, trackedBrowser != IntPtr.Zero);
-        if (viewer.WindowState == FormWindowState.Normal
-            && viewer.Bounds != layout.Folder) viewer.Bounds = layout.Folder;
-        if (trackedBrowser != IntPtr.Zero && !layout.Browser.IsEmpty)
-            NexusModsPopup.PositionTrackedBrowser(trackedBrowser, layout.Browser);
+        var viewer=ActiveWindow;
+        if(syncingCompanions||viewer is null||launcher is null
+            ||launcher.IsDisposed||!launcher.Visible||!viewer.Visible
+            ||launcher.WindowState!=FormWindowState.Normal)return;
+        syncingCompanions=true;
+        try {
+            // This is a moving GROUP, not a new layout algorithm. Preserve
+            // the original overlap and size of each spawned companion.
+            var anchor=launcher.Bounds;
+            var desiredFolder=new Rectangle(anchor.Left+folderOffset.X,
+                anchor.Top+folderOffset.Y,viewer.Width,viewer.Height);
+            if(viewer.WindowState==FormWindowState.Normal){
+                if(anchor==lastLauncherBounds && lastFolderBounds!=Rectangle.Empty
+                    && viewer.Location!=lastFolderBounds.Location){
+                    // Dragging the MODS FOLDER also drags the launcher + its
+                    // own already-attached Custom Mods panel.
+                    launcher.Location=new Point(
+                        anchor.Left+viewer.Left-lastFolderBounds.Left,
+                        anchor.Top+viewer.Top-lastFolderBounds.Top);
+                    anchor=launcher.Bounds;
+                    desiredFolder=new Rectangle(anchor.Left+folderOffset.X,
+                        anchor.Top+folderOffset.Y,viewer.Width,viewer.Height);
+                }
+                if(viewer.Location!=desiredFolder.Location)
+                    viewer.Location=desiredFolder.Location;
+            }
+            lastLauncherBounds=anchor;
+            lastFolderBounds=viewer.Bounds;
+            // Keep the folder behind its launcher, without activating it.
+            if(viewer.IsHandleCreated&&launcher.IsHandleCreated)
+                SetWindowPos(viewer.Handle,launcher.Handle,0,0,0,0,
+                    0x0001|0x0002|0x0010);
+
+            if(trackedBrowser!=IntPtr.Zero&&!IsWindow(trackedBrowser)){
+                trackedBrowser=IntPtr.Zero;
+                browserOffsetKnown=false;
+            }
+            if(trackedBrowser==IntPtr.Zero)
+                trackedBrowser=NexusModsPopup.TryDiscoverPendingBrowser();
+            var mods=modsBoundsProvider?.Invoke();
+            var modsForm=Application.OpenForms.Cast<Form>().FirstOrDefault(form =>
+                form.Text=="KHARVOX Custom Mods"&&!form.IsDisposed);
+            if(trackedBrowser!=IntPtr.Zero && mods.HasValue){
+                var rect=mods.Value;
+                if(!browserOffsetKnown){
+                    var browser=NexusModsPopup.TryGetTrackedBrowserBounds(trackedBrowser);
+                    if(browser.HasValue){
+                        browserOffset=new Point(browser.Value.Left-rect.Left,
+                            browser.Value.Top-rect.Top);
+                        lastBrowserBounds=browser.Value;
+                        lastModsBounds=rect;
+                        browserOffsetKnown=true;
+                    }
+                }else {
+                    var actual=NexusModsPopup.TryGetTrackedBrowserBounds(trackedBrowser);
+                    var desired=new Rectangle(rect.Left+browserOffset.X,
+                        rect.Top+browserOffset.Y,
+                        actual?.Width??lastBrowserBounds.Width,
+                        actual?.Height??lastBrowserBounds.Height);
+                    if(rect==lastModsBounds&&actual.HasValue
+                        &&actual.Value.Location!=lastBrowserBounds.Location
+                        &&NexusModsPopup.TrackedBrowserFocused(trackedBrowser)
+                        &&modsForm is not null){
+                        // Dragging the browser moves Custom Mods too; the
+                        // existing dock handler moves the launcher in turn.
+                        modsForm.Location=new Point(
+                            rect.Left+actual.Value.Left-lastBrowserBounds.Left,
+                            rect.Top+actual.Value.Top-lastBrowserBounds.Top);
+                        rect=modsForm.Bounds;
+                        desired.Location=new Point(
+                            rect.Left+browserOffset.X,
+                            rect.Top+browserOffset.Y);
+                    }
+                    if(actual.HasValue&&actual.Value.Location!=desired.Location)
+                        NexusModsPopup.PositionTrackedBrowser(trackedBrowser,desired,
+                            modsForm?.Handle??IntPtr.Zero);
+                    lastModsBounds=rect;
+                    lastBrowserBounds=NexusModsPopup.TryGetTrackedBrowserBounds(
+                        trackedBrowser)??desired;
+                }
+            }
+        }
+        finally { syncingCompanions=false; }
     }
 
 
@@ -240,6 +330,9 @@ internal static class NexusFolderCompanion
         finally { try { Directory.Delete(root, true); } catch { } }
     }
 
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hwnd, IntPtr insertAfter,
+        int x,int y,int cx,int cy,uint flags);
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")]
