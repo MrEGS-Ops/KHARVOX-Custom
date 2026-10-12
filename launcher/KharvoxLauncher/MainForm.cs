@@ -798,14 +798,17 @@ public sealed partial class MainForm : Form
         };
         openUserFolder.FlatAppearance.BorderColor = Color.DimGray;
         statusToolTip.SetToolTip(openUserFolder,
-            "Open a matching KHARVOX Mods Folder window. Drop .zip files from Firefox Downloads here.");
+            "Open or focus your one KHARVOX Mods Folder window. Drag or paste ZIP files; Ctrl+C/Ctrl+V, Delete, Ctrl+A and F5 are supported.");
         openUserFolder.Click += (_, _) =>
         {
             try
             {
                 var launcherBounds = WindowState == FormWindowState.Normal
                     ? Bounds : RestoreBounds;
-                NexusFolderCompanion.OpenStandalone(DoomUserMods.Folder, launcherBounds);
+                NexusFolderCompanion.OpenStandalone(DoomUserMods.Folder,
+                    launcherBounds, this,
+                    () => customOptionsForm?.Visible == true
+                        ? customOptionsForm.Bounds : (Rectangle?)null);
                 RefreshUserDoomMods();
             }
             catch (Exception error)
@@ -912,8 +915,8 @@ public sealed partial class MainForm : Form
             BackColor = PanelColor
         };
         statusToolTip.SetToolTip(nexusModsLink,
-            "Open Nexus in your default browser and a matching Explorer mods folder. "
-            + "When the popup closes, its newly created folder window also closes.");
+            "Open or refocus Nexus in your Windows default browser. "
+            + "The same KHARVOX Mods Folder window is reused, and both windows dock near the launcher.");
         nexusModsLink.LinkClicked += async (_, _) =>
         {
             if (!nexusModsLink.Enabled) return;
@@ -931,13 +934,14 @@ public sealed partial class MainForm : Form
                 var windowBounds = dialog.WindowState == FormWindowState.Normal
                     ? dialog.Bounds : dialog.RestoreBounds;
                 var popupWindow = await NexusModsPopup.OpenTrackedAsync(windowBounds);
-                // The folder is a disposable COMPANION of this new browser
-                // popup; its bounds match the main KHARVOX launcher window.
-                // A reused pre-existing Explorer window is never closed.
+                // Reuse the existing KHARVOX folder instead of spawning another
+                // one. The folder and default-browser popup share a dock.
                 var launcherBounds = WindowState == FormWindowState.Normal
                     ? Bounds : RestoreBounds;
                 await NexusFolderCompanion.OpenForPopupAsync(
-                    DoomUserMods.Folder, launcherBounds, popupWindow);
+                    DoomUserMods.Folder, launcherBounds, popupWindow, this,
+                    () => customOptionsForm?.Visible == true
+                        ? customOptionsForm.Bounds : (Rectangle?)null);
             }
             catch (Exception error)
             {
