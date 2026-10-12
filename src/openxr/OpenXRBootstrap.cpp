@@ -2244,6 +2244,16 @@ void updateGameplayActions(XrTime displayTime){
                 :(outward>=-.04f&&outward<=.44f&&vertical>=-.18f&&vertical<=.36f
                     &&behind>=.015f&&behind<=.60f);
         };
+        // Independent zone-entry cues for BOTH hands. Wheel-side indices
+        // are 0=right,1=left; haptic indices are the inverse.
+        for(int side=0;side<2;++side){
+            const bool insideHead=insideZone(side,s.headZoneEntered[side]);
+            if(insideHead&&!s.headZoneEntered[side]){
+                kharvox::queueControllerZoneCue(
+                    s.handZoneCues[1-side],GetTickCount64(),35,.32f,155.f);
+            }
+            s.headZoneEntered[side]=insideHead;
+        }
         int selectedSide=s.behindHeadWheelActive?s.behindHeadWheelSide:-1;
         const bool selectedAvailable=selectedSide==0?rightWheelEnabled
             :selectedSide==1?leftWheelEnabled:false;
@@ -2309,6 +2319,7 @@ void updateGameplayActions(XrTime displayTime){
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.motionWheelState={};
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
+        s.headZoneEntered={};
     }
 
     // Sample fire after wheel confirmation; the selected physical trigger owns it.
@@ -2543,6 +2554,27 @@ void updateGameplayActions(XrTime displayTime){
         physicalHipGripEdges[side]=held&&!s.quickHolsterPhysicalGripHeld[side];
         s.quickHolsterPhysicalGripHeld[side]=held;
     }
+    // Zone proximity is independent of Grip: entry cues must be detectable
+    // before the player chooses whether to draw/stow anything.
+    if(s.customMods.dynamicShoulderHolster&&gameplay
+        &&s.trackingHeadPositionValid&&s.headZeroValid){
+        const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+        for(int side=0;side<2;++side){
+            const auto& hand=side==0?s.rightGripController:s.leftGripController;
+            bool inHip=false;
+            if(hand.valid&&hand.positionTracked){
+                const auto grip=controllerRelativeToBodyTrackingOrigin(hand).position;
+                const kharvox::BackWeaponVec3 relative{
+                    side==0?grip.x-head.x:head.x-grip.x,
+                    grip.y-head.y,grip.z-head.z};
+                inHip=kharvox::quickHipInside(relative,s.hipZoneEntered[side]);
+            }
+            if(inHip&&!s.hipZoneEntered[side])
+                kharvox::queueControllerZoneCue(
+                    s.handZoneCues[1-side],GetTickCount64(),35,.32f,155.f);
+            s.hipZoneEntered[side]=inHip;
+        }
+    }else s.hipZoneEntered={};
     bool quickHolsterGripConsumed=false;
     if(!s.customMods.dynamicShoulderHolster||!gameplay){
         if(s.dynamicShoulderHolstered){
@@ -3082,11 +3114,20 @@ void updateGameplayActions(XrTime displayTime){
             insideChest=std::abs(dx)<=.18f&&dy>=-.64f&&dy<=-.22f
                 &&dz>=-.48f&&dz<=-.09f;
         }
+        const int equipmentHapticHand=s.weaponHandLeft?1:0;
+        const auto hapticNow=GetTickCount64();
+        if(insideChest&&!s.chestZoneEntered)
+            kharvox::queueControllerZoneCue(
+                s.handZoneCues[equipmentHapticHand],hapticNow,35,.32f,155.f);
+        s.chestZoneEntered=insideChest;
         const auto action=kharvox::updateChestGrenadeGesture(
             s.grenadeGesture,gameplay,supportGripDown,tracked,insideChest);
         if(action==kharvox::ChestGrenadeAction::Cycle){
             s.grenadeCyclePulseUntil=displayTime+100000000;
             s.bfgGripSuppressedUntilRelease=true;
+            kharvox::queueControllerZoneCue(
+                s.handZoneCues[equipmentHapticHand],hapticNow,70,.62f,195.f);
+            s.nextCookPulseAt=hapticNow+500;
             log("[GRENADE] support Grip in chest pocket -> cycle grenade; pin armed");
         }else if(action==kharvox::ChestGrenadeAction::Throw){
             s.equipmentThrowPulseUntil=displayTime+100000000;
@@ -3094,6 +3135,18 @@ void updateGameplayActions(XrTime displayTime){
         }
         if(s.grenadeGesture.held&&s.grenadeGesture.armed)
             s.bfgGripSuppressedUntilRelease=true;
+        // Quiet periodic heartbeat only after the 'pin' has been pulled.
+        // Native damage/firing rumble is always higher priority.
+        if(s.grenadeGesture.held&&s.grenadeGesture.armed
+            &&s.grenadeGesture.pulled){
+            if(hapticNow>=s.nextCookPulseAt){
+                kharvox::queueControllerZoneCue(
+                    s.handZoneCues[equipmentHapticHand],hapticNow,50,.20f,100.f);
+                s.nextCookPulseAt=hapticNow+500;
+            }
+        }else if(!s.grenadeGesture.held){
+            s.nextCookPulseAt=0;
+        }
         if(!gameplay){
             s.grenadeCyclePulseUntil=0;
             s.equipmentThrowPulseUntil=0;
@@ -3107,6 +3160,7 @@ void updateGameplayActions(XrTime displayTime){
         s.grenadeGesture={};
         s.equipmentThrowPulseUntil=0;
         s.grenadeCyclePulseUntil=0;
+        s.chestZoneEntered=false;s.nextCookPulseAt=0;
     }
     const bool missionInfoDown=readBooleanAction(s.doomMissionInfo);
     if(missionInfoDown!=s.missionInfoPressed)
