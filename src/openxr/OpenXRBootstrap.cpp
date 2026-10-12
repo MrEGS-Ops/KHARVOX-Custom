@@ -262,6 +262,10 @@ struct State {
     bool boxingHeadFocus{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
+    std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
+    std::array<bool,2> headZoneEntered{},hipZoneEntered{};
+    bool chestZoneEntered{};
+    std::uint64_t nextCookPulseAt{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
     bool weaponWheelRemapEnabled{true};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
@@ -933,8 +937,10 @@ void updateXInputHaptics(){
 
     const std::array<XrAction,2> actions{s.leftHaptic,s.rightHaptic};
     for(size_t hand=0;hand<actions.size();++hand){
-        const auto baseDesired=kharvox::mixControllerClick(
+        const auto clickDesired=kharvox::mixControllerClick(
             nativeDesired[hand],s.wheelClicks[hand],now);
+        const auto baseDesired=kharvox::mixControllerZoneCue(
+            clickDesired,s.handZoneCues[hand],now);
         const auto desired=kharvox::mergeDamageImpactHapticSignal(
             baseDesired,damageImpact.amplitude,damageImpact.frequencyHz,
             damageImpact.active);
@@ -956,8 +962,10 @@ void updateXInputHaptics(){
         }
 
         XrHapticVibration vibration{XR_TYPE_HAPTIC_VIBRATION};
-        const auto baseDuration=kharvox::controllerHapticDurationMilliseconds(
+        const auto clickDuration=kharvox::controllerHapticDurationMilliseconds(
             nativeDesired[hand],s.wheelClicks[hand],now);
+        const auto baseDuration=kharvox::controllerZoneCueDurationMilliseconds(
+            clickDesired,s.handZoneCues[hand],now,clickDuration);
         const auto durationMilliseconds=usingDamage
             ?std::max<std::uint32_t>(1,std::min<std::uint32_t>(
                 100,damageImpact.remainingMilliseconds))
@@ -2136,6 +2144,8 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
+        s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
+        s.chestZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
@@ -2894,8 +2904,10 @@ void updateGameplayActions(XrTime displayTime){
         const bool stickOwnsSelection=weaponWheelActive&&wheelOutput.stickBypassActive;
         const bool stickClick=kharvox::updateWeaponWheelStickHaptics(
             s.wheelStickHaptics,s.leftStick.x,s.leftStick.y,stickOwnsSelection);
+        // Wheel side is 0=RIGHT, 1=LEFT, but OpenXR haptic index is
+        // 0=LEFT, 1=RIGHT. The old direct assignment inverted feedback.
         const int hapticHand=s.behindHeadWheelActive&&s.behindHeadWheelSide>=0
-            ?s.behindHeadWheelSide
+            ?1-s.behindHeadWheelSide
             :kharvox::weaponWheelHapticHand(
                 stickOwnsSelection,s.leftHanded,s.leftHandSwapSticks);
         // Cancel only the previous owner's UI click; native game rumble still
