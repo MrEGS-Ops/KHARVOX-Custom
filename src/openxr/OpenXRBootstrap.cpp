@@ -3055,25 +3055,46 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown;
     if(s.customMods.physicalGrenadeThrow){
-        const auto& throwController=supportGripController();
-        const bool tracked=throwController.valid&&throwController.linearVelocityValid;
-        const float speed=tracked?std::sqrt(
-            throwController.linearVelocity.x*throwController.linearVelocity.x
-            +throwController.linearVelocity.y*throwController.linearVelocity.y
-            +throwController.linearVelocity.z*throwController.linearVelocity.z):0.f;
-        if(kharvox::updatePhysicalGrenadeGesture(s.grenadeGesture,
-            gameplay,equipmentDown,tracked,speed,
-            static_cast<std::int64_t>(displayTime))){
-            s.equipmentThrowPulseUntil=displayTime+100000000;
-            log("[INPUT] Physical grenade swing stopped while equipment held -> one native throw pulse; handSpeed="+std::to_string(speed));
+        const auto& support=supportGripController();
+        const bool tracked=gameplay&&s.trackingHeadPositionValid
+            &&s.headZeroValid&&support.valid&&support.positionTracked;
+        bool insideChest=false;
+        if(tracked){
+            const auto hand=controllerRelativeToBodyTrackingOrigin(support).position;
+            const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+            const float dx=hand.x-head.x;
+            const float dy=hand.y-head.y;
+            const float dz=hand.z-head.z;
+            // Small central chest pocket, well in front of both rear hip slots
+            // and below the behind-head wheel activation zones.
+            insideChest=std::abs(dx)<=.18f&&dy>=-.64f&&dy<=-.22f
+                &&dz>=-.48f&&dz<=-.09f;
         }
-        if(!gameplay) s.equipmentThrowPulseUntil=0;
+        const auto action=kharvox::updateChestGrenadeGesture(
+            s.grenadeGesture,gameplay,supportGripDown,tracked,insideChest);
+        if(action==kharvox::ChestGrenadeAction::Cycle){
+            s.grenadeCyclePulseUntil=displayTime+100000000;
+            s.bfgGripSuppressedUntilRelease=true;
+            log("[GRENADE] support Grip in chest pocket -> cycle grenade; pin armed");
+        }else if(action==kharvox::ChestGrenadeAction::Throw){
+            s.equipmentThrowPulseUntil=displayTime+100000000;
+            log("[GRENADE] pulled outside chest and released Grip -> one native throw");
+        }
+        if(s.grenadeGesture.held&&s.grenadeGesture.armed)
+            s.bfgGripSuppressedUntilRelease=true;
+        if(!gameplay){
+            s.grenadeCyclePulseUntil=0;
+            s.equipmentThrowPulseUntil=0;
+        }
+        // Equipment trigger is owned by the standard layout, but in this mod
+        // only a completed physical Grip release generates a throw pulse.
         gameplayEquipmentDown=gameplay&&displayTime<s.equipmentThrowPulseUntil;
-        s.equipmentButtonPressed=equipmentDown;
+        s.equipmentButtonPressed=supportGripDown;
     }else{
         s.equipmentButtonPressed=equipmentDown;
         s.grenadeGesture={};
         s.equipmentThrowPulseUntil=0;
+        s.grenadeCyclePulseUntil=0;
     }
     const bool missionInfoDown=readBooleanAction(s.doomMissionInfo);
     if(missionInfoDown!=s.missionInfoPressed)
@@ -3114,7 +3135,8 @@ void updateGameplayActions(XrTime displayTime){
         updateVirtualButtons(rightTriggerDown,gamepadADown,gamepadBDown,
             leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
             leftShoulderDown,rightShoulderDown,backDown,
-            gameplay&&switchWeaponModDown,yDown,pauseDown,gameplay&&cycleEquipment);
+            gameplay&&switchWeaponModDown,yDown,pauseDown,
+            gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
