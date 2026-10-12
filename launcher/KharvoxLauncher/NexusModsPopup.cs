@@ -23,6 +23,17 @@ internal static class NexusModsPopup
     // Test-only interception: dispatch the genuine LinkClicked handler in CI
     // without opening a browser on the runner.
     internal static Action<Rectangle>? TestOpenRequested;
+    private static IntPtr trackedPopup;
+
+    // Only touch a window that this launcher itself located after starting
+    // the default browser. Never move somebody else's browser session.
+    internal static bool PositionTrackedBrowser(IntPtr hwnd, Rectangle bounds)
+    {
+        if (hwnd == IntPtr.Zero || hwnd != trackedPopup || !IsWindow(hwnd)
+            || bounds.IsEmpty) return false;
+        return SetWindowPos(hwnd, IntPtr.Zero, bounds.X, bounds.Y,
+            bounds.Width, bounds.Height, 0x0010 | 0x0040);
+    }
 
     internal static ProcessStartInfo MakeDefaultBrowserStartInfo(
         string browserExecutable, Rectangle customModsBounds)
@@ -111,6 +122,14 @@ internal static class NexusModsPopup
             return IntPtr.Zero;
         }
 
+        if (trackedPopup != IntPtr.Zero && IsWindow(trackedPopup))
+        {
+            ShowWindow(trackedPopup, 9); // reuse only our existing Nexus popup
+            PositionTrackedBrowser(trackedPopup, customModsBounds);
+            SetForegroundWindow(trackedPopup);
+            return trackedPopup;
+        }
+        trackedPopup = IntPtr.Zero;
         var browserPath = FindDefaultBrowserExecutable()
             ?? throw new InvalidOperationException(
                 "Could not locate your Windows default browser. Check Settings > Apps > Default apps.");
@@ -142,6 +161,7 @@ internal static class NexusModsPopup
                     customModsBounds.Left, customModsBounds.Top,
                     customModsBounds.Width, customModsBounds.Height,
                     0x0040); // SWP_SHOWWINDOW
+                trackedPopup = newWindow;
                 SetForegroundWindow(newWindow);
                 return newWindow;
             }
@@ -250,6 +270,9 @@ internal static class NexusModsPopup
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
