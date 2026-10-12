@@ -73,7 +73,7 @@ internal static class NexusModsPopup
         // and never steal activation from whichever window the user clicked.
         return SetWindowPos(hwnd,behindWindow,bounds.X,bounds.Y,
             bounds.Width,bounds.Height,behindWindow==IntPtr.Zero
-                ?0x0010|0x0004:0x0010);
+                ?0x0010u|0x0004u:0x0010u);
     }
 
     internal static ProcessStartInfo MakeDefaultBrowserStartInfo(
