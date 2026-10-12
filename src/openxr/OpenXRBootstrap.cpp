@@ -2647,8 +2647,8 @@ void updateGameplayActions(XrTime displayTime){
             s.chainsawPulseUntil=0;
             s.usePulseUntil=displayTime+100000000;
             s.meleePulseUntil=displayTime+200000000;
-            log(std::string("[INPUT] ")+weaponHandName()+" thumbstick -> native JOY_DPAD_RIGHT USE phase, then JOY8 melee/glory phase");
-        }else log(std::string("[INPUT] ")+weaponHandName()+" thumbstick released");
+            log(std::string("[INPUT] ")+(s.leftHanded?"left":"right")+" thumbstick -> native JOY_DPAD_RIGHT USE phase, then JOY8 melee/glory phase");
+        }else log(std::string("[INPUT] ")+(s.leftHanded?"left":"right")+" thumbstick released");
         s.meleePressed=meleeUseDown;
     }
     const bool syncAttackActive=KharvoxCameraSyncAttackActive();
@@ -2987,11 +2987,16 @@ void updateGameplayActions(XrTime displayTime){
         // preserved. Both sticks remain centered/raw and every release is
         // explicit.
         const bool gamepadXDown=chainsawPulse||(!gameplay&&!nativeUiMenu&&missionInfoDown);
-        const bool nativeUiRightTriggerDown=restrictedLeftHandSwap?equipmentDown:triggerDown;
-        const bool nativeUiLeftTriggerDown=restrictedLeftHandSwap?triggerDown:equipmentDown;
-        const bool nativeUiLeftShoulderDown=restrictedLeftHandSwap?secondaryFireGripDown:supportGripDown;
-        const bool nativeUiRightShoulderDown=restrictedLeftHandSwap?supportGripDown
-            :(secondaryFireGripDown&&!backWeaponOutput.gripConsumed);
+        // Menus always read the original launcher-defined bindings. A wheel
+        // selection only swaps weapon/grenade hands during gameplay.
+        const bool menuFireDown=readFloatAction(s.doomFire)>.55f;
+        const bool menuEquipmentDown=readFloatAction(s.doomEquipment)>.55f;
+        const bool menuWeaponGripDown=readFloatAction(s.doomSecondaryFireGrip)>.55f;
+        const bool menuSupportGripDown=readFloatAction(s.doomSupportGrip)>.55f;
+        const bool nativeUiRightTriggerDown=restrictedLeftHandSwap?menuEquipmentDown:menuFireDown;
+        const bool nativeUiLeftTriggerDown=restrictedLeftHandSwap?menuFireDown:menuEquipmentDown;
+        const bool nativeUiLeftShoulderDown=restrictedLeftHandSwap?menuWeaponGripDown:menuSupportGripDown;
+        const bool nativeUiRightShoulderDown=restrictedLeftHandSwap?menuSupportGripDown:menuWeaponGripDown;
         const bool rightTriggerDown=gameplay?fireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
         const bool leftTriggerDown=weaponModDown||(nativeUiMenu&&nativeUiLeftTriggerDown);
         const bool rightThumbDown=nativeMeleeDown||(nativeUiMenu&&meleeDown);
