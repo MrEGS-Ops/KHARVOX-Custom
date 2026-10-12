@@ -2558,37 +2558,52 @@ void updateGameplayActions(XrTime displayTime){
                 // hold-for-BFG shortcut while the controller stays down.
                 s.bfgGripSuppressedUntilRelease=true;
                 auto& slot=s.quickHolsters.slots[side];
-                if(s.quickHolsters.activeStowedSide==side){
+                const bool sameStowed=s.quickHolsters.activeStowedSide==side;
+                const bool canStow=!s.dynamicShoulderHolstered
+                    &&kharvox::quickHolsterCanStow(
+                        s.quickHolsters,side,activeBackWeapon);
+                if(sameStowed || (slot!=kharvox::BackWeaponKind::Unknown
+                    &&!canStow)){
+                    const auto stored=slot;
+                    if(stored==kharvox::BackWeaponKind::Unknown)continue;
+                    // The player GRABS the gun from this slot. Never invoke
+                    // DOOM's last-weapon/quick-swap control.
                     s.quickHolsters.activeStowedSide=-1;
                     s.dynamicShoulderHolstered=false;
                     KharvoxWeaponSetHolstered(false);
-                    log(std::string("[QUICK-HOLSTERS] DRAW ")
-                        +(side==0?"RIGHT":"LEFT")+" hip: "
-                        +backWeaponKindKey(slot));
-                }else if(kharvox::quickHolsterCanStow(
-                    s.quickHolsters,side,activeBackWeapon)){
+                    selectPhysicalWeaponHand(side==1,"physical hip DRAW");
+                    s.weaponCalibrated=false;
+                    s.weaponPoseSubmitted=false;
+                    s.twoHandLatched=false;
+                    s.wheelWeaponGripSuppressedUntilRelease=true;
+                    s.wheelSupportGripSuppressedUntilRelease=true;
+                    s.quickHolsters.lastSelectedWheelSide=side;
+                    slot=kharvox::BackWeaponKind::Unknown; // slot now physically empty
+                    if(stored!=activeBackWeapon){
+                        const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
+                        if(key)startBackWeaponKeyboardPulse(key,displayTime);
+                        else if(stored==kharvox::BackWeaponKind::Bfg){
+                            s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
+                            s.backWeaponPulseUntil=displayTime+100000000;
+                        }else if(stored==kharvox::BackWeaponKind::Chainsaw){
+                            s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
+                            s.backWeaponPulseUntil=displayTime+100000000;
+                        }
+                    }
+                    log(std::string("[QUICK-HOLSTERS] GRAB ")
+                        +(side==0?"RIGHT":"LEFT")+" hip weapon="
+                        +backWeaponKindKey(stored)+" -> corresponding weapon hand");
+                }else if(canStow){
+                    // Stow the equipped weapon: move its 6DoF render anchor
+                    // to the hip instead of raising/hiding it at the hand.
                     slot=activeBackWeapon;
                     s.quickHolsters.activeStowedSide=side;
                     s.dynamicShoulderHolstered=true;
+                    s.weaponCalibrated=false;
+                    s.twoHandLatched=false;
                     KharvoxWeaponSetHolstered(true);
                     log(std::string("[QUICK-HOLSTERS] STOW ")
-                        +(side==0?"RIGHT":"LEFT")+" hip: "
-                        +backWeaponKindKey(slot));
-                }else if(slot!=kharvox::BackWeaponKind::Unknown){
-                    s.quickHolsters.activeStowedSide=-1;
-                    s.dynamicShoulderHolstered=false;
-                    KharvoxWeaponSetHolstered(false);
-                    const WORD key=kharvox::backWeaponKeyboardVirtualKey(slot);
-                    if(key)startBackWeaponKeyboardPulse(key,displayTime);
-                    else if(slot==kharvox::BackWeaponKind::Bfg){
-                        s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
-                        s.backWeaponPulseUntil=displayTime+100000000;
-                    }else if(slot==kharvox::BackWeaponKind::Chainsaw){
-                        s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
-                        s.backWeaponPulseUntil=displayTime+100000000;
-                    }
-                    log(std::string("[QUICK-HOLSTERS] RETRIEVE ")
-                        +(side==0?"RIGHT":"LEFT")+" hip: "
+                        +(side==0?"RIGHT":"LEFT")+" hip weapon="
                         +backWeaponKindKey(slot));
                 }
                 break; // one physical hand action per tracking frame
