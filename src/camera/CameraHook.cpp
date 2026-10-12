@@ -3112,6 +3112,19 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
     const std::uint32_t knownNonMovement =
         kharvox::playerWeaponControlInhibitMask;
     const auto discovered = (current & ~baseline) & ~knownNonMovement;
+    // Safe diagnostics only: report why Siege movement stays inhibited without
+    // guessing a physics address or clearing an unverified control bit.
+    static std::atomic<unsigned> diagnosticFrame{};
+    const unsigned observedFrame=diagnosticFrame.fetch_add(1,std::memory_order_relaxed);
+    if((observedFrame%240u)==0u){
+        std::ostringstream o;
+        o<<"[GAUSS] charge movement request baseline=0x"<<std::hex<<baseline
+         <<" current=0x"<<current<<" candidate=0x"<<discovered<<std::dec
+         <<" previouslyValidated=0x"<<std::hex
+         <<chargeOnlyMask.load(std::memory_order_acquire)<<std::dec
+         <<" (unconfirmed masks remain untouched)";
+        log(o.str());
+    }
     // This RVA is reverse-engineered. Never remove arbitrary newly-seen bits:
     // require exactly ONE repeatable Gauss-only flag over four consecutive
     // input frames. Unconfirmed masks fail closed, leaving DOOM's native lock.
