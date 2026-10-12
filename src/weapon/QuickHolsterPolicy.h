@@ -30,7 +30,6 @@ inline bool quickHolsterCanStow(const QuickHolsters& state, int side,
     BackWeaponKind equipped) {
     return side>=0&&side<=1
         &&state.lastSelectedWheelSide==side
-        &&equipped!=BackWeaponKind::Unknown
-        &&state.slots[side]!=equipped;
+        &&equipped!=BackWeaponKind::Unknown;
 }
 }
