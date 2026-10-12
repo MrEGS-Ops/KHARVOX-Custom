@@ -24,6 +24,33 @@ internal static class NexusModsPopup
     // without opening a browser on the runner.
     internal static Action<Rectangle>? TestOpenRequested;
     private static IntPtr trackedPopup;
+    private static HashSet<IntPtr>? beforeBrowserLaunch;
+    private static string? pendingBrowserProcess;
+    private static DateTime pendingBrowserUntilUtc;
+
+    // Called by the dock timer, not the Nexus link. Late Firefox startups
+    // attach without keeping the user's click blocked for 5–10 seconds.
+    internal static IntPtr TryDiscoverPendingBrowser()
+    {
+        if (trackedPopup != IntPtr.Zero && IsWindow(trackedPopup))
+            return trackedPopup;
+        if (pendingBrowserProcess is null || beforeBrowserLaunch is null
+            || DateTime.UtcNow >= pendingBrowserUntilUtc)
+        {
+            pendingBrowserProcess = null;
+            beforeBrowserLaunch = null;
+            return IntPtr.Zero;
+        }
+        var found = GetVisibleBrowserWindows(pendingBrowserProcess)
+            .FirstOrDefault(handle => !beforeBrowserLaunch.Contains(handle));
+        if (found != IntPtr.Zero)
+        {
+            trackedPopup = found;
+            pendingBrowserProcess = null;
+            beforeBrowserLaunch = null;
+        }
+        return found;
+    }
 
     // Only touch a window that this launcher itself located after starting
     // the default browser. Never move somebody else's browser session.
@@ -136,6 +163,9 @@ internal static class NexusModsPopup
         var command = MakeDefaultBrowserStartInfo(browserPath, customModsBounds);
         var processName = Path.GetFileNameWithoutExtension(browserPath);
         var before = GetVisibleBrowserWindows(processName);
+        beforeBrowserLaunch = before;
+        pendingBrowserProcess = processName;
+        pendingBrowserUntilUtc = DateTime.UtcNow.AddSeconds(10);
 
         // This is a direct executable launch. No Edge-first attempt, no
         // six-second timeout and no slow default-URL fallback opening a tab.
@@ -162,6 +192,8 @@ internal static class NexusModsPopup
                     customModsBounds.Width, customModsBounds.Height,
                     0x0040); // SWP_SHOWWINDOW
                 trackedPopup = newWindow;
+                pendingBrowserProcess = null;
+                beforeBrowserLaunch = null;
                 SetForegroundWindow(newWindow);
                 return newWindow;
             }
