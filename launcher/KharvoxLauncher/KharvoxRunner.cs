@@ -542,7 +542,11 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_WEAPON_WHEEL"] = customMods.DisableWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_GAUSS_SLOW_CHARGE"] = customMods.GaussChargeSlowMovement ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = customMods.BackOfHandHud ? "1" : "0";
+            // Native Cactus HUD is controlled by offhand_hud.cfg, not a launcher mod.
+            psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";
@@ -552,8 +556,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = customMods.MotionGloryKillSpeed ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = customMods.PhysicalChainsawGestures ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
