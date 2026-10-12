@@ -2250,7 +2250,7 @@ void updateGameplayActions(XrTime displayTime){
             const bool insideHead=insideZone(side,s.headZoneEntered[side]);
             if(insideHead&&!s.headZoneEntered[side]){
                 kharvox::queueControllerZoneCue(
-                    s.handZoneCues[1-side],GetTickCount64(),35,.32f,155.f);
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64(),35,.32f,155.f);
             }
             s.headZoneEntered[side]=insideHead;
         }
@@ -2571,7 +2571,7 @@ void updateGameplayActions(XrTime displayTime){
             }
             if(inHip&&!s.hipZoneEntered[side])
                 kharvox::queueControllerZoneCue(
-                    s.handZoneCues[1-side],GetTickCount64(),35,.32f,155.f);
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64(),35,.32f,155.f);
             s.hipZoneEntered[side]=inHip;
         }
     }else s.hipZoneEntered={};
@@ -2939,7 +2939,7 @@ void updateGameplayActions(XrTime displayTime){
         // Wheel side is 0=RIGHT, 1=LEFT, but OpenXR haptic index is
         // 0=LEFT, 1=RIGHT. The old direct assignment inverted feedback.
         const int hapticHand=s.behindHeadWheelActive&&s.behindHeadWheelSide>=0
-            ?1-s.behindHeadWheelSide
+            ?kharvox::hapticOutputForPhysicalSide(s.behindHeadWheelSide)
             :kharvox::weaponWheelHapticHand(
                 stickOwnsSelection,s.leftHanded,s.leftHandSwapSticks);
         // Cancel only the previous owner's UI click; native game rumble still
