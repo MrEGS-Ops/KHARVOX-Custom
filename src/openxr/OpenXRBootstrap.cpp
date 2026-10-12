@@ -2410,12 +2410,13 @@ void updateGameplayActions(XrTime displayTime){
     }
     constexpr XrDuration bfgGripHoldDuration=650000000;
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
-    // Siege declaration identifies a MODE, not an ongoing charge.
-    // Require live primary and weapon-mod controls in addition to the mode.
+    // Siege mode has already latched the charge variant; the player can
+    // RELEASE the mod Grip while continuing to charge with the trigger.
+    // Never gate movement restoration on Grip being held after Siege starts.
     const bool gaussSlowChargeActive=s.customMods.gaussChargeSlowMovement
         &&gameplay&&KharvoxWeaponGaussSiegeChargeActive()
         &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
-        &&triggerDown&&secondaryFireGripDown;
+        &&triggerDown;
     KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
     const bool bfgCalibrationAccess=s.twoHandCalibrationMode
         &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
