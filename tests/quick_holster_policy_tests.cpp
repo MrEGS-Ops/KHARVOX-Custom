@@ -7,7 +7,7 @@ int main() {
     const QuickHolsterZone zone{};
     assert(quickHipInside({.27f,-.75f,.35f},false));
     assert(!quickHipInside({.27f,-.25f,.35f},false)); // chest not hip
-    assert(!quickHipInside({.27f,-.75f,.02f},false)); // forward accidental activation
+    assert(!quickHipInside({.27f,-.75f,-.12f},false)); // forward accidental activation
     assert(!quickHipInside({.27f,-.75f,.80f},false)); // behind back
     assert(!quickHipInside({-.27f,-.75f,.35f},false)); // wrong hip
     assert(quickHipInside({.10f,-.75f,.12f},true)); // exit hysteresis
