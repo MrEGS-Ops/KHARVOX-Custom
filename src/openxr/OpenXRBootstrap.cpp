@@ -1795,6 +1795,28 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
+// Physical wheel confirmation and hip retrieval change only combat ownership.
+// OpenXR locomotion, turn, jump, crouch and menu bindings stay untouched.
+void selectPhysicalWeaponHand(bool left,const char* action){
+    if(s.weaponHandLeft==left)return;
+    s.weaponHandLeft=left;
+    s.weaponCalibrated=false;
+    s.weaponPoseSubmitted=false;
+    s.twoHandLatched=false;
+    s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+    s.equipmentGrip.cancel();
+    s.secondaryFireGripPressed=false;
+    s.supportGripPressed=false;
+    s.interactionProfilesDirty=true;
+    s.interactionProfilesKnown=false;
+    s.bfgGripHoldStart=0;
+    s.bfgGripTriggered=false;
+    s.grenadeGesture={};
+    s.equipmentThrowPulseUntil=0;
+    log(std::string("[WEAPON-HAND] ")+action+" -> "
+        +(left?"LEFT weapon / RIGHT grenade":"RIGHT weapon / LEFT grenade")
+        +"; movement, jump, crouch and menus unchanged");
+}
 void refreshGripInteractionProfiles(){
     if(!s.interactionProfilesDirty||!s.session)return;
     if(!s.getCurrentInteractionProfile||s.leftHandUserPath==XR_NULL_PATH
@@ -2244,27 +2266,8 @@ void updateGameplayActions(XrTime displayTime){
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
             &&wheelGripHeld&&selectedSide>=0){
             s.quickHolsters.lastSelectedWheelSide=selectedSide;
-            // Confirmed wrist pull changes combat hands; never locomotion or UI.
-            const bool selectedWeaponLeft=selectedSide==1;
-            if(s.weaponHandLeft!=selectedWeaponLeft){
-                s.weaponHandLeft=selectedWeaponLeft;
-                s.weaponCalibrated=false;
-                s.weaponPoseSubmitted=false;
-                s.twoHandLatched=false;
-                s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
-                s.equipmentGrip.cancel();
-                s.secondaryFireGripPressed=false;
-                s.supportGripPressed=false;
-                s.interactionProfilesDirty=true;
-                s.interactionProfilesKnown=false;
-                s.bfgGripHoldStart=0;
-                s.bfgGripTriggered=false;
-                s.grenadeGesture={};
-                s.equipmentThrowPulseUntil=0;
-                log(std::string("[WEAPON-HAND] confirmed ")
-                    +(selectedWeaponLeft?"LEFT weapon / RIGHT grenade":"RIGHT weapon / LEFT grenade")
-                    +"; movement, jump, crouch, menus and sticks unchanged");
-            }
+            // Wheel hand is selected by the completed physical pull only.
+            selectPhysicalWeaponHand(selectedSide==1,"confirmed wrist wheel");
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
             // two-hand acquisition, equipment use or the held BFG shortcut.
