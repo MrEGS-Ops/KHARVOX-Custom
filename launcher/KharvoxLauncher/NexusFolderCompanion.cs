@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
 using System.Drawing;
 using System.IO;
 using System.Linq;
@@ -215,6 +216,9 @@ internal static class NexusFolderCompanion
                 return false;
             result = ModDropWindow.CopyZipFiles(user, new[] { zipped });
             return result.Copied == 1
+                && ModDropWindow.IsDirectChild(user, Path.Combine(user, "sample (2).zip"))
+                && !ModDropWindow.IsDirectChild(user, zipped)
+                && !ModDropWindow.IsDirectChild(user, Path.Combine(user, "nested", "sample.zip"))
                 && File.Exists(Path.Combine(user, "sample (2).zip"))
                 && File.ReadAllText(zipped) == "test-zip"
                 && ModDropWindow.AcceptsFile(zipped)
@@ -242,7 +246,7 @@ internal sealed class ModDropWindow : Form
         Text = "KHARVOX // MODS FOLDER";
         Bounds = bounds;
         // Use the exact icon resource embedded in KharvoxLauncher.exe.
-        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch (ArgumentException) { Icon = SystemIcons.Application; }
         ShowIcon = true;
         KeyPreview = true;
@@ -340,6 +344,157 @@ internal sealed class ModDropWindow : Form
         folderWatch.Deleted += FilesChanged;
         folderWatch.Renamed += (_, _) => ScheduleRefresh();
         RefreshFiles();
+    }
+
+    private void InstallFileCommands()
+    {
+        var menu = new ContextMenuStrip { BackColor = Color.FromArgb(30, 30, 33),
+            ForeColor = Color.WhiteSmoke, ShowImageMargin = false };
+        var copy = menu.Items.Add("Copy    Ctrl+C");
+        copy.Click += (_, _) => CopySelected();
+        var paste = menu.Items.Add("Paste ZIPs    Ctrl+V");
+        paste.Click += async (_, _) => await PasteZipsAsync();
+        var delete = menu.Items.Add("Delete    Del");
+        delete.Click += (_, _) => DeleteSelected();
+        menu.Items.Add(new ToolStripSeparator());
+        var all = menu.Items.Add("Select All    Ctrl+A");
+        all.Click += (_, _) => SelectAllFiles();
+        menu.Opening += (_, _) =>
+        {
+            copy.Enabled = files.SelectedItems.Count > 0;
+            delete.Enabled = files.SelectedItems.Count > 0;
+            paste.Enabled = ClipboardHasZip();
+            all.Enabled = files.Items.Count > 0;
+        };
+        files.ContextMenuStrip = menu;
+        ContextMenuStrip = menu;
+    }
+
+    private static bool ClipboardHasZip()
+    {
+        try
+        {
+            return Clipboard.ContainsFileDropList()
+                && Clipboard.GetFileDropList().Cast<string>().Any(AcceptsFile);
+        }
+        catch (ExternalException) { return false; }
+    }
+
+    // Resolve selected paths from our list, not arbitrary clipboard/menu text.
+    // Only direct children of this dedicated user-mod directory may be deleted.
+    internal static bool IsDirectChild(string root, string candidate)
+    {
+        try
+        {
+            var source = Path.GetFullPath(candidate).TrimEnd(Path.DirectorySeparatorChar);
+            var parent = Path.GetDirectoryName(source);
+            return parent is not null
+                && string.Equals(parent,
+                    Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException
+            or PathTooLongException) { return false; }
+    }
+
+    private string[] SelectedPaths() => files.SelectedItems
+        .Cast<ListViewItem>().Select(item => item.Tag as string)
+        .Where(value => value is not null)
+        .Select(value => value!)
+        .Where(path => IsDirectChild(folder, path)
+            && (File.Exists(path) || Directory.Exists(path)))
+        .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+
+    private void CopySelected()
+    {
+        var paths = SelectedPaths();
+        if (paths.Length == 0) return;
+        var entries = new StringCollection();
+        entries.AddRange(paths);
+        try
+        {
+            Clipboard.SetFileDropList(entries); // Explorer-compatible copy
+            status.Text = paths.Length + " item(s) copied to clipboard.";
+        }
+        catch (ExternalException ex)
+        {
+            MessageBox.Show(this, ex.Message, "KHARVOX — Copy",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private async Task PasteZipsAsync()
+    {
+        try
+        {
+            if (!Clipboard.ContainsFileDropList())
+            {
+                status.Text = "Clipboard contains no ZIP files.";
+                return;
+            }
+            var paths = Clipboard.GetFileDropList().Cast<string>().ToArray();
+            status.Text = "Pasting ZIP archives…";
+            var result = await Task.Run(() => CopyZipFiles(folder, paths));
+            if (IsDisposed || Disposing) return;
+            RefreshFiles();
+            status.Text = result.Copied + " ZIP(s) imported, " + result.Skipped
+                + " skipped; existing files and originals retained.";
+        }
+        catch (Exception ex) when (ex is ExternalException or IOException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!IsDisposed)
+                MessageBox.Show(this, ex.Message, "KHARVOX — Paste ZIP",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
+    private void DeleteSelected()
+    {
+        var entries = SelectedPaths();
+        if (entries.Length == 0) return;
+        if (MessageBox.Show(this, "Permanently delete " + entries.Length
+                + " selected item(s) from the KHARVOX mods folder?\n\n"
+                + "This does not delete their original downloaded ZIPs.",
+                "KHARVOX — Confirm delete",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Warning,
+                MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
+        try
+        {
+            foreach (var entry in entries)
+            {
+                if (!IsDirectChild(folder, entry)) continue;
+                if (File.Exists(entry)) File.Delete(entry);
+                else if (Directory.Exists(entry)) Directory.Delete(entry, true);
+            }
+            RefreshFiles();
+            status.Text = entries.Length + " selected item(s) deleted.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, ex.Message, "KHARVOX — Delete",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            RefreshFiles();
+        }
+    }
+
+    private void SelectAllFiles()
+    {
+        foreach (ListViewItem item in files.Items) item.Selected = true;
+        files.Focus();
+    }
+
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        switch (keyData)
+        {
+            case Keys.Control | Keys.C: CopySelected(); return true;
+            case Keys.Control | Keys.V: _ = PasteZipsAsync(); return true;
+            case Keys.Delete: DeleteSelected(); return true;
+            case Keys.Control | Keys.A: SelectAllFiles(); return true;
+            case Keys.F5: RefreshFiles(); return true;
+        }
+        return base.ProcessCmdKey(ref msg, keyData);
     }
 
     private static Button CreateButton(string text)
