@@ -2239,8 +2239,8 @@ void updateGameplayActions(XrTime displayTime){
             const float vertical=grip.y-head.y;
             const float behind=grip.z-head.z;
             return active
-                ?(outward>=-.10f&&outward<=.58f&&vertical>=-.30f&&vertical<=.48f
-                    &&behind>=-.08f&&behind<=.78f)
+                ?(outward>=-.16f&&outward<=.66f&&vertical>=-.35f&&vertical<=.54f
+                    &&behind>=-.13f&&behind<=.86f)
                 :(outward>=-.04f&&outward<=.44f&&vertical>=-.18f&&vertical<=.36f
                     &&behind>=.015f&&behind<=.60f);
         };
@@ -3123,7 +3123,7 @@ void updateGameplayActions(XrTime displayTime){
             // Small central chest pocket, well in front of both rear hip slots
             // and below the behind-head wheel activation zones.
             insideChest=std::abs(dx)<=.18f&&dy>=-.64f&&dy<=-.22f
-                &&dz>=-.48f&&dz<=-.09f;
+                &&dz>=-.30f&&dz<=.09f; // chest zone ~18cm rearward
         }
         const int equipmentHapticHand=s.weaponHandLeft?1:0;
         const auto hapticNow=GetTickCount64();
@@ -3132,13 +3132,14 @@ void updateGameplayActions(XrTime displayTime){
                 s.handZoneCues[equipmentHapticHand],hapticNow,35,.32f,155.f);
         s.chestZoneEntered=insideChest;
         const auto action=kharvox::updateChestGrenadeGesture(
-            s.grenadeGesture,gameplay,supportGripDown,tracked,insideChest);
+            s.grenadeGesture,gameplay,supportGripDown,tracked,insideChest,
+            static_cast<std::int64_t>(displayTime));
         if(action==kharvox::ChestGrenadeAction::Cycle){
             s.grenadeCyclePulseUntil=displayTime+100000000;
             s.bfgGripSuppressedUntilRelease=true;
             kharvox::queueControllerZoneCue(
-                s.handZoneCues[equipmentHapticHand],hapticNow,70,.62f,195.f);
-            s.nextCookPulseAt=hapticNow+500;
+                s.handZoneCues[equipmentHapticHand],hapticNow,85,.72f,195.f);
+            s.nextCookPulseAt=hapticNow+350;
             log("[GRENADE] support Grip in chest pocket -> cycle grenade; pin armed");
         }else if(action==kharvox::ChestGrenadeAction::Throw){
             s.equipmentThrowPulseUntil=displayTime+100000000;
@@ -3152,8 +3153,8 @@ void updateGameplayActions(XrTime displayTime){
             &&s.grenadeGesture.pulled){
             if(hapticNow>=s.nextCookPulseAt){
                 kharvox::queueControllerZoneCue(
-                    s.handZoneCues[equipmentHapticHand],hapticNow,50,.20f,100.f);
-                s.nextCookPulseAt=hapticNow+500;
+                    s.handZoneCues[equipmentHapticHand],hapticNow,85,.44f,110.f);
+                s.nextCookPulseAt=hapticNow+350;
             }
         }else if(!s.grenadeGesture.held){
             s.nextCookPulseAt=0;
