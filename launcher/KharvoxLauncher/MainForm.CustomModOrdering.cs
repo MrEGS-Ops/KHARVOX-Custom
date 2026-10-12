@@ -139,7 +139,7 @@ public sealed partial class MainForm
             Define(customHandFocusedRs, "hand-focus", 0),
             Define(customBackOfHandHud, "back-of-hand-hud", 0),
             Define(customBehindHeadWeaponWheel, "behind-head-wheel", 0),
-            Define(customBehindHeadWheelHandSelection, "behind-head-selection", 0),
+
             Define(customDynamicShoulderHolster, "dynamic-shoulder-holster", 0),
             Define(customPhysicalCrouch, "physical-crouch", 1),
             Define(customDirectionalDash, "directional-dash", 1),
@@ -438,8 +438,7 @@ public sealed partial class MainForm
                     dependencies = " — Disables " + Number(customDisableHud);
                 else if (item.Box == customBehindHeadWeaponWheel)
                     dependencies = " — Disables " + Number(customDisableWeaponWheel);
-                else if (item.Box == customBehindHeadWheelHandSelection)
-                    dependencies = " — Requires " + Number(customBehindHeadWeaponWheel);
+
                 else if (item.Box == customDynamicShoulderHolster)
                     dependencies = " — Requires #Hands";
                 // The mod's own caption and tooltip move to the new position,
