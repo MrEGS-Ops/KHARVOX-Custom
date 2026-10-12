@@ -433,7 +433,7 @@ public sealed partial class MainForm : Form
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
-            (customDynamicShoulderHolster, "Experimental: two hip-only quick-holster zones. Store left-wheel weapons on the left hip and right-wheel weapons on the right hip; draw only by gripping inside the appropriate hip zone. Automatically enables KHARVOX Hands."),
+            (customDynamicShoulderHolster, "Experimental: two hip-only quick-holster zones. Store left-wheel weapons on the left hip and right-wheel weapons on the right hip; draw only by gripping inside the appropriate hip zone. Requires Enable Hands in the main launcher: automatically checks and greys it out until this mod is turned off."),
             (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
             (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing."),
@@ -456,9 +456,10 @@ public sealed partial class MainForm : Form
                     + "With Behind-Head Wrist Weapon Wheel enabled, move the right wrist "
                     + "behind your head and select by moving it; hold right Grip to lock "
                     + "the selection before pulling out. Left Wrist Weapon Wheel adds "
-                    + "the same gesture on your left and enables Left Hand mode.\n"
+                    + "the same gesture on your left without changing Left Hand mode.\n"
                     + "Directional Dash is currently disabled due an unsafe native physics path.\n"
-                    + "Turn this off to restore the original KHARVOX controls.") })
+                    + "While enabled, Swap Jump/Crouch in the main launcher is greyed out because this remap controls those buttons; its saved selection is preserved.\n"
+                     + "Turn this off to restore the original KHARVOX controls.") })
             .ToArray();
         InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
         var customModsScroll = new Panel
@@ -1004,7 +1005,7 @@ public sealed partial class MainForm : Form
         grid.Controls.Add(leftHandSwapMode, 1, 3);
         swapJumpCrouch.Dock = DockStyle.Fill;
         swapJumpCrouch.CheckedChanged += OptionChanged;
-        statusToolTip.SetToolTip(swapJumpCrouch, "Swap the gameplay Jump and Crouch actions on the A/B face buttons. Menu controls stay the same.");
+        statusToolTip.SetToolTip(swapJumpCrouch, "Swap the gameplay Jump and Crouch actions on the A/B face buttons. Menu controls stay the same. Disabled while Weapon Wheel Button Remap is active; your saved choice is preserved.");
         grid.Controls.Add(swapJumpCrouch, 0, 4);
         grid.SetColumnSpan(swapJumpCrouch, 2);
         foreach (Control c in new Control[] { turnMode, snapAngle })
@@ -1530,14 +1531,11 @@ public sealed partial class MainForm : Form
             else if (changed == customBackOfHandHud && customBackOfHandHud.Checked)
                 customDisableHud.Checked = false;
 
-            // The dynamic holster's empty-hands presentation depends on KHARVOX
-            // hand assets. Enabling it supplies that dependency automatically;
-            // explicitly turning Hands off releases the holster mod.
-            if (changed == customDynamicShoulderHolster
-                && customDynamicShoulderHolster.Checked)
+            // Dynamic Quick Holsters and hand calibration need rendered hands.
+            // They force Enable Hands ON and keep it visibly locked while active.
+            // The launcher checkbox unlocks when no feature requires it.
+            if (customDynamicShoulderHolster.Checked || calibrateHands.Checked)
                 showHands.Checked = true;
-            else if (changed == showHands && !showHands.Checked)
-                customDynamicShoulderHolster.Checked = false;
 
             // If the user explicitly removes a dependency, that manual
             // action wins and Dash is released. During initial config repair,
@@ -1572,9 +1570,6 @@ public sealed partial class MainForm : Form
             if (!customBehindHeadWeaponWheel.Checked)
                 customBehindHeadWheelHandSelection.Checked = false;
 
-            if (customDynamicShoulderHolster.Checked)
-                showHands.Checked = true;
-
             if (customDisableHud.Checked)
                 customBackOfHandHud.Checked = false;
 
@@ -1589,6 +1584,22 @@ public sealed partial class MainForm : Form
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customLeftWristWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
+            // Main-launcher dependencies: keep the effective required state
+            // checked, greyed and explained; unlock as soon as the mod releases it.
+            showHands.Enabled = !customDynamicShoulderHolster.Checked
+                && !calibrateHands.Checked;
+            showHands.AccessibleDescription = !showHands.Enabled
+                ? (customDynamicShoulderHolster.Checked
+                    ? "Locked ON: Dynamic Quick Holsters requires Enable Hands."
+                    : "Locked ON: hand calibration requires Enable Hands.")
+                : "Show the VR hand models.";
+            statusToolTip.SetToolTip(showHands, showHands.AccessibleDescription);
+            // Weapon Wheel Button Remap explicitly owns gameplay A/B routing;
+            // Swap Jump/Crouch would have no effect. Preserve its checked value.
+            swapJumpCrouch.Enabled = !weaponWheelRemap.Checked;
+            swapJumpCrouch.AccessibleDescription = weaponWheelRemap.Checked
+                ? "Inactive: Weapon Wheel Button Remap controls Jump and Crouch. The saved Swap Jump/Crouch preference is preserved."
+                : "Swap gameplay Jump and Crouch while retaining menu controls.";
             // R-only dependencies must never disable the child's checkbox.
             // Selecting Hand Selection enables its wheel dependency above.
             customBehindHeadWheelHandSelection.Enabled = false; // merged into main wrist-wheel mod
@@ -1752,6 +1763,8 @@ public sealed partial class MainForm : Form
     {
         if (calibrateHands.Checked)
             showHands.Checked = true;
+        if (!restoringConfiguration && !applyingCustomModDependencies)
+            ApplyCustomModDependencies(null);
         OptionChanged(sender, e);
     }
 
