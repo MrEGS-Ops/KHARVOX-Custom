@@ -375,7 +375,7 @@ public sealed partial class MainForm : Form
             AutoScroll = false
         };
         customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 124));
-        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
+        customModsGrid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
 
         gloryKillSpeedSlider.ValueChanged += (_, _) =>
@@ -386,55 +386,47 @@ public sealed partial class MainForm : Form
         gloryKillSlowmo.ValueChanged += SpeedSliderChanged;
         statusToolTip.SetToolTip(gloryKillSpeedSlider,
             "Glory Kill speed: 1 = native DOOM speed; 2–4 progressively faster; 5 = fastest. Use mouse or arrow keys.");
-        customModsGrid.Controls.Add(new Label
+
+        // One compact row across the available MODS panel width. Never let a
+        // 250px fixed second column push the interactive slider out of view.
+        var speedScale = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, Margin = Padding.Empty,
+            Padding = Padding.Empty, ColumnCount = 2, RowCount = 1,
+            BackColor = PanelColor
+        };
+        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 122));
+        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        speedScale.Controls.Add(new Label
         {
             Text = "Glory Kill speed",
             Dock = DockStyle.Fill,
             ForeColor = Color.Gainsboro,
-            TextAlign = ContentAlignment.MiddleLeft
+            TextAlign = ContentAlignment.MiddleLeft,
+            Margin = Padding.Empty
         }, 0, 0);
-        var speedScale = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, Margin = Padding.Empty,
-            Padding = Padding.Empty, ColumnCount = 3, RowCount = 1,
-            BackColor = PanelColor
-        };
-        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 33));
-        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedScale.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
-        var slowCaption = new Label {
-            Text = "Slow", ForeColor = Color.Silver,
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
-            Margin = Padding.Empty
-        };
-        var fastCaption = new Label {
-            Text = "Fast", ForeColor = Color.Silver,
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleRight,
-            Margin = Padding.Empty
-        };
         gloryKillSpeedSlider.Dock = DockStyle.Fill;
-        gloryKillSpeedSlider.Margin = Padding.Empty;
-        speedScale.Controls.Add(slowCaption, 0, 0);
+        gloryKillSpeedSlider.Margin = new Padding(0, 2, 0, 2);
         speedScale.Controls.Add(gloryKillSpeedSlider, 1, 0);
-        speedScale.Controls.Add(fastCaption, 2, 0);
-        customModsGrid.Controls.Add(speedScale, 1, 0);
+        customModsGrid.Controls.Add(speedScale, 0, 0);
+        customModsGrid.SetColumnSpan(speedScale, 2);
 
         var customChecks = new (CheckBox Box, string Tip)[]
         {
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
-            (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
+            (customGaussChargeSlowMovement, "While Siege mode is active AND fire plus weapon-mod input are held, allow movement at 45% speed. Merely equipping Gauss will not slow movement."),
             (customBackOfHandHud, "Enable the original KHARVOX v1.1.1 hand HUD: its original position, orientation and rectangular layout. No HUD disables it."),
-            (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
+            (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Raise both hands in a boxing guard for 180ms to temporarily use head focus for Glory Kills; return to hand focus 900ms after lowering the guard."),
             (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
             (customBehindHeadWeaponWheel, "Move EITHER hand behind its matching side of your head to open the wheel. Move that hand to select; hold that hand's Grip to lock and pull out to equip. Without Grip, leaving the zone cancels selection. Right side equips to right hand; left side equips to left hand. Grenades occupy the opposite hand. Movement, menu, jump and crouch controls stay unchanged."),
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
             (customDynamicShoulderHolster, "Experimental rearward left/right hip slots. Store a weapon on the matching hip and draw it with that hand's Grip. Drawing uses the stored weapon identity, NOT native last-weapon quick swap. Requires Enable Hands; that launcher setting is locked while this mod is active."),
-            (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
+            (customPhysicalGrenadeThrow, "With the non-weapon hand, press Grip inside the small central chest zone to cycle grenade type and arm it. Pull out holding Grip, then release Grip outside to throw. Release inside to cancel. No swing threshold. Native DOOM still owns projectile trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
-            (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing."),
+            (customPhysicalChainsawGestures, "Experimental: during a detected Chainsaw sync kill, recently holding attack with Chainsaw latches gesture control. Weapon-hand movement speeds kill playback; stopping slows to 12%. Requires a valid native sync-attack signal."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
