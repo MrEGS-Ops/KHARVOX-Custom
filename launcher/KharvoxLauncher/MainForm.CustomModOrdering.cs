@@ -461,7 +461,7 @@ public sealed partial class MainForm
                     + " — " + state.Detail
                     + (dependencies.Length == 0 ? "" : Environment.NewLine
                         + (item.Box == customDynamicShoulderHolster
-                            ? "Requires: Enable Hands in main launcher"
+                            ? "Requires: Enable Hands in main launcher (locked ON while active)"
                             : dependencies.TrimStart(' ', '—')));
                 foreach (Control hoverTarget in new Control[] {
                     item.Box, slot.Panel, slot.Number })
