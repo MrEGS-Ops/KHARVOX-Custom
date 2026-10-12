@@ -54,13 +54,26 @@ internal static class NexusModsPopup
 
     // Only touch a window that this launcher itself located after starting
     // the default browser. Never move somebody else's browser session.
-    internal static bool PositionTrackedBrowser(IntPtr hwnd, Rectangle bounds)
+    internal static Rectangle? TryGetTrackedBrowserBounds(IntPtr hwnd)
     {
-        if (hwnd == IntPtr.Zero || hwnd != trackedPopup || !IsWindow(hwnd)
-            || IsIconic(hwnd) || bounds.IsEmpty) return false;
-        // Follow geometry without raising, unminimising or stealing focus.
-        return SetWindowPos(hwnd, IntPtr.Zero, bounds.X, bounds.Y,
-            bounds.Width, bounds.Height, 0x0010 | 0x0004);
+        if(hwnd==IntPtr.Zero||hwnd!=trackedPopup||!IsWindow(hwnd)
+            ||IsIconic(hwnd)||!GetWindowRect(hwnd,out var rect))return null;
+        return Rectangle.FromLTRB(rect.Left,rect.Top,rect.Right,rect.Bottom);
+    }
+
+    internal static bool TrackedBrowserFocused(IntPtr hwnd)=>
+        hwnd!=IntPtr.Zero&&hwnd==trackedPopup&&GetForegroundWindow()==hwnd;
+
+    internal static bool PositionTrackedBrowser(IntPtr hwnd, Rectangle bounds,
+        IntPtr behindWindow=default)
+    {
+        if(hwnd==IntPtr.Zero||hwnd!=trackedPopup||!IsWindow(hwnd)
+            ||IsIconic(hwnd)||bounds.IsEmpty)return false;
+        // Keep the browser BEHIND its own Custom Mods panel when available,
+        // and never steal activation from whichever window the user clicked.
+        return SetWindowPos(hwnd,behindWindow,bounds.X,bounds.Y,
+            bounds.Width,bounds.Height,behindWindow==IntPtr.Zero
+                ?0x0010|0x0004:0x0010);
     }
 
     internal static ProcessStartInfo MakeDefaultBrowserStartInfo(
@@ -304,6 +317,12 @@ internal static class NexusModsPopup
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hwnd);
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BrowserRect { public int Left,Top,Right,Bottom; }
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hwnd,out BrowserRect rect);
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")]
     private static extern bool IsWindow(IntPtr hwnd);
 
