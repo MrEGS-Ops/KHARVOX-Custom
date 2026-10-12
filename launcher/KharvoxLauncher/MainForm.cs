@@ -74,6 +74,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
     private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Wrist Weapon Wheel", false);
+    private readonly CheckBox customLeftWristWeaponWheel = MakeCheck("Left Wrist Weapon Wheel", false);
     private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
@@ -427,7 +428,8 @@ public sealed partial class MainForm : Form
             (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose. Enabling this automatically disables No HUD because they use the same gameplay-HUD surfaces."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
             (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
-            (customBehindHeadWeaponWheel, "Move your weapon wrist behind your head to open the wheel. Move the wrist to change weapon, hold weapon-hand Grip to lock the selection, then pull your hand out to equip. The opening zone is closer to your head."),
+            (customBehindHeadWeaponWheel, "Move your right wrist behind the head to open the weapon wheel; move the wrist to change weapon, then hold right Grip to lock and pull the weapon. A closer activation zone is used."),
+            (customLeftWristWeaponWheel, "Enable an additional LEFT behind-head weapon wheel. Move the left wrist to choose; hold left Grip to lock selection and pull. Selecting this option automatically enables Left Hand mode."),
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
@@ -1592,6 +1594,7 @@ public sealed partial class MainForm : Form
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
         BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
+        LeftWristWeaponWheel = customLeftWristWeaponWheel.Checked,
         BehindHeadWheelHandSelection = customBehindHeadWeaponWheel.Checked,
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
@@ -1635,6 +1638,7 @@ public sealed partial class MainForm : Form
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;
             customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
+            customLeftWristWeaponWheel.Checked = mods.LeftWristWeaponWheel;
             customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWeaponWheel;
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
