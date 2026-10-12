@@ -266,6 +266,8 @@ struct State {
     int behindHeadWheelSide{-1}; // 0 right, 1 left
     bool wheelGripLatched{};
     bool wheelSelectionFrozen{};
+    bool wheelWeaponGripSuppressedUntilRelease{};
+    bool wheelSupportGripSuppressedUntilRelease{};
     XrVector2f frozenWheelStick{};
     bool dashButtonPressed{};
     XrTime dashCooldownUntil{};
@@ -2092,6 +2094,8 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalCrouchPulseUntil=0;
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
+        s.wheelWeaponGripSuppressedUntilRelease=false;
+        s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;s.quickHolsters.activeStowedSide=-1;
         KharvoxWeaponSetHolstered(false);
@@ -2210,6 +2214,13 @@ void updateGameplayActions(XrTime displayTime){
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
             &&s.wheelGripLatched&&selectedSide>=0){
             s.quickHolsters.lastSelectedWheelSide=selectedSide;
+            // The same physical Grip that confirms a wheel pull must not
+            // immediately fall through into weapon-mod fire, support-grip
+            // two-hand acquisition, equipment use or the held BFG shortcut.
+            if(selectedSide==(s.leftHanded?1:0))
+                s.wheelWeaponGripSuppressedUntilRelease=true;
+            else
+                s.wheelSupportGripSuppressedUntilRelease=true;
             log(std::string("[QUICK-HOLSTERS] wheel selection assigned to ")
                 +(selectedSide==0?"right":"left")+" hip");
         }
@@ -2285,7 +2296,11 @@ void updateGameplayActions(XrTime displayTime){
         s.supportGripUsesValveIndex
             ?kharvox::GripControllerProfile::ValveIndex
             :kharvox::GripControllerProfile::Default);
-    const bool cycleEquipment=s.equipmentGrip.update(supportGripDown,gameplay,
+    if(!secondaryFireGripDown)s.wheelWeaponGripSuppressedUntilRelease=false;
+    if(!supportGripDown)s.wheelSupportGripSuppressedUntilRelease=false;
+    const bool cycleEquipment=s.equipmentGrip.update(supportGripDown,
+        gameplay&&!s.behindHeadWheelActive
+            &&!s.wheelSupportGripSuppressedUntilRelease,
         supportGripController().valid&&weaponController().valid,
         s.twoHandLatched||s.twoHandCalibrationMode||supportGripInCaptureRange(),displayTime);
     const bool rawSupportGripPress=supportGripDown&&!s.supportGripPressed;
@@ -2308,7 +2323,8 @@ void updateGameplayActions(XrTime displayTime){
         s.bfgGripHoldStart=0;
         s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=false;
-    }else if(!gameplay||supportGripOwnsPress){
+    }else if(!gameplay||supportGripOwnsPress||s.behindHeadWheelActive
+        ||s.wheelSupportGripSuppressedUntilRelease){
         // An acquired support grip owns this press. Calibration owns it too,
         // except while BFG is the selected target and still needs the native
         // long-grip shortcut to become the active weapon.
@@ -2777,6 +2793,7 @@ void updateGameplayActions(XrTime displayTime){
         ||(backWeaponPulseActive&&s.backWeaponPulse==kharvox::BackWeaponPulse::Chainsaw);
     const bool weaponModDown=gameplay&&!s.dynamicShoulderHolstered
         &&!weaponWheelActive&&!quickHolsterGripConsumed
+        &&!s.wheelWeaponGripSuppressedUntilRelease
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
