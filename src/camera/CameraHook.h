@@ -46,6 +46,7 @@ bool KharvoxCameraSyncAttackActive();
 // The camera hook restores DOOM's baseline timescale when the sync attack ends.
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale);
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
+void KharvoxCameraResetCombatTimeDilation();
 bool KharvoxCameraLedgeTransitionActive();
 // True only when DOOM's native player command tracker currently permits both
 // view control and weapon buttons. This distinguishes playable first-person
