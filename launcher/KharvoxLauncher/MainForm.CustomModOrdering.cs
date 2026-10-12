@@ -137,7 +137,7 @@ public sealed partial class MainForm
         {
             Define(weaponWheelRemap, "weapon-wheel-remap", 0),
             Define(customHandFocusedRs, "hand-focus", 0),
-            Define(customBackOfHandHud, "back-of-hand-hud", 0),
+            Define(customBoxingGuard, "boxing-guard", 0),
             Define(customBehindHeadWeaponWheel, "behind-head-wheel", 0),
 
             Define(customDynamicShoulderHolster, "dynamic-shoulder-holster", 0),
@@ -145,8 +145,8 @@ public sealed partial class MainForm
             Define(customDirectionalDash, "directional-dash", 1),
             Define(customPhysicalGrenadeThrow, "physical-grenade", 2),
             Define(customGaussChargeSlowMovement, "gauss-slow-movement", 2),
-            Define(customMotionGloryKillSpeed, "punch-glory-kill", 2),
-            Define(customPhysicalChainsawGestures, "physical-chainsaw", 2),
+            Define(customFastGloryKills, "fast-glory-kills", 2),
+            Define(customFastChainsawKills, "fast-chainsaw", 2),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
             Define(customRevengeDemon, "revenge-demon", 4),
@@ -432,10 +432,6 @@ public sealed partial class MainForm
                 else if (item.Box == customDisableWeaponWheel)
                     dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)
                         + ", " + Number(customDirectionalDash);
-                else if (item.Box == customDisableHud)
-                    dependencies = " — Disables " + Number(customBackOfHandHud);
-                else if (item.Box == customBackOfHandHud)
-                    dependencies = " — Disables " + Number(customDisableHud);
                 else if (item.Box == customBehindHeadWeaponWheel)
                     dependencies = " — Disables " + Number(customDisableWeaponWheel);
 
