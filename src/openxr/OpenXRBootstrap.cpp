@@ -280,6 +280,7 @@ struct State {
     XrTime dashCooldownUntil{};
     bool dynamicShoulderHolstered{};
     kharvox::QuickHolsters quickHolsters{};
+    std::array<bool,2> quickHolsterPhysicalGripHeld{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
     kharvox::PhysicalGrenadeGestureState grenadeGesture{};
@@ -2142,6 +2143,7 @@ void updateGameplayActions(XrTime displayTime){
         s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;s.quickHolsters.activeStowedSide=-1;
+        s.quickHolsterPhysicalGripHeld={};
         KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;s.equipmentThrowPulseUntil=0;
         s.grenadeGesture={};
@@ -2510,9 +2512,15 @@ void updateGameplayActions(XrTime displayTime){
     const bool dynamicShoulderInside=backWeaponTrackingValid
         &&kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,dynamicShoulderBounds);
 
-    // Dynamic Quick Holsters: right/left hip slots are independent. The
-    // corresponding wheel hand assigns the active weapon to its own hip.
-    // A grip edge in that precise hip zone is the only holster interaction.
+    // Physical hip slots are independent; only Grip IN the rear hip zone
+    // stores/draws. These are NOT the native last-weapon quick-swap buttons.
+    std::array<bool,2> physicalHipGripEdges{};
+    for(int side=0;side<2;++side){
+        const bool held=readFloatAction(side==0
+            ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
+        physicalHipGripEdges[side]=held&&!s.quickHolsterPhysicalGripHeld[side];
+        s.quickHolsterPhysicalGripHeld[side]=held;
+    }
     bool quickHolsterGripConsumed=false;
     if(!s.customMods.dynamicShoulderHolster||!gameplay){
         if(s.dynamicShoulderHolstered){
@@ -2534,9 +2542,9 @@ void updateGameplayActions(XrTime displayTime){
             &&s.trackingHeadPositionValid&&s.headZeroValid){
             const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
             for(int side=0;side<2;++side){
-                const bool gripEdge=side==0
-                    ?(s.weaponHandLeft?rawSupportGripPress:rawBackWeaponGripPress)
-                    :(s.weaponHandLeft?rawBackWeaponGripPress:rawSupportGripPress);
+                const bool gripEdge=physicalHipGripEdges[side]
+                    &&!s.wheelWeaponGripSuppressedUntilRelease
+                    &&!s.wheelSupportGripSuppressedUntilRelease;
                 if(!gripEdge)continue;
                 const auto& hand=side==0?s.rightGripController:s.leftGripController;
                 if(!hand.valid||!hand.positionTracked)continue;
