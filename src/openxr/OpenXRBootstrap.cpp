@@ -2814,15 +2814,14 @@ void updateGameplayActions(XrTime displayTime){
     }
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
-    const bool physicalPunchContext=(s.physicalGlorykillEnabled||s.customMods.motionGloryKillSpeed)
+    const bool physicalPunchContext=s.physicalGlorykillEnabled
         &&gameplay&&!fullscreenMenu&&!weaponWheelActive;
     const std::array<const ControllerPose*,2> punchControllers{{&s.rightController,&s.leftController}};
     const std::array<const char*,2> punchHandNames{{"right","left"}};
     if(!physicalPunchContext){
         s.physicalPunchArmed={false,false};
     }else{
-        const float punchThreshold=s.customMods.motionGloryKillSpeed&&syncAttackActive
-            ?0.90f:s.physicalGlorykillSpeed;
+        const float punchThreshold=s.physicalGlorykillSpeed;
         const float rearmSpeed=punchThreshold*.45f;
         for(size_t hand=0;hand<punchControllers.size();++hand){
             const bool handAllowed=hand==0
@@ -2838,8 +2837,24 @@ void updateGameplayActions(XrTime displayTime){
             }
             const auto& controller=*punchControllers[hand];
             if(!controller.valid||!controller.linearVelocityValid){s.physicalPunchArmed[hand]=false;continue;}
-            const auto forward=normalizeVector(rotateVector(controller.orientation,{0,0,-1}));
-            const float forwardSpeed=dotVector(controller.linearVelocity,forward);
+            // Punches move toward the player's facing direction, not wherever
+            // the controller happens to point while reaching overhead.
+            const auto headFacing=normalizeVector(rotateVector(s.head.orientation,{0,0,-1}));
+            const XrVector3f horizontalFacing=normalizeVector(
+                XrVector3f{headFacing.x,0.f,headFacing.z});
+            const float forwardSpeed=dotVector(controller.linearVelocity,horizontalFacing);
+            const float verticalSpeed=std::abs(controller.linearVelocity.y);
+            const float lateralSpeed=std::abs(
+                controller.linearVelocity.x*horizontalFacing.z
+                -controller.linearVelocity.z*horizontalFacing.x);
+            // Require mostly forward movement. Never interpret raising hands
+            // to a guard or behind-head wheel as a melee punch.
+            if(verticalSpeed>std::max(.65f,forwardSpeed*.48f)
+                ||lateralSpeed>std::max(.65f,forwardSpeed*.65f)
+                ||s.behindHeadWheelActive){
+                s.physicalPunchArmed[hand]=false;
+                continue;
+            }
             if(forwardSpeed<=rearmSpeed)s.physicalPunchArmed[hand]=true;
             if(!s.physicalPunchArmed[hand]||forwardSpeed<punchThreshold
                 ||displayTime<s.physicalPunchCooldownUntil)continue;
@@ -2848,15 +2863,7 @@ void updateGameplayActions(XrTime displayTime){
             std::ostringstream o;
             // Chainsaw gestures exclusively own the kill timescale during a
             // chainsaw sync attack. A punch must not overwrite that owner.
-            if(s.customMods.motionGloryKillSpeed&&syncAttackActive
-                &&!chainsawSyncGesture){
-                const float normalized=std::clamp((forwardSpeed-.90f)/(4.0f-.90f),0.f,1.f);
-                const float timescale=.40f+.60f*normalized;
-                KharvoxCameraSetGloryKillTimescaleOverride(timescale);
-                o<<"[INPUT] Glory Kill second punch "<<punchHandNames[hand]
-                 <<" forwardSpeed="<<std::fixed<<std::setprecision(2)<<forwardSpeed
-                 <<"m/s -> timescale="<<timescale;
-            }else if(s.physicalGlorykillEnabled){
+            if(s.physicalGlorykillEnabled){
                 s.meleePulseUntil=std::max(s.meleePulseUntil,displayTime+200000000);
                 o<<"[INPUT] Physical Glorykill "<<punchHandNames[hand]
                  <<" punch -> native JOY8 melee/glory pulse forwardSpeed="
