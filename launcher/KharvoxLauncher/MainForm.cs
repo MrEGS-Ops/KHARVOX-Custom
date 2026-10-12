@@ -1483,6 +1483,11 @@ public sealed partial class MainForm : Form
         applyingCustomModDependencies = true;
         try
         {
+            // Fail closed: the previous native dash physics setter caused
+            // void teleportation/death. Keep this experimental control visible
+            // but unavailable until a verified safe dash replaces it.
+            customDirectionalDash.Checked = false;
+            customDirectionalDash.Enabled = false;
             // Dash consumes the A button that Behind-Head Weapon Wheel frees.
             // Keep that relationship explicit instead of allowing a checkbox
             // combination that can never work in-game.
@@ -1583,7 +1588,7 @@ public sealed partial class MainForm : Form
             customDisableHud.Enabled = !customBackOfHandHud.Checked;
             customBehindHeadWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
             customLeftWristWeaponWheel.Enabled = !customDisableWeaponWheel.Checked;
-            customDirectionalDash.Enabled = !customDisableWeaponWheel.Checked;
+            customDirectionalDash.Enabled = false; // unsafe native dash halted
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customLeftWristWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
