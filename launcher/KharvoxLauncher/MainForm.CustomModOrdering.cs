@@ -432,12 +432,15 @@ public sealed partial class MainForm
                         + "; disables " + Number(customDisableWeaponWheel);
                 else if (item.Box == customDisableWeaponWheel)
                     dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)
+                        + ", " + Number(customLeftWristWeaponWheel)
                         + ", " + Number(customDirectionalDash);
                 else if (item.Box == customDisableHud)
                     dependencies = " — Disables " + Number(customBackOfHandHud);
                 else if (item.Box == customBackOfHandHud)
                     dependencies = " — Disables " + Number(customDisableHud);
                 else if (item.Box == customBehindHeadWeaponWheel)
+                    dependencies = " — Disables " + Number(customDisableWeaponWheel);
+                else if (item.Box == customLeftWristWeaponWheel)
                     dependencies = " — Disables " + Number(customDisableWeaponWheel);
 
                 else if (item.Box == customDynamicShoulderHolster)
