@@ -428,8 +428,8 @@ public sealed partial class MainForm : Form
             (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose. Enabling this automatically disables No HUD because they use the same gameplay-HUD surfaces."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
             (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
-            (customBehindHeadWeaponWheel, "Move your right wrist behind the head to open the weapon wheel; move the wrist to change weapon, then hold right Grip to lock and pull the weapon. A closer activation zone is used."),
-            (customLeftWristWeaponWheel, "Enable an additional LEFT behind-head weapon wheel. Move the left wrist to choose; hold left Grip to lock selection and pull. Selecting this option automatically enables Left Hand mode."),
+            (customBehindHeadWeaponWheel, "Move the RIGHT wrist behind the head; aim by moving the wrist. Hold right Grip to lock the selection, then pull out to equip into the RIGHT hand. Grenades move to the LEFT hand. Movement, turning, face buttons, jump, crouch and menus do not change."),
+            (customLeftWristWeaponWheel, "Enable an additional LEFT wrist wheel. Move the left wrist to choose; hold left Grip to lock the selection, then pull out to equip into the LEFT hand. Grenades move to the RIGHT hand. Does not change the launcher's Left Hand mode, movement, turning, face buttons, jump, crouch or menus."),
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
@@ -1513,10 +1513,7 @@ public sealed partial class MainForm : Form
             // feature and therefore also releases Dash.
             if (changed == customLeftWristWeaponWheel
                 && customLeftWristWeaponWheel.Checked)
-            {
-                leftHanded.Checked = true;
                 customDisableWeaponWheel.Checked = false;
-            }
 
             if (changed == customDisableWeaponWheel && customDisableWeaponWheel.Checked)
             {
@@ -1577,8 +1574,6 @@ public sealed partial class MainForm : Form
 
             if (customDynamicShoulderHolster.Checked)
                 showHands.Checked = true;
-            if (customLeftWristWeaponWheel.Checked)
-                leftHanded.Checked = true;
 
             if (customDisableHud.Checked)
                 customBackOfHandHud.Checked = false;
