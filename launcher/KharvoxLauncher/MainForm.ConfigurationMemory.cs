@@ -656,15 +656,15 @@ public sealed partial class MainForm
             main.RefreshGroupedModRows();
 
             var wheelRemapOption = checks.SingleOrDefault(option =>
-                option.Text.Contains("Weapon Wheel Remap"));
+                option.Text.Contains("Weapon Wheel Button Remap"));
             var wheelRemapTip = wheelRemapOption is null ? string.Empty
                 : main.statusToolTip.GetToolTip(wheelRemapOption);
             if (!wheelRemapTip.Contains("Tap A to quick-switch")
                 || !wheelRemapTip.Contains("Hold A to open the weapon wheel")
                 || !wheelRemapTip.Contains("left stick to choose")
                 || !wheelRemapTip.Contains("right thumbstick DOWN to toggle crouch")
-                || !wheelRemapTip.Contains("Behind-Head Weapon Wheel")
-                || !wheelRemapTip.Contains("Directional Dash")
+                || !wheelRemapTip.Contains("Behind-Head Wrist Weapon Wheel")
+                || !wheelRemapTip.Contains("Directional Dash is currently disabled")
                 || !wheelRemapTip.Contains("restore the original KHARVOX controls"))
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
