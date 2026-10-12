@@ -1523,7 +1523,9 @@ public sealed partial class MainForm : Form
                 && !customDirectionalDash.Checked;
             // Original hand HUD is not controlled by these checkboxes.
             // Full-speed Glory Kills are a binary option; no unverified slider.
-            gloryKillSlowmo.Value = customFastGloryKills.Checked ? 0 : 10;
+            // Keep native sync-attack timing as the baseline. Fast GK and
+            // Fast Chainsaw are applied independently by their runtime flags.
+            gloryKillSlowmo.Value = 10;
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
