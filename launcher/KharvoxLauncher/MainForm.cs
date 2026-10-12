@@ -66,18 +66,18 @@ public sealed partial class MainForm : Form
     private readonly CheckBox enableBhaptics = MakeCheck("Enable bHaptics", false);
     private readonly CheckBox usePsvr2Toolkit = MakeCheck("Use PSVR2 Toolkit", false);
     private readonly CheckBox useFsrUpscaling = MakeCheck("Use FSR Upscaling", false);
-    private readonly CheckBox weaponWheelRemap = MakeCheck("Weapon Wheel Remap", true);
+    private readonly CheckBox weaponWheelRemap = MakeCheck("Weapon Wheel Button Remap", true);
     private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
     private readonly CheckBox customBackOfHandHud = MakeCheck("Back-of-Hand HUD", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
-    private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Weapon Wheel", false);
+    private readonly CheckBox customBehindHeadWeaponWheel = MakeCheck("Behind-Head Wrist Weapon Wheel", false);
     private readonly CheckBox customBehindHeadWheelHandSelection = MakeCheck("Behind-Head Wheel: Hand Selection", true);
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
-    private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Shoulder Holster", false);
+    private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customMotionGloryKillSpeed = MakeCheck("Punch-Driven Glory Kill Speed", false);
     private readonly CheckBox customPhysicalChainsawGestures = MakeCheck("Physical Chainsaw Gestures", false);
@@ -426,12 +426,12 @@ public sealed partial class MainForm : Form
             (customGaussChargeSlowMovement, "Allow deliberately slow movement while the Gauss Cannon is charging instead of a full movement lock."),
             (customBackOfHandHud, "Rotate/reposition the hand HUD onto the back of the hand in a watch-like viewing pose. Enabling this automatically disables No HUD because they use the same gameplay-HUD surfaces."),
             (customHandFocusedRs, "Use the controller/hand as the focus source; keep RS as the actual activation button."),
-            (customDirectionalDash, "Add a separate horizontal dash without changing normal double-jump. Enabling Dash automatically enables Weapon Wheel Remap + Behind-Head Weapon Wheel and disables No Weapon Wheel, because those options free A for Dash."),
-            (customBehindHeadWeaponWheel, "Move the weapon hand behind the head to hold/open the native weapon wheel; bring the hand back out to release/confirm selection."),
-            (customBehindHeadWheelHandSelection, "When enabled, weapon-hand movement can steer the radial wheel as well as the left stick. Disable this if hand movement interferes with the behind-head activation zone; the left stick will still select and hand exit still confirms."),
-            (customPhysicalCrouch, "Use headset height crossing a calibrated threshold to toggle the normal crouch state."),
+            (customDirectionalDash, "UNSAFE NATIVE PHYSICS DASH DISABLED in this build following reports of teleportation into the void and death. The experimental button will not modify DOOM physics until a safe implementation is verified."),
+            (customBehindHeadWeaponWheel, "Move your weapon wrist behind your head to open the wheel. Move the wrist to change weapon, hold weapon-hand Grip to lock the selection, then pull your hand out to equip. The opening zone is closer to your head."),
+            
+            (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
-            (customDynamicShoulderHolster, "Put the currently equipped weapon into the shoulder slot at runtime, hide it for true Fist + Fist empty hands, then draw that exact weapon back out. Enabling this automatically enables KHARVOX Hands."),
+            (customDynamicShoulderHolster, "Experimental: two hip-only quick-holster zones. Store left-wheel weapons on the left hip and right-wheel weapons on the right hip; draw only by gripping inside the appropriate hip zone. Automatically enables KHARVOX Hands."),
             (customPhysicalGrenadeThrow, "Hold equipment and make a deliberate hand swing. Its deceleration triggers one native grenade throw. Release to rearm; native DOOM controls trajectory."),
             (customMotionGloryKillSpeed, "After a physical Glory Kill begins, a second punch changes the active kill speed based on punch velocity."),
             (customPhysicalChainsawGestures, "Experimental: hand movement drives chainsaw kill speed; stopping motion slows playback to 12% rather than pausing."),
@@ -1592,7 +1592,7 @@ public sealed partial class MainForm : Form
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
         BehindHeadWeaponWheel = customBehindHeadWeaponWheel.Checked,
-        BehindHeadWheelHandSelection = customBehindHeadWheelHandSelection.Checked,
+        BehindHeadWheelHandSelection = customBehindHeadWeaponWheel.Checked,
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
@@ -1635,7 +1635,7 @@ public sealed partial class MainForm : Form
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;
             customBehindHeadWeaponWheel.Checked = mods.BehindHeadWeaponWheel;
-            customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWheelHandSelection;
+            customBehindHeadWheelHandSelection.Checked = mods.BehindHeadWeaponWheel;
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
