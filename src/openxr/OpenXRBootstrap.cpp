@@ -3303,7 +3303,11 @@ void updateGameplayActions(XrTime displayTime){
     // All three are independent mods. Boxing overrides fast kill timing only
     // while head-focus boxing mode is active. Otherwise checkbox-controlled
     // full-speed kills never alter locomotion or weapon controls.
-    const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus;
+    // Native weapon-wheel time dilation and blur always take precedence.
+    // Boxing reuses DOOM's verified timescale path but never replaces the
+    // original wheel presentation or takes its native selection input.
+    const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus
+        &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
     float syncTimescale=0.f; // zero -> native DOOM sync-attack timing
     if(gameplay&&syncAttackActive&&!boxingNow){
