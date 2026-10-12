@@ -204,6 +204,9 @@ public sealed partial class MainForm
                     case TextBox field: field.Text = (string)entry.Value; break;
                 }
             }
+            // WinForms restoration bypasses user click dependency handlers.
+            // Reassert mod-required launcher locks before saving the restored state.
+            ApplyCustomModDependencies(null);
             DoomUserMods.SaveSelections(new HashSet<string>(snapshot.DoomMods,
                 StringComparer.OrdinalIgnoreCase));
             SaveCustomModSettings();
@@ -363,6 +366,7 @@ public sealed partial class MainForm
                     "DOOMModLoader instruction does not match its button caption.");
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
+            TestMainLauncherModLocks(main);
             if (window.ClientSize.Width < 850 || window.ClientSize.Width > 900)
                 throw new InvalidDataException("Custom Mods initial width is incorrect.");
             // Larger width is fixed while preserving docked move/height behavior.
@@ -968,6 +972,89 @@ public sealed partial class MainForm
         finally
         {
             try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+    }
+
+    // Exercise cross-window dependencies without a DOOM runtime or modifying
+    // actual user settings. Hand calibration, hip holsters and A/B remapping
+    // are the only features that currently own these launcher controls.
+    private static void TestMainLauncherModLocks(MainForm main)
+    {
+        var tracked = new[]
+        {
+            main.showHands, main.calibrateHands,
+            main.customDynamicShoulderHolster, main.weaponWheelRemap,
+            main.swapJumpCrouch, main.customLeftWristWeaponWheel
+        };
+        var original = tracked.Select(box => box.Checked).ToArray();
+        var previousRestore = main.restoringConfiguration;
+        var originalLeftMode = main.leftHanded.Checked;
+        main.restoringConfiguration = true;
+        try
+        {
+            // Force a clean baseline without dispatching custom-mod saves.
+            main.applyingCustomModDependencies = true;
+            main.calibrateHands.Checked = false;
+            main.customDynamicShoulderHolster.Checked = false;
+            main.customLeftWristWeaponWheel.Checked = false;
+            main.weaponWheelRemap.Checked = false;
+            main.showHands.Checked = false;
+            main.swapJumpCrouch.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
+                || main.showHands.Checked || !main.swapJumpCrouch.Checked)
+                throw new InvalidDataException(
+                    "Unused launcher options must be editable and retain values.");
+
+            main.applyingCustomModDependencies = true;
+            main.customDynamicShoulderHolster.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.showHands.Enabled || !main.showHands.Checked
+                || !main.showHands.AccessibleDescription.Contains("Dynamic Quick Holsters"))
+                throw new InvalidDataException(
+                    "Dynamic Quick Holsters must force and lock Enable Hands.");
+            main.applyingCustomModDependencies = true;
+            main.customDynamicShoulderHolster.Checked = false;
+            main.calibrateHands.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.showHands.Enabled || !main.showHands.Checked)
+                throw new InvalidDataException(
+                    "Hand calibration must independently lock Enable Hands.");
+            main.applyingCustomModDependencies = true;
+            main.calibrateHands.Checked = false;
+            main.weaponWheelRemap.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.showHands.Enabled || main.swapJumpCrouch.Enabled
+                || !main.swapJumpCrouch.Checked
+                || !main.swapJumpCrouch.AccessibleDescription.Contains("preserved"))
+                throw new InvalidDataException(
+                    "Weapon Wheel Button Remap must grey out ineffective Jump/Crouch swap without erasing it.");
+            main.applyingCustomModDependencies = true;
+            main.weaponWheelRemap.Checked = false;
+            main.customLeftWristWeaponWheel.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.swapJumpCrouch.Enabled || !main.swapJumpCrouch.Checked
+                || !main.leftHanded.Enabled || main.leftHanded.Checked != originalLeftMode)
+                throw new InvalidDataException(
+                    "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
+        }
+        finally
+        {
+            main.applyingCustomModDependencies = true;
+            // Set calibration first: turning off Hands may otherwise clear it.
+            main.calibrateHands.Checked = original[1];
+            for (var index = 0; index < tracked.Length; index++)
+            {
+                if (index != 1) tracked[index].Checked = original[index];
+            }
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            main.restoringConfiguration = previousRestore;
         }
     }
 
