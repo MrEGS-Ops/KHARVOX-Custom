@@ -216,6 +216,19 @@ internal static class NexusFolderCompanion
                 || !File.Exists(Path.Combine(user, "sample.zip")))
                 return false;
             result = ModDropWindow.CopyZipFiles(user, new[] { zipped });
+            var compact = CalculateDock(new Rectangle(1405, 70, 515, 900),
+                new Rectangle(515, 70, 890, 900),
+                new Rectangle(0, 0, 1920, 1080), browserOpen: true);
+            var roomy = CalculateDock(new Rectangle(2200, 70, 515, 900),
+                new Rectangle(1310, 70, 890, 900),
+                new Rectangle(0, 0, 3200, 1080), browserOpen: true);
+            if (compact.Folder.IntersectsWith(compact.Browser)
+                || compact.Folder.Right > 515
+                || compact.Browser.Right > 515
+                || compact.Folder.Bottom != compact.Browser.Top
+                || roomy.Browser.Right != roomy.Folder.Left
+                || roomy.Browser.IntersectsWith(roomy.Folder))
+                return false;
             return result.Copied == 1
                 && ModDropWindow.IsDirectChild(user, Path.Combine(user, "sample (2).zip"))
                 && !ModDropWindow.IsDirectChild(user, zipped)
