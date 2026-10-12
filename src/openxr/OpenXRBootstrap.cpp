@@ -223,6 +223,9 @@ struct State {
     PFN_xrCreateActionSet createActionSet{}; PFN_xrDestroyActionSet destroyActionSet{}; PFN_xrCreateAction createAction{}; PFN_xrDestroyAction destroyAction{}; PFN_xrSuggestInteractionProfileBindings suggestBindings{}; PFN_xrAttachSessionActionSets attachActionSets{}; PFN_xrSyncActions syncActionsFn{}; PFN_xrGetCurrentInteractionProfile getCurrentInteractionProfile{}; PFN_xrCreateActionSpace createActionSpace{}; PFN_xrLocateSpace locateSpace{}; PFN_xrGetActionStatePose getActionStatePose{}; PFN_xrGetActionStateVector2f getActionStateVector2f{}; PFN_xrGetActionStateFloat getActionStateFloat{}; PFN_xrGetActionStateBoolean getActionStateBoolean{}; PFN_xrApplyHapticFeedback applyHapticFeedback{}; PFN_xrStopHapticFeedback stopHapticFeedback{};
     XrActionSet gameplayActionSet{XR_NULL_HANDLE}; XrAction rightAimPose{XR_NULL_HANDLE}; XrAction leftAimPose{XR_NULL_HANDLE}; XrAction rightGripPose{XR_NULL_HANDLE}; XrAction leftGripPose{XR_NULL_HANDLE};
     XrAction doomMove{XR_NULL_HANDLE}; XrAction doomTurn{XR_NULL_HANDLE}; XrAction doomFire{XR_NULL_HANDLE};
+    // Physical combat inputs can change owner without touching movement or menus.
+    XrAction rightWeaponTrigger{XR_NULL_HANDLE}; XrAction leftWeaponTrigger{XR_NULL_HANDLE};
+    XrAction rightWeaponGrip{XR_NULL_HANDLE}; XrAction leftWeaponGrip{XR_NULL_HANDLE};
     XrAction doomJump{XR_NULL_HANDLE}; XrAction doomCrouch{XR_NULL_HANDLE};
     XrAction doomMelee{XR_NULL_HANDLE}; XrAction doomEquipment{XR_NULL_HANDLE};
     kharvox::EquipmentGripPolicy equipmentGrip;
@@ -235,6 +238,7 @@ struct State {
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
     bool leftHanded{},leftHandSwapSticks{},swapJumpCrouch{};
+    bool weaponHandLeft{}; // Live weapon/grenade owner, independent of fixed controller layout.
     bool actionsReady{}; bool hapticActionsReady{}; bool hapticBindingsSuggested{}; bool hapticFrequencyUnspecified{}; bool firstControllerHapticAppliedLogged{}; bool firePressed{},primaryFireDown{},jumpPressed{},crouchPressed{};
     unsigned long long psvr2FireStartedTick{}; KharvoxWeaponKind psvr2FireWeapon{KharvoxWeaponKind::Unknown};
     std::array<kharvox::XInputHapticOutputState,2> hapticOutputStates{};
@@ -852,7 +856,7 @@ void updatePsvr2TriggerPolicy(){
         s.primaryFireDown,
         fireHeldMilliseconds,
         ammoState,
-        s.leftHanded,
+        s.weaponHandLeft,
         psvr2InactiveReason()};
     KharvoxPsvr2SubmitTrigger(kharvox::psvr2::selectTriggerCommand(input));
 }
@@ -916,7 +920,7 @@ void updateXInputHaptics(){
     // channels themselves. One-hand fire targets the configured weapon hand;
     // an acquired two-hand grip deliberately keeps the mirrored pair.
     const auto nativeDesired=kharvox::routeXInputHapticSignal(
-        fanout.controllerSignal,weaponRumble,s.leftHanded,s.twoHandLatched);
+        fanout.controllerSignal,weaponRumble,s.weaponHandLeft,s.twoHandLatched);
 
     const std::array<XrAction,2> actions{s.leftHaptic,s.rightHaptic};
     for(size_t hand=0;hand<actions.size();++hand){
@@ -1781,13 +1785,13 @@ XrQuaternionf solveTwoHandOrientation(const WeaponPose& primary,const WeaponPose
     const auto handFrame=quaternionFromForwardUp(handDirection,primaryUp);
     return normalizeQuaternion(multiply(handFrame,conjugate(localSupportFrame)));
 }
-const ControllerPose& weaponController(){return s.leftHanded?s.leftController:s.rightController;}
-const ControllerPose& supportGripController(){return s.leftHanded?s.rightGripController:s.leftGripController;}
-const char* weaponHandName(){return s.leftHanded?"left":"right";}
-const char* supportHandName(){return s.leftHanded?"right":"left";}
-const char* weaponTriggerName(){return s.leftHanded?"LEFT TRIGGER":"RIGHT TRIGGER";}
-const char* weaponGripName(){return s.leftHanded?"LEFT GRIP":"RIGHT GRIP";}
-const char* supportGripName(){return s.leftHanded?"RIGHT GRIP":"LEFT GRIP";}
+const ControllerPose& weaponController(){return s.weaponHandLeft?s.leftController:s.rightController;}
+const ControllerPose& supportGripController(){return s.weaponHandLeft?s.rightGripController:s.leftGripController;}
+const char* weaponHandName(){return s.weaponHandLeft?"left":"right";}
+const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
+const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
+const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
+const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
 void refreshGripInteractionProfiles(){
     if(!s.interactionProfilesDirty||!s.session)return;
     if(!s.getCurrentInteractionProfile||s.leftHandUserPath==XR_NULL_PATH
@@ -1813,8 +1817,8 @@ void refreshGripInteractionProfiles(){
     s.interactionProfileQueryFailureLogged=false;
     const bool leftIndex=left.interactionProfile==s.valveIndexProfilePath;
     const bool rightIndex=right.interactionProfile==s.valveIndexProfilePath;
-    const bool primaryIndex=s.leftHanded?leftIndex:rightIndex;
-    const bool supportIndex=s.leftHanded?rightIndex:leftIndex;
+    const bool primaryIndex=s.weaponHandLeft?leftIndex:rightIndex;
+    const bool supportIndex=s.weaponHandLeft?rightIndex:leftIndex;
     if(!s.interactionProfilesKnown
         ||primaryIndex!=s.primaryGripUsesValveIndex
         ||supportIndex!=s.supportGripUsesValveIndex){
@@ -1837,7 +1841,7 @@ TwoHandCalibration activeHandCalibration(const TwoHandCalibration& saved){
     // Profiles are stored in the established right-primary/left-support
     // convention. Mirroring only the controller-local lateral coordinate
     // makes the same profile usable with a left-primary/right-support hold.
-    if(s.leftHanded)active.supportPosition.x=-active.supportPosition.x;
+    if(s.weaponHandLeft)active.supportPosition.x=-active.supportPosition.x;
     return active;
 }
 bool captureTwoHandCalibration(bool triggerDown){
@@ -1862,7 +1866,7 @@ bool captureTwoHandCalibration(bool triggerDown){
             calibration->supportPosition=rotateVector(conjugate(primary.orientation),subtractVector(support.position,primary.position));
             // Normalize a left-handed capture back into the canonical saved
             // convention so changing handedness never invalidates profiles.
-            if(s.leftHanded)calibration->supportPosition.x=-calibration->supportPosition.x;
+            if(s.weaponHandLeft)calibration->supportPosition.x=-calibration->supportPosition.x;
             calibration->aimMode=s.twoHandCalibrationAimMode;
             calibration->valid=true;
             const bool saved=saveTwoHandCalibrations();
@@ -2152,8 +2156,6 @@ void updateGameplayActions(XrTime displayTime){
         log("[BODY-YAW] post-cinematic native yaw guard released reason=manual-turn absorbed="
             +std::to_string(s.postCinematicYawGuard.absorbedDegrees)+"deg");
     }
-    const float fireValue=readFloatAction(s.doomFire);
-    const bool triggerDown=fireValue>.55f;
 
     // Retained custom controller layout. Behind-Head Weapon Wheel can
     // replace the physical weapon-select control entirely, freeing the old
@@ -2188,7 +2190,7 @@ void updateGameplayActions(XrTime displayTime){
         bool inside=selectedAvailable&&insideZone(selectedSide,true);
         if(!selectedAvailable){
             selectedSide=-1;
-            const int first=s.leftHanded?1:0;
+            const int first=s.weaponHandLeft?1:0;
             for(int attempt=0;attempt<2;++attempt){
                 const int side=attempt==0?first:1-first;
                 if((side==0?rightWheelEnabled:leftWheelEnabled)
@@ -2196,9 +2198,8 @@ void updateGameplayActions(XrTime displayTime){
             }
         }
         const bool wheelGripHeld=selectedSide==0
-            ?readFloatAction(s.leftHanded?s.doomSupportGrip:s.doomSecondaryFireGrip)>.55f
-            :selectedSide==1
-                &&readFloatAction(s.leftHanded?s.doomSecondaryFireGrip:s.doomSupportGrip)>.55f;
+            ?readFloatAction(s.rightWeaponGrip)>.55f
+            :selectedSide==1&&readFloatAction(s.leftWeaponGrip)>.55f;
         if(wheelGripHeld&&(inside||s.behindHeadWheelActive))s.wheelGripLatched=true;
         if(!wheelGripHeld)s.wheelGripLatched=false;
         // The native wheel must not release/confirm merely because a wrist
@@ -2214,13 +2215,31 @@ void updateGameplayActions(XrTime displayTime){
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
             &&s.wheelGripLatched&&selectedSide>=0){
             s.quickHolsters.lastSelectedWheelSide=selectedSide;
+            // Confirmed wrist pull changes combat hands; never locomotion or UI.
+            const bool selectedWeaponLeft=selectedSide==1;
+            if(s.weaponHandLeft!=selectedWeaponLeft){
+                s.weaponHandLeft=selectedWeaponLeft;
+                s.weaponCalibrated=false;
+                s.weaponPoseSubmitted=false;
+                s.twoHandLatched=false;
+                s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+                s.equipmentGrip.cancel();
+                s.secondaryFireGripPressed=false;
+                s.supportGripPressed=false;
+                s.interactionProfilesDirty=true;
+                s.interactionProfilesKnown=false;
+                s.bfgGripHoldStart=0;
+                s.bfgGripTriggered=false;
+                s.grenadeGesture={};
+                s.equipmentThrowPulseUntil=0;
+                log(std::string("[WEAPON-HAND] confirmed ")
+                    +(selectedWeaponLeft?"LEFT weapon / RIGHT grenade":"RIGHT weapon / LEFT grenade")
+                    +"; movement, jump, crouch, menus and sticks unchanged");
+            }
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
             // two-hand acquisition, equipment use or the held BFG shortcut.
-            if(selectedSide==(s.leftHanded?1:0))
-                s.wheelWeaponGripSuppressedUntilRelease=true;
-            else
-                s.wheelSupportGripSuppressedUntilRelease=true;
+            s.wheelWeaponGripSuppressedUntilRelease=true;
             log(std::string("[QUICK-HOLSTERS] wheel selection assigned to ")
                 +(selectedSide==0?"right":"left")+" hip");
         }
@@ -2232,6 +2251,9 @@ void updateGameplayActions(XrTime displayTime){
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
     }
 
+    // Sample fire after wheel confirmation; the selected physical trigger owns it.
+    const bool triggerDown=readFloatAction(
+        s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
     const bool legacyWeaponSelectDown=s.weaponWheelRemapEnabled
         ?physicalAButtonDown:crouchStickDown;
     const bool weaponSelectDown=gameplay
@@ -2287,12 +2309,14 @@ void updateGameplayActions(XrTime displayTime){
     }
 
     const bool secondaryFireGripDown=kharvox::updateGripPressed(
-        readFloatAction(s.doomSecondaryFireGrip),s.secondaryFireGripPressed,
+        readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip),
+        s.secondaryFireGripPressed,
         s.primaryGripUsesValveIndex
             ?kharvox::GripControllerProfile::ValveIndex
             :kharvox::GripControllerProfile::Default);
     const bool supportGripDown=kharvox::updateGripPressed(
-        readFloatAction(s.doomSupportGrip),s.supportGripPressed,
+        readFloatAction(s.weaponHandLeft?s.rightWeaponGrip:s.leftWeaponGrip),
+        s.supportGripPressed,
         s.supportGripUsesValveIndex
             ?kharvox::GripControllerProfile::ValveIndex
             :kharvox::GripControllerProfile::Default);
@@ -2391,8 +2415,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&weaponSelectDown&&s.weaponWheelOpened;
     const bool rawBackWeaponGripPress=secondaryFireGripDown
-        &&!s.secondaryFireGripPressed;
-    const auto& shoulderWeaponGripController=s.leftHanded
+        &&!s.secondaryFireGripPressed&&!s.wheelWeaponGripSuppressedUntilRelease;
+    const auto& shoulderWeaponGripController=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
     const bool backWeaponTrackingValid=shoulderWeaponGripController.valid
         &&s.trackingHeadPositionValid&&s.headZeroValid&&s.headZeroPositionValid;
@@ -2401,7 +2425,7 @@ void updateGameplayActions(XrTime displayTime){
         const auto grip=controllerRelativeToBodyTrackingOrigin(shoulderWeaponGripController).position;
         const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
         backWeaponGripRelativeToHead={
-            kharvox::backWeaponNormalizeShoulderSide(grip.x-head.x,s.leftHanded),
+            kharvox::backWeaponNormalizeShoulderSide(grip.x-head.x,s.weaponHandLeft),
             grip.y-head.y,grip.z-head.z};
     }
     const bool previousBackZone=s.backWeaponState.zoneActive;
@@ -2451,8 +2475,8 @@ void updateGameplayActions(XrTime displayTime){
             const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
             for(int side=0;side<2;++side){
                 const bool gripEdge=side==0
-                    ?(s.leftHanded?rawSupportGripPress:rawBackWeaponGripPress)
-                    :(s.leftHanded?rawBackWeaponGripPress:rawSupportGripPress);
+                    ?(s.weaponHandLeft?rawSupportGripPress:rawBackWeaponGripPress)
+                    :(s.weaponHandLeft?rawBackWeaponGripPress:rawSupportGripPress);
                 if(!gripEdge)continue;
                 const auto& hand=side==0?s.rightGripController:s.leftGripController;
                 if(!hand.valid||!hand.positionTracked)continue;
@@ -2538,7 +2562,7 @@ void updateGameplayActions(XrTime displayTime){
         log(diagnostic.str());
     }
     if(previousBackZone!=backWeaponOutput.zoneActive)
-        log(std::string("[BACK-WEAPON] ")+(s.leftHanded?"left":"right")+"-back zone "
+        log(std::string("[BACK-WEAPON] ")+(s.weaponHandLeft?"left":"right")+"-back zone "
             +(backWeaponOutput.zoneActive?"ENTER":"EXIT"));
     if(backWeaponOutput.favoriteSkippedUnusable)
         log(std::string("[BACK-WEAPON] Shoulder Weapon skipped before selection: ")
@@ -2743,9 +2767,8 @@ void updateGameplayActions(XrTime displayTime){
         if(weaponWheelActive&&!wheelOutput.stickBypassActive)
             wheelSelectionStick={wheelOutput.stickX,wheelOutput.stickY};
         const bool gestureGripDown=s.behindHeadWheelSide==0
-            ?(s.leftHanded?supportGripDown:secondaryFireGripDown)
-            :s.behindHeadWheelSide==1
-                &&(s.leftHanded?secondaryFireGripDown:supportGripDown);
+            ?readFloatAction(s.rightWeaponGrip)>.55f
+            :s.behindHeadWheelSide==1&&readFloatAction(s.leftWeaponGrip)>.55f;
         if(weaponWheelActive&&s.behindHeadWheelActive&&gestureGripDown){
             if(!s.wheelSelectionFrozen){
                 s.frozenWheelStick=wheelSelectionStick;
@@ -2922,7 +2945,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeUseDown=gameplay&&displayTime<s.usePulseUntil;
     const bool nativeMeleeDown=gameplay&&displayTime>=s.usePulseUntil
         &&(meleeDown||displayTime<s.meleePulseUntil);
-    const bool equipmentDown=readFloatAction(s.doomEquipment)>.55f;
+    const bool equipmentDown=readFloatAction(
+        s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown;
     if(s.customMods.physicalGrenadeThrow){
         const auto& throwController=supportGripController();
@@ -3027,6 +3051,7 @@ void updateGameplayActions(XrTime displayTime){
 }
 bool createGameplayActions(){
     s.leftHanded=environmentEnabled("KHARVOX_LEFT_HANDED");
+    s.weaponHandLeft=s.leftHanded;
     s.swapJumpCrouch=environmentEnabled("KHARVOX_SWAP_JUMP_CROUCH");
     s.favoriteBackWeapon=loadBackWeaponKind();
     s.customMods=kharvox::loadCustomModFlags();
@@ -3067,6 +3092,10 @@ bool createGameplayActions(){
         ||!createAction("doom_move","Doom Move",XR_ACTION_TYPE_VECTOR2F_INPUT,s.doomMove)
         ||!createAction("doom_turn","Doom Turn",XR_ACTION_TYPE_VECTOR2F_INPUT,s.doomTurn)
         ||!createAction("doom_fire","Doom Fire",XR_ACTION_TYPE_FLOAT_INPUT,s.doomFire)
+        ||!createAction("right_weapon_trigger","Right Weapon Trigger",XR_ACTION_TYPE_FLOAT_INPUT,s.rightWeaponTrigger)
+        ||!createAction("left_weapon_trigger","Left Weapon Trigger",XR_ACTION_TYPE_FLOAT_INPUT,s.leftWeaponTrigger)
+        ||!createAction("right_weapon_grip","Right Weapon Grip",XR_ACTION_TYPE_FLOAT_INPUT,s.rightWeaponGrip)
+        ||!createAction("left_weapon_grip","Left Weapon Grip",XR_ACTION_TYPE_FLOAT_INPUT,s.leftWeaponGrip)
         ||!createAction("doom_jump","Doom Jump",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomJump)
         ||!createAction("doom_crouch","Doom Crouch",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomCrouch)
         ||!createAction("doom_melee","Doom Melee",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomMelee)
@@ -3105,6 +3134,7 @@ bool createGameplayActions(){
         XrPath profile{},rightPosePath{},leftPosePath{},rightGripPosePath{},leftGripPosePath{},movePath{},turnPath{},firePath{};
         XrPath jumpPath{},crouchPath{},meleePath{},equipmentPath{};
         XrPath secondaryFireGripPath{},supportGripPath{},missionInfoPath{},switchWeaponModPath{},pausePath{};
+        XrPath rightTriggerPath{},leftTriggerPath{},rightWeaponGripPath{},leftWeaponGripPath{};
         XrPath leftHapticPath{},rightHapticPath{};
         auto resolvePath=[&](const std::string&path,XrPath&output){
             const auto pathResult=stringToPath(s.instance,path.c_str(),&output);
@@ -3137,6 +3167,10 @@ bool createGameplayActions(){
             ||!resolvePath(inputPath(moveHand,"thumbstick"),movePath)
             ||!resolvePath(inputPath(turnHand,"thumbstick"),turnPath)
             ||!resolvePath(inputPath(primaryHand,"trigger/value"),firePath)
+            ||!resolvePath(inputPath("right","trigger/value"),rightTriggerPath)
+            ||!resolvePath(inputPath("left","trigger/value"),leftTriggerPath)
+            ||!resolvePath(inputPath("right",kharvox::gripInputComponent(gripProfile)),rightWeaponGripPath)
+            ||!resolvePath(inputPath("left",kharvox::gripInputComponent(gripProfile)),leftWeaponGripPath)
             ||!resolvePath(faceButtonPath(rightButtonHand,true),jumpPath)
             ||!resolvePath(faceButtonPath(rightButtonHand,false),crouchPath)
             ||!resolvePath(inputPath(primaryHand,"thumbstick/click"),meleePath)
@@ -3149,6 +3183,8 @@ bool createGameplayActions(){
         std::vector<XrActionSuggestedBinding>bindings{
             {s.rightAimPose,rightPosePath},{s.leftAimPose,leftPosePath},{s.rightGripPose,rightGripPosePath},{s.leftGripPose,leftGripPosePath},
             {s.doomMove,movePath},{s.doomTurn,turnPath},{s.doomFire,firePath},
+            {s.rightWeaponTrigger,rightTriggerPath},{s.leftWeaponTrigger,leftTriggerPath},
+            {s.rightWeaponGrip,rightWeaponGripPath},{s.leftWeaponGrip,leftWeaponGripPath},
             {s.doomJump,jumpPath},{s.doomCrouch,crouchPath},{s.doomMelee,meleePath},
             {s.doomEquipment,equipmentPath},
             {s.doomSecondaryFireGrip,secondaryFireGripPath},{s.doomSupportGrip,supportGripPath},{s.doomPause,pausePath},
@@ -3450,7 +3486,7 @@ void pollEvents(){
                     ?kharvox::psvr2::TriggerOffReason::SessionEnd
                     :kharvox::psvr2::TriggerOffReason::Unfocused;
                 KharvoxPsvr2SubmitTrigger(
-                    kharvox::psvr2::offCommand(s.leftHanded,reason));
+                    kharvox::psvr2::offCommand(s.weaponHandLeft,reason));
             }
             if(c.state==XR_SESSION_STATE_READY&&!s.running){
                 XrSessionBeginInfo b{XR_TYPE_SESSION_BEGIN_INFO};
@@ -4675,7 +4711,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         next.source={KharvoxCameraDiagnosticPoseId(),KharvoxCameraLevelTransitionGeneration(),
             kharvox::native::sceneDomain(s.quadMode,next.cinematic,next.scripted,next.gameplay)};
         next.weaponKind=static_cast<uint32_t>(KharvoxWeaponCurrentKind());
-        next.leftHanded=s.leftHanded;next.twoHanded=s.twoHandLatched;
+        next.leftHanded=s.weaponHandLeft;next.twoHanded=s.twoHandLatched;
         next.weaponControlActive=KharvoxCameraPlayerWeaponControlActive();
         next.viewSpace=next.cinematic&&!s.immersiveCinematicFreelookActive;
         next.controllersValid={s.leftGripController.valid,s.rightGripController.valid};
@@ -5143,7 +5179,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // assists can still report both gameplay and world-camera active.
     const auto handAssets=s.handRenderer.availability();
     auto handVisibility=kharvox::hands::selectHandVisibility({
-        nativeFrameValid?nativeFrame.pose.leftHanded:s.leftHanded,
+        nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft,
         nativeFrameValid?nativeFrame.pose.twoHanded:s.twoHandLatched,false,handAssets,
         s.showHands,handGameplayActive});
     if(s.showHands&&handGameplayActive&&KharvoxWeaponHolstered()){
@@ -5175,7 +5211,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ?handPose(aerSourceQualified?aerCapturedInput.right:sourceRightGripController):currentRightHandPose;
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
-        nativeFrameValid?nativeFrame.pose.leftHanded:s.leftHanded};
+        nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft};
     // AER completes a stereo pair over two native frames. Hold the same
     // controller sample for both eyes so scene integration cannot reintroduce
     // near-field stereo shimmer/double vision.
