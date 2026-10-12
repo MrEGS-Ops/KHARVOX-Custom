@@ -2144,6 +2144,7 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
+        KharvoxCameraResetCombatTimeDilation();
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
         s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
