@@ -1453,8 +1453,7 @@ void configureMotionWeaponWheel(){
         enabledOrDefault("KHARVOX_WEAPON_WHEEL_REMAP",true);
     s.motionWheelEnabled=
         enabledOrDefault("KHARVOX_MOTION_WEAPON_WHEEL",true)
-        &&(s.weaponWheelRemapEnabled||s.customMods.behindHeadWeaponWheel
-            ||s.customMods.leftWristWeaponWheel);
+        &&(s.weaponWheelRemapEnabled||s.customMods.behindHeadWeaponWheel);
     log(std::string("[INPUT] Weapon Wheel Remap ")
         +(s.weaponWheelRemapEnabled
             ?"ENABLED; A tap/hold uses KHARVOX quick-switch/wheel timing"
@@ -2205,7 +2204,7 @@ void updateGameplayActions(XrTime displayTime){
     const bool crouchStickDown=turnActive&&rightStickY<-.75f;
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
-    const bool leftWheelEnabled=s.customMods.leftWristWeaponWheel;
+    const bool leftWheelEnabled=s.customMods.behindHeadWeaponWheel; // one mod opens BOTH sides
     const bool anyGestureWheelEnabled=(rightWheelEnabled||leftWheelEnabled)
         &&!s.customMods.disableWeaponWheel;
     bool behindHeadWheelRequested=false;
@@ -2247,7 +2246,7 @@ void updateGameplayActions(XrTime displayTime){
         // cancels and restores the weapon selected before opening.
         behindHeadWheelRequested=selectedSide>=0&&inside;
         if(behindHeadWheelRequested&&!s.behindHeadWheelActive){
-            s.motionWheelState={}; // fresh anchor on every entry (drift reset)
+            s.motionWheelState={}; // fresh anchor on each opening (drift reset)
             s.wheelClicks={};
             s.wheelSelectionFrozen=false;
             s.wheelOriginalWeapon=backWeaponKindFromActive(KharvoxWeaponCurrentKind());
@@ -2267,7 +2266,7 @@ void updateGameplayActions(XrTime displayTime){
             &&wheelGripHeld&&selectedSide>=0){
             s.quickHolsters.lastSelectedWheelSide=selectedSide;
             // Wheel hand is selected by the completed physical pull only.
-            selectPhysicalWeaponHand(selectedSide==1,"confirmed wrist wheel");
+            selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
             // two-hand acquisition, equipment use or the held BFG shortcut.
