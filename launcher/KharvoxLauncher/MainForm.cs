@@ -453,9 +453,11 @@ public sealed partial class MainForm : Form
                     + "use the left stick to choose, then release A to equip.\n"
                     + "Pull the right thumbstick DOWN to toggle crouch; B stays Jump. "
                     + "(Physical Crouch overrides the stick crouch toggle.)\n"
-                    + "With Behind-Head Weapon Wheel enabled, move the weapon hand "
-                    + "behind your head to open the wheel instead. A is then free "
-                    + "for Directional Dash when that mod is enabled.\n"
+                    + "With Behind-Head Wrist Weapon Wheel enabled, move the right wrist "
+                    + "behind your head and select by moving it; hold right Grip to lock "
+                    + "the selection before pulling out. Left Wrist Weapon Wheel adds "
+                    + "the same gesture on your left and enables Left Hand mode.\n"
+                    + "Directional Dash is currently disabled due an unsafe native physics path.\n"
                     + "Turn this off to restore the original KHARVOX controls.") })
             .ToArray();
         InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
