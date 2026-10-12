@@ -264,7 +264,7 @@ struct State {
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
-    bool chestZoneEntered{};
+    bool chestZoneEntered{},shoulderZoneEntered{};
     std::uint64_t nextCookPulseAt{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
     bool weaponWheelRemapEnabled{true};
@@ -2145,7 +2145,7 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
-        s.chestZoneEntered=false;s.nextCookPulseAt=0;
+        s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
@@ -2398,6 +2398,10 @@ void updateGameplayActions(XrTime displayTime){
             &&!s.wheelSupportGripSuppressedUntilRelease,
         supportGripController().valid&&weaponController().valid,
         s.twoHandLatched||s.twoHandCalibrationMode||supportGripInCaptureRange(),displayTime);
+    if(cycleEquipment&&gameplay)
+        kharvox::queueControllerZoneCue(
+            s.handZoneCues[s.weaponHandLeft?1:0],
+            GetTickCount64(),70,.62f,195.f);
     const bool rawSupportGripPress=supportGripDown&&!s.supportGripPressed;
     if(supportGripDown!=s.supportGripPressed){
         log(std::string("[TWO-HAND] ")+supportGripName()+" support input "
@@ -2544,6 +2548,13 @@ void updateGameplayActions(XrTime displayTime){
         ?dynamicShoulderPolicy.exit:dynamicShoulderPolicy.enter;
     const bool dynamicShoulderInside=backWeaponTrackingValid
         &&kharvox::backWeaponPointInside(backWeaponGripRelativeToHead,dynamicShoulderBounds);
+    const bool shoulderZone=gameplay&&!s.customMods.dynamicShoulderHolster
+        &&dynamicShoulderInside;
+    if(shoulderZone&&!s.shoulderZoneEntered)
+        kharvox::queueControllerZoneCue(
+            s.handZoneCues[s.weaponHandLeft?0:1],
+            GetTickCount64(),35,.32f,155.f);
+    s.shoulderZoneEntered=shoulderZone;
 
     // Physical hip slots are independent; only Grip IN the rear hip zone
     // stores/draws. These are NOT the native last-weapon quick-swap buttons.
