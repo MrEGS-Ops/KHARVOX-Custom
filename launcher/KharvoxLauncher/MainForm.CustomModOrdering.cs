@@ -139,7 +139,6 @@ public sealed partial class MainForm
             Define(customHandFocusedRs, "hand-focus", 0),
             Define(customBackOfHandHud, "back-of-hand-hud", 0),
             Define(customBehindHeadWeaponWheel, "behind-head-wheel", 0),
-            Define(customLeftWristWeaponWheel, "left-wrist-wheel", 0),
 
             Define(customDynamicShoulderHolster, "dynamic-shoulder-holster", 0),
             Define(customPhysicalCrouch, "physical-crouch", 1),
@@ -432,15 +431,12 @@ public sealed partial class MainForm
                         + "; disables " + Number(customDisableWeaponWheel);
                 else if (item.Box == customDisableWeaponWheel)
                     dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)
-                        + ", " + Number(customLeftWristWeaponWheel)
                         + ", " + Number(customDirectionalDash);
                 else if (item.Box == customDisableHud)
                     dependencies = " — Disables " + Number(customBackOfHandHud);
                 else if (item.Box == customBackOfHandHud)
                     dependencies = " — Disables " + Number(customDisableHud);
                 else if (item.Box == customBehindHeadWeaponWheel)
-                    dependencies = " — Disables " + Number(customDisableWeaponWheel);
-                else if (item.Box == customLeftWristWeaponWheel)
                     dependencies = " — Disables " + Number(customDisableWeaponWheel);
 
                 else if (item.Box == customDynamicShoulderHolster)
