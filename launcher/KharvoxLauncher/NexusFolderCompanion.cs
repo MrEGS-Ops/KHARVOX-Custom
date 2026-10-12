@@ -160,9 +160,9 @@ internal static class NexusFolderCompanion
             else
             {
                 // One side column: ZIP list on top, Nexus beneath it.
-                var folderHeight = Math.Max(240, Math.Min(height - 300,
+                var folderHeight = Math.Max(200, Math.Min(height - 300,
                     (int)(height * 0.42)));
-                if (height < 540) folderHeight = Math.Max(150, height / 2);
+                if (height < 520) folderHeight = Math.Max(200, height / 2);
                 folder = new Rectangle(x, top, width, folderHeight);
                 browser = new Rectangle(x, top + folderHeight,
                     width, height - folderHeight);
@@ -252,7 +252,7 @@ internal sealed class ModDropWindow : Form
         ShowIcon = true;
         KeyPreview = true;
         ApplyDarkTitleBar();
-        MinimumSize = new Size(300, 320);
+        MinimumSize = new Size(300, 200);
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.Black;
         ForeColor = Color.Gainsboro;
@@ -465,6 +465,9 @@ internal sealed class ModDropWindow : Form
             foreach (var entry in entries)
             {
                 if (!IsDirectChild(folder, entry)) continue;
+                // Never follow a junction/symlink while removing a mod entry.
+                if ((File.GetAttributes(entry) & FileAttributes.ReparsePoint) != 0)
+                    continue;
                 if (File.Exists(entry)) File.Delete(entry);
                 else if (Directory.Exists(entry)) Directory.Delete(entry, true);
             }
