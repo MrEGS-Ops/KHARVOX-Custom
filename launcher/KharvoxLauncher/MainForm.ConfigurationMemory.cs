@@ -157,7 +157,7 @@ public sealed partial class MainForm
             enableBhaptics, usePsvr2Toolkit, useFsrUpscaling, weaponWheelRemap,
             customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
             customBackOfHandHud, customHandFocusedRs, customDirectionalDash,
-            customBehindHeadWeaponWheel, customBehindHeadWheelHandSelection,
+            customBehindHeadWeaponWheel, customLeftWristWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
             customPhysicalGrenadeThrow, customMotionGloryKillSpeed,
             customPhysicalChainsawGestures, customHapticOverhaul
@@ -558,7 +558,7 @@ public sealed partial class MainForm
                 main.customHandFocusedRs,
                 main.customBackOfHandHud,
                 main.customBehindHeadWeaponWheel,
-                main.customBehindHeadWheelHandSelection,
+                main.customLeftWristWeaponWheel,
                 main.customDynamicShoulderHolster,
                 main.customPhysicalCrouch,
                 main.customDirectionalDash,
@@ -612,13 +612,14 @@ public sealed partial class MainForm
                     + "  D " + ModNumber(main.customDisableWeaponWheel))
                 || !LinksOf(main.customDisableWeaponWheel).Contains(
                     "D " + ModNumber(main.customBehindHeadWeaponWheel)
+                    + "," + ModNumber(main.customLeftWristWeaponWheel)
                     + "," + ModNumber(main.customDirectionalDash))
                 || !LinksOf(main.customDisableHud).Contains(
                     "D " + ModNumber(main.customBackOfHandHud))
                 || !LinksOf(main.customBackOfHandHud).Contains(
                     "D " + ModNumber(main.customDisableHud))
-                || !LinksOf(main.customBehindHeadWheelHandSelection).Contains(
-                    "R " + ModNumber(main.customBehindHeadWeaponWheel))
+                || !LinksOf(main.customLeftWristWeaponWheel).Contains(
+                    "D " + ModNumber(main.customDisableWeaponWheel))
                 || main.modOrderSlots.Where(slot =>
                     slot.Dependency.Text.Contains("#")
                     && slot.Dependency.Links.Count == 0).Any())
