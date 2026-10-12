@@ -17,6 +17,6 @@ int main() {
     assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
     assert(!quickHolsterCanStow(h,1,BackWeaponKind::Pistol));
     h.slots[0]=BackWeaponKind::Pistol;
-    assert(!quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
+    assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol)); // stow again after a previous draw
     return 0;
 }
