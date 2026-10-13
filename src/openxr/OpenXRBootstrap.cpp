@@ -53,6 +53,7 @@
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
+#include "PhysicalPunchPolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -2857,13 +2858,10 @@ void updateGameplayActions(XrTime displayTime){
             // Horizontal jabs AND hooks can initiate the native melee/Glory
             // Kill action. Never treat vertical hand raises (guard/wheel/
             // grenade reach) or rearward movements as a punch.
-            const float horizontalStrikeSpeed=std::hypot(
-                std::max(0.f,forwardSpeed),lateralSpeed);
-            const bool meaningfulForward=forwardSpeed>=punchThreshold*.20f;
-            const bool meaningfulHook=lateralSpeed>=punchThreshold*.80f
-                &&forwardSpeed> -punchThreshold*.15f;
-            if(verticalSpeed>std::max(.65f,horizontalStrikeSpeed*.60f)
-                ||(!meaningfulForward&&!meaningfulHook)
+            const auto strike=kharvox::classifyPhysicalPunch(
+                forwardSpeed,lateralSpeed,verticalSpeed,punchThreshold);
+            const float horizontalStrikeSpeed=strike.horizontalSpeed;
+            if(!strike.mostlyHorizontal||!strike.legalDirection
                 ||s.behindHeadWheelActive){
                 // Keep the arm ready for the next legal horizontal strike,
                 // instead of forcing a full reset after an overhead gesture.
