@@ -55,6 +55,7 @@
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "OpenHandReleasePolicy.h"
+#include "PersistentSuperShotgunReloadPolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -298,6 +299,9 @@ struct State {
     KharvoxWeaponKind openHandUnequippedKind{KharvoxWeaponKind::Unknown};
     kharvox::OpenHandReleaseState openHandRelease{};
     kharvox::QuickHolsters quickHolsters{};
+    kharvox::PersistentSuperShotgunReloadState persistentSsgReload{};
+    std::uint64_t persistentSsgLevelGeneration{};
+    bool persistentSsgBlockedLogged{};
     std::array<bool,2> quickHolsterPhysicalGripHeld{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{},physicalGrenadeArmed{};
@@ -2174,6 +2178,10 @@ void updateGameplayActions(XrTime displayTime){
         s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
         s.openHandRelease={};
         s.quickHolsterPhysicalGripHeld={};
+        // Keep the persistent reload debt, but do not credit an unfocused
+        // frame, menu, or tracking gap towards equipped reload time.
+        s.persistentSsgReload.lastFrameEquipped=false;
+        s.persistentSsgReload.triggerPreviouslyDown=false;
         KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
@@ -3110,11 +3118,45 @@ void updateGameplayActions(XrTime displayTime){
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
         &&!weaponWheelActive&&!calibrationFireBlocked;
-    // This is the primary-fire state after KHARVOX has removed weapon-wheel
-    // and calibration ownership. Adaptive triggers must never consume the raw
-    // OpenXR analog trigger value.
-    s.primaryFireDown=gameplay&&fireDown;
-    if(gameplay&&(fireDown||weaponModDown)){
+
+    // Separate opt-in VR mod: the Super Shotgun's uncompleted reload time is
+    // stored by weapon type and ONLY advances while held/equipped in gameplay.
+    // Native DOOM still owns the visual reload; until a shot/reload event hook
+    // is verified this is explicitly an experimental INPUT-LEVEL fire gate.
+    const auto levelGeneration=KharvoxCameraLevelTransitionGeneration();
+    if(s.persistentSsgLevelGeneration!=levelGeneration){
+        s.persistentSsgLevelGeneration=levelGeneration;
+        s.persistentSsgReload={}; // new map/checkpoint context, no stale debt
+        s.persistentSsgBlockedLogged=false;
+    }
+    const auto ssgAmmo=KharvoxWeaponGetAmmoState(KharvoxWeaponKind::SuperShotgun);
+    const kharvox::PersistentSuperShotgunReloadInput reloadInput{
+        s.customMods.persistentSuperShotgunReload,
+        gameplay&&!KharvoxHudDeathMenuActive(),
+        activeWeaponKind==KharvoxWeaponKind::SuperShotgun,
+        s.dynamicShoulderHolstered,
+        weaponWheelActive,
+        fireDown,
+        ssgAmmo==KharvoxWeaponAmmoState::Empty
+            ||ssgAmmo==KharvoxWeaponAmmoState::Unavailable,
+        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime))
+    };
+    const auto reloadOutput=kharvox::updatePersistentSuperShotgunReload(
+        s.persistentSsgReload,reloadInput);
+    const bool nativeFireDown=reloadOutput.forwardFire;
+    if(reloadOutput.shotAttemptAccepted)
+        log("[SSG-PERSISTENCE] native trigger pulse offered; SSG reload debt retained through swaps");
+    if(reloadOutput.nativeReloadWindowCompleted)
+        log("[SSG-PERSISTENCE] 1.6s of equipped gameplay accumulated; reload fire gate ready");
+    if(reloadOutput.blockedByPersistentReload!=s.persistentSsgBlockedLogged){
+        s.persistentSsgBlockedLogged=reloadOutput.blockedByPersistentReload;
+        if(reloadOutput.blockedByPersistentReload)
+            log("[SSG-PERSISTENCE] SSG firing blocked: unfinished equipped-time reload");
+    }
+    // The gate runs before native XInput submission and fallback haptics;
+    // no gameplay trigger or shot vibration is forwarded during lockout.
+    s.primaryFireDown=gameplay&&nativeFireDown;
+    if(gameplay&&(nativeFireDown||weaponModDown)){
         const auto hapticNow=GetTickCount64();
         s.weaponFireHapticFallbackUntilTick=hapticNow
             +kharvox::weaponFireHapticFallbackHoldMilliseconds;
@@ -3328,7 +3370,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool nativeUiLeftTriggerDown=restrictedLeftHandSwap?menuFireDown:menuEquipmentDown;
         const bool nativeUiLeftShoulderDown=restrictedLeftHandSwap?menuWeaponGripDown:menuSupportGripDown;
         const bool nativeUiRightShoulderDown=restrictedLeftHandSwap?menuSupportGripDown:menuWeaponGripDown;
-        const bool rightTriggerDown=gameplay?fireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
+        const bool rightTriggerDown=gameplay?nativeFireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
         const bool leftTriggerDown=weaponModDown||(nativeUiMenu&&nativeUiLeftTriggerDown);
         const bool rightThumbDown=nativeMeleeDown||(nativeUiMenu&&meleeDown);
         const bool leftShoulderDown=gameplayEquipmentDown||(nativeUiMenu&&nativeUiLeftShoulderDown);
@@ -3465,6 +3507,7 @@ bool createGameplayActions(){
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
         +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
+        +" persistentSsgReload="+(s.customMods.persistentSuperShotgunReload?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
