@@ -379,6 +379,7 @@ internal sealed class ModDropWindow : Form
 {
     private readonly string folder;
     private readonly ListView files;
+    private const string ReorderDataFormat = "KHARVOX.UserModOrder";
     private readonly Label status;
      private readonly FileSystemWatcher folderWatch;
  
@@ -439,6 +440,25 @@ internal sealed class ModDropWindow : Form
         files.Columns.Add("Type", 82);
         files.Columns.Add("Size", 95);
         InstallFileCommands();
+        // Drag within the file list changes persistent ordering. External
+        // dragged ZIPs retain the existing safe COPY-only import path.
+        files.ItemDrag += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left || e.Item is not ListViewItem item
+                || item.Tag is not string path || !IsDirectChild(folder, path))
+                return;
+            var data = new DataObject();
+            data.SetData(ReorderDataFormat, path);
+            files.DoDragDrop(data, DragDropEffects.Move);
+        };
+        files.MouseDown += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Right) return;
+            var hit = files.GetItemAt(e.X, e.Y);
+            if (hit is null || hit.Selected) return;
+            files.SelectedItems.Clear();
+            hit.Selected = true;
+        };
         files.Resize += (_, _) =>
         {
             files.Columns[0].Width = Math.Max(160, files.ClientSize.Width - 200);
@@ -499,12 +519,21 @@ internal sealed class ModDropWindow : Form
         var delete = menu.Items.Add("Delete    Del");
         delete.Click += (_, _) => DeleteSelected();
         menu.Items.Add(new ToolStripSeparator());
+        var moveUp = menu.Items.Add("Move Up");
+        moveUp.Click += (_, _) => MoveSelected(-1);
+        var moveDown = menu.Items.Add("Move Down");
+        moveDown.Click += (_, _) => MoveSelected(1);
+        menu.Items.Add(new ToolStripSeparator());
         var all = menu.Items.Add("Select All    Ctrl+A");
         all.Click += (_, _) => SelectAllFiles();
         menu.Opening += (_, _) =>
         {
             copy.Enabled = files.SelectedItems.Count > 0;
             delete.Enabled = files.SelectedItems.Count > 0;
+            var index = files.SelectedItems.Count == 1
+                ? files.SelectedItems[0].Index : -1;
+            moveUp.Enabled = index > 0;
+            moveDown.Enabled = index >= 0 && index < files.Items.Count - 1;
             paste.Enabled = ClipboardHasZip();
             all.Enabled = files.Items.Count > 0;
         };
@@ -623,6 +652,40 @@ internal sealed class ModDropWindow : Form
         }
     }
 
+    private void MoveSelected(int delta)
+    {
+        if (files.SelectedItems.Count != 1) return;
+        var source = files.SelectedItems[0].Index;
+        MoveEntry(source, source + delta);
+    }
+
+    private void MoveEntry(int from, int to)
+    {
+        if (from < 0 || from >= files.Items.Count || to < 0
+            || to >= files.Items.Count || from == to) return;
+        var names = files.Items.Cast<ListViewItem>().Select(item => item.Text).ToList();
+        var item = names[from];
+        names.RemoveAt(from);
+        names.Insert(to, item);
+        try
+        {
+            DoomUserMods.SaveUserOrder(names);
+            RefreshFiles();
+            if (to < files.Items.Count)
+            {
+                files.Items[to].Selected = true;
+                files.Items[to].Focused = true;
+                files.EnsureVisible(to);
+            }
+            status.Text = "Order saved — " + item + " moved to position " + (to + 1);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, error.Message, "KHARVOX — Mod order",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private void SelectAllFiles()
     {
         foreach (ListViewItem item in files.Items) item.Selected = true;
@@ -673,8 +736,8 @@ internal sealed class ModDropWindow : Form
         try
         {
             files.Items.Clear();
-            foreach (var path in Directory.EnumerateFileSystemEntries(folder)
-                .OrderBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase))
+            foreach (var path in DoomUserMods.OrderUserPaths(
+                Directory.EnumerateFileSystemEntries(folder)))
             {
                 var name = Path.GetFileName(path);
                 if (name.StartsWith(".", StringComparison.Ordinal)) continue;
@@ -725,6 +788,11 @@ internal sealed class ModDropWindow : Form
 
     private void AcceptDrag(object? sender, DragEventArgs e)
     {
+        if (e.Data?.GetDataPresent(ReorderDataFormat) == true)
+        {
+            e.Effect = sender == files ? DragDropEffects.Move : DragDropEffects.None;
+            return;
+        }
         e.Effect = e.Data?.GetDataPresent(DataFormats.FileDrop) == true
             && (e.Data.GetData(DataFormats.FileDrop) as string[])?.Any(path =>
                 File.Exists(path)
@@ -735,6 +803,21 @@ internal sealed class ModDropWindow : Form
 
     private async void DropFiles(object? sender, DragEventArgs e)
     {
+        if (sender == files && e.Data?.GetDataPresent(ReorderDataFormat) == true)
+        {
+            if (e.Data.GetData(ReorderDataFormat) is string path
+                && IsDirectChild(folder, path))
+            {
+                var source = files.Items.Cast<ListViewItem>()
+                    .FirstOrDefault(item => string.Equals(item.Tag as string,
+                        path, StringComparison.OrdinalIgnoreCase));
+                var pointer = files.PointToClient(new Point(e.X, e.Y));
+                var target = files.GetItemAt(pointer.X, pointer.Y);
+                if (source is not null)
+                    MoveEntry(source.Index, target?.Index ?? files.Items.Count - 1);
+            }
+            return;
+        }
         if (e.Data?.GetData(DataFormats.FileDrop) is not string[] paths) return;
         status.Text = "Copying mod archives…";
         try
