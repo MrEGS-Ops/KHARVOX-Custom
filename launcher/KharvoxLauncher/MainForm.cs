@@ -569,10 +569,13 @@ public sealed partial class MainForm : Form
         };
         var packagedToolbar = new TableLayoutPanel
         {
-            Width = 406, Height = 30, ColumnCount = 2, RowCount = 1,
+            Width = 406, Height = 32, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = PanelColor
         };
+        // Keep Generate's 105px button aligned with Install and Mod Folder.
+        doomGrid.SizeChanged += (_, _) => packagedToolbar.Width =
+            Math.Max(340, doomGrid.ClientSize.Width - doomGrid.Padding.Horizontal);
         packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         packagedToolbar.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
         packagedDoomModHeader.Width = 0;
@@ -584,7 +587,7 @@ public sealed partial class MainForm : Form
             BackColor = Color.FromArgb(43,43,47),
             ForeColor = Color.Gainsboro, FlatStyle = FlatStyle.Flat,
             Font = new Font(Font.FontFamily, 8.3f),
-            Margin = new Padding(1,2,3,2)
+            Margin = new Padding(3,2,3,2)
         };
         generateKharvoxMods.FlatAppearance.BorderColor = Color.DimGray;
         statusToolTip.SetToolTip(generateKharvoxMods,
@@ -922,8 +925,8 @@ public sealed partial class MainForm : Form
         };
         // Give each column only what its actual controls need. The VR column
         // should no longer waste most of the window width on blank space.
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
         customMods.Dock = DockStyle.Fill;
         doomMods.Dock = DockStyle.Fill;
         modColumns.Controls.Add(doomMods, 0, 0);
@@ -1116,6 +1119,12 @@ public sealed partial class MainForm : Form
         };
     }
 
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        ApplyMatchingWindowFrame(this);
+    }
+
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
@@ -1136,6 +1145,7 @@ public sealed partial class MainForm : Form
     protected override void OnSizeChanged(EventArgs e)
     {
         base.OnSizeChanged(e);
+        SyncDockWindowState(WindowState);
         FollowLauncherMovementAndSize();
     }
 
@@ -1747,6 +1757,7 @@ public sealed partial class MainForm : Form
     {
         // Both the Close button and the title-bar X must restore focus to
         // KHARVOX after hiding the sidecar. Preserve the form for reopening.
+        NexusFolderCompanion.CloseAllCompanions();
         form.Hide();
         if (IsDisposed || Disposing || !Visible
             || WindowState == FormWindowState.Minimized) return;
@@ -1762,8 +1773,8 @@ public sealed partial class MainForm : Form
             Text = "KHARVOX Custom Mods",
             // Open at the SAME narrowest width the resize border allows:
             // the user should not need to drag the edge inward every time.
-            ClientSize = new Size(876, 600),
-            MinimumSize = new Size(890, 530),
+            ClientSize = new Size(916, 600),
+            MinimumSize = new Size(930, 530),
             FormBorderStyle = FormBorderStyle.FixedSingle,
             StartPosition = FormStartPosition.Manual,
             BackColor = Color.Black,
@@ -1841,6 +1852,7 @@ public sealed partial class MainForm : Form
         PlaceDoomguy();
         root.Controls.Add(footerBar, 0, 1);
         form.Controls.Add(root);
+        form.HandleCreated += (_, _) => ApplyMatchingWindowFrame(form);
         form.Shown += (_, _) =>
         {
             // The sidecar uses the main launcher height, not the number of
@@ -2177,9 +2189,9 @@ public sealed partial class MainForm : Form
         var height = Math.Min(preferredHeight, maxClientHeight);
         // Larger fixed-width sidecar keeps DOOM and VR labels legible.
         // Its width is locked; height tracks the launcher while docked.
-        var outerWidth = Math.Min(890, work.Width);
+        var outerWidth = Math.Min(930, work.Width);
         var borderWidth = customOptionsForm.Width - customOptionsForm.ClientSize.Width;
-        customOptionsForm.MinimumSize = new Size(Math.Min(890, work.Width),
+        customOptionsForm.MinimumSize = new Size(Math.Min(930, work.Width),
             Math.Min(530, work.Height));
         customOptionsForm.ClientSize = new Size(
             Math.Max(1, outerWidth - borderWidth), height);
