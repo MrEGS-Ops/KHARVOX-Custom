@@ -367,14 +367,14 @@ public sealed partial class MainForm
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
             TestMainLauncherModLocks(main);
-            if (window.ClientSize.Width < 850 || window.ClientSize.Width > 900)
+            if (window.ClientSize.Width < 895 || window.ClientSize.Width > 940)
                 throw new InvalidDataException("Custom Mods initial width is incorrect.");
             // Larger width is fixed while preserving docked move/height behavior.
             main.FitCustomOptionsToContent(11);
-            if (window.MinimumSize.Width != 890 || window.Width != 890
+            if (window.MinimumSize.Width != 930 || window.Width != 930
                 || window.FormBorderStyle != FormBorderStyle.FixedSingle)
                 throw new InvalidDataException(
-                    "Custom Mods must use a fixed 890px starting width."
+                    "Custom Mods must use a fixed 930px starting width."
                     + " min=" + window.MinimumSize.Width
                     + " actual=" + window.Width);
             // Match actual outside borders exactly with no separator gap,
@@ -715,14 +715,14 @@ public sealed partial class MainForm
             window.Show();
             Application.DoEvents();
             window.PerformLayout();
-            var miniFace = Descendants(window).OfType<DoomFaceEasterEgg>()
+            var miniFace = Descendants(window).OfType<SkullKeyEasterEgg>()
                 .SingleOrDefault();
             if (miniFace is null || !miniFace.Visible || miniFace.Width < 40
                 || miniFace.Height < 28)
-                throw new InvalidDataException("Centred DOOMguy Easter egg is missing.");
-            // The CI desktop can be narrower than launcher + 890px sidecar:
+                throw new InvalidDataException("Centred skull key Easter egg is missing.");
+            // The CI desktop can be narrower than launcher + 930px sidecar:
             // docking may shrink it to fit, without changing the preferred size.
-            if (window.ClientSize.Width < 520 || window.ClientSize.Width > 900
+            if (window.ClientSize.Width < 520 || window.ClientSize.Width > 950
                 || main.customFastGloryKills.Width < 95)
                 throw new InvalidDataException(
                     "Rendered Custom Mods panel or Fast Glory Kills checkbox is clipped."
