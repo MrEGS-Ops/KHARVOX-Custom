@@ -8,7 +8,7 @@ Status: **Design / isolated policy only**. Dual-wield engine hooks, second weapo
 2. No dual-wield if **either weapon is heavy**. Initial heavy list: Gauss Cannon, Chaingun, BFG, Rocket Launcher. Chainsaw is not a gun and is not eligible. Combat Shotgun and Super Shotgun are permitted as a pair.
 3. Both weapons draw from **existing DOOM ammunition pools**, without separate left/right ammo inventories or ammunition duplication. Combat Shotgun + Super Shotgun both draw shells from the same reserve.
 4. Each weapon tracks its own independent aim, primary fire, alternate fire (if present), cooldown/loaded status, and rendering.
-5. While holding two weapons, any non-automatic weapon requiring cycling/reload **cannot cycle/reload**. Opening one hand to virtual-unequip its gun immediately permits the remaining held gun to reload/cycle. Unequipped guns stay in native inventory, not world pickup entities.
+5. While holding two weapons, any non-automatic weapon requiring cycling/reload **cannot cycle/reload**. Reloading requires the **weapon needing a reload to remain in hand** and the **other hand to become empty**. Opening/unequipping the gun that needs reloading does **not** reload it. Unequipped guns stay in native inventory, not world pickup entities.
 6. Automatic guns can fire while eligible and consuming native ammo normally. This exception is for non-automatic guns.
 
 ## Combat Shotgun: dual-mode exception
@@ -24,6 +24,16 @@ The Combat Shotgun has exactly **one primary-fire activation and one weapon-mod 
 - If either ammo is insufficient or no weapon mod equipped, firing is rejected and that allowance is **not consumed**.
 - Let go of the other gun -> Combat Shotgun immediately reloads/cycles when ammo is available; after successful reload, both allowances reset. Letting go of the Combat Shotgun instead should immediately permit the other gun to reload.
 - A normal native reload/cycle completion event, not the input release alone, should mark reload successful, to avoid loading without ammo or interrupting engine animations.
+
+## Super Shotgun: free-hand reload (anti-exploit requirement)
+
+- After the Super Shotgun fires, its **unloaded/reload-required state is retained by weapon identity** through holstering, drawing, wheel selections, swapping physical hands, and other temporary unequips.
+- Reload begins **only while the Super Shotgun is still held in one hand** and the **other hand has no equipped weapon** (plus normal native ammo/animation requirements). This includes when the other gun was the Combat Shotgun, a rifle, or any other eligible gun.
+- **Unequipping the empty Super Shotgun itself does nothing**: it remains unloaded in inventory. Redrawing it while a rifle remains equipped on the other hand must NOT restore its readiness. Cycling equip/unequip repeatedly cannot reset the fired state.
+- Re-equipping any gun in the empty hand, or unequipping the Super Shotgun before its reload completes, **interrupts the reload**; it remains unloaded. A genuine native successful reload completion is the only event that resets the stored unloaded state.
+- An empty native ammo reserve must not permit a reload or fabricate shells.
+- This requirement is **not a separate exception that makes dual-wielding with a heavy weapon legal**. The existing no-heavy and no-duplicate pairing rules still apply.
+- Game-side dual-wield integration must hook actual native shot/reload acknowledgements and persist reload-required state with the weapon identity. KHARVOX supplies the two hand occupancy states (including virtual open-palm unequip); no simplistic toggle of a gun's display or one-frame slot swap should imply a reload.
 
 ## Example: Combat Shotgun + Super Shotgun
 
@@ -43,5 +53,7 @@ Player has 20 shared shells and both weapons ready. Combat Shotgun fires one pri
 - Charged Burst's entire one activation counts as the ALT; internal burst rounds don't individually consume multiple allowances.
 - Separate native ammo decrements on either hand; no duplicate pools.
 - Missing ammo or cancelled charging does not spend an allowance.
-- One hand opening ends dual mode and permits only the remaining weapon to reload.
+- One hand opening ends dual mode, but **only the weapon that remains in hand** is eligible to reload.
+- A fired Super Shotgun stays unloaded when it is the weapon that is put away, even after repeated redraws while the other hand continues firing a rifle.
+- To reload a fired Super Shotgun, keep it equipped, free the other hand, and accept a successful native reload-complete event. Re-grabbing a second weapon or putting away the Super Shotgun interrupts the reload without resetting the unloaded state.
 - Any heavy and duplicate pair is refused before dual mode engages.
