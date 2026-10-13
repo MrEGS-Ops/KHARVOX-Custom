@@ -22,5 +22,10 @@ int main(){
     if(tick(true,true,false,2300000000)!=ChestGrenadeAction::None)return 15;
     if(tick(true,true,false,2350000000,false)!=ChestGrenadeAction::None)return 16;
     if(tick(false,true,false,2500000000)!=ChestGrenadeAction::None)return 17;
+    if(!insideChestGrenadeZone(0.f,-.43f,.02f))return 18;
+    if(insideChestGrenadeZone(.12f,-.43f,.02f))return 19; // too far to side
+    if(insideChestGrenadeZone(0.f,-.25f,.02f))return 20; // face, not chest
+    if(insideChestGrenadeZone(0.f,-.68f,.02f))return 21; // abdomen
+    if(insideChestGrenadeZone(0.f,-.43f,-.28f))return 22; // too far from chest
     return 0;
 }
