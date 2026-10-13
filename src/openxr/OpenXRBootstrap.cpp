@@ -2629,6 +2629,11 @@ void updateGameplayActions(XrTime displayTime){
     }else s.hipZoneEntered={};
     bool quickHolsterGripConsumed=false;
     if(!s.customMods.dynamicShoulderHolster||!gameplay){
+        // Menus, cutscenes and mod-disable must never carry a hidden-gun
+        // gesture latch back into gameplay after native rendering resumes.
+        s.openHandUnequipped=false;
+        s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
+        s.openHandRelease.openSinceNanoseconds=0;
         if(s.dynamicShoulderHolstered){
             s.dynamicShoulderHolstered=false;
             s.quickHolsters.activeStowedSide=-1;
