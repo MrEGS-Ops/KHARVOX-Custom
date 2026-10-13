@@ -26,12 +26,22 @@ inline bool quickHipInside(const BackWeaponVec3& point, bool previouslyInside) {
     return backWeaponPointInside(point,previouslyInside?policy.exit:policy.enter);
 }
 
-// Hip weapon selection is a physical action, not the native quick-swap button.
-// Each slot holds its assigned weapon independently of the current hand.
+// Full-size weapons are never eligible for invisible hip storage.
+inline bool quickHolsterEligible(BackWeaponKind equipped) {
+    return equipped!=BackWeaponKind::Unknown
+        &&equipped!=BackWeaponKind::GaussCannon
+        &&equipped!=BackWeaponKind::Chaingun
+        &&equipped!=BackWeaponKind::Bfg;
+}
+
+// The slot is a persistent inventory assignment, NOT an equip shortcut.
+// A draw from an occupied slot may change the active weapon, but must not
+// replace the stored identity with the weapon already in the player's hand.
 inline bool quickHolsterCanStow(const QuickHolsters& state, int side,
     BackWeaponKind equipped) {
     return side>=0&&side<=1
         &&state.lastSelectedWheelSide==side
-        &&equipped!=BackWeaponKind::Unknown;
+        &&state.slots[side]==BackWeaponKind::Unknown
+        &&quickHolsterEligible(equipped);
 }
 }
