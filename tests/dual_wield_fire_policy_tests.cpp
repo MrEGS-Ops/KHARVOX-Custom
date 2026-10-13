@@ -1,5 +1,6 @@
 #include "../src/weapon/DualWieldFirePolicy.h"
 #include <cassert>
+#include <initializer_list>
 
 int main() {
     using namespace kharvox;
