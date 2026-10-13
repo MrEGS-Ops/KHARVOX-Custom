@@ -79,6 +79,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
+    private readonly CheckBox customPersistentSsgReload = MakeCheck("Persistent Super Shotgun Reload", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
     private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
@@ -391,6 +392,7 @@ public sealed partial class MainForm : Form
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
+            (customPersistentSsgReload, "Independent VR gameplay mod: after firing the Super Shotgun, switching weapons or putting it in a hip holster does NOT finish its reload. The remaining 1.6s cycle only advances while holding the Super Shotgun in active gameplay. Swap back too early and fire is blocked until ready; a fresh Trigger press is needed. Works with or WITHOUT Quick Holsters / dual-wielding. EXPERIMENTAL input-level gate; actual native reload animation/shot acknowledgement is not hooked yet."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customFastGloryKills, "Fast Glory Kills: full 1.0x animation speed when outside Boxing Guard; unchecked restores native timing."),
             (customFastChainsawKills, "Fast Chainsaw Kills: full-speed chainsaw takedown while enabled, native DOOM chainsaw takedown timing when unchecked. No motion-control gesture required."),
@@ -1577,6 +1579,7 @@ public sealed partial class MainForm : Form
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
+        PersistentSuperShotgunReload = customPersistentSsgReload.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
@@ -1623,6 +1626,7 @@ public sealed partial class MainForm : Form
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
+            customPersistentSsgReload.Checked = mods.PersistentSuperShotgunReload;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customFastGloryKills.Checked = mods.FastGloryKills;
             customFastChainsawKills.Checked = mods.FastChainsawKills;
