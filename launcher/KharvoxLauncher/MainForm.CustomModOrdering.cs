@@ -46,6 +46,13 @@ public sealed partial class MainForm
     private readonly List<Label> modOrderHeaders = new();
     private TableLayoutPanel? modOrderGrid;
     private string? activeModDrag;
+    // Tooltips belong to the detached Custom Mods window, not the launcher.
+    // Native hover delay avoids overlapping Show() calls that left tips stuck.
+    private readonly ToolTip detachedModToolTip = new()
+    {
+        ShowAlways = true, InitialDelay = 550, ReshowDelay = 175,
+        AutoPopDelay = 15000, UseAnimation = false, UseFading = false
+    };
 
     private static string ModOrderSettingsPath =>
         Path.Combine(AppContext.BaseDirectory, "kharvox-custom-mod-order.json");
@@ -194,15 +201,6 @@ public sealed partial class MainForm
                 check.CheckedChanged += WeaponWheelRemapChanged;
             else
                 check.CheckedChanged += CustomModChanged;
-            check.MouseHover += (_, _) =>
-            {
-                var slot = modOrderSlots.FirstOrDefault(x =>
-                    ReferenceEquals(x.Panel, check.Parent));
-                if(slot is null || !slot.Panel.Visible) return;
-                var tip=statusToolTip.GetToolTip(slot.Panel);
-                if(!string.IsNullOrWhiteSpace(tip))
-                    statusToolTip.Show(tip,slot.Panel,8,slot.Panel.Height+3,11000);
-            };
             check.MouseEnter += (_, _) =>
             {
                 var slot = modOrderSlots.FirstOrDefault(x =>
@@ -250,7 +248,7 @@ public sealed partial class MainForm
 
         modOrderSlots.Clear();
         grid.RowStyles.Clear();
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 6));
         var currentGroup = -1;
         var tableRow = 1;
         for (var i = 0; i < modOrderRows.Count; i++)
@@ -320,19 +318,10 @@ public sealed partial class MainForm
                 Number = number, Grip = grip,
                 Dependency = dependency
             };
-            // The detached top-level Custom Mods window does not reliably
-            // get native hover tooltips from a ToolTip created on MainForm.
-            // Explicitly show the description below the hovered row, even if
-            // its checkbox is disabled by a conflicting mod.
-            void ShowModTooltip(object? sender, EventArgs e)
-            {
-                if (!panel.IsHandleCreated || !panel.Visible) return;
-                var tip = statusToolTip.GetToolTip(panel);
-                if (string.IsNullOrWhiteSpace(tip)) return;
-                statusToolTip.Show(tip, panel, 8, panel.Height + 3, 11000);
-            }
+            // A single native tooltip host per detached panel prevents the
+            // timed Show() collisions that caused old descriptions to linger.
             foreach (Control hover in new Control[] { panel, number, dependency, grip })
-                hover.MouseHover += ShowModTooltip;
+                hover.MouseLeave += (_, _) => detachedModToolTip.Hide(hover);
             dependency.LinkClicked += (_, _) => HighlightDependencyReferences(slot, true);
             dependency.MouseEnter += (_, _) =>
             {
@@ -421,7 +410,7 @@ public sealed partial class MainForm
             };
         }
         grid.RowCount = tableRow;
-        grid.Height = 32 + ModGroupHeaders.Length * 20
+        grid.Height = 6 + ModGroupHeaders.Length * 20
             + modOrderRows.Count * 28 + 6;
         RefreshGroupedModRows();
     }
@@ -479,10 +468,10 @@ public sealed partial class MainForm
                             : dependencies.TrimStart(' ', '—')));
                 foreach (Control hoverTarget in new Control[] {
                     item.Box, slot.Panel, slot.Number })
-                    statusToolTip.SetToolTip(hoverTarget, fullTip);
+                    detachedModToolTip.SetToolTip(hoverTarget, fullTip);
                 slot.Grip.AccessibleName = "Drag to reorder " + item.Caption
                     + " in position " + (i + 1);
-                statusToolTip.SetToolTip(slot.Grip,
+                detachedModToolTip.SetToolTip(slot.Grip,
                     "Drag " + item.Caption + " within "
                     + ModGroupHeaders[slot.Group].Title);
                 slot.Grip.Visible = false;
