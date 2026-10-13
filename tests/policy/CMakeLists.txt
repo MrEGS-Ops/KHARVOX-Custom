@@ -17,3 +17,7 @@ add_test(NAME damage-haptics-policy COMMAND KharvoxDamageHapticsPolicyTests)
 add_executable(KharvoxQuickHolsterPolicyTests ../quick_holster_policy_tests.cpp)
 target_compile_features(KharvoxQuickHolsterPolicyTests PRIVATE cxx_std_17)
 add_test(NAME quick-holster-policy COMMAND KharvoxQuickHolsterPolicyTests)
+
+add_executable(KharvoxPhysicalPunchPolicyTests ../physical_punch_policy_tests.cpp)
+target_compile_features(KharvoxPhysicalPunchPolicyTests PRIVATE cxx_std_17)
+add_test(NAME physical-punch-policy COMMAND KharvoxPhysicalPunchPolicyTests)
