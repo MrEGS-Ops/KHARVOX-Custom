@@ -4358,6 +4358,7 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     auto r=s.createInstance(&ci,&s.instance);
     if(XR_FAILED(r)&&metaPlusExtensionAvailable){
         log("[OPEN-HAND] Meta Touch Plus instance extension rejected; retrying legacy Vulkan-only instance");
+        s.instance=XR_NULL_HANDLE; // failed create must not leak an output handle
         ci.enabledExtensionCount=1;
         r=s.createInstance(&ci,&s.instance);
     }
