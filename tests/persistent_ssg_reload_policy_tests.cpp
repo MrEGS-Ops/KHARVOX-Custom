@@ -8,20 +8,20 @@ int main() {
     in.enabled=true;
     in.gameplayActive=true;
     in.superShotgunEquipped=true;
-    in.fireRequested=true;
+    in.fireRequested=true;in.physicalTriggerHeld=true;
     in.nowNanoseconds=1000000000ull;
     auto o=updatePersistentSuperShotgunReload(state,in);
     assert(o.shotAttemptAccepted && o.forwardFire && state.reloadRequired);
     assert(o.remainingEquippedNanoseconds==persistentSsgActiveReloadNanoseconds);
 
     // Release, spend 200ms with SSG held, then QUICK SWITCH to rifle.
-    in.fireRequested=false;in.nowNanoseconds+=100000000ull;
+    in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
     updatePersistentSuperShotgunReload(state,in);
     in.nowNanoseconds+=100000000ull;
     updatePersistentSuperShotgunReload(state,in);
     const auto heldProgress=state.equippedProgressNanoseconds;
     assert(heldProgress==200000000ull);
-    in.superShotgunEquipped=false;in.fireRequested=true;
+    in.superShotgunEquipped=false;in.fireRequested=true;in.physicalTriggerHeld=true;
     in.nowNanoseconds+=100000000ull;
     o=updatePersistentSuperShotgunReload(state,in);
     assert(o.forwardFire); // rifle never blocked by SSG rule
@@ -34,7 +34,7 @@ int main() {
     o=updatePersistentSuperShotgunReload(state,in);
     assert(!o.forwardFire && o.blockedByPersistentReload);
     assert(state.reloadRequired);
-    in.fireRequested=false;
+    in.fireRequested=false;in.physicalTriggerHeld=false;
     bool completed=false;
     for(int frame=0;frame<15;frame++){
         in.nowNanoseconds+=100000000ull;
@@ -44,23 +44,23 @@ int main() {
     assert(completed); // debt completed after sufficient equipped time
     assert(!state.reloadRequired);
     // New trigger press, now another single shot is allowed.
-    in.fireRequested=true;in.nowNanoseconds+=100000000ull;
+    in.fireRequested=true;in.physicalTriggerHeld=true;in.nowNanoseconds+=100000000ull;
     o=updatePersistentSuperShotgunReload(state,in);
     assert(o.shotAttemptAccepted && o.forwardFire && state.reloadRequired);
 
     // Rapid repeat equip/unequip must not bypass the persistent cycle.
-    in.fireRequested=false;in.nowNanoseconds+=100000000ull;
+    in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
     updatePersistentSuperShotgunReload(state,in);
     for(int i=0;i<4;i++){
         in.superShotgunEquipped=false;in.nowNanoseconds+=100000000ull;
         updatePersistentSuperShotgunReload(state,in);
         in.nowNanoseconds+=1000000000ull;
         updatePersistentSuperShotgunReload(state,in);
-        in.superShotgunEquipped=true;in.fireRequested=true;
+        in.superShotgunEquipped=true;in.fireRequested=true;in.physicalTriggerHeld=true;
         in.nowNanoseconds+=100000000ull;
         o=updatePersistentSuperShotgunReload(state,in);
         assert(!o.forwardFire && !o.shotAttemptAccepted);
-        in.fireRequested=false;in.nowNanoseconds+=100000000ull;
+        in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
         updatePersistentSuperShotgunReload(state,in);
     }
     assert(state.reloadRequired);
@@ -83,7 +83,7 @@ int main() {
     state={};
     in={};in.enabled=true;in.gameplayActive=true;
     in.superShotgunEquipped=true;in.nativeAmmoKnownEmpty=true;
-    in.fireRequested=true;in.nowNanoseconds=1000000000ull;
+    in.fireRequested=true;in.physicalTriggerHeld=true;in.nowNanoseconds=1000000000ull;
     o=updatePersistentSuperShotgunReload(state,in);
     assert(!o.forwardFire && !o.shotAttemptAccepted && !state.reloadRequired);
 
