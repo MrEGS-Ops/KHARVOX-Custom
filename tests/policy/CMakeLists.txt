@@ -14,6 +14,15 @@ add_executable(KharvoxDamageHapticsPolicyTests ../damage_haptics_policy_tests.cp
 target_compile_features(KharvoxDamageHapticsPolicyTests PRIVATE cxx_std_17)
 add_test(NAME damage-haptics-policy COMMAND KharvoxDamageHapticsPolicyTests)
 
+add_executable(KharvoxPersistentSsgReloadPolicyTests ../persistent_ssg_reload_policy_tests.cpp)
+target_compile_features(KharvoxPersistentSsgReloadPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxPersistentSsgReloadPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxPersistentSsgReloadPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME persistent-ssg-reload-policy COMMAND KharvoxPersistentSsgReloadPolicyTests)
+
 add_executable(KharvoxOpenHandReleasePolicyTests ../open_hand_release_policy_tests.cpp)
 target_compile_features(KharvoxOpenHandReleasePolicyTests PRIVATE cxx_std_17)
 add_test(NAME open-hand-release-policy COMMAND KharvoxOpenHandReleasePolicyTests)
