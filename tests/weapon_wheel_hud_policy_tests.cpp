@@ -5,8 +5,9 @@
 
 int main() {
     using namespace kharvox;
-    assert(weaponWheelDistanceMeters > .5f && weaponWheelDistanceMeters < 3.f);
-    assert(weaponWheelWidthMeters > .5f && weaponWheelWidthMeters < 3.f);
+    // The preset MUST remain the original 3 metres / 3 metres.
+    assert(weaponWheelDistanceMeters == 3.f);
+    assert(weaponWheelWidthMeters == 3.f);
     const float eye[]{0.f, 0.f, 0.f};
     // Native camera matrix rows: forward, right, up.
     const float head[]{1.f,0.f,0.f, 0.f,1.f,0.f, 0.f,0.f,1.f};
