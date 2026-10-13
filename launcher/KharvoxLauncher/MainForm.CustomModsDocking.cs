@@ -10,6 +10,7 @@ public sealed partial class MainForm
     private bool customModsDocked;
     private bool syncingCustomModsDock;
     private bool raisingCustomModsDock;
+    private bool syncingDockWindowState;
 
     // Both windows stay normal (never TopMost). Clicking either raises the
     // OTHER without stealing keyboard focus from the window the user clicked.
@@ -42,6 +43,27 @@ public sealed partial class MainForm
     [DllImport("dwmapi.dll")]
     private static extern int DwmGetWindowAttribute(IntPtr window,
         int attribute, out NativeRect bounds, int size);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window,
+        int attribute, ref int value, int size);
+
+    // Match the dark Windows caption/frame already used by Mods Folder.
+    private static void ApplyMatchingWindowFrame(Form window)
+    {
+        if (!window.IsHandleCreated) return;
+        try
+        {
+            var dark = 1;
+            if (DwmSetWindowAttribute(window.Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(window.Handle, 19, ref dark, sizeof(int));
+            // Windows 11 border colour (COLORREF). Older versions ignore it.
+            var border = 0x0038383B;
+            DwmSetWindowAttribute(window.Handle, 34, ref border, sizeof(int));
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+    }
 
     internal static int CalculateVisibleSeamOverlap(int modsRightInset,
         int launcherLeftInset) =>
@@ -129,11 +151,43 @@ public sealed partial class MainForm
     private void ConnectCustomModsDocking(Form mods)
     {
         mods.LocationChanged += (_, _) => FollowCustomModsMovement();
-        mods.SizeChanged += (_, _) => FollowCustomModsMovement();
+        mods.SizeChanged += (_, _) =>
+        {
+            if (!syncingDockWindowState && customModsDocked
+                && (mods.WindowState == FormWindowState.Minimized
+                    || mods.WindowState == FormWindowState.Normal)
+                && mods.WindowState != WindowState)
+                SyncDockWindowState(mods.WindowState);
+            FollowCustomModsMovement();
+        };
         mods.Activated += (_, _) => RaiseDockCompanion(this);
         // An owned WinForms window can become temporarily invisible when
         // its owner is minimized. Keep docking active across restore.
         // FollowLauncherMovement already ignores an intentionally hidden panel.
+    }
+
+    // Minimize/restore is one operation for the docked launcher, sidecar,
+    // Mods Folder and the dedicated Nexus popup. This guard also prevents
+    // ownership-driven SizeChanged reentry from breaking saved dock geometry.
+    private void SyncDockWindowState(FormWindowState state)
+    {
+        if (!customModsDocked || syncingDockWindowState
+            || state == FormWindowState.Maximized) return;
+        syncingDockWindowState = true;
+        try
+        {
+            if (WindowState != state) WindowState = state;
+            if (customOptionsForm is { IsDisposed: false } mods
+                && mods.Visible && mods.WindowState != state)
+                mods.WindowState = state;
+            NexusFolderCompanion.SyncDockWindowState(state);
+        }
+        finally { syncingDockWindowState = false; }
+        if (state == FormWindowState.Normal)
+        {
+            PlaceCustomModsBesideLauncher();
+            NexusFolderCompanion.UpdateDock();
+        }
     }
 
     private void RaiseDockCompanion(Form companion)
