@@ -23,6 +23,7 @@ internal sealed class CustomModSettings
     public bool PhysicalCrouch { get; set; }
     public bool RevengeDemon { get; set; }
     public bool DynamicShoulderHolster { get; set; }
+    public bool PersistentSuperShotgunReload { get; set; }
     public bool PhysicalGrenadeThrow { get; set; }
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
@@ -82,8 +83,8 @@ internal static class CustomModSettingsStore
         {
             Directory.CreateDirectory(root);
             var path = Path.Combine(root, "custom-mods.json");
-            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true }, path);
-            if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul)
+            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true }, path);
+            if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload)
                 throw new InvalidDataException("Valid custom mod option was lost.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
