@@ -7,10 +7,11 @@ namespace kharvox {
 inline bool ownedWeaponWheel(uintptr_t vtable) {
     return vtable==0x22456f8 || vtable==0x2245608;
 }
-// In VR keep the radial menu comfortably near the headset. It was
-// previously a 3m-wide panel 3m away, making the wheel feel detached.
-inline constexpr float weaponWheelDistanceMeters=1.6f;
-inline constexpr float weaponWheelWidthMeters=1.8f;
+// Original approved weapon-wheel presentation size and distance.
+// Position drift must be fixed by resetting the transform lifecycle, NOT
+// by resizing or shifting its visible appearance.
+inline constexpr float weaponWheelDistanceMeters=3.0f;
+inline constexpr float weaponWheelWidthMeters=3.0f;
 
 inline bool weaponWheelPose(const float* eye,const float* head,float units,float* center) {
     if(!eye||!head||!center||!std::isfinite(units)||units<=0)return false;
