@@ -159,7 +159,7 @@ public sealed partial class MainForm
             customBoxingGuard, customHandFocusedRs, customDirectionalDash,
             customBehindHeadWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
-            customPhysicalGrenadeThrow, customFastGloryKills,
+            customPhysicalGrenadeThrow, customPersistentSsgReload, customFastGloryKills,
             customFastChainsawKills, customHapticOverhaul
         }) yield return control;
     }
@@ -567,6 +567,7 @@ public sealed partial class MainForm
                 main.customDirectionalDash,
                 main.customPhysicalGrenadeThrow,
                 main.customGaussChargeSlowMovement,
+                main.customPersistentSsgReload,
                 main.customFastGloryKills,
                 main.customFastChainsawKills,
                 main.customDisableHud,
@@ -577,13 +578,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 15 || checks.Distinct().Count() != 15
+                || checks.Length != 16 || checks.Distinct().Count() != 16
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 11 ? 2
-                        : index < 13 ? 3 : index < 14 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 15
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 12 ? 2
+                        : index < 14 ? 3 : index < 15 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 16
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -598,7 +599,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 6 + 15 * 28 + 6 * 20
+                || layout.Height < 6 + 16 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
