@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish, work/full-integrated-sfs-build, work/vr-wheel-holster-crouch-dash-fixes]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish, work/full-integrated-sfs-build, work/vr-wheel-holster-crouch-dash-fixes, work/oct13-ui-and-gameplay-feedback]
   workflow_dispatch:
 
 permissions:
