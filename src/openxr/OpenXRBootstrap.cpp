@@ -3137,6 +3137,7 @@ void updateGameplayActions(XrTime displayTime){
         s.dynamicShoulderHolstered,
         weaponWheelActive,
         fireDown,
+        triggerDown,
         ssgAmmo==KharvoxWeaponAmmoState::Empty
             ||ssgAmmo==KharvoxWeaponAmmoState::Unavailable,
         static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime))
