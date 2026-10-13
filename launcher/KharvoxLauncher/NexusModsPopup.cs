@@ -64,6 +64,30 @@ internal static class NexusModsPopup
     internal static bool TrackedBrowserFocused(IntPtr hwnd)=>
         hwnd!=IntPtr.Zero&&hwnd==trackedPopup&&GetForegroundWindow()==hwnd;
 
+    internal static void SyncTrackedPopupWindowState(System.Windows.Forms.FormWindowState state)
+    {
+        if (trackedPopup == IntPtr.Zero || !IsWindow(trackedPopup)) return;
+        if (state == System.Windows.Forms.FormWindowState.Minimized)
+        {
+            if (!IsIconic(trackedPopup)) ShowWindow(trackedPopup, 6); // SW_MINIMIZE
+        }
+        else if (state == System.Windows.Forms.FormWindowState.Normal
+            && IsIconic(trackedPopup))
+            ShowWindow(trackedPopup, 9); // SW_RESTORE
+    }
+
+    internal static void CloseTrackedPopup()
+    {
+        // Only close the newly created/tracked Nexus window, never an
+        // existing browser session or the user's primary browser window.
+        var window = trackedPopup;
+        trackedPopup = IntPtr.Zero;
+        beforeBrowserLaunch = null;
+        pendingBrowserProcess = null;
+        if (window != IntPtr.Zero && IsWindow(window))
+            PostMessage(window, 0x0010, IntPtr.Zero, IntPtr.Zero); // WM_CLOSE
+    }
+
     internal static bool PositionTrackedBrowser(IntPtr hwnd, Rectangle bounds,
         IntPtr behindWindow=default)
     {
@@ -334,6 +358,10 @@ internal static class NexusModsPopup
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hwnd, int command);
+
+    [DllImport("user32.dll")]
+    private static extern bool PostMessage(IntPtr hwnd, uint message,
+        IntPtr wParam, IntPtr lParam);
 
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hwnd);
