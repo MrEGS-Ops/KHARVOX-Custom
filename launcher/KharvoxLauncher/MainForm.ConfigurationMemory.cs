@@ -1000,7 +1000,7 @@ public sealed partial class MainForm
             main.showHands, main.calibrateHands,
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
-            main.customDisableWeaponWheel
+            main.customDisableWeaponWheel, main.customPersistentSsgReload
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1012,6 +1012,7 @@ public sealed partial class MainForm
             main.applyingCustomModDependencies = true;
             main.calibrateHands.Checked = false;
             main.customDynamicShoulderHolster.Checked = false;
+            main.customPersistentSsgReload.Checked = false;
             main.customBehindHeadWeaponWheel.Checked = false;
             main.customDisableWeaponWheel.Checked = false;
             main.weaponWheelRemap.Checked = false;
@@ -1024,7 +1025,20 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Unused launcher options must be editable and retain values.");
 
+            // The SSG persistence mod must stand alone: no Hands, Holsters,
+            // weapon wheel, or VR remapping dependency may be forced.
             main.applyingCustomModDependencies = true;
+            main.customPersistentSsgReload.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.showHands.Enabled || main.showHands.Checked
+                || main.customDynamicShoulderHolster.Checked
+                || main.weaponWheelRemap.Checked
+                || main.ReadCustomModSettingsFromControls().PersistentSuperShotgunReload != true)
+                throw new InvalidDataException(
+                    "Persistent Super Shotgun Reload must work without other VR mods.");
+            main.applyingCustomModDependencies = true;
+            main.customPersistentSsgReload.Checked = false;
             main.customDynamicShoulderHolster.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
