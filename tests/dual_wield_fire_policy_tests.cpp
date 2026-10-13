@@ -48,5 +48,57 @@ int main() {
     nativeDualCombatShotgunShotAccepted(gun, DualFireChannel::Primary);
     assert(gun.reloadPending);
     assert(dualCombatShotgunCanReload(gun, false));
+
+    // SUPER SHOTGUN: first shot spends readiness, without duplicating shells.
+    DualSuperShotgunFireState super{};
+    assert(dualSuperShotgunCanFire(super, true));
+    assert(!dualSuperShotgunCanFire(super, false));
+    nativeDualSuperShotgunShotAccepted(super);
+    assert(super.reloadRequired && !super.reloadInProgress);
+    assert(!dualSuperShotgunCanFire(super, true));
+
+    // Two guns held: no reload. Dropping the EMPTY SSG itself while still
+    // holding the rifle is NOT a reload and cannot be used as a quick reset.
+    assert(!dualSuperShotgunCanReload(super, true, false, true));
+    assert(!dualSuperShotgunBeginReload(super, true, false, true));
+    for (int swap=0; swap<3; ++swap) {
+        dualSuperShotgunUpdateReloadHands(super, false, false); // holster SSG
+        assert(!dualSuperShotgunCanReload(super, false, false, true));
+        assert(!dualSuperShotgunBeginReload(super, false, false, true));
+        assert(!nativeDualSuperShotgunReloadCompleted(super, false, false, true));
+        dualSuperShotgunUpdateReloadHands(super, true, false); // redraw with rifle
+        assert(super.reloadRequired && !super.reloadInProgress);
+        assert(!dualSuperShotgunCanFire(super, true));
+    }
+
+    // An empty reserve may not produce a phantom reload.
+    assert(!dualSuperShotgunBeginReload(super, true, true, false));
+    assert(super.reloadRequired && !super.reloadInProgress);
+
+    // Put the RIFLE away, leaving SSG held: reload becomes eligible.
+    assert(dualSuperShotgunCanReload(super, true, true, true));
+    assert(dualSuperShotgunBeginReload(super, true, true, true));
+    assert(super.reloadInProgress);
+
+    // Re-grabbing the rifle or dropping the SSG interrupts, never completes.
+    dualSuperShotgunUpdateReloadHands(super, true, false);
+    assert(!super.reloadInProgress);
+    assert(!nativeDualSuperShotgunReloadCompleted(super, true, true, true));
+    assert(super.reloadRequired);
+    assert(dualSuperShotgunBeginReload(super, true, true, true));
+    dualSuperShotgunUpdateReloadHands(super, false, true);
+    assert(!nativeDualSuperShotgunReloadCompleted(super, true, true, true));
+    assert(!dualSuperShotgunCanFire(super, true));
+
+    // Still held, free other hand, and actual native reload completed.
+    assert(dualSuperShotgunBeginReload(super, true, true, true));
+    assert(!nativeDualSuperShotgunReloadCompleted(super, true, false, true));
+    assert(super.reloadRequired);
+    assert(dualSuperShotgunBeginReload(super, true, true, true));
+    assert(nativeDualSuperShotgunReloadCompleted(super, true, true, true));
+    assert(!super.reloadRequired && !super.reloadInProgress);
+    assert(dualSuperShotgunCanFire(super, true));
+    // Already ready: a second fake completion can't duplicate ammunition.
+    assert(!nativeDualSuperShotgunReloadCompleted(super, true, true, true));
     return 0;
 }
