@@ -31,6 +31,7 @@ struct PersistentSuperShotgunReloadInput {
     bool weaponHolstered{};
     bool weaponWheelActive{};
     bool fireRequested{};
+    bool physicalTriggerHeld{};
     bool nativeAmmoKnownEmpty{};
     std::uint64_t nowNanoseconds{};
 };
@@ -79,7 +80,9 @@ inline PersistentSuperShotgunReloadOutput updatePersistentSuperShotgunReload(
     // Require a new physical trigger edge. Holding the trigger through a
     // swap cannot initiate an unwanted shot immediately after returning.
     const bool freshPress = in.fireRequested && !state.triggerPreviouslyDown;
-    state.triggerPreviouslyDown = in.fireRequested;
+    // Track physical trigger *through* weapon wheel, holster and other guns,
+    // so grabbing an SSG while holding Fire never grants a free shot.
+    state.triggerPreviouslyDown = in.physicalTriggerHeld;
     if (!active) {
         out.remainingEquippedNanoseconds = state.reloadRequired
             ? persistentSsgActiveReloadNanoseconds -
