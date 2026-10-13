@@ -13,17 +13,18 @@ int main() {
     assert(quickHipInside({.10f,-.75f,.12f},true)); // exit hysteresis
     assert(!quickHipInside({NAN,-.75f,.35f},true)); // invalid tracking
     QuickHolsters h{};
-    assert(!quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
-    h.lastSelectedWheelSide=0;
     assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
-    assert(!quickHolsterCanStow(h,1,BackWeaponKind::Pistol));
+    assert(quickHolsterCanStow(h,1,BackWeaponKind::Pistol)); // no wheel prerequisite
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::GaussCannon));
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::Chaingun));
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::Bfg));
     h.slots[0]=BackWeaponKind::Pistol;
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::Pistol)); // cannot overwrite occupied
     assert(!quickHolsterCanStow(h,0,BackWeaponKind::CombatShotgun));
-    h.slots[0]=BackWeaponKind::Unknown; // after explicitly drawing it
+    const auto stored=h.slots[0]; // draw the pistol, not the hand's shotgun
+    assert(stored==BackWeaponKind::Pistol);
+    h.slots[0]=BackWeaponKind::Unknown; // only explicit draw empties it
+    assert(quickHolsterCanStow(h,0,BackWeaponKind::CombatShotgun));
     assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
     return 0;
 }
