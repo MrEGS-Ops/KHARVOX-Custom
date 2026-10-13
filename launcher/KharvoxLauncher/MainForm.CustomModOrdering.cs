@@ -15,7 +15,7 @@ public sealed partial class MainForm
     }
 
     // Number labels and drag handles belong to the POSITION, not the mod.
-    // These original 15 slots, plus new slots remain anchored while their checkboxes move.
+    // Number slots remain anchored while their checkboxes move.
     private sealed class ModOrderSlot
     {
         internal int Index;
@@ -152,6 +152,7 @@ public sealed partial class MainForm
             Define(customDirectionalDash, "directional-dash", 1),
             Define(customPhysicalGrenadeThrow, "physical-grenade", 2),
             Define(customGaussChargeSlowMovement, "gauss-slow-movement", 2),
+            Define(customPersistentSsgReload, "persistent-ssg-reload", 2),
             Define(customFastGloryKills, "fast-glory-kills", 2),
             Define(customFastChainsawKills, "fast-chainsaw", 2),
             Define(customDisableHud, "no-hud", 3),
