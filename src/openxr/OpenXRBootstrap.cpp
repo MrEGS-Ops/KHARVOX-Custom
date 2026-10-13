@@ -274,6 +274,7 @@ struct State {
     bool physicalCrouchActive{};
     XrTime physicalCrouchPulseUntil{};
     bool behindHeadWheelActive{};
+    bool hudWeaponWheelPresented{}; // HUD pose lifetime, independent of hand side
     int behindHeadWheelSide{-1}; // 0 right, 1 left
     bool wheelGripLatched{};
     bool wheelSelectionFrozen{};
@@ -2152,6 +2153,10 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
         s.physicalCrouchPulseUntil=0;
+        if(s.hudWeaponWheelPresented){
+            KharvoxHudResetWeaponWheelPresentation();
+            s.hudWeaponWheelPresented=false;
+        }
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
         s.wheelOriginalWeapon=kharvox::BackWeaponKind::Unknown;
@@ -2299,7 +2304,8 @@ void updateGameplayActions(XrTime displayTime){
         }
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
             &&wheelGripHeld&&selectedSide>=0){
-            s.quickHolsters.lastSelectedWheelSide=selectedSide;
+            // Wheel selects active weapon hand; it does NOT assign a hip slot.
+            // Either empty hip can stow without opening the wheel.
             // Wheel hand is selected by the completed physical pull only.
             selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
             // The same physical Grip that confirms a wheel pull must not
@@ -2310,8 +2316,8 @@ void updateGameplayActions(XrTime displayTime){
             // until release. Prevents accidental equipment cycling or BFG select.
             s.wheelSupportGripSuppressedUntilRelease=true;
             s.bfgGripSuppressedUntilRelease=true;
-            log(std::string("[QUICK-HOLSTERS] wheel selection assigned to ")
-                +(selectedSide==0?"right":"left")+" hip");
+            log(std::string("[WEAPON-WHEEL] physical wheel confirmed with ")
+                +(selectedSide==0?"right":"left")+" weapon hand");
         }
         s.behindHeadWheelActive=behindHeadWheelRequested;
         s.behindHeadWheelSide=behindHeadWheelRequested?selectedSide:-1;
@@ -2501,6 +2507,12 @@ void updateGameplayActions(XrTime displayTime){
             ||displayTime<s.weaponSwitchPulseUntil);
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&weaponSelectDown&&s.weaponWheelOpened;
+    if(weaponWheelActive!=s.hudWeaponWheelPresented){
+        // Reset renderer-local wheel transform/pivot at BOTH edges. Original
+        // native menu size and distance remain unchanged.
+        KharvoxHudResetWeaponWheelPresentation();
+        s.hudWeaponWheelPresented=weaponWheelActive;
+    }
     if(s.wheelCancelRestoreAt&&displayTime>=s.wheelCancelRestoreAt
         &&!weaponWheelActive){
         const auto original=s.wheelCancelRestore;
@@ -2631,12 +2643,12 @@ void updateGameplayActions(XrTime displayTime){
                 // hold-for-BFG shortcut while the controller stays down.
                 s.bfgGripSuppressedUntilRelease=true;
                 auto& slot=s.quickHolsters.slots[side];
-                const bool sameStowed=s.quickHolsters.activeStowedSide==side;
                 const bool canStow=!s.dynamicShoulderHolstered
                     &&kharvox::quickHolsterCanStow(
                         s.quickHolsters,side,activeBackWeapon);
-                if(sameStowed || (slot!=kharvox::BackWeaponKind::Unknown
-                    &&!canStow)){
+                // OCCUPIED always draws: even if this same physical hand is
+                // holding another weapon, never replace the hip identity.
+                if(slot!=kharvox::BackWeaponKind::Unknown){
                     const auto stored=slot;
                     if(stored==kharvox::BackWeaponKind::Unknown)continue;
                     // The player GRABS the gun from this slot. Never invoke
@@ -2650,8 +2662,7 @@ void updateGameplayActions(XrTime displayTime){
                     s.twoHandLatched=false;
                     s.wheelWeaponGripSuppressedUntilRelease=true;
                     s.wheelSupportGripSuppressedUntilRelease=true;
-                    s.quickHolsters.lastSelectedWheelSide=side;
-                    slot=kharvox::BackWeaponKind::Unknown; // slot now physically empty
+                    slot=kharvox::BackWeaponKind::Unknown; // draw empties just this inventory slot
                     if(stored!=activeBackWeapon){
                         const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
                         if(key)startBackWeaponKeyboardPulse(key,displayTime);
@@ -2667,8 +2678,8 @@ void updateGameplayActions(XrTime displayTime){
                         +(side==0?"RIGHT":"LEFT")+" hip weapon="
                         +backWeaponKindKey(stored)+" -> corresponding weapon hand");
                 }else if(canStow){
-                    // Stow the equipped weapon: move its 6DoF render anchor
-                    // to the hip instead of raising/hiding it at the hand.
+                    // Stow ONLY the weapon identity. DOOM keeps the actual
+                    // inventory item; no separate holster model or pose exists.
                     slot=activeBackWeapon;
                     s.quickHolsters.activeStowedSide=side;
                     s.dynamicShoulderHolstered=true;
