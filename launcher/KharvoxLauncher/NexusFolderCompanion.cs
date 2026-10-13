@@ -21,6 +21,7 @@ internal static class NexusFolderCompanion
     private static IntPtr trackedBrowser;
     private static System.Windows.Forms.Timer? dockTimer;
     private static bool syncingCompanions;
+    private static bool syncingWindowState;
     private static Rectangle lastLauncherBounds, lastFolderBounds;
     private static Rectangle lastModsBounds, lastBrowserBounds;
     private static Point folderOffset, browserOffset;
@@ -103,6 +104,15 @@ internal static class NexusFolderCompanion
         lastModsBounds=Rectangle.Empty;
         lastBrowserBounds=Rectangle.Empty;
         EnsureDockTimer();
+        viewer.SizeChanged += (_, _) =>
+        {
+            if (syncingWindowState || launcher is null || launcher.IsDisposed
+                || !viewer.Visible) return;
+            if ((viewer.WindowState == FormWindowState.Minimized
+                    || viewer.WindowState == FormWindowState.Normal)
+                && launcher.WindowState != viewer.WindowState)
+                launcher.WindowState = viewer.WindowState;
+        };
         viewer.FormClosed += (_, _) =>
         {
             if (ReferenceEquals(activeWindow, viewer))
@@ -112,6 +122,28 @@ internal static class NexusFolderCompanion
             }
         };
         return viewer;
+    }
+
+    internal static void SyncDockWindowState(FormWindowState state)
+    {
+        if (syncingWindowState || state == FormWindowState.Maximized) return;
+        syncingWindowState = true;
+        try
+        {
+            if (ActiveWindow is { Visible: true } viewer
+                && viewer.WindowState != state)
+                viewer.WindowState = state;
+            NexusModsPopup.SyncTrackedPopupWindowState(state);
+        }
+        finally { syncingWindowState = false; }
+    }
+
+    // Closing Custom Mods closes its dedicated folder and Nexus popup only;
+    // neither the primary launcher nor pre-existing browser windows are touched.
+    internal static void CloseAllCompanions()
+    {
+        NexusModsPopup.CloseTrackedPopup();
+        if (ActiveWindow is { } viewer) viewer.Close();
     }
 
     private static void EnsureDockTimer()
@@ -231,10 +263,14 @@ internal static class NexusFolderCompanion
             }
             lastLauncherBounds=anchor;
             lastFolderBounds=viewer.Bounds;
-            // Keep the folder behind its launcher, without activating it.
-            if(!viewer.ContainsFocus&&viewer.IsHandleCreated&&launcher.IsHandleCreated)
-                SetWindowPos(viewer.Handle,launcher.Handle,0,0,0,0,
-                    0x0001|0x0002|0x0010);
+            // Keep the folder in front of the dock group without activating
+            // it. Never insert it BEHIND the launcher when focus changes.
+            if (viewer.IsHandleCreated && (viewer.ContainsFocus
+                || launcher.ContainsFocus
+                || Application.OpenForms.Cast<Form>().Any(form =>
+                    form.Text == "KHARVOX Custom Mods" && form.ContainsFocus)))
+                SetWindowPos(viewer.Handle, IntPtr.Zero, 0, 0, 0, 0,
+                    0x0001 | 0x0002 | 0x0010);
 
             if(trackedBrowser!=IntPtr.Zero&&!IsWindow(trackedBrowser)){
                 trackedBrowser=IntPtr.Zero;
