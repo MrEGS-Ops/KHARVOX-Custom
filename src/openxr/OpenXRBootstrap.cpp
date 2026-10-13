@@ -231,7 +231,9 @@ struct State {
     // Oculus/Quest capacitive contacts. Optional and NEVER inferred from
     // analogue-only grip/trigger when the runtime cannot bind them.
     std::array<XrAction,2> indexTouch{},thumbstickTouch{},thumbrestTouch{},faceLowerTouch{},faceUpperTouch{};
+    std::array<XrAction,2> indexProximity{},thumbProximity{}; // actual Quest 3 Touch Plus proximity
     bool openHandTouchActionsReady{},openHandTouchBindingsSuggested{};
+    bool metaTouchPlusEnabled{},metaProximityActionsReady{},metaTouchPlusBindingsSuggested{};
     XrAction doomJump{XR_NULL_HANDLE}; XrAction doomCrouch{XR_NULL_HANDLE};
     XrAction doomMelee{XR_NULL_HANDLE}; XrAction doomEquipment{XR_NULL_HANDLE};
     kharvox::EquipmentGripPolicy equipmentGrip;
@@ -2736,6 +2738,18 @@ void updateGameplayActions(XrTime displayTime){
     kharvox::OpenHandContacts openPalm{};
     const int physicalWeaponSide=s.weaponHandLeft?1:0;
     if(s.openHandTouchBindingsSuggested){
+        // Prefer true Quest 3 index/thumb proximity whenever the *current*
+        // runtime profile activates it. Otherwise sample every standard
+        // capacitive surface and require ALL to be active.
+        const int nearIndex=s.metaTouchPlusBindingsSuggested
+            ?readTouchAction(s.indexProximity[physicalWeaponSide]):-1;
+        const int nearThumb=s.metaTouchPlusBindingsSuggested
+            ?readTouchAction(s.thumbProximity[physicalWeaponSide]):-1;
+        if(nearIndex>=0&&nearThumb>=0){
+            openPalm.valid=true;
+            openPalm.indexTouch=nearIndex>0;
+            openPalm.thumbstickTouch=nearThumb>0;
+        }else{
         const int index=readTouchAction(s.indexTouch[physicalWeaponSide]);
         const int stick=readTouchAction(s.thumbstickTouch[physicalWeaponSide]);
         const int rest=readTouchAction(s.thumbrestTouch[physicalWeaponSide]);
@@ -2747,6 +2761,7 @@ void updateGameplayActions(XrTime displayTime){
         openPalm.thumbrestTouch=rest>0;
         openPalm.faceLowerTouch=lower>0;
         openPalm.faceUpperTouch=upper>0;
+        }
         openPalm.trigger=readFloatAction(s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger);
         openPalm.grip=readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip);
     }
@@ -3510,7 +3525,22 @@ bool createGameplayActions(){
             &&s.openHandTouchActionsReady;
     }
     if(!s.openHandTouchActionsReady)
-        log("[OPEN-HAND] touch action creation unavailable; virtual drop disabled");
+        log("[OPEN-HAND] touch action creation unavailable; using Meta proximity when available");
+    if(s.metaTouchPlusEnabled){
+        s.metaProximityActionsReady=true;
+        for(int side=0;side<2;++side){
+            const std::string id=side==0?"right":"left";
+            const std::string label=side==0?"Right":"Left";
+            s.metaProximityActionsReady=
+                createAction((id+"_index_near").c_str(),(label+" Index Proximity").c_str(),
+                    XR_ACTION_TYPE_BOOLEAN_INPUT,s.indexProximity[side])
+                &&createAction((id+"_thumb_near").c_str(),(label+" Thumb Proximity").c_str(),
+                    XR_ACTION_TYPE_BOOLEAN_INPUT,s.thumbProximity[side])
+                &&s.metaProximityActionsReady;
+        }
+        if(!s.metaProximityActionsReady)
+            log("[OPEN-HAND] Meta proximity creation unavailable; using basic capacitive inputs");
+    }
     if(s.applyHapticFeedback&&s.stopHapticFeedback){
         const bool leftHapticCreated=createAction("left_haptic","Left Haptic",XR_ACTION_TYPE_VIBRATION_OUTPUT,s.leftHaptic);
         const bool rightHapticCreated=createAction("right_haptic","Right Haptic",XR_ACTION_TYPE_VIBRATION_OUTPUT,s.rightHaptic);
@@ -3600,7 +3630,24 @@ bool createGameplayActions(){
         // For Oculus Touch profile these all have standard OpenXR paths.
         const std::size_t touchBegin=bindings.size();
         std::size_t touchBindingCount=0;
-        if(questTouch&&s.openHandTouchActionsReady){
+        const bool metaPlus=std::strcmp(profileName,
+            "/interaction_profiles/meta/touch_controller_plus")==0;
+        if(metaPlus&&s.metaProximityActionsReady){
+            bool bothPaths=true;
+            for(int side=0;side<2;++side){
+                XrPath indexPath{},thumbPath{};
+                const char* hand=side==0?"right":"left";
+                bothPaths=resolvePath(inputPath(hand,"trigger/proximity_meta"),indexPath)
+                    &&resolvePath(inputPath(hand,"thumb_meta/proximity_meta"),thumbPath)
+                    &&bothPaths;
+                if(bothPaths){
+                    bindings.push_back({s.indexProximity[side],indexPath});
+                    bindings.push_back({s.thumbProximity[side],thumbPath});
+                }
+            }
+            if(bothPaths)touchBindingCount=bindings.size()-touchBegin;
+            else bindings.resize(touchBegin);
+        }else if(questTouch&&s.openHandTouchActionsReady){
             const auto bindPhysicalTouch=[&](int side,const char*component,XrAction action){
                 XrPath path{};
                 if(!resolvePath(inputPath(side==0?"right":"left",component),path))
@@ -3652,7 +3699,9 @@ bool createGameplayActions(){
         }
         if(XR_SUCCEEDED(bindResult)&&touchBindingCount&&questTouch){
             s.openHandTouchBindingsSuggested=true;
-            log("[OPEN-HAND] Quest index/thumb capacitive action paths bound");
+            if(metaPlus)s.metaTouchPlusBindingsSuggested=true;
+            log(std::string("[OPEN-HAND] Quest finger sensors bound: ")
+                +(metaPlus?"real Touch Plus proximity":"legacy capacitive touch"));
         }
         if(XR_SUCCEEDED(bindResult)&&hapticBindingsIncluded){
             s.hapticBindingsSuggested=true;
@@ -3665,6 +3714,12 @@ bool createGameplayActions(){
             kharvox::GripControllerProfile::Default)
         ||!suggestProfile("/interaction_profiles/valve/index_controller","Valve Index",false,
             kharvox::GripControllerProfile::ValveIndex))return false;
+    // Meta's native Touch Plus profile is optional. Steam Link / older
+    // runtimes retain the existing Oculus binding profile without change.
+    if(s.metaTouchPlusEnabled
+        &&!suggestProfile("/interaction_profiles/meta/touch_controller_plus",
+            "Quest Touch Plus",true,kharvox::GripControllerProfile::Default))
+        log("[OPEN-HAND] Touch Plus interaction profile unavailable; retaining Oculus fallback");
     auto createPoseSpace=[&](XrAction action,XrSpace&space,const char*label){
         XrActionSpaceCreateInfo xi{XR_TYPE_ACTION_SPACE_CREATE_INFO};
         xi.action=action;xi.poseInActionSpace.orientation.w=1;
