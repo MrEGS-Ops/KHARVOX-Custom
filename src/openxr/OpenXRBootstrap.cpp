@@ -3273,8 +3273,15 @@ void updateGameplayActions(XrTime displayTime){
         if(bothGuardsRaised){
             if(!s.boxingPoseStartedAt)s.boxingPoseStartedAt=displayTime;
             if(displayTime>=s.boxingPoseStartedAt+180000000LL){
-                if(!s.boxingHeadFocus)
-                    log("[FOCUS] guard pose held -> HEAD focus for Glory Kills");
+                if(!s.boxingHeadFocus){
+                    log("[FOCUS] guard pose held -> HEAD focus and Boxing Guard slowdown");
+                    // Confirm that the guarded stance actually engaged,
+                    // even when the player normally uses head-focused aiming.
+                    for(int side=0;side<2;++side)
+                        kharvox::queueControllerZoneCue(
+                            s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
+                            GetTickCount64(),55,.35f,130.f);
+                }
                 s.boxingHeadFocus=true;
                 s.headFocusHeldUntil=displayTime+900000000LL;
             }
