@@ -2026,17 +2026,11 @@ void updateWeapon6Dof(){
         s.weaponTrackingHeld=false;
     }
 
+    // Hip holsters hold weapon IDs, not objects or even virtual 6DoF props.
+    // Never relocate the actual native weapon pose into a hip. The same
+    // normal hand-tracked pose advances beneath the presentation-only hide.
     auto current=controllerRelativeToBodyTrackingOrigin(primaryController);
-    if(s.dynamicShoulderHolstered && s.quickHolsters.activeStowedSide>=0
-        &&s.trackingHeadPositionValid){
-        // Stowed gun's 6DoF source is its BODY-RELATIVE HIP, never the hand.
-        // HMD-relative hip height follows crouching; a rearward +Z offset
-        // keeps the weapon behind the front waist where accidental grabs occur.
-        const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-        const int hip=s.quickHolsters.activeStowedSide;
-        current.position={head.x+(hip==0?.30f:-.30f),
-            head.y-.77f,head.z+.34f};
-        current.orientation={.5f,0.f,0.f,.8660254f}; // muzzle down in holster
+    if(s.dynamicShoulderHolstered){
         s.twoHandLatched=false;
         s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
     }
