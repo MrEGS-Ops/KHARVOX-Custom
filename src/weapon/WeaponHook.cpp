@@ -2018,10 +2018,15 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         submittedOrigin = pairedOrigin;
         submittedAxis = pairedAxis;
     }
-    // Physical Quick Holsters move the 6DoF weapon SOURCE to the hip.
-    // Do not hide the render object below the world: that was leaving the
-    // player with an empty hand and no visible weapon in the hip.
-    // The controller source now supplies the body-relative anchored transform.
+    // Invisible Quick Holsters: keep native weapon/render state advancing,
+    // but shrink ONLY the confirmed first-person weapon presentation while
+    // stowed. This avoids the old world-underflow pose hack, leaves gameplay
+    // physics untouched, and lets drawing restore full scale instantly.
+    // 0.001 is nonzero so native transforms never become singular.
+    const bool hideHolsteredPresentation=weaponPresentation
+        &&weaponHolstered.load(std::memory_order_acquire);
+    const float submittedModelScale=hideHolsteredPresentation
+        ?0.001f:modelScale;
     if (weaponPresentation) {
         lastWeaponRenderObject.store(reinterpret_cast<uintptr_t>(renderObject),
                                      std::memory_order_release);
@@ -2059,7 +2064,7 @@ extern "C" void __fastcall weaponRenderUpdateHook(
     }
     if (originalWeaponRenderUpdate) {
         originalWeaponRenderUpdate(renderObject, submittedOrigin, submittedAxis, viewOffset,
-                                   renderView, frame, time, flags, modelScale, depthHack);
+                                   renderView, frame, time, flags, submittedModelScale, depthHack);
     }
 }
 
