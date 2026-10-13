@@ -42,6 +42,19 @@ inline bool quickHolsterCanStow(const QuickHolsters& state, int side,
     BackWeaponKind equipped) {
     return side>=0&&side<=1
         &&state.slots[side]==BackWeaponKind::Unknown
+        &&state.slots[1-side]!=equipped // no duplicate ID across two hips
         &&quickHolsterEligible(equipped);
+}
+
+// Occupied-slot DRAW always wins, regardless of the gun currently equipped.
+// A hold never performs an implicit stow+draw swap.
+enum class QuickHipAction { None, Draw, Stow };
+inline QuickHipAction quickHipAction(
+    const QuickHolsters& state, int side, BackWeaponKind equipped,
+    bool alreadyHolstered) {
+    if(side<0||side>1)return QuickHipAction::None;
+    if(state.slots[side]!=BackWeaponKind::Unknown)return QuickHipAction::Draw;
+    return !alreadyHolstered&&quickHolsterCanStow(state,side,equipped)
+        ?QuickHipAction::Stow:QuickHipAction::None;
 }
 }
