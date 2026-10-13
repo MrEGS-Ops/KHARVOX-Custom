@@ -456,7 +456,8 @@ internal sealed class ModDropWindow : Form
             if (e.Button != MouseButtons.Right) return;
             var hit = files.GetItemAt(e.X, e.Y);
             if (hit is null || hit.Selected) return;
-            files.SelectedItems.Clear();
+            foreach (ListViewItem selected in files.SelectedItems.Cast<ListViewItem>().ToArray())
+                selected.Selected = false;
             hit.Selected = true;
         };
         files.Resize += (_, _) =>
