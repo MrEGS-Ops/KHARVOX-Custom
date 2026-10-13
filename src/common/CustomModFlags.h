@@ -29,6 +29,7 @@ struct CustomModFlags {
     bool physicalCrouch{};
     bool revengeDemon{};
     bool dynamicShoulderHolster{};
+    bool persistentSuperShotgunReload{};
     bool physicalGrenadeThrow{};
     bool motionGloryKillSpeed{};
     bool physicalChainsawGestures{};
@@ -61,6 +62,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.physicalCrouch = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_CROUCH");
     flags.revengeDemon = customModEnvironmentEnabled("KHARVOX_MOD_REVENGE_DEMON");
     flags.dynamicShoulderHolster = customModEnvironmentEnabled("KHARVOX_MOD_DYNAMIC_SHOULDER");
+    flags.persistentSuperShotgunReload = customModEnvironmentEnabled("KHARVOX_MOD_SSG_PERSISTENT_RELOAD");
     flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
     flags.physicalChainsawGestures = false; // retired; fast/native toggle replaces gesture speed control
