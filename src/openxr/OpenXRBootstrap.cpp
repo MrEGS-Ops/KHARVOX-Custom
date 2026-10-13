@@ -3129,10 +3129,9 @@ void updateGameplayActions(XrTime displayTime){
             const float dx=hand.x-head.x;
             const float dy=hand.y-head.y;
             const float dz=hand.z-head.z;
-            // Small central chest pocket, well in front of both rear hip slots
-            // and below the behind-head wheel activation zones.
-            insideChest=std::abs(dx)<=.18f&&dy>=-.64f&&dy<=-.22f
-                &&dz>=-.30f&&dz<=.09f; // chest zone ~18cm rearward
+            // Palm-sized chest volume, not a torso-wide grenade trigger.
+            // Keep it anchored close to the sternum as the HMD moves.
+            insideChest=kharvox::insideChestGrenadeZone(dx,dy,dz);
         }
         const int equipmentHapticHand=s.weaponHandLeft?1:0;
         const auto hapticNow=GetTickCount64();
