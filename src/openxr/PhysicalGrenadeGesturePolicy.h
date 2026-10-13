@@ -1,7 +1,18 @@
 #pragma once
 #include <cstdint>
+#include <cmath>
 
 namespace kharvox {
+
+// Compact palm-size volume centered on the upper sternum, HMD-relative.
+// X ±10 cm, Y 19 cm tall, Z 18 cm deep, close against the chest.
+inline bool insideChestGrenadeZone(float dx, float dy, float dz) {
+    return std::isfinite(dx) && std::isfinite(dy) && std::isfinite(dz)
+        && std::abs(dx) <= .10f
+        && dy >= -.53f && dy <= -.34f
+        && dz >= -.07f && dz <= .11f;
+}
+
 // Quick tap INSIDE chest = cycle on release. Long hold + withdrawal = prime.
 // Release OUTSIDE = throw once. Release inside after a hold = cancel.
 // The throw pulse still delegates projectile spawning/physics to KHARVOX/DOOM.
