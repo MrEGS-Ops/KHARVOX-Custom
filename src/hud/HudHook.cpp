@@ -3696,7 +3696,7 @@ bool KharvoxHudCompleteFinalEntity(
         std::memcpy(offhandCanvasSubmission.center,matchedPending.desiredOrigin.data(),sizeof(float)*3);
         std::memcpy(offhandCanvasSubmission.axis,desiredAxis,sizeof(float)*9);
         static std::atomic<bool> noted{};
-        if(!noted.exchange(true))log("[WEAPON-WHEEL] owned selection canvas centered at 3m; width=3m; camera-aligned stereo plane");
+        if(!noted.exchange(true))log("[WEAPON-WHEEL] owned selection canvas at "+std::to_string(kharvox::weaponWheelDistanceMeters)+"m; width="+std::to_string(kharvox::weaponWheelWidthMeters)+"m; headset-fixed stereo plane");
     }
     if (transformed)
         std::memcpy(desiredOrigin, matchedPending.desiredOrigin.data(), sizeof(float) * 3);
