@@ -3490,6 +3490,27 @@ bool createGameplayActions(){
         ||!createAction("doom_pause","Doom Pause",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomPause)
         ||!createAction("doom_mission_info","Doom Mission Information",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomMissionInfo)
         ||!createAction("doom_switch_weapon_mod","Doom Switch Weapon Mod",XR_ACTION_TYPE_BOOLEAN_INPUT,s.doomSwitchWeaponMod))return false;
+    // Optional Quest Touch capacitive inputs. Create them independently of
+    // native combat bindings, so a runtime without them retains normal play.
+    s.openHandTouchActionsReady=true;
+    for(int side=0;side<2;++side){
+        const std::string label=side==0?"Right":"Left";
+        const std::string id=side==0?"right":"left";
+        s.openHandTouchActionsReady=
+            createAction((id+"_index_touch").c_str(),(label+" Index Touch").c_str(),
+                XR_ACTION_TYPE_BOOLEAN_INPUT,s.indexTouch[side])
+            &&createAction((id+"_stick_touch").c_str(),(label+" Thumbstick Touch").c_str(),
+                XR_ACTION_TYPE_BOOLEAN_INPUT,s.thumbstickTouch[side])
+            &&createAction((id+"_rest_touch").c_str(),(label+" Thumbrest Touch").c_str(),
+                XR_ACTION_TYPE_BOOLEAN_INPUT,s.thumbrestTouch[side])
+            &&createAction((id+"_face_lo_touch").c_str(),(label+" Lower Face Touch").c_str(),
+                XR_ACTION_TYPE_BOOLEAN_INPUT,s.faceLowerTouch[side])
+            &&createAction((id+"_face_hi_touch").c_str(),(label+" Upper Face Touch").c_str(),
+                XR_ACTION_TYPE_BOOLEAN_INPUT,s.faceUpperTouch[side])
+            &&s.openHandTouchActionsReady;
+    }
+    if(!s.openHandTouchActionsReady)
+        log("[OPEN-HAND] touch action creation unavailable; virtual drop disabled");
     if(s.applyHapticFeedback&&s.stopHapticFeedback){
         const bool leftHapticCreated=createAction("left_haptic","Left Haptic",XR_ACTION_TYPE_VIBRATION_OUTPUT,s.leftHaptic);
         const bool rightHapticCreated=createAction("right_haptic","Right Haptic",XR_ACTION_TYPE_VIBRATION_OUTPUT,s.rightHaptic);
@@ -3575,6 +3596,29 @@ bool createGameplayActions(){
             {s.doomSecondaryFireGrip,secondaryFireGripPath},{s.doomSupportGrip,supportGripPath},{s.doomPause,pausePath},
             {s.doomMissionInfo,missionInfoPath},{s.doomSwitchWeaponMod,switchWeaponModPath}
         };
+        // Bind physical Quest capacitive controls, not synthetic grab state.
+        // For Oculus Touch profile these all have standard OpenXR paths.
+        const std::size_t touchBegin=bindings.size();
+        std::size_t touchBindingCount=0;
+        if(questTouch&&s.openHandTouchActionsReady){
+            const auto bindPhysicalTouch=[&](int side,const char*component,XrAction action){
+                XrPath path{};
+                if(!resolvePath(inputPath(side==0?"right":"left",component),path))
+                    return false;
+                bindings.push_back({action,path});
+                return true;
+            };
+            bool allPaths=true;
+            for(int side=0;side<2;++side){
+                allPaths=bindPhysicalTouch(side,"trigger/touch",s.indexTouch[side])&&allPaths;
+                allPaths=bindPhysicalTouch(side,"thumbstick/touch",s.thumbstickTouch[side])&&allPaths;
+                allPaths=bindPhysicalTouch(side,"thumbrest/touch",s.thumbrestTouch[side])&&allPaths;
+                allPaths=bindPhysicalTouch(side,side==0?"a/touch":"x/touch",s.faceLowerTouch[side])&&allPaths;
+                allPaths=bindPhysicalTouch(side,side==0?"b/touch":"y/touch",s.faceUpperTouch[side])&&allPaths;
+            }
+            if(allPaths)touchBindingCount=bindings.size()-touchBegin;
+            else bindings.resize(touchBegin);
+        }
         bool hapticBindingsIncluded=false;
         if(s.hapticActionsReady
             &&resolvePath("/user/hand/left/output/haptic",leftHapticPath)
@@ -3587,6 +3631,17 @@ bool createGameplayActions(){
         sb.interactionProfile=profile;sb.suggestedBindings=bindings.data();
         sb.countSuggestedBindings=uint32_t(bindings.size());
         auto bindResult=s.suggestBindings(s.instance,&sb);
+        if(XR_FAILED(bindResult)&&touchBindingCount){
+            // If the runtime rejects optional capacitive paths, preserve the
+            // original gameplay/haptic binds instead of failing all controls.
+            bindings.erase(bindings.begin()+touchBegin,
+                bindings.begin()+touchBegin+touchBindingCount);
+            sb.suggestedBindings=bindings.data();
+            sb.countSuggestedBindings=uint32_t(bindings.size());
+            bindResult=s.suggestBindings(s.instance,&sb);
+            touchBindingCount=0;
+            log("[OPEN-HAND] optional touch binding rejected; disabled while preserving original controller actions");
+        }
         if(XR_FAILED(bindResult)&&hapticBindingsIncluded){
             log(std::string("[HAPTICS] ")+label+" haptic bindings unavailable "+result(bindResult)+"; retrying input-only profile");
             bindings.resize(bindings.size()-2);
@@ -3594,6 +3649,10 @@ bool createGameplayActions(){
             sb.countSuggestedBindings=uint32_t(bindings.size());
             bindResult=s.suggestBindings(s.instance,&sb);
             hapticBindingsIncluded=false;
+        }
+        if(XR_SUCCEEDED(bindResult)&&touchBindingCount&&questTouch){
+            s.openHandTouchBindingsSuggested=true;
+            log("[OPEN-HAND] Quest index/thumb capacitive action paths bound");
         }
         if(XR_SUCCEEDED(bindResult)&&hapticBindingsIncluded){
             s.hapticBindingsSuggested=true;
