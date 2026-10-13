@@ -598,7 +598,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 32 + 15 * 28 + 6 * 20
+                || layout.Height < 6 + 15 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
