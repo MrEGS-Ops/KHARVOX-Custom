@@ -2643,12 +2643,11 @@ void updateGameplayActions(XrTime displayTime){
                 // hold-for-BFG shortcut while the controller stays down.
                 s.bfgGripSuppressedUntilRelease=true;
                 auto& slot=s.quickHolsters.slots[side];
-                const bool canStow=!s.dynamicShoulderHolstered
-                    &&kharvox::quickHolsterCanStow(
-                        s.quickHolsters,side,activeBackWeapon);
-                // OCCUPIED always draws: even if this same physical hand is
-                // holding another weapon, never replace the hip identity.
-                if(slot!=kharvox::BackWeaponKind::Unknown){
+                const auto hipAction=kharvox::quickHipAction(
+                    s.quickHolsters,side,activeBackWeapon,s.dynamicShoulderHolstered);
+                // OCCUPIED always draws, even when this same physical hand
+                // is holding another gun. No implicit stow/swap is possible.
+                if(hipAction==kharvox::QuickHipAction::Draw){
                     const auto stored=slot;
                     if(stored==kharvox::BackWeaponKind::Unknown)continue;
                     // The player GRABS the gun from this slot. Never invoke
@@ -2677,7 +2676,7 @@ void updateGameplayActions(XrTime displayTime){
                     log(std::string("[QUICK-HOLSTERS] GRAB ")
                         +(side==0?"RIGHT":"LEFT")+" hip weapon="
                         +backWeaponKindKey(stored)+" -> corresponding weapon hand");
-                }else if(canStow){
+                }else if(hipAction==kharvox::QuickHipAction::Stow){
                     // Stow ONLY the weapon identity. DOOM keeps the actual
                     // inventory item; no separate holster model or pose exists.
                     slot=activeBackWeapon;
