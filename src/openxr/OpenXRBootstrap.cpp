@@ -54,6 +54,7 @@
 #include "EquipmentGripPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
+#include "OpenHandReleasePolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -227,6 +228,10 @@ struct State {
     // Physical combat inputs can change owner without touching movement or menus.
     XrAction rightWeaponTrigger{XR_NULL_HANDLE}; XrAction leftWeaponTrigger{XR_NULL_HANDLE};
     XrAction rightWeaponGrip{XR_NULL_HANDLE}; XrAction leftWeaponGrip{XR_NULL_HANDLE};
+    // Oculus/Quest capacitive contacts. Optional and NEVER inferred from
+    // analogue-only grip/trigger when the runtime cannot bind them.
+    std::array<XrAction,2> indexTouch{},thumbstickTouch{},thumbrestTouch{},faceLowerTouch{},faceUpperTouch{};
+    bool openHandTouchActionsReady{},openHandTouchBindingsSuggested{};
     XrAction doomJump{XR_NULL_HANDLE}; XrAction doomCrouch{XR_NULL_HANDLE};
     XrAction doomMelee{XR_NULL_HANDLE}; XrAction doomEquipment{XR_NULL_HANDLE};
     kharvox::EquipmentGripPolicy equipmentGrip;
@@ -287,6 +292,9 @@ struct State {
     bool dashButtonPressed{};
     XrTime dashCooldownUntil{};
     bool dynamicShoulderHolstered{};
+    bool openHandUnequipped{}; // no hip assignment; native weapon kept in inventory
+    KharvoxWeaponKind openHandUnequippedKind{KharvoxWeaponKind::Unknown};
+    kharvox::OpenHandReleaseState openHandRelease{};
     kharvox::QuickHolsters quickHolsters{};
     std::array<bool,2> quickHolsterPhysicalGripHeld{};
     bool chainsawArmed{true},pausePressed{};
@@ -2166,6 +2174,9 @@ void updateGameplayActions(XrTime displayTime){
         s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;s.quickHolsters.activeStowedSide=-1;
+        s.openHandUnequipped=false;
+        s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
+        s.openHandRelease={};
         s.quickHolsterPhysicalGripHeld={};
         KharvoxWeaponSetHolstered(false);
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
@@ -2189,6 +2200,14 @@ void updateGameplayActions(XrTime displayTime){
     locateGameplayControllerPoses(displayTime);
     auto readFloatAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};return XR_SUCCEEDED(s.getActionStateFloat(s.session,&info,&state))&&state.isActive?state.currentState:0.f;};
     auto readBooleanAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};return XR_SUCCEEDED(s.getActionStateBoolean(s.session,&info,&state))&&state.isActive&&state.currentState;};
+    // -1 = input unavailable. An unbound proximity sensor is NOT an open finger.
+    auto readTouchAction=[](XrAction action)->int {
+        if(action==XR_NULL_HANDLE)return -1;
+        XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;
+        XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};
+        if(XR_FAILED(s.getActionStateBoolean(s.session,&info,&state))||!state.isActive)return -1;
+        return state.currentState?1:0;
+    };
     XrActionStateGetInfo moveInfo{XR_TYPE_ACTION_STATE_GET_INFO};moveInfo.action=s.doomMove;XrActionStateVector2f moveState{XR_TYPE_ACTION_STATE_VECTOR2F};
     const bool moveActionActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&moveInfo,&moveState))&&moveState.isActive;
     s.leftStick=moveActionActive?moveState.currentState:XrVector2f{};
@@ -2615,6 +2634,20 @@ void updateGameplayActions(XrTime displayTime){
         }
     }else{
         const int stowed=s.quickHolsters.activeStowedSide;
+        if(s.openHandUnequipped &&
+            (weaponWheelActive||s.behindHeadWheelActive||
+             (s.openHandUnequippedKind!=KharvoxWeaponKind::Unknown
+                 &&activeWeaponKind!=s.openHandUnequippedKind))){
+            // Weapon wheel or new weapon selection explicitly re-equips the
+            // native inventory gun. Open palm never removes it from DOOM.
+            s.openHandUnequipped=false;
+            s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
+            s.dynamicShoulderHolstered=false;
+            KharvoxWeaponSetHolstered(false);
+            kharvox::delayOpenHandRelease(s.openHandRelease,
+                static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
+            log("[OPEN-HAND] wheel/new selection -> re-equip");
+        }
         if(stowed>=0
             &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown
             &&activeBackWeapon!=s.quickHolsters.slots[stowed]){
@@ -2654,7 +2687,11 @@ void updateGameplayActions(XrTime displayTime){
                     // DOOM's last-weapon/quick-swap control.
                     s.quickHolsters.activeStowedSide=-1;
                     s.dynamicShoulderHolstered=false;
+                    s.openHandUnequipped=false;
+                    s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
                     KharvoxWeaponSetHolstered(false);
+                    kharvox::delayOpenHandRelease(s.openHandRelease,
+                        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
                     selectPhysicalWeaponHand(side==1,"physical hip DRAW");
                     s.weaponCalibrated=false;
                     s.weaponPoseSubmitted=false;
@@ -2692,6 +2729,47 @@ void updateGameplayActions(XrTime displayTime){
                 break; // one physical hand action per tracking frame
             }
         }
+    }
+    // All five Quest capacitive surfaces must report ACTIVE, not simply
+    // false. No touch data (Valve Index, unsupported runtime, disconnected
+    // controllers) disables this gesture rather than dropping a weapon.
+    kharvox::OpenHandContacts openPalm{};
+    const int physicalWeaponSide=s.weaponHandLeft?1:0;
+    if(s.openHandTouchBindingsSuggested){
+        const int index=readTouchAction(s.indexTouch[physicalWeaponSide]);
+        const int stick=readTouchAction(s.thumbstickTouch[physicalWeaponSide]);
+        const int rest=readTouchAction(s.thumbrestTouch[physicalWeaponSide]);
+        const int lower=readTouchAction(s.faceLowerTouch[physicalWeaponSide]);
+        const int upper=readTouchAction(s.faceUpperTouch[physicalWeaponSide]);
+        openPalm.valid=index>=0&&stick>=0&&rest>=0&&lower>=0&&upper>=0;
+        openPalm.indexTouch=index>0;
+        openPalm.thumbstickTouch=stick>0;
+        openPalm.thumbrestTouch=rest>0;
+        openPalm.faceLowerTouch=lower>0;
+        openPalm.faceUpperTouch=upper>0;
+        openPalm.trigger=readFloatAction(s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger);
+        openPalm.grip=readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip);
+    }
+    const bool canOpenHandUnequip=s.customMods.dynamicShoulderHolster
+        &&gameplay&&!s.openHandUnequipped&&!s.dynamicShoulderHolstered
+        &&!weaponWheelActive&&!s.behindHeadWheelActive
+        &&!s.twoHandCalibrationMode&&!s.twoHandLatched
+        &&!s.hipZoneEntered[physicalWeaponSide]
+        &&activeWeaponKind!=KharvoxWeaponKind::Unknown
+        &&activeWeaponKind!=KharvoxWeaponKind::Fists;
+    if(kharvox::updateOpenHandRelease(s.openHandRelease,openPalm,
+        canOpenHandUnequip,
+        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)))){
+        s.openHandUnequipped=true;
+        s.openHandUnequippedKind=activeWeaponKind;
+        s.dynamicShoulderHolstered=true;
+        s.quickHolsters.activeStowedSide=-1; // empty palm, no fake hip slot
+        s.weaponCalibrated=false;
+        s.twoHandLatched=false;
+        KharvoxWeaponSetHolstered(true);
+        log(std::string("[OPEN-HAND] ")
+            +(s.weaponHandLeft?"LEFT":"RIGHT")
+            +" palm open for 450ms -> virtual UNEQUIP (gun stays in DOOM inventory)");
     }
     kharvox::BackWeaponInput backWeaponInput{};
     backWeaponInput.shoulderGestureEnabled=!s.customMods.dynamicShoulderHolster;
