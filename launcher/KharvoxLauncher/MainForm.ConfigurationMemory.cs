@@ -640,7 +640,7 @@ public sealed partial class MainForm
                 || !main.modOrderSlots[main.modOrderRows.FindIndex(row =>
                     row.Box == main.customDisableWeaponWheel)].Dependency.Text.Contains(
                     "D " + updatedNumber)
-                || !main.statusToolTip.GetToolTip(
+                || !main.detachedModToolTip.GetToolTip(
                     main.customDisableWeaponWheel).Contains(
                         "Disables " + updatedNumber)
                 || main.modOrderSlots.Where((slot, index) =>
@@ -654,7 +654,7 @@ public sealed partial class MainForm
             var wheelRemapOption = checks.SingleOrDefault(option =>
                 option.Text.Contains("Weapon Wheel Button Remap"));
             var wheelRemapTip = wheelRemapOption is null ? string.Empty
-                : main.statusToolTip.GetToolTip(wheelRemapOption);
+                : main.detachedModToolTip.GetToolTip(wheelRemapOption);
             if (!wheelRemapTip.Contains("Tap A to quick-switch")
                 || !wheelRemapTip.Contains("Hold A to open the weapon wheel")
                 || !wheelRemapTip.Contains("left stick to choose")
@@ -677,8 +677,8 @@ public sealed partial class MainForm
             if (!NexusFolderCompanion.RunFileDropPolicySelfTest())
                 throw new InvalidDataException(
                     "ZIP drag/drop must preserve downloads and avoid overwriting existing mods.");
-            if (!main.statusToolTip.ShowAlways
-                || main.statusToolTip.AutoPopDelay < 7000)
+            if (!main.detachedModToolTip.ShowAlways
+                || main.detachedModToolTip.AutoPopDelay < 7000)
                 throw new InvalidDataException(
                     "VR mod tooltips must remain readable in the detached panel.");
             var ratingBar = main.configurationRatingHeader;
