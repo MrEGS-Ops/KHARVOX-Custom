@@ -130,8 +130,10 @@ internal static class NexusFolderCompanion
         syncingWindowState = true;
         try
         {
-            if (ActiveWindow is { Visible: true } viewer
-                && viewer.WindowState != state)
+            // An owned or temporarily hidden companion still belongs to
+            // the group: don't skip it on restore just because WinForms made
+            // it invisible during launcher minimization.
+            if (ActiveWindow is { } viewer && viewer.WindowState != state)
                 viewer.WindowState = state;
             NexusModsPopup.SyncTrackedPopupWindowState(state);
         }
