@@ -1843,7 +1843,7 @@ public sealed partial class MainForm : Form
         closeRow.Controls.Add(customModsCredit);
         footerBar.Controls.Add(closeRow);
         // Deliberately centred within the entire sidecar, not one DOOM/VR column.
-        var doomguy = new DoomFaceEasterEgg();
+        var doomguy = new SkullKeyEasterEgg();
         void PlaceDoomguy() => doomguy.Location = new Point(
             (footerBar.ClientSize.Width - doomguy.Width) / 2,
             Math.Max(0, (footerBar.ClientSize.Height - doomguy.Height) / 2));
