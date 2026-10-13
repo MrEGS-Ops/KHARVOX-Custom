@@ -318,10 +318,10 @@ public sealed partial class MainForm
                 Number = number, Grip = grip,
                 Dependency = dependency
             };
-            // A single native tooltip host per detached panel prevents the
-            // timed Show() collisions that caused old descriptions to linger.
-            foreach (Control hover in new Control[] { panel, number, dependency, grip })
-                hover.MouseLeave += (_, _) => detachedModToolTip.Hide(hover);
+            // Let WinForms own dismissal of the hovered tooltip. Explicit
+            // MouseLeave Hide() on overlapping row/child controls was hiding
+            // the new tooltip during every mouse transition, causing flashes
+            // and occasionally leaving the previous tooltip behind.
             dependency.LinkClicked += (_, _) => HighlightDependencyReferences(slot, true);
             dependency.MouseEnter += (_, _) =>
             {
@@ -466,9 +466,12 @@ public sealed partial class MainForm
                         + (item.Box == customDynamicShoulderHolster
                             ? "Requires: Enable Hands in main launcher (locked ON while active)"
                             : dependencies.TrimStart(' ', '—')));
-                foreach (Control hoverTarget in new Control[] {
-                    item.Box, slot.Panel, slot.Number })
-                    detachedModToolTip.SetToolTip(hoverTarget, fullTip);
+                // A tooltip on both a parent row AND its child checkbox
+                // produces competing tooltip windows on Windows 11. Only the
+                // actionable checkbox owns its full descriptive tooltip.
+                detachedModToolTip.SetToolTip(slot.Panel, string.Empty);
+                detachedModToolTip.SetToolTip(slot.Number, string.Empty);
+                detachedModToolTip.SetToolTip(item.Box, fullTip);
                 slot.Grip.AccessibleName = "Drag to reorder " + item.Caption
                     + " in position " + (i + 1);
                 detachedModToolTip.SetToolTip(slot.Grip,
