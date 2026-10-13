@@ -2725,7 +2725,7 @@ void KharvoxWeaponSetHolstered(bool holstered) {
     const bool previous = weaponHolstered.exchange(holstered, std::memory_order_acq_rel);
     if (previous != holstered)
         log(std::string("[HOLSTER] weapon presentation ")
-            + (holstered ? "hip-mounted weapon pose active" : "hand-mounted weapon pose restored"));
+            + (holstered ? "weapon hidden in-hand (inventory only; no hip mesh)" : "normal weapon presentation restored"));
 }
 
 bool KharvoxWeaponHolstered() {
