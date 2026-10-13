@@ -850,7 +850,7 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         baselineValid=true;
         applied=true;
     }
-    constexpr float guardTimeScale=.87f; // slight slowdown, NEVER stop time
+    constexpr float guardTimeScale=.75f; // noticeable guard slowdown, never freezes time
     const float target=guardSlowmo?guardTimeScale
         :motionOverrideActive?std::clamp(motionOverride,.10f,1.f)
         :gloryKillCustomTimescale(level);
