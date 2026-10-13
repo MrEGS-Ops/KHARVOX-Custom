@@ -17,7 +17,13 @@ int main() {
     h.lastSelectedWheelSide=0;
     assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
     assert(!quickHolsterCanStow(h,1,BackWeaponKind::Pistol));
+    assert(!quickHolsterCanStow(h,0,BackWeaponKind::GaussCannon));
+    assert(!quickHolsterCanStow(h,0,BackWeaponKind::Chaingun));
+    assert(!quickHolsterCanStow(h,0,BackWeaponKind::Bfg));
     h.slots[0]=BackWeaponKind::Pistol;
-    assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol)); // stow again after a previous draw
+    assert(!quickHolsterCanStow(h,0,BackWeaponKind::Pistol)); // cannot overwrite occupied
+    assert(!quickHolsterCanStow(h,0,BackWeaponKind::CombatShotgun));
+    h.slots[0]=BackWeaponKind::Unknown; // after explicitly drawing it
+    assert(quickHolsterCanStow(h,0,BackWeaponKind::Pistol));
     return 0;
 }
