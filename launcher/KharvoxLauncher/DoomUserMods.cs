@@ -16,6 +16,59 @@ internal static class DoomUserMods
     internal static string SelectionsFile =>
         Path.Combine(AppContext.BaseDirectory, "mods", "doom", "user-selections.json");
 
+    // List ordering is stored outside the user ZIP folder so it cannot be
+    // misdetected as a mod or get copied into the game's resource directory.
+    internal static string OrderFile =>
+        Path.Combine(AppContext.BaseDirectory, "mods", "doom", "user-order.json");
+
+    internal static string[] LoadUserOrder(string? path = null)
+    {
+        try
+        {
+            var filename = path ?? OrderFile;
+            if (!File.Exists(filename)) return Array.Empty<string>();
+            return new JavaScriptSerializer().Deserialize<string[]>(
+                File.ReadAllText(filename)) ?? Array.Empty<string>();
+        }
+        catch (Exception error) when (error is IOException
+            or UnauthorizedAccessException or ArgumentException
+            or InvalidOperationException)
+        {
+            return Array.Empty<string>();
+        }
+    }
+
+    internal static void SaveUserOrder(IEnumerable<string> filenames, string? path = null)
+    {
+        var destination = path ?? OrderFile;
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destination))!);
+        var entries = filenames.Where(name => !string.IsNullOrWhiteSpace(name)
+                && name == Path.GetFileName(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+        var temporary = destination + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(entries));
+            if (File.Exists(destination)) File.Replace(temporary, destination, null);
+            else File.Move(temporary, destination);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    internal static string[] OrderUserPaths(IEnumerable<string> paths,
+        string? orderPath = null)
+    {
+        var names = LoadUserOrder(orderPath);
+        var rank = names.Select((name, index) => (name, index))
+            .GroupBy(item => item.name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().index,
+                StringComparer.OrdinalIgnoreCase);
+        return paths.OrderBy(p => rank.TryGetValue(Path.GetFileName(p), out var index)
+                ? index : int.MaxValue)
+            .ThenBy(p => Path.GetFileName(p), StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     internal sealed class ModEntry
     {
         internal string Id { get; }
@@ -57,8 +110,16 @@ internal static class DoomUserMods
                 ScanFolder(gameMods, "game:", true, result);
         }
 
+        var order = LoadUserOrder();
+        var positions = order.Select((name, index) => (name, index))
+            .GroupBy(item => item.name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().index,
+                StringComparer.OrdinalIgnoreCase);
         return result.OrderByDescending(x => x.IsPackaged)
             .ThenBy(x => x.IsFromDoom)
+            .ThenBy(x => !x.IsPackaged && !x.IsFromDoom
+                && positions.TryGetValue(x.Name, out var index)
+                    ? index : int.MaxValue)
             .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
