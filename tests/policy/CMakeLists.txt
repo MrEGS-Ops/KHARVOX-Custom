@@ -18,6 +18,15 @@ add_executable(KharvoxOpenHandReleasePolicyTests ../open_hand_release_policy_tes
 target_compile_features(KharvoxOpenHandReleasePolicyTests PRIVATE cxx_std_17)
 add_test(NAME open-hand-release-policy COMMAND KharvoxOpenHandReleasePolicyTests)
 
+add_executable(KharvoxDualWieldFirePolicyTests ../dual_wield_fire_policy_tests.cpp)
+target_compile_features(KharvoxDualWieldFirePolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxDualWieldFirePolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxDualWieldFirePolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME dual-wield-fire-policy COMMAND KharvoxDualWieldFirePolicyTests)
+
 add_executable(KharvoxQuickHolsterPolicyTests ../quick_holster_policy_tests.cpp)
 target_compile_features(KharvoxQuickHolsterPolicyTests PRIVATE cxx_std_17)
 add_test(NAME quick-holster-policy COMMAND KharvoxQuickHolsterPolicyTests)
