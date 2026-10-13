@@ -2289,7 +2289,10 @@ void updateGameplayActions(XrTime displayTime){
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive){
             if(!wheelGripHeld){
                 s.wheelCancelRestore=s.wheelOriginalWeapon;
-                s.wheelCancelRestoreAt=displayTime+150000000;
+                // Native DOOM commits its highlighted slot on release.
+                // Re-select the original after the release animation has
+                // settled; the first render frame may otherwise switch it.
+                s.wheelCancelRestoreAt=displayTime+300000000;
                 log("[WEAPON-WHEEL] zone EXIT without Grip -> CANCEL, restore previous weapon");
             }else log("[WEAPON-WHEEL] zone EXIT with Grip -> CONFIRM");
         }
@@ -2477,7 +2480,9 @@ void updateGameplayActions(XrTime displayTime){
     if(s.weaponSelectPressed&&!weaponSelectDown){
         if(s.weaponSelectNativeStarted)
             log(std::string("[INPUT] weapon wheel/")+weaponSelectControl
-                +" released; selection confirmed");
+                +(s.wheelCancelRestoreAt
+                    ?" released without Grip; original weapon queued for restoration"
+                    :" released with Grip; selection confirmed"));
         else{
             s.weaponSwitchPulseUntil=displayTime+100000000;
             log(std::string("[INPUT] ")+weaponSelectControl+" tap -> switch weapon pulse");
@@ -2849,16 +2854,27 @@ void updateGameplayActions(XrTime displayTime){
             const float lateralSpeed=std::abs(
                 controller.linearVelocity.x*horizontalFacing.z
                 -controller.linearVelocity.z*horizontalFacing.x);
-            // Require mostly forward movement. Never interpret raising hands
-            // to a guard or behind-head wheel as a melee punch.
-            if(verticalSpeed>std::max(.65f,forwardSpeed*.48f)
-                ||lateralSpeed>std::max(.65f,forwardSpeed*.65f)
+            // Horizontal jabs AND hooks can initiate the native melee/Glory
+            // Kill action. Never treat vertical hand raises (guard/wheel/
+            // grenade reach) or rearward movements as a punch.
+            const float horizontalStrikeSpeed=std::hypot(
+                std::max(0.f,forwardSpeed),lateralSpeed);
+            const bool meaningfulForward=forwardSpeed>=punchThreshold*.20f;
+            const bool meaningfulHook=lateralSpeed>=punchThreshold*.80f
+                &&forwardSpeed> -punchThreshold*.15f;
+            if(verticalSpeed>std::max(.65f,horizontalStrikeSpeed*.60f)
+                ||(!meaningfulForward&&!meaningfulHook)
                 ||s.behindHeadWheelActive){
-                s.physicalPunchArmed[hand]=false;
+                // Keep the arm ready for the next legal horizontal strike,
+                // instead of forcing a full reset after an overhead gesture.
+                if(horizontalStrikeSpeed<=rearmSpeed)
+                    s.physicalPunchArmed[hand]=true;
                 continue;
             }
-            if(forwardSpeed<=rearmSpeed)s.physicalPunchArmed[hand]=true;
-            if(!s.physicalPunchArmed[hand]||forwardSpeed<punchThreshold
+            if(horizontalStrikeSpeed<=rearmSpeed)
+                s.physicalPunchArmed[hand]=true;
+            if(!s.physicalPunchArmed[hand]
+                ||horizontalStrikeSpeed<punchThreshold
                 ||displayTime<s.physicalPunchCooldownUntil)continue;
             s.physicalPunchArmed={false,false};
             s.physicalPunchCooldownUntil=displayTime+350000000;
@@ -2868,8 +2884,10 @@ void updateGameplayActions(XrTime displayTime){
             if(s.physicalGlorykillEnabled){
                 s.meleePulseUntil=std::max(s.meleePulseUntil,displayTime+200000000);
                 o<<"[INPUT] Physical Glorykill "<<punchHandNames[hand]
-                 <<" punch -> native JOY8 melee/glory pulse forwardSpeed="
-                 <<std::fixed<<std::setprecision(2)<<forwardSpeed<<"m/s threshold="
+                 <<" punch -> native JOY8 melee/glory pulse horizontalSpeed="
+                 <<std::fixed<<std::setprecision(2)<<horizontalStrikeSpeed
+                 <<"m/s forwardSpeed="<<forwardSpeed<<"m/s lateralSpeed="
+                 <<lateralSpeed<<"m/s threshold="
                  <<s.physicalGlorykillSpeed<<"m/s";
             }else{
                 continue;
@@ -3310,7 +3328,11 @@ void updateGameplayActions(XrTime displayTime){
         &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
     float syncTimescale=0.f; // zero -> native DOOM sync-attack timing
-    if(gameplay&&syncAttackActive&&!boxingNow){
+    // DOOM classifies Glory Kills as short cinematics, so 'gameplay' can
+    // turn false while the native sync attack is still running. Do not
+    // discard the fast-kill override exactly when the kill animation starts.
+    if(gameplayWorld&&!pauseMenu&&!fullscreenMenu&&!deathMenu
+        &&syncAttackActive&&!boxingNow){
         if(s.chainsawKillLatched)
             syncTimescale=s.customMods.fastChainsawKills?1.f:0.f;
         else if(s.customMods.fastGloryKills)
