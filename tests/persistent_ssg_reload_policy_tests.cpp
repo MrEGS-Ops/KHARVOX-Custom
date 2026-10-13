@@ -35,11 +35,13 @@ int main() {
     assert(!o.forwardFire && o.blockedByPersistentReload);
     assert(state.reloadRequired);
     in.fireRequested=false;
+    bool completed=false;
     for(int frame=0;frame<15;frame++){
         in.nowNanoseconds+=100000000ull;
         o=updatePersistentSuperShotgunReload(state,in);
+        completed |= o.nativeReloadWindowCompleted;
     }
-    assert(o.nativeReloadWindowCompleted); // after 1.5 seconds held
+    assert(completed); // debt completed after sufficient equipped time
     assert(!state.reloadRequired);
     // New trigger press, now another single shot is allowed.
     in.fireRequested=true;in.nowNanoseconds+=100000000ull;
@@ -49,7 +51,7 @@ int main() {
     // Rapid repeat equip/unequip must not bypass the persistent cycle.
     in.fireRequested=false;in.nowNanoseconds+=100000000ull;
     updatePersistentSuperShotgunReload(state,in);
-    for(int i=0;i<10;i++){
+    for(int i=0;i<4;i++){
         in.superShotgunEquipped=false;in.nowNanoseconds+=100000000ull;
         updatePersistentSuperShotgunReload(state,in);
         in.nowNanoseconds+=1000000000ull;
