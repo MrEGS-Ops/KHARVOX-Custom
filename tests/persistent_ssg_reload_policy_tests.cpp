@@ -28,11 +28,14 @@ int main() {
     in.nowNanoseconds+=9000000000ull;
     updatePersistentSuperShotgunReload(state,in);
     assert(state.equippedProgressNanoseconds==heldProgress); // NO background reload
+    assert(state.replayNeededOnDraw); // requires original native reload anim on return
 
     // Switching back with trigger held cannot fire the SSG.
     in.superShotgunEquipped=true;in.nowNanoseconds+=100000000ull;
     o=updatePersistentSuperShotgunReload(state,in);
     assert(!o.forwardFire && o.blockedByPersistentReload);
+    assert(o.nativeReloadReplayRequested);
+    assert(!state.replayNeededOnDraw);
     assert(state.reloadRequired);
     in.fireRequested=false;in.physicalTriggerHeld=false;
     bool completed=false;
@@ -60,6 +63,7 @@ int main() {
         in.nowNanoseconds+=100000000ull;
         o=updatePersistentSuperShotgunReload(state,in);
         assert(!o.forwardFire && !o.shotAttemptAccepted);
+        assert(o.nativeReloadReplayRequested); // restart each interrupted reload
         in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
         updatePersistentSuperShotgunReload(state,in);
     }
@@ -78,6 +82,7 @@ int main() {
     in.weaponHolstered=false;in.weaponWheelActive=true;
     in.nowNanoseconds+=100000000ull;updatePersistentSuperShotgunReload(state,in);
     assert(state.equippedProgressNanoseconds==before);
+    assert(!o.nativeReloadReplayRequested); // wheel open, animation cannot start
 
     // Native ammo empty never grants a new fire pulse.
     state={};
