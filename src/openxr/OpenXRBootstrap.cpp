@@ -2138,7 +2138,11 @@ void updateWeapon6Dof(){
 
 }
 void updateGameplayActions(XrTime displayTime){
-    if(!s.actionsReady){s.primaryFireDown=false;return;}
+    if(!s.actionsReady){
+        s.primaryFireDown=false;
+        KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
+        return;
+    }
     *reinterpret_cast<int*>(doomFloat(0x5B64540))=0;
     holdNativeTurnCvars(manualTurnCarrierSpeed());
     static bool yawSpeedHoldLogged=false;
