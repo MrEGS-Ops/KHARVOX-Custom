@@ -394,8 +394,8 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "Independent VR gameplay mod: after firing the Super Shotgun, switching weapons or putting it in a hip holster does NOT finish its reload. A cancelled reload restarts its full 1.6s cycle when you draw the Super Shotgun again; time while holstered or holding another gun never counts. Fire stays blocked until ready; a fresh Trigger press is needed. Works with or WITHOUT Quick Holsters / dual-wielding. NEW EXPERIMENTAL: if re-equipped before finishing, attempts to restart DOOM's ORIGINAL SSG reload animation using short, reversible native reload controls. The attempt is skipped if any game CVar cannot be safely verified, and animation success is not yet proven in-headset. Input-level timing remains as a fallback; look for [SSG-NATIVE-REPLAY] in KHARVOX.log."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customFastGloryKills, "Fast Glory Kills: request 1.70x game-time acceleration ONLY during a native Glory Kill sync attack, outside Boxing Guard and weapon wheel. Disabled restores DOOM's native animation timing. In-game verification required; see KHARVOX.log for sync classification and timescale target/readback."),
-            (customFastChainsawKills, "Fast Chainsaw Kills: request 1.90x game-time acceleration ONLY during a detected chainsaw takedown sync/cinematic. Native chainsaw timing when disabled. Uses recent chainsaw attack + cutscene detection, not motion gestures. In-game verification required."),
+            (customFastGloryKills, "Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to restore the native slow-motion settings. No speed multiplier or animation rewrite."),
+            (customFastChainsawKills, "Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either checkbox enables the native bypass; disable BOTH for native timing. Chainsaw effectiveness still needs headset verification."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -1534,10 +1534,12 @@ public sealed partial class MainForm : Form
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
             // Original hand HUD is not controlled by these checkboxes.
-            // Full-speed Glory Kills are a binary option; no unverified slider.
-            // Keep native sync-attack timing as the baseline. Fast GK and
-            // Fast Chainsaw are applied independently by their runtime flags.
-            gloryKillSlowmo.Value = 10;
+            // Both kill toggles request the proven native DOOM sync slowdown
+            // bypass (Build #83), not an experimental animation multiplier.
+            // DOOM exposes this as a shared sync setting, so it applies to
+            // both execution types. Boxing's guard slowdown remains separate.
+            gloryKillSlowmo.Value =
+                customFastGloryKills.Checked || customFastChainsawKills.Checked ? 0 : 10;
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
