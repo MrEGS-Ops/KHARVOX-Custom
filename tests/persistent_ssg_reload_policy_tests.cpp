@@ -82,7 +82,8 @@ int main() {
     in.nowNanoseconds+=100000000ull;updatePersistentSuperShotgunReload(state,in);
     assert(state.equippedProgressNanoseconds==before);
     in.weaponHolstered=false;in.weaponWheelActive=true;
-    in.nowNanoseconds+=100000000ull;updatePersistentSuperShotgunReload(state,in);
+    in.nowNanoseconds+=100000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
     assert(state.equippedProgressNanoseconds==before);
     assert(!o.nativeReloadReplayRequested); // wheel open, animation cannot start
 
