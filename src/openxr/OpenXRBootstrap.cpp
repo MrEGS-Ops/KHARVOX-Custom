@@ -3496,7 +3496,6 @@ void updateGameplayActions(XrTime displayTime){
         &&(cutscene||syncAttackActive);
     KharvoxCameraSetChainsawTakedownCinematic(
         activeChainsawKill&&cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu);
-    const bool activeKill=syncAttackActive||activeChainsawKill;
     const kharvox::FastKillSpeedInput fastKill{
         syncAttackActive,
         activeChainsawKill && cutscene,
