@@ -2156,6 +2156,7 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
         KharvoxCameraResetCombatTimeDilation();
+        KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
         s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
@@ -3151,6 +3152,18 @@ void updateGameplayActions(XrTime displayTime){
     };
     const auto reloadOutput=kharvox::updatePersistentSuperShotgunReload(
         s.persistentSsgReload,reloadInput);
+    // Native animation replay is *optional and fail-closed*. It requests
+    // DOOM's own reload animation, never a KHARVOX model or silent pose hack.
+    // Always service while input is active, so 250ms native reload CVar pulse
+    // is restored on expiry, weapon switch, menu, or mod disable.
+    KharvoxCameraServiceSuperShotgunNativeReloadReplay(
+        reloadOutput.nativeReloadReplayRequested,
+        reloadInput.enabled&&reloadInput.gameplayActive
+            &&reloadInput.superShotgunEquipped
+            &&!reloadInput.weaponHolstered&&!reloadInput.weaponWheelActive
+            &&s.persistentSsgReload.reloadRequired);
+    if(reloadOutput.nativeReloadReplayRequested)
+        log("[SSG-PERSISTENCE] incomplete SSG cycle redrawn; native original reload animation replay requested");
     const bool nativeFireDown=reloadOutput.forwardFire;
     if(reloadOutput.shotAttemptAccepted)
         log("[SSG-PERSISTENCE] native trigger pulse offered; SSG reload debt retained through swaps");
