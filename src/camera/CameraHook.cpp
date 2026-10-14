@@ -952,7 +952,9 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     const bool boxingRequested =
         boxingGuardTimeDilationRequested.load(std::memory_order_acquire);
     const bool guardSlowmo=boxingRequested&&!syncAttackActive;
-    const bool configuredOverride=level>=0&&level<10;
+    // Level 0 is the proven native sync bypass: never replace its timing
+    // with the later experimental game-timescale override.
+    const bool configuredOverride=level>0&&level<10;
     const bool motionOverrideActive=motionOverride>0.f;
     const bool wantOverride=guardSlowmo
         ||(syncAttackActive&&(configuredOverride||motionOverrideActive));
