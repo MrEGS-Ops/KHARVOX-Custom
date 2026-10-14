@@ -159,6 +159,10 @@ bool offhandCanvasHookReady{};
 struct OffhandCanvasSubmission {const void* entity{};float center[3]{},axis[9]{},width{};int surface{-1};bool weaponWheel{};};
 thread_local OffhandCanvasSubmission offhandCanvasSubmission;
 thread_local OffhandCanvasSubmission progSource;
+// The OpenXR input thread only increments this epoch. Renderer-local HUD
+// context/pivot cleanup occurs here on its own thread, never cross-thread.
+std::atomic<std::uint64_t> weaponWheelResetEpoch{1};
+thread_local std::uint64_t observedWeaponWheelResetEpoch{};
 thread_local const void* suppressedOffhandCanvas{};
 
 kharvox::OffhandHudConfig offhandHudConfig;
@@ -3386,7 +3390,21 @@ bool gameplayHudActive() {
 
 }
 
+void KharvoxHudResetWeaponWheelPresentation() {
+    const auto epoch=weaponWheelResetEpoch.fetch_add(1,std::memory_order_acq_rel)+1;
+    log("[WEAPON-WHEEL] native wheel pose/pivot reset requested; epoch="+std::to_string(epoch));
+}
+
 bool KharvoxHudPrepareOriginTransform(void* intermediateEntity, float* nativeOrigin) {
+    // Every wheel open/close invalidates any leftover native placement from
+    // the prior activation. Preserve the existing 3m/3m visual preset.
+    const auto epoch=weaponWheelResetEpoch.load(std::memory_order_acquire);
+    if(observedWeaponWheelResetEpoch!=epoch){
+        restoreAllPendingHudSubmissions();
+        if(offhandCanvasSubmission.weaponWheel)offhandCanvasSubmission={};
+        if(progSource.weaponWheel)progSource={};
+        observedWeaponWheelResetEpoch=epoch;
+    }
     suppressedOffhandCanvas=nullptr;
     if (!intermediateEntity || !nativeOrigin || !KharvoxCameraWorldActive()) return false;
 
@@ -3696,7 +3714,7 @@ bool KharvoxHudCompleteFinalEntity(
         std::memcpy(offhandCanvasSubmission.center,matchedPending.desiredOrigin.data(),sizeof(float)*3);
         std::memcpy(offhandCanvasSubmission.axis,desiredAxis,sizeof(float)*9);
         static std::atomic<bool> noted{};
-        if(!noted.exchange(true))log("[WEAPON-WHEEL] owned selection canvas centered at 3m; width=3m; camera-aligned stereo plane");
+        if(!noted.exchange(true))log("[WEAPON-WHEEL] original 3m x 3m owned selection canvas; position recalculated from headset on each frame with open/close pose reset");
     }
     if (transformed)
         std::memcpy(desiredOrigin, matchedPending.desiredOrigin.data(), sizeof(float) * 3);

@@ -79,6 +79,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalCrouch = MakeCheck("Physical Crouch", false);
     private readonly CheckBox customRevengeDemon = MakeCheck("Revenge Demon", false);
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
+    private readonly CheckBox customPersistentSsgReload = MakeCheck("Persistent Super Shotgun Reload", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
     private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
@@ -390,10 +391,11 @@ public sealed partial class MainForm : Form
             
             (customPhysicalCrouch, "Crouch your body to crouch in DOOM, stand up to stand in DOOM. Uses separate down/up thresholds and emits a native press on both transitions."),
             (customRevengeDemon, "DIAGNOSTIC ONLY: logs death-time enemy references through the Supervisor. Does not yet empower a revenge demon."),
-            (customDynamicShoulderHolster, "Experimental rearward left/right hip slots. Store a weapon on the matching hip and draw it with that hand's Grip. Drawing uses the stored weapon identity, NOT native last-weapon quick swap. Requires Enable Hands; that launcher setting is locked while this mod is active."),
+            (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
+            (customPersistentSsgReload, "Independent VR gameplay mod: after firing the Super Shotgun, switching weapons or putting it in a hip holster does NOT finish its reload. A cancelled reload restarts its full 1.6s cycle when you draw the Super Shotgun again; time while holstered or holding another gun never counts. Fire stays blocked until ready; a fresh Trigger press is needed. Works with or WITHOUT Quick Holsters / dual-wielding. NEW EXPERIMENTAL: if re-equipped before finishing, attempts to restart DOOM's ORIGINAL SSG reload animation using short, reversible native reload controls. The attempt is skipped if any game CVar cannot be safely verified, and animation success is not yet proven in-headset. Input-level timing remains as a fallback; look for [SSG-NATIVE-REPLAY] in KHARVOX.log."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customFastGloryKills, "Fast Glory Kills: full 1.0x animation speed when outside Boxing Guard; unchecked restores native timing."),
-            (customFastChainsawKills, "Fast Chainsaw Kills: full-speed chainsaw takedown while enabled, native DOOM chainsaw takedown timing when unchecked. No motion-control gesture required."),
+            (customFastGloryKills, "Fast Glory Kills: request 1.70x game-time acceleration ONLY during a native Glory Kill sync attack, outside Boxing Guard and weapon wheel. Disabled restores DOOM's native animation timing. In-game verification required; see KHARVOX.log for sync classification and timescale target/readback."),
+            (customFastChainsawKills, "Fast Chainsaw Kills: request 1.90x game-time acceleration ONLY during a detected chainsaw takedown sync/cinematic. Native chainsaw timing when disabled. Uses recent chainsaw attack + cutscene detection, not motion gestures. In-game verification required."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -1577,6 +1579,7 @@ public sealed partial class MainForm : Form
         PhysicalCrouch = customPhysicalCrouch.Checked,
         RevengeDemon = customRevengeDemon.Checked,
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
+        PersistentSuperShotgunReload = customPersistentSsgReload.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
@@ -1623,6 +1626,7 @@ public sealed partial class MainForm : Form
             customPhysicalCrouch.Checked = mods.PhysicalCrouch;
             customRevengeDemon.Checked = mods.RevengeDemon;
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
+            customPersistentSsgReload.Checked = mods.PersistentSuperShotgunReload;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customFastGloryKills.Checked = mods.FastGloryKills;
             customFastChainsawKills.Checked = mods.FastChainsawKills;

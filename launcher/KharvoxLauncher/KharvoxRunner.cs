@@ -555,6 +555,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_SSG_PERSISTENT_RELOAD"] = customMods.PersistentSuperShotgunReload ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = "0";

@@ -177,8 +177,11 @@ public sealed partial class MainForm
         try
         {
             if (WindowState != state) WindowState = state;
+            // Owned WinForms windows can report Visible=false while their
+            // owner is minimized. Still update their state so restore is
+            // atomic instead of leaving the Custom Mods panel orphaned.
             if (customOptionsForm is { IsDisposed: false } mods
-                && mods.Visible && mods.WindowState != state)
+                && mods.WindowState != state)
                 mods.WindowState = state;
             NexusFolderCompanion.SyncDockWindowState(state);
         }

@@ -45,6 +45,15 @@ bool KharvoxCameraSyncAttackActive();
 // Temporary Glory Kill playback override. A value <= 0 clears it.
 // The camera hook restores DOOM's baseline timescale when the sync attack ends.
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale);
+// A chainsaw takedown can enter cinematic mode before DOOM reports the same
+// sync-attack flag as an ordinary Glory Kill. Accept only a latched chainsaw
+// attack followed by a native camera cinematic; reset on focus loss.
+void KharvoxCameraSetChainsawTakedownCinematic(bool active);
+// Experimental: request DOOM's OWN native SSG reload animator on re-draw.
+// Only writes positively resolved, reversible native reload CVars. Does
+// nothing if safe lookup fails; does not replace the model with a fake.
+void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
+    bool requestNewReplay, bool superShotgunActiveAndSafe);
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
 void KharvoxCameraResetCombatTimeDilation();
 bool KharvoxCameraLedgeTransitionActive();

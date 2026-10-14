@@ -1,0 +1,103 @@
+#include "../src/openxr/PersistentSuperShotgunReloadPolicy.h"
+#include <cassert>
+
+int main() {
+    using namespace kharvox;
+    PersistentSuperShotgunReloadState state{};
+    PersistentSuperShotgunReloadInput in{};
+    in.enabled=true;
+    in.gameplayActive=true;
+    in.superShotgunEquipped=true;
+    in.fireRequested=true;in.physicalTriggerHeld=true;
+    in.nowNanoseconds=1000000000ull;
+    auto o=updatePersistentSuperShotgunReload(state,in);
+    assert(o.shotAttemptAccepted && o.forwardFire && state.reloadRequired);
+    assert(o.remainingEquippedNanoseconds==persistentSsgActiveReloadNanoseconds);
+
+    // Release, spend 200ms with SSG held, then QUICK SWITCH to rifle.
+    in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    in.nowNanoseconds+=100000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    const auto heldProgress=state.equippedProgressNanoseconds;
+    assert(heldProgress==200000000ull);
+    in.superShotgunEquipped=false;in.fireRequested=true;in.physicalTriggerHeld=true;
+    in.nowNanoseconds+=100000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(o.forwardFire); // rifle never blocked by SSG rule
+    in.nowNanoseconds+=9000000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    assert(state.equippedProgressNanoseconds==heldProgress); // NO background reload
+    assert(state.replayNeededOnDraw); // requires original native reload anim on return
+
+    // Switching back with trigger held cannot fire the SSG.
+    in.superShotgunEquipped=true;in.nowNanoseconds+=100000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(!o.forwardFire && o.blockedByPersistentReload);
+    assert(o.nativeReloadReplayRequested);
+    assert(!state.replayNeededOnDraw);
+    assert(state.equippedProgressNanoseconds==0); // full restart on redraw
+    assert(state.reloadRequired);
+    in.fireRequested=false;in.physicalTriggerHeld=false;
+    bool completed=false;
+    for(int frame=0;frame<16;frame++){
+        in.nowNanoseconds+=100000000ull;
+        o=updatePersistentSuperShotgunReload(state,in);
+        completed |= o.nativeReloadWindowCompleted;
+    }
+    assert(completed); // full 1.6s restarted after incomplete re-equip
+    assert(!state.reloadRequired);
+    // New trigger press, now another single shot is allowed.
+    in.fireRequested=true;in.physicalTriggerHeld=true;in.nowNanoseconds+=100000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(o.shotAttemptAccepted && o.forwardFire && state.reloadRequired);
+
+    // Rapid repeat equip/unequip must not bypass the persistent cycle.
+    in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    for(int i=0;i<4;i++){
+        in.superShotgunEquipped=false;in.nowNanoseconds+=100000000ull;
+        updatePersistentSuperShotgunReload(state,in);
+        in.nowNanoseconds+=1000000000ull;
+        updatePersistentSuperShotgunReload(state,in);
+        in.superShotgunEquipped=true;in.fireRequested=true;in.physicalTriggerHeld=true;
+        in.nowNanoseconds+=100000000ull;
+        o=updatePersistentSuperShotgunReload(state,in);
+        assert(!o.forwardFire && !o.shotAttemptAccepted);
+        assert(o.nativeReloadReplayRequested); // restart each interrupted reload
+        assert(state.equippedProgressNanoseconds==0);
+        in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
+        updatePersistentSuperShotgunReload(state,in);
+    }
+    assert(state.reloadRequired);
+
+    // Menus/pauses/holster do not advance reload.
+    const auto before=state.equippedProgressNanoseconds;
+    in.gameplayActive=false;in.nowNanoseconds+=100000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    in.nowNanoseconds+=5000000000ull;
+    updatePersistentSuperShotgunReload(state,in);
+    assert(state.equippedProgressNanoseconds==before);
+    in.gameplayActive=true;in.weaponHolstered=true;
+    in.nowNanoseconds+=100000000ull;updatePersistentSuperShotgunReload(state,in);
+    assert(state.equippedProgressNanoseconds==before);
+    in.weaponHolstered=false;in.weaponWheelActive=true;
+    in.nowNanoseconds+=100000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(state.equippedProgressNanoseconds==before);
+    assert(!o.nativeReloadReplayRequested); // wheel open, animation cannot start
+
+    // Native ammo empty never grants a new fire pulse.
+    state={};
+    in={};in.enabled=true;in.gameplayActive=true;
+    in.superShotgunEquipped=true;in.nativeAmmoKnownEmpty=true;
+    in.fireRequested=true;in.physicalTriggerHeld=true;in.nowNanoseconds=1000000000ull;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(!o.forwardFire && !o.shotAttemptAccepted && !state.reloadRequired);
+
+    // Independent toggle OFF: input passes through; state cleared.
+    in.enabled=false;
+    o=updatePersistentSuperShotgunReload(state,in);
+    assert(o.forwardFire && !state.reloadRequired);
+    return 0;
+}

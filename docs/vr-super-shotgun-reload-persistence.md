@@ -1,0 +1,36 @@
+# KHARVOX VR mod: Persistent Super Shotgun Reload
+
+## Scope
+An **independent optional VR mod** named **Persistent Super Shotgun Reload**. It does not require Dynamic Quick Holsters, Enable Hands, weapon-wheel remapping, or the future dual-wield resource mod. Default OFF. Saved in `kharvox-custom-mods.json` as `PersistentSuperShotgunReload`, passed to the DOOM process as `KHARVOX_MOD_SSG_PERSISTENT_RELOAD`.
+
+## Intended gameplay
+- Fire the Super Shotgun once, switch immediately to another gun: the unfinished SSG reload stays pending. **Switching back does not grant a loaded blast.**
+- While the SSG remains actually held/equipped in normal gameplay, its reload window advances. If a reload is interrupted by holstering or unequipping, progress is retained only as pending debt; **the actual replay and full 1.6-second gate RESTART FROM ZERO on the next draw**. Menus, wheel and pauses never advance the native reload gate.
+- Repeated quick-swapping cannot credit unequipped time. Other weapons (including a rifle used during the SSG cooldown) fire normally, independently of the SSG debt.
+- Releasing then freshly pressing the SSG trigger is required after the cycle. Holding trigger across a swap cannot auto-fire when equipping the SSG.
+- New map/level resets the input-level reload state. Disabling the mod restores native gun input.
+
+## Experimental native animation replay when returning to SSG
+
+An incomplete SSG cycle is now marked for replay whenever the player unequips it. On re-equipping in gameplay, the policy emits a one-time `nativeReloadReplayRequested` flag. KHARVOX checks whether DOOM's **own** `hands_doCosmeticReloads`, `weapon_useForcedReload`, and `hands_forceReloadFromEmpty` integer CVars can be unambiguously verified in native writable CVar storage. Only if ALL three pass strict checks does it pulse their DOOM-native reload modes for 250 ms and restore every original value. A missing/ambiguous signature or another mod using forced reload means **NO game memory is changed**.
+
+This is an **experimental attempt**, **not a proven restart**. The CVars may not initiate the regular SSG reload animation on the user's particular game/version. Look for `[SSG-NATIVE-REPLAY]` lines in `%TEMP%\KHARVOX.log`. The proper final solution remains a verified native animation start and completion callback.
+
+## Current implementation and known limitation
+First implementation lives in `src/openxr/PersistentSuperShotgunReloadPolicy.h` and `OpenXRBootstrap.cpp`. It enforces a **1.6-second held-in-gameplay time** from a VR trigger edge by suppressing DOOM's virtual Fire input until the gate allows it. This is a **conservative input-level approximation**, not proof of native Super Shotgun shot completion or reload state: in the present repository a trusted DOOM native `SuperShotgunFired` / `ReloadCompleted` hook has not yet been verified. The new native reload CVars are a guarded replay request and are **not** an animation state callback. Consequently, an unsuccessful shot attempt may still enter the lockout, and DOOM's own animations may not represent the persistent gate correctly.
+
+**Do not claim native reload animations or ammo internals are overridden.** When a safe native shot/reload callback has been established, replace the estimated fire acceptance and timed gate with actual native cycle state persistence while retaining the independent launcher switch and tests. Do not patch guessed memory offsets or reinitialize idHands state unsafely.
+
+## Regression and acceptance tests
+`tests/persistent_ssg_reload_policy_tests.cpp` (both main CMake and policy-only suite) validates:
+- SSG shot -> 0.2s equipped -> 9s rifle -> return: no free reload.
+- Restart the **entire** equipped-time reload and request a DOOM native reload animation upon early redraw, not resume an invisible partial cooldown.
+- Fresh trigger press after permitted reload cycle.
+- No fake progress during menus, weapon wheel, hip holster or unfocused state.
+- Other gun's trigger is never suppressed.
+- Rapid equip/unequip is ineffective until actual equipped time has elapsed.
+- No phantom shot with known empty ammo.
+- Mod disabled passes trigger through and clears policy state.
+
+## Not part of this mod
+The proposed **dual-wielding** separate future mod may require the SSG to remain in hand **and the other hand to be completely free** to reload. That free-hand rule does not apply to ordinary single-gun play; this mod is purely about preserving SSG reload requirements through weapon swaps.

@@ -15,8 +15,8 @@ struct QuickHolsterZone {
 struct QuickHolsters {
     std::array<BackWeaponKind,2> slots{
         BackWeaponKind::Unknown,BackWeaponKind::Unknown};
-    int activeStowedSide{-1}; // -1 = weapon in hand, 0 = right hip, 1 = left hip
-    int lastSelectedWheelSide{-1};
+    int activeStowedSide{-1}; // -1 = equipped/visible, 0 = right hip, 1 = left hip
+    // Hip slots hold inventory weapon IDs, never a rendered holster prop.
 };
 
 inline bool quickHipInside(const BackWeaponVec3& point, bool previouslyInside) {
@@ -34,14 +34,27 @@ inline bool quickHolsterEligible(BackWeaponKind equipped) {
         &&equipped!=BackWeaponKind::Bfg;
 }
 
-// The slot is a persistent inventory assignment, NOT an equip shortcut.
-// A draw from an occupied slot may change the active weapon, but must not
-// replace the stored identity with the weapon already in the player's hand.
+// One Grip at an empty hip stores the equipped weapon ID; occupied hip Grip
+// draws the assigned weapon even if that hand already holds another weapon.
+// That formerly-equipped gun remains in DOOM inventory, never overwrites the
+// occupied hip, and no weapon-wheel assignment is needed to stow.
 inline bool quickHolsterCanStow(const QuickHolsters& state, int side,
     BackWeaponKind equipped) {
     return side>=0&&side<=1
-        &&state.lastSelectedWheelSide==side
         &&state.slots[side]==BackWeaponKind::Unknown
+        &&state.slots[1-side]!=equipped // no duplicate ID across two hips
         &&quickHolsterEligible(equipped);
+}
+
+// Occupied-slot DRAW always wins, regardless of the gun currently equipped.
+// A hold never performs an implicit stow+draw swap.
+enum class QuickHipAction { None, Draw, Stow };
+inline QuickHipAction quickHipAction(
+    const QuickHolsters& state, int side, BackWeaponKind equipped,
+    bool alreadyHolstered) {
+    if(side<0||side>1)return QuickHipAction::None;
+    if(state.slots[side]!=BackWeaponKind::Unknown)return QuickHipAction::Draw;
+    return !alreadyHolstered&&quickHolsterCanStow(state,side,equipped)
+        ?QuickHipAction::Stow:QuickHipAction::None;
 }
 }

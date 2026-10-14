@@ -15,6 +15,9 @@ enum class KharvoxHudAnchor : int {
 };
 
 bool KharvoxHudInstallHook();
+// Invalidate cached HUD wheel pose on both native open and close edges.
+// Does not alter wheel size, distance, or any unrelated HUD surface.
+void KharvoxHudResetWeaponWheelPresentation();
 bool KharvoxHudFullscreenMenuActive();
 bool KharvoxHudFieldDroneMenuActive();
 void KharvoxHudBeginFieldDroneMenuSession();

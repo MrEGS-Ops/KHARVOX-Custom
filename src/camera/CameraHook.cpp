@@ -681,6 +681,8 @@ int configuredGloryKillSlowmoLevel() {
 
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
 std::atomic<bool> boxingGuardTimeDilationRequested{};
+std::atomic<bool> latestSyncAttackClassified{};
+std::atomic<bool> latestChainsawTakedownCinematic{};
 
 float gloryKillCustomTimescale(int level) {
     if (level <= 0) return 1.0f;
@@ -695,11 +697,28 @@ void logGlorySlowmo(const std::string& text) {
     out << "[KHARVOX][GLORY-SLOWMO] " << text << '\n';
 }
 
+std::atomic<int> verifiedNativeCvarNameOffset{-1};
+
 volatile LONG* resolveTimescaleCvarCurrent() {
     static std::atomic<int> state{};
     static volatile LONG* current{};
-    int observed = state.load(std::memory_order_acquire);
-    if (observed) return observed > 0 ? current : nullptr;
+    static std::atomic<unsigned long long> lastAttemptTick{};
+    static std::mutex resolverMutex;
+    int observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    const auto now=GetTickCount64();
+    // The old implementation permanently disabled kill-speed controls if
+    // the very first scan happened while loading or timescale was outside the
+    // valid range. Retry only once every 15 seconds, never on every VR frame.
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    if(!resolverMutex.try_lock())return nullptr;
+    std::lock_guard<std::mutex> lock(resolverMutex,std::adopt_lock);
+    observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    lastAttemptTick.store(now,std::memory_order_release);
 
     auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!image || !readableMemory(image, sizeof(IMAGE_DOS_HEADER))) {
@@ -746,6 +765,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
 
     uintptr_t bestCurrent{};
     unsigned bestScore{};
+    int bestNameOffset{-1};
     bool ambiguous{};
     constexpr uint32_t nameOffsets[]{0, 8, 16, 24, 32};
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
@@ -783,6 +803,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
                 if (score > bestScore) {
                     bestScore = score;
                     bestCurrent = valueAddress;
+                    bestNameOffset = static_cast<int>(nameOffset);
                     ambiguous = false;
                 } else if (score == bestScore && valueAddress != bestCurrent) {
                     ambiguous = true;
@@ -798,6 +819,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
     }
 
     current = reinterpret_cast<volatile LONG*>(bestCurrent);
+    verifiedNativeCvarNameOffset.store(bestNameOffset,std::memory_order_release);
     std::ostringstream message;
     message << "timescale cvar current resolved RVA=0x"
         << std::hex << (bestCurrent - reinterpret_cast<uintptr_t>(image))
@@ -805,6 +827,119 @@ volatile LONG* resolveTimescaleCvarCurrent() {
     logGlorySlowmo(message.str());
     state.store(1, std::memory_order_release);
     return current;
+}
+
+// DOOM 2016 exposes native hands/weapon reload CVars. A re-drawn Super
+// Shotgun can potentially be returned to its real animation web via those
+// controls. All values are ephemeral, restored on loss of input, and remain
+// entirely DISABLED if the engine's native CVar object cannot be located
+// unambiguously. Never invent an SSG mesh or cosmetic keyframe animation.
+void logNativeSsgReplay(const std::string& message) {
+    const auto path=kharvox::logPathA("KHARVOX.log");
+    if(path.empty())return;
+    std::ofstream f(path,std::ios::app);
+    f << "[KHARVOX][SSG-NATIVE-REPLAY] " << message << '\n';
+}
+
+volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
+    // Do not write ANY native CVar until a known working float CVar has
+    // established the actual idCVar object's name-pointer layout.
+    if(!resolveTimescaleCvarCurrent())return nullptr;
+    const int validatedOffset=verifiedNativeCvarNameOffset.load(
+        std::memory_order_acquire);
+    if(validatedOffset<0)return nullptr;
+    auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if(!image||!readableMemory(image,sizeof(IMAGE_DOS_HEADER)))return nullptr;
+    const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if(dos->e_magic!=IMAGE_DOS_SIGNATURE
+        ||!readableMemory(image+dos->e_lfanew,sizeof(IMAGE_NT_HEADERS64)))
+        return nullptr;
+    const auto nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(image+dos->e_lfanew);
+    if(nt->Signature!=IMAGE_NT_SIGNATURE)return nullptr;
+    const size_t length=std::strlen(name)+1;
+    std::vector<uintptr_t> matches;
+    const auto sections=IMAGE_FIRST_SECTION(nt);
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_READ))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<length||!readableMemory(begin,bytes))continue;
+        auto first=reinterpret_cast<const char*>(begin);
+        auto last=first+bytes;
+        auto scan=first;
+        while(scan+length<=last) {
+            auto found=std::search(scan,last,name,name+length);
+            if(found==last)break;
+            matches.push_back(reinterpret_cast<uintptr_t>(found));
+            scan=found+1;
+        }
+    }
+    if(matches.empty())return nullptr;
+    uintptr_t best{};
+    unsigned bestScore{};
+    bool ambiguous{};
+    // Must use exactly the same name-pointer offset as the validated
+    // native timescale idCVar, never guess a different object layout.
+    const uint32_t offsets[]{static_cast<uint32_t>(validatedOffset)};
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_WRITE))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<sizeof(uintptr_t)||!readableMemory(begin,bytes))continue;
+        const uintptr_t b=reinterpret_cast<uintptr_t>(begin);
+        const uintptr_t e=b+bytes;
+        for(uintptr_t address=(b+7u)&~uintptr_t(7u);
+            address+sizeof(uintptr_t)<=e;address+=sizeof(uintptr_t)){
+            uintptr_t pointed{};
+            std::memcpy(&pointed,reinterpret_cast<const void*>(address),sizeof(pointed));
+            if(std::find(matches.begin(),matches.end(),pointed)==matches.end())continue;
+            for(const uint32_t offset:offsets) {
+                if(address<reinterpret_cast<uintptr_t>(image)+offset)continue;
+                const uintptr_t object=address-offset;
+                const uintptr_t valueAddress=object+0x34;
+                if(!writableMemory(reinterpret_cast<const void*>(valueAddress),sizeof(LONG)))
+                    continue;
+                LONG value{};
+                std::memcpy(&value,reinterpret_cast<const void*>(valueAddress),sizeof(value));
+                if(value<0||value>maximum)continue;
+                unsigned score=20;
+                if(offset==0)score+=40;
+                else if(offset==8)score+=20;
+                if(value==0)score+=35;
+                else score+=15;
+                if(score>bestScore){bestScore=score;best=valueAddress;ambiguous=false;}
+                else if(score==bestScore&&best!=valueAddress)ambiguous=true;
+            }
+        }
+    }
+    if(!best||ambiguous||bestScore<55)return nullptr;
+    logNativeSsgReplay(std::string("verified native CVar ")+name
+        +" via name pointer and writable value (score="+std::to_string(bestScore)+")");
+    return reinterpret_cast<volatile LONG*>(best);
+}
+
+struct NativeSuperShotgunReplayCvars {
+    bool lookedUp{},supported{},active{};
+    volatile LONG* cosmetic{};
+    volatile LONG* forced{};
+    volatile LONG* fromEmpty{};
+    LONG originalCosmetic{},originalForced{},originalFromEmpty{};
+    unsigned long long pulseUntilTick{};
+};
+
+NativeSuperShotgunReplayCvars nativeSsgReplay;
+std::mutex nativeSsgReplayMutex;
+
+void stopNativeSuperShotgunReplayLocked() {
+    if(!nativeSsgReplay.active)return;
+    InterlockedExchange(nativeSsgReplay.cosmetic,nativeSsgReplay.originalCosmetic);
+    InterlockedExchange(nativeSsgReplay.forced,nativeSsgReplay.originalForced);
+    InterlockedExchange(nativeSsgReplay.fromEmpty,nativeSsgReplay.originalFromEmpty);
+    nativeSsgReplay.active=false;
+    nativeSsgReplay.pulseUntilTick=0;
+    logNativeSsgReplay("native reload request pulse ended; all original game CVar values restored");
 }
 
 void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
@@ -850,18 +985,21 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         baselineValid=true;
         applied=true;
     }
-    constexpr float guardTimeScale=.87f; // slight slowdown, NEVER stop time
+    constexpr float guardTimeScale=.75f; // noticeable guard slowdown, never freezes time
     const float target=guardSlowmo?guardTimeScale
-        :motionOverrideActive?std::clamp(motionOverride,.10f,1.f)
+        :motionOverrideActive?std::clamp(motionOverride,.10f,2.f)
         :gloryKillCustomTimescale(level);
     LONG bits{};
     std::memcpy(&bits,&target,sizeof(bits));
     InterlockedExchange(current,bits);
     if(std::abs(loggedTarget-target)>.001f){
         loggedTarget=target;
-        logGlorySlowmo(std::string(guardSlowmo
-            ?"boxing guard timescale=":"sync-kill timescale=")
-            +std::to_string(target));
+        std::ostringstream verified;
+        const float readback=interlockedFloatLoad(current);
+        verified << (guardSlowmo ? "boxing guard" : "sync kill")
+            << " target=" << target << " readback=" << readback
+            << " syncClassified=" << (syncAttackActive?1:0);
+        logGlorySlowmo(verified.str());
     }
     ReleaseSRWLockExclusive(&lock);
 }
@@ -2611,13 +2749,82 @@ void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
 void KharvoxCameraResetCombatTimeDilation() {
     boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
     gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
+    latestSyncAttackClassified.store(false,std::memory_order_release);
+    latestChainsawTakedownCinematic.store(false,std::memory_order_release);
     updateGloryKillSlowmoTimescale(false); // restore native game cvar
 }
 
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
+    // Fast takedown is an actual speed increase, not merely returning the
+    // globally slowed game clock to 1.0x. Apply against the most recently
+    // validated sync-attack flag in this same XR frame; the older setter only
+    // changed an atomic AFTER KharvoxCameraSyncAttackActive had performed the
+    // timescale write, causing a one-frame lag (often the entire short kill).
     const float value = timescale > 0.0f
-        ? std::clamp(timescale, 0.10f, 1.0f) : 0.0f;
-    gloryKillMotionTimescaleOverride.store(value, std::memory_order_release);
+        ? std::clamp(timescale, 0.10f, 2.0f) : 0.0f;
+    const float old=gloryKillMotionTimescaleOverride.exchange(
+        value,std::memory_order_acq_rel);
+    if(old!=value && (value>=1.0f || old>=1.0f))
+        logGlorySlowmo("fast kill requested timescale="+std::to_string(value));
+    updateGloryKillSlowmoTimescale(
+        latestSyncAttackClassified.load(std::memory_order_acquire)
+        ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+}
+
+void KharvoxCameraSetChainsawTakedownCinematic(bool active) {
+    const bool old=latestChainsawTakedownCinematic.exchange(
+        active,std::memory_order_acq_rel);
+    if(old!=active)
+        logGlorySlowmo(std::string("native chainsaw cinematic ")
+            +(active?"ENTER":"EXIT"));
+}
+
+void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
+    bool requestNewReplay, bool superShotgunActiveAndSafe) {
+    std::lock_guard<std::mutex> guard(nativeSsgReplayMutex);
+    const auto now=GetTickCount64();
+    if(nativeSsgReplay.active
+        &&(!superShotgunActiveAndSafe || now>=nativeSsgReplay.pulseUntilTick))
+        stopNativeSuperShotgunReplayLocked();
+    if(!requestNewReplay||!superShotgunActiveAndSafe||nativeSsgReplay.active)
+        return;
+    if(!nativeSsgReplay.lookedUp) {
+        nativeSsgReplay.lookedUp=true;
+        nativeSsgReplay.cosmetic=resolveVerifiedIntegerCvar(
+            "hands_doCosmeticReloads",1);
+        nativeSsgReplay.forced=resolveVerifiedIntegerCvar(
+            "weapon_useForcedReload",2);
+        nativeSsgReplay.fromEmpty=resolveVerifiedIntegerCvar(
+            "hands_forceReloadFromEmpty",1);
+        nativeSsgReplay.supported=nativeSsgReplay.cosmetic
+            &&nativeSsgReplay.forced&&nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.forced
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.forced!=nativeSsgReplay.fromEmpty;
+        if(!nativeSsgReplay.supported)
+            logNativeSsgReplay("native CVar signatures missing/ambiguous; NO game memory changed, fallback remains input gate");
+    }
+    if(!nativeSsgReplay.supported)return;
+    auto& state=nativeSsgReplay;
+    state.originalCosmetic=InterlockedCompareExchange(state.cosmetic,0,0);
+    state.originalForced=InterlockedCompareExchange(state.forced,0,0);
+    state.originalFromEmpty=InterlockedCompareExchange(state.fromEmpty,0,0);
+    // Another mod using forced reload controls wins. Never clobber it.
+    if(state.originalForced!=0||state.originalFromEmpty!=0) {
+        logNativeSsgReplay("native reload CVars already controlled elsewhere; replay skipped");
+        return;
+    }
+    InterlockedExchange(state.cosmetic,1);
+    InterlockedExchange(state.fromEmpty,1);
+    InterlockedExchange(state.forced,2);
+    state.active=true;
+    state.pulseUntilTick=now+250;
+    logNativeSsgReplay("requested ORIGINAL idHands cosmetic reload from empty on SSG re-draw (250ms pulse)");
+}
+
+void logNativeSyncAttackTransition(bool active) {
+    logGlorySlowmo(active
+        ? "native sync-attack flag ENTER" : "native sync-attack flag EXIT");
 }
 
 bool KharvoxCameraSyncAttackActive() {
@@ -2643,7 +2850,12 @@ bool KharvoxCameraSyncAttackActive() {
             owner + syncAttackInstigatorOffset) != 0;
 #endif
     }
-    updateGloryKillSlowmoTimescale(active);
+    const bool previous=latestSyncAttackClassified.exchange(
+        active,std::memory_order_acq_rel);
+    if(active!=previous)
+        logNativeSyncAttackTransition(active);
+    updateGloryKillSlowmoTimescale(
+        active||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
     return active;
 }
 

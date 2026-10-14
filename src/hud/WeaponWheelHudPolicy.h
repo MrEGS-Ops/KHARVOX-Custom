@@ -1,36 +1,48 @@
 #pragma once
 #include <cstdint>
 #include <cmath>
+
 namespace kharvox {
 // Steam DOOMx64vk RTTI: idMenuManager_WeaponSelect and its Framing manager.
 inline bool ownedWeaponWheel(uintptr_t vtable) {
     return vtable==0x22456f8 || vtable==0x2245608;
 }
+// Original approved weapon-wheel presentation size and distance.
+// Position drift must be fixed by resetting the transform lifecycle, NOT
+// by resizing or shifting its visible appearance.
 inline constexpr float weaponWheelDistanceMeters=3.0f;
 inline constexpr float weaponWheelWidthMeters=3.0f;
+
 inline bool weaponWheelPose(const float* eye,const float* head,float units,float* center) {
-    if(!std::isfinite(units)||units<=0)return false;
+    if(!eye||!head||!center||!std::isfinite(units)||units<=0)return false;
     for(int i=0;i<3;++i){
+        if(!std::isfinite(eye[i])||!std::isfinite(head[i]))return false;
         center[i]=eye[i]+head[i]*weaponWheelDistanceMeters*units;
         if(!std::isfinite(center[i]))return false;
     }
     return true;
 }
-// Preserve the native canvas handedness and row lengths, remove authored tilt.
+
+// The wheel should always face the HMD, with horizontal / vertical axes
+// locked to the headset. The old "closest native axis" heuristic could assign
+// two different native rows to one HMD basis direction after a turn, then
+// reject the transformation and briefly show DOOM's angled/distant plane.
+// Native per-row lengths are retained so its surface scale stays stable.
 inline bool flatWeaponWheelAxis(const float* native,const float* head,float* out) {
-    int used=0;
+    if(!native||!head||!out)return false;
+    constexpr int basisRow[3]{1,2,0}; // DOOM camera: forward, right, up
     for(int row=0;row<3;++row){
-        float local[3]{},length=0;
+        float squared=0.f,headSquared=0.f;
         for(int i=0;i<3;++i){
-            if(!std::isfinite(native[row*3+i]))return false;
-            length+=native[row*3+i]*native[row*3+i];
-            for(int j=0;j<3;++j)local[j]+=native[row*3+i]*head[j*3+i];
+            const float n=native[row*3+i];
+            const float h=head[basisRow[row]*3+i];
+            if(!std::isfinite(n)||!std::isfinite(h))return false;
+            squared+=n*n;headSquared+=h*h;
         }
-        length=std::sqrt(length);if(length<.00001f)return false;
-        int best=0;for(int j=1;j<3;++j)if(std::abs(local[j])>std::abs(local[best]))best=j;
-        if((used&(1<<best)) || (row<2&&best==0))return false;
-        used|=1<<best;
-        for(int i=0;i<3;++i)out[row*3+i]=head[best*3+i]*(local[best]<0?-length:length);
+        if(squared<1.e-10f||headSquared<1.e-10f)return false;
+        const float length=std::sqrt(squared/headSquared);
+        for(int i=0;i<3;++i)
+            out[row*3+i]=head[basisRow[row]*3+i]*length;
     }
     return true;
 }

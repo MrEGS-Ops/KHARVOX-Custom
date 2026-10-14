@@ -130,8 +130,10 @@ internal static class NexusFolderCompanion
         syncingWindowState = true;
         try
         {
-            if (ActiveWindow is { Visible: true } viewer
-                && viewer.WindowState != state)
+            // An owned or temporarily hidden companion still belongs to
+            // the group: don't skip it on restore just because WinForms made
+            // it invisible during launcher minimization.
+            if (ActiveWindow is { } viewer && viewer.WindowState != state)
                 viewer.WindowState = state;
             NexusModsPopup.SyncTrackedPopupWindowState(state);
         }
@@ -491,6 +493,10 @@ internal sealed class ModDropWindow : Form
         DragEnter += AcceptDrag;
         DragDrop += DropFiles;
         files.DragEnter += AcceptDrag;
+        // Re-evaluate the payload on every row hover. Without DragOver a
+        // nested ListView can leave the drag effect as None after transitioning
+        // from the outer panel, making internal drag-to-reorder appear broken.
+        files.DragOver += AcceptDrag;
         files.DragDrop += DropFiles;
         root.DragEnter += AcceptDrag;
         root.DragDrop += DropFiles;
