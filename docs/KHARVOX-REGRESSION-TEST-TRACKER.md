@@ -61,6 +61,7 @@ The VR checkbox remains explicitly marked **Incomplete** in its launcher tooltip
 
 ## Queued — behind-head weapon wheel
 
+- [x] [USER-CONFIRMED PRE-REGRESSION] Moving the wheel hand OUT of its behind-head activation zone closes the wheel. Do not replace, retune or relitigate this working zone-exit mechanism. The remaining defect is native weapon commit when leaving WITHOUT Grip.
 - [ ] [PENDING] Left and right behind-head zones reachable without shoulder strain.
 - [ ] [CODE / HEADSET TEST REQUIRED] Wheel HUD reoriented by 180-degree in-plane rotation (not mirror), original dimensions retained, headset-facing normal unchanged. Verify which rotation axis was actually wrong in headset.
 - [ ] [PENDING] Move wrist to change weapon; hold Grip to freeze selection and pull to equip.
