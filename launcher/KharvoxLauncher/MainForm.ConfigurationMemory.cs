@@ -1000,7 +1000,9 @@ public sealed partial class MainForm
             main.showHands, main.calibrateHands,
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
-            main.customDisableWeaponWheel, main.customPersistentSsgReload
+            main.customDisableWeaponWheel, main.customPersistentSsgReload,
+            main.customFastGloryKills, main.customFastChainsawKills,
+            main.customBoxingGuard
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1018,6 +1020,9 @@ public sealed partial class MainForm
             main.weaponWheelRemap.Checked = false;
             main.showHands.Checked = false;
             main.swapJumpCrouch.Checked = true;
+            main.customFastGloryKills.Checked = false;
+            main.customFastChainsawKills.Checked = false;
+            main.customBoxingGuard.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
@@ -1074,6 +1079,44 @@ public sealed partial class MainForm
                 || !main.leftHanded.Enabled || main.leftHanded.Checked != originalLeftMode)
                 throw new InvalidDataException(
                     "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
+
+            // Build #83's binary native sync bypass, not animation multipliers.
+            // Boxing Guard stays an independent, opt-in guard-time slowdown.
+            main.applyingCustomModDependencies = true;
+            main.customFastGloryKills.Checked = true;
+            main.customFastChainsawKills.Checked = false;
+            main.customBoxingGuard.Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.gloryKillSlowmo.Value != 0)
+                throw new InvalidDataException(
+                    "Fast Glory Kills must select native no-adaptive-tick mode.");
+
+            main.applyingCustomModDependencies = true;
+            main.customFastGloryKills.Checked = false;
+            main.customFastChainsawKills.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.gloryKillSlowmo.Value != 0)
+                throw new InvalidDataException(
+                    "Fast Chainsaw Kills must reuse native no-adaptive-tick mode.");
+
+            main.applyingCustomModDependencies = true;
+            main.customFastChainsawKills.Checked = false;
+            main.customBoxingGuard.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.gloryKillSlowmo.Value != 10 || !main.customBoxingGuard.Checked)
+                throw new InvalidDataException(
+                    "Fast Kills off must restore native sync timing without disabling Boxing Guard.");
+
+            main.applyingCustomModDependencies = true;
+            main.customFastGloryKills.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.gloryKillSlowmo.Value != 0 || !main.customBoxingGuard.Checked)
+                throw new InvalidDataException(
+                    "Boxing Guard must remain selectable alongside fast native kills.");
         }
         finally
         {
