@@ -3528,6 +3528,8 @@ bool createGameplayActions(){
         +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
         +" persistentSsgReload="+(s.customMods.persistentSuperShotgunReload?"on":"off")
+        +" fastGK="+(s.customMods.fastGloryKills?"on":"off")
+        +" fastChainsaw="+(s.customMods.fastChainsawKills?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
