@@ -2922,13 +2922,19 @@ void updateGameplayActions(XrTime displayTime){
     // Retain a recent Chainsaw attack only through the confirmed kill.
     if(activeWeaponKind==KharvoxWeaponKind::Chainsaw&&triggerDown&&gameplay)
         s.lastChainsawAttackAt=displayTime;
-    if(!syncAttackActive)s.chainsawKillLatched=false;
+    // Chainsaw kills can transition into native cinematic mode without
+    // exposing the same sync-attack flag as ordinary hand Glory Kills.
+    // Keep the classification through the *actual* cinematic; don't clear
+    // it just because the regular sync flag drops for a frame.
+    const bool recentChainsawAttack=s.lastChainsawAttackAt>0
+        &&displayTime>=s.lastChainsawAttackAt
+        &&displayTime-s.lastChainsawAttackAt<2500000000LL;
+    if(!syncAttackActive&&!cutscene)s.chainsawKillLatched=false;
     else if(!s.chainsawKillLatched
         &&(activeWeaponKind==KharvoxWeaponKind::Chainsaw
-            ||(s.lastChainsawAttackAt>0&&displayTime>=s.lastChainsawAttackAt
-               &&displayTime-s.lastChainsawAttackAt<1500000000LL))){
+            ||recentChainsawAttack)){
         s.chainsawKillLatched=true;
-        log("[CHAINSAW-GESTURE] chainsaw sync-kill detected; gesture owns playback");
+        log("[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified");
     }
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
@@ -3481,12 +3487,20 @@ void updateGameplayActions(XrTime displayTime){
     // DOOM classifies Glory Kills as short cinematics, so 'gameplay' can
     // turn false while the native sync attack is still running. Do not
     // discard the fast-kill override exactly when the kill animation starts.
-    if(gameplayWorld&&!pauseMenu&&!fullscreenMenu&&!deathMenu
-        &&syncAttackActive&&!boxingNow){
-        if(s.chainsawKillLatched)
-            syncTimescale=s.customMods.fastChainsawKills?1.f:0.f;
+    // The old "fast" setting wrote 1.0x, which is normal world speed and
+    // often made no visible difference to the animation. Request real,
+    // bounded acceleration only during a confirmed native kill sequence,
+    // never in unrelated gameplay or the weapon wheel.
+    const bool activeChainsawKill=s.chainsawKillLatched
+        &&(cutscene||syncAttackActive);
+    KharvoxCameraSetChainsawTakedownCinematic(
+        activeChainsawKill&&cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu);
+    const bool activeKill=syncAttackActive||activeChainsawKill;
+    if(!pauseMenu&&!fullscreenMenu&&!deathMenu&&activeKill&&!boxingNow){
+        if(activeChainsawKill)
+            syncTimescale=s.customMods.fastChainsawKills?1.90f:0.f;
         else if(s.customMods.fastGloryKills)
-            syncTimescale=1.f;
+            syncTimescale=1.70f;
     }
     KharvoxCameraSetGloryKillTimescaleOverride(syncTimescale);
     updateWeapon6Dof();
