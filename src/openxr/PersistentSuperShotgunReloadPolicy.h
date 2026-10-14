@@ -19,6 +19,7 @@ struct PersistentSuperShotgunReloadState {
     bool reloadRequired{};
     bool triggerPreviouslyDown{};
     bool lastFrameEquipped{};
+    bool replayNeededOnDraw{};
     std::uint64_t equippedProgressNanoseconds{};
     std::uint64_t lastFrameNanoseconds{};
     std::uint64_t nativeFirePulseUntilNanoseconds{};
@@ -40,6 +41,7 @@ struct PersistentSuperShotgunReloadOutput {
     bool forwardFire{};
     bool shotAttemptAccepted{};
     bool nativeReloadWindowCompleted{};
+    bool nativeReloadReplayRequested{};
     bool blockedByPersistentReload{};
     std::uint64_t remainingEquippedNanoseconds{};
 };
@@ -58,6 +60,17 @@ inline PersistentSuperShotgunReloadOutput updatePersistentSuperShotgunReload(
     const bool active = in.gameplayActive && in.superShotgunEquipped
         && !in.weaponHolstered && !in.weaponWheelActive;
     const auto now = in.nowNanoseconds;
+    // An equipped Super Shotgun that is put away before its reload has
+    // finished must ask the *native* hands animation system to restart
+    // its regular reload on the next draw. No request during menu pauses.
+    if(state.reloadRequired && in.gameplayActive
+        &&(!in.superShotgunEquipped||in.weaponHolstered))
+        state.replayNeededOnDraw=true;
+    if(state.reloadRequired && active && !state.lastFrameEquipped
+        && state.replayNeededOnDraw){
+        out.nativeReloadReplayRequested=true;
+        state.replayNeededOnDraw=false;
+    }
     // Accumulate actual equipped GAMEPLAY time only. No menu, no wheel,
     // no cutscene and no gun-swapping time counts towards reloading.
     if (active && state.lastFrameEquipped
@@ -71,6 +84,7 @@ inline PersistentSuperShotgunReloadOutput updatePersistentSuperShotgunReload(
         if (state.equippedProgressNanoseconds>=persistentSsgActiveReloadNanoseconds) {
             state.reloadRequired = false;
             state.nativeFirePulseUntilNanoseconds = 0;
+            state.replayNeededOnDraw=false;
             out.nativeReloadWindowCompleted = true;
         }
     }
@@ -94,6 +108,7 @@ inline PersistentSuperShotgunReloadOutput updatePersistentSuperShotgunReload(
     if (freshPress && !state.reloadRequired && !in.nativeAmmoKnownEmpty) {
         state.reloadRequired = true;
         state.equippedProgressNanoseconds = 0;
+        state.replayNeededOnDraw=false;
         state.nativeFirePulseUntilNanoseconds = now +
             persistentSsgFirePulseNanoseconds;
         out.shotAttemptAccepted = true;
