@@ -5,7 +5,7 @@ An **independent optional VR mod** named **Persistent Super Shotgun Reload**. It
 
 ## Intended gameplay
 - Fire the Super Shotgun once, switch immediately to another gun: the unfinished SSG reload stays pending. **Switching back does not grant a loaded blast.**
-- While the SSG remains actually held/equipped in normal gameplay, its reload window advances. If stowed, unequipped, in a weapon wheel, a menu, cutscene, or paused, that progress freezes. It resumes after re-equipping.
+- While the SSG remains actually held/equipped in normal gameplay, its reload window advances. If a reload is interrupted by holstering or unequipping, progress is retained only as pending debt; **the actual replay and full 1.6-second gate RESTART FROM ZERO on the next draw**. Menus, wheel and pauses never advance the native reload gate.
 - Repeated quick-swapping cannot credit unequipped time. Other weapons (including a rifle used during the SSG cooldown) fire normally, independently of the SSG debt.
 - Releasing then freshly pressing the SSG trigger is required after the cycle. Holding trigger across a swap cannot auto-fire when equipping the SSG.
 - New map/level resets the input-level reload state. Disabling the mod restores native gun input.
@@ -24,7 +24,7 @@ First implementation lives in `src/openxr/PersistentSuperShotgunReloadPolicy.h` 
 ## Regression and acceptance tests
 `tests/persistent_ssg_reload_policy_tests.cpp` (both main CMake and policy-only suite) validates:
 - SSG shot -> 0.2s equipped -> 9s rifle -> return: no free reload.
-- Resume equipped-time countdown from remaining time.
+- Restart the **entire** equipped-time reload and request a DOOM native reload animation upon early redraw, not resume an invisible partial cooldown.
 - Fresh trigger press after permitted reload cycle.
 - No fake progress during menus, weapon wheel, hip holster or unfocused state.
 - Other gun's trigger is never suppressed.
