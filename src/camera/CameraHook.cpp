@@ -682,6 +682,7 @@ int configuredGloryKillSlowmoLevel() {
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
 std::atomic<bool> boxingGuardTimeDilationRequested{};
 std::atomic<bool> latestSyncAttackClassified{};
+std::atomic<bool> latestChainsawTakedownCinematic{};
 
 float gloryKillCustomTimescale(int level) {
     if (level <= 0) return 1.0f;
@@ -2616,6 +2617,7 @@ void KharvoxCameraResetCombatTimeDilation() {
     boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
     gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
     latestSyncAttackClassified.store(false,std::memory_order_release);
+    latestChainsawTakedownCinematic.store(false,std::memory_order_release);
     updateGloryKillSlowmoTimescale(false); // restore native game cvar
 }
 
@@ -2632,7 +2634,16 @@ void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
     if(old!=value && (value>=1.0f || old>=1.0f))
         logGlorySlowmo("fast kill requested timescale="+std::to_string(value));
     updateGloryKillSlowmoTimescale(
-        latestSyncAttackClassified.load(std::memory_order_acquire));
+        latestSyncAttackClassified.load(std::memory_order_acquire)
+        ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+}
+
+void KharvoxCameraSetChainsawTakedownCinematic(bool active) {
+    const bool old=latestChainsawTakedownCinematic.exchange(
+        active,std::memory_order_acq_rel);
+    if(old!=active)
+        logGlorySlowmo(std::string("native chainsaw cinematic ")
+            +(active?"ENTER":"EXIT"));
 }
 
 bool KharvoxCameraSyncAttackActive() {
@@ -2663,7 +2674,8 @@ bool KharvoxCameraSyncAttackActive() {
     if(active!=previous)
         logGlorySlowmo(std::string("native sync-attack flag ")
             +(active?"ENTER":"EXIT"));
-    updateGloryKillSlowmoTimescale(active);
+    updateGloryKillSlowmoTimescale(
+        active||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
     return active;
 }
 
