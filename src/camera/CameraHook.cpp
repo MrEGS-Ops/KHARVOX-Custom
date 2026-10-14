@@ -2768,6 +2768,49 @@ void KharvoxCameraSetChainsawTakedownCinematic(bool active) {
             +(active?"ENTER":"EXIT"));
 }
 
+void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
+    bool requestNewReplay, bool superShotgunActiveAndSafe) {
+    std::lock_guard<std::mutex> guard(nativeSsgReplayMutex);
+    const auto now=GetTickCount64();
+    if(nativeSsgReplay.active
+        &&(!superShotgunActiveAndSafe || now>=nativeSsgReplay.pulseUntilTick))
+        stopNativeSuperShotgunReplayLocked();
+    if(!requestNewReplay||!superShotgunActiveAndSafe||nativeSsgReplay.active)
+        return;
+    if(!nativeSsgReplay.lookedUp) {
+        nativeSsgReplay.lookedUp=true;
+        nativeSsgReplay.cosmetic=resolveVerifiedIntegerCvar(
+            "hands_doCosmeticReloads",1);
+        nativeSsgReplay.forced=resolveVerifiedIntegerCvar(
+            "weapon_useForcedReload",2);
+        nativeSsgReplay.fromEmpty=resolveVerifiedIntegerCvar(
+            "hands_forceReloadFromEmpty",1);
+        nativeSsgReplay.supported=nativeSsgReplay.cosmetic
+            &&nativeSsgReplay.forced&&nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.forced
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.forced!=nativeSsgReplay.fromEmpty;
+        if(!nativeSsgReplay.supported)
+            logNativeSsgReplay("native CVar signatures missing/ambiguous; NO game memory changed, fallback remains input gate");
+    }
+    if(!nativeSsgReplay.supported)return;
+    auto& state=nativeSsgReplay;
+    state.originalCosmetic=InterlockedCompareExchange(state.cosmetic,0,0);
+    state.originalForced=InterlockedCompareExchange(state.forced,0,0);
+    state.originalFromEmpty=InterlockedCompareExchange(state.fromEmpty,0,0);
+    // Another mod using forced reload controls wins. Never clobber it.
+    if(state.originalForced!=0||state.originalFromEmpty!=0) {
+        logNativeSsgReplay("native reload CVars already controlled elsewhere; replay skipped");
+        return;
+    }
+    InterlockedExchange(state.cosmetic,1);
+    InterlockedExchange(state.fromEmpty,1);
+    InterlockedExchange(state.forced,2);
+    state.active=true;
+    state.pulseUntilTick=now+250;
+    logNativeSsgReplay("requested ORIGINAL idHands cosmetic reload from empty on SSG re-draw (250ms pulse)");
+}
+
 bool KharvoxCameraSyncAttackActive() {
     // idPlayer+0x3DC9 is the exact flag DOOM's native usability path checks
     // before reporting that the local activator is instigating a sync attack.
