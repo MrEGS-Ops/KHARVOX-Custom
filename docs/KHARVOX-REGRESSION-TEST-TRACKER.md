@@ -1,31 +1,28 @@
 # KHARVOX — ongoing headset & launcher regression tracker
 
-**Canonical living checklist**. Update this document whenever a fix ships, a headset test passes, or a regression returns. Last updated **2026-10-14**. Last confirmed green baseline before latest targeted kill-speed changes: [Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841). For the newest build, check [Actions on the active fix branch](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions?query=branch%3Awork%2Foct13-followup-regression-fixes). CI results are **not headset validation**.
+**Canonical living checklist**. Update this document whenever a fix ships, a headset test passes, or a regression returns. Last updated **2026-10-14**. Last confirmed green baseline before latest targeted kill-speed changes: [Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841). For the newest build, check [Actions on the native fast-kill and wheel fix branch](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions?query=branch%3Awork%2Foct14-restore-native-fast-kills). CI results are **not headset validation**.
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
 ## Active priority: fix these THREE before other changes
 
-### [FAIL / NEW FIX CANDIDATE — AWAITING QUEST TEST] 1. Fast Glory Kills
+### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
 
-Source revision 2026-10-14: Previously requested 1.0x, a non-acceleration. Now requests **1.70x** only during native sync attack, applies it in the same XR frame, logs native sync flag and actual timescale readback, and retries a transiently unavailable CVar resolver. **Not marked PASS until tested.**
+2026-10-14 restoration branch: **deleted** the unverified 1.70x/1.90x game-timescale multiplier policy and both accompanying tests. The checkbox now selects DOOM's native `+sync_noAdaptiveTick 1 +sync_alwaysSlowMo 0 +sync_lastEnemyEncounterSlowMo 0` mode, based on the on/off mechanism the user explicitly confirmed working in the earlier Build #83 conversation. Cinematic refresh reasserts the native bypass instead of forcing the CVar to 0. The exact Build #83 SHA has not been positively matched to that chat reference. **Not PASS until observed in headset.**
 
-- [ ] Toggle **Fast Glory Kills** on, perform a normal Glory Kill, confirm animation genuinely speeds up, not just the environment or timer. Note demon, weapon and approximate duration.
-- [ ] Toggle off: game returns exactly to native timing. Re-enable and retest.
-- [ ] Ensure BOXING slow motion and weapon wheel time dilation don't override kill speed incorrectly.
-- [ ] Capture `%TEMP%\KHARVOX.log` from the **same** run and look for `[KHARVOX][GLORY-SLOWMO]` and sync-classification lines.
-- Earlier in-game working build remains **unidentified**; earlier conversation contained the report that a native/full-speed mode had worked, but no verified exact SHA/build recovered. Do not claim a specific old build is known until evidence confirms it.
+- [ ] Fast Glory Kills ON: execution at the formerly working full-speed timing, entirely in VR.
+- [ ] Both fast-kill toggles OFF: original game slowdown returns.
+- [ ] Check VR camera continuity, cinematic refresh, Boxing Guard and native wheel time dilation.
+- [ ] Capture same-session `%TEMP%\\KHARVOX.log`; confirm native slowdown CVar is active for fast kills.
 
-### [FAIL / NEW FIX CANDIDATE — AWAITING QUEST TEST] 2. Fast Chainsaw Kills
+### [FAIL / NATIVE SHARED BYPASS — AWAITING HEADSET TEST] 2. Fast Chainsaw Kills
 
-Source revision 2026-10-14: Previously requested 1.0x and relied solely on generic sync-attack recognition. Now requests **1.90x** when a recent native chainsaw attack transitions into either sync attack or native cinematic, even if the generic sync flag drops. Gated away from menus/wheel and independent of the Glory Kill checkbox. **Not marked PASS until tested.**
+The Chainsaw checkbox intentionally requests the **same** native sync-slowdown bypass. DOOM's existing native setting is global to the sync system, so enabling either checkbox enables the engine bypass for both. They are separate UI controls but **not independently timed**; never claim that switching only one on leaves the other execution type untouched. Chainsaw cutscene semantics still need headset proof.
 
-- [ ] Toggle **Fast Chainsaw Kills** on and use chainsaw on a target where a takedown animation occurs. Should noticeably accelerate the takedown, not just the input lead-in.
-- [ ] Turn off: native chainsaw kill timing restored.
-- [ ] Test after selecting chainsaw via its normal input and via weapon selection. The game may switch the weapon declaration when animation starts.
-- [ ] Test Chainsaw ON + Glory OFF, then Chainsaw OFF + Glory ON: independent behavior.
-- [ ] Capture `%TEMP%\KHARVOX.log` and confirm chainsaw kill classification and timescale override lines.
-- Earlier on/off wiring was coded but in-headset effectiveness **unconfirmed/FAIL**.
+- [ ] Chainsaw kill while either Fast Kills checkbox is ON: check whether the same native bypass affects chainsaw animation.
+- [ ] Both OFF: check native chainsaw kill speed returns.
+- [ ] Test native wheel, alternate weapon select and chainsaw animation cleanup.
+- [ ] Keep status FAIL/PENDING until observed; do not claim verified from passing CI.
 
 ### [FAIL / GUARDED NATIVE ANIMATION REPLAY ATTEMPT — NEEDS QUEST TEST] 3. Super Shotgun — real reload animation persistence
 
@@ -65,9 +62,9 @@ The VR checkbox remains explicitly marked **Incomplete** in its launcher tooltip
 ## Queued — behind-head weapon wheel
 
 - [ ] [PENDING] Left and right behind-head zones reachable without shoulder strain.
-- [ ] [PENDING] Original weapon-wheel dimensions, correct pose/angle and reset each opening/closing.
+- [ ] [CODE / HEADSET TEST REQUIRED] Wheel HUD reoriented by 180-degree in-plane rotation (not mirror), original dimensions retained, headset-facing normal unchanged. Verify which rotation axis was actually wrong in headset.
 - [ ] [PENDING] Move wrist to change weapon; hold Grip to freeze selection and pull to equip.
-- [ ] [PENDING] Exit without Grip cancels and retains previously held weapon (no brief accidental equip).
+- [ ] [CODE / HEADSET TEST REQUIRED] Exit zone without Grip: no delayed 300ms weapon restore; send three centered native-selection frames before releasing native wheel button. **Test carefully** that DOOM truly discards its prior highlighted slot; centering alone may be insufficient. Grip release while hand remains inside must not close wheel. If equipped weapon still changes even momentarily, FAIL; must intercept native commit instead.
 - [ ] [PENDING] Correct left/right weapon hand and opposite grenade hand ownership after confirmed selection.
 - [ ] [PENDING] No accidental melee/secondary fire/hip grab when entering or leaving wheel zone.
 - [ ] [PENDING] Native weapon wheel time dilation, blur and haptics retained.
