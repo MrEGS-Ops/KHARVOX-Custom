@@ -36,15 +36,16 @@ int main() {
     assert(!o.forwardFire && o.blockedByPersistentReload);
     assert(o.nativeReloadReplayRequested);
     assert(!state.replayNeededOnDraw);
+    assert(state.equippedProgressNanoseconds==0); // full restart on redraw
     assert(state.reloadRequired);
     in.fireRequested=false;in.physicalTriggerHeld=false;
     bool completed=false;
-    for(int frame=0;frame<15;frame++){
+    for(int frame=0;frame<16;frame++){
         in.nowNanoseconds+=100000000ull;
         o=updatePersistentSuperShotgunReload(state,in);
         completed |= o.nativeReloadWindowCompleted;
     }
-    assert(completed); // debt completed after sufficient equipped time
+    assert(completed); // full 1.6s restarted after incomplete re-equip
     assert(!state.reloadRequired);
     // New trigger press, now another single shot is allowed.
     in.fireRequested=true;in.physicalTriggerHeld=true;in.nowNanoseconds+=100000000ull;
@@ -64,6 +65,7 @@ int main() {
         o=updatePersistentSuperShotgunReload(state,in);
         assert(!o.forwardFire && !o.shotAttemptAccepted);
         assert(o.nativeReloadReplayRequested); // restart each interrupted reload
+        assert(state.equippedProgressNanoseconds==0);
         in.fireRequested=false;in.physicalTriggerHeld=false;in.nowNanoseconds+=100000000ull;
         updatePersistentSuperShotgunReload(state,in);
     }
