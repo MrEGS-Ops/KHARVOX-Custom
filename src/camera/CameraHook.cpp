@@ -862,9 +862,9 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     if(std::abs(loggedTarget-target)>.001f){
         loggedTarget=target;
         std::ostringstream verified;
-        const LONG readback=InterlockedCompareExchange(current,0,0);
+        const float readback=interlockedFloatLoad(current);
         verified << (guardSlowmo ? "boxing guard" : "sync kill")
-            << " target=" << target << " readbackBits=" << readback
+            << " target=" << target << " readback=" << readback
             << " syncClassified=" << (syncAttackActive?1:0);
         logGlorySlowmo(verified.str());
     }
