@@ -56,6 +56,7 @@
 #include "PhysicalPunchPolicy.h"
 #include "OpenHandReleasePolicy.h"
 #include "PersistentSuperShotgunReloadPolicy.h"
+#include "FastKillSpeedPolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -3496,12 +3497,17 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxCameraSetChainsawTakedownCinematic(
         activeChainsawKill&&cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu);
     const bool activeKill=syncAttackActive||activeChainsawKill;
-    if(!pauseMenu&&!fullscreenMenu&&!deathMenu&&activeKill&&!boxingNow){
-        if(activeChainsawKill)
-            syncTimescale=s.customMods.fastChainsawKills?1.90f:0.f;
-        else if(s.customMods.fastGloryKills)
-            syncTimescale=1.70f;
-    }
+    const kharvox::FastKillSpeedInput fastKill{
+        syncAttackActive,
+        activeChainsawKill && cutscene,
+        s.chainsawKillLatched,
+        s.customMods.fastGloryKills,
+        s.customMods.fastChainsawKills,
+        boxingNow,
+        weaponWheelActive||s.behindHeadWheelActive,
+        pauseMenu,fullscreenMenu,deathMenu
+    };
+    syncTimescale=kharvox::selectFastKillSpeed(fastKill);
     KharvoxCameraSetGloryKillTimescaleOverride(syncTimescale);
     updateWeapon6Dof();
 }
