@@ -2543,7 +2543,7 @@ void updateGameplayActions(XrTime displayTime){
             ||s.wheelCancelDrain.active()
             ||displayTime<s.weaponSwitchPulseUntil);
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
-        &&weaponSelectDown&&s.weaponWheelOpened;
+        &&((weaponSelectDown&&s.weaponWheelOpened)||s.wheelCancelDrain.active());
     if(weaponWheelActive!=s.hudWeaponWheelPresented){
         // Reset renderer-local wheel transform/pivot at BOTH edges. Original
         // native menu size and distance remain unchanged.
@@ -3048,7 +3048,7 @@ void updateGameplayActions(XrTime displayTime){
             ?s.rightGripController:weaponWheelActive&&s.behindHeadWheelSide==1
                 ?s.leftGripController:weaponController();
         kharvox::MotionWeaponWheelInput wheelInput{};
-        wheelInput.wheelActive=weaponWheelActive;
+        wheelInput.wheelActive=weaponWheelActive&&!s.wheelCancelDrain.active();
         wheelInput.trackingValid=wCtrl.valid&&wCtrl.positionTracked&&s.head.valid;
         wheelInput.stickBypass=!s.behindHeadWheelActive
             &&kharvox::motionWheelStickBypass(s.leftStick.x,s.leftStick.y);
@@ -3398,12 +3398,12 @@ void updateGameplayActions(XrTime displayTime){
             leftShoulderDown,rightShoulderDown,backDown,
             gameplay&&switchWeaponModDown,yDown,pauseDown,
             gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
-        // Advance only AFTER both neutral stick and held wheel-button input
-        // have reached XInput. The next XR frame releases the native button.
-        s.wheelCancelDrain.frameSubmitted();
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
+    // Advance only AFTER both neutral stick and held wheel-button input
+    // have reached XInput. The next XR frame releases the native button.
+    s.wheelCancelDrain.frameSubmitted();
     auto publishHudHandPose=[&](bool rightHand,const ControllerPose& controller){
         if(!controller.valid||!s.headZeroValid){KharvoxHudSetHandPose(rightHand,0,0,0,0,0,0,1,false);return;}
         const auto current=controllerRelativeToBodyTrackingOrigin(controller);
