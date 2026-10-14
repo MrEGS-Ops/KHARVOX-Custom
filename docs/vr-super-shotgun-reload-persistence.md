@@ -10,8 +10,14 @@ An **independent optional VR mod** named **Persistent Super Shotgun Reload**. It
 - Releasing then freshly pressing the SSG trigger is required after the cycle. Holding trigger across a swap cannot auto-fire when equipping the SSG.
 - New map/level resets the input-level reload state. Disabling the mod restores native gun input.
 
+## Experimental native animation replay when returning to SSG
+
+An incomplete SSG cycle is now marked for replay whenever the player unequips it. On re-equipping in gameplay, the policy emits a one-time `nativeReloadReplayRequested` flag. KHARVOX checks whether DOOM's **own** `hands_doCosmeticReloads`, `weapon_useForcedReload`, and `hands_forceReloadFromEmpty` integer CVars can be unambiguously verified in native writable CVar storage. Only if ALL three pass strict checks does it pulse their DOOM-native reload modes for 250 ms and restore every original value. A missing/ambiguous signature or another mod using forced reload means **NO game memory is changed**.
+
+This is an **experimental attempt**, **not a proven restart**. The CVars may not initiate the regular SSG reload animation on the user's particular game/version. Look for `[SSG-NATIVE-REPLAY]` lines in `%TEMP%\KHARVOX.log`. The proper final solution remains a verified native animation start and completion callback.
+
 ## Current implementation and known limitation
-First implementation lives in `src/openxr/PersistentSuperShotgunReloadPolicy.h` and `OpenXRBootstrap.cpp`. It enforces a **1.6-second held-in-gameplay time** from a VR trigger edge by suppressing DOOM's virtual Fire input until the gate allows it. This is a **conservative input-level approximation**, not proof of native Super Shotgun shot completion or reload state: in the present repository a trusted DOOM native `SuperShotgunFired` / `ReloadCompleted` hook has not yet been verified. Consequently, an unsuccessful shot attempt may still enter the lockout, and DOOM's own animations may not represent the persistent gate correctly.
+First implementation lives in `src/openxr/PersistentSuperShotgunReloadPolicy.h` and `OpenXRBootstrap.cpp`. It enforces a **1.6-second held-in-gameplay time** from a VR trigger edge by suppressing DOOM's virtual Fire input until the gate allows it. This is a **conservative input-level approximation**, not proof of native Super Shotgun shot completion or reload state: in the present repository a trusted DOOM native `SuperShotgunFired` / `ReloadCompleted` hook has not yet been verified. The new native reload CVars are a guarded replay request and are **not** an animation state callback. Consequently, an unsuccessful shot attempt may still enter the lockout, and DOOM's own animations may not represent the persistent gate correctly.
 
 **Do not claim native reload animations or ammo internals are overridden.** When a safe native shot/reload callback has been established, replace the estimated fire acceptance and timed gate with actual native cycle state persistence while retaining the independent launcher switch and tests. Do not patch guessed memory offsets or reinitialize idHands state unsafely.
 
