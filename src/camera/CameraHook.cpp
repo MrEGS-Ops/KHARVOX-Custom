@@ -824,6 +824,113 @@ volatile LONG* resolveTimescaleCvarCurrent() {
     return current;
 }
 
+// DOOM 2016 exposes native hands/weapon reload CVars. A re-drawn Super
+// Shotgun can potentially be returned to its real animation web via those
+// controls. All values are ephemeral, restored on loss of input, and remain
+// entirely DISABLED if the engine's native CVar object cannot be located
+// unambiguously. Never invent an SSG mesh or cosmetic keyframe animation.
+void logNativeSsgReplay(const std::string& message) {
+    const auto path=kharvox::logPathA("KHARVOX.log");
+    if(path.empty())return;
+    std::ofstream f(path,std::ios::app);
+    f << "[KHARVOX][SSG-NATIVE-REPLAY] " << message << '\n';
+}
+
+volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
+    auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if(!image||!readableMemory(image,sizeof(IMAGE_DOS_HEADER)))return nullptr;
+    const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if(dos->e_magic!=IMAGE_DOS_SIGNATURE
+        ||!readableMemory(image+dos->e_lfanew,sizeof(IMAGE_NT_HEADERS64)))
+        return nullptr;
+    const auto nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(image+dos->e_lfanew);
+    if(nt->Signature!=IMAGE_NT_SIGNATURE)return nullptr;
+    const size_t length=std::strlen(name)+1;
+    std::vector<uintptr_t> matches;
+    const auto sections=IMAGE_FIRST_SECTION(nt);
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_READ))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<length||!readableMemory(begin,bytes))continue;
+        auto first=reinterpret_cast<const char*>(begin);
+        auto last=first+bytes;
+        auto scan=first;
+        while(scan+length<=last) {
+            auto found=std::search(scan,last,name,name+length);
+            if(found==last)break;
+            matches.push_back(reinterpret_cast<uintptr_t>(found));
+            scan=found+1;
+        }
+    }
+    if(matches.empty())return nullptr;
+    uintptr_t best{};
+    unsigned bestScore{};
+    bool ambiguous{};
+    // These are the CVar name-pointer placements already validated by the
+    // existing timescale scanner; only accept the same exact structure.
+    constexpr uint32_t offsets[]{0,8,16,24,32};
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_WRITE))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<sizeof(uintptr_t)||!readableMemory(begin,bytes))continue;
+        const uintptr_t b=reinterpret_cast<uintptr_t>(begin);
+        const uintptr_t e=b+bytes;
+        for(uintptr_t address=(b+7u)&~uintptr_t(7u);
+            address+sizeof(uintptr_t)<=e;address+=sizeof(uintptr_t)){
+            uintptr_t pointed{};
+            std::memcpy(&pointed,reinterpret_cast<const void*>(address),sizeof(pointed));
+            if(std::find(matches.begin(),matches.end(),pointed)==matches.end())continue;
+            for(const uint32_t offset:offsets) {
+                if(address<reinterpret_cast<uintptr_t>(image)+offset)continue;
+                const uintptr_t object=address-offset;
+                const uintptr_t valueAddress=object+0x34;
+                if(!writableMemory(reinterpret_cast<const void*>(valueAddress),sizeof(LONG)))
+                    continue;
+                LONG value{};
+                std::memcpy(&value,reinterpret_cast<const void*>(valueAddress),sizeof(value));
+                if(value<0||value>maximum)continue;
+                unsigned score=20;
+                if(offset==0)score+=40;
+                else if(offset==8)score+=20;
+                if(value==0)score+=35;
+                else score+=15;
+                if(score>bestScore){bestScore=score;best=valueAddress;ambiguous=false;}
+                else if(score==bestScore&&best!=valueAddress)ambiguous=true;
+            }
+        }
+    }
+    if(!best||ambiguous||bestScore<55)return nullptr;
+    logNativeSsgReplay(std::string("verified native CVar ")+name
+        +" via name pointer and writable value (score="+std::to_string(bestScore)+")");
+    return reinterpret_cast<volatile LONG*>(best);
+}
+
+struct NativeSuperShotgunReplayCvars {
+    bool lookedUp{},supported{},active{};
+    volatile LONG* cosmetic{};
+    volatile LONG* forced{};
+    volatile LONG* fromEmpty{};
+    LONG originalCosmetic{},originalForced{},originalFromEmpty{};
+    unsigned long long pulseUntilTick{};
+};
+
+NativeSuperShotgunReplayCvars nativeSsgReplay;
+std::mutex nativeSsgReplayMutex;
+
+void stopNativeSuperShotgunReplayLocked() {
+    if(!nativeSsgReplay.active)return;
+    InterlockedExchange(nativeSsgReplay.cosmetic,nativeSsgReplay.originalCosmetic);
+    InterlockedExchange(nativeSsgReplay.forced,nativeSsgReplay.originalForced);
+    InterlockedExchange(nativeSsgReplay.fromEmpty,nativeSsgReplay.originalFromEmpty);
+    nativeSsgReplay.active=false;
+    nativeSsgReplay.pulseUntilTick=0;
+    logNativeSsgReplay("native reload request pulse ended; all original game CVar values restored");
+}
+
 void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     // One owner for the shared timescale cvar: a gentle pre-combat Boxing
     // Guard slowdown, optionally a full-speed sync kill, or untouched native.
