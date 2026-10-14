@@ -700,8 +700,23 @@ void logGlorySlowmo(const std::string& text) {
 volatile LONG* resolveTimescaleCvarCurrent() {
     static std::atomic<int> state{};
     static volatile LONG* current{};
-    int observed = state.load(std::memory_order_acquire);
-    if (observed) return observed > 0 ? current : nullptr;
+    static std::atomic<unsigned long long> lastAttemptTick{};
+    static std::mutex resolverMutex;
+    int observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    const auto now=GetTickCount64();
+    // The old implementation permanently disabled kill-speed controls if
+    // the very first scan happened while loading or timescale was outside the
+    // valid range. Retry only once every 15 seconds, never on every VR frame.
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    if(!resolverMutex.try_lock())return nullptr;
+    std::lock_guard<std::mutex> lock(resolverMutex,std::adopt_lock);
+    observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    lastAttemptTick.store(now,std::memory_order_release);
 
     auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if (!image || !readableMemory(image, sizeof(IMAGE_DOS_HEADER))) {
