@@ -62,6 +62,7 @@
 #include "XInputHapticsPolicy.h"
 #include "DamageHapticsPolicy.h"
 #include "MotionWeaponWheelPolicy.h"
+#include "GestureWheelExitPolicy.h"
 #include "../bhaptics/BhapticsIpcClient.h"
 #include "../psvr2/Psvr2IpcClient.h"
 #include <openxr/openxr.h>
@@ -286,9 +287,7 @@ struct State {
     int behindHeadWheelSide{-1}; // 0 right, 1 left
     bool wheelGripLatched{};
     bool wheelSelectionFrozen{};
-    kharvox::BackWeaponKind wheelOriginalWeapon{kharvox::BackWeaponKind::Unknown};
-    kharvox::BackWeaponKind wheelCancelRestore{kharvox::BackWeaponKind::Unknown};
-    XrTime wheelCancelRestoreAt{};
+    kharvox::GestureWheelCancelDrain wheelCancelDrain{};
     bool wheelWeaponGripSuppressedUntilRelease{};
     bool wheelSupportGripSuppressedUntilRelease{};
     XrVector2f frozenWheelStick{};
@@ -2184,9 +2183,7 @@ void updateGameplayActions(XrTime displayTime){
         }
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
-        s.wheelOriginalWeapon=kharvox::BackWeaponKind::Unknown;
-        s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
-        s.wheelCancelRestoreAt=0;
+        s.wheelCancelDrain.reset();
         s.wheelWeaponGripSuppressedUntilRelease=false;
         s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
@@ -2326,21 +2323,20 @@ void updateGameplayActions(XrTime displayTime){
             s.motionWheelState={}; // fresh anchor on each opening (drift reset)
             s.wheelClicks={};
             s.wheelSelectionFrozen=false;
-            s.wheelOriginalWeapon=backWeaponKindFromActive(KharvoxWeaponCurrentKind());
-            s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
-            s.wheelCancelRestoreAt=0;
+            s.wheelCancelDrain.reset();
             log(std::string("[WEAPON-WHEEL] ")
                 +(selectedSide==0?"RIGHT":"LEFT")+" zone ENTER -> open, anchor reset");
         }
-        if(!behindHeadWheelRequested&&s.behindHeadWheelActive){
-            if(!wheelGripHeld){
-                s.wheelCancelRestore=s.wheelOriginalWeapon;
-                // Native DOOM commits its highlighted slot on release.
-                // Re-select the original after the release animation has
-                // settled; the first render frame may otherwise switch it.
-                s.wheelCancelRestoreAt=displayTime+300000000;
-                log("[WEAPON-WHEEL] zone EXIT without Grip -> CANCEL, restore previous weapon");
-            }else log("[WEAPON-WHEEL] zone EXIT with Grip -> CONFIRM");
+        const auto exitAction=kharvox::classifyGestureWheelExit(
+            s.behindHeadWheelActive,behindHeadWheelRequested,wheelGripHeld);
+        if(exitAction==kharvox::GestureWheelExit::Cancel){
+            // DO NOT switch back after 300ms: that was the visible flicker.
+            // Neutralize selection while the native wheel remains pressed,
+            // then release only after the neutral frames were submitted.
+            s.wheelCancelDrain.cancel();
+            log("[WEAPON-WHEEL] zone EXIT without Grip -> neutral selection then close (no restore pulse)");
+        }else if(exitAction==kharvox::GestureWheelExit::Confirm){
+            log("[WEAPON-WHEEL] zone EXIT with Grip -> CONFIRM");
         }
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
             &&wheelGripHeld&&selectedSide>=0){
@@ -2364,12 +2360,12 @@ void updateGameplayActions(XrTime displayTime){
         if(!behindHeadWheelRequested){
             s.motionWheelState={};
             s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
-            s.wheelOriginalWeapon=kharvox::BackWeaponKind::Unknown;
         }
     }else{
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.motionWheelState={};
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
+        s.wheelCancelDrain.reset();
         s.headZoneEntered={};
     }
 
@@ -2527,9 +2523,9 @@ void updateGameplayActions(XrTime displayTime){
     if(s.weaponSelectPressed&&!weaponSelectDown){
         if(s.weaponSelectNativeStarted)
             log(std::string("[INPUT] weapon wheel/")+weaponSelectControl
-                +(s.wheelCancelRestoreAt
-                    ?" released without Grip; original weapon queued for restoration"
-                    :" released with Grip; selection confirmed"));
+                +(s.wheelCancelDrain.active()
+                    ?" zone exit without Grip; native neutral drain pending"
+                    :" selection ended"));
         else{
             s.weaponSwitchPulseUntil=displayTime+100000000;
             log(std::string("[INPUT] ")+weaponSelectControl+" tap -> switch weapon pulse");
@@ -2544,6 +2540,7 @@ void updateGameplayActions(XrTime displayTime){
     s.weaponSelectPressed=weaponSelectDown;
     const bool nativeWeaponSelectDown=gameplay
         &&((weaponSelectDown&&s.weaponSelectNativeStarted)
+            ||s.wheelCancelDrain.active()
             ||displayTime<s.weaponSwitchPulseUntil);
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&weaponSelectDown&&s.weaponWheelOpened;
@@ -2553,26 +2550,7 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxHudResetWeaponWheelPresentation();
         s.hudWeaponWheelPresented=weaponWheelActive;
     }
-    if(s.wheelCancelRestoreAt&&displayTime>=s.wheelCancelRestoreAt
-        &&!weaponWheelActive){
-        const auto original=s.wheelCancelRestore;
-        s.wheelCancelRestoreAt=0;
-        s.wheelCancelRestore=kharvox::BackWeaponKind::Unknown;
-        if(original!=kharvox::BackWeaponKind::Unknown
-            &&original!=backWeaponKindFromActive(KharvoxWeaponCurrentKind())){
-            const WORD key=kharvox::backWeaponKeyboardVirtualKey(original);
-            if(key){
-                startBackWeaponKeyboardPulse(key,displayTime);
-            }else if(original==kharvox::BackWeaponKind::Bfg){
-                s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
-                s.backWeaponPulseUntil=displayTime+100000000;
-            }else if(original==kharvox::BackWeaponKind::Chainsaw){
-                s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
-                s.backWeaponPulseUntil=displayTime+100000000;
-            }
-            log(std::string("[WEAPON-WHEEL] CANCEL restored ")+backWeaponKindKey(original));
-        }
-    }
+    // No delayed original-weapon keyboard/BFG/chainsaw pulses on cancel.
     const bool rawBackWeaponGripPress=secondaryFireGripDown
         &&!s.secondaryFireGripPressed&&!s.wheelWeaponGripSuppressedUntilRelease;
     const auto& shoulderWeaponGripController=s.weaponHandLeft
@@ -3121,9 +3099,10 @@ void updateGameplayActions(XrTime displayTime){
             kharvox::queueControllerClick(s.wheelClicks[hapticHand],GetTickCount64());
     }
     const XrVector2f nativeRightStick=nativeUiMenu?nativeUiRightStick
+        :s.wheelCancelDrain.active()?XrVector2f{0.f,0.f}
         :weaponWheelActive?wheelSelectionStick:XrVector2f{gameplayTurnX,0.f};
     const bool nativeRightStickActive=nativeUiMenu?turnActive
-        :(weaponWheelActive||gameplayTurnX!=0.f);
+        :(s.wheelCancelDrain.active()||weaponWheelActive||gameplayTurnX!=0.f);
     if(xinputHookReady)updateVirtualRightStick(nativeRightStick,nativeRightStickActive);
     s.previousManualTurnActive=manualTurnActive;
     const bool chainsawUp=gameplay&&turnActive&&!meleeDown&&rightStickY>.75f;
@@ -3419,6 +3398,9 @@ void updateGameplayActions(XrTime displayTime){
             leftShoulderDown,rightShoulderDown,backDown,
             gameplay&&switchWeaponModDown,yDown,pauseDown,
             gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
+        // Advance only AFTER both neutral stick and held wheel-button input
+        // have reached XInput. The next XR frame releases the native button.
+        s.wheelCancelDrain.frameSubmitted();
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
