@@ -27,15 +27,15 @@ Source revision 2026-10-14: Previously requested 1.0x and relied solely on gener
 - [ ] Capture `%TEMP%\KHARVOX.log` and confirm chainsaw kill classification and timescale override lines.
 - Earlier on/off wiring was coded but in-headset effectiveness **unconfirmed/FAIL**.
 
-### [FAIL / NATIVE ANIMATION REPLAY NOT YET IMPLEMENTED] 3. Super Shotgun — real reload animation persistence
+### [FAIL / GUARDED NATIVE ANIMATION REPLAY ATTEMPT — NEEDS QUEST TEST] 3. Super Shotgun — real reload animation persistence
 
-The currently shipped VR checkbox is explicitly marked **Incomplete** in its launcher tooltip. The XInput firing delay is insufficient and must not be considered a completed reload mod. DOOM exposes native reload-related variables (e.g. `hands_doCosmeticReloads`, `weapon_useForcedReload`), but forcing them without verifying the idHands / SSG animation event path may break unrelated weapons. A safe native animation restart hook must be proven before this check is marked PASS.
+The VR checkbox remains explicitly marked **Incomplete** in its launcher tooltip. The XInput firing delay alone was inadequate. The latest source now makes an **experimental attempt to restart the ORIGINAL DOOM reload animation** on SSG re-equip, using only three uniquely located native reload CVars whose name-pointer layout matches the independently validated DOOM timescale CVar. It pulses them for 250 ms and restores their originals; missing signatures or existing incompatible mod ownership **fail closed without writing game memory**. **The full 1.6-second input gate restarts from zero on each interrupted redraw.** None of this proves the native animation actually restarts until a Quest test shows it. Look for `[KHARVOX][SSG-NATIVE-REPLAY]` in the log. A trustworthy native shot/reload animation completion hook is still required for final correctness.
 
 - [ ] Fire Super Shotgun once, switch to rifle before its reload animation finishes, then switch back immediately.
 - [ ] **Required:** the **original DOOM Super Shotgun reload animation RESTARTS from its start** when you return. A motionless gun with a 1.6-second input lock is **FAIL**.
 - [ ] Before the visible animation completes, shooting must remain impossible. After native reload completion, fire is enabled.
-- [ ] Switch away and back repeatedly: each interrupted reload restarts correctly; no ammo duplication.
-- [ ] Toggle mod off: native switch/reload behavior restored.
+- [ ] Switch away and back repeatedly: each interrupted reload restarts **from frame zero** correctly; no ammo duplication. Check for unintended forced reload on the rifle or other guns.
+- [ ] Toggle mod off: native switch/reload behavior restored. The three native reload CVars must always revert after their 250ms pulse, any weapon switch, menu/focus loss or feature disable.
 - Current source provides only an equipped-time XInput firing gate, **NOT** native animation restart. Status stays FAIL/BLOCKED until native idHands/weapon reload animation restart path has been safely verified and connected. Don't call it fixed merely because CI passes.
 
 ## Queued — launcher & Windows UI
