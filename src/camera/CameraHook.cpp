@@ -697,6 +697,8 @@ void logGlorySlowmo(const std::string& text) {
     out << "[KHARVOX][GLORY-SLOWMO] " << text << '\n';
 }
 
+std::atomic<int> verifiedNativeCvarNameOffset{-1};
+
 volatile LONG* resolveTimescaleCvarCurrent() {
     static std::atomic<int> state{};
     static volatile LONG* current{};
@@ -763,6 +765,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
 
     uintptr_t bestCurrent{};
     unsigned bestScore{};
+    int bestNameOffset{-1};
     bool ambiguous{};
     constexpr uint32_t nameOffsets[]{0, 8, 16, 24, 32};
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
@@ -800,6 +803,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
                 if (score > bestScore) {
                     bestScore = score;
                     bestCurrent = valueAddress;
+                    bestNameOffset = static_cast<int>(nameOffset);
                     ambiguous = false;
                 } else if (score == bestScore && valueAddress != bestCurrent) {
                     ambiguous = true;
@@ -815,6 +819,7 @@ volatile LONG* resolveTimescaleCvarCurrent() {
     }
 
     current = reinterpret_cast<volatile LONG*>(bestCurrent);
+    verifiedNativeCvarNameOffset.store(bestNameOffset,std::memory_order_release);
     std::ostringstream message;
     message << "timescale cvar current resolved RVA=0x"
         << std::hex << (bestCurrent - reinterpret_cast<uintptr_t>(image))
@@ -837,6 +842,12 @@ void logNativeSsgReplay(const std::string& message) {
 }
 
 volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
+    // Do not write ANY native CVar until a known working float CVar has
+    // established the actual idCVar object's name-pointer layout.
+    if(!resolveTimescaleCvarCurrent())return nullptr;
+    const int validatedOffset=verifiedNativeCvarNameOffset.load(
+        std::memory_order_acquire);
+    if(validatedOffset<0)return nullptr;
     auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     if(!image||!readableMemory(image,sizeof(IMAGE_DOS_HEADER)))return nullptr;
     const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
@@ -868,9 +879,9 @@ volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
     uintptr_t best{};
     unsigned bestScore{};
     bool ambiguous{};
-    // These are the CVar name-pointer placements already validated by the
-    // existing timescale scanner; only accept the same exact structure.
-    constexpr uint32_t offsets[]{0,8,16,24,32};
+    // Must use exactly the same name-pointer offset as the validated
+    // native timescale idCVar, never guess a different object layout.
+    const uint32_t offsets[]{static_cast<uint32_t>(validatedOffset)};
     for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
         const auto& section=sections[sectionIndex];
         if(!(section.Characteristics&IMAGE_SCN_MEM_WRITE))continue;
