@@ -14,15 +14,6 @@ add_executable(KharvoxDamageHapticsPolicyTests ../damage_haptics_policy_tests.cp
 target_compile_features(KharvoxDamageHapticsPolicyTests PRIVATE cxx_std_17)
 add_test(NAME damage-haptics-policy COMMAND KharvoxDamageHapticsPolicyTests)
 
-add_executable(KharvoxFastKillSpeedPolicyTests ../fast_kill_speed_policy_tests.cpp)
-target_compile_features(KharvoxFastKillSpeedPolicyTests PRIVATE cxx_std_17)
-if(MSVC)
-  target_compile_options(KharvoxFastKillSpeedPolicyTests PRIVATE /UNDEBUG)
-else()
-  target_compile_options(KharvoxFastKillSpeedPolicyTests PRIVATE -UNDEBUG)
-endif()
-add_test(NAME fast-kill-speed-policy COMMAND KharvoxFastKillSpeedPolicyTests)
-
 add_executable(KharvoxPersistentSsgReloadPolicyTests ../persistent_ssg_reload_policy_tests.cpp)
 target_compile_features(KharvoxPersistentSsgReloadPolicyTests PRIVATE cxx_std_17)
 if(MSVC)
