@@ -1,19 +1,25 @@
 # KHARVOX — ongoing headset & launcher regression tracker
 
-**Canonical living checklist**. Update this document whenever a fix ships, a headset test passes, or a regression returns. Last reviewed **2026-10-14**. Baseline for these tests: [successful Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841) — compilation and automated tests passed; these results do **not** constitute headset validation.
+**Canonical living checklist**. Update this document whenever a fix ships, a headset test passes, or a regression returns. Last updated **2026-10-14**. Last confirmed green baseline before latest targeted kill-speed changes: [Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841). For the newest build, check [Actions on the active fix branch](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions?query=branch%3Awork%2Foct13-followup-regression-fixes). CI results are **not headset validation**.
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
 ## Active priority: fix these THREE before other changes
 
-### [FAIL] 1. Fast Glory Kills
+### [FAIL / NEW FIX CANDIDATE — AWAITING QUEST TEST] 1. Fast Glory Kills
+
+Source revision 2026-10-14: Previously requested 1.0x, a non-acceleration. Now requests **1.70x** only during native sync attack, applies it in the same XR frame, logs native sync flag and actual timescale readback, and retries a transiently unavailable CVar resolver. **Not marked PASS until tested.**
+
 - [ ] Toggle **Fast Glory Kills** on, perform a normal Glory Kill, confirm animation genuinely speeds up, not just the environment or timer. Note demon, weapon and approximate duration.
 - [ ] Toggle off: game returns exactly to native timing. Re-enable and retest.
 - [ ] Ensure BOXING slow motion and weapon wheel time dilation don't override kill speed incorrectly.
 - [ ] Capture `%TEMP%\KHARVOX.log` from the **same** run and look for `[KHARVOX][GLORY-SLOWMO]` and sync-classification lines.
 - Earlier in-game working build remains **unidentified**; earlier conversation contained the report that a native/full-speed mode had worked, but no verified exact SHA/build recovered. Do not claim a specific old build is known until evidence confirms it.
 
-### [FAIL] 2. Fast Chainsaw Kills
+### [FAIL / NEW FIX CANDIDATE — AWAITING QUEST TEST] 2. Fast Chainsaw Kills
+
+Source revision 2026-10-14: Previously requested 1.0x and relied solely on generic sync-attack recognition. Now requests **1.90x** when a recent native chainsaw attack transitions into either sync attack or native cinematic, even if the generic sync flag drops. Gated away from menus/wheel and independent of the Glory Kill checkbox. **Not marked PASS until tested.**
+
 - [ ] Toggle **Fast Chainsaw Kills** on and use chainsaw on a target where a takedown animation occurs. Should noticeably accelerate the takedown, not just the input lead-in.
 - [ ] Turn off: native chainsaw kill timing restored.
 - [ ] Test after selecting chainsaw via its normal input and via weapon selection. The game may switch the weapon declaration when animation starts.
@@ -21,7 +27,10 @@
 - [ ] Capture `%TEMP%\KHARVOX.log` and confirm chainsaw kill classification and timescale override lines.
 - Earlier on/off wiring was coded but in-headset effectiveness **unconfirmed/FAIL**.
 
-### [FAIL] 3. Super Shotgun — real reload animation persistence
+### [FAIL / NATIVE ANIMATION REPLAY NOT YET IMPLEMENTED] 3. Super Shotgun — real reload animation persistence
+
+The currently shipped VR checkbox is explicitly marked **Incomplete** in its launcher tooltip. The XInput firing delay is insufficient and must not be considered a completed reload mod. DOOM exposes native reload-related variables (e.g. `hands_doCosmeticReloads`, `weapon_useForcedReload`), but forcing them without verifying the idHands / SSG animation event path may break unrelated weapons. A safe native animation restart hook must be proven before this check is marked PASS.
+
 - [ ] Fire Super Shotgun once, switch to rifle before its reload animation finishes, then switch back immediately.
 - [ ] **Required:** the **original DOOM Super Shotgun reload animation RESTARTS from its start** when you return. A motionless gun with a 1.6-second input lock is **FAIL**.
 - [ ] Before the visible animation completes, shooting must remain impossible. After native reload completion, fire is enabled.
