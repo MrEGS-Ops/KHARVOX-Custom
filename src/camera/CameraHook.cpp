@@ -681,6 +681,7 @@ int configuredGloryKillSlowmoLevel() {
 
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
 std::atomic<bool> boxingGuardTimeDilationRequested{};
+std::atomic<bool> latestSyncAttackClassified{};
 
 float gloryKillCustomTimescale(int level) {
     if (level <= 0) return 1.0f;
@@ -852,16 +853,19 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     }
     constexpr float guardTimeScale=.75f; // noticeable guard slowdown, never freezes time
     const float target=guardSlowmo?guardTimeScale
-        :motionOverrideActive?std::clamp(motionOverride,.10f,1.f)
+        :motionOverrideActive?std::clamp(motionOverride,.10f,2.f)
         :gloryKillCustomTimescale(level);
     LONG bits{};
     std::memcpy(&bits,&target,sizeof(bits));
     InterlockedExchange(current,bits);
     if(std::abs(loggedTarget-target)>.001f){
         loggedTarget=target;
-        logGlorySlowmo(std::string(guardSlowmo
-            ?"boxing guard timescale=":"sync-kill timescale=")
-            +std::to_string(target));
+        std::ostringstream verified;
+        const LONG readback=InterlockedCompareExchange(current,0,0);
+        verified << (guardSlowmo ? "boxing guard" : "sync kill")
+            << " target=" << target << " readbackBits=" << readback
+            << " syncClassified=" << (syncAttackActive?1:0);
+        logGlorySlowmo(verified.str());
     }
     ReleaseSRWLockExclusive(&lock);
 }
@@ -2611,13 +2615,24 @@ void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
 void KharvoxCameraResetCombatTimeDilation() {
     boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
     gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
+    latestSyncAttackClassified.store(false,std::memory_order_release);
     updateGloryKillSlowmoTimescale(false); // restore native game cvar
 }
 
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
+    // Fast takedown is an actual speed increase, not merely returning the
+    // globally slowed game clock to 1.0x. Apply against the most recently
+    // validated sync-attack flag in this same XR frame; the older setter only
+    // changed an atomic AFTER KharvoxCameraSyncAttackActive had performed the
+    // timescale write, causing a one-frame lag (often the entire short kill).
     const float value = timescale > 0.0f
-        ? std::clamp(timescale, 0.10f, 1.0f) : 0.0f;
-    gloryKillMotionTimescaleOverride.store(value, std::memory_order_release);
+        ? std::clamp(timescale, 0.10f, 2.0f) : 0.0f;
+    const float old=gloryKillMotionTimescaleOverride.exchange(
+        value,std::memory_order_acq_rel);
+    if(old!=value && (value>=1.0f || old>=1.0f))
+        logGlorySlowmo("fast kill requested timescale="+std::to_string(value));
+    updateGloryKillSlowmoTimescale(
+        latestSyncAttackClassified.load(std::memory_order_acquire));
 }
 
 bool KharvoxCameraSyncAttackActive() {
@@ -2643,6 +2658,11 @@ bool KharvoxCameraSyncAttackActive() {
             owner + syncAttackInstigatorOffset) != 0;
 #endif
     }
+    const bool previous=latestSyncAttackClassified.exchange(
+        active,std::memory_order_acq_rel);
+    if(active!=previous)
+        logGlorySlowmo(std::string("native sync-attack flag ")
+            +(active?"ENTER":"EXIT"));
     updateGloryKillSlowmoTimescale(active);
     return active;
 }
