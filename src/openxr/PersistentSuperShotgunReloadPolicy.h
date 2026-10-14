@@ -69,6 +69,10 @@ inline PersistentSuperShotgunReloadOutput updatePersistentSuperShotgunReload(
     if(state.reloadRequired && active && !state.lastFrameEquipped
         && state.replayNeededOnDraw){
         out.nativeReloadReplayRequested=true;
+        // The player asked to RESTART the original SSG reload, not resume
+        // some leftover invisible delay. A cancelled animation starts over.
+        state.equippedProgressNanoseconds=0;
+        state.nativeFirePulseUntilNanoseconds=0;
         state.replayNeededOnDraw=false;
     }
     // Accumulate actual equipped GAMEPLAY time only. No menu, no wheel,
