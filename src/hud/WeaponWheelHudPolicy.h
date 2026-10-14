@@ -31,6 +31,10 @@ inline bool weaponWheelPose(const float* eye,const float* head,float units,float
 inline bool flatWeaponWheelAxis(const float* native,const float* head,float* out) {
     if(!native||!head||!out)return false;
     constexpr int basisRow[3]{1,2,0}; // DOOM camera: forward, right, up
+    // The native wheel texture was rolled 180 degrees. Flip both in-plane
+    // axes together, retaining its plane normal and headset-facing direction.
+    // This is a 180-degree roll, NOT a mirror or a turn away from the player.
+    constexpr float inPlaneSign[3]{-1.f,-1.f,1.f};
     for(int row=0;row<3;++row){
         float squared=0.f,headSquared=0.f;
         for(int i=0;i<3;++i){
@@ -42,7 +46,7 @@ inline bool flatWeaponWheelAxis(const float* native,const float* head,float* out
         if(squared<1.e-10f||headSquared<1.e-10f)return false;
         const float length=std::sqrt(squared/headSquared);
         for(int i=0;i<3;++i)
-            out[row*3+i]=head[basisRow[row]*3+i]*length;
+            out[row*3+i]=head[basisRow[row]*3+i]*length*inPlaneSign[row];
     }
     return true;
 }
