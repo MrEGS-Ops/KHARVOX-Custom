@@ -2822,6 +2822,11 @@ void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
     logNativeSsgReplay("requested ORIGINAL idHands cosmetic reload from empty on SSG re-draw (250ms pulse)");
 }
 
+void logNativeSyncAttackTransition(bool active) {
+    logGlorySlowmo(active
+        ? "native sync-attack flag ENTER" : "native sync-attack flag EXIT");
+}
+
 bool KharvoxCameraSyncAttackActive() {
     // idPlayer+0x3DC9 is the exact flag DOOM's native usability path checks
     // before reporting that the local activator is instigating a sync attack.
@@ -2848,8 +2853,7 @@ bool KharvoxCameraSyncAttackActive() {
     const bool previous=latestSyncAttackClassified.exchange(
         active,std::memory_order_acq_rel);
     if(active!=previous)
-        logGlorySlowmo(std::string("native sync-attack flag ")
-            +(active?"ENTER":"EXIT"));
+        logNativeSyncAttackTransition(active);
     updateGloryKillSlowmoTimescale(
         active||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
     return active;
