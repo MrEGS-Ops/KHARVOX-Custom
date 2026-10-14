@@ -20,9 +20,11 @@ int main() {
     const float native[]{0.f,0.f,-2.f, 2.f,0.f,0.f, 0.f,-2.f,0.f};
     float fixed[9]{};
     assert(flatWeaponWheelAxis(native,head,fixed));
-    assert(std::abs(fixed[1]-2.f)<.0001f);  // right
-    assert(std::abs(fixed[5]-2.f)<.0001f);  // up
-    assert(std::abs(fixed[6]-2.f)<.0001f);  // forward
+    // The formerly inverted wheel is corrected by a 180-degree in-plane
+    // rotation. Both screen axes flip; the plane normal and scale do not.
+    assert(std::abs(fixed[1]+2.f)<.0001f);  // corrected right
+    assert(std::abs(fixed[5]+2.f)<.0001f);  // corrected up
+    assert(std::abs(fixed[6]-2.f)<.0001f);  // same forward normal
     assert(fixed[0]==0.f && fixed[4]==0.f && fixed[8]==0.f);
     float degenerate[9]{};
     assert(!flatWeaponWheelAxis(degenerate,head,fixed));
