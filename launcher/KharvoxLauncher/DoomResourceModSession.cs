@@ -26,7 +26,13 @@ internal static class DoomResourceModSession
     private static string CacheRoot(string runtimeDir) =>
         Path.Combine(runtimeDir, "cache", "doom-modloader");
 
+    // State must survive switching between KHARVOX release folders. This file
+    // lives beside DOOMx64vk.exe, NOT in the expendable KHARVOX build cache.
     private static string StateFile(string runtimeDir, string gameDir) =>
+        Path.Combine(gameDir, "KHARVOX-DOOM-RESOURCE-MODS.json");
+
+    // Read older same-build state once, then migrate to the stable game path.
+    private static string LegacyStateFile(string runtimeDir, string gameDir) =>
         Path.Combine(CacheRoot(runtimeDir),
             "game-" + HashText(Path.GetFullPath(gameDir).TrimEnd(
                 Path.DirectorySeparatorChar).ToUpperInvariant()) + ".json");
@@ -204,6 +210,101 @@ internal static class DoomResourceModSession
             }
         }
         return result;
+    }
+
+    // A missing manifest from another build is NOT evidence that the game's
+    // numbered resource patches are safe to run. Make a reversible quarantine
+    // outside /base; do not delete any file or touch original mod ZIPs.
+    private static bool IsUnverifiedNumberedPatch(string relative)
+    {
+        var name=relative.Replace('\\','/');
+        if(!name.StartsWith("base/gameresources_",StringComparison.OrdinalIgnoreCase)
+            || name.IndexOf('/',5)>=0) return false;
+        var filename=name.Substring("base/".Length);
+        var extension=Path.GetExtension(filename);
+        if(!extension.Equals(".patch",StringComparison.OrdinalIgnoreCase)
+            && !extension.Equals(".pindex",StringComparison.OrdinalIgnoreCase))
+            return false;
+        var stem=Path.GetFileNameWithoutExtension(filename);
+        const string prefix="gameresources_";
+        return stem.Length==prefix.Length+3
+            && stem.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)
+            && stem.Substring(prefix.Length).All(char.IsDigit);
+    }
+
+    private static string? QuarantineResources(string gameDir,
+        IReadOnlyDictionary<string,string> resources,bool verifiedOwned,
+        Action<string>? statusUpdate)
+    {
+        if(resources.Count==0)return null;
+        var unsafePaths=resources.Keys.Where(x=>!verifiedOwned
+            &&!IsUnverifiedNumberedPatch(x)).ToArray();
+        if(unsafePaths.Length!=0)
+            throw new InvalidOperationException(
+                "KHARVOX found DOOM resource files that may belong to another mod manager. "
+                +"No files were changed; automatic recovery only moves numbered "
+                +"gameresources_NNN.patch/.pindex files, or files verified by a KHARVOX manifest."
+                +Environment.NewLine+string.Join(Environment.NewLine,unsafePaths.Take(12)));
+        var recoveryRoot=Path.Combine(gameDir,"KHARVOX-Resource-Recovery");
+        if(Directory.Exists(recoveryRoot))NoLinks(recoveryRoot);
+        var recovery=Path.Combine(recoveryRoot,DateTime.UtcNow.ToString(
+            "yyyyMMddTHHmmssZ")+"-"+Guid.NewGuid().ToString("N").Substring(0,8));
+        var moved=new List<(string Source,string Backup)>();
+        try
+        {
+            Directory.CreateDirectory(recovery);
+            foreach(var entry in resources.OrderBy(x=>x.Key,StringComparer.OrdinalIgnoreCase))
+            {
+                var relative=entry.Key.Replace('/',Path.DirectorySeparatorChar);
+                var source=Path.GetFullPath(Path.Combine(gameDir,relative));
+                var prefix=Path.GetFullPath(gameDir).TrimEnd(
+                    Path.DirectorySeparatorChar)+Path.DirectorySeparatorChar;
+                if(!source.StartsWith(prefix,StringComparison.OrdinalIgnoreCase)
+                    ||!File.Exists(source)||!string.Equals(HashFile(source),entry.Value,
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidOperationException(
+                        "DOOM resources changed during recovery: "+entry.Key);
+                NoLinks(source);
+                // Verified official .verify companions are never moved.
+                if(File.Exists(source+".verify"))
+                    throw new InvalidOperationException(
+                        "Refusing to quarantine an officially verified DOOM resource: "+source);
+                var target=Path.Combine(recovery,relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Move(source,target);
+                moved.Add((source,target));
+            }
+            var inventory=string.Join(Environment.NewLine,resources
+                .OrderBy(x=>x.Key,StringComparer.OrdinalIgnoreCase)
+                .Select(x=>x.Value+"  "+x.Key));
+            File.WriteAllText(Path.Combine(recovery,"RECOVERY-INVENTORY.txt"),
+                "KHARVOX reversible DOOM resource recovery (SHA256 / relative path)"
+                +Environment.NewLine+inventory+Environment.NewLine);
+            statusUpdate?.Invoke("Recovered "+moved.Count+
+                " leftover DOOM resource file(s) to "+recovery);
+            return recovery;
+        }
+        catch(Exception error)
+        {
+            for(var i=moved.Count-1;i>=0;--i)
+            {
+                try
+                {
+                    if(!File.Exists(moved[i].Source)&&File.Exists(moved[i].Backup))
+                        File.Move(moved[i].Backup,moved[i].Source);
+                }
+                catch(Exception rollbackError)
+                {
+                    throw new InvalidOperationException(
+                        "DOOM resource recovery could not restore all moved files. "
+                        +"KEEP the recovery folder and restore manually: "+recovery,
+                        new AggregateException(error,rollbackError));
+                }
+            }
+            throw new InvalidOperationException(
+                "DOOM resource cleanup failed; files were restored where possible. "
+                +"Recovery folder: "+recovery,error);
+        }
     }
 
     private static Manifest? LoadManifest(string path)
