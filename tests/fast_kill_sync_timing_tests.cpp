@@ -35,5 +35,22 @@ int main() {
         }
     }
     assert(!nativeFastKillSyncRequested(false,false,-1));
+
+    // Real headset trace Oct 15: nominal display 120 Hz, achieved 39 Hz
+    // (GK) and 36.8 Hz (chainsaw). Neither execution may force a 120 Hz
+    // minimum game simulation rate or patch the adaptive tick runtime state.
+    assert(!shouldForceCinematicAdaptiveTickPacing(true));
+    assert(shouldForceCinematicAdaptiveTickPacing(false));
+    for(bool glory : {false,true}) {
+        for(bool chainsaw : {false,true}) {
+            const bool requested=nativeFastKillSyncRequested(
+                glory,chainsaw,10);
+            assert(shouldForceCinematicAdaptiveTickPacing(requested)
+                ==!(glory||chainsaw));
+        }
+    }
+    // The old Glory Kill Speed control is also native mode.
+    assert(!shouldForceCinematicAdaptiveTickPacing(
+        nativeFastKillSyncRequested(false,false,0)));
     return 0;
 }
