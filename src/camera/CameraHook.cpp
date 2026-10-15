@@ -6,6 +6,7 @@
 #include "../common/AerEyeBasis.h"
 #include "../common/AerCinematicProjection.h"
 #include "../common/DiagnosticLogging.h"
+#include "../common/CustomModFlags.h"
 #include "BodyPoseRebase.h"
 #include "BodyStanceHeight.h"
 #include "BodyAnchorPolicy.h"
@@ -666,6 +667,13 @@ bool writableMemory(const void* address, size_t bytes) {
 }
 
 int configuredGloryKillSlowmoLevel() {
+    // The opt-in Fast Glory/Chainsaw checkboxes always use the confirmed
+    // Build #83 native FULL-SPEED path, never the retired fractional
+    // 1-9 timescale slider. Checking either one overrides legacy settings.
+    static const bool nativeFastRequested =
+        kharvox::customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS")
+        || kharvox::customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");
+    if(nativeFastRequested)return 0;
     static const int level = [] {
         char text[16]{};
         const DWORD copied = GetEnvironmentVariableA(
