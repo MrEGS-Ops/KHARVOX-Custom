@@ -39,6 +39,17 @@ inline bool makeGravityLevelBodyBasis(
     return true;
 }
 
+// An OpenXR cinematic participant may remain active briefly AFTER DOOM has
+// switched back to its ordinary gameplay camera. Do not treat that gameplay
+// return as an authored pitch/roll animation: that would render the world
+// tilted until the participant guard expires, then visibly snap it level.
+// Preserve authored tilt only while still in the actual animated camera.
+inline bool preserveAnimatedGameplayBodyBasis(
+    bool animatedSequenceActive,
+    bool returnedFromCinematicToGameplay) noexcept {
+    return animatedSequenceActive && !returnedFromCinematicToGameplay;
+}
+
 inline bool makeStableGameplayBodyBasis(
     bool gameplayCamera, bool animatedSequenceActive,
     const float sourceAxis[9], const float fallbackAxis[9],
