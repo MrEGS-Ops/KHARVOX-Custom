@@ -33,6 +33,15 @@ internal static class SelfTest
         {
             Directory.CreateDirectory(testRoot);
             VerifyModConflictPreflight(testRoot);
+            // Regression: the new per-mod Fast Glory/Chainsaw checkbox must
+            // activate native DOOM slowdown bypass even when the old legacy
+            // Glory Kill slider remains at its native 10 setting.
+            Require(KharvoxRunner.ShouldDisableNativeSyncSlowmo(10, true),
+                "Fast Kill checkbox must request native slowdown bypass");
+            Require(KharvoxRunner.ShouldDisableNativeSyncSlowmo(0, false),
+                "legacy Disable Slow-Mo slider preserves Build #83 native path");
+            Require(!KharvoxRunner.ShouldDisableNativeSyncSlowmo(10, false),
+                "both fast-kill mods off must preserve native slow motion");
             VerifyProcessStatusPreservesExitCode();
             bool sfsBlocked=false;
             try { VulkanSfs.EnsureAvailable(testRoot); }
