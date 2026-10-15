@@ -683,6 +683,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             <<" restored adaptive/min/max/immediate/syncNoAdaptive/fixedTic="
             <<hold.savedAdaptiveTick<<'/'<<hold.savedMinHz<<'/'<<hold.savedMaxHz<<'/'
             <<hold.savedImmediateMode<<'/'<<hold.savedSyncNoAdaptiveTick<<'/'<<hold.savedFixedTic;
+        if(fastKillsEnabled)
+            out<<" [FAST-KILLS] syncNoAdaptiveTickReadback="
+               <<read(syncNoAdaptiveTickCurrentRva)<<" expected=1";
         log(out.str());
         hold.active=false;
         hold.presents=0;
@@ -691,8 +694,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         restore();
         // The game can reset its sync CVar as a cutscene exits. Keep the
         // exact Build #81 native 1-valued opt-in until the process exits.
-        if(fastKillsEnabled&&ensureImmersiveAdaptiveTickSupport()&&image)
+        if(fastKillsEnabled&&ensureImmersiveAdaptiveTickSupport()&&image) {
             write(syncNoAdaptiveTickCurrentRva,1);
+        }
         return;
     }
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
@@ -743,6 +747,13 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     // formerly working Oct 5 Glory Kill build.
     write(syncNoAdaptiveTickCurrentRva,
         kharvox::nativeSyncAdaptiveTickDuringCinematic(fastKillsEnabled));
+    // First-frame readback: proof the VR cinematic didn't erase the
+    // native sync no-slowmo setting. Print ONCE per cinematic, not per frame.
+    if(fastKillsEnabled && hold.presents==0)
+        log("[FAST-KILLS] immersive frame native sync_noAdaptiveTick="
+            +std::to_string(read(syncNoAdaptiveTickCurrentRva))
+            +" expected=1; glory="+(s.customMods.fastGloryKills?"on":"off")
+            +" chainsaw="+(s.customMods.fastChainsawKills?"on":"off"));
     // com_fixedTic is the outer gate for DOOM's adaptive-rate branch. r32 set
     // it to zero, which bypassed the very code that consumes Min/Max Hz. Keep
     // that gate enabled and repair the runtime byte cleared one frame before
