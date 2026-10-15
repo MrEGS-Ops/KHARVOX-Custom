@@ -23,6 +23,26 @@
 - [ ] SSG no longer hangs motionless due to an artificial KHARVOX-only timer; ordinary native reload/firing preserved.
 - [ ] SSG original animation ACTUALLY restarts on re-equip after interruption. **Still BLOCKED; not provided by the rollback.**
 
+## 2026-10-15 — full-speed means NO slow motion during OR after execution
+
+**User clarification:** Fast Glory Kills and Fast Chainsaw Kills must run at normal uninterrupted speed throughout their animations, and hand back control immediately at 1.0x afterward. No special game-wide speed multiplier. Preserve native weapon-wheel time dilation and blur.
+
+**Recovered historical evidence:** On 2026-10-05, user explicitly confirmed the Build #83 VR Glory Kill slowdown-disable was working beautifully. That working approach requested DOOM's native `+sync_noAdaptiveTick 1 +sync_alwaysSlowMo 0 +sync_lastEnemyEncounterSlowMo 0`. It is **not** the unrelated, cancelled 2026-10-09 Actions run #83 in the newer fork; do not assume that cancelled SHA is the user's tested binary.
+
+**Source changes subsequent to Build #414 (HEADSET TEST PENDING):**
+- Found the launcher only passed those three native bypass CVars when the legacy Glory Kill Slow-Mo slider was below 10. Merely checking **Fast Glory Kills** or **Fast Chainsaw Kills** with the slider still at 10 did NOT activate all native settings at DOOM startup. Fixed: either checkbox now requests the three native CVars at process launch.
+- The CameraHook previously still allowed fractional timescale from the old level 1–9 setting even with Fast Kills checked. Fixed: enabled Fast Kill checkboxes use native level 0 and skip fractional custom timescale during executions.
+- Boxing Guard slow motion is suppressed while a native Glory Kill or chainsaw execution is active. Native weapon wheel presentation remains untouched.
+- Keep the short, guarded residual native-timescale cleanup from Build #414 for AFTER execution; it never runs during another cinematic, native wheel, or guard pose. This fallback has NOT been verified as the root of the user's post-kill slowdown.
+
+**Test acceptance (do NOT pre-mark PASS):**
+- [ ] Fast Glory Kill: continuous normal speed from first frame of execution through first frame of free movement; no 1–2s slow tail.
+- [ ] Fast Chainsaw Kill: continuous normal speed for the entire takedown and immediate exit; no ~5s slow tail.
+- [ ] Neither checked: default DOOM native slow motion stays available (assuming old slider 10).
+- [ ] Weapon wheel still produces its native time dilation and blur.
+- [ ] Existing Boxing Guard still slows time outside executions.
+- [ ] SSG native reload animation still incomplete; artificial 1.6-second silent gate remains bypassed from Build #414.
+
 ## Active priority: fix these THREE before other changes
 
 ### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
