@@ -674,17 +674,20 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     auto write=[&](uintptr_t rva,LONG replacement){InterlockedExchange(value(rva),replacement);};
     auto restore=[&]{
         if(!hold.active||!image)return;
-        write(minHzCurrentRva,hold.savedMinHz);
-        write(maxHzCurrentRva,hold.savedMaxHz);
-        write(immediateModeCurrentRva,hold.savedImmediateMode);
-        // Never restore a value of 0 over the user-requested native
-        // full-speed sync bypass. This used to re-arm the slow motion
-        // after a kill as the cinematic hold released.
+        // NEVER rewind DOOM's native pacing state on a fast execution.
+        // The old immersive hold forced a 120 Hz simulation minimum despite
+        // measured 37-39 Hz Presents, then restored stale CVar snapshots.
+        // Rewriting native timing here can leave a slow-motion tail.
+        if(kharvox::shouldForceCinematicAdaptiveTickPacing(fastKillsEnabled)){
+            write(minHzCurrentRva,hold.savedMinHz);
+            write(maxHzCurrentRva,hold.savedMaxHz);
+            write(immediateModeCurrentRva,hold.savedImmediateMode);
+            write(fixedTicCurrentRva,hold.savedFixedTic);
+            write(adaptiveTickCurrentRva,hold.savedAdaptiveTick);
+        }
         write(syncNoAdaptiveTickCurrentRva,
             kharvox::nativeSyncAdaptiveTickAfterCinematic(
                 fastKillsEnabled,hold.savedSyncNoAdaptiveTick));
-        write(fixedTicCurrentRva,hold.savedFixedTic);
-        write(adaptiveTickCurrentRva,hold.savedAdaptiveTick);
         InterlockedExchange(&immersiveAdaptiveParticipantBypass,0);
         LARGE_INTEGER endedAt{};QueryPerformanceCounter(&endedAt);
         const double elapsedMs=performanceMilliseconds(hold.startedAt,endedAt);
@@ -693,7 +696,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         out<<"[CINEMATIC-HZ] immersive hold released; presents="<<hold.presents
             <<" elapsedMs="<<std::fixed<<std::setprecision(1)<<elapsedMs
             <<" measuredPresentHz="<<std::setprecision(1)<<measuredHz
-            <<" restored adaptive/min/max/immediate/syncNoAdaptive/fixedTic="
+            <<(fastKillsEnabled
+                ?" native pacing unmodified; entry adaptive/min/max/immediate/syncNoAdaptive/fixedTic="
+                :" restored adaptive/min/max/immediate/syncNoAdaptive/fixedTic=")
             <<hold.savedAdaptiveTick<<'/'<<hold.savedMinHz<<'/'<<hold.savedMaxHz<<'/'
             <<hold.savedImmediateMode<<'/'<<hold.savedSyncNoAdaptiveTick<<'/'<<hold.savedFixedTic;
         if(fastKillsEnabled)
@@ -744,17 +749,26 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             +"/"+std::to_string(hold.savedMaxHz)+"/"+std::to_string(hold.savedImmediateMode)
             +"/"+std::to_string(hold.savedSyncNoAdaptiveTick)+"/"+std::to_string(hold.savedFixedTic)
             +" FAST_KILLS="+(fastKillsEnabled?"ON":"OFF")
+            +" pacing="+(fastKillsEnabled?"DOOM-native":"forced-immersive-refresh")
             +" nativeSyncDuringHold="+std::to_string(
                 kharvox::nativeSyncAdaptiveTickDuringCinematic(fastKillsEnabled)));
     }else if(detectedTarget>hold.targetHz){
         hold.targetHz=detectedTarget;
         log("[CINEMATIC-HZ] faster headset cadence detected; target raised to "+std::to_string(hold.targetHz)+" Hz");
     }
-    // Reassert on every Present because a sync participant or config refresh
-    // may rewrite these current values while the cinematic is running.
-    write(maxHzCurrentRva,std::max<LONG>(hold.savedMaxHz,hold.targetHz));
-    write(minHzCurrentRva,hold.targetHz);
-    write(immediateModeCurrentRva,1);
+    // The native fast-kill bit is independent of game tick pacing.
+    // DOOM was presenting at 37-39 fps while this function forced
+    // com_adaptiveTickMinHz=120 from OpenXR's NOMINAL headset refresh.
+    // This makes per-tick execution animations run at reduced wall-clock speed.
+    // Preserve DOOM's own tick CVars for Fast Glory/Chainsaw executions;
+    // keep the old cinematic refresh policy for every other mode.
+    const bool forceRefresh=kharvox::shouldForceCinematicAdaptiveTickPacing(
+        fastKillsEnabled);
+    if(forceRefresh){
+        write(maxHzCurrentRva,std::max<LONG>(hold.savedMaxHz,hold.targetHz));
+        write(minHzCurrentRva,hold.targetHz);
+        write(immediateModeCurrentRva,1);
+    }
     // CRITICAL REGRESSION: this was unconditionally 0 on every immersive
     // cinematic frame, cancelling the native +sync_noAdaptiveTick 1 from the
     // formerly working Oct 5 Glory Kill build.
@@ -765,19 +779,28 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     if(fastKillsEnabled && hold.presents==0)
         log("[FAST-KILLS] immersive frame native sync_noAdaptiveTick="
             +std::to_string(read(syncNoAdaptiveTickCurrentRva))
-            +" expected=1; glory="+(s.customMods.fastGloryKills?"on":"off")
+            +" expected=1 pacing=DOOM-native; minHz="
+            +std::to_string(read(minHzCurrentRva))
+            +" maxHz="+std::to_string(read(maxHzCurrentRva))
+            +" fixedTic="+std::to_string(read(fixedTicCurrentRva))
+            +" adaptiveTick="+std::to_string(read(adaptiveTickCurrentRva))
+            +" headsetTargetHz="+std::to_string(hold.targetHz)
+            +" glory="+(s.customMods.fastGloryKills?"on":"off")
             +" chainsaw="+(s.customMods.fastChainsawKills?"on":"off"));
-    // com_fixedTic is the outer gate for DOOM's adaptive-rate branch. r32 set
-    // it to zero, which bypassed the very code that consumes Min/Max Hz. Keep
-    // that gate enabled and repair the runtime byte cleared one frame before
-    // the participant observer could arm its bypass.
-    write(fixedTicCurrentRva,1);
-    write(adaptiveTickCurrentRva,1);
-    InterlockedExchange(&immersiveAdaptiveParticipantBypass,1);
-    if(!reenableDoomAdaptiveRuntimeState(image)){
-        static std::atomic<bool> stateFailureLogged{};
-        if(!stateFailureLogged.exchange(true,std::memory_order_acq_rel))
-            log("[CINEMATIC-HZ] native adaptive runtime state unavailable; CVar-only hold retained");
+    if(forceRefresh){
+        // Old VR refresh path for non-fast cinematics: leave unchanged.
+        write(fixedTicCurrentRva,1);
+        write(adaptiveTickCurrentRva,1);
+        InterlockedExchange(&immersiveAdaptiveParticipantBypass,1);
+        if(!reenableDoomAdaptiveRuntimeState(image)){
+            static std::atomic<bool> stateFailureLogged{};
+            if(!stateFailureLogged.exchange(true,std::memory_order_acq_rel))
+                log("[CINEMATIC-HZ] native adaptive runtime state unavailable; CVar-only hold retained");
+        }
+    }else{
+        // Native fast executions must not alter DOOM's internal adaptive
+        // runtime state, the participant bypass, or any game tick CVars.
+        InterlockedExchange(&immersiveAdaptiveParticipantBypass,0);
     }
     ++hold.presents;
 }
