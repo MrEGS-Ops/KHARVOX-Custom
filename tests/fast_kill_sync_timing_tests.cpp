@@ -1,5 +1,6 @@
 #include "../src/openxr/CinematicRefreshPolicy.h"
 #include <cassert>
+#include <initializer_list>
 
 // Regression from Build #81: the October 5 native full-speed sync CVar
 // was accidentally overwritten to 0 EVERY FRAME by immersive cinematic
