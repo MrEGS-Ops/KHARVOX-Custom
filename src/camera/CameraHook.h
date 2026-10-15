@@ -45,6 +45,9 @@ bool KharvoxCameraSyncAttackActive();
 // Temporary Glory Kill playback override. A value <= 0 clears it.
 // The camera hook restores DOOM's baseline timescale when the sync attack ends.
 void KharvoxCameraSetGloryKillTimescaleOverride(float timescale);
+// Force a verified full-speed timescale during opt-in native executions.
+// Does not affect the native weapon wheel or Boxing Guard.
+void KharvoxCameraSetExecutionNoSlowmo(bool active);
 // After a native execution ENDS, clear lingering slowdown only during normal
 // gameplay; the XR caller excludes weapon wheel, other cinematics and guard.
 void KharvoxCameraSetPostExecutionSlowmoCleanup(bool enabled);
