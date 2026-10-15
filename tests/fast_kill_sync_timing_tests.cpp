@@ -18,13 +18,22 @@ int main() {
     assert(nativeSyncAdaptiveTickAfterCinematic(false,0)==0);
     assert(nativeSyncAdaptiveTickAfterCinematic(false,1)==1);
 
-    // The present-path fast flag MUST use either toggle (not both).
+    // The present-path must honour either checkbox OR the legacy speed
+    // selector; Build #426 overlooked the old slider and could write zero.
     for(bool glory : {false,true}) {
         for(bool chainsaw : {false,true}) {
-            const bool nativeFast=glory||chainsaw;
-            assert(nativeSyncAdaptiveTickDuringCinematic(nativeFast)
-                   ==(glory||chainsaw?1:0));
+            for(int legacySpeed : {0,5,9,10}) {
+                const bool expected=glory||chainsaw||legacySpeed<10;
+                const bool actual=nativeFastKillSyncRequested(
+                    glory,chainsaw,legacySpeed);
+                assert(actual==expected);
+                assert(nativeSyncAdaptiveTickDuringCinematic(actual)
+                    ==(expected?1:0));
+                assert(nativeSyncAdaptiveTickAfterCinematic(actual,0)
+                    ==(expected?1:0));
+            }
         }
     }
+    assert(!nativeFastKillSyncRequested(false,false,-1));
     return 0;
 }
