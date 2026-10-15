@@ -43,6 +43,30 @@
 - [ ] Existing Boxing Guard still slows time outside executions.
 - [ ] SSG native reload animation still incomplete; artificial 1.6-second silent gate remains bypassed from Build #414.
 
+## 2026-10-15 — Build #414 DOOM resource fatal: cross-build safety preflight
+
+**User-reported headset/desktop failure:** DOOMx64vk.exe aborted with `FATAL ERROR: Loading unverified resource` referencing `base/gameresources_002.pindex`. The user had enabled DOOM resource mods in a **different KHARVOX build**, then tried no mods in #414, then reselected mods without resolving the crash. This is a mod-resource startup failure, not a verified rendering fault.
+
+**Old defect:** `DoomResourceModSession.PrepareAsync` returned immediately when selections were empty and that *build's* local manifest was missing, without inspecting leftover DOOMModLoader resource files. Each KHARVOX build kept a different private mod ownership state. Unverified artifacts could remain in DOOM/base and crash startup.
+
+**Source repair, build test pending:**
+- Always scan DOOM resource outputs before launch, even with zero mod selections and no prior manifest.
+- Cross-build ownership manifest moved to **`<DOOM install>/KHARVOX-DOOM-RESOURCE-MODS.json`**, with legacy same-build manifest migration.
+- Recover unverified generated numbered `gameresources_NNN.patch`/`.pindex` and `base/video/mods/` files by moving to **`<DOOM install>/KHARVOX-Resource-Recovery/<timestamp-id>/`**. Keep original bytes and a SHA256 inventory; **no permanent deletes**.
+- Skip resources with official `.verify` companions. Unknown `gameresources.*` paths not matching the generated format **stop safely** rather than risk moving unknown/official game files.
+- If the mod ZIP directory is deleted or a previously selected source is unavailable, preserve checkbox choices and start without resource mods once recoverable stale outputs are backed up. If DOOMModLoader is absent/invalid, use the same unmodded fallback. Re-apply still-enabled mods only from a clean generated-resource state.
+- On loader errors, preserve a recovery copy of generated partial files, then report failure. No automatic changes to DOOMx64vk.exe or original mod ZIPs.
+- Unit tests cover foreign patch detection, orphan .pindex recovery, file byte preservation, `.verify` protection, ambiguous-resource refusal, video output recovery and stable state across build directories.
+
+**Not yet headset/DOOM validated:** Need to test both an unmodded launch after cross-build orphan cleanup AND an opt-in modded launch. DOOMModLoader still uses `-nopatchgame` and DOOM's `+devMode_enable 1` for enabled resource mods; no claim that a new mod install bypasses this independent engine validation issue.
+
+- [ ] Run with no DOOM mods selected after old-build mods: game starts without unverified-resource fatal.
+- [ ] Confirm recovery inventory/backup exists and user ZIPs are unchanged.
+- [ ] Delete or move a previously selected mod ZIP: launcher preserves preference and starts unmodded.
+- [ ] Switch KHARVOX build directories: resource ownership remains verifiable.
+- [ ] Reselect known-good mod: installs and starts game with developer mode, no unverified-resource fatal.
+- [ ] Original Cactus VR mods and previously working controller mapping unchanged.
+
 ## Active priority: fix these THREE before other changes
 
 ### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
