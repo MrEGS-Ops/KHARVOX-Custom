@@ -37,6 +37,10 @@ bool KharvoxCameraGameplayActive();
 bool KharvoxCameraNativeStereoActive();
 bool KharvoxCameraNativeTwoViewActive();
 bool KharvoxCameraCutsceneActive();
+// True after the *actual* DOOM gameplay camera resumes, even while the
+// cinematic participant observer's release grace is still active. This
+// disambiguates the native/SFS stereo scene domain at execution exit.
+bool KharvoxCameraReturnedToGameplayAfterCinematic();
 bool KharvoxCameraBossSequenceActive();
 // Writes a narrow death-time idPlayer->managed-entity reference snapshot for
 // the external Supervisor. No continuous diagnostics are performed in-game.
