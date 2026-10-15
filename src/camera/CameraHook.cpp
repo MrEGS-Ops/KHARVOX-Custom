@@ -3533,6 +3533,11 @@ void KharvoxCameraSetStereoEye(float localXUnits, float fovXDegrees, float fovYD
     }
 }
 
+bool KharvoxCameraReturnedToGameplayAfterCinematic() {
+    return postCinematicGameplayCameraReturned.load(std::memory_order_acquire)
+        && !cutsceneActive.load(std::memory_order_acquire);
+}
+
 void KharvoxCameraSetAnimatedSequenceActive(bool active) {
     animatedSequenceActive.store(active, std::memory_order_release);
     if(!active)
