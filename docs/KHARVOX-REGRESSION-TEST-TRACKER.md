@@ -67,6 +67,30 @@
 - [ ] Reselect known-good mod: installs and starts game with developer mode, no unverified-resource fatal.
 - [ ] Original Cactus VR mods and previously working controller mapping unchanged.
 
+## 2026-10-15 — exact Build #83 native Glory Kill implementation restored
+
+**Ground-truth reference:** October 5 BUILD #83 = Git commit `c8a7b861de0ddb4437bab63b1a95384fbda197a1` (last change "Fix hitbox probe std::array memcpy source"), confirmed by the user's historical test log. That build's launcher had a single `DisableGloryKillSlowmo` checkbox and ONLY the following native DOOM launch CVars:
+```
++sync_noAdaptiveTick 1 +sync_alwaysSlowMo 0 +sync_lastEnemyEncounterSlowMo 0
+```
+There was NO custom `timescale` CVar engine, NO kill playback multipliers, and NO post-execution recovery timer in Build #83's `CameraHook.cpp`. The user explicitly reported that VR Glory Kill slowdown disable was working beautifully. **Chainsaw executions were NOT independently confirmed in that historical test.**
+
+**Restoration:**
+- Restored the complete `updateImmersiveCinematicRefresh` function in `src/openxr/OpenXRBootstrap.cpp` byte-for-byte from commit `c8a7b861...`, including its native adaptive-tick state-save, reassert and restore semantics. Removed later runtime `nativeFastKills ? 1 : 0` CVar overwrites and persistent `sync_noAdaptiveTick` reassertions.
+- Removed the entire October 15 post-execution 6.5-second synthetic time-dilation recovery guard, associated state, and `timescale` CVar forcing.
+- Kept the October 5 native CVars identical and enabled by EITHER current Fast Glory Kills or Fast Chainsaw Kills checkbox (because the launcher has since renamed the original UI).
+- Existing optional Boxing Guard uses its separate opt-in `timescale` path outside executions; no kill animation multiplier is applied while fast kills are selected. Native wheel blur and time dilation unchanged.
+
+**Status: source restored / HEADSET PASS PENDING.** Test Glory Kills and chainsaw separately. If chainsaw remains slow, this is a distinct unproven native mode and requires native DOOM event classification, not another speculative global clock write.
+
+**Mission select / save protection:** Current launcher passes `+devMode_enable 1` whenever a selected DOOM resource mod is actively installed, due to `-nopatchgame` (no executable patch). Bethesda confirms Developer Mode may flag campaign saves. A DOOMModLoader resource patch cleanup does not undo developer-only save flagging. DO NOT delete, rewrite, or automatically migrate saves; back up `%USERPROFILE%\\Saved Games\\id Software\\DOOM\\base` before any further modded launch. First verify whether launching with zero resource mods and no dev-mode flag restores Mission Select; if not, investigate save slot/provenance and Steam Cloud. Achievements/mission menu restoration is NOT verified.
+
+- [ ] Re-run October 5-style Glory Kill test: zero slow motion during and after.
+- [ ] Chainsaw execution full-speed during and after (independent acceptance).
+- [ ] Native wheel slowdown/blur still works.
+- [ ] No loss of mission select with unmodded launcher mode.
+- [ ] Campaign save backed up prior to any further developer mode session.
+
 ## Active priority: fix these THREE before other changes
 
 ### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
