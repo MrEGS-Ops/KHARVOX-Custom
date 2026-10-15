@@ -654,8 +654,21 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     auto& hold=s.cinematicAdaptiveTick;
     auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     using namespace doomAdaptiveTick;
-    const bool fastKillsEnabled=s.customMods.fastGloryKills
-        ||s.customMods.fastChainsawKills;
+    // The older GK Speed selector still activates the working native CVar
+    // independently of the two newer checkboxes. Resolve it once, exactly as
+    // the launcher does, instead of silently cancelling its effect in VR.
+    static const int legacySpeedLevel=[]{
+        char text[16]{};
+        const DWORD copied=GetEnvironmentVariableA(
+            "KHARVOX_GLORY_KILL_SLOWMO_LEVEL",text,sizeof(text));
+        if(!copied||copied>=sizeof(text))return 10;
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        if(end==text||*end!='\\0'||value<0||value>10)return 10;
+        return static_cast<int>(value);
+    }();
+    const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
+        s.customMods.fastGloryKills,s.customMods.fastChainsawKills,legacySpeedLevel);
     auto value=[&](uintptr_t rva){return reinterpret_cast<volatile LONG*>(image+rva);};
     auto read=[&](uintptr_t rva){return InterlockedCompareExchange(value(rva),0,0);};
     auto write=[&](uintptr_t rva,LONG replacement){InterlockedExchange(value(rva),replacement);};
