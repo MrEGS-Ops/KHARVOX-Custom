@@ -331,6 +331,7 @@ struct State {
     float acceptedPhysicalYaw{}; float previousBodyYaw{}; bool previousBodyYawValid{};
     float bodyFollowTurnX{}; bool previousManualTurnActive{}; float bodyYawPerPositiveStick{-1.f}; bool bodyYawStickSignConfirmed{};
     kharvox::PostCinematicYawGuard postCinematicYawGuard{};
+    kharvox::PostCinematicBodyTurnRecovery postCinematicBodyTurnRecovery{};
     bool gameplayRecenterPending{true};
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
     bool laserSightEnabled{};
@@ -1165,7 +1166,7 @@ XrFovf enclosingSymmetricFov(const XrFovf& fov){const float halfX=kharvox::cente
 XrFovf submittedEyeFov(const XrFovf& fov){return kharvox::useCenteredProjectionFov(s.runtimeKind)?enclosingSymmetricFov(fov):fov;}
 EyeRenderProjection eyeRenderProjection(const XrFovf& fov){EyeRenderProjection projection{};projection.symmetricFov=enclosingSymmetricFov(fov);return projection;}
 HeadPose ConvertOpenXRToDoom(const XrPosef& pose){HeadPose h{};h.orientation=pose.orientation;h.position=pose.position;auto q=s.headZeroValid?multiply(conjugate(s.headZero),pose.orientation):pose.orientation;const float sinp=2.f*(q.w*q.x-q.z*q.y);h.pitch=std::asin(std::clamp(sinp,-1.f,1.f));h.yaw=std::atan2(2.f*(q.w*q.y+q.x*q.z),1.f-2.f*(q.x*q.x+q.y*q.y));h.roll=std::atan2(2.f*(q.w*q.z+q.x*q.y),1.f-2.f*(q.x*q.x+q.z*q.z));constexpr float radToDeg=57.2957795131f;h.yaw*=radToDeg;h.pitch*=radToDeg;h.roll*=radToDeg;h.valid=true;return h;}
-void resetBodyFollow(){s.bodyFollowPosition={};s.roomscaleStick={};s.previousPhysicsOriginValid=false;s.cinematicBodyPoseHeld=false;s.previousRoomscaleCommand=false;kharvox::resetPostCinematicYawGuard(s.postCinematicYawGuard);}
+void resetBodyFollow(){s.bodyFollowPosition={};s.roomscaleStick={};s.previousPhysicsOriginValid=false;s.cinematicBodyPoseHeld=false;s.previousRoomscaleCommand=false;kharvox::resetPostCinematicYawGuard(s.postCinematicYawGuard);kharvox::resetPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);}
 void publishGameCameraHeadPose(
     float yaw, float pitch, float roll,
     float forward, float lateral, float up,
@@ -1269,6 +1270,7 @@ void updateHeadPose(const XrViewState& viewState,XrTime displayTime,bool nativeP
     if(yawFollowGameplay&&s.cinematicBodyPoseHeld){
         s.cinematicBodyPoseHeld=false;
         kharvox::armPostCinematicYawGuard(s.postCinematicYawGuard,displayTime);
+        kharvox::armPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);
         s.bodyFollowTurnX=0.f;
         s.previousManualTurnActive=false;
         log("[BODY] cinematic reentry; native yaw guard armed before physical/body reconciliation");
@@ -1607,10 +1609,23 @@ void holdNativeTurnCvars(float degreesPerSecond){
     if(int* value=reinterpret_cast<int*>(doomFloat(joySmoothingEnabledCurrentRva)))*value=0;
     if(float* value=doomFloat(joyEdgeAccelerationScalarCurrentRva))*value=0.f;
 }
-float nativePhysicalBodyTurnX(bool gameplay,bool manualTurnActive){
-    if(!gameplay||manualTurnActive||!s.head.valid||s.postCinematicYawGuard.active){s.bodyFollowTurnX=0.f;return 0.f;}
+float nativePhysicalBodyTurnX(bool gameplay,bool manualTurnActive,XrTime displayTime){
+    if(!gameplay||!s.head.valid){
+        kharvox::resetPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);
+        s.bodyFollowTurnX=0.f;return 0.f;
+    }
+    if(kharvox::suppressAutomaticBodyTurnAfterCinematic(
+        s.postCinematicBodyTurnRecovery,displayTime,
+        std::abs(s.leftStick.x)>.15f||std::abs(s.leftStick.y)>.15f,
+        manualTurnActive,s.postCinematicYawGuard.active)
+        ||manualTurnActive||s.postCinematicYawGuard.active){
+        s.bodyFollowTurnX=0.f;return 0.f;
+    }
     const float error=physicalResidualHeadYaw();
-    if(std::abs(error)<.35f){s.bodyFollowTurnX=0.f;return 0.f;}
+    if(std::abs(error)<.35f){
+        kharvox::resetPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);
+        s.bodyFollowTurnX=0.f;return 0.f;
+    }
     const float magnitude=std::clamp(std::abs(error)/90.f,nativeDoomRightStickDeadzone+.02f,1.f);
     s.bodyFollowTurnX=std::copysign(magnitude,error)/s.bodyYawPerPositiveStick;
     return s.bodyFollowTurnX;
@@ -3092,9 +3107,17 @@ void updateGameplayActions(XrTime displayTime){
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
     const float manualTurnX=nativeManualTurnX(displayTime,turnActive&&gameplay&&!weaponSelectDown&&!weaponWheelActive);
     const bool manualTurnActive=manualTurnX!=0.f;
-    const float physicalBodyTurnX=nativePhysicalBodyTurnX(gameplay&&!weaponWheelActive,manualTurnActive);
+    const float physicalBodyTurnX=nativePhysicalBodyTurnX(
+        gameplay&&!weaponWheelActive,manualTurnActive,displayTime);
     const float gameplayTurnX=manualTurnActive?manualTurnX:physicalBodyTurnX;
-    holdNativeTurnCvars(physicalBodyTurnX!=0.f?bodyFollowYawSpeed:manualTurnCarrierSpeed());
+    // Preserve normal 600 deg/s body-follow and explicit manual stick turns.
+    // Only automatic post-execution catch-up is limited to 90 deg/s, so a
+    // released cinematic yaw guard cannot produce a delayed view reset.
+    holdNativeTurnCvars(physicalBodyTurnX!=0.f
+        ?(s.postCinematicBodyTurnRecovery.active
+            ?kharvox::postCinematicBodyTurnRecoveryDegreesPerSecond
+            :bodyFollowYawSpeed)
+        :manualTurnCarrierSpeed());
     auto nativeUiRightStick=centeredNativeUiStick(s.rightStick);
     nativeUiRightStick.y=rightStickY;
     XrVector2f wheelSelectionStick=s.leftStick;
