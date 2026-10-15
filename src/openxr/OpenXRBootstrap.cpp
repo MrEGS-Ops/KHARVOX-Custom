@@ -309,8 +309,6 @@ struct State {
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     XrTime lastChainsawAttackAt{};
-    bool executionRecoveryArmed{};
-    XrTime postExecutionSlowmoCleanupUntil{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -2190,8 +2188,6 @@ void updateGameplayActions(XrTime displayTime){
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
-        s.executionRecoveryArmed=false;
-        s.postExecutionSlowmoCleanupUntil=0;
         s.grenadeGesture={};
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
@@ -2923,18 +2919,6 @@ void updateGameplayActions(XrTime displayTime){
         s.chainsawKillLatched=true;
         log("[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified");
     }
-    // Detect the transition OUT of a verified native execution; never
-    // mistake ordinary weapon-wheel slowdown for an execution. A chainsaw
-    // often stays cinematic after DOOM drops the sync-attack flag.
-    const bool executionActive=syncAttackActive
-        ||(s.chainsawKillLatched&&cutscene);
-    if(executionActive)
-        s.executionRecoveryArmed=true;
-    else if(s.executionRecoveryArmed&&!cutscene) {
-        s.executionRecoveryArmed=false;
-        s.postExecutionSlowmoCleanupUntil=displayTime+6500000000LL;
-        log("[FAST-KILLS] execution ended; short normal-speed recovery guard armed");
-    }
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
@@ -3508,12 +3492,6 @@ void updateGameplayActions(XrTime displayTime){
         &&!syncAttackActive&&!s.chainsawKillLatched
         &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
-    const bool recoveryEligible=(s.customMods.fastGloryKills
-            ||s.customMods.fastChainsawKills)
-        &&s.postExecutionSlowmoCleanupUntil>displayTime
-        &&gameplay&&!syncAttackActive&&!cutscene
-        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!boxingNow;
-    KharvoxCameraSetPostExecutionSlowmoCleanup(recoveryEligible);
     // No custom animation speed path: the launcher enables DOOM's proven
     // native sync_noAdaptiveTick bypass for fast kills. Keep only Boxing
     // Guard's separate, opt-in time dilation, never overriding kill timing.
