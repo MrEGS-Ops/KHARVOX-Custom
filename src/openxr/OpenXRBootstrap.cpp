@@ -2202,6 +2202,8 @@ void updateGameplayActions(XrTime displayTime){
         s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
+        s.executionRecoveryArmed=false;
+        s.postExecutionSlowmoCleanupUntil=0;
         s.grenadeGesture={};
         s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
