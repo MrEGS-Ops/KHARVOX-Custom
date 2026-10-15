@@ -89,6 +89,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
 
+      - name: Verify upstream Cactus v1.1.1 hand HUD restoration
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\\KharvoxLauncher\\bin\\Release\\net48\\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-cactus-hand-hud" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Original Cactus v1.1.1 hand-HUD backup/default restoration failed: $($test.ExitCode)" }
+
       - name: Test native Glory Kill Highlight disabled
         shell: powershell
         run: |
