@@ -4,6 +4,17 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — Build #443 USER CONFIRMED fast kills work; NEW cinematic HEAD POSITION HOLD
+
+**User headset confirmation:** "Both modes are working" (Fast Glory Kills AND Fast Chainsaw Kills) on #443 after restoring DOOM-native game tick pacing. Mark fast kill timing as **USER CONFIRMED WORKING; MUST NOT REGRESS**. The new issue is **HMD position feels locked ~1–3 sec during executions**. Do not edit timing, native sync CVar values or camera remapping to fix this.
+
+**Observed in newly uploaded `3 (1).log` (native extended log, 2026-10-15 19:32-19:40):**
+- 43 entries `[IMMERSIVE] OpenXR layer position held at cinematic entry; rendered HMD rotation pose synchronized` with matching `... position hold released`. Median hold ~1.12sec; initial intervals 1.364sec, 1.804sec, 1.082sec, 1.120sec, 1.147sec, 1.411sec; longest observed ~2sec. Exact match with headset subjective lock duration.
+- Source: `src/openxr/OpenXRBootstrap.cpp` caches `s.immersiveCinematicLayerPosition=sourceMonoPose.position` at start and reuses it in SFS/native producer pose (`next.views[e].pose.position`, `next.head.position`), and `monoPose`. `src/camera/CameraHook.cpp` `patchCamera` for cinematic caller 0xA30CFF applies **HMD-only rotation**, explicitly **"HMD translation remains disabled"**. Thus **physical leaning/repositioning is intentionally frozen** throughout immersive executions by two complementary paths; not primarily input remapping.
+- `[CUSTOM-MODS]` reports `handFocusRs=on`, but that is the right-stick interaction focus control and does not issue the cinematic layer-position freeze. `[IMMERSIVE] HMD freelook active` logs mean rotational pose is requested; they do NOT prove user's physical rotation actually remained responsive.
+- Caveat: User said "head position locked" but did NOT distinguish physical positional leaning/side-stepping from **rotation** (turn/look left-right). Ask them this single clarification **before** potentially destabilizing SFS VR camera alignment. Full positional tracking requires coordinated changes to (1) DOOM cinematic render camera translations, (2) OpenXR projection/head pose, and (3) head-origin baseline/recentering. Merely deleting the layer hold without adjusting the cinematic camera may double translation or desync stereo and induce discomfort.
+- Also note `src/openxr/OpenXRBootstrap.cpp::updateHeadPose` resets headZeroPosition while `worldActive=false` (cinematic), and sets `gameplayRecenterPending` when `KharvoxCameraGameplayActive=false`; these must be considered for 6DoF recovery. No code fix committed yet, no replacement #443 until clarified.
+
 ## 2026-10-15 — EXTENDED TRACE: 120 Hz forced simulation vs 37–39 Hz achieved game frames
 
 **Received user upload:** 10 files, 5 unique SHA-256 contents (five duplicate filename pairs). The relevant newly extended `KHARVOX-KHARVOX(2).log` contains fast-execution diagnostic lines that earlier non-extended logs suppressed, and `KHARVOX(20261015-081718).log` confirms extended diagnostics enabled. An additional sidecar `KHARVOX-NATIVE-STEREO(6).log` is about native stereo observation rather than game timing.
