@@ -1611,7 +1611,11 @@ void holdNativeTurnCvars(float degreesPerSecond){
 }
 float nativePhysicalBodyTurnX(bool gameplay,bool manualTurnActive,XrTime displayTime){
     if(!gameplay||!s.head.valid){
-        kharvox::resetPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);
+        // Opening the weapon wheel is not a new gameplay session. Preserve
+        // the post-kill no-snap latch across wheel usage; do not change the
+        // wheel's own slowdown, blur or input routing.
+        if(!s.head.valid||!KharvoxCameraGameplayActive())
+            kharvox::resetPostCinematicBodyTurnRecovery(s.postCinematicBodyTurnRecovery);
         s.bodyFollowTurnX=0.f;return 0.f;
     }
     if(kharvox::suppressAutomaticBodyTurnAfterCinematic(
