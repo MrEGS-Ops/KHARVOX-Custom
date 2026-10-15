@@ -311,6 +311,11 @@ internal static class KharvoxRunner
         if (FileVersionInfo.GetVersionInfo(dllPath).ProductVersion != "1.1.1")
             throw new InvalidOperationException("The 1.11 launcher requires its matching 1.11 KharvoxLayer.dll. Extract the complete release into its own folder.");
 
+        // One-time, reversible restoration of Cactus v1.1.1 offhand Life,
+        // Ammo and ProgMeter HUD geometry. Must finish BEFORE DOOM loads
+        // HudHook. Never overwrite later intentional in-game calibration.
+        CactusHandHudRestore.EnsureRestored(runtimeDir, statusUpdate);
+
         // Resource mods are installed before DOOM starts, while the exclusive
         // launch gate and game-not-running checks are active. No controller or
         // native KHARVOX remapping code is changed by this integration.
