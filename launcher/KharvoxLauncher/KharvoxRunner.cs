@@ -468,7 +468,8 @@ internal static class KharvoxRunner
                 UseShellExecute = false,
                 WorkingDirectory = options.GameDirectory,
                 Arguments = JoinArguments(BuildGameArguments(
-                    options, false, effectiveRenderScale, nativeStereoEnabled)),
+                    options, false, effectiveRenderScale, nativeStereoEnabled,
+                    customMods.FastGloryKills || customMods.FastChainsawKills)),
                 RedirectStandardOutput = options.ExtendedLogging,
                 RedirectStandardError = options.ExtendedLogging
             };
@@ -1731,7 +1732,8 @@ internal static class KharvoxRunner
         ["+g_setting_gk_highlight", "0"];
 
     private static IEnumerable<string> BuildGameArguments(KharvoxLaunchOptions options,
-        bool useSteam, decimal effectiveRenderScale, bool nativeStereoEnabled = false)
+        bool useSteam, decimal effectiveRenderScale, bool nativeStereoEnabled = false,
+        bool nativeFastKillsRequested = false)
     {
         var args = new List<string>();
         // AER and Native share a small desktop mirror on every runtime. The
@@ -1804,10 +1806,11 @@ internal static class KharvoxRunner
         // introduce any on-screen launcher option.
         args.AddRange(NativeGloryKillHighlightArguments());
 
-        // 10 preserves DOOM's native adaptive Glory Kill slow-motion.
-        // 0-9 disable the sync system's adaptive slowdown; levels 1-9 are
-        // then driven by the clean CameraHook timescale override.
-        if (options.GloryKillSlowmoLevel < 10)
+        // Reuse the native sync-slowdown bypass the user previously confirmed
+        // working: checking EITHER fast-kill mod must activate all THREE CVars
+        // even when the older Glory Kill Slow-Mo dropdown is set to native (10).
+        // The DOOM engine shares these flags for sync/Chainsaw executions.
+        if (nativeFastKillsRequested || options.GloryKillSlowmoLevel < 10)
             args.AddRange(["+sync_noAdaptiveTick", "1",
                 "+sync_alwaysSlowMo", "0",
                 "+sync_lastEnemyEncounterSlowMo", "0"]);
