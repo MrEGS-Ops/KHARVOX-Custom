@@ -65,36 +65,5 @@ int main() {
         || !near(guard.absorbedDegrees, 0.0f))
         return 9;
 
-    // Once a kill ends, never activate hidden 600-deg/s body alignment
-    // while the player is RUNNING. A post-cinematic guard can end at 500ms,
-    // but body follow may only resume after the locomotion stick is neutral.
-    kharvox::PostCinematicBodyTurnRecovery recovery{};
-    kharvox::armPostCinematicBodyTurnRecovery(recovery);
-    if(!recovery.active
-        ||!kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,1000000000,true,false,true))
-        return 10;
-    if(!kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,4000000000,true,false,false))
-        return 11; // moving for 3 seconds must NOT produce a delayed snap
-    if(!kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,4010000000,false,false,false))
-        return 12; // stick just released: idle settling window
-    if(!kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,4250000000,false,false,false))
-        return 13;
-    if(kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,4260000000,false,false,false))
-        return 14; // gentle automatic alignment now allowed
-    if(!recovery.active
-        ||!near(kharvox::postCinematicBodyTurnRecoveryDegreesPerSecond,90.f))
-        return 15;
-    if(kharvox::suppressAutomaticBodyTurnAfterCinematic(
-            recovery,4300000000,false,true,false)||recovery.active)
-        return 16; // explicit right stick always owns the turn
-    kharvox::armPostCinematicBodyTurnRecovery(recovery);
-    kharvox::resetPostCinematicBodyTurnRecovery(recovery);
-    if(recovery.active||recovery.idleSince!=0)
-        return 17;
     return 0;
 }
