@@ -505,7 +505,61 @@ internal static class DoomResourceModSession
             catch (InvalidOperationException) { blocked = true; }
             if (!blocked)
                 throw new InvalidOperationException("Modified owned resources must block apply.");
-            Console.WriteLine("DOOM staging, uncheck, checksum and patch ownership tests passed.");
+            // Recover orphaned numbered containers from a DIFFERENT build,
+            // even when the new build has no manifest or checked mods.
+            if(StateFile(Path.Combine(root,"first-build"),game)
+                !=StateFile(Path.Combine(root,"second-build"),game))
+                throw new InvalidOperationException("Resource state must be cross-build stable.");
+            File.WriteAllText(foreign,"orphan after swapping KHARVOX builds");
+            var orphanIndex=Path.Combine(game,"base","gameresources_002.pindex");
+            File.WriteAllText(orphanIndex,"unverified 002 index");
+            var orphaned=GetGeneratedResources(game);
+            if(orphaned.Count!=2||!orphaned.ContainsKey("base/gameresources_002.pindex"))
+                throw new InvalidOperationException("Orphan patch/index pair not detected.");
+            var recovery=QuarantineResources(game,orphaned,false,null);
+            if(recovery is null||GetGeneratedResources(game).Count!=0
+                ||!File.Exists(Path.Combine(recovery,"base","gameresources_002.patch"))
+                ||!File.Exists(Path.Combine(recovery,"base","gameresources_002.pindex"))
+                ||!File.Exists(Path.Combine(recovery,"RECOVERY-INVENTORY.txt"))
+                ||File.ReadAllText(Path.Combine(recovery,"base","gameresources_002.pindex"))
+                    !="unverified 002 index")
+                throw new InvalidOperationException("Orphan recovery did not preserve all files.");
+            if(!File.Exists(fileMod))
+                throw new InvalidOperationException("Recovery damaged user's original mod ZIP.");
+
+            // Official resources always win: signed/verified game content is
+            // not even inventoried and must never be touched.
+            File.WriteAllText(orphanIndex,"official index");
+            File.WriteAllText(orphanIndex+".verify","verified marker");
+            if(GetGeneratedResources(game).ContainsKey("base/gameresources_002.pindex"))
+                throw new InvalidOperationException("Verified game content was classified as mod.");
+            if(!File.Exists(orphanIndex)||!File.Exists(orphanIndex+".verify"))
+                throw new InvalidOperationException("Official game content was modified.");
+
+            // Unknown non-numbered patches are NOT safe to auto-move.
+            var ambiguous=Path.Combine(game,"base","gameresources.pindex");
+            File.WriteAllText(ambiguous,"unknown external mod");
+            var refused=false;
+            try { QuarantineResources(game,GetGeneratedResources(game),false,null); }
+            catch(InvalidOperationException){refused=true;}
+            if(!refused||!File.Exists(ambiguous))
+                throw new InvalidOperationException("Unowned ambiguous patch must remain untouched.");
+            File.Delete(ambiguous);
+            var ownedVideo=Path.Combine(game,"base","video","mods","owned.bimage");
+            Directory.CreateDirectory(Path.GetDirectoryName(ownedVideo)!);
+            File.WriteAllText(ownedVideo,"tracked resource");
+            var videoFiles=GetGeneratedResources(game);
+            refused=false;
+            try { QuarantineResources(game,videoFiles,false,null); }
+            catch(InvalidOperationException){refused=true;}
+            if(!refused||!File.Exists(ownedVideo))
+                throw new InvalidOperationException("Unowned video mod must not be moved.");
+            var ownedRecovery=QuarantineResources(game,videoFiles,true,null);
+            if(ownedRecovery is null||!File.Exists(Path.Combine(ownedRecovery,
+                    "base","video","mods","owned.bimage")))
+                throw new InvalidOperationException("Verified owned video mod was not recoverable.");
+
+            Console.WriteLine("DOOM resource staging, orphaned-build recovery, native verification marker, cross-build manifest, and ownership tests passed.");
             return 0;
         }
         catch (Exception error)
@@ -624,7 +678,7 @@ internal static class DoomResourceModSession
             // A failed loader must not leave half-written unverified patches
             // ready to crash the next launch. Preserve a forensic recovery copy.
             if(after.Count>0)
-                QuarantineResources(gameDir,after,false,statusUpdate);
+                QuarantineResources(gameDir,after,true,statusUpdate);
             throw;
         }
     }
