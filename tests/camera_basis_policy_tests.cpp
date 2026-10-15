@@ -53,6 +53,21 @@ int main() {
     if (kharvox::makeStableGameplayBodyBasis(
             false, false, rolled, identity, output)) return 8;
 
+    // Regression from headset Build #443: the native cinematic participant
+    // guard can outlive the actual GK/chainsaw camera. The gameplay camera
+    // must be leveled immediately, not 0.5-3 s later when the guard clears.
+    if(!kharvox::preserveAnimatedGameplayBodyBasis(true,false))return 14;
+    if(kharvox::preserveAnimatedGameplayBodyBasis(true,true))return 15;
+    if(kharvox::preserveAnimatedGameplayBodyBasis(false,true))return 16;
+    if(!kharvox::makeStableGameplayBodyBasis(
+            true,kharvox::preserveAnimatedGameplayBodyBasis(true,true),
+            rolled,identity,output)||!matches(output,identity))return 17;
+    // The real authored cinematic (not a returned gameplay camera)
+    // still gets its own tilt and positioning from DOOM.
+    if(kharvox::makeStableGameplayBodyBasis(
+            true,kharvox::preserveAnimatedGameplayBodyBasis(true,false),
+            rolled,identity,output))return 18;
+
     // Movement-only holds can still be playable weapon sequences. View,
     // buttons and profile-driven view locks identify passive authored scenes.
     if (!kharvox::playerWeaponControlAvailable(0)) return 9;
