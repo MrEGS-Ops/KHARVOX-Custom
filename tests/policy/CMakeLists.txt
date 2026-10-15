@@ -50,3 +50,14 @@ add_test(NAME physical-punch-policy COMMAND KharvoxPhysicalPunchPolicyTests)
 add_executable(KharvoxWeaponWheelHudPolicyTests ../weapon_wheel_hud_policy_tests.cpp)
 target_compile_features(KharvoxWeaponWheelHudPolicyTests PRIVATE cxx_std_17)
 add_test(NAME weapon-wheel-hud-policy COMMAND KharvoxWeaponWheelHudPolicyTests)
+
+# October 5 native full-speed Glory Kill regression: immersive cinematics
+# must not overwrite +sync_noAdaptiveTick 1 with 0.
+add_executable(KharvoxFastKillSyncTimingTests ../fast_kill_sync_timing_tests.cpp)
+target_compile_features(KharvoxFastKillSyncTimingTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxFastKillSyncTimingTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxFastKillSyncTimingTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME fast-kill-sync-timing COMMAND KharvoxFastKillSyncTimingTests)
