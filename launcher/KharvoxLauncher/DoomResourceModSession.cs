@@ -522,110 +522,110 @@ internal static class DoomResourceModSession
     internal static async Task<bool> PrepareAsync(string runtimeDir, string gameDir,
         Action<string>? statusUpdate)
     {
-        var selectedIds = DoomUserMods.LoadSelections();
-        var entries = DoomUserMods.Scan(gameDir);
-        var selected = entries.Where(e => selectedIds.Contains(e.Id)).ToArray();
-        var missing = selectedIds.Except(selected.Select(e => e.Id),
+        // Always scan the installed resources, even with NO mods selected.
+        // A copied KHARVOX build has no access to the old build's cache.
+        var selectedIds=DoomUserMods.LoadSelections();
+        var entries=DoomUserMods.Scan(gameDir);
+        var selected=entries.Where(e=>selectedIds.Contains(e.Id)).ToArray();
+        var missing=selectedIds.Except(selected.Select(e=>e.Id),
             StringComparer.OrdinalIgnoreCase).ToArray();
-        if (missing.Length != 0)
-            throw new InvalidOperationException(
-                "Selected DOOM mods are missing. Re-add them or uncheck them in Custom Mods: "
-                + string.Join(", ", missing));
-
-        if (selected.Length > MaxMods)
+        if(selected.Length>MaxMods)
             throw new InvalidOperationException("Too many selected DOOM mods (maximum 128).");
-        // DML otherwise lets generated filenames determine the winner when
-        // more than one mod replaces a resource. Never hide those conflicts.
-        if (selected.Length > 1)
-            DoomModOverlapPreflight.EnsureNoResourceOverlap(selected);
-        var statePath = StateFile(runtimeDir, gameDir);
-        var manifest = LoadManifest(statePath);
-
-        // If nothing has ever been installed by KHARVOX, leave DOOM completely alone.
-        if (selected.Length == 0 && manifest is null) return false;
-
-        if (!DoomModLoaderInstaller.IsInstalled)
-            throw new InvalidOperationException(
-                "DOOMModLoader is missing or failed integrity verification."
-                + Environment.NewLine + "Open Custom Mods > DOOM Mods to install or repair it.");
-
-        statusUpdate?.Invoke("Checking selected DOOM mods...");
-        var fingerprint = Fingerprint(selected);
-        var current = GetGeneratedResources(gameDir);
-        VerifyOwnership(manifest, current, gameDir);
-
-        if (manifest is not null
-            && manifest.LoaderVersion == DoomModLoaderInstaller.Version
-            && manifest.Fingerprint == fingerprint)
+        var missingSources=missing.Length!=0;
+        if(missingSources)
         {
+            // Do not destroy the saved checkbox choices: the folder can be
+            // restored later. Start vanilla, after reversible patch cleanup.
+            statusUpdate?.Invoke("DOOM MOD FALLBACK: "+missing.Length+
+                " selected mod source(s) missing; preserving selections and launching without resource mods.");
+            selected=Array.Empty<DoomUserMods.ModEntry>();
+        }
+        if(selected.Length>1)
+            DoomModOverlapPreflight.EnsureNoResourceOverlap(selected);
+
+        var statePath=StateFile(runtimeDir,gameDir);
+        var manifest=LoadManifest(statePath)
+            ?? LoadManifest(LegacyStateFile(runtimeDir,gameDir));
+        var current=GetGeneratedResources(gameDir);
+        var owned=manifest is not null
+            && string.Equals(manifest.GameDirectory,Path.GetFullPath(gameDir),
+                StringComparison.OrdinalIgnoreCase)
+            && SameFiles(manifest.Files,current);
+        var loaderAvailable=DoomModLoaderInstaller.IsInstalled;
+        var fingerprint=Fingerprint(selected);
+
+        // Only skip installation after BOTH the manifest and disk contents
+        // have been checked. Fingerprint alone cannot detect deleted patches.
+        if(selected.Length>0 && loaderAvailable && owned
+            && manifest!.LoaderVersion==DoomModLoaderInstaller.Version
+            && manifest.Fingerprint==fingerprint && current.Count>0)
+        {
+            if(!File.Exists(statePath))SaveManifest(statePath,manifest);
             statusUpdate?.Invoke("DOOM resource mods already match selected checkboxes.");
-            return selected.Length != 0;
+            return true;
         }
 
-        statusUpdate?.Invoke("Preparing " + selected.Length + " selected DOOM mods...");
-        Stage(runtimeDir, selected);
-        if (Fingerprint(selected) != fingerprint)
+        // Missing files, missing loader, an old build's missing manifest, or
+        // different mod selection all trigger a SAFE resource isolation.
+        // Owned files (including video mods) are hash-verified; otherwise
+        // only exact numbered unverified patch containers are recoverable.
+        if(current.Count>0)
+        {
+            var recovered=QuarantineResources(gameDir,current,owned,statusUpdate);
+            current=GetGeneratedResources(gameDir);
+            if(current.Count!=0)
+                throw new InvalidOperationException(
+                    "Resource recovery was incomplete; DOOM was not launched. "
+                    +"Backup: "+recovered);
+        }
+
+        if(selected.Length==0 || !loaderAvailable)
+        {
+            if(selected.Length>0 && !loaderAvailable)
+                statusUpdate?.Invoke("DOOM MOD FALLBACK: DOOMModLoader is missing or invalid; "
+                    +"saved selections retained, DOOM will start without resource patches.");
+            SaveManifest(statePath,new Manifest
+            {
+                Schema=Schema,GameDirectory=Path.GetFullPath(gameDir),
+                LoaderVersion=loaderAvailable?DoomModLoaderInstaller.Version:"",
+                Fingerprint=Fingerprint(Array.Empty<DoomUserMods.ModEntry>()),
+                Files=new Dictionary<string,string>(StringComparer.OrdinalIgnoreCase)
+            });
+            return false;
+        }
+
+        statusUpdate?.Invoke("Preparing "+selected.Length+" selected DOOM mods...");
+        Stage(runtimeDir,selected);
+        if(Fingerprint(selected)!=fingerprint)
             throw new InvalidOperationException(
                 "A source DOOM mod changed while it was being copied. Try launching again.");
 
-        // A loader failure cannot leave partially rebuilt KHARVOX patches
-        // silently active: back up and restore the exact pre-run resources.
-        var backup = Path.Combine(CacheRoot(runtimeDir),
-            ".resource-backup-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(backup);
+        // No old generated files are left in /base. All previous patches
+        // survive in a separate recovery directory and are never overwritten.
+        // On loader failure, remove ONLY resources produced in this attempt.
         try
         {
-            foreach (var path in current.Keys)
+            statusUpdate?.Invoke("Applying DOOM resource mods...");
+            await RunLoaderAsync(gameDir,ActiveFolder(runtimeDir),
+                DoomModLoaderInstaller.ExecutablePath).ConfigureAwait(false);
+            var after=GetGeneratedResources(gameDir);
+            SaveManifest(statePath,new Manifest
             {
-                var source = Path.Combine(gameDir,
-                    path.Replace('/', Path.DirectorySeparatorChar));
-                var target = Path.Combine(backup,
-                    path.Replace('/', Path.DirectorySeparatorChar));
-                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-                File.Copy(source, target);
-            }
-
-            try
-            {
-                statusUpdate?.Invoke("Applying DOOM resource mods...");
-                var output = await RunLoaderAsync(gameDir, ActiveFolder(runtimeDir),
-                    DoomModLoaderInstaller.ExecutablePath).ConfigureAwait(false);
-                var after = GetGeneratedResources(gameDir);
-                SaveManifest(statePath, new Manifest
-                {
-                    Schema = Schema,
-                    GameDirectory = Path.GetFullPath(gameDir),
-                    LoaderVersion = DoomModLoaderInstaller.Version,
-                    Fingerprint = fingerprint,
-                    Files = after
-                });
-                statusUpdate?.Invoke("DOOM mods updated (" + selected.Length + " enabled).");
-            }
-            catch
-            {
-                try { RestoreBackup(gameDir, backup, current); }
-                catch (Exception recovery)
-                {
-                    throw new InvalidOperationException(
-                        "DOOMModLoader failed and KHARVOX could not fully restore the previous patches."
-                        + Environment.NewLine + "A recovery copy remains in: " + backup, recovery);
-                }
-                throw;
-            }
+                Schema=Schema,GameDirectory=Path.GetFullPath(gameDir),
+                LoaderVersion=DoomModLoaderInstaller.Version,
+                Fingerprint=fingerprint,Files=after
+            });
+            statusUpdate?.Invoke("DOOM mods updated ("+selected.Length+" enabled).");
+            return true;
         }
-        finally
+        catch
         {
-            // Preserve the backup if recovery failed; never delete the only copy.
-            try
-            {
-                var latest = LoadManifest(statePath);
-                var resources = GetGeneratedResources(gameDir);
-                if (latest is not null && SameFiles(latest.Files, resources)
-                    && Directory.Exists(backup))
-                    Directory.Delete(backup, true);
-            }
-            catch { /* Never shadow a failed apply/recovery with cleanup errors. */ }
+            var after=GetGeneratedResources(gameDir);
+            // A failed loader must not leave half-written unverified patches
+            // ready to crash the next launch. Preserve a forensic recovery copy.
+            if(after.Count>0)
+                QuarantineResources(gameDir,after,false,statusUpdate);
+            throw;
         }
-        return selected.Length != 0;
     }
 }
