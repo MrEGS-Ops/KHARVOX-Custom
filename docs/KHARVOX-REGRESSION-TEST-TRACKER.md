@@ -4,6 +4,19 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — new user launcher + native log evidence; zero slow motion still FAIL
+
+User supplied paired logs `KHARVOX(20261015-080937).log` and `KHARVOX-KHARVOX.log` from `C:\\Users\\G180\\Documents\\Downloads\\KHARVOX-Full-Build\\`. The current folder is correct for the recent full-build packaging, but its hardcoded launcher `build=2026.09.29-launcher-v1.11-release` and native `build=2026.09.04-native-frame-inputs-r139` strings are NOT GitHub Actions identifiers. The log does not contain a `PATCH-BUILD.txt` commit/run marker, so exact build provenance remains unverified.
+
+**Direct runtime evidence:**
+- Launcher: `gloryKillSlowmoLevel=0`, arguments contain `+sync_noAdaptiveTick 1 +sync_alwaysSlowMo 0 +sync_lastEnemyEncounterSlowMo 0`. The launcher is requesting the same native fast-execution settings as Oct 5.
+- Native: **six** `[GLORY-SLOWMO] native sync-attack flag ENTER/EXIT` pairs. The execution detector is alive.
+- Native: `timescale cvar current value could not be resolved uniquely` appears repeatedly (about ten logged attempts); fallback memory resolver did NOT locate a safe unique value. This is separate from the launch CVars and does not prove whether the native `sync_noAdaptiveTick` switch worked.
+- Both logs omit `[FAST-KILLS]` CVar readbacks and `[CINEMATIC-HZ]` status. This is **not** evidence those branches didn't run: launcher says `extendedLogging=disabled`, and `src/common/RuntimeLog.h` suppresses normal OpenXR `log()` messages unless extended diagnostics are enabled.
+- Launcher reports `0xC0000005` after 181 s. Do not attribute this access violation to fast kills without a crash dump.
+
+**Headset status remains FAIL** for zero time dilation during AND after BOTH GK and chainsaw. Launcher flags alone do not prove engine runtime CVar values. NEXT DIAGNOSTIC: In same KHARVOX build, enable Extended Logging, launch, execute one GK and one chainsaw, then read `<build>\\logs\\KHARVOX.log` and `<build>\\logs\\KHARVOX-KHARVOX.log`. Readback entries would distinguish adaptive-layout/signature failure, mode guard skipped, flag overwrite, or an independent game slowdown path. No claim of a completed fix.
+
 ## 2026-10-15 — user-reported Build #408 regressions and targeted source changes
 
 **Headset feedback (FAIL):**
