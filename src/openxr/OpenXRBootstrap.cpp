@@ -656,11 +656,6 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     auto& hold=s.cinematicAdaptiveTick;
     auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
     using namespace doomAdaptiveTick;
-    // The successful Build #83 used the native DOOM sync slowdown CVars.
-    // Keep that binary request intact even when cinematic refresh rewrites
-    // adaptive timing. Both execution checkboxes share this engine setting.
-    const bool nativeFastKills=s.customMods.fastGloryKills
-        ||s.customMods.fastChainsawKills;
     auto value=[&](uintptr_t rva){return reinterpret_cast<volatile LONG*>(image+rva);};
     auto read=[&](uintptr_t rva){return InterlockedCompareExchange(value(rva),0,0);};
     auto write=[&](uintptr_t rva,LONG replacement){InterlockedExchange(value(rva),replacement);};
@@ -669,7 +664,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         write(minHzCurrentRva,hold.savedMinHz);
         write(maxHzCurrentRva,hold.savedMaxHz);
         write(immediateModeCurrentRva,hold.savedImmediateMode);
-        write(syncNoAdaptiveTickCurrentRva,nativeFastKills?1:hold.savedSyncNoAdaptiveTick);
+        write(syncNoAdaptiveTickCurrentRva,hold.savedSyncNoAdaptiveTick);
         write(fixedTicCurrentRva,hold.savedFixedTic);
         write(adaptiveTickCurrentRva,hold.savedAdaptiveTick);
         InterlockedExchange(&immersiveAdaptiveParticipantBypass,0);
@@ -682,19 +677,12 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             <<" measuredPresentHz="<<std::setprecision(1)<<measuredHz
             <<" restored adaptive/min/max/immediate/syncNoAdaptive/fixedTic="
             <<hold.savedAdaptiveTick<<'/'<<hold.savedMinHz<<'/'<<hold.savedMaxHz<<'/'
-            <<hold.savedImmediateMode<<'/'<<(nativeFastKills?1:hold.savedSyncNoAdaptiveTick)<<'/'<<hold.savedFixedTic;
+            <<hold.savedImmediateMode<<'/'<<hold.savedSyncNoAdaptiveTick<<'/'<<hold.savedFixedTic;
         log(out.str());
         hold.active=false;
         hold.presents=0;
     };
-    if(!active){
-        restore();
-        // Native DOOM can change this CVar after its command-line startup.
-        // Reassert the opt-in bypass without invoking custom timescale hacks.
-        if(nativeFastKills&&ensureImmersiveAdaptiveTickSupport()&&image)
-            write(syncNoAdaptiveTickCurrentRva,1);
-        return;
-    }
+    if(!active){restore();return;}
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
@@ -735,7 +723,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     write(maxHzCurrentRva,std::max<LONG>(hold.savedMaxHz,hold.targetHz));
     write(minHzCurrentRva,hold.targetHz);
     write(immediateModeCurrentRva,1);
-    write(syncNoAdaptiveTickCurrentRva,nativeFastKills?1:0);
+    write(syncNoAdaptiveTickCurrentRva,0);
     // com_fixedTic is the outer gate for DOOM's adaptive-rate branch. r32 set
     // it to zero, which bypassed the very code that consumes Min/Max Hz. Keep
     // that gate enabled and repair the runtime byte cleared one frame before
