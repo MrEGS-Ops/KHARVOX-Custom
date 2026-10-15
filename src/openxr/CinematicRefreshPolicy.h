@@ -65,6 +65,15 @@ constexpr bool nativeAdaptiveParticipantGuardIsActive(
 // overwrite it with 0 every Present and re-enable DOOM's sync slow motion.
 // Preserve the original slow-cinematic behavior when fast kills are OFF,
 // but NEVER clear the opt-in native bypass while either fast-kill mod is ON.
+// The launcher can activate the exact Oct 5 native no-slowmo option from
+// either custom checkbox OR the older Glory Kill Speed selector. Keep the
+// OpenXR present path aligned with the launcher command-line policy.
+constexpr bool nativeFastKillSyncRequested(
+    bool fastGlory, bool fastChainsaw, int legacySpeedLevel) {
+    return fastGlory || fastChainsaw
+        || (legacySpeedLevel >= 0 && legacySpeedLevel < 10);
+}
+
 constexpr int nativeSyncAdaptiveTickDuringCinematic(bool fastKillsEnabled) {
     return fastKillsEnabled ? 1 : 0;
 }
