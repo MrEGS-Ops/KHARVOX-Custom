@@ -87,47 +87,4 @@ inline PostCinematicYawGuardUpdate updatePostCinematicYawGuard(
     return result;
 }
 
-// Native DOOM auto body-follow is 600 degrees/second. Immediately after
-// a kill, the yaw guard ends at ~500ms and this native turn can look like
-// an unwanted Meta-view recenter. Do not start an automatic correction while
-// the player is running away. Once locomotion stops, wait briefly and catch
-// the body up slowly. Intentional right-stick turning bypasses this policy.
-constexpr std::int64_t postCinematicBodyTurnIdleWaitNanoseconds = 250000000;
-constexpr float postCinematicBodyTurnRecoveryDegreesPerSecond = 90.0f;
-
-struct PostCinematicBodyTurnRecovery {
-    bool active{};
-    std::int64_t idleSince{};
-};
-
-inline void armPostCinematicBodyTurnRecovery(
-    PostCinematicBodyTurnRecovery& recovery) noexcept {
-    recovery.active=true;
-    recovery.idleSince=0;
-}
-
-inline void resetPostCinematicBodyTurnRecovery(
-    PostCinematicBodyTurnRecovery& recovery) noexcept {
-    recovery={};
-}
-
-inline bool suppressAutomaticBodyTurnAfterCinematic(
-    PostCinematicBodyTurnRecovery& recovery,
-    std::int64_t now,
-    bool locomotionStickActive,
-    bool manualTurnActive,
-    bool nativeYawGuardActive) noexcept {
-    if(!recovery.active)return false;
-    if(manualTurnActive){resetPostCinematicBodyTurnRecovery(recovery);return false;}
-    if(nativeYawGuardActive || locomotionStickActive){
-        recovery.idleSince=0;
-        return true;
-    }
-    if(recovery.idleSince<=0||now<recovery.idleSince){
-        recovery.idleSince=now;
-        return true;
-    }
-    return now-recovery.idleSince < postCinematicBodyTurnIdleWaitNanoseconds;
-}
-
 } // namespace kharvox
