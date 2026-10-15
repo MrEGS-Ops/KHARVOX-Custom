@@ -689,7 +689,6 @@ int configuredGloryKillSlowmoLevel() {
 
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
 std::atomic<bool> boxingGuardTimeDilationRequested{};
-std::atomic<bool> postExecutionSlowmoCleanupRequested{};
 std::atomic<bool> latestSyncAttackClassified{};
 std::atomic<bool> latestChainsawTakedownCinematic{};
 
@@ -984,29 +983,6 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
             loggedTarget=-1.f;
         }
         if(!syncAttackActive){
-            // DOOM sometimes leaves a fractional native timescale for seconds
-            // AFTER a fast execution returns control. Recover only if the XR
-            // caller has positively seen an execution END and has excluded
-            // weapon-wheel / Boxing Guard / other cinematics. Never force the
-            // clock during a sync attack or while another owner is active.
-            if(postExecutionSlowmoCleanupRequested.load(std::memory_order_acquire)
-                && !boxingRequested) {
-                const float observed=interlockedFloatLoad(current);
-                if(std::isfinite(observed)&&observed>0.05f&&observed<0.999f){
-                    constexpr float normalSpeed=1.f;
-                    LONG normalBits{};
-                    std::memcpy(&normalBits,&normalSpeed,sizeof(normalBits));
-                    InterlockedExchange(current,normalBits);
-                    static ULONGLONG lastRecoveryLogTick{};
-                    const auto tick=GetTickCount64();
-                    if(tick-lastRecoveryLogTick>750){
-                        lastRecoveryLogTick=tick;
-                        logGlorySlowmo("post-execution residual slowdown cleared from "
-                            +std::to_string(observed)+" to 1.0; native wheel/guard excluded");
-                    }
-                }
-            }
-            // Never cache the old fractional value as the next baseline.
             baselineBits=InterlockedCompareExchange(current,0,0);
             baselineValid=true;
         }
@@ -2780,12 +2756,7 @@ bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_orde
 void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
     boxingGuardTimeDilationRequested.store(active,std::memory_order_release);
 }
-void KharvoxCameraSetPostExecutionSlowmoCleanup(bool enabled) {
-    postExecutionSlowmoCleanupRequested.store(enabled,std::memory_order_release);
-    if(enabled)updateGloryKillSlowmoTimescale(false);
-}
 void KharvoxCameraResetCombatTimeDilation() {
-    postExecutionSlowmoCleanupRequested.store(false,std::memory_order_release);
     boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
     gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
     latestSyncAttackClassified.store(false,std::memory_order_release);
