@@ -61,3 +61,14 @@ else()
   target_compile_options(KharvoxFastKillSyncTimingTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME fast-kill-sync-timing COMMAND KharvoxFastKillSyncTimingTests)
+
+# Safety regression: gameplay camera must discard DOOM's cinematic pitch/roll
+# as soon as the engine returns from GK/chainsaw, even if its observer remains.
+add_executable(KharvoxCameraBasisPolicyTests ../camera_basis_policy_tests.cpp)
+target_compile_features(KharvoxCameraBasisPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxCameraBasisPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxCameraBasisPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME camera-basis-return-to-gameplay COMMAND KharvoxCameraBasisPolicyTests)
