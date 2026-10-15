@@ -4,6 +4,20 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — #466 Cactus KHARVOX v1.1.1 hand HUD ORIGINAL RESTORE (compiled and tested)
+
+**User requirement:** regress all experimental hand HUD placement edits made Oct 8–12, restore CactusVRStudios/KHARVOX GitHub tag `v1.1.1` (release title "KHARVOX 1.11") wrist/hand HUD **as normal stock behaviour, not a separate mod**, without touching other gameplay mods.
+
+**Source audit:** `src/hud/OffhandHudPolicy.h`, `src/hud/HudLayoutPolicy.h`, `config/offhand_hud_default.cfg`, `config/hud_flat_calibration_default.cfg`, `config/hud_profile_calibration_default.cfg` are byte-for-byte identical to Cactus `v1.1.1`. `src/hud/HudHook.cpp` differences comprise unrelated weapon-wheel reset, No HUD independence, revenge snapshot and comments; core hand HUD origin/basis/surface placement are unchanged from upstream. `src/camera/CameraHook.cpp` still calls original `KharvoxHudCaptureOffhandRenderFrame`; `src/openxr/OpenXRBootstrap.cpp` still publishes both hand poses. Historical custom hand-wrist changes were reverted in commits `f5bfb3e455` / `9ea20ca015` on Oct 12. Legacy launcher `BackOfHandHud` flag exists only for old JSON compatibility and is hard-disabled; no independent mod checkbox.
+
+**Actual remaining regression:** `src/hud/HudHook.cpp::reloadOffhandHud` reads mutable, per-install `offhand_hud.cfg` over native geometry and never automatically refreshes that saved value from `offhand_hud_default.cfg`. A previously saved experimental custom HUD position survives later code/DLL rollbacks. If active config missing it otherwise initializes six zero-value records instead of Cactus accepted calibrations.
+
+**Implemented:** `launcher/KharvoxLauncher/CactusHandHudRestore.cs` is invoked after exclusive launch gate/game-not-running/verified matching DLL and before DOOM starts. First launch validates shipped template is exactly original 7-line `v1.1.1`, backs up non-original saved `offhand_hud.cfg` to a unique `.pre-cactus-v1.1.1-*.bak`, atomically installs original file, and backs up/disables stale `enable_live_ammo_calibration` marker. Creates `.kharvox-cactus-v1.1.1-hand-hud-restored` marker so later user calibrations are NOT reset. If saved file is later deleted, safely recreates it from original. Separate `--self-test-cactus-hand-hud` asserts backup/no-overwrite/missing-file recovery/template validation; Windows CI passed. Both Full and Dev Patch now include `offhand_hud_default.cfg`; source code for wrist HUD orientation/position was not rewritten or copied wholesale to avoid unrelated regressions.
+
+**Build #466** https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38720224180 **SUCCESS**: launcher, original-HUD restoration self-test, native Release, C++ policies, resource mods, supervisor, packaging, and uploads passed. Artifacts: `KHARVOX-Full-Build` and `KHARVOX-Dev-Patch`.
+
+**Headset status:** original Cactus placement restored in source and runtime setup, but visuals NOT YET USER VERIFIED. The #443 fast GK/chainsaw animations and #456/#461 camera/stereo fixes were left unchanged. If user runs with optional "No HUD" checked, it still deliberately hides HUD (separate intended mod), so uncheck for stock HUD.
+
 ## 2026-10-15 — #456 user test: head tilt improved, short blink remains
 
 User reports after #456: "its working better but there is like a flash or a blink, maybe only a few frames but its quite distracting". #456 is an improvement, not a full headset pass. The GK/chainsaw full-speed timing that was confirmed working in #443 must be preserved.
