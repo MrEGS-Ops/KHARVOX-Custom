@@ -4,6 +4,16 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — #456 user test: head tilt improved, short blink remains
+
+User reports after #456: "its working better but there is like a flash or a blink, maybe only a few frames but its quite distracting". #456 is an improvement, not a full headset pass. The GK/chainsaw full-speed timing that was confirmed working in #443 must be preserved.
+
+**Working theory (NOT yet confirmed without a new runtime log):** The native/SFS scene identity in `src/openxr/OpenXRBootstrap.cpp` marks a still-active cinematic participant guard as a separate Scripted scene after DOOM's gameplay camera has already returned. `sameSceneContext` in `src/native/NativeFrameSource.h` rejects a pair from a different scene domain; with `nativeFrameValid=false` the projection deliberately submits zero OpenXR layers, which may look like a blink.
+
+**#461 implementation (NOT HEADSET VERIFIED):** Use `KharvoxCameraReturnedToGameplayAfterCinematic()` as a read-only indicator for the existing gameplay-camera return latch to skip the extra Scripted stereo scene during the participant guard release grace. Preserve the stereo image-matching safety policy and source domains for genuine authored animations. Add `[STEREO-GAP]` diagnostics to count omitted projection frames; add C++ regression cases covering cinematic, scripted, gameplay, and quad domains. The original #443 DOOM-native kill timing logic is untouched.
+
+Acceptance: GK/chainsaw normal-speed verified again; no tilt or blink after an execution, no one-eye mismatch/black projection, wheel blur and slow motion still work. If the blink remains, inspect `[STEREO-GAP]` + `[NATIVE-SOURCE]` before changing another renderer path.
+
 ## 2026-10-15 — diagnosis corrected: DOWN+SIDEWAYS world tilt, then SNAP level
 
 User clarified: the headset remains physically trackable, but the **entire rendered view tilts down and to one side** for ~1 sec during/after GK, then abruptly resets upright. Do NOT interpret this as ordinary yaw catch-up or ask for forced neck/head turns. This supersedes the earlier 600°/s yaw-based recovery hypothesis.
