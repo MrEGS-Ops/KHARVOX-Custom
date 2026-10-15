@@ -61,3 +61,14 @@ else()
   target_compile_options(KharvoxFastKillSyncTimingTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME fast-kill-sync-timing COMMAND KharvoxFastKillSyncTimingTests)
+
+# Post-execution yaw recovery: preserve HMD view while locomoting, with
+# deliberate manual-turn priority and capped native body catch-up afterward.
+add_executable(KharvoxPostCinematicYawPolicyTests ../post_cinematic_yaw_policy_tests.cpp)
+target_compile_features(KharvoxPostCinematicYawPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxPostCinematicYawPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxPostCinematicYawPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME post-cinematic-yaw-policy COMMAND KharvoxPostCinematicYawPolicyTests)
