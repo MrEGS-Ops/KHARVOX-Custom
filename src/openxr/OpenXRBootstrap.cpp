@@ -664,7 +664,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(!copied||copied>=sizeof(text))return 10;
         char* end{};
         const long value=std::strtol(text,&end,10);
-        if(end==text||*end!='\\0'||value<0||value>10)return 10;
+        if(end==text||*end!='\0'||value<0||value>10)return 10;
         return static_cast<int>(value);
     }();
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
