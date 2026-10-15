@@ -70,6 +70,11 @@ std::array<std::atomic<float>, 9> bodyCameraAxis{};
 std::atomic<bool> bodyCameraValid{};
 std::array<std::atomic<float>, 9> preCinematicGameplayAxis{};
 std::atomic<bool> preCinematicGameplayAxisValid{};
+// True only between a real cinematic -> gameplay camera transition and
+// release of the native animated-participant guard. Without this handoff,
+// the next ordinary gameplay camera inherits animated pitch/roll for up to
+// several seconds, then visibly snaps upright when the guard clears.
+std::atomic<bool> postCinematicGameplayCameraReturned{};
 std::array<std::atomic<float>, 3> playerPhysicsOrigin{};
 std::atomic<uintptr_t> playerPhysicsOwner{};
 std::atomic<bool> playerPhysicsOriginValid{};
@@ -2016,6 +2021,8 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         // top of the gameplay body basis held at cinematic entry. HMD
         // translation remains disabled so the animation still owns position.
         const bool wasCutscene = cutsceneActive.exchange(true, std::memory_order_acq_rel);
+        if (!wasCutscene)
+            postCinematicGameplayCameraReturned.store(false, std::memory_order_release);
         if (!wasCutscene && bodyCameraValid.load(std::memory_order_acquire)) {
             preCinematicGameplayAxisValid.store(false, std::memory_order_release);
             float entryBasis[9]{};
@@ -2127,8 +2134,10 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
     const bool gameplayCamera = callerRva == 0xE3F96A;
     const bool cinematicEnded = gameplayCamera
         && cutsceneActive.exchange(false, std::memory_order_acq_rel);
-    if (cinematicEnded && preCinematicGameplayAxisValid.load(std::memory_order_acquire))
-        log("[IMMERSIVE] cinematic exit: native pitch/roll discarded; gravity-level gameplay horizon restored");
+    if (cinematicEnded) {
+        postCinematicGameplayCameraReturned.store(true,std::memory_order_release);
+        log("[IMMERSIVE] cinematic-to-gameplay return: forced gravity-level camera basis until participant guard clears");
+    }
     // F5-F12 are reserved for weapon calibration. The former F9/F10 camera
     // probe could still fire during the one frame in which weapon tracking
     // transitions from invalid to valid and corrupt an otherwise saved pose.
@@ -2177,9 +2186,12 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         fallback = fallbackBasis;
     }
     float levelBasis[9]{};
+    const bool preserveAuthoredCameraBasis=kharvox::preserveAnimatedGameplayBodyBasis(
+        animatedSequenceActive.load(std::memory_order_acquire),
+        postCinematicGameplayCameraReturned.load(std::memory_order_acquire));
     if (kharvox::makeStableGameplayBodyBasis(
             gameplayCamera,
-            animatedSequenceActive.load(std::memory_order_acquire),
+            preserveAuthoredCameraBasis,
             bodyBasis, fallback, levelBasis)) {
         std::memcpy(bodyBasis, levelBasis, sizeof(bodyBasis));
         std::memcpy(unmodifiedBasis, bodyBasis, sizeof(bodyBasis));
@@ -3523,6 +3535,8 @@ void KharvoxCameraSetStereoEye(float localXUnits, float fovXDegrees, float fovYD
 
 void KharvoxCameraSetAnimatedSequenceActive(bool active) {
     animatedSequenceActive.store(active, std::memory_order_release);
+    if(!active)
+        postCinematicGameplayCameraReturned.store(false,std::memory_order_release);
 }
 
 void KharvoxCameraSetAerRenderPair(int renderEye, bool enabled) {
