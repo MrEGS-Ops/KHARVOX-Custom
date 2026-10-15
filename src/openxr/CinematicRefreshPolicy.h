@@ -60,4 +60,18 @@ constexpr bool nativeAdaptiveParticipantGuardIsActive(
     return until && now <= until;
 }
 
+// A confirmed 2026-10-05 working fast Glory Kill launch uses
+// sync_noAdaptiveTick=1. The immersive-cinematic refresh hold used to
+// overwrite it with 0 every Present and re-enable DOOM's sync slow motion.
+// Preserve the original slow-cinematic behavior when fast kills are OFF,
+// but NEVER clear the opt-in native bypass while either fast-kill mod is ON.
+constexpr int nativeSyncAdaptiveTickDuringCinematic(bool fastKillsEnabled) {
+    return fastKillsEnabled ? 1 : 0;
+}
+
+constexpr int nativeSyncAdaptiveTickAfterCinematic(
+    bool fastKillsEnabled,int priorValue) {
+    return fastKillsEnabled ? 1 : priorValue;
+}
+
 } // namespace kharvox
