@@ -215,9 +215,14 @@ internal static class DoomResourceModSession
     // A missing manifest from another build is NOT evidence that the game's
     // numbered resource patches are safe to run. Make a reversible quarantine
     // outside /base; do not delete any file or touch original mod ZIPs.
-    private static bool IsUnverifiedNumberedPatch(string relative)
+    private static bool IsRecoverableGeneratedArtifact(string relative)
     {
         var name=relative.Replace('\\','/');
+        // This is DOOMModLoader's generated video-mod output directory.
+        // Preserve every file in a reversible quarantine, never delete them.
+        if(name.StartsWith("base/video/mods/",StringComparison.OrdinalIgnoreCase))
+            return name.Length>"base/video/mods/".Length
+                && name.Split('/').All(part=>part!="."&&part!=".."&&!string.IsNullOrEmpty(part));
         if(!name.StartsWith("base/gameresources_",StringComparison.OrdinalIgnoreCase)
             || name.IndexOf('/',5)>=0) return false;
         var filename=name.Substring("base/".Length);
@@ -238,12 +243,13 @@ internal static class DoomResourceModSession
     {
         if(resources.Count==0)return null;
         var unsafePaths=resources.Keys.Where(x=>!verifiedOwned
-            &&!IsUnverifiedNumberedPatch(x)).ToArray();
+            &&!IsRecoverableGeneratedArtifact(x)).ToArray();
         if(unsafePaths.Length!=0)
             throw new InvalidOperationException(
                 "KHARVOX found DOOM resource files that may belong to another mod manager. "
-                +"No files were changed; automatic recovery only moves numbered "
-                +"gameresources_NNN.patch/.pindex files, or files verified by a KHARVOX manifest."
+                +"No files were changed; automatic recovery only moves generated "
+                +"gameresources_NNN.patch/.pindex and base/video/mods files, "
+                +"or files verified by a KHARVOX manifest."
                 +Environment.NewLine+string.Join(Environment.NewLine,unsafePaths.Take(12)));
         var recoveryRoot=Path.Combine(gameDir,"KHARVOX-Resource-Recovery");
         if(Directory.Exists(recoveryRoot))NoLinks(recoveryRoot);
@@ -549,15 +555,13 @@ internal static class DoomResourceModSession
             Directory.CreateDirectory(Path.GetDirectoryName(ownedVideo)!);
             File.WriteAllText(ownedVideo,"tracked resource");
             var videoFiles=GetGeneratedResources(game);
-            refused=false;
-            try { QuarantineResources(game,videoFiles,false,null); }
-            catch(InvalidOperationException){refused=true;}
-            if(!refused||!File.Exists(ownedVideo))
-                throw new InvalidOperationException("Unowned video mod must not be moved.");
-            var ownedRecovery=QuarantineResources(game,videoFiles,true,null);
-            if(ownedRecovery is null||!File.Exists(Path.Combine(ownedRecovery,
-                    "base","video","mods","owned.bimage")))
-                throw new InvalidOperationException("Verified owned video mod was not recoverable.");
+            var videoRecovery=QuarantineResources(game,videoFiles,false,null);
+            if(videoRecovery is null||File.Exists(ownedVideo)
+                ||!File.Exists(Path.Combine(videoRecovery,
+                    "base","video","mods","owned.bimage"))
+                ||File.ReadAllText(Path.Combine(videoRecovery,
+                    "base","video","mods","owned.bimage"))!="tracked resource")
+                throw new InvalidOperationException("Orphan video mod was not safely backed up.");
 
             Console.WriteLine("DOOM resource staging, orphaned-build recovery, native verification marker, cross-build manifest, and ownership tests passed.");
             return 0;
