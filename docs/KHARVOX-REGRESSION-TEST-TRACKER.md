@@ -4,6 +4,23 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — EXTENDED TRACE: 120 Hz forced simulation vs 37–39 Hz achieved game frames
+
+**Received user upload:** 10 files, 5 unique SHA-256 contents (five duplicate filename pairs). The relevant newly extended `KHARVOX-KHARVOX(2).log` contains fast-execution diagnostic lines that earlier non-extended logs suppressed, and `KHARVOX(20261015-081718).log` confirms extended diagnostics enabled. An additional sidecar `KHARVOX-NATIVE-STEREO(6).log` is about native stereo observation rather than game timing.
+
+**What the logs PROVE:**
+- `[CUSTOM-MODS]`: `fastGK=on fastChainsaw=on`.
+- `[FAST-KILLS]`: **`sync_noAdaptiveTick=1 expected=1`**, both when immersive execution begins and on release. The previous build's no-slow-motion native-CVar restoration was already working; retrying it cannot address slow kills.
+- First immersive execution: `target=120 Hz` from OpenXR predicted display period `8333333 ns`; **`presents=193 elapsedMs=4946 measuredPresentHz=39.0`**. Starts ~19:16:36; likely a GK based on freelook log.
+- Second immersive execution: `target=120 Hz`; **`presents=521 elapsedMs=14138 measuredPresentHz=36.8`**. Starts ~19:16:43 immediately after `[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified`.
+- Both hold-entry lines record native minHz=30, maxHz=200, adaptive=1, immediate=1, fixedTic=1. **Old immersive refresh code was forcing minHz=120 on every Present plus manually enabling native adaptive runtime tick**, over a game delivering only 37–39 completed Presents/sec. This is a direct confirmed timer configuration mismatch. Hypothesis: fixed-tick animation takes roughly 120/37 times wall-clock duration, explaining the very long chainsaw. This effect is not proven independently in headset yet.
+- Presentation rates outside cinematic holds (~49-51Hz just before first hold, ~63Hz after second) were greater than inside the holds. Do not conflate headset nominal refresh with DOOM game frame rate.
+- Log also has `[GLORY-SLOWMO] timescale cvar current value could not be resolved uniquely`. It's an old independent clock resolver that cannot resolve safely; it did not verify native effective speed. DO NOT force unknown memory addresses or fake 1x override.
+
+**Focused source change awaiting headset test:** For the native full-speed path (either Fast GK / Fast Chainsaw enabled, or old slider requesting native bypass), do not force `com_adaptiveTickMinHz=120`, do not write `maxHz`, `immediateMode`, `com_fixedTic`, or `com_adaptiveTick`; do not rewrite DOOM's internal runtime enabled bit nor enable KHARVOX's participant adaptive bypass. Retain native `sync_noAdaptiveTick=1` and allow DOOM to own its game-time pacing. Preserve existing immersive forced pacing for **both fast-kill settings OFF**, and native weapon wheel entirely untouched. Log `[FAST-KILLS] ... pacing=DOOM-native minHz=... maxHz=... fixedTic=... headsetTargetHz=120` for first frame and `native pacing unmodified` at release. Add CI regression test asserting no forced cinematic pacing with either fast toggle or old GK Speed legacy level.
+
+**Headset status:** STILL FAIL based on prior #440 test; source correction UNVERIFIED. Acceptance: no slowdown during or after BOTH execution types, weapon-wheel slow motion/blur preserved, VR cinematic rendering stays correct. If still slow with observed `minHz=30`, investigate intrinsic engine sync animation/cinematic timing next; DO NOT blindly add more CVar values.
+
 ## 2026-10-15 — new user launcher + native log evidence; zero slow motion still FAIL
 
 User supplied paired logs `KHARVOX(20261015-080937).log` and `KHARVOX-KHARVOX.log` from `C:\\Users\\G180\\Documents\\Downloads\\KHARVOX-Full-Build\\`. The current folder is correct for the recent full-build packaging, but its hardcoded launcher `build=2026.09.29-launcher-v1.11-release` and native `build=2026.09.04-native-frame-inputs-r139` strings are NOT GitHub Actions identifiers. The log does not contain a `PATCH-BUILD.txt` commit/run marker, so exact build provenance remains unverified.
