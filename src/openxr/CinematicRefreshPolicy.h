@@ -74,6 +74,17 @@ constexpr bool nativeFastKillSyncRequested(
         || (legacySpeedLevel >= 0 && legacySpeedLevel < 10);
 }
 
+// The headset's 120 Hz *display period* is NOT the game's achieved frame
+// rate. October 15 headset logs show immersive executions actually present
+// at ~37-39 Hz. Forcing the game's minimum simulation/adaptive tick Hz to 120
+// during these events can stretch fixed-tick animation time by several times.
+// Fast executions must retain DOOM's OWN native tick pacing (usually min=30)
+// while sync_noAdaptiveTick is kept at 1. Do not disable the OpenXR renderer
+// or affect the native weapon-wheel slow motion.
+constexpr bool shouldForceCinematicAdaptiveTickPacing(bool fastKillsEnabled) {
+    return !fastKillsEnabled;
+}
+
 constexpr int nativeSyncAdaptiveTickDuringCinematic(bool fastKillsEnabled) {
     return fastKillsEnabled ? 1 : 0;
 }
