@@ -1731,6 +1731,13 @@ internal static class KharvoxRunner
     internal static IEnumerable<string> NativeGloryKillHighlightArguments() =>
         ["+g_setting_gk_highlight", "0"];
 
+    // The former working Build #83 path toggled DOOM's native sync CVars.
+    // The legacy slow-motion dropdown AND either fast-execution checkbox may
+    // request it; no game-wide custom timescale multiplier is necessary.
+    internal static bool ShouldDisableNativeSyncSlowmo(int sliderLevel,
+        bool eitherFastKillsCheckbox) =>
+        eitherFastKillsCheckbox || sliderLevel < 10;
+
     private static IEnumerable<string> BuildGameArguments(KharvoxLaunchOptions options,
         bool useSteam, decimal effectiveRenderScale, bool nativeStereoEnabled = false,
         bool nativeFastKillsRequested = false)
@@ -1810,7 +1817,7 @@ internal static class KharvoxRunner
         // working: checking EITHER fast-kill mod must activate all THREE CVars
         // even when the older Glory Kill Slow-Mo dropdown is set to native (10).
         // The DOOM engine shares these flags for sync/Chainsaw executions.
-        if (nativeFastKillsRequested || options.GloryKillSlowmoLevel < 10)
+        if (ShouldDisableNativeSyncSlowmo(options.GloryKillSlowmoLevel, nativeFastKillsRequested))
             args.AddRange(["+sync_noAdaptiveTick", "1",
                 "+sync_alwaysSlowMo", "0",
                 "+sync_lastEnemyEncounterSlowMo", "0"]);
