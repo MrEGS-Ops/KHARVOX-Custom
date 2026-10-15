@@ -91,6 +91,26 @@ There was NO custom `timescale` CVar engine, NO kill playback multipliers, and N
 - [ ] No loss of mission select with unmodded launcher mode.
 - [ ] Campaign save backed up prior to any further developer mode session.
 
+## 2026-10-15 — ROOT CAUSE: immersive VR cinematic itself RE-ENABLED slow-mo
+
+**Correction to earlier inaccurate history:** The user's verbatim 2026-10-05 confirmation "glorykill speed slowmo is disabled and working" was on **Build #81** (the same test reported GK displayed cinematically rather than properly in VR), NOT Build #83. The Oct 5 `DisableGloryKillSlowmo` checkbox was introduced in commit `a755f8ff1b47242ffd79c4ba7d385ea700c22f53`. User never separately confirmed chainsaw full speed in that test. Stop misidentifying later Build #83 as the user-confirmed speed baseline.
+
+**Concrete code conflict diagnosed after repeated headset failures:** Despite the native `+sync_noAdaptiveTick 1 +sync_alwaysSlowMo 0 +sync_lastEnemyEncounterSlowMo 0` launch settings, the immersive VR cinematic function `updateImmersiveCinematicRefresh` in `src/openxr/OpenXRBootstrap.cpp` was executing **`write(syncNoAdaptiveTickCurrentRva,0)` on EVERY immersive cinematic frame**, and restoring the saved CVar at exit. This directly contradicts Build #81's native fast-kill launch flag. The old test also reported cinematic (not correct VR) presentation, so this present-path conflict was less exposed.
+
+**Change (UNVERIFIED IN HEADSET):** Keep original three DOOM launch CVars. When EITHER fast-kill checkbox is enabled, maintain `sync_noAdaptiveTick=1` inside the immersive refresh hold, at hold release, and during ordinary frames. When both are off, preserve old immersive refresh behaviour. Do NOT use global `g_enableGameTimeScaling=0` (would break weapon wheel), custom kill speed multipliers, post-kill game-clock forcing or artificial 6.5s cleanup. Log first-frame and release CVar readback as `[FAST-KILLS]` to distinguish CVar reversion from other native timing causes. Added `fast-kill-sync-timing` C++ CI regression coverage.
+
+**Acceptance - all MUST be tested on the new Windows build:**
+- [ ] Glory Kill animation full-speed in headset with no time dilation during.
+- [ ] Immediately normal movement/clock after Glory Kill (no tail).
+- [ ] Chainsaw execution full-speed through entire takedown (NOT yet historically confirmed).
+- [ ] Immediately normal movement/clock after Chainsaw (no tail).
+- [ ] Weapon wheel time dilation and blur still work.
+- [ ] `[FAST-KILLS]` immersive frame reports `sync_noAdaptiveTick=1` on enabled mode.
+- [ ] No unintended change with both Fast Kill options off.
+- [ ] No game saves or resource mod ownership modified by this timing fix.
+
+**No build success or source inspection substitutes for those headset PASS reports.**
+
 ## Active priority: fix these THREE before other changes
 
 ### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
