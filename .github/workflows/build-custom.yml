@@ -264,7 +264,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
           Copy-Item -Path "assets/freedoom" -Destination (Join-Path $full "assets") -Recurse -Force
-          foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt")) {
+          foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt","offhand_hud_default.cfg")) {
             $source = Join-Path $native $name
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
             Copy-Item -LiteralPath $source -Destination $patch -Force
