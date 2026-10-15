@@ -4,6 +4,18 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — diagnosis corrected: DOWN+SIDEWAYS world tilt, then SNAP level
+
+User clarified: the headset remains physically trackable, but the **entire rendered view tilts down and to one side** for ~1 sec during/after GK, then abruptly resets upright. Do NOT interpret this as ordinary yaw catch-up or ask for forced neck/head turns. This supersedes the earlier 600°/s yaw-based recovery hypothesis.
+
+**Source-level root cause candidate found:** `src/openxr/OpenXRBootstrap.cpp` sets `animatedSequenceActive = s.nativeAdaptiveParticipantGuardActive || s.immersiveCinematicActive`. The participant guard intentionally lasts beyond the actual cutscene. `src/camera/CameraHook.cpp::patchCamera` on DOOM's ordinary gameplay caller `0xE3F96A` calls `makeStableGameplayBodyBasis(gameplayCamera, animatedSequenceActive, ...)`. When the lingering guard is active, this **skips the usual gravity-level pitch/roll removal** and feeds a tilted native animation camera into OpenXR, despite gameplay already being resumed. When the guard expires 0.5–3s later, gravity leveling resumes and the world suddenly snaps level. This aligns with the symptom. Previous user extended logs show `[BODY] cinematic reentry` and `[NATIVE-CINEMATIC] state=0` **before** `[CINEMATIC-HZ] immersive hold released` and `[BODY-YAW] ... released`, proving a multi-frame handoff interval; **precise degree of tilt was not recorded**, so headset test still required.
+
+**Changes for #456 (UNVERIFIED IN HEADSET):**
+- Reverted earlier speculative `PostCinematicBodyTurnRecovery` and its gentle yaw turn policy back to confirmed-good #443. **No native yaw remap/catch-up changes shipped.**
+- Added `postCinematicGameplayCameraReturned` state strictly between DOOM's observed cinematic->gameplay caller transition and the renderer's animated-guard clearing (or new cinematic entry). While true, an actual gameplay camera **must discard native pitch/roll immediately**, even if the participant observer remains latched. A REAL cinematic camera retains its authored animation and HMD rotation, preserving immersive GK visuals.
+- Added `preserveAnimatedGameplayBodyBasis` pure policy and exhaustive tilt/roll handoff assertions in existing `tests/camera_basis_policy_tests.cpp`; registered that test under `tests/policy/CMakeLists.txt` to run in CI.
+- **Acceptance:** user reports no down/side tilted-world hold or abrupt snap after GK/chainsaw; fast execution animations remain full-speed as confirmed in #443; HMD positional/rotational tracking remains comfortable; weapon wheel slow/blur intact. No forced head movements requested.
+
 ## 2026-10-15 — after-kill delayed unexpected recenter while RUNNING: body yaw guard
 
 User clarified no violent headset test is appropriate: after fast GK, running away works initially, then view/head focus suddenly snaps or recentres as if Meta's reset view command were held. Direction (yaw vs pitch vs position) unknown. **Do not ask for forced head twisting or neck testing.**
