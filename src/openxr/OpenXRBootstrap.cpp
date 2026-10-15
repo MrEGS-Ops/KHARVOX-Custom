@@ -3517,6 +3517,7 @@ void updateGameplayActions(XrTime displayTime){
     // Boxing reuses DOOM's verified timescale path but never replaces the
     // original wheel presentation or takes its native selection input.
     const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus
+        &&!syncAttackActive&&!s.chainsawKillLatched
         &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
     const bool recoveryEligible=(s.customMods.fastGloryKills
