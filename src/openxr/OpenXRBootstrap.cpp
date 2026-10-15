@@ -309,6 +309,8 @@ struct State {
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     XrTime lastChainsawAttackAt{};
+    bool executionRecoveryArmed{};
+    XrTime postExecutionSlowmoCleanupUntil{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{};
@@ -2931,6 +2933,18 @@ void updateGameplayActions(XrTime displayTime){
         s.chainsawKillLatched=true;
         log("[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified");
     }
+    // Detect the transition OUT of a verified native execution; never
+    // mistake ordinary weapon-wheel slowdown for an execution. A chainsaw
+    // often stays cinematic after DOOM drops the sync-attack flag.
+    const bool executionActive=syncAttackActive
+        ||(s.chainsawKillLatched&&cutscene);
+    if(executionActive)
+        s.executionRecoveryArmed=true;
+    else if(s.executionRecoveryArmed&&!cutscene) {
+        s.executionRecoveryArmed=false;
+        s.postExecutionSlowmoCleanupUntil=displayTime+6500000000LL;
+        log("[FAST-KILLS] execution ended; short normal-speed recovery guard armed");
+    }
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
@@ -3132,8 +3146,17 @@ void updateGameplayActions(XrTime displayTime){
         s.persistentSsgBlockedLogged=false;
     }
     const auto ssgAmmo=KharvoxWeaponGetAmmoState(KharvoxWeaponKind::SuperShotgun);
+    // Source has NO verified DOOM shot/reload-animation lifecycle hook.
+    // The previous opt-in gate suppressed Fire for 1.6s while the visible
+    // native SSG animation never replayed. Do not manufacture an invisible
+    // reload delay or pulse unverified game CVars. Native SSG input wins until
+    // the original animation can actually be restarted and acknowledged.
+    constexpr bool verifiedNativeSsgAnimationLifecycleHook=false;
+    const bool persistentSsgActuallySupported=
+        s.customMods.persistentSuperShotgunReload
+        &&verifiedNativeSsgAnimationLifecycleHook;
     const kharvox::PersistentSuperShotgunReloadInput reloadInput{
-        s.customMods.persistentSuperShotgunReload,
+        persistentSsgActuallySupported,
         gameplay&&!KharvoxHudDeathMenuActive(),
         activeWeaponKind==KharvoxWeaponKind::SuperShotgun,
         s.dynamicShoulderHolstered,
@@ -3151,7 +3174,7 @@ void updateGameplayActions(XrTime displayTime){
     // Always service while input is active, so 250ms native reload CVar pulse
     // is restored on expiry, weapon switch, menu, or mod disable.
     KharvoxCameraServiceSuperShotgunNativeReloadReplay(
-        reloadOutput.nativeReloadReplayRequested,
+        persistentSsgActuallySupported&&reloadOutput.nativeReloadReplayRequested,
         reloadInput.enabled&&reloadInput.gameplayActive
             &&reloadInput.superShotgunEquipped
             &&!reloadInput.weaponHolstered&&!reloadInput.weaponWheelActive
@@ -3494,6 +3517,12 @@ void updateGameplayActions(XrTime displayTime){
     const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus
         &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
+    const bool recoveryEligible=(s.customMods.fastGloryKills
+            ||s.customMods.fastChainsawKills)
+        &&s.postExecutionSlowmoCleanupUntil>displayTime
+        &&gameplay&&!syncAttackActive&&!cutscene
+        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!boxingNow;
+    KharvoxCameraSetPostExecutionSlowmoCleanup(recoveryEligible);
     // No custom animation speed path: the launcher enables DOOM's proven
     // native sync_noAdaptiveTick bypass for fast kills. Keep only Boxing
     // Guard's separate, opt-in time dilation, never overriding kill timing.
@@ -3517,7 +3546,8 @@ bool createGameplayActions(){
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
         +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
-        +" persistentSsgReload="+(s.customMods.persistentSuperShotgunReload?"on":"off")
+        +" persistentSsgReload="+(s.customMods.persistentSuperShotgunReload
+            ?"requested-but-disabled-until-native-animation-hook":"off")
         +" fastGK="+(s.customMods.fastGloryKills?"on":"off")
         +" fastChainsaw="+(s.customMods.fastChainsawKills?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
