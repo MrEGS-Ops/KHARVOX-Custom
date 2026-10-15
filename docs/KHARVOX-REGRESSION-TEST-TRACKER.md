@@ -4,6 +4,25 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-15 — user-reported Build #408 regressions and targeted source changes
+
+**Headset feedback (FAIL):**
+- **Fast Glory Kills:** execution is a little quicker, but the player remains slowed for **1–2 seconds after** the animation.
+- **Fast Chainsaw Kills:** execution is a little quicker, but the player remains slowed for **about 5 seconds after** the animation.
+- **Persistent Super Shotgun Reload:** original visible reload animation STILL DOES NOT RESTART after an interrupted reload; only a motionless gun and artificial firing block are observed.
+
+**Latest source response (UNVERIFIED, NOT PASS):**
+- After an observed native sync/Chainsaw execution ends, an opt-in, 6.5-second normal-gameplay guard checks the validated DOOM `timescale` float and clears residual fractional time dilation to 1.0. It is **OFF during executions, native weapon-wheel use, Boxing Guard and all cinematics**, and is reset on OpenXR focus loss. This targets lingering slowdown; whether the reported residue is caused by this CVar still requires headset proof. Check `[GLORY-SLOWMO] post-execution residual slowdown cleared` in the log.
+- **SSG safety rollback:** the source has no verified original DOOM idHands reload-animation start/completion callback. The 1.6-second synthetic XInput firing gate and the unproven native reload CVar pulse are bypassed regardless of the saved checkbox until a real native animation hook exists. This removes KHARVOX's invisible firing delay, **but does not deliver the requested persistent animation restart**. Launcher tooltip explicitly marks it INCOMPLETE.
+- Do not consider any problem solved because CI compiles. Inspect the exact build and verify in Quest. Keep native wheel's time dilation, blur and the previously working hand-exit behaviour unchanged.
+
+**Acceptance:**
+- [ ] Glory Kill completes, then **immediate normal gameplay speed**, no 1–2-second linger; wheel slow-motion still works.
+- [ ] Chainsaw execution completes, then **immediate normal gameplay speed**, no 5-second linger; wheel slow-motion still works.
+- [ ] No slow-motion leak on cancel, death, pause, or loss of focus.
+- [ ] SSG no longer hangs motionless due to an artificial KHARVOX-only timer; ordinary native reload/firing preserved.
+- [ ] SSG original animation ACTUALLY restarts on re-equip after interruption. **Still BLOCKED; not provided by the rollback.**
+
 ## Active priority: fix these THREE before other changes
 
 ### [FAIL / SOURCE ROLLBACK — AWAITING HEADSET TEST] 1. Fast Glory Kills
