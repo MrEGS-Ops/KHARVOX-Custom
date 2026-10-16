@@ -4,6 +4,23 @@
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 
+## 2026-10-16 — SEVERE VR REGRESSION: #466 black for seconds after kill; revert #461 SFS scene-domain experiment
+
+**User report after installing #466:** What was a quick blink in #456 is **now several seconds of fully black VR display**. This is a high-priority comfort/visibility failure. User should not have to perform forced head/neck tests. The Cactus v1.1.1 hand-HUD migration in #466 itself did **not** modify any OpenXR/CameraHook native frame path; it was the first test containing the **#461** experimental native stereo source-domain handoff.
+
+**Specific code issue:** #461 added `KharvoxCameraReturnedToGameplayAfterCinematic()` and `useScriptedParticipantScene(guard, returned)`, changing producer request `next.source.domain` from Scripted to Gameplay **while** the game can still deliver a delayed Scripted stereo image. `sameSceneContext` requires producer image scene domain to equal requested scene domain exactly. During this mismatch `nativeFrameValid=false`; OpenXR sets `ei.layerCount=0` and submits **black/no projection layers**. On a 37-40fps DOOM renderer, a mismatch that persists across many Presents can yield multi-second darkness. This is a **strong source-level cause**, not independently verified without the user's #466 native log.
+
+**IMMEDIATE SAFE ROLLBACK:** Replace five files (exact original blob SHA from **known-better #456 commit `41c57b5a8d724395ba65107c6aca0cf0e7ddff69`**):
+- `src/openxr/OpenXRBootstrap.cpp`
+- `src/camera/CameraHook.cpp`
+- `src/camera/CameraHook.h`
+- `src/native/NativeFrameSource.h`
+- `tests/camera_basis_policy_tests.cpp`
+
+Verified all five were byte/blob-identical to #456 after restoration. This drops the unverified #461 extra scene-domain change and its `[STEREO-GAP]` diagnostic, but retains **#456 native camera basis levelling**, **#443 verified full-speed Glory/Chainsaw**, and **#466 original Cactus hand HUD one-time saved-config restoration**. Do NOT restore untested yaw hacks or new stereo-domain mismatches. Build #471 run https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38876424502 follows these commits.
+
+**Acceptance:** no seconds-long blackout after GK or chainsaw; retain full-speed takedowns and Cactus wrist HUD; remaining brief #456 blink may persist and must be investigated separately with logs. Do not claim stable until build succeeds AND user verifies headset behaviour.
+
 ## 2026-10-15 — #466 Cactus KHARVOX v1.1.1 hand HUD ORIGINAL RESTORE (compiled and tested)
 
 **User requirement:** regress all experimental hand HUD placement edits made Oct 8–12, restore CactusVRStudios/KHARVOX GitHub tag `v1.1.1` (release title "KHARVOX 1.11") wrist/hand HUD **as normal stock behaviour, not a separate mod**, without touching other gameplay mods.
