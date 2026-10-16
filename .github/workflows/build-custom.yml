@@ -128,6 +128,7 @@ jobs:
             kharvox-native-${{ runner.os }}-
 
       - name: Install SFS compiler dependencies
+        timeout-minutes: 8
         shell: powershell
         run: |
           $triplet = "x64-windows-static-md"
