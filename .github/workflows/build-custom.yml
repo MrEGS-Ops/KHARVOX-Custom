@@ -128,7 +128,9 @@ jobs:
             kharvox-native-${{ runner.os }}-
 
       - name: Install SFS compiler dependencies
-        timeout-minutes: 8
+        # On a vcpkg baseline update, SPIRV-Tools rebuilds both Debug and
+        # Release (roughly 10+ minutes) before binaries can be cached.
+        timeout-minutes: 25
         shell: powershell
         run: |
           $triplet = "x64-windows-static-md"
