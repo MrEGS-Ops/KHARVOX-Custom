@@ -5336,17 +5336,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         next.bodyTracking=laserBodyTrackingTransform();
         next.exactProjectionCrop=s.runtimeKind==kharvox::OpenXRRuntimeKind::MetaOculus;
         next.cinematic=!s.quadMode&&s.immersiveCinematicActive&&KharvoxCameraWorldActive();
-        // Use the camera DOOM actually rendered, not the participant
-        // observer's delayed release: avoid Cinematic -> Scripted -> Gameplay
-        // domain changes after fast GK/chainsaw (each can blank XR layers).
-        const bool cameraReturnedToGameplay=
-            KharvoxCameraReturnedToGameplayAfterCinematic();
-        next.scripted=!s.quadMode&&!next.cinematic&&KharvoxCameraWorldActive()
-            &&kharvox::native::useScriptedParticipantScene(
-                s.nativeAdaptiveParticipantGuardActive,cameraReturnedToGameplay);
-        next.gameplay=!s.quadMode&&!next.cinematic&&!next.scripted
-            &&(KharvoxCameraGameplayActive()||cameraReturnedToGameplay)
-            &&!KharvoxCameraCutsceneActive();
+        next.scripted=!s.quadMode&&!next.cinematic&&s.nativeAdaptiveParticipantGuardActive&&KharvoxCameraWorldActive();
+        next.gameplay=!s.quadMode&&!next.cinematic&&!next.scripted&&KharvoxCameraGameplayActive()&&!KharvoxCameraCutsceneActive();
         // Snapshot the inputs before recording the source ID into the SFS
         // frame. Refresh phase zero each frame; there is no second CPU eye.
         if(sfsBackend){
@@ -5394,10 +5385,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(lastNativeDomain!=int(next.source.domain)){
             lastNativeDomain=int(next.source.domain);
             log("[NATIVE-SOURCE] domain="+std::to_string(lastNativeDomain)
-                +" level="+std::to_string(next.source.level)
-                +" pose="+std::to_string(next.source.poseId)
-                +" returnedToGameplay="+(cameraReturnedToGameplay?"true":"false")
-                +" participantGuard="+(s.nativeAdaptiveParticipantGuardActive?"true":"false"));
+                +" level="+std::to_string(next.source.level)+" pose="+std::to_string(next.source.poseId));
         }
         static int lastNativeCinematic=-1;
         const int cinematicState=next.cinematic?(nativeFrameValid?2:1):0;
@@ -6754,27 +6742,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     ei.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
     // Never submit uninitialized/mislabelled projection images while priming.
     // Keep the frame lifecycle and future eye programming running.
-    const bool nativeProjectionPairGap=nativeBackend&&!s.quadMode&&!nativeFrameValid;
-    // A mismatched stereo source is deliberately withheld to avoid sending
-    // different scene contexts to the eyes. This produces zero XR layers and
-    // can appear as the reported one-to-few-frame blink. Keep fail-closed and
-    // log exactly how many blanks remain after the domain-handoff change.
-    static unsigned int nativeProjectionGapFrames{};
-    if(nativeProjectionPairGap){
-        ++nativeProjectionGapFrames;
-        if(nativeProjectionGapFrames==1)
-            log("[STEREO-GAP] native projection omitted: no same-domain pair"
-                " guard="+std::to_string(s.nativeAdaptiveParticipantGuardActive)
-                +" returnedToGameplay="+std::to_string(
-                    KharvoxCameraReturnedToGameplayAfterCinematic())
-                +" cinematic="+std::to_string(s.immersiveCinematicActive));
-    }else if(nativeProjectionGapFrames){
-        log("[STEREO-GAP] native projection restored after "
-            +std::to_string(nativeProjectionGapFrames)+" omitted frames");
-        nativeProjectionGapFrames=0;
-    }
     ei.layerCount=(aerSourceMode&&!s.steamXrAerPairReady)
-        ||nativeProjectionPairGap?0:layerCount;
+        ||(nativeBackend&&!s.quadMode&&!nativeFrameValid)?0:layerCount;
     ei.layers=layers.data();
     const std::string layerReason=hudImageCopied?"projection+hud-quad":(s.quadMode?"quad-layer":"projection-layer");
     if(nativeFrameValid)QueryPerformanceCounter(&nativeEndAt);
