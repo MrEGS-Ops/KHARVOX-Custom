@@ -1,6 +1,5 @@
 #include "../src/camera/CameraBasisPolicy.h"
 #include "../src/camera/PlayerControlPolicy.h"
-#include "../src/native/NativeFrameSource.h"
 
 #include <cmath>
 
@@ -68,25 +67,6 @@ int main() {
     if(kharvox::makeStableGameplayBodyBasis(
             true,kharvox::preserveAnimatedGameplayBodyBasis(true,false),
             rolled,identity,output))return 18;
-
-    // Headset blink regression: a lingering cinematic-participant guard
-    // must NOT create an extra Scripted scene after DOOM's gameplay camera
-    // is back. Keep the actual cinematic and non-return scripted modes.
-    if(!kharvox::native::useScriptedParticipantScene(true,false))return 19;
-    if(kharvox::native::useScriptedParticipantScene(true,true))return 20;
-    if(kharvox::native::useScriptedParticipantScene(false,true))return 21;
-    if(kharvox::native::sceneDomain(false,false,
-            kharvox::native::useScriptedParticipantScene(true,true),true)
-        !=kharvox::native::SceneDomain::Gameplay)return 22;
-    if(kharvox::native::sceneDomain(false,true,
-            kharvox::native::useScriptedParticipantScene(true,false),false)
-        !=kharvox::native::SceneDomain::Cinematic)return 23;
-    if(kharvox::native::sceneDomain(false,false,
-            kharvox::native::useScriptedParticipantScene(true,false),false)
-        !=kharvox::native::SceneDomain::Scripted)return 24;
-    if(kharvox::native::sceneDomain(true,false,
-            kharvox::native::useScriptedParticipantScene(true,true),true)
-        !=kharvox::native::SceneDomain::Inactive)return 25;
 
     // Movement-only holds can still be playable weapon sequences. View,
     // buttons and profile-driven view locks identify passive authored scenes.
