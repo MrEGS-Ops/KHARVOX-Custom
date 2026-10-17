@@ -1089,27 +1089,39 @@ public sealed partial class MainForm
             main.customBoxingGuard.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 0)
+            if (main.gloryKillSlowmo.Value != 0
+                || main.cinematicKillSpeed.Enabled
+                || main.cinematicKillSpeedTitle.ForeColor != Color.Gray
+                || main.cinematicKillSpeedValue.ForeColor != Color.Gray
+                || !main.cinematicKillSpeedValue.Text.Contains("Locked")
+                || !main.detachedModToolTip.GetToolTip(main.customFastGloryKills)
+                    .Contains("DISABLES CINEMATIC KILL SPEED SLIDER"))
                 throw new InvalidDataException(
-                    "Fast Glory Kills must select native no-adaptive-tick mode.");
+                    "Fast Glory Kills must select native fast mode and visibly disable the speed slider.");
 
             main.applyingCustomModDependencies = true;
             main.customFastGloryKills.Checked = false;
             main.customFastChainsawKills.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 0)
+            if (main.gloryKillSlowmo.Value != 0
+                || main.cinematicKillSpeed.Enabled
+                || !main.detachedModToolTip.GetToolTip(main.customFastChainsawKills)
+                    .Contains("DISABLES CINEMATIC KILL SPEED SLIDER"))
                 throw new InvalidDataException(
-                    "Fast Chainsaw Kills must reuse native no-adaptive-tick mode.");
+                    "Fast Chainsaw Kills must reuse native fast mode and visibly disable the speed slider.");
 
             main.applyingCustomModDependencies = true;
             main.customFastChainsawKills.Checked = false;
             main.customBoxingGuard.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 10 || !main.customBoxingGuard.Checked)
+            if (main.gloryKillSlowmo.Value != 10 || !main.customBoxingGuard.Checked
+                || !main.cinematicKillSpeed.Enabled
+                || main.cinematicKillSpeedTitle.ForeColor == Color.Gray
+                || main.cinematicKillSpeedValue.Text.Contains("Locked"))
                 throw new InvalidDataException(
-                    "Fast Kills off must restore native sync timing without disabling Boxing Guard.");
+                    "Fast Kills off must restore native sync timing and unlock the speed slider without disabling Boxing Guard.");
 
             main.applyingCustomModDependencies = true;
             main.customFastGloryKills.Checked = true;

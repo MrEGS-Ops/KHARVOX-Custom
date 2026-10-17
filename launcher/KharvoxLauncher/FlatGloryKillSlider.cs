@@ -33,7 +33,7 @@ internal sealed class FlatGloryKillSlider : Control
         BackColor = Color.FromArgb(30, 30, 33);
         ForeColor = Color.FromArgb(201, 201, 204);
         TabStop = true;
-        AccessibleName = "Glory Kill speed slider (1 native, 5 fastest)";
+        AccessibleName = "Cinematic Kill Speed (1 native, 5 full speed)";
     }
     private Rectangle Track => new Rectangle(12, Height / 2 - 2,
         Math.Max(1, Width - 24), 4);
@@ -42,6 +42,13 @@ internal sealed class FlatGloryKillSlider : Control
         var t = Track;
         return t.Left + (number - 1) * t.Width / 4;
     }
+    protected override void OnEnabledChanged(EventArgs e)
+    {
+        base.OnEnabledChanged(e);
+        // This is an owner-painted control: Windows does not automatically
+        // grey its track/thumb when Enabled becomes false.
+        Invalidate();
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
@@ -49,14 +56,20 @@ internal sealed class FlatGloryKillSlider : Control
         g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(BackColor);
         var track = Track;
-        using (var background = new SolidBrush(Color.FromArgb(76, 76, 80)))
+        var enabled = Enabled;
+        using (var background = new SolidBrush(enabled
+            ? Color.FromArgb(76, 76, 80) : Color.FromArgb(48, 48, 50)))
             g.FillRectangle(background, track);
-        using (var filled = new SolidBrush(Color.FromArgb(157, 157, 160)))
+        using (var filled = new SolidBrush(enabled
+            ? Color.FromArgb(157, 157, 160) : Color.FromArgb(65, 65, 68)))
             g.FillRectangle(filled, new Rectangle(track.X, track.Y,
                 Math.Max(1, Position(Value) - track.Left), track.Height));
-        // Five always-visible physical stops with a larger active thumb.
-        using var inactive = new SolidBrush(Color.FromArgb(123, 123, 127));
-        using var active = new SolidBrush(Color.FromArgb(224, 224, 226));
+        // The disabled thumb remains in place to preserve the saved selection,
+        // but is deliberately dimmer than even the inactive enabled stops.
+        using var inactive = new SolidBrush(enabled
+            ? Color.FromArgb(123, 123, 127) : Color.FromArgb(69, 69, 73));
+        using var active = new SolidBrush(enabled
+            ? Color.FromArgb(224, 224, 226) : Color.FromArgb(96, 96, 99));
         for (var n = 1; n <= 5; n++)
         {
             var cx = Position(n);
@@ -77,7 +90,7 @@ internal sealed class FlatGloryKillSlider : Control
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
-        if (e.Button != MouseButtons.Left) return;
+        if (!Enabled || e.Button != MouseButtons.Left) return;
         Focus();
         Capture = true;
         SelectPosition(e.X);
@@ -85,7 +98,7 @@ internal sealed class FlatGloryKillSlider : Control
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
-        if (Capture && e.Button == MouseButtons.Left) SelectPosition(e.X);
+        if (Enabled && Capture && e.Button == MouseButtons.Left) SelectPosition(e.X);
     }
     protected override void OnMouseUp(MouseEventArgs e)
     {
@@ -101,6 +114,7 @@ internal sealed class FlatGloryKillSlider : Control
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (!Enabled) return;
         if (e.KeyCode == Keys.Left) Value--;
         else if (e.KeyCode == Keys.Right) Value++;
         else if (e.KeyCode == Keys.Home) Value = 1;

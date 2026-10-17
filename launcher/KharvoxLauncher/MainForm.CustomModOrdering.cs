@@ -450,6 +450,9 @@ public sealed partial class MainForm
 
                 else if (item.Box == customDynamicShoulderHolster)
                     dependencies = " — Requires #Hands";
+                else if (item.Box == customFastGloryKills
+                    || item.Box == customFastChainsawKills)
+                    dependencies = " — Disables Speed Slider";
                 // The mod's own caption and tooltip move to the new position,
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;
