@@ -84,9 +84,26 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
     private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
+    private readonly CheckBox customCinematicFineTune = MakeCheck("Cinematic Speed Fine Tune", true);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
+    private readonly FlatGloryKillSlider cinematicFineTuneHz = new()
+    {
+        Minimum = 30, Maximum = 40, Value = 35,
+        AccessibleName = "Fine tune cinematic Hz minus number plus"
+    };
+    private readonly Label cinematicFineTuneTitle = new()
+    {
+        Text = "Fine Tune (30–40 Hz)", Width = 180, Height = 29,
+        ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
+        Margin = new Padding(0, 0, 10, 0)
+    };
+    private readonly Label cinematicFineTuneValue = new()
+    {
+        Width = 172, Height = 29, ForeColor = Color.WhiteSmoke,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
     private readonly Label cinematicKillSpeedTitle = new()
     {
         Text = "Cinematic Kill Speed", Width = 180, Height = 29,
@@ -408,8 +425,9 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customFastGloryKills, "DISABLES CINEMATIC KILL SPEED SLIDER while enabled. Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to unlock the Cinematic Kill Speed slider and restore its selected timing. No speed multiplier or animation rewrite."),
-            (customFastChainsawKills, "DISABLES CINEMATIC KILL SPEED SLIDER while enabled. Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either Fast Kills checkbox overrides the slider. Disable BOTH to unlock the slider. Chainsaw effectiveness still needs headset verification."),
+            (customFastGloryKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to unlock the Cinematic Kill Speed slider and restore its selected timing. No speed multiplier or animation rewrite."),
+            (customFastChainsawKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either Fast Kills checkbox overrides the slider. Disable BOTH to unlock the slider. Chainsaw effectiveness still needs headset verification."),
+            (customCinematicFineTune, "AUTO-CHECKED ONCE: fine-tune the existing DOOM cinematic adaptive tick target 30–40 Hz in 1 Hz steps. Overrides numbered Cinematic Kill Speed while selected. Fast Kills overrides both. Restart DOOM after adjusting."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -466,6 +484,29 @@ public sealed partial class MainForm : Form
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         customModsGrid.Controls.Add(cinematicSpeedRow, 0, speedRowIndex);
         customModsGrid.SetColumnSpan(cinematicSpeedRow, 2);
+        customModsGrid.Height += 36;
+        var fineTuneRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, Height = 36, AutoSize = false,
+            WrapContents = false, BackColor = PanelColor,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(4, 3, 0, 0), Padding = Padding.Empty
+        };
+        fineTuneRow.Controls.Add(cinematicFineTuneTitle);
+        cinematicFineTuneHz.Width = 160;
+        fineTuneRow.Controls.Add(cinematicFineTuneHz);
+        fineTuneRow.Controls.Add(cinematicFineTuneValue);
+        cinematicFineTuneHz.ValueChanged += (_, _) =>
+        {
+            if (restoringConfiguration || applyingCustomModDependencies) return;
+            UpdateCinematicKillSpeedLabel();
+            SaveCustomModSettings();
+            OptionChanged(cinematicFineTuneHz, EventArgs.Empty);
+        };
+        var fineTuneRowIndex = customModsGrid.RowCount++;
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        customModsGrid.Controls.Add(fineTuneRow, 0, fineTuneRowIndex);
+        customModsGrid.SetColumnSpan(fineTuneRow, 2);
         customModsGrid.Height += 36;
         var customModsScroll = new Panel
         {
@@ -1460,15 +1501,34 @@ public sealed partial class MainForm : Form
             _ => "5 · 31 Hz near-max"
         };
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
-        cinematicKillSpeed.Enabled = !nativeFastChecked;
-        cinematicKillSpeedTitle.ForeColor = nativeFastChecked ? Color.Gray : Color.WhiteSmoke;
-        cinematicKillSpeedValue.ForeColor = nativeFastChecked ? Color.Gray : Color.WhiteSmoke;
-        cinematicKillSpeedValue.Text = nativeFastChecked ? "Locked by Fast Kills" : savedValue;
+        var fineTuneChecked = customCinematicFineTune.Checked;
+        cinematicKillSpeed.Enabled = !nativeFastChecked && !fineTuneChecked;
+        cinematicFineTuneHz.Enabled = !nativeFastChecked && fineTuneChecked;
+        cinematicFineTuneTitle.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
+        cinematicFineTuneValue.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
+        cinematicFineTuneValue.Text = nativeFastChecked
+            ? "Locked by Fast Kills"
+            : fineTuneChecked ? cinematicFineTuneHz.Value + " Hz · restart DOOM"
+            : "Enable Fine Tune mod";
+        var fineTip = nativeFastChecked
+            ? "Fast Glory/Chainsaw overrides fine tune. Uncheck both to edit."
+            : fineTuneChecked
+                ? "Use −/+ for 30–40 Hz in 1 Hz steps. Restart DOOM to apply."
+                : "Check Cinematic Speed Fine Tune to enable this control.";
+        statusToolTip.SetToolTip(cinematicFineTuneTitle, fineTip);
+        statusToolTip.SetToolTip(cinematicFineTuneValue, fineTip);
+        cinematicFineTuneHz.AccessibleDescription = fineTip;
+        cinematicKillSpeedTitle.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
+        cinematicKillSpeedValue.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
+        cinematicKillSpeedValue.Text = nativeFastChecked ? "Locked by Fast Kills"
+            : fineTuneChecked ? "Locked by Fine Tune" : savedValue;
         var explanation = nativeFastChecked
             ? "Disabled by Fast Glory Kills or Fast Chainsaw Kills. "
                 + "Uncheck BOTH mods to enable Cinematic Kill Speed. "
                 + "Saved slider position: " + savedValue + "."
-            : "Cinematic Kill Speed: click −/+; 1 native; 2 90 Hz; "
+            : fineTuneChecked
+                ? "Disabled by Cinematic Speed Fine Tune (30–40 Hz). Uncheck that mod to unlock."
+                : "Cinematic Kill Speed: click −/+; 1 native; 2 90 Hz; "
                 + "3 70 Hz; 4 50 Hz; 5 experimental 31 Hz near-max. "
                 + "True max uses Fast Kills mods. Restart DOOM to apply.";
         // The disabled owner-painted slider cannot receive a normal tooltip;
@@ -1617,6 +1677,8 @@ public sealed partial class MainForm : Form
             // both execution types. Boxing's guard slowdown remains separate.
             gloryKillSlowmo.Value =
                 customFastGloryKills.Checked || customFastChainsawKills.Checked ? 0 : 10;
+            customCinematicFineTune.Enabled = !customFastGloryKills.Checked
+                && !customFastChainsawKills.Checked;
             UpdateCinematicKillSpeedLabel();
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
@@ -1667,6 +1729,8 @@ public sealed partial class MainForm : Form
         FastGloryKills = customFastGloryKills.Checked,
         FastChainsawKills = customFastChainsawKills.Checked,
         CinematicKillSpeedLevel = cinematicKillSpeed.Value,
+        CinematicSpeedFineTune = customCinematicFineTune.Checked,
+        CinematicSpeedFineTuneHz = cinematicFineTuneHz.Value,
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1714,6 +1778,8 @@ public sealed partial class MainForm : Form
             customFastGloryKills.Checked = mods.FastGloryKills;
             customFastChainsawKills.Checked = mods.FastChainsawKills;
             cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
+            customCinematicFineTune.Checked = mods.CinematicSpeedFineTune;
+            cinematicFineTuneHz.Value = Math.Max(30, Math.Min(40, mods.CinematicSpeedFineTuneHz));
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
