@@ -97,20 +97,6 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
-    // Inverted visual scale: slider left=200 Hz, slider right=30 Hz.
-    // Actual selected Hz = (200+30) − TrackBar.Value.
-    private readonly TrackBar cinematicFineTuneHz = MakeSlider(30, 240, 235, 10, 1);
-    private readonly Label cinematicFineTuneTitle = new()
-    {
-        Text = "Target tick Hz", Width = 112, Height = 29,
-        ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
-        Margin = new Padding(0, 0, 10, 0)
-    };
-    private readonly Label cinematicFineTuneValue = new()
-    {
-        Width = 172, Height = 29, ForeColor = Color.WhiteSmoke,
-        TextAlign = ContentAlignment.MiddleLeft
-    };
     private readonly Label cinematicKillSpeedTitle = new()
     {
         Text = "Sync Action Speed", Width = 165, Height = 29,
@@ -483,7 +469,7 @@ public sealed partial class MainForm : Form
         statusToolTip.SetToolTip(cinematicKillSpeed,
             "Controls how quickly DOOM plays synced actions, including Glory Kills "
             + "and chainsaw executions. 1 is the original slow timing; 5 is the "
-            + "fastest 30 Hz preset. Advanced lets you choose exact timing. "
+            + "fastest 30 Hz preset. Advanced contains action-specific tick overrides. "
             + "This can also affect other synchronized animations. "
             + "Fast Kills overrides this control. Restart DOOM to apply.");
         UpdateCinematicKillSpeedLabel();
@@ -499,32 +485,17 @@ public sealed partial class MainForm : Form
         customModsGrid.Controls.Add(cinematicSpeedRow, 0, speedRowIndex);
         customModsGrid.SetColumnSpan(cinematicSpeedRow, 2);
         customModsGrid.Height += 36;
-        // Advanced directly activates the original native adaptive-tick Hz
-        // override. It is hidden entirely when unchecked; there is no
-        // additional Fine Tune checkbox or explanatory paragraph.
+        // Advanced exposes action-scoped overrides only. A separate global
+        // Target Tick Hz setting is intentionally unavailable.
         speedAdvancedPanel = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
-            Visible = false, Height = 44, BackColor = PanelColor,
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 0,
+            Visible = false, Height = 37, BackColor = PanelColor,
             Margin = new Padding(14, 2, 10, 0), Padding = Padding.Empty
         };
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-        cinematicFineTuneTitle.Dock = DockStyle.Fill;
-        cinematicFineTuneTitle.TextAlign = ContentAlignment.MiddleLeft;
-        speedAdvancedPanel.Controls.Add(cinematicFineTuneTitle, 0, 0);
-        cinematicFineTuneHz.AutoSize = false;
-        cinematicFineTuneHz.Dock = DockStyle.Fill;
-        cinematicFineTuneHz.TickFrequency = 10;
-        cinematicFineTuneHz.SmallChange = 1;
-        cinematicFineTuneHz.LargeChange = 5;
-        cinematicFineTuneHz.Margin = new Padding(0, 2, 0, 0);
-        speedAdvancedPanel.Controls.Add(cinematicFineTuneHz, 1, 0);
-        cinematicFineTuneValue.Dock = DockStyle.Fill;
-        cinematicFineTuneValue.TextAlign = ContentAlignment.MiddleLeft;
-        speedAdvancedPanel.Controls.Add(cinematicFineTuneValue, 2, 0);
         // Independent verified action triggers; unverified states get log-only
         // probes with permanently disabled sliders. Every profile is OFF by
         // default, and action CVars are scoped/restored by the native hold.
@@ -611,25 +582,8 @@ public sealed partial class MainForm : Form
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
-        speedAdvancedHeight=44+(ActionSpeedCatalog.All.Length+1)*37;
+        speedAdvancedHeight=(ActionSpeedCatalog.All.Length+1)*37;
         speedAdvancedPanel.Height=speedAdvancedHeight;
-        statusToolTip.SetToolTip(cinematicFineTuneTitle,
-            "Baseline when no action profile overrides it. Left 240 Hz slows synced actions; right 30 Hz speeds them up. This is NOT headset FPS.");
-        cinematicFineTuneHz.ValueChanged += (_, _) =>
-        {
-            // The live number updates throughout a mouse drag.
-            UpdateCinematicKillSpeedLabel();
-        };
-        void CommitFineTune()
-        {
-            if (restoringConfiguration || applyingCustomModDependencies) return;
-            SaveCustomModSettings();
-            OptionChanged(cinematicFineTuneHz, EventArgs.Empty);
-        }
-        cinematicFineTuneHz.MouseUp += (_, _) => CommitFineTune();
-        cinematicFineTuneHz.KeyUp += (_, _) => CommitFineTune();
-        cinematicFineTuneHz.MouseWheel += (_, _) => CommitFineTune();
-        cinematicFineTuneHz.Leave += (_, _) => CommitFineTune();
         speedAdvanced.CheckedChanged += (_, _) =>
         {
             if (restoringConfiguration || applyingCustomModDependencies) return;
@@ -1665,36 +1619,17 @@ public sealed partial class MainForm : Form
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
         RefreshSpeedAdvancedVisibility();
         UpdateActionSpeedLabels();
-        var fineTuneChecked = speedAdvanced.Checked;
-        cinematicKillSpeed.Enabled = !nativeFastChecked && !fineTuneChecked;
-        cinematicFineTuneHz.Enabled = speedAdvanced.Checked
-            && !nativeFastChecked && fineTuneChecked;
-        cinematicFineTuneTitle.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
-        cinematicFineTuneValue.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
-        cinematicFineTuneValue.Text = nativeFastChecked
-            ? "Locked by Fast Kills"
-            : fineTuneChecked ? (270 - cinematicFineTuneHz.Value) + " Hz · restart DOOM"
-            : "Advanced disabled";
-        var fineTip = nativeFastChecked
-            ? "Fast Glory/Chainsaw overrides fine tune. Uncheck both to edit."
-            : fineTuneChecked
-                ? "240 Hz on the left, 30 Hz on the right; drag in 1 Hz steps. Restart DOOM to apply."
-                : "Check Advanced beside Sync Action Speed to select the target Hz.";
-        statusToolTip.SetToolTip(cinematicFineTuneTitle, fineTip);
-        statusToolTip.SetToolTip(cinematicFineTuneValue, fineTip);
-        cinematicFineTuneHz.AccessibleDescription = fineTip;
+        cinematicKillSpeed.Enabled = !nativeFastChecked;
         cinematicKillSpeedTitle.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
         cinematicKillSpeedValue.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
-        cinematicKillSpeedValue.Text = nativeFastChecked ? "Locked by Fast Kills"
-            : fineTuneChecked ? "Advanced Hz active" : savedValue;
+        cinematicKillSpeedValue.Text = nativeFastChecked
+            ? "Locked by Fast Kills" : savedValue;
         var explanation = nativeFastChecked
             ? "Disabled by Fast Glory Kills or Fast Chainsaw Kills. "
                 + "Uncheck BOTH mods to enable Sync Action Speed. "
                 + "Saved slider position: " + savedValue + "."
-            : fineTuneChecked
-                ? "Advanced target Hz controls timing. Uncheck Advanced to return to presets."
-                : "1 = original pacing, 5 = fastest preset (30 Hz). Use −/+ to change speed. "
-                + "Advanced enables exact Hz selection. Restart DOOM to apply.";
+            : "1 = original pacing, 5 = fastest preset (30 Hz). Use −/+ to change speed. "
+                + "Advanced enables separate, action-specific Hz overrides only. Restart DOOM to apply.";
         // The disabled owner-painted slider cannot receive a normal tooltip;
         // its surrounding visible title/value remain active hover targets.
         statusToolTip.SetToolTip(cinematicKillSpeedTitle, explanation);
@@ -1897,9 +1832,9 @@ public sealed partial class MainForm : Form
         FastGloryKills = customFastGloryKills.Checked,
         FastChainsawKills = customFastChainsawKills.Checked,
         CinematicKillSpeedLevel = cinematicKillSpeed.Value,
-        CinematicSpeedFineTune = speedAdvanced.Checked,
+        CinematicSpeedFineTune = false,
         SpeedAdvancedExpanded = speedAdvanced.Checked,
-        CinematicSpeedFineTuneHz = 270 - cinematicFineTuneHz.Value,
+        CinematicSpeedFineTuneHz = 30,
         ActionSpeedProfiles = ActionSpeedCatalog.All.ToDictionary(
             key=>key,key=>new ActionSpeedSetting{
                 Enabled=speedActionChecks[key].Checked,
@@ -1955,7 +1890,6 @@ public sealed partial class MainForm : Form
             cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
             // Legacy fine tune files expand Advanced so no active override is hidden.
             speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
-            cinematicFineTuneHz.Value = 270 - Math.Max(30, Math.Min(240, mods.CinematicSpeedFineTuneHz));
             foreach(string key in ActionSpeedCatalog.All){
                 var p=mods.ActionSpeedProfiles.TryGetValue(key,out var configured)
                     ? configured:new ActionSpeedSetting();
