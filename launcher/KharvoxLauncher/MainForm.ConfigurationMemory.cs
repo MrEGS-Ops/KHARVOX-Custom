@@ -1031,17 +1031,26 @@ public sealed partial class MainForm
             if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff
                 || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 40)
                 throw new InvalidDataException("Native sync camera handoff must be fixed at 40ms.");
-            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 3) != 2
-                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 3) != 4
-                || FlatGloryKillSlider.ChangedValueForClick(80, 160, 3) != 3
-                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 1) != 1
-                || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
-                throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
-            if (main.cinematicFineTuneHz.Minimum != 30
-                || main.cinematicFineTuneHz.Maximum != 240
-                || main.cinematicFineTuneHz.SmallChange != 1
-                || main.cinematicFineTuneHz.TickFrequency != 10)
-                throw new InvalidDataException("Advanced drag must support 200-left to 30-right at 1 Hz resolution.");
+            // Presets are always visible above the grouped mod list, and
+            // the retired global Target Tick Hz slider has no UI or runtime.
+            if (main.cinematicPresetButtons.Count != 5
+                || main.cinematicPresetButtons[0].Parent?.Parent is not Control presetPanel
+                || main.speedCustomModsGrid is null
+                || main.speedCustomModsGrid.GetRow(presetPanel) != 0
+                || main.speedAdvancedPanel is null
+                || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel) != 1
+                || main.speedAdvancedPanel.ColumnStyles[1].SizeType != SizeType.Percent)
+                throw new InvalidDataException(
+                    "Preset bar must be above the mod checklist with expandable wide action sliders.");
+            main.cinematicKillSpeed.Value = 5;
+            main.UpdateCinematicKillSpeedLabel();
+            if (main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192, 148, 54)
+                || main.cinematicPresetButtons.Take(4).Any(button =>
+                    button.BackColor == Color.FromArgb(192, 148, 54))
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
+                throw new InvalidDataException(
+                    "Preset #5 must highlight without activating the retired global Hz slider.");
             main.applyingCustomModDependencies = true;
             main.speedAdvanced.Checked = true;
             main.applyingCustomModDependencies = false;
@@ -1049,15 +1058,12 @@ public sealed partial class MainForm
             if (main.speedAdvancedRowStyle is null
                 || main.speedAdvancedRowStyle.Height != main.speedAdvancedHeight || !main.speedAdvancedVisible)
                 throw new InvalidDataException("Advanced section did not expand.");
-            main.applyingCustomModDependencies = true;
-            main.cinematicFineTuneHz.Value = 103; // reversed 270 - 103 = 167 Hz
-            main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (!main.cinematicFineTuneHz.Enabled || main.cinematicKillSpeed.Enabled
-                || main.cinematicFineTuneValue.Text.IndexOf("167 Hz", StringComparison.Ordinal) < 0
-                || !main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
-|| main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
-                throw new InvalidDataException("Fine Tune override not persisted.");
+            if (!main.cinematicKillSpeed.Enabled
+                || main.cinematicPresetButtons.Any(button => !button.Enabled)
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
+                throw new InvalidDataException("Advanced must retain visible, usable presets without global Hz override.");
             // The per-action controls must be present and default OFF.
             if(main.speedActionChecks.Count!=ActionSpeedCatalog.All.Length
                 ||main.speedActionSliders.Count!=ActionSpeedCatalog.All.Length
@@ -1089,7 +1095,7 @@ public sealed partial class MainForm
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
                 || main.ReadCustomModSettingsFromControls().SpeedAdvancedExpanded
                 || !main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].Enabled
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
                 throw new InvalidDataException("Collapsing Advanced must restore presets and preserve selected Hz.");
             main.applyingCustomModDependencies = true;
             main.speedActionChecks["glory"].Checked = false;
@@ -1162,7 +1168,7 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.gloryKillSlowmo.Value != 0
                 || main.cinematicKillSpeed.Enabled
-                || main.cinematicFineTuneHz.Enabled
+                || main.cinematicPresetButtons.Any(button => button.Enabled)
                 || main.cinematicKillSpeedTitle.ForeColor != Color.Gray
                 || main.cinematicKillSpeedValue.ForeColor != Color.Gray
                 || !main.cinematicKillSpeedValue.Text.Contains("Locked")
