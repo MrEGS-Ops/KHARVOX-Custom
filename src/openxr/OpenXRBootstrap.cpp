@@ -677,6 +677,16 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(end==text||*end!='\0'||value<1||value>5)return 1;
         return static_cast<int>(value);
     }();
+    static const int cinematicFineTuneHz=[]{
+        char text[16]{};
+        const DWORD copied=GetEnvironmentVariableA(
+            "KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ",text,sizeof(text));
+        if(!copied||copied>=sizeof(text))return 0;
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        if(end==text||*end!='\0'||value<30||value>40)return 0;
+        return static_cast<int>(value);
+    }();
     const int hzSpeedLevel=cinematicSpeedLevel;
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
         s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
@@ -735,8 +745,11 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
-    const int cinematicTarget=kharvox::cinematicKillTargetTickHz(
-        hzSpeedLevel,detectedTarget);
+    // A 30–40 Hz fine-tune overrides only the existing adaptive-tick
+    // target. Native full-speed bypass and all other timing remain unchanged.
+    const int cinematicTarget=cinematicFineTuneHz>0 && !fastKillsEnabled
+        ?cinematicFineTuneHz
+        :kharvox::cinematicKillTargetTickHz(hzSpeedLevel,detectedTarget);
     const int effectiveTarget=cinematicTarget>0?cinematicTarget:detectedTarget;
     if(!hold.active){
         hold.savedAdaptiveTick=read(adaptiveTickCurrentRva);
@@ -767,6 +780,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             +"/"+std::to_string(hold.savedMaxHz)+"/"+std::to_string(hold.savedImmediateMode)
             +"/"+std::to_string(hold.savedSyncNoAdaptiveTick)+"/"+std::to_string(hold.savedFixedTic)
             +" speedLevel="+std::to_string(cinematicSpeedLevel)
+            +" fineTuneHz="+std::to_string(cinematicFineTuneHz)
             +" syncAttack="+std::to_string(KharvoxCameraSyncAttackActive()?1:0)
             +" cutscene="+std::to_string(KharvoxCameraCutsceneActive()?1:0)
             +" FAST_KILLS="+(fastKillsEnabled?"ON":"OFF")

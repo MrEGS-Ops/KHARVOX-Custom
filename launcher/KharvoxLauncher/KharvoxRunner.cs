@@ -555,6 +555,10 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
                 Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)).ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] =
+                customMods.CinematicSpeedFineTune
+                    ? Math.Max(30, Math.Min(40, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
+                    : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";
