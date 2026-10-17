@@ -1,4 +1,5 @@
 #include "../src/openxr/CinematicRefreshPolicy.h"
+#include "../src/openxr/ActionSpeedPolicy.h"
 #include <cassert>
 #include <initializer_list>
 
@@ -79,5 +80,21 @@ int main() {
     assert(nativeSyncExitHandoffFraction(45'000'100,100)==.5f);
     assert(nativeSyncExitHandoffFraction(90'000'100,100)==1.f);
     assert(nativeSyncExitHandoffFraction(200'000'100,100)==1.f);
+    // Action targets never falsely claim independent enemy/reload clocks.
+    assert(!validActionSpeedTarget(0));
+    assert(!validActionSpeedTarget(29));
+    assert(validActionSpeedTarget(30));
+    assert(validActionSpeedTarget(240));
+    assert(!validActionSpeedTarget(241));
+    const ActionSpeedTargets target{50,60,80,120,160};
+    assert(selectActionSpeed({true,true,false,false,false},target).kind
+        ==ActionSpeedKind::Chainsaw);
+    assert(selectActionSpeed({true,false,false,false,false},target).hz==60);
+    assert(selectActionSpeed({false,false,true,false,false},target).hz==80);
+    assert(selectActionSpeed({false,false,false,true,false},target).hz==120);
+    assert(selectActionSpeed({false,false,false,false,true},target).hz==160);
+    assert(selectActionSpeed({},target).kind==ActionSpeedKind::None);
+    assert(selectActionSpeed({true,false,false,false,false},{}).hz==0);
+    assert(selectActionSpeed({true,true,true,true,true},target).hz==50);
     return 0;
 }
