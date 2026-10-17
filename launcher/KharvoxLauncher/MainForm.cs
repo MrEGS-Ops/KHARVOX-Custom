@@ -82,6 +82,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
     private readonly CheckBox customPersistentSsgReload = MakeCheck("Persistent Super Shotgun Reload", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
+    private readonly CheckBox customStoryCinematicSkip = MakeCheck("Story Cinematic Skip (RS)", false);
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
@@ -430,6 +431,7 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
+            (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -2001,6 +2003,7 @@ public sealed partial class MainForm : Form
         DynamicShoulderHolster = customDynamicShoulderHolster.Checked,
         PersistentSuperShotgunReload = customPersistentSsgReload.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
+        StoryCinematicSkip = customStoryCinematicSkip.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
         // Existing native flags remain as the runtime contract, now owned
@@ -2061,6 +2064,7 @@ public sealed partial class MainForm : Form
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
             customPersistentSsgReload.Checked = mods.PersistentSuperShotgunReload;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
+            customStoryCinematicSkip.Checked = mods.StoryCinematicSkip;
             cinematicFullSpeedMode=mods.FastGloryKills||mods.FastChainsawKills;
             cinematicKillSpeed.Value=Math.Max(1,Math.Min(5,mods.CinematicKillSpeedLevel));
             // Legacy fine tune files expand Advanced so no active override is hidden.
