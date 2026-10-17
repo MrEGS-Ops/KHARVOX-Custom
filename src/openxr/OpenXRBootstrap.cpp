@@ -5455,8 +5455,28 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ||s.customMods.fastChainsawKills;
     const auto activeAction=fastKillsRequested
         ?kharvox::ActionSpeedChoice{}:selectedAction;
+    // The CineWindow checkbox selects PRESENTATION, not animation speed.
+    // Passive scripted interactions (e.g. Foundry scanner/switch/NPC arm)
+    // report cutscene=1, syncAttack=0. Previously these invoked the
+    // 120 Hz headset-derived minimum tick hold for their whole duration.
+    // Keep the immersive camera/projection path, but let DOOM own timing.
+    const bool actionTimingAllowed=kharvox::shouldApplyImmersiveActionTiming(
+        originalCinematicHold,syncAction,chainsawAction,ledgeAction,
+        activeAction.hz>0);
+    static bool previouslyPreservedPassiveTiming=false;
+    const bool passiveTimingPreserved=originalCinematicHold
+        &&!actionTimingAllowed;
+    if(passiveTimingPreserved&&!previouslyPreservedPassiveTiming){
+        log("[CINEMATIC-HZ] scripted/passive immersive sequence: "
+            "DOOM native tick timing PRESERVED (no 120 Hz minimum); "
+            "cinematic projection/freelook unchanged; cutscene="
+            +std::to_string(KharvoxCameraCutsceneActive()?1:0)
+            +" nativeSync="+std::to_string(syncAction?1:0)
+            +" participantGuard="+std::to_string(nativeAdaptiveParticipantGuard?1:0));
+    }
+    previouslyPreservedPassiveTiming=passiveTimingPreserved;
     updateImmersiveCinematicRefresh(
-        originalCinematicHold||activeAction.hz>0,
+        actionTimingAllowed,
         frame.predictedDisplayPeriod,activeAction);
     updateCinewindowAnchor(vs,frame.predictedDisplayTime);
     kharvox::hudgpu::QuadCandidate hudSource{};
