@@ -36,7 +36,8 @@ public sealed partial class MainForm
             var rescue = DoomSaveProtection.Restore(clean.Id);
             MessageBox.Show(this,
                 "Clean saves restored. Previous modded saves were preserved in backup "
-                + rescue.Id + "." + Environment.NewLine
+                + (rescue?.Id ?? "none; saves had already been deleted")
+                + "." + Environment.NewLine
                 + "Keep the LOCAL files if Steam asks which saves to synchronise.",
                 "KHARVOX — Clean saves restored",
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -172,7 +173,8 @@ public sealed partial class MainForm
             if (answer != DialogResult.Yes) return;
             var rescue = DoomSaveProtection.Restore(chosen.Id);
             MessageBox.Show(window,
-                "Restore complete. Previous save snapshot: " + rescue.Id,
+                "Restore complete. Previous save snapshot: "
+                + (rescue?.Id ?? "none; active saves were missing"),
                 "KHARVOX", MessageBoxButtons.OK, MessageBoxIcon.Information);
         });
         openFolder.Click += (_, _) => SafeRun(() => {
