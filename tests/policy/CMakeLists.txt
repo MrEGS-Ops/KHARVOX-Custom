@@ -72,3 +72,9 @@ else()
   target_compile_options(KharvoxCameraBasisPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME camera-basis-return-to-gameplay COMMAND KharvoxCameraBasisPolicyTests)
+
+# Hand HUD mirror is a presentation-only transform. Protect Cactus panel
+# centre, size and native fallback against accidental pose regressions.
+add_executable(KharvoxOffhandHudPolicyTests ../hud_layout_policy_tests.cpp)
+target_compile_features(KharvoxOffhandHudPolicyTests PRIVATE cxx_std_17)
+add_test(NAME offhand-hud-mirror-policy COMMAND KharvoxOffhandHudPolicyTests)
