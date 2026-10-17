@@ -353,17 +353,10 @@ internal static class DoomSaveProtection
         SaveState(state);
     }
 
-    internal static Snapshot Restore(string id)
+    // Pure folder transaction: callable with disposable test saves, never
+    // requires the user's real DOOM profile or global backup library.
+    private static void ReplaceLiveFolders(string source, string snapshotFolder, Snapshot selected)
     {
-        EnsureGameClosed();
-        var source = SaveRoot();
-        var state = ReadState();
-        VerifySource(state, source);
-        var selected = ReadSnapshot(id);
-        if (!SamePath(selected.Source, source))
-            throw new InvalidOperationException("Cannot restore a different profile's save.");
-        CheckHashes(selected, SnapshotFolder(id)); // Verify BEFORE touching live saves.
-        var rescue = Capture("SAFETY COPY before restore", state.LastMode);
         var stage = Path.Combine(source, ".kharvox-restore-" + Guid.NewGuid().ToString("N"));
         var old = Path.Combine(source, ".kharvox-old-" + Guid.NewGuid().ToString("N"));
         bool success = false;
@@ -371,7 +364,7 @@ internal static class DoomSaveProtection
         var installed = new List<string>();
         try
         {
-            CopySaves(SnapshotFolder(id), stage);
+            CopySaves(snapshotFolder, stage);
             CheckHashes(selected, stage);
             Directory.CreateDirectory(old);
             foreach (var name in SaveNames)
@@ -412,14 +405,12 @@ internal static class DoomSaveProtection
             catch (Exception rollbackError)
             {
                 throw new InvalidOperationException(
-                    "Restore failed AND the folder rollback was incomplete. "
-                    + "Do not start DOOM. Pre-restore safety copy: " + rescue.Id
-                    + ". Recovered folders may remain at " + old,
+                    "Restore failed AND folder rollback was incomplete. "
+                    + "Do not start DOOM. Recovered folders may remain at " + old,
                     new AggregateException(error, rollbackError));
             }
             throw new InvalidOperationException(
-                "Restore failed; live files were rolled back. "
-                + "Pre-restore safety copy: " + rescue.Id, error);
+                "Restore failed; live files were rolled back.", error);
         }
         finally
         {
@@ -433,6 +424,29 @@ internal static class DoomSaveProtection
             }
             // Failed restore retains .kharvox-stage / .kharvox-old folders
             // for forensic recovery, plus the verified rescue snapshot.
+        }
+    }
+
+    internal static Snapshot Restore(string id)
+    {
+        EnsureGameClosed();
+        var source = SaveRoot();
+        var state = ReadState();
+        VerifySource(state, source);
+        var selected = ReadSnapshot(id);
+        if (!SamePath(selected.Source, source))
+            throw new InvalidOperationException("Cannot restore a different profile's save.");
+        CheckHashes(selected, SnapshotFolder(id)); // Verify BEFORE touching live saves.
+        var rescue = Capture("SAFETY COPY before restore", state.LastMode);
+        try
+        {
+            ReplaceLiveFolders(source, SnapshotFolder(id), selected);
+        }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException(
+                "Restore failed. Your untouched pre-restore safety snapshot: "
+                + rescue.Id + ". DOOM was not launched.", error);
         }
         state.LastMode = selected.Mode == "normal" ? "normal" : "modded";
         state.Source = source;
@@ -463,8 +477,23 @@ internal static class DoomSaveProtection
             try { CheckHashes(expected, live); }
             catch (InvalidDataException) { rejected = true; }
             if (!rejected) throw new InvalidDataException("Hash verification missed changed save.");
-            if (!File.ReadAllText(Path.Combine(main, "profile.bin")).Equals("clean"))
-                throw new InvalidDataException("Test copy modified the source.");
+            // Full dry-run restoration in an isolated temporary directory.
+            // Two save trees must be replaced, not merely one autosave.
+            File.WriteAllText(Path.Combine(main, "profile.bin"), "modded profile");
+            ReplaceLiveFolders(live, target, expected);
+            CheckHashes(expected, live);
+            if (File.ReadAllText(Path.Combine(main, "profile.bin")) != "clean"
+                || File.ReadAllText(Path.Combine(extra, "checkpoint.dat")) != "clean checkpoint")
+                throw new InvalidDataException("Restored save folder content was incorrect.");
+            // Corrupt a stored snapshot: verifying BEFORE transaction starts
+            // must prevent modification of the currently active save.
+            File.WriteAllText(Path.Combine(target, "savegame", "PROFILE", "profile.bin"), "tampered");
+            File.WriteAllText(Path.Combine(main, "profile.bin"), "my new progress");
+            rejected = false;
+            try { ReplaceLiveFolders(live, target, expected); }
+            catch (InvalidDataException) { rejected = true; }
+            if (!rejected || File.ReadAllText(Path.Combine(main, "profile.bin")) != "my new progress")
+                throw new InvalidDataException("Tampered snapshot overwrote live saves.");
             return 0;
         }
         catch (Exception error)
