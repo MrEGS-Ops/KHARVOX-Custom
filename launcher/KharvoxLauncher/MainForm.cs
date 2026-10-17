@@ -71,7 +71,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
     // First-run development-test default; saved manual choices always win.
-    private readonly CheckBox customBackOfHandHud = MakeCheck("Back of Hand HUD", true);
+    private readonly CheckBox customBackOfHandHud = MakeCheck("Back of Hand HUD (paused)", false);
     private readonly CheckBox customBoxingGuard = MakeCheck("Boxing Guard Mode", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
@@ -84,6 +84,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
     private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
+    private readonly CheckBox customCinematicExitHandoff = MakeCheck("Cinematic Exit Handoff", true);
     private readonly CheckBox customCinematicFineTune = MakeCheck("Cinematic Speed Fine Tune", true);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
@@ -413,7 +414,7 @@ public sealed partial class MainForm : Form
         {
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
-            (customBackOfHandHud, "AUTO-CHECKED ONCE for the current development test. You can uncheck it, and KHARVOX will remember that choice. Mirrors the wrist HUD's local-Y presentation for back-of-hand viewing; native Cactus v1.1.1 position and scale remain unchanged. Orientation still requires headset confirmation."),
+            (customBackOfHandHud, "PAUSED: the experimental canvas mirror distorted individual HUD panels. Original Cactus v1.1.1 watch layout is restored while a true whole-image mirror is investigated. This mod cannot be enabled in this build."),
             (customGaussChargeSlowMovement, "Movement assist while Gauss Siege charge is held. Designed for 45% stick movement, but DOOM may inhibit native movement; this is still under investigation."),
             (customBoxingGuard, "Raise both hands in a guarding pose: head focus and slight time dilation activate after 180 ms, then return to hand focus 900 ms after the guard ends. Native Glory Kill speed while guarding. Peripheral blur is pending a tested renderer hook."),
             (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Boxing Guard Mode independently switches to head focus when both guards are raised."),
@@ -427,6 +428,7 @@ public sealed partial class MainForm : Form
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customFastGloryKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to unlock the Cinematic Kill Speed slider and restore its selected timing. No speed multiplier or animation rewrite."),
             (customFastChainsawKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either Fast Kills checkbox overrides the slider. Disable BOTH to unlock the slider. Chainsaw effectiveness still needs headset verification."),
+            (customCinematicExitHandoff, "AUTO-CHECKED ONCE: Glory Kill and chainsaw-only camera-exit test. Keep the native entrance alignment; when the sync-attack flag ends, release the OpenXR held headset position over 90ms BEFORE the gameplay camera returns. No DOOM animation/physics changes. Uncheck to use previous exit behaviour."),
             (customCinematicFineTune, "AUTO-CHECKED ONCE: fine-tune the existing DOOM cinematic adaptive tick target 20–60 Hz in 1 Hz steps. Overrides numbered Cinematic Kill Speed while selected. Fast Kills overrides both. Restart DOOM after adjusting."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
@@ -1596,6 +1598,9 @@ public sealed partial class MainForm : Form
             // but unavailable until a verified safe dash replaces it.
             customDirectionalDash.Checked = false;
             customDirectionalDash.Enabled = false;
+            // Revert the distorted HUD mirror, not native Cactus rendering.
+            customBackOfHandHud.Checked = false;
+            customBackOfHandHud.Enabled = false;
             // Dash consumes the A button that Behind-Head Weapon Wheel frees.
             // Keep that relationship explicit instead of allowing a checkbox
             // combination that can never work in-game.
@@ -1711,7 +1716,8 @@ public sealed partial class MainForm : Form
         DisableHud = customDisableHud.Checked,
         DisableWeaponWheel = customDisableWeaponWheel.Checked,
         GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
-        BackOfHandHud = customBackOfHandHud.Checked,
+        BackOfHandHud = false,
+        CinematicExitHandoff = customCinematicExitHandoff.Checked,
         DevelopmentTestDefaultsRevision = CustomModSettingsStore.CurrentDevelopmentTestDefaultsRevision,
         BoxingGuard = customBoxingGuard.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
@@ -1763,7 +1769,8 @@ public sealed partial class MainForm : Form
             customDisableHud.Checked = mods.DisableHud;
             customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
             customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
-            customBackOfHandHud.Checked = mods.BackOfHandHud;
+            customBackOfHandHud.Checked = false;
+            customCinematicExitHandoff.Checked = mods.CinematicExitHandoff;
             customBoxingGuard.Checked = mods.BoxingGuard;
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;

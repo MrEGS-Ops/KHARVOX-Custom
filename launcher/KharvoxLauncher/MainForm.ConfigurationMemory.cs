@@ -570,6 +570,7 @@ public sealed partial class MainForm
                 main.customPersistentSsgReload,
                 main.customFastGloryKills,
                 main.customFastChainsawKills,
+                main.customCinematicExitHandoff,
                 main.customCinematicFineTune,
                 main.customBackOfHandHud,
                 main.customDisableHud,
@@ -580,13 +581,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 18 || checks.Distinct().Count() != 18
+                || checks.Length != 19 || checks.Distinct().Count() != 19
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 13 ? 2
-                        : index < 16 ? 3 : index < 17 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 18
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 14 ? 2
+                        : index < 17 ? 3 : index < 18 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 19
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -601,7 +602,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 6 + 18 * 28 + 6 * 20
+                || layout.Height < 6 + 19 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
@@ -1004,7 +1005,8 @@ public sealed partial class MainForm
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
             main.customFastGloryKills, main.customFastChainsawKills,
-            main.customBoxingGuard, main.customCinematicFineTune
+            main.customBoxingGuard, main.customCinematicFineTune,
+            main.customCinematicExitHandoff
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1028,6 +1030,8 @@ public sealed partial class MainForm
             main.customBoxingGuard.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
+            if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
+                throw new InvalidDataException("Distorted Back of Hand HUD mirror must remain paused.");
             if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 3) != 2
                 || FlatGloryKillSlider.ChangedValueForClick(156, 160, 3) != 4
                 || FlatGloryKillSlider.ChangedValueForClick(80, 160, 3) != 3

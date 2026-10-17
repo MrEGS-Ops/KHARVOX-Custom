@@ -18,6 +18,7 @@ internal sealed class CustomModSettings
     public bool BoxingGuard { get; set; }
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
+    public bool CinematicExitHandoff { get; set; }
     // Native cinematic tick-Hz experiment: 1 original, 5 near-max adaptive.
     public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool CinematicSpeedFineTune { get; set; }
@@ -44,7 +45,7 @@ internal static class CustomModSettingsStore
     // Bump this only when the next KHARVOX build introduces a different
     // opt-in mod that should start checked for the user's test session.
     // Never force it on again after the user deliberately unticks it.
-    internal const int CurrentDevelopmentTestDefaultsRevision = 2;
+    internal const int CurrentDevelopmentTestDefaultsRevision = 3;
     private static readonly JavaScriptSerializer Serializer = new();
 
     internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
@@ -64,6 +65,16 @@ internal static class CustomModSettingsStore
             value.CinematicSpeedFineTuneHz = 35;
             value.DevelopmentTestDefaultsRevision = 2;
         }
+        if (value.DevelopmentTestDefaultsRevision < 3)
+        {
+            // The experimental per-canvas HUD mirror distorted the stable
+            // Cactus watch. Pause it for this build; enable the separate,
+            // reversible camera-exit handoff for the next headset test.
+            value.BackOfHandHud = false;
+            value.CinematicExitHandoff = true;
+            value.DevelopmentTestDefaultsRevision = 3;
+        }
+        value.BackOfHandHud = false; // paused until composite image mirror exists
         return value;
     }
 
@@ -128,19 +139,22 @@ internal static class CustomModSettingsStore
                 BackOfHandHud = false, DevelopmentTestDefaultsRevision = 0
             }, path);
             var first = Load(path);
-            if (!first.BackOfHandHud || !first.CinematicSpeedFineTune
-                || first.CinematicSpeedFineTuneHz != 35
+            if (first.BackOfHandHud || !first.CinematicExitHandoff
+                || !first.CinematicSpeedFineTune || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("New test mod not auto-checked on first launch.");
             first.BackOfHandHud = false;
+            first.CinematicExitHandoff = false;
             first.CinematicSpeedFineTune = false;
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
-            if (Load(path).BackOfHandHud || Load(path).CinematicSpeedFineTune
+            if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
+                || Load(path).CinematicSpeedFineTune
                 || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
-            if (!fresh.BackOfHandHud || !fresh.CinematicSpeedFineTune)
+            if (fresh.BackOfHandHud || !fresh.CinematicExitHandoff
+                || !fresh.CinematicSpeedFineTune)
                 throw new InvalidDataException("Fresh install should auto-check active test mod.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
