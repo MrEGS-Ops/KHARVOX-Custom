@@ -553,8 +553,13 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
+            // Action overrides and shared speed presets are mutually exclusive.
+            // Remember the selected preset but use native timing outside actions.
+            var actionOverridesActive = ActionSpeedCatalog.HasActiveOverrides(customMods)
+                && !customMods.FastGloryKills && !customMods.FastChainsawKills;
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
-                Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)).ToString(Invariant);
+                (actionOverridesActive ? 1 : Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)))
+                .ToString(Invariant);
             // Disable the deprecated global tick slider even for old saved profiles.
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] = "0";
             // Separate action triggers only activate their own scoped override.
@@ -568,14 +573,11 @@ internal static class KharvoxRunner
                     (customMods.SpeedAdvancedExpanded && p.Enabled)
                         ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
             }
-            var probeMask = 0;
-            for (int i = 0; i < ActionSpeedCatalog.Probes.Length; i++)
-                if (customMods.SpeedAdvancedExpanded
-                    && customMods.ActionSpeedProfiles.TryGetValue(ActionSpeedCatalog.Probes[i], out var p)
-                    && p.Enabled) probeMask |= 1 << i;
-            if (customMods.SpeedAdvancedExpanded && customMods.ActionSpeedLogTestEnabled)
-                probeMask |= 63; // all read-only probes
-            psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] = probeMask.ToString(Invariant);
+            // One log switch; native logs only melee/grenade input pulses
+            // alongside verified action transitions. No fake animation clocks.
+            psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] =
+                customMods.SpeedAdvancedExpanded && customMods.ActionSpeedLogTestEnabled
+                    ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";
