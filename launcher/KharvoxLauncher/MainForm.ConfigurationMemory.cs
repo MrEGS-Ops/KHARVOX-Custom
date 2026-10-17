@@ -887,7 +887,7 @@ public sealed partial class MainForm
                     "Nexus new-window commands must match the displayed Custom Mods bounds.");
 
             var nexusLink = doomGrid.Controls.OfType<LinkLabel>()
-                .SingleOrDefault(label => doomGrid.GetRow(label) == 4);
+                .SingleOrDefault(label => doomGrid.GetRow(label) == 5);
             if (nexusLink is null || nexusLink.Parent != doomGrid
                 || !nexusLink.Visible || nexusLink.Height < 18
                 || nexusLink.AccessibleName != "Browse DOOM mods on Nexus Mods"
