@@ -54,6 +54,8 @@ internal sealed class CustomModSettings
     // Only the wrist HUD presentation is mirrored; Cactus pose is unchanged.
     public bool BackOfHandHud { get; set; }
     public bool BoxingGuard { get; set; }
+    // Legacy serialized fields: the unified Full speed selector writes both
+    // as true so the proven native kill-slowdown bypass remains available.
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
     public bool CinematicExitHandoff { get; set; }
