@@ -327,6 +327,7 @@ struct State {
     bool immersiveCinematicActive{},immersiveCinematicFreelookActive{};
     XrDuration fastestDisplayPeriod{};
     CinematicAdaptiveTickHold cinematicAdaptiveTick{};
+    kharvox::ScriptedCinematicBoundaryState scriptedCinematicBoundary{};
     unsigned long long nativeAdaptiveParticipantGuardUntilTick{};
     bool nativeAdaptiveParticipantGuardActive{};
     bool comfortInteractiveParticipantActive{};
@@ -5434,11 +5435,25 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool chainsawAction=s.chainsawKillLatched
         &&(syncAction||KharvoxCameraCutsceneActive());
     const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
-    // Foundry-style interactions are native non-execution cutscenes.
-    // Camera routing alone must not force a target tick; this signal is
-    // considered ONLY when the user enabled the dedicated action override.
-    const bool scriptedCinematicCandidate=KharvoxCameraCutsceneActive()
+    // Native DOOM cutscene=1 often outlives syncAttack=1 by 100-800 ms.
+    // In the diagnostic run 60 Glory Kills switched directly into the
+    // Scripted Cinematics override when the execution flag cleared.
+    // Treat the old cutscene's exit as an execution tail, not a new event.
+    // Leave actual presentation/freelook/camera timing completely untouched.
+    const bool rawScriptedCandidate=KharvoxCameraCutsceneActive()
         &&!syncAction&&!chainsawAction&&!ledgeAction;
+    const bool scriptedCinematicCandidate=
+        kharvox::acceptIndependentScriptedCinematic(
+            s.scriptedCinematicBoundary,KharvoxCameraCutsceneActive(),
+            syncAction,chainsawAction,ledgeAction,GetTickCount64());
+    static bool tailBlockWasLogged=false;
+    const bool tailBlocked=rawScriptedCandidate
+        &&s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd;
+    if(tailBlocked&&!tailBlockWasLogged){
+        log("[ACTION-HZ] SCRIPTED TAIL SUPPRESSED after execution/ledge; "
+            "DOOM native timing resumes, no extra simulated hold");
+    }
+    tailBlockWasLogged=tailBlocked;
     logActionSpeedProbes(s.meleePressed,syncAction,chainsawAction,ledgeAction);
     const bool originalCinematicHold=!bossAction
         &&kharvox::shouldHoldImmersiveRefresh(

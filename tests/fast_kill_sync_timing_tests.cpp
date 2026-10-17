@@ -91,6 +91,35 @@ int main() {
     // Explicit action override is allowed to borrow the scoped timing hold.
     assert(shouldApplyImmersiveActionTiming(false,false,false,false,true));
     assert(!shouldApplyImmersiveActionTiming(false,true,false,false,false));
+    // Diagnostic run regression: 60/61 Glory Kills wrongly handed their
+    // exit frames to "Scripted cinematics", including 14 cases at 240 Hz
+    // for about 0.5-0.8 s. The state gate MUST NOT add game/camera delay:
+    // it only rejects false classifications until that cutscene is over.
+    ScriptedCinematicBoundaryState gate{};
+    assert(acceptIndependentScriptedCinematic(gate,true,false,false,false,1000));
+    assert(!acceptIndependentScriptedCinematic(gate,true,true,false,false,1100));
+    assert(gate.awaitingPreviousCutsceneEnd);
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,false,1200));
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,false,1750));
+    assert(!acceptIndependentScriptedCinematic(gate,false,false,false,false,1800));
+    assert(!gate.awaitingPreviousCutsceneEnd);
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,false,1920));
+    assert(acceptIndependentScriptedCinematic(gate,true,false,false,false,2050));
+    // Chainsaw and ledge exits must have the same protection.
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,true,false,2100));
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,false,3100));
+    assert(!acceptIndependentScriptedCinematic(gate,false,false,false,false,3150));
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,false,3350));
+    assert(acceptIndependentScriptedCinematic(gate,true,false,false,false,3400));
+    assert(!acceptIndependentScriptedCinematic(gate,true,false,false,true,3500));
+    assert(!acceptIndependentScriptedCinematic(gate,false,false,false,false,3600));
+    assert(acceptIndependentScriptedCinematic(gate,true,false,false,false,3900));
+    // Fresh standalone scripted interactions remain usable immediately.
+    ScriptedCinematicBoundaryState independent{};
+    assert(acceptIndependentScriptedCinematic(
+        independent,true,false,false,false,0));
+    // Saturate the grace deadline near ULONG_LONG_MAX without wrapping.
+    assert(safeScriptedGateDeadline(~0ull-10ull,250)==~0ull);
     // Action targets never falsely claim independent enemy/reload clocks.
     assert(!validActionSpeedTarget(0));
     assert(!validActionSpeedTarget(29));
