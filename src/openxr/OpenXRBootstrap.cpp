@@ -5369,17 +5369,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
-    static const int cinematicExitHandoffDelayMs=[]{
-        char value[24]{};
-        const DWORD length=GetEnvironmentVariableA(
-            "KHARVOX_MOD_CINEMATIC_EXIT_DELAY_MS",value,sizeof(value));
-        if(!length||length>=sizeof(value))return 80;
-        char* end{};
-        const long parsed=std::strtol(value,&end,10);
-        if(end==value||*end!='\0')return 80;
-        return kharvox::nativeSyncEntryHandoffDelayMs(
-            static_cast<int>(std::clamp(parsed,40L,400L)));
-    }();
+    // Built into native sync actions: 40ms is the earliest calibrated
+    // delay that preserves the initial execution alignment; retain the proven
+    // 90ms OpenXR position blend and never re-anchor until the kill ends.
+    constexpr int cinematicExitHandoffDelayMs = 40;
     // A headset trace shows native sync enters ~1s BEFORE its exit. Begin
     // releasing the XR position anchor near entry, after the native snap has
     // aligned the first stereo pair, then NEVER re-anchor during this attack.

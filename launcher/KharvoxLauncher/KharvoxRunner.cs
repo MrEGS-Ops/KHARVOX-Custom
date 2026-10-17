@@ -550,11 +550,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_GAUSS_SLOW_CHARGE"] = customMods.GaussChargeSlowMovement ? "1" : "0";
             // The toggle only mirrors the original Cactus 1.1.1 wrist HUD.
             psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = "0"; // pause distorted mirror
-            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_EXIT_HANDOFF"] =
-                customMods.CinematicExitHandoff ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_EXIT_DELAY_MS"] =
-                Math.Max(40,Math.Min(400,customMods.CinematicExitHandoffDelayMs))
-                    .ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
@@ -562,7 +557,7 @@ internal static class KharvoxRunner
                 Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] =
                 customMods.CinematicSpeedFineTune
-                    ? Math.Max(20, Math.Min(200, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
+                    ? Math.Max(30, Math.Min(200, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
                     : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";

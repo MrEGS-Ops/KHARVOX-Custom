@@ -75,11 +75,11 @@ constexpr bool nativeFastKillSyncRequested(
         || (legacySpeedLevel >= 0 && legacySpeedLevel < 10);
 }
 
-// Existing adaptive-tick Hz lever. 1 native slow; 2–5 = 90/70/50/31 Hz
+// Existing adaptive-tick Hz lever. 1 native slow; 2–5 = 90/70/50/30 Hz
 // on the original immersive path. Fast Kills checkboxes retain true bypass.
 constexpr int cinematicKillTargetTickHz(int level, int headsetTargetHz) {
     return level == 2 ? 90 : level == 3 ? 70 : level == 4 ? 50
-        : level == 5 ? 31 : headsetTargetHz;
+        : level == 5 ? 30 : headsetTargetHz;
 }
 
 // The headset's 120 Hz *display period* is NOT the game's achieved frame

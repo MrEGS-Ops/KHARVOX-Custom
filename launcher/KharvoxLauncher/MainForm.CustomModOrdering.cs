@@ -155,7 +155,6 @@ public sealed partial class MainForm
             Define(customPersistentSsgReload, "persistent-ssg-reload", 2),
             Define(customFastGloryKills, "fast-glory-kills", 2),
             Define(customFastChainsawKills, "fast-chainsaw", 2),
-            Define(customCinematicExitHandoff, "cinematic-exit-handoff", 2),
             Define(customBackOfHandHud, "back-of-hand-hud", 3),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
