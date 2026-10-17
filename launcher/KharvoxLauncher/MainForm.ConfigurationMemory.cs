@@ -1034,11 +1034,11 @@ public sealed partial class MainForm
                 || FlatGloryKillSlider.ChangedValueForClick(2, 160, 1) != 1
                 || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
                 throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
-            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 35, 30, 40) != 34
-                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 35, 30, 40) != 36
-                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 30, 30, 40) != 30
-                || FlatGloryKillSlider.ChangedValueForClick(157, 160, 40, 30, 40) != 40)
-                throw new InvalidDataException("Fine Tune bounds incorrect.");
+            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 35, 20, 60) != 34
+                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 35, 20, 60) != 36
+                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 20, 20, 60) != 20
+                || FlatGloryKillSlider.ChangedValueForClick(157, 160, 60, 20, 60) != 60)
+                throw new InvalidDataException("Fine Tune 20–60 Hz bounds incorrect.");
             main.applyingCustomModDependencies = true;
             main.customCinematicFineTune.Checked = true;
             main.cinematicFineTuneHz.Value = 37;
