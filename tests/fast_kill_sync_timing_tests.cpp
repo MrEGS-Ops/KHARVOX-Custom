@@ -70,8 +70,8 @@ int main() {
     assert(nativeSyncEntryHandoffDelayMs(0)==40);
     assert(nativeSyncEntryHandoffDelayMs(80)==80);
     assert(nativeSyncEntryHandoffDelayMs(999)==400);
-    assert(!nativeSyncEarlyHandoffReady(80'000'001,1,80,true));
-    assert(nativeSyncEarlyHandoffReady(80'000'002,1,80,true));
+    assert(!nativeSyncEarlyHandoffReady(80'000'000,1,80,true));
+    assert(nativeSyncEarlyHandoffReady(80'000'001,1,80,true));
     assert(!nativeSyncEarlyHandoffReady(400'000'002,1,80,false));
     assert(!nativeSyncEarlyHandoffReady(50,0,40,true));
     assert(nativeSyncExitHandoffFraction(0,0)==0.f);
