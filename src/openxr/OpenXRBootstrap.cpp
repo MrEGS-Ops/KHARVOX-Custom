@@ -684,7 +684,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(!copied||copied>=sizeof(text))return 0;
         char* end{};
         const long value=std::strtol(text,&end,10);
-        if(end==text||*end!='\0'||value<30||value>40)return 0;
+        if(end==text||*end!='\0'||value<20||value>60)return 0;
         return static_cast<int>(value);
     }();
     const int hzSpeedLevel=cinematicSpeedLevel;
@@ -745,7 +745,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
-    // A 30–40 Hz fine-tune overrides only the existing adaptive-tick
+    // A 20–60 Hz fine-tune overrides only the existing adaptive-tick
     // target. Native full-speed bypass and all other timing remain unchanged.
     const int cinematicTarget=cinematicFineTuneHz>0 && !fastKillsEnabled
         ?cinematicFineTuneHz
@@ -769,7 +769,11 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             log("[CINEMATIC-HZ] adaptive-tick values outside expected ranges; refresh hold disabled safely");
             return;
         }
-        hold.targetHz=std::max(effectiveTarget,static_cast<int>(hold.savedMinHz));
+        // Honor fine-tune below DOOM's saved ~30 Hz native floor only while
+        // the existing cinematic hold is active; restore it on hold exit.
+        hold.targetHz=cinematicFineTuneHz>0 && !fastKillsEnabled
+            ?effectiveTarget
+            :std::max(effectiveTarget,static_cast<int>(hold.savedMinHz));
         hold.presents=0;
         QueryPerformanceCounter(&hold.startedAt);
         hold.active=true;

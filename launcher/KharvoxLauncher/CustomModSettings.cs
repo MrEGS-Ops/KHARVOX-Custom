@@ -18,7 +18,7 @@ internal sealed class CustomModSettings
     public bool BoxingGuard { get; set; }
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
-    // Native cinematic tick-Hz experiment: 1 original, 5 confirmed full-speed.
+    // Native cinematic tick-Hz experiment: 1 original, 5 near-max adaptive.
     public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool CinematicSpeedFineTune { get; set; }
     public int CinematicSpeedFineTuneHz { get; set; } = 35;
@@ -80,7 +80,7 @@ internal static class CustomModSettingsStore
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-            value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(40, value.CinematicSpeedFineTuneHz));
+            value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(60, value.CinematicSpeedFineTuneHz));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -98,7 +98,7 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(40, value.CinematicSpeedFineTuneHz));
+        value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(60, value.CinematicSpeedFineTuneHz));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
