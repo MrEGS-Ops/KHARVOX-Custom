@@ -168,6 +168,8 @@ struct CinematicAdaptiveTickHold {
     LONG savedAdaptiveTick{},savedMinHz{},savedMaxHz{},savedImmediateMode{},savedSyncNoAdaptiveTick{},savedFixedTic{};
     int targetHz{};
     kharvox::ActionSpeedKind lastAction{kharvox::ActionSpeedKind::None};
+    LARGE_INTEGER actionStartedAt{};
+    uint64_t actionPresents{};
     LARGE_INTEGER startedAt{};
     uint64_t presents{};
 };
@@ -662,7 +664,7 @@ int actionSpeedEnvironmentHz(const char* name){
     if(n==0||n>=sizeof(buffer))return 0;
     char* end{};
     const long value=std::strtol(buffer,&end,10);
-    return end!=buffer&&*end=='\0'&&kharvox::validActionSpeedTarget(static_cast<int>(value))
+    return end!=buffer&&*end=='\0'&&value>=30&&value<=240
         ?static_cast<int>(value):0;
 }
 const kharvox::ActionSpeedTargets& actionSpeedTargets(){
@@ -800,10 +802,19 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
             out<<" [FAST-KILLS] syncNoAdaptiveTickReadback="
                <<read(syncNoAdaptiveTickCurrentRva)<<" expected=1";
         log(out.str());
-        if(hold.lastAction!=kharvox::ActionSpeedKind::None)
+        if(hold.lastAction!=kharvox::ActionSpeedKind::None){
+            LARGE_INTEGER now{};QueryPerformanceCounter(&now);
+            const double ms=performanceMilliseconds(hold.actionStartedAt,now);
+            const double hz=ms>0.0?hold.actionPresents*1000.0/ms:0.0;
+            log(std::string("[ACTION-HZ][TEST] ")+kharvox::actionSpeedName(hold.lastAction)
+                +" completed; presents="+std::to_string(hold.actionPresents)
+                +" elapsedMs="+std::to_string(ms)
+                +" measuredPresentHz="+std::to_string(hz));
             log(std::string("[ACTION-HZ] RESTORE after ")+kharvox::actionSpeedName(hold.lastAction)
                 +" engine minHz="+std::to_string(hold.savedMinHz));
+        }
         hold.lastAction=kharvox::ActionSpeedKind::None;
+        hold.actionPresents=0;
         hold.active=false;
         hold.presents=0;
     };
@@ -853,10 +864,13 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
             :std::max(effectiveTarget,static_cast<int>(hold.savedMinHz));
         hold.lastAction=action.hz>0&&!fastKillsEnabled
             ?action.kind:kharvox::ActionSpeedKind::None;
-        if(hold.lastAction!=kharvox::ActionSpeedKind::None)
+        if(hold.lastAction!=kharvox::ActionSpeedKind::None){
+            QueryPerformanceCounter(&hold.actionStartedAt);
+            hold.actionPresents=0;
             log(std::string("[ACTION-HZ] ENTER ")+kharvox::actionSpeedName(hold.lastAction)
                 +" target="+std::to_string(hold.targetHz)
                 +" Hz; prior engine minHz="+std::to_string(hold.savedMinHz));
+        }
         hold.presents=0;
         QueryPerformanceCounter(&hold.startedAt);
         hold.active=true;
@@ -876,8 +890,19 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
                 kharvox::nativeSyncAdaptiveTickDuringCinematic(fastKillsEnabled)));
     }else if(!fastKillsEnabled && action.kind!=hold.lastAction) {
         const auto prior=hold.lastAction;
+        if(prior!=kharvox::ActionSpeedKind::None){
+            LARGE_INTEGER now{};QueryPerformanceCounter(&now);
+            const double ms=performanceMilliseconds(hold.actionStartedAt,now);
+            const double hz=ms>0.0?hold.actionPresents*1000.0/ms:0.0;
+            log(std::string("[ACTION-HZ][TEST] ")+kharvox::actionSpeedName(prior)
+                +" completed; presents="+std::to_string(hold.actionPresents)
+                +" elapsedMs="+std::to_string(ms)
+                +" measuredPresentHz="+std::to_string(hz));
+        }
         hold.lastAction=action.kind;
         hold.targetHz=effectiveTarget;
+        QueryPerformanceCounter(&hold.actionStartedAt);
+        hold.actionPresents=0;
         log(std::string("[ACTION-HZ] TRANSITION ")+kharvox::actionSpeedName(prior)
             +" -> "+kharvox::actionSpeedName(action.kind)
             +" target="+std::to_string(hold.targetHz)+" Hz");
@@ -933,6 +958,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
         InterlockedExchange(&immersiveAdaptiveParticipantBypass,0);
     }
     ++hold.presents;
+    if(hold.lastAction!=kharvox::ActionSpeedKind::None)++hold.actionPresents;
 }
 DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){DWORD result=originalXInputGetState?originalXInputGetState(userIndex,state):ERROR_DEVICE_NOT_CONNECTED;if(userIndex!=0||!state)return result;if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);const auto movement=virtualMovementAxes.load(std::memory_order_relaxed);state->Gamepad.sThumbLX=kharvox::movementAxisX(movement);state->Gamepad.sThumbLY=kharvox::movementAxisY(movement);state->Gamepad.sThumbRX=virtualRightX.load(std::memory_order_relaxed);state->Gamepad.sThumbRY=virtualRightY.load(std::memory_order_relaxed);state->Gamepad.bLeftTrigger=std::max(state->Gamepad.bLeftTrigger,virtualLeftTrigger.load(std::memory_order_relaxed));state->Gamepad.bRightTrigger=std::max(state->Gamepad.bRightTrigger,virtualRightTrigger.load(std::memory_order_relaxed));state->Gamepad.wButtons|=virtualButtons.load(std::memory_order_relaxed);return ERROR_SUCCESS;}
 void retainPendingXInputRumblePeak(uint32_t packed){
