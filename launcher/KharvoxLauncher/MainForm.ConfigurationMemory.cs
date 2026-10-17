@@ -367,27 +367,27 @@ public sealed partial class MainForm
             var window = main.customOptionsForm ??
                 throw new InvalidOperationException("Custom Mods window was not created.");
             TestMainLauncherModLocks(main);
-            if (window.ClientSize.Width < 895 || window.ClientSize.Width > 940)
+            if (window.ClientSize.Width < 1170 || window.ClientSize.Width > 1190)
                 throw new InvalidDataException("Custom Mods initial width is incorrect.");
             // Larger width is fixed while preserving docked move/height behavior.
             main.FitCustomOptionsToContent(11);
-            if (window.MinimumSize.Width != 930 || window.Width != 930
+            if (window.MinimumSize.Width != 1194 || window.Width != 1194
                 || window.FormBorderStyle != FormBorderStyle.FixedSingle)
                 throw new InvalidDataException(
-                    "Custom Mods must use a fixed 930px starting width."
+                    "Custom Mods must preserve its fixed wider action-slider layout."
                     + " min=" + window.MinimumSize.Width
                     + " actual=" + window.Width);
             // Match actual outside borders exactly with no separator gap,
             // including moving both windows when space is constrained.
-            var desktop = new Rectangle(0, 0, 1920, 1080);
+            var desktop = new Rectangle(0, 0, 2560, 1080);
             var dock = CalculateCustomModsDock(
-                new Rectangle(990, 57, 515, 910), window.Width, desktop);
+                new Rectangle(1800, 57, 515, 910), window.Width, desktop);
             if (dock.Mods.Right != dock.Launcher.Left
                 || dock.Mods.Top != dock.Launcher.Top
                 || dock.Mods.Bottom != dock.Launcher.Bottom
                 || dock.Mods.Width != window.Width
                 || dock.Launcher.Width != 515
-                || dock.Launcher.X != 990)
+                || dock.Launcher.X != 1800)
                 throw new InvalidDataException(
                     "Docked Custom Mods must touch launcher and match its height.");
             // Windows includes ~7-9px invisible resize borders in each
@@ -402,7 +402,7 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "DWM visible-frame seam overlap must be bounded and additive.");
             var snapped = CalculateCustomModsDock(
-                new Rectangle(990, 57, 515, 910), window.Width, desktop, overlap);
+                new Rectangle(1800, 57, 515, 910), window.Width, desktop, overlap);
             if (snapped.Mods.Right - snapped.Launcher.Left != overlap
                 || snapped.Mods.Width != window.Width
                 || snapped.Mods.Top != snapped.Launcher.Top
