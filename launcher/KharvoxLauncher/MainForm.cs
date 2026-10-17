@@ -93,6 +93,7 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> speedActionChecks = new();
     private readonly Dictionary<string, TrackBar> speedActionSliders = new();
     private readonly Dictionary<string, Label> speedActionValues = new();
+    private readonly CheckBox speedActionLogTest = MakeCheck("Log Test: All detected actions", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
@@ -596,7 +597,21 @@ public sealed partial class MainForm : Form
         }
         foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key,true);
         foreach(string key in ActionSpeedCatalog.Probes)AddActionSpeedRow(key,false);
-        speedAdvancedHeight=44+ActionSpeedCatalog.All.Length*37;
+        int logRow=speedAdvancedPanel.RowCount++;
+        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,37));
+        speedActionLogTest.AutoSize=true;
+        speedActionLogTest.Margin=new Padding(3,6,0,0);
+        speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
+        speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
+        statusToolTip.SetToolTip(speedActionLogTest,
+            "Log one playthrough's available action start/end edges, chosen Hz, duration and "
+            + "presented FPS estimates to logs/KHARVOX.log. Missing animation hooks are explicitly reported. "
+            + "This does NOT modify animation speed. Restart DOOM to start the test.");
+        speedActionLogTest.CheckedChanged+=(_,_)=>{
+            if(restoringConfiguration||applyingCustomModDependencies)return;
+            SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
+        };
+        speedAdvancedHeight=44+(ActionSpeedCatalog.All.Length+1)*37;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         statusToolTip.SetToolTip(cinematicFineTuneTitle,
             "Baseline when no action profile overrides it. Left 240 Hz slows synced actions; right 30 Hz speeds them up. This is NOT headset FPS.");
@@ -1890,6 +1905,7 @@ public sealed partial class MainForm : Form
                 Enabled=speedActionChecks[key].Checked,
                 TargetHz=270-speedActionSliders[key].Value
             }),
+        ActionSpeedLogTestEnabled = speedActionLogTest.Checked,
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1946,6 +1962,7 @@ public sealed partial class MainForm : Form
                 speedActionChecks[key].Checked=p.Enabled;
                 speedActionSliders[key].Value=270-Math.Max(30,Math.Min(240,p.TargetHz));
             }
+            speedActionLogTest.Checked = mods.ActionSpeedLogTestEnabled;
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally

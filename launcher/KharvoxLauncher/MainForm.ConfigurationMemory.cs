@@ -1061,12 +1061,14 @@ public sealed partial class MainForm
             // The per-action controls must be present and default OFF.
             if(main.speedActionChecks.Count!=ActionSpeedCatalog.All.Length
                 ||main.speedActionSliders.Count!=ActionSpeedCatalog.All.Length
-                ||main.speedActionChecks.Values.Any(box=>box.Checked))
+                ||main.speedActionChecks.Values.Any(box=>box.Checked)
+                ||main.speedActionLogTest.Checked)
                 throw new InvalidDataException("Action checklist missing entries or contains unsafe auto-enabled profiles.");
             main.applyingCustomModDependencies = true;
             main.speedActionChecks["glory"].Checked = true;
             main.speedActionSliders["glory"].Value = 70; // 200 Hz from 240..30 track
             main.speedActionChecks["enemy"].Checked = true;
+            main.speedActionLogTest.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             var profileConfig=main.ReadCustomModSettingsFromControls();
@@ -1074,7 +1076,8 @@ public sealed partial class MainForm
                 ||main.speedActionSliders["enemy"].Enabled
                 ||!profileConfig.ActionSpeedProfiles["glory"].Enabled
                 ||profileConfig.ActionSpeedProfiles["glory"].TargetHz!=200
-                ||!profileConfig.ActionSpeedProfiles["enemy"].Enabled)
+                ||!profileConfig.ActionSpeedProfiles["enemy"].Enabled
+                ||!profileConfig.ActionSpeedLogTestEnabled)
                 throw new InvalidDataException("Supported profiles and diagnostic-only probes misconfigured.");
             main.applyingCustomModDependencies = true;
             main.speedAdvanced.Checked = false;
@@ -1089,6 +1092,7 @@ public sealed partial class MainForm
             main.applyingCustomModDependencies = true;
             main.speedActionChecks["glory"].Checked = false;
             main.speedActionChecks["enemy"].Checked = false;
+            main.speedActionLogTest.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled

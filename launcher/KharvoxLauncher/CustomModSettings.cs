@@ -57,6 +57,7 @@ internal sealed class CustomModSettings
     public bool SpeedAdvancedExpanded { get; set; }
     public int CinematicSpeedFineTuneHz { get; set; } = 35;
     public Dictionary<string, ActionSpeedSetting> ActionSpeedProfiles { get; set; } = new();
+    public bool ActionSpeedLogTestEnabled { get; set; }
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }

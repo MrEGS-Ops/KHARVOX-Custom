@@ -573,6 +573,7 @@ internal static class KharvoxRunner
             for (int i = 0; i < ActionSpeedCatalog.Probes.Length; i++)
                 if (customMods.ActionSpeedProfiles.TryGetValue(ActionSpeedCatalog.Probes[i], out var p)
                     && p.Enabled) probeMask |= 1 << i;
+            if (customMods.ActionSpeedLogTestEnabled) probeMask |= 63; // all read-only probes
             psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] = probeMask.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
