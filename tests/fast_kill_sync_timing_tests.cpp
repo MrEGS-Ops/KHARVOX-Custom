@@ -86,15 +86,13 @@ int main() {
     assert(validActionSpeedTarget(30));
     assert(validActionSpeedTarget(240));
     assert(!validActionSpeedTarget(241));
-    const ActionSpeedTargets target{50,60,80,120,160};
-    assert(selectActionSpeed({true,true,false,false,false},target).kind
+    const ActionSpeedTargets target{50,60,80};
+    assert(selectActionSpeed({true,true,false},target).kind
         ==ActionSpeedKind::Chainsaw);
-    assert(selectActionSpeed({true,false,false,false,false},target).hz==60);
-    assert(selectActionSpeed({false,false,true,false,false},target).hz==80);
-    assert(selectActionSpeed({false,false,false,true,false},target).hz==120);
-    assert(selectActionSpeed({false,false,false,false,true},target).hz==160);
+    assert(selectActionSpeed({true,false,false},target).hz==60);
+    assert(selectActionSpeed({false,false,true},target).hz==80);
     assert(selectActionSpeed({},target).kind==ActionSpeedKind::None);
-    assert(selectActionSpeed({true,false,false,false,false},{}).hz==0);
-    assert(selectActionSpeed({true,true,true,true,true},target).hz==50);
+    assert(selectActionSpeed({true,false,false},{}).hz==0);
+    assert(selectActionSpeed({true,true,true},target).hz==50);
     return 0;
 }
