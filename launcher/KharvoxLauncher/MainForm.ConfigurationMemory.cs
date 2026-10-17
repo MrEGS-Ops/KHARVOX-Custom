@@ -753,7 +753,7 @@ public sealed partial class MainForm
                     "Rating buttons are clipped, misaligned or lack tooltips.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
             doomGrid.PerformLayout();
-            if (doomGrid.RowCount != 5
+            if (doomGrid.RowCount != 6
                 || doomGrid.RowStyles[2].SizeType != SizeType.Absolute
                 || doomGrid.RowStyles[2].Height != 32
                 || doomGrid.RowStyles[4].SizeType != SizeType.Absolute
