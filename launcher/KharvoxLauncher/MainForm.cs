@@ -450,10 +450,10 @@ public sealed partial class MainForm : Form
         cinematicKillSpeedValue.Height = 29;
         cinematicSpeedRow.Controls.Add(cinematicKillSpeedValue);
         statusToolTip.SetToolTip(cinematicKillSpeed,
-            "1 = original DOOM slowdown; 2/3/4 = experimental 90/70/50 Hz "
-            + "native adaptive-tick targets; 5 = confirmed Build #473 native full speed. "
-            + "Uses the existing native timing mechanism, not a timescale multiplier. "
-            + "Fast Glory/Chainsaw toggles override levels 1-4.");
+            "Click −/+ for speed 1–5. 1 native; 2/3/4 = 90/70/50 Hz; "
+            + "5 is experimental 40 Hz near-max (may remove blink). "
+            + "Fast Kills checkboxes retain true full-speed native bypass "
+            + "and disable this control. Restart DOOM to apply changes.");
         UpdateCinematicKillSpeedLabel();
         cinematicKillSpeed.ValueChanged += (_, _) =>
         {
@@ -1457,7 +1457,7 @@ public sealed partial class MainForm : Form
             2 => "2 · 90 Hz (test)",
             3 => "3 · 70 Hz (test)",
             4 => "4 · 50 Hz (test)",
-            _ => "5 · Full speed"
+            _ => "5 · 40 Hz near-max"
         };
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
         cinematicKillSpeed.Enabled = !nativeFastChecked;
@@ -1468,8 +1468,9 @@ public sealed partial class MainForm : Form
             ? "Disabled by Fast Glory Kills or Fast Chainsaw Kills. "
                 + "Uncheck BOTH mods to enable Cinematic Kill Speed. "
                 + "Saved slider position: " + savedValue + "."
-            : "Cinematic Kill Speed: 1 native; 2 90 Hz (test); "
-                + "3 70 Hz (test); 4 50 Hz (test); 5 proven full speed.";
+            : "Cinematic Kill Speed: click −/+; 1 native; 2 90 Hz; "
+                + "3 70 Hz; 4 50 Hz; 5 experimental 40 Hz near-max. "
+                + "True max uses Fast Kills mods. Restart DOOM to apply.";
         // The disabled owner-painted slider cannot receive a normal tooltip;
         // its surrounding visible title/value remain active hover targets.
         statusToolTip.SetToolTip(cinematicKillSpeedTitle, explanation);

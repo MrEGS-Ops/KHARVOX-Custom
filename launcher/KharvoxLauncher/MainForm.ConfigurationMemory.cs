@@ -1026,6 +1026,12 @@ public sealed partial class MainForm
             main.customBoxingGuard.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
+            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 3) != 2
+                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 3) != 4
+                || FlatGloryKillSlider.ChangedValueForClick(80, 160, 3) != 3
+                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 1) != 1
+                || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
+                throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(

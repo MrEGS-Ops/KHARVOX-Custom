@@ -1,12 +1,11 @@
 using System;
 using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
 
 namespace KharvoxLauncher;
 
-// Five exact discrete positions, fully owner-painted so the VR MODS row
-// never inherits the bright white OS trackbar or combo-box chrome.
+// Discrete − [number] + control. Retain Value / ValueChanged compatibility
+// with existing mod config, load/save and cross-mod grey-out code.
 internal sealed class FlatGloryKillSlider : Control
 {
     private int current = 1;
@@ -25,101 +24,84 @@ internal sealed class FlatGloryKillSlider : Control
     }
     public FlatGloryKillSlider()
     {
-        SetStyle(ControlStyles.AllPaintingInWmPaint
-            | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer
-            | ControlStyles.Selectable, true);
-        Size = new Size(132, 28);
-        MinimumSize = new Size(108, 24);
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint
+            | ControlStyles.OptimizedDoubleBuffer | ControlStyles.Selectable, true);
+        Size = new Size(160, 29);
+        MinimumSize = new Size(114, 25);
         BackColor = Color.FromArgb(30, 30, 33);
-        ForeColor = Color.FromArgb(201, 201, 204);
+        ForeColor = Color.WhiteSmoke;
+        AccessibleName = "Cinematic Kill Speed minus number plus";
         TabStop = true;
-        AccessibleName = "Cinematic Kill Speed (1 native, 5 full speed)";
     }
-    private Rectangle Track => new Rectangle(12, Height / 2 - 2,
-        Math.Max(1, Width - 24), 4);
-    private int Position(int number)
+    private Rectangle Minus => new(0, 0, 45, Height - 1);
+    private Rectangle Plus => new(Width - 45, 0, 45, Height - 1);
+    private Rectangle Number => new(45, 0, Math.Max(1, Width - 90), Height - 1);
+    internal static int ChangedValueForClick(int x, int width, int value)
     {
-        var t = Track;
-        return t.Left + (number - 1) * t.Width / 4;
+        var bounded = Math.Max(1, Math.Min(5, value));
+        if (x < 0 || x >= width) return bounded;
+        if (x < 45) return Math.Max(1, bounded - 1);
+        if (x >= width - 45) return Math.Min(5, bounded + 1);
+        return bounded;
     }
     protected override void OnEnabledChanged(EventArgs e)
     {
         base.OnEnabledChanged(e);
-        // This is an owner-painted control: Windows does not automatically
-        // grey its track/thumb when Enabled becomes false.
         Invalidate();
     }
     protected override void OnPaint(PaintEventArgs e)
     {
         base.OnPaint(e);
         var g = e.Graphics;
-        g.SmoothingMode = SmoothingMode.AntiAlias;
         g.Clear(BackColor);
-        var track = Track;
-        var enabled = Enabled;
-        using (var background = new SolidBrush(enabled
-            ? Color.FromArgb(76, 76, 80) : Color.FromArgb(48, 48, 50)))
-            g.FillRectangle(background, track);
-        using (var filled = new SolidBrush(enabled
-            ? Color.FromArgb(157, 157, 160) : Color.FromArgb(65, 65, 68)))
-            g.FillRectangle(filled, new Rectangle(track.X, track.Y,
-                Math.Max(1, Position(Value) - track.Left), track.Height));
-        // The disabled thumb remains in place to preserve the saved selection,
-        // but is deliberately dimmer than even the inactive enabled stops.
-        using var inactive = new SolidBrush(enabled
-            ? Color.FromArgb(123, 123, 127) : Color.FromArgb(69, 69, 73));
-        using var active = new SolidBrush(enabled
-            ? Color.FromArgb(224, 224, 226) : Color.FromArgb(96, 96, 99));
-        for (var n = 1; n <= 5; n++)
-        {
-            var cx = Position(n);
-            var radius = n == Value ? 6 : 3;
-            g.FillEllipse(n == Value ? active : inactive, cx - radius,
-                Height / 2 - radius, 2 * radius, 2 * radius);
-        }
+        using var button = new SolidBrush(Enabled
+            ? Color.FromArgb(65, 65, 70) : Color.FromArgb(39, 39, 42));
+        using var center = new SolidBrush(Enabled
+            ? Color.FromArgb(26, 26, 29) : Color.FromArgb(35, 35, 38));
+        using var text = new SolidBrush(Enabled
+            ? Color.WhiteSmoke : Color.FromArgb(96, 96, 99));
+        using var border = new Pen(Enabled
+            ? Color.FromArgb(125, 125, 130) : Color.FromArgb(58, 58, 61));
+        g.FillRectangle(button, Minus);
+        g.FillRectangle(button, Plus);
+        g.FillRectangle(center, Number);
+        g.DrawRectangle(border, 0, 0, Width - 1, Height - 1);
+        g.DrawLine(border, 45, 0, 45, Height - 1);
+        g.DrawLine(border, Width - 45, 0, Width - 45, Height - 1);
+        using var font = new Font(Font.FontFamily, 11f, FontStyle.Bold);
+        using var aligned = new StringFormat { Alignment = StringAlignment.Center,
+            LineAlignment = StringAlignment.Center };
+        g.DrawString("−", font, text, Minus, aligned);
+        g.DrawString(Value.ToString(), font, text, Number, aligned);
+        g.DrawString("+", font, text, Plus, aligned);
         if (Focused && ShowFocusCues)
             ControlPaint.DrawFocusRectangle(g, ClientRectangle);
-    }
-    private void SelectPosition(int x)
-    {
-        var t = Track;
-        var value = 1 + (int)Math.Round(Math.Max(0.0, Math.Min(1.0,
-            (x - t.Left) / (double)Math.Max(1, t.Width))) * 4);
-        Value = value;
     }
     protected override void OnMouseDown(MouseEventArgs e)
     {
         base.OnMouseDown(e);
         if (!Enabled || e.Button != MouseButtons.Left) return;
         Focus();
-        Capture = true;
-        SelectPosition(e.X);
+        Value = ChangedValueForClick(e.X, Width, Value);
     }
-    protected override void OnMouseMove(MouseEventArgs e)
+    protected override bool IsInputKey(Keys data)
     {
-        base.OnMouseMove(e);
-        if (Enabled && Capture && e.Button == MouseButtons.Left) SelectPosition(e.X);
-    }
-    protected override void OnMouseUp(MouseEventArgs e)
-    {
-        base.OnMouseUp(e);
-        Capture = false;
-    }
-    protected override bool IsInputKey(Keys keyData)
-    {
-        var key = keyData & Keys.KeyCode;
+        var key = data & Keys.KeyCode;
         return key is Keys.Left or Keys.Right or Keys.Home or Keys.End
-            || base.IsInputKey(keyData);
+            || base.IsInputKey(data);
     }
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         if (!Enabled) return;
-        if (e.KeyCode == Keys.Left) Value--;
-        else if (e.KeyCode == Keys.Right) Value++;
-        else if (e.KeyCode == Keys.Home) Value = 1;
-        else if (e.KeyCode == Keys.End) Value = 5;
-        else return;
+        switch (e.KeyCode)
+        {
+            case Keys.Left: Value--; break;
+            case Keys.Right: Value++; break;
+            case Keys.Home: Value = 1; break;
+            case Keys.End: Value = 5; break;
+            default: return;
+        }
         e.Handled = true;
     }
 }
