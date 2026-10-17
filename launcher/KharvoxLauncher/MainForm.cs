@@ -1702,7 +1702,6 @@ public sealed partial class MainForm : Form
             button.BackColor = selected
                 ? Color.FromArgb(192, 148, 54) : Color.FromArgb(36, 36, 39);
             button.ForeColor = selected ? Color.Black : Color.Gainsboro;
-            button.Font = new Font(button.Font, selected ? FontStyle.Bold : FontStyle.Regular);
             button.FlatAppearance.BorderColor = selected
                 ? Color.FromArgb(228, 190, 104) : Color.FromArgb(76, 76, 82);
         }
@@ -2546,9 +2545,9 @@ public sealed partial class MainForm : Form
         var height = Math.Min(preferredHeight, maxClientHeight);
         // Larger fixed-width sidecar keeps DOOM and VR labels legible.
         // Its width is locked; height tracks the launcher while docked.
-        var outerWidth = Math.Min(930, work.Width);
+        var outerWidth = Math.Min(1194, work.Width);
         var borderWidth = customOptionsForm.Width - customOptionsForm.ClientSize.Width;
-        customOptionsForm.MinimumSize = new Size(Math.Min(930, work.Width),
+        customOptionsForm.MinimumSize = new Size(Math.Min(1194, work.Width),
             Math.Min(530, work.Height));
         customOptionsForm.ClientSize = new Size(
             Math.Max(1, outerWidth - borderWidth), height);
