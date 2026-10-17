@@ -371,7 +371,9 @@ public sealed partial class MainForm
                 throw new InvalidDataException("Custom Mods initial width is incorrect.");
             // Larger width is fixed while preserving docked move/height behavior.
             main.FitCustomOptionsToContent(11);
-            if (window.MinimumSize.Width != 1194 || window.Width != 1194
+            var expectedWidth = Math.Min(1194, Screen.FromControl(main).WorkingArea.Width);
+            if (window.MinimumSize.Width != expectedWidth
+                || window.Width < expectedWidth || window.Width > expectedWidth + 32
                 || window.FormBorderStyle != FormBorderStyle.FixedSingle)
                 throw new InvalidDataException(
                     "Custom Mods must preserve its fixed wider action-slider layout."
