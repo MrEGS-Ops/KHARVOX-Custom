@@ -96,6 +96,12 @@ internal static class DoomSaveProtection
         AtomicWrite(OverridePath, root);
     }
 
+    internal static bool SelectedResourceMods(string? gameDirectory)
+    {
+        var selected = DoomUserMods.LoadSelections();
+        return DoomUserMods.Scan(gameDirectory).Any(mod => selected.Contains(mod.Id));
+    }
+
     internal static bool IsGameRunning()
     {
         foreach (var name in new[] { "DOOMx64vk", "DOOMx64" })
@@ -360,57 +366,73 @@ internal static class DoomSaveProtection
         var rescue = Capture("SAFETY COPY before restore", state.LastMode);
         var stage = Path.Combine(source, ".kharvox-restore-" + Guid.NewGuid().ToString("N"));
         var old = Path.Combine(source, ".kharvox-old-" + Guid.NewGuid().ToString("N"));
-        bool changesStarted = false, success = false;
+        bool success = false;
+        var movedOriginals = new List<string>();
+        var installed = new List<string>();
         try
         {
             CopySaves(SnapshotFolder(id), stage);
             CheckHashes(selected, stage);
             Directory.CreateDirectory(old);
-            changesStarted = true;
             foreach (var name in SaveNames)
             {
                 var live = Path.Combine(source, name);
-                if (Directory.Exists(live)) Directory.Move(live, Path.Combine(old, name));
+                if (!Directory.Exists(live)) continue;
+                Directory.Move(live, Path.Combine(old, name));
+                movedOriginals.Add(name);
             }
             foreach (var name in SaveNames)
             {
                 var staged = Path.Combine(stage, name);
-                if (Directory.Exists(staged)) Directory.Move(staged, Path.Combine(source, name));
+                if (!Directory.Exists(staged)) continue;
+                Directory.Move(staged, Path.Combine(source, name));
+                installed.Add(name);
             }
             success = true;
         }
-        catch
+        catch (Exception error)
         {
-            if (changesStarted)
+            try
             {
-                // Revert from same-volume renamed folders if anything fails.
-                // Do not destroy staged data if an unexpected file is present.
-                foreach (var name in SaveNames)
+                // Revert ONLY the paths we actually moved. A failed first
+                // rename must never cause us to move intact live saves away.
+                foreach (var name in installed)
                 {
                     var live = Path.Combine(source, name);
-                    var previous = Path.Combine(old, name);
-                    if (Directory.Exists(previous))
-                    {
-                        if (Directory.Exists(live))
-                            Directory.Move(live, Path.Combine(old, "failed-" + name));
-                        Directory.Move(previous, live);
-                    }
-                    else if (Directory.Exists(live))
+                    if (Directory.Exists(live))
                         Directory.Move(live, Path.Combine(old, "failed-" + name));
                 }
+                foreach (var name in movedOriginals)
+                {
+                    var previous = Path.Combine(old, name);
+                    if (Directory.Exists(previous))
+                        Directory.Move(previous, Path.Combine(source, name));
+                }
+            }
+            catch (Exception rollbackError)
+            {
+                throw new InvalidOperationException(
+                    "Restore failed AND the folder rollback was incomplete. "
+                    + "Do not start DOOM. Pre-restore safety copy: " + rescue.Id
+                    + ". Recovered folders may remain at " + old,
+                    new AggregateException(error, rollbackError));
             }
             throw new InvalidOperationException(
-                "Restore did not complete. A pre-restore safety copy was saved: "
-                + rescue.Id + ". Check the backup folder before retrying.");
+                "Restore failed; live files were rolled back. "
+                + "Pre-restore safety copy: " + rescue.Id, error);
         }
         finally
         {
             if (success)
             {
-                if (Directory.Exists(old)) Directory.Delete(old, true);
-                if (Directory.Exists(stage)) Directory.Delete(stage, true);
+                // Cleanup errors must not conceal a successfully restored save.
+                try { if (Directory.Exists(old)) Directory.Delete(old, true); }
+                catch { }
+                try { if (Directory.Exists(stage)) Directory.Delete(stage, true); }
+                catch { }
             }
-            // Failed restore leaves staging/rollback folders intact on disk.
+            // Failed restore retains .kharvox-stage / .kharvox-old folders
+            // for forensic recovery, plus the verified rescue snapshot.
         }
         state.LastMode = selected.Mode == "normal" ? "normal" : "modded";
         state.Source = source;
