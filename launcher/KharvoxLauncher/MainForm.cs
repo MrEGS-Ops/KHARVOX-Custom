@@ -89,12 +89,16 @@ public sealed partial class MainForm : Form
     private TableLayoutPanel? speedCustomModsGrid;
     private RowStyle? speedAdvancedRowStyle;
     private bool speedAdvancedVisible;
+    private int speedAdvancedHeight = 44;
+    private readonly Dictionary<string, CheckBox> speedActionChecks = new();
+    private readonly Dictionary<string, TrackBar> speedActionSliders = new();
+    private readonly Dictionary<string, Label> speedActionValues = new();
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
     // Inverted visual scale: slider left=200 Hz, slider right=30 Hz.
     // Actual selected Hz = (200+30) − TrackBar.Value.
-    private readonly TrackBar cinematicFineTuneHz = MakeSlider(30, 200, 195, 10, 1);
+    private readonly TrackBar cinematicFineTuneHz = MakeSlider(30, 240, 235, 10, 1);
     private readonly Label cinematicFineTuneTitle = new()
     {
         Text = "Target tick Hz", Width = 112, Height = 29,
@@ -520,6 +524,82 @@ public sealed partial class MainForm : Form
         cinematicFineTuneValue.Dock = DockStyle.Fill;
         cinematicFineTuneValue.TextAlign = ContentAlignment.MiddleLeft;
         speedAdvancedPanel.Controls.Add(cinematicFineTuneValue, 2, 0);
+        // Independent verified action triggers; unverified states get log-only
+        // probes with permanently disabled sliders. Every profile is OFF by
+        // default, and action CVars are scoped/restored by the native hold.
+        var actionNames = new Dictionary<string,string> {
+            ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
+            ["ledge"]="Ledge climbing",["gauss"]="Gauss Siege charge",
+            ["scripted"]="Other scripted action",
+            ["melee"]="Melee (probe)",["reload"]="Weapon reload (probe)",
+            ["grenade"]="Grenade throw (probe)",["enemy"]="Enemy animation (probe)",
+            ["boss"]="Boss sequence (probe)",["wheel"]="Weapon wheel (probe)"
+        };
+        var actionHints = new Dictionary<string,string> {
+            ["glory"]="Native Glory Kill sync-state. Action-specific global tick target.",
+            ["chainsaw"]="Chainsaw input + confirmed native cinematic; Fast Kills still takes precedence.",
+            ["ledge"]="Native player ledge-grab transition. Modifies game tick globally during climbing.",
+            ["gauss"]="Native Gauss Siege charge. Experimental: other gameplay timing may also change.",
+            ["scripted"]="Native adaptive participant/upgrade transitions. Experimental global timing.",
+            ["melee"]="INPUT edge only: no verified animation start/end.",
+            ["reload"]="No verified native reload animation lifecycle.",
+            ["grenade"]="Native equipment/throw input pulse; no animation lifecycle.",
+            ["enemy"]="No confirmed per-enemy animation timer or lifecycle.",
+            ["boss"]="Boss camera state only; no safe timing override.",
+            ["wheel"]="Weapon wheel input state; keep existing separate wheel slowdown."
+        };
+        void AddActionSpeedRow(string key, bool canChangeSpeed)
+        {
+            int row=speedAdvancedPanel.RowCount++;
+            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,37));
+            var check=MakeCheck(actionNames[key],false);
+            check.AutoSize=true; check.Dock=DockStyle.Fill;
+            check.Margin=new Padding(3,5,1,0);
+            speedActionChecks.Add(key,check);
+            speedAdvancedPanel.Controls.Add(check,0,row);
+            var slider=MakeSlider(30,240,240,10,1);
+            slider.AutoSize=false; slider.Dock=DockStyle.Fill;
+            slider.Height=31; slider.TickFrequency=20;
+            slider.SmallChange=1; slider.LargeChange=5;
+            slider.Margin=new Padding(0,3,0,0);
+            slider.Enabled=false;
+            speedActionSliders.Add(key,slider);
+            speedAdvancedPanel.Controls.Add(slider,1,row);
+            var value=new Label {
+                Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
+                ForeColor=canChangeSpeed?Color.WhiteSmoke:Color.Silver,
+                AutoEllipsis=true,Text=canChangeSpeed?"OFF":"Log only"
+            };
+            speedActionValues.Add(key,value);
+            speedAdvancedPanel.Controls.Add(value,2,row);
+            string tip=actionHints[key]+(canChangeSpeed
+                ? " Check to override Hz during the action. Left = slower (240 Hz), right = faster (30 Hz). Restart DOOM."
+                : " DIAGNOSTIC ONLY. Check to log activity; the slider cannot change timing.");
+            statusToolTip.SetToolTip(check,tip);
+            statusToolTip.SetToolTip(value,tip);
+            slider.AccessibleDescription=tip;
+            slider.ValueChanged+=(_,_)=>UpdateActionSpeedLabels();
+            void Commit(){
+                if(restoringConfiguration||applyingCustomModDependencies)return;
+                SaveCustomModSettings();
+                OptionChanged(slider,EventArgs.Empty);
+            }
+            slider.MouseUp+=(_,_)=>Commit();
+            slider.KeyUp+=(_,_)=>Commit();
+            slider.MouseWheel+=(_,_)=>Commit();
+            slider.Leave+=(_,_)=>Commit();
+            check.CheckedChanged+=(_,_)=>{
+                if(restoringConfiguration||applyingCustomModDependencies)return;
+                UpdateActionSpeedLabels();SaveCustomModSettings();
+                OptionChanged(check,EventArgs.Empty);
+            };
+        }
+        foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key,true);
+        foreach(string key in ActionSpeedCatalog.Probes)AddActionSpeedRow(key,false);
+        speedAdvancedHeight=44+ActionSpeedCatalog.All.Length*37;
+        speedAdvancedPanel.Height=speedAdvancedHeight;
+        statusToolTip.SetToolTip(cinematicFineTuneTitle,
+            "Baseline when no action profile overrides it. Left 240 Hz slows synced actions; right 30 Hz speeds them up. This is NOT headset FPS.");
         cinematicFineTuneHz.ValueChanged += (_, _) =>
         {
             // The live number updates throughout a mouse drag.
@@ -1536,11 +1616,25 @@ public sealed partial class MainForm : Form
         var expanded = speedAdvanced.Checked;
         if (speedAdvancedVisible != expanded)
         {
-            speedCustomModsGrid.Height += expanded ? 44 : -44;
+            speedCustomModsGrid.Height += expanded ? speedAdvancedHeight : -speedAdvancedHeight;
             speedAdvancedVisible = expanded;
         }
-        speedAdvancedRowStyle.Height = expanded ? 44 : 0;
+        speedAdvancedRowStyle.Height = expanded ? speedAdvancedHeight : 0;
         speedAdvancedPanel.Visible = expanded;
+    }
+
+    private void UpdateActionSpeedLabels()
+    {
+        foreach(string key in ActionSpeedCatalog.All){
+            if(!speedActionChecks.TryGetValue(key,out var check)
+                ||!speedActionSliders.TryGetValue(key,out var slider)
+                ||!speedActionValues.TryGetValue(key,out var label))continue;
+            bool supported=ActionSpeedCatalog.Controllable.Contains(key);
+            slider.Enabled=supported&&check.Checked&&speedAdvanced.Checked
+                &&!customFastGloryKills.Checked&&!customFastChainsawKills.Checked;
+            label.Text=supported?(check.Checked?(270-slider.Value)+" Hz":"OFF")
+                :(check.Checked?"Logging ON":"Log only");
+        }
     }
 
     private void UpdateCinematicKillSpeedLabel()
@@ -1555,6 +1649,7 @@ public sealed partial class MainForm : Form
         };
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
         RefreshSpeedAdvancedVisibility();
+        UpdateActionSpeedLabels();
         var fineTuneChecked = speedAdvanced.Checked;
         cinematicKillSpeed.Enabled = !nativeFastChecked && !fineTuneChecked;
         cinematicFineTuneHz.Enabled = speedAdvanced.Checked
@@ -1563,12 +1658,12 @@ public sealed partial class MainForm : Form
         cinematicFineTuneValue.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
         cinematicFineTuneValue.Text = nativeFastChecked
             ? "Locked by Fast Kills"
-            : fineTuneChecked ? (230 - cinematicFineTuneHz.Value) + " Hz · restart DOOM"
+            : fineTuneChecked ? (270 - cinematicFineTuneHz.Value) + " Hz · restart DOOM"
             : "Advanced disabled";
         var fineTip = nativeFastChecked
             ? "Fast Glory/Chainsaw overrides fine tune. Uncheck both to edit."
             : fineTuneChecked
-                ? "200 Hz on the left, 30 Hz on the right; drag in 1 Hz steps. Restart DOOM to apply."
+                ? "240 Hz on the left, 30 Hz on the right; drag in 1 Hz steps. Restart DOOM to apply."
                 : "Check Advanced beside Sync Action Speed to select the target Hz.";
         statusToolTip.SetToolTip(cinematicFineTuneTitle, fineTip);
         statusToolTip.SetToolTip(cinematicFineTuneValue, fineTip);
@@ -1789,7 +1884,12 @@ public sealed partial class MainForm : Form
         CinematicKillSpeedLevel = cinematicKillSpeed.Value,
         CinematicSpeedFineTune = speedAdvanced.Checked,
         SpeedAdvancedExpanded = speedAdvanced.Checked,
-        CinematicSpeedFineTuneHz = 230 - cinematicFineTuneHz.Value,
+        CinematicSpeedFineTuneHz = 270 - cinematicFineTuneHz.Value,
+        ActionSpeedProfiles = ActionSpeedCatalog.All.ToDictionary(
+            key=>key,key=>new ActionSpeedSetting{
+                Enabled=speedActionChecks[key].Checked,
+                TargetHz=270-speedActionSliders[key].Value
+            }),
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1839,7 +1939,13 @@ public sealed partial class MainForm : Form
             cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
             // Legacy fine tune files expand Advanced so no active override is hidden.
             speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
-            cinematicFineTuneHz.Value = 230 - Math.Max(30, Math.Min(200, mods.CinematicSpeedFineTuneHz));
+            cinematicFineTuneHz.Value = 270 - Math.Max(30, Math.Min(240, mods.CinematicSpeedFineTuneHz));
+            foreach(string key in ActionSpeedCatalog.All){
+                var p=mods.ActionSpeedProfiles.TryGetValue(key,out var configured)
+                    ? configured:new ActionSpeedSetting();
+                speedActionChecks[key].Checked=p.Enabled;
+                speedActionSliders[key].Value=270-Math.Max(30,Math.Min(240,p.TargetHz));
+            }
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
