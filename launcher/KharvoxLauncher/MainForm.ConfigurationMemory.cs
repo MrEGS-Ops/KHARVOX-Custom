@@ -571,7 +571,6 @@ public sealed partial class MainForm
                 main.customFastGloryKills,
                 main.customFastChainsawKills,
                 main.customCinematicExitHandoff,
-                main.customCinematicFineTune,
                 main.customBackOfHandHud,
                 main.customDisableHud,
                 main.customDisableWeaponWheel,
@@ -581,13 +580,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 19 || checks.Distinct().Count() != 19
+                || checks.Length != 18 || checks.Distinct().Count() != 18
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 14 ? 2
-                        : index < 17 ? 3 : index < 18 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 19
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 13 ? 2
+                        : index < 16 ? 3 : index < 17 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 18
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -602,7 +601,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 6 + 19 * 28 + 6 * 20
+                || layout.Height < 6 + 18 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
@@ -1006,7 +1005,7 @@ public sealed partial class MainForm
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
             main.customFastGloryKills, main.customFastChainsawKills,
             main.customBoxingGuard, main.customCinematicFineTune,
-            main.customCinematicExitHandoff
+            main.customCinematicExitHandoff, main.speedAdvanced
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1042,23 +1041,37 @@ public sealed partial class MainForm
                 || FlatGloryKillSlider.ChangedValueForClick(2, 160, 1) != 1
                 || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
                 throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
-            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 35, 20, 60) != 34
-                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 35, 20, 60) != 36
-                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 20, 20, 60) != 20
-                || FlatGloryKillSlider.ChangedValueForClick(157, 160, 60, 20, 60) != 60)
-                throw new InvalidDataException("Fine Tune 20–60 Hz bounds incorrect.");
+            if (main.cinematicFineTuneHz.Minimum != 20
+                || main.cinematicFineTuneHz.Maximum != 200
+                || main.cinematicFineTuneHz.SmallChange != 1
+                || main.cinematicFineTuneHz.TickFrequency != 10)
+                throw new InvalidDataException("Advanced drag must support 20–200 Hz at 1 Hz resolution.");
+            main.applyingCustomModDependencies = true;
+            main.speedAdvanced.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.speedAdvancedRowStyle is null
+                || main.speedAdvancedRowStyle.Height != 104 || !main.speedAdvancedVisible)
+                throw new InvalidDataException("Advanced section did not expand.");
             main.applyingCustomModDependencies = true;
             main.customCinematicFineTune.Checked = true;
-            main.cinematicFineTuneHz.Value = 37;
+            main.cinematicFineTuneHz.Value = 167;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.cinematicFineTuneHz.Enabled || main.cinematicKillSpeed.Enabled
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 37)
+                || main.cinematicFineTuneValue.Text.IndexOf("167 Hz", StringComparison.Ordinal) < 0
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
                 throw new InvalidDataException("Fine Tune override not persisted.");
             main.applyingCustomModDependencies = true;
+            main.speedAdvanced.Checked = false;
             main.customCinematicFineTune.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
+            if (main.speedAdvancedRowStyle.Height != 0 || main.speedAdvancedVisible
+                || !main.cinematicKillSpeed.Enabled
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
+                throw new InvalidDataException("Collapsing Advanced must restore presets and preserve selected Hz.");
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(
@@ -1130,7 +1143,7 @@ public sealed partial class MainForm
                 || main.cinematicKillSpeedValue.ForeColor != Color.Gray
                 || !main.cinematicKillSpeedValue.Text.Contains("Locked")
                 || !main.detachedModToolTip.GetToolTip(main.customFastGloryKills)
-                    .Contains("DISABLES CINEMATIC KILL SPEED SLIDER"))
+                    .Contains("DISABLES SYNC ACTION SPEED"))
                 throw new InvalidDataException(
                     "Fast Glory Kills must select native fast mode and visibly disable the speed slider.");
 
@@ -1142,7 +1155,7 @@ public sealed partial class MainForm
             if (main.gloryKillSlowmo.Value != 0
                 || main.cinematicKillSpeed.Enabled
                 || !main.detachedModToolTip.GetToolTip(main.customFastChainsawKills)
-                    .Contains("DISABLES CINEMATIC KILL SPEED SLIDER"))
+                    .Contains("DISABLES SYNC ACTION SPEED"))
                 throw new InvalidDataException(
                     "Fast Chainsaw Kills must reuse native fast mode and visibly disable the speed slider.");
 
