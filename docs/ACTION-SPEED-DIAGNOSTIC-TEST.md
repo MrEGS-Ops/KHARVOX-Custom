@@ -87,3 +87,35 @@ a known-good backup (Build #473) for headset rollback.
    still behave as selected.
 5. Disable the scripted override after testing to return to DOOM's normal
    timing for passive story interactions.
+
+## Execution-tail protection (Oct 18)
+
+A 2026-10-17 native timing log showed **60/61 Glory Kills** immediately
+classified as Scripted Cinematics as soon as native syncAttack cleared.
+Fourteen transitioned from Glory Kill target=30 Hz to scripted target=240 Hz
+and held the script target another 0.5–0.8 s, matching the reported
+post-kill slow-motion hiccup.
+
+KHARVOX now rejects a scripted-cinematic override until the previous
+Glory Kill, chainsaw, or ledge native cutscene has **fully cleared**, and
+a short 250 ms classifier guard has passed. This is **only a detection
+guard**, not a sleep, gameplay pause, camera blend, or animation delay.
+
+Verify in a new log:
+- Glory Kills retain the selected Glory Kill timing during the kill.
+- Do **not** log `[ACTION-HZ] TRANSITION glory-kill -> scripted-cinematic`
+  at the kill exit (same for ledge and chainsaw).
+- Tail frames may log `[ACTION-HZ] SCRIPTED TAIL SUPPRESSED ...` once.
+- Native engine CVar values restore as soon as the execution ends.
+- Genuine independent scanner/button/arm-rip cinematics still get the
+  separate override when enabled.
+
+### Maximum speed
+
+**30 Hz** is the current *minimum valid* experimental global engine tick
+target, not a direct animation-time-scale command. Setting a lower value
+would be untested and can damage timing stability, not reliably accelerate
+an animation. `Full speed · no slow-mo` is a **different native bypass**
+which applies to Glory Kills and chainsaw executions only. A faster
+per-scripted-animation playback rate needs a verified native animation
+clock/hook, not simply removing the 30 Hz floor.
