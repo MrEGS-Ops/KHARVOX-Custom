@@ -50,7 +50,7 @@ never present a stale frame without headset pose handling.
 ## Implementation prototype
 
 - Slider 1 native (headset Hz), 2 90 Hz, 3 70 Hz, 4 50 Hz, 5 exact Build #473 native fast bypass.
-- Uses the existing `com_adaptiveTickMinHz`/`MaxHz`, fixed/adaptive tick and native `sync_noAdaptiveTick` paths; no game timescale multiplier.
+- Positions 1–4 retain the original DOOM sync slowdown setting while using the existing `com_adaptiveTickMinHz`/`MaxHz` and fixed/adaptive tick pathway at varying targets; position 5 requests the exact proven native `sync_noAdaptiveTick=1` bypass with untouched DOOM pacing. No game timescale multiplier.
 - The slider sits at bottom of VR MODS and persists through `kharvox-custom-mods.json`.
 - Old Fast Glory Kills/Chainsaw checkboxes retain priority and disable slider editing while checked.
 - Middle settings explicitly experimental: slower/faster ordering is a hypothesis that needs observed Quest headset validation.

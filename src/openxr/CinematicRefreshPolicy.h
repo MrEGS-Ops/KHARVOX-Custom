@@ -73,7 +73,7 @@ constexpr bool nativeFastKillSyncRequested(
     int cinematicSpeedLevel = 1) {
     return fastGlory || fastChainsaw
         || (legacySpeedLevel >= 0 && legacySpeedLevel < 10)
-        || (cinematicSpeedLevel >= 2 && cinematicSpeedLevel <= 5);
+        || cinematicSpeedLevel == 5;
 }
 
 // Existing native adaptive-tick Hz lever. Level 1 leaves the normal

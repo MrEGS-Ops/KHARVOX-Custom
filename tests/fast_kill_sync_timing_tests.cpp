@@ -47,8 +47,8 @@ int main() {
     assert(cinematicKillTargetTickHz(4,120)==50);
     assert(cinematicKillTargetTickHz(5,120)==0);
     for (int level=2; level<=4; ++level) {
-        assert(nativeFastKillSyncRequested(false,false,10,level));
-        assert(shouldForceCinematicAdaptiveTickPacing(true,level));
+        assert(!nativeFastKillSyncRequested(false,false,10,level));
+        assert(shouldForceCinematicAdaptiveTickPacing(false,level));
     }
     assert(!nativeFastKillSyncRequested(false,false,10,1));
     assert(nativeFastKillSyncRequested(false,false,10,5));

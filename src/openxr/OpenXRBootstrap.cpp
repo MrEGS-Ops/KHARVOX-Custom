@@ -683,12 +683,15 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
         s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
         legacySpeedLevel,cinematicSpeedLevel);
+    const bool forceRefresh=kharvox::shouldForceCinematicAdaptiveTickPacing(
+        fastKillsEnabled,hzSpeedLevel);
     auto value=[&](uintptr_t rva){return reinterpret_cast<volatile LONG*>(image+rva);};
     auto read=[&](uintptr_t rva){return InterlockedCompareExchange(value(rva),0,0);};
     auto write=[&](uintptr_t rva,LONG replacement){InterlockedExchange(value(rva),replacement);};
     auto restore=[&]{
         if(!hold.active||!image)return;
-        // NEVER rewind DOOM's native pacing state on a fast execution.
+        // Never rewind #473 fast execution native pacing. For the intermediate
+        // slider Hz positions, restore the original adaptive-tick CVars.
         // The old immersive hold forced a 120 Hz simulation minimum despite
         // measured 37-39 Hz Presents, then restored stale CVar snapshots.
         // Rewriting native timing here can leave a slow-motion tail.
@@ -779,8 +782,6 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     // This makes per-tick execution animations run at reduced wall-clock speed.
     // Preserve DOOM's own tick CVars for Fast Glory/Chainsaw executions;
     // keep the old cinematic refresh policy for every other mode.
-    const bool forceRefresh=kharvox::shouldForceCinematicAdaptiveTickPacing(
-        fastKillsEnabled,hzSpeedLevel);
     if(forceRefresh){
         write(maxHzCurrentRva,std::max<LONG>(hold.savedMaxHz,hold.targetHz));
         write(minHzCurrentRva,hold.targetHz);
