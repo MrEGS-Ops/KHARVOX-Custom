@@ -9,13 +9,15 @@ namespace KharvoxLauncher;
 internal sealed class FlatGloryKillSlider : Control
 {
     private int current = 1;
+    public int Minimum { get; set; } = 1;
+    public int Maximum { get; set; } = 5;
     public event EventHandler? ValueChanged;
     public int Value
     {
         get => current;
         set
         {
-            var limited = Math.Max(1, Math.Min(5, value));
+            var limited = Math.Max(Minimum, Math.Min(Maximum, value));
             if (current == limited) return;
             current = limited;
             Invalidate();
@@ -36,12 +38,13 @@ internal sealed class FlatGloryKillSlider : Control
     private Rectangle Minus => new(0, 0, 45, Height - 1);
     private Rectangle Plus => new(Width - 45, 0, 45, Height - 1);
     private Rectangle Number => new(45, 0, Math.Max(1, Width - 90), Height - 1);
-    internal static int ChangedValueForClick(int x, int width, int value)
+    internal static int ChangedValueForClick(int x, int width, int value,
+        int minimum = 1, int maximum = 5)
     {
-        var bounded = Math.Max(1, Math.Min(5, value));
+        var bounded = Math.Max(minimum, Math.Min(maximum, value));
         if (x < 0 || x >= width) return bounded;
-        if (x < 45) return Math.Max(1, bounded - 1);
-        if (x >= width - 45) return Math.Min(5, bounded + 1);
+        if (x < 45) return Math.Max(minimum, bounded - 1);
+        if (x >= width - 45) return Math.Min(maximum, bounded + 1);
         return bounded;
     }
     protected override void OnEnabledChanged(EventArgs e)
@@ -82,7 +85,7 @@ internal sealed class FlatGloryKillSlider : Control
         base.OnMouseDown(e);
         if (!Enabled || e.Button != MouseButtons.Left) return;
         Focus();
-        Value = ChangedValueForClick(e.X, Width, Value);
+        Value = ChangedValueForClick(e.X, Width, Value, Minimum, Maximum);
     }
     protected override bool IsInputKey(Keys data)
     {
@@ -98,8 +101,8 @@ internal sealed class FlatGloryKillSlider : Control
         {
             case Keys.Left: Value--; break;
             case Keys.Right: Value++; break;
-            case Keys.Home: Value = 1; break;
-            case Keys.End: Value = 5; break;
+            case Keys.Home: Value = Minimum; break;
+            case Keys.End: Value = Maximum; break;
             default: return;
         }
         e.Handled = true;

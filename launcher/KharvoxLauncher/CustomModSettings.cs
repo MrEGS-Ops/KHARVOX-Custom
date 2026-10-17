@@ -20,6 +20,8 @@ internal sealed class CustomModSettings
     public bool FastChainsawKills { get; set; }
     // Native cinematic tick-Hz experiment: 1 original, 5 confirmed full-speed.
     public int CinematicKillSpeedLevel { get; set; } = 1;
+    public bool CinematicSpeedFineTune { get; set; }
+    public int CinematicSpeedFineTuneHz { get; set; } = 35;
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }
@@ -42,7 +44,7 @@ internal static class CustomModSettingsStore
     // Bump this only when the next KHARVOX build introduces a different
     // opt-in mod that should start checked for the user's test session.
     // Never force it on again after the user deliberately unticks it.
-    internal const int CurrentDevelopmentTestDefaultsRevision = 1;
+    internal const int CurrentDevelopmentTestDefaultsRevision = 2;
     private static readonly JavaScriptSerializer Serializer = new();
 
     internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
@@ -54,6 +56,13 @@ internal static class CustomModSettingsStore
             // configs, then allow the user's choice to persist normally.
             value.BackOfHandHud = true;
             value.DevelopmentTestDefaultsRevision = 1;
+        }
+        if (value.DevelopmentTestDefaultsRevision < 2)
+        {
+            // New 30–40 Hz fine tune is auto checked once only.
+            value.CinematicSpeedFineTune = true;
+            value.CinematicSpeedFineTuneHz = 35;
+            value.DevelopmentTestDefaultsRevision = 2;
         }
         return value;
     }
@@ -71,6 +80,7 @@ internal static class CustomModSettingsStore
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
+            value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(40, value.CinematicSpeedFineTuneHz));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -88,6 +98,7 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
+        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(40, value.CinematicSpeedFineTuneHz));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -117,15 +128,19 @@ internal static class CustomModSettingsStore
                 BackOfHandHud = false, DevelopmentTestDefaultsRevision = 0
             }, path);
             var first = Load(path);
-            if (!first.BackOfHandHud
+            if (!first.BackOfHandHud || !first.CinematicSpeedFineTune
+                || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("New test mod not auto-checked on first launch.");
             first.BackOfHandHud = false;
+            first.CinematicSpeedFineTune = false;
+            first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
-            if (Load(path).BackOfHandHud)
+            if (Load(path).BackOfHandHud || Load(path).CinematicSpeedFineTune
+                || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
-            if (!fresh.BackOfHandHud)
+            if (!fresh.BackOfHandHud || !fresh.CinematicSpeedFineTune)
                 throw new InvalidDataException("Fresh install should auto-check active test mod.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
