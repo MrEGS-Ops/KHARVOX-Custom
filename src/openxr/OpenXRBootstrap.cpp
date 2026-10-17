@@ -749,16 +749,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
         if(end==text||*end!='\0'||value<1||value>5)return 1;
         return static_cast<int>(value);
     }();
-    static const int cinematicFineTuneHz=[]{
-        char text[16]{};
-        const DWORD copied=GetEnvironmentVariableA(
-            "KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ",text,sizeof(text));
-        if(!copied||copied>=sizeof(text))return 0;
-        char* end{};
-        const long value=std::strtol(text,&end,10);
-        if(end==text||*end!='\0'||value<30||value>240)return 0;
-        return static_cast<int>(value);
-    }();
+    // The global Target Tick Hz control is retired: action profiles own their
+    // own scoped target, and the 1-5 native Sync Action Speed preset remains.
+    constexpr int cinematicFineTuneHz=0;
     const int hzSpeedLevel=cinematicSpeedLevel;
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
         s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
@@ -830,8 +823,8 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
-    // Fine-tune overrides only the existing adaptive-tick
-    // target. Native full-speed bypass and all other timing remain unchanged.
+    // Action-specific Hz settings override the native Sync Action Speed preset.
+    // There is no global fine-tune override.
     const int cinematicTarget=cinematicFineTuneHz>0 && !fastKillsEnabled
         ?cinematicFineTuneHz
         :kharvox::cinematicKillTargetTickHz(hzSpeedLevel,detectedTarget);
@@ -5455,8 +5448,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool chainsawAction=s.chainsawKillLatched
         &&(syncAction||KharvoxCameraCutsceneActive());
     const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
+    // The native "siege" declaration can remain active while simply equipped.
+    // Require a held fire trigger and the Gauss weapon before overriding Hz.
     const bool gaussAction=KharvoxWeaponGaussSiegeChargeActive()
-        &&KharvoxCameraGameplayActive();
+        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
+        &&s.primaryFireDown&&KharvoxCameraGameplayActive();
     const bool scriptedAction=upgradeCinematicRefreshGuard
         ||(nativeAdaptiveParticipantGuard&&!syncAction&&!chainsawAction&&!ledgeAction);
     logActionSpeedProbes(s.meleePressed,
