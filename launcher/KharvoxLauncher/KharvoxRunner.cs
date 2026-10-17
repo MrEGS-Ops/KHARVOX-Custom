@@ -474,7 +474,8 @@ internal static class KharvoxRunner
                 WorkingDirectory = options.GameDirectory,
                 Arguments = JoinArguments(BuildGameArguments(
                     options, false, effectiveRenderScale, nativeStereoEnabled,
-                    customMods.FastGloryKills || customMods.FastChainsawKills)),
+                    customMods.FastGloryKills || customMods.FastChainsawKills
+                        || customMods.CinematicKillSpeedLevel > 1)),
                 RedirectStandardOutput = options.ExtendedLogging,
                 RedirectStandardError = options.ExtendedLogging
             };
@@ -553,6 +554,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
+                Math.Clamp(customMods.CinematicKillSpeedLevel, 1, 5).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";

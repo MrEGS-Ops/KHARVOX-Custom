@@ -667,8 +667,22 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(end==text||*end!='\0'||value<0||value>10)return 10;
         return static_cast<int>(value);
     }();
+    static const int cinematicSpeedLevel=[]{
+        char text[16]{};
+        const DWORD copied=GetEnvironmentVariableA(
+            "KHARVOX_MOD_CINEMATIC_KILL_SPEED",text,sizeof(text));
+        if(!copied||copied>=sizeof(text))return 1;
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        if(end==text||*end!='\0'||value<1||value>5)return 1;
+        return static_cast<int>(value);
+    }();
+    const int hzSpeedLevel=(s.customMods.fastGloryKills
+        ||s.customMods.fastChainsawKills||legacySpeedLevel<10)
+        ?5:cinematicSpeedLevel;
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
-        s.customMods.fastGloryKills,s.customMods.fastChainsawKills,legacySpeedLevel);
+        s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
+        legacySpeedLevel,cinematicSpeedLevel);
     auto value=[&](uintptr_t rva){return reinterpret_cast<volatile LONG*>(image+rva);};
     auto read=[&](uintptr_t rva){return InterlockedCompareExchange(value(rva),0,0);};
     auto write=[&](uintptr_t rva,LONG replacement){InterlockedExchange(value(rva),replacement);};
@@ -678,7 +692,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         // The old immersive hold forced a 120 Hz simulation minimum despite
         // measured 37-39 Hz Presents, then restored stale CVar snapshots.
         // Rewriting native timing here can leave a slow-motion tail.
-        if(kharvox::shouldForceCinematicAdaptiveTickPacing(fastKillsEnabled)){
+        if(kharvox::shouldForceCinematicAdaptiveTickPacing(fastKillsEnabled,hzSpeedLevel)){
             write(minHzCurrentRva,hold.savedMinHz);
             write(maxHzCurrentRva,hold.savedMaxHz);
             write(immediateModeCurrentRva,hold.savedImmediateMode);
@@ -720,6 +734,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
+    const int cinematicTarget=kharvox::cinematicKillTargetTickHz(
+        hzSpeedLevel,detectedTarget);
+    const int effectiveTarget=cinematicTarget>0?cinematicTarget:detectedTarget;
     if(!hold.active){
         hold.savedAdaptiveTick=read(adaptiveTickCurrentRva);
         hold.savedMinHz=read(minHzCurrentRva);
@@ -738,7 +755,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             log("[CINEMATIC-HZ] adaptive-tick values outside expected ranges; refresh hold disabled safely");
             return;
         }
-        hold.targetHz=std::max(detectedTarget,static_cast<int>(hold.savedMinHz));
+        hold.targetHz=std::max(effectiveTarget,static_cast<int>(hold.savedMinHz));
         hold.presents=0;
         QueryPerformanceCounter(&hold.startedAt);
         hold.active=true;
@@ -749,11 +766,11 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             +"/"+std::to_string(hold.savedMaxHz)+"/"+std::to_string(hold.savedImmediateMode)
             +"/"+std::to_string(hold.savedSyncNoAdaptiveTick)+"/"+std::to_string(hold.savedFixedTic)
             +" FAST_KILLS="+(fastKillsEnabled?"ON":"OFF")
-            +" pacing="+(fastKillsEnabled?"DOOM-native":"forced-immersive-refresh")
+            +" pacing="+(forceRefresh ? "original-native-adaptive-Hz-path":"DOOM-native")
             +" nativeSyncDuringHold="+std::to_string(
                 kharvox::nativeSyncAdaptiveTickDuringCinematic(fastKillsEnabled)));
-    }else if(detectedTarget>hold.targetHz){
-        hold.targetHz=detectedTarget;
+    }else if(effectiveTarget>hold.targetHz && hzSpeedLevel==1){
+        hold.targetHz=effectiveTarget;
         log("[CINEMATIC-HZ] faster headset cadence detected; target raised to "+std::to_string(hold.targetHz)+" Hz");
     }
     // The native fast-kill bit is independent of game tick pacing.
@@ -763,7 +780,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     // Preserve DOOM's own tick CVars for Fast Glory/Chainsaw executions;
     // keep the old cinematic refresh policy for every other mode.
     const bool forceRefresh=kharvox::shouldForceCinematicAdaptiveTickPacing(
-        fastKillsEnabled);
+        fastKillsEnabled,hzSpeedLevel);
     if(forceRefresh){
         write(maxHzCurrentRva,std::max<LONG>(hold.savedMaxHz,hold.targetHz));
         write(minHzCurrentRva,hold.targetHz);

@@ -69,9 +69,19 @@ constexpr bool nativeAdaptiveParticipantGuardIsActive(
 // either custom checkbox OR the older Glory Kill Speed selector. Keep the
 // OpenXR present path aligned with the launcher command-line policy.
 constexpr bool nativeFastKillSyncRequested(
-    bool fastGlory, bool fastChainsaw, int legacySpeedLevel) {
+    bool fastGlory, bool fastChainsaw, int legacySpeedLevel,
+    int cinematicSpeedLevel = 1) {
     return fastGlory || fastChainsaw
-        || (legacySpeedLevel >= 0 && legacySpeedLevel < 10);
+        || (legacySpeedLevel >= 0 && legacySpeedLevel < 10)
+        || (cinematicSpeedLevel >= 2 && cinematicSpeedLevel <= 5);
+}
+
+// Existing native adaptive-tick Hz lever. Level 1 leaves the normal
+// immersive slow cinematic target untouched. Level 5 is the exact, proven
+// #473 bypass: zero forced tick Hz. The middle values are experimental.
+constexpr int cinematicKillTargetTickHz(int level, int headsetTargetHz) {
+    return level == 2 ? 90 : level == 3 ? 70 : level == 4 ? 50
+        : level == 5 ? 0 : headsetTargetHz;
 }
 
 // The headset's 120 Hz *display period* is NOT the game's achieved frame
@@ -81,8 +91,12 @@ constexpr bool nativeFastKillSyncRequested(
 // Fast executions must retain DOOM's OWN native tick pacing (usually min=30)
 // while sync_noAdaptiveTick is kept at 1. Do not disable the OpenXR renderer
 // or affect the native weapon-wheel slow motion.
-constexpr bool shouldForceCinematicAdaptiveTickPacing(bool fastKillsEnabled) {
-    return !fastKillsEnabled;
+constexpr bool shouldForceCinematicAdaptiveTickPacing(
+    bool fastKillsEnabled, int cinematicSpeedLevel = 1) {
+    // Do not touch the confirmed #473 full-speed path (level 5). Middle
+    // positions use precisely the original immersive-refresh CVar pathway.
+    return !fastKillsEnabled
+        || (cinematicSpeedLevel >= 2 && cinematicSpeedLevel <= 4);
 }
 
 constexpr int nativeSyncAdaptiveTickDuringCinematic(bool fastKillsEnabled) {

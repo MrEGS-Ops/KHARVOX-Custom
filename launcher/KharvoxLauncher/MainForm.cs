@@ -86,6 +86,12 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
+    private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
+    private readonly Label cinematicKillSpeedValue = new()
+    {
+        AutoSize = true, ForeColor = Color.WhiteSmoke,
+        TextAlign = ContentAlignment.MiddleLeft, Text = "Native"
+    };
     private readonly TrackBar gloryKillSlowmo = MakeSlider(0, 10, 10, 1, 1);
     private readonly Label gloryKillSlowmoValue = MakeSliderValueLabel();
     private readonly Label weaponStatus = new() { AutoSize = false, ForeColor = Color.Silver, TextAlign = ContentAlignment.MiddleLeft };
@@ -422,6 +428,44 @@ public sealed partial class MainForm : Form
                      + "Turn this off to restore the original KHARVOX controls.") })
             .ToArray();
         InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
+        // Reuse the existing native cinematic Hz control; zero changes to DOOM
+        // animations, headset refresh or the confirmed full-speed kill path.
+        var cinematicSpeedRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, Height = 36,
+            AutoSize = false, WrapContents = false,
+            BackColor = PanelColor, FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(4, 3, 0, 0), Padding = Padding.Empty
+        };
+        cinematicSpeedRow.Controls.Add(new Label
+        {
+            Text = "Cinematic Kill Speed", Width = 180, Height = 29,
+            ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(0, 0, 10, 0)
+        });
+        cinematicKillSpeed.Width = 160;
+        cinematicSpeedRow.Controls.Add(cinematicKillSpeed);
+        cinematicKillSpeedValue.Width = 172;
+        cinematicKillSpeedValue.Height = 29;
+        cinematicSpeedRow.Controls.Add(cinematicKillSpeedValue);
+        statusToolTip.SetToolTip(cinematicKillSpeed,
+            "1 = original DOOM slowdown; 2/3/4 = experimental 90/70/50 Hz "
+            + "native adaptive-tick targets; 5 = confirmed Build #473 native full speed. "
+            + "Uses the existing native timing mechanism, not a timescale multiplier. "
+            + "Fast Glory/Chainsaw toggles override levels 1-4.");
+        UpdateCinematicKillSpeedLabel();
+        cinematicKillSpeed.ValueChanged += (_, _) =>
+        {
+            if (restoringConfiguration || applyingCustomModDependencies) return;
+            UpdateCinematicKillSpeedLabel();
+            SaveCustomModSettings();
+            OptionChanged(cinematicKillSpeed, EventArgs.Empty);
+        };
+        var speedRowIndex = customModsGrid.RowCount++;
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        customModsGrid.Controls.Add(cinematicSpeedRow, 0, speedRowIndex);
+        customModsGrid.SetColumnSpan(cinematicSpeedRow, 2);
+        customModsGrid.Height += 36;
         var customModsScroll = new Panel
         {
             Dock = DockStyle.Fill, AutoScroll = true,
@@ -1404,6 +1448,23 @@ public sealed partial class MainForm : Form
         >= 10 => 1, >= 7 => 2, >= 5 => 3, >= 2 => 4, _ => 5
     };
 
+    private void UpdateCinematicKillSpeedLabel()
+    {
+        cinematicKillSpeedValue.Text = cinematicKillSpeed.Value switch
+        {
+            1 => "1 · Native",
+            2 => "2 · 90 Hz (test)",
+            3 => "3 · 70 Hz (test)",
+            4 => "4 · 50 Hz (test)",
+            _ => "5 · Full speed"
+        };
+        var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
+        cinematicKillSpeed.Enabled = !nativeFastChecked;
+        statusToolTip.SetToolTip(cinematicKillSpeedValue, nativeFastChecked
+            ? "Fast Glory/Chainsaw Kills overrides this experimental slider. Uncheck both to adjust it."
+            : "1 original cinematic; 5 exactly matches proven Build #473 full-speed bypass.");
+    }
+
     private void UpdateSpeedSliderLabels()
     {
         smoothSpeedValue.Text = smoothSpeed.Value + "°/s";
@@ -1543,6 +1604,7 @@ public sealed partial class MainForm : Form
             // both execution types. Boxing's guard slowdown remains separate.
             gloryKillSlowmo.Value =
                 customFastGloryKills.Checked || customFastChainsawKills.Checked ? 0 : 10;
+            UpdateCinematicKillSpeedLabel();
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
@@ -1590,6 +1652,7 @@ public sealed partial class MainForm : Form
         PhysicalChainsawGestures = false,
         FastGloryKills = customFastGloryKills.Checked,
         FastChainsawKills = customFastChainsawKills.Checked,
+        CinematicKillSpeedLevel = cinematicKillSpeed.Value,
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1636,6 +1699,7 @@ public sealed partial class MainForm : Form
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customFastGloryKills.Checked = mods.FastGloryKills;
             customFastChainsawKills.Checked = mods.FastChainsawKills;
+            cinematicKillSpeed.Value = Math.Clamp(mods.CinematicKillSpeedLevel, 1, 5);
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally

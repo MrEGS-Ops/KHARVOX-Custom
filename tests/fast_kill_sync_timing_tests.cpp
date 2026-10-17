@@ -41,6 +41,18 @@ int main() {
     // minimum game simulation rate or patch the adaptive tick runtime state.
     assert(!shouldForceCinematicAdaptiveTickPacing(true));
     assert(shouldForceCinematicAdaptiveTickPacing(false));
+    assert(cinematicKillTargetTickHz(1,120)==120);
+    assert(cinematicKillTargetTickHz(2,120)==90);
+    assert(cinematicKillTargetTickHz(3,120)==70);
+    assert(cinematicKillTargetTickHz(4,120)==50);
+    assert(cinematicKillTargetTickHz(5,120)==0);
+    for (int level=2; level<=4; ++level) {
+        assert(nativeFastKillSyncRequested(false,false,10,level));
+        assert(shouldForceCinematicAdaptiveTickPacing(true,level));
+    }
+    assert(!nativeFastKillSyncRequested(false,false,10,1));
+    assert(nativeFastKillSyncRequested(false,false,10,5));
+    assert(!shouldForceCinematicAdaptiveTickPacing(true,5));
     for(bool glory : {false,true}) {
         for(bool chainsaw : {false,true}) {
             const bool requested=nativeFastKillSyncRequested(

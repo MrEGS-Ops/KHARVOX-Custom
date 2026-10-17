@@ -15,6 +15,8 @@ internal sealed class CustomModSettings
     public bool BoxingGuard { get; set; }
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
+    // Native cinematic tick-Hz experiment: 1 original, 5 confirmed full-speed.
+    public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }
@@ -48,6 +50,7 @@ internal static class CustomModSettingsStore
             var value = Serializer.Deserialize<CustomModSettings>(File.ReadAllText(path));
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
+            value.CinematicKillSpeedLevel = Math.Clamp(value.CinematicKillSpeedLevel, 1, 5);
             return value;
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -64,6 +67,7 @@ internal static class CustomModSettingsStore
     {
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
+        value.CinematicKillSpeedLevel = Math.Clamp(value.CinematicKillSpeedLevel, 1, 5);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
