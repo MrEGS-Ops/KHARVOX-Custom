@@ -36,8 +36,8 @@ int main() {
     step(24000,true,false);
     assert(!step(24401,true,true,false,false,false,true).accelerate);
     assert(!step(24500,true,false).accelerate);
-    assert(step(24600,true,true).accelerate);
-    assert(step(24700,true,false,false,false,false,false,false,false).changed);
+    assert(step(25000,true,true).accelerate);
+    assert(step(25001,true,false,false,false,false,false,false,false).changed);
     assert(!s.accelerating);
 
     // Execution tail is never a new story scene, even if cutscene stays 1.
@@ -53,12 +53,12 @@ int main() {
     assert(!run(2300,false).eligible);
     assert(!run(2450,true,false).eligible);
     assert(!run(2700,true,true).changed); // new story must warm up
-    assert(run(2851,true,false).eligible);
-    assert(run(2900,true,true).accelerate);
-    assert(run(2901,true,false,false,true).changed); // chainsaw interrupts
-    assert(!run(3000,true,true).accelerate);
-    assert(!run(3050,false).accelerate);
-    assert(!run(3400,true,false,false,false,true).accelerate);
+    assert(run(3101,true,false).eligible);
+    assert(run(3200,true,true).accelerate);
+    assert(run(3201,true,false,false,true).changed); // chainsaw interrupts
+    assert(!run(3300,true,true).accelerate);
+    assert(!run(3350,false).accelerate);
+    assert(!run(3700,true,false,false,false,true).accelerate);
     // Disabled flag never consumes gameplay input.
     StoryCinematicSkipState disabled{};
     const auto no=updateStoryCinematicSkip(disabled,false,true,
