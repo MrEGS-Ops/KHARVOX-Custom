@@ -24,7 +24,4 @@ constexpr const char* actionSpeedName(ActionSpeedKind k) {
         default:return "baseline";
     }
 }
-constexpr unsigned actionProbeMelee=1u<<0,actionProbeReload=1u<<1,
-    actionProbeGrenade=1u<<2,actionProbeEnemies=1u<<3,
-    actionProbeBoss=1u<<4,actionProbeWeaponWheel=1u<<5;
 } // namespace kharvox

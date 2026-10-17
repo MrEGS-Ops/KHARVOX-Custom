@@ -687,36 +687,29 @@ unsigned actionSpeedProbeMask(){
     }();
     return mask;
 }
-void logActionSpeedProbes(bool melee,bool grenade,bool boss,bool wheel,
+void logActionSpeedProbes(bool melee,bool grenade,
                           bool sync,bool chain,bool ledge,bool gauss,bool scripted){
-    const unsigned mask=actionSpeedProbeMask();
-    if(!mask)return;
+    // Only two actual input probes plus the verified native action states.
+    // Reload and enemy animation lifecycle hooks are NOT verified.
+    if(!actionSpeedProbeMask())return;
     static unsigned lastState=~0u;
     const unsigned state=(melee?1u:0u)|(grenade?2u:0u)
-        |(boss?4u:0u)|(wheel?8u:0u)|(sync?16u:0u)
-        |(chain?32u:0u)|(ledge?64u:0u)|(gauss?128u:0u)
-        |(scripted?256u:0u);
+        |(sync?4u:0u)|(chain?8u:0u)|(ledge?16u:0u)
+        |(gauss?32u:0u)|(scripted?64u:0u);
     if(state==lastState)return;
     lastState=state;
-    log("[ACTION-HZ][PROBE] input/state edges melee="+std::to_string(melee)
-        +" grenadePulse="+std::to_string(grenade)
-        +" boss="+std::to_string(boss)+" wheel="+std::to_string(wheel)
-        +" nativeSync="+std::to_string(sync)+" chainsawLatch="+std::to_string(chain)
-        +" ledge="+std::to_string(ledge)+" gauss="+std::to_string(gauss)
+    log("[ACTION-HZ][PROBE] meleeInput="+std::to_string(melee)
+        +" grenadeInputPulse="+std::to_string(grenade)
+        +" nativeSync="+std::to_string(sync)
+        +" chainsawLatch="+std::to_string(chain)
+        +" ledge="+std::to_string(ledge)
+        +" gauss="+std::to_string(gauss)
         +" scripted="+std::to_string(scripted));
-    static bool unavailableLogged=false;
-    if(!unavailableLogged){
-        unavailableLogged=true;
-        if(mask&kharvox::actionProbeReload)
-            log("[ACTION-HZ][PROBE] weapon reload: UNAVAILABLE (no verified native animation lifecycle hook)");
-        if(mask&kharvox::actionProbeEnemies)
-            log("[ACTION-HZ][PROBE] enemy animation: UNAVAILABLE (no per-enemy animation clock or start/end detector)");
-        if(mask&kharvox::actionProbeMelee)
-            log("[ACTION-HZ][PROBE] melee: input edge only, NOT confirmed native animation");
-        if(mask&kharvox::actionProbeGrenade)
-            log("[ACTION-HZ][PROBE] grenade: native input pulse only, NOT confirmed throw animation");
-        if(mask&kharvox::actionProbeWeaponWheel)
-            log("[ACTION-HZ][PROBE] weapon wheel: user input state, separate existing slowdown maintained");
+    static bool explained=false;
+    if(!explained){
+        explained=true;
+        log("[ACTION-HZ][PROBE] melee/grenade are INPUT pulses only; "
+            "no animation start/end is inferred");
     }
 }
 void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
@@ -5456,9 +5449,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool scriptedAction=upgradeCinematicRefreshGuard
         ||(nativeAdaptiveParticipantGuard&&!syncAction&&!chainsawAction&&!ledgeAction);
     logActionSpeedProbes(s.meleePressed,
-        frame.predictedDisplayTime<s.equipmentThrowPulseUntil,bossAction,
-        s.actionSpeedWheelObserved,syncAction,chainsawAction,
-        ledgeAction,gaussAction,scriptedAction);
+        frame.predictedDisplayTime<s.equipmentThrowPulseUntil,
+        syncAction,chainsawAction,ledgeAction,gaussAction,scriptedAction);
     const bool originalCinematicHold=!bossAction
         &&kharvox::shouldHoldImmersiveRefresh(
             s.immersiveCinematics||comfortInteractiveParticipant,s.quadMode,

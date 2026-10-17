@@ -93,7 +93,7 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> speedActionChecks = new();
     private readonly Dictionary<string, TrackBar> speedActionSliders = new();
     private readonly Dictionary<string, Label> speedActionValues = new();
-    private readonly CheckBox speedActionLogTest = MakeCheck("Log Test: All detected actions", false);
+    private readonly CheckBox speedActionLogTest = MakeCheck("Log action events", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
@@ -545,62 +545,75 @@ public sealed partial class MainForm : Form
             Visible = false, Height = 37, BackColor = PanelColor,
             Margin = new Padding(14, 2, 10, 0), Padding = Padding.Empty
         };
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
+        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
-        // Independent verified action triggers; unverified states get log-only
-        // probes with permanently disabled sliders. Every profile is OFF by
-        // default, and action CVars are scoped/restored by the native hold.
+        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
+        // Only the five validated action-state triggers get controls.
+        // Read-only exploratory input probes are consolidated into one
+        // diagnostic toggle: no dead sliders or misleading animation options.
         var actionNames = new Dictionary<string,string> {
             ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
             ["ledge"]="Ledge climbing",["gauss"]="Gauss Siege charge",
-            ["scripted"]="Other scripted action",
-            ["melee"]="Melee (probe)",["reload"]="Weapon reload (probe)",
-            ["grenade"]="Grenade throw (probe)",["enemy"]="Enemy animation (probe)",
-            ["boss"]="Boss sequence (probe)",["wheel"]="Weapon wheel (probe)"
+            ["scripted"]="Scripted action"
         };
         var actionHints = new Dictionary<string,string> {
-            ["glory"]="Native Glory Kill sync-state. Action-specific global tick target.",
-            ["chainsaw"]="Chainsaw input + confirmed native cinematic; Fast Kills still takes precedence.",
-            ["ledge"]="Native player ledge-grab transition. Modifies game tick globally during climbing.",
-            ["gauss"]="Native Gauss Siege charge. Experimental: other gameplay timing may also change.",
-            ["scripted"]="Native adaptive participant/upgrade transitions. Experimental global timing.",
-            ["melee"]="INPUT edge only: no verified animation start/end.",
-            ["reload"]="No verified native reload animation lifecycle.",
-            ["grenade"]="Native equipment/throw input pulse; no animation lifecycle.",
-            ["enemy"]="No confirmed per-enemy animation timer or lifecycle.",
-            ["boss"]="Boss camera state only; no safe timing override.",
-            ["wheel"]="Weapon wheel input state; keep existing separate wheel slowdown."
+            ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
+            ["chainsaw"]="Confirmed chainsaw execution state; Fast Kills takes precedence.",
+            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target.",
+            ["gauss"]="Gauss Cannon Siege charging while Fire is held, not just weapon equipped.",
+            ["scripted"]="Native scripted/adaptive participant transitions. Experimental."
         };
-        void AddActionSpeedRow(string key, bool canChangeSpeed)
+        const int actionHeaderHeight=30;
+        const int actionRowHeight=38;
+        const int actionFooterHeight=38;
+        var actionHeader=new Label {
+            Text="ACTION OVERRIDES     30–240 Hz  ·  right = faster",
+            Dock=DockStyle.Fill, AutoEllipsis=true,
+            ForeColor=Color.FromArgb(171,172,179),
+            Font=new Font("Segoe UI",8.5f,FontStyle.Bold),
+            TextAlign=ContentAlignment.MiddleLeft,
+            Margin=new Padding(4,1,0,0)
+        };
+        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionHeaderHeight));
+        speedAdvancedPanel.RowCount++;
+        speedAdvancedPanel.Controls.Add(actionHeader,0,0);
+        speedAdvancedPanel.SetColumnSpan(actionHeader,3);
+        statusToolTip.SetToolTip(actionHeader,
+            "Each checked action temporarily overrides the engine tick target. "
+            + "Presets above pause until all overrides are unchecked. "
+            + "Higher Hz = slower synchronized actions in current tests, not higher rendered FPS.");
+        void AddActionSpeedRow(string key)
         {
             int row=speedAdvancedPanel.RowCount++;
-            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,37));
+            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionRowHeight));
             var check=MakeCheck(actionNames[key],false);
             check.AutoSize=true; check.Dock=DockStyle.Fill;
-            check.Margin=new Padding(3,5,1,0);
+            check.Font=new Font("Segoe UI",9f);
+            check.Margin=new Padding(6,5,3,1);
             speedActionChecks.Add(key,check);
             speedAdvancedPanel.Controls.Add(check,0,row);
             var slider=MakeSlider(30,240,240,10,1);
             slider.AutoSize=false; slider.Dock=DockStyle.Fill;
-            slider.Height=31; slider.TickFrequency=20;
+            slider.Height=26; slider.TickStyle=TickStyle.None;
             slider.SmallChange=1; slider.LargeChange=5;
-            slider.Margin=new Padding(0,3,0,0);
+            slider.Margin=new Padding(5,4,5,3);
             slider.Enabled=false;
             speedActionSliders.Add(key,slider);
             speedAdvancedPanel.Controls.Add(slider,1,row);
             var value=new Label {
                 Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
-                ForeColor=canChangeSpeed?Color.WhiteSmoke:Color.Silver,
-                AutoEllipsis=true,Text=canChangeSpeed?"OFF":"Log only"
+                ForeColor=Color.FromArgb(171,172,179),
+                Font=new Font("Segoe UI",9f,FontStyle.Bold),
+                AutoEllipsis=true,Text="Off",Margin=new Padding(4,0,0,0)
             };
             speedActionValues.Add(key,value);
             speedAdvancedPanel.Controls.Add(value,2,row);
-            string tip=actionHints[key]+(canChangeSpeed
-                ? " Check to override Hz during the action. Left = slower (240 Hz), right = faster (30 Hz). Restart DOOM."
-                : " DIAGNOSTIC ONLY. Check to log activity; the slider cannot change timing.");
+            string tip=actionHints[key]
+                +" Right = faster action (30 Hz); left = slower (240 Hz). "
+                +"Presets pause while any override is enabled. Restart DOOM.";
             statusToolTip.SetToolTip(check,tip);
             statusToolTip.SetToolTip(value,tip);
+            statusToolTip.SetToolTip(slider,tip);
             slider.AccessibleDescription=tip;
             slider.ValueChanged+=(_,_)=>UpdateActionSpeedLabels();
             void Commit(){
@@ -614,27 +627,31 @@ public sealed partial class MainForm : Form
             slider.Leave+=(_,_)=>Commit();
             check.CheckedChanged+=(_,_)=>{
                 if(restoringConfiguration||applyingCustomModDependencies)return;
-                UpdateActionSpeedLabels();SaveCustomModSettings();
+                UpdateCinematicKillSpeedLabel();
+                SaveCustomModSettings();
                 OptionChanged(check,EventArgs.Empty);
             };
         }
-        foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key,true);
-        foreach(string key in ActionSpeedCatalog.Probes)AddActionSpeedRow(key,false);
+        foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
         int logRow=speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,37));
+        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
+        speedActionLogTest.Text="Log action events (melee + grenade probes)";
         speedActionLogTest.AutoSize=true;
-        speedActionLogTest.Margin=new Padding(3,6,0,0);
+        speedActionLogTest.Font=new Font("Segoe UI",8.5f);
+        speedActionLogTest.Margin=new Padding(6,8,0,0);
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "Log one playthrough's available action start/end edges, chosen Hz, duration and "
-            + "presented FPS estimates to logs/KHARVOX.log. Missing animation hooks are explicitly reported. "
-            + "This does NOT modify animation speed. Restart DOOM to start the test.");
+            "Log confirmed Glory Kill/chainsaw/ledge/Gauss/scripted states, plus "
+            +"melee and grenade input edges (not verified animations). "
+            +"Removed: useless reload, enemy-animation, boss and weapon-wheel probes. "
+            +"Logging does NOT change timing. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
-        speedAdvancedHeight=(ActionSpeedCatalog.All.Length+1)*37;
+        speedAdvancedHeight=actionHeaderHeight
+            +ActionSpeedCatalog.Controllable.Length*actionRowHeight+actionFooterHeight;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         speedAdvanced.CheckedChanged += (_, _) =>
         {
@@ -1668,15 +1685,16 @@ public sealed partial class MainForm : Form
 
     private void UpdateActionSpeedLabels()
     {
-        foreach(string key in ActionSpeedCatalog.All){
-            if(!speedActionChecks.TryGetValue(key,out var check)
-                ||!speedActionSliders.TryGetValue(key,out var slider)
-                ||!speedActionValues.TryGetValue(key,out var label))continue;
-            bool supported=ActionSpeedCatalog.Controllable.Contains(key);
-            slider.Enabled=supported&&check.Checked&&speedAdvanced.Checked
-                &&!customFastGloryKills.Checked&&!customFastChainsawKills.Checked;
-            label.Text=supported?(check.Checked?(270-slider.Value)+" Hz":"OFF")
-                :(check.Checked?"Logging ON":"Log only");
+        foreach (string key in ActionSpeedCatalog.Controllable)
+        {
+            if (!speedActionChecks.TryGetValue(key, out var check)
+                || !speedActionSliders.TryGetValue(key, out var slider)
+                || !speedActionValues.TryGetValue(key, out var label)) continue;
+            var enabled=check.Checked && speedAdvanced.Checked
+                && !customFastGloryKills.Checked && !customFastChainsawKills.Checked;
+            slider.Enabled=enabled;
+            label.Text=check.Checked ? (270-slider.Value)+" Hz" : "Off";
+            label.ForeColor=enabled ? Color.WhiteSmoke : Color.FromArgb(141,142,149);
         }
     }
 
@@ -1691,35 +1709,48 @@ public sealed partial class MainForm : Form
             _ => "5 · 30 Hz fastest preset"
         };
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
+        // Collapsing Advanced suspends action overrides without deleting
+        // any saved checkbox/slider settings.
+        var actionOverridesActive = speedAdvanced.Checked
+            && ActionSpeedCatalog.Controllable.Any(key =>
+                speedActionChecks.TryGetValue(key, out var check) && check.Checked);
+        var presetsEnabled = !nativeFastChecked && !actionOverridesActive;
         RefreshSpeedAdvancedVisibility();
         UpdateActionSpeedLabels();
-        cinematicKillSpeed.Enabled = !nativeFastChecked;
-        for (var i = 0; i < cinematicPresetButtons.Count; i++)
+        cinematicKillSpeed.Enabled = presetsEnabled;
+        for (var i=0; i<cinematicPresetButtons.Count; i++)
         {
-            var button = cinematicPresetButtons[i];
-            var selected = i + 1 == cinematicKillSpeed.Value;
-            button.Enabled = !nativeFastChecked;
-            button.BackColor = selected
-                ? Color.FromArgb(192, 148, 54) : Color.FromArgb(36, 36, 39);
-            button.ForeColor = selected ? Color.Black : Color.Gainsboro;
-            button.FlatAppearance.BorderColor = selected
-                ? Color.FromArgb(228, 190, 104) : Color.FromArgb(76, 76, 82);
+            var button=cinematicPresetButtons[i];
+            var selected = presetsEnabled && i+1==cinematicKillSpeed.Value;
+            button.Enabled=presetsEnabled;
+            button.BackColor=selected
+                ? Color.FromArgb(192,148,54)
+                : Color.FromArgb(36,36,39);
+            button.ForeColor=presetsEnabled
+                ? (selected ? Color.Black : Color.Gainsboro) : Color.FromArgb(112,113,119);
+            button.FlatAppearance.BorderColor=selected
+                ? Color.FromArgb(228,190,104) : Color.FromArgb(76,76,82);
         }
-        cinematicKillSpeedTitle.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
-        cinematicKillSpeedValue.ForeColor = cinematicKillSpeed.Enabled ? Color.WhiteSmoke : Color.Gray;
-        cinematicKillSpeedValue.Text = nativeFastChecked
-            ? "Locked by Fast Kills" : savedValue;
-        var explanation = nativeFastChecked
-            ? "Disabled by Fast Glory Kills or Fast Chainsaw Kills. "
-                + "Uncheck BOTH mods to enable Sync Action Speed. "
-                + "Saved slider position: " + savedValue + "."
-            : "1 = original pacing, 5 = fastest preset (30 Hz). Use −/+ to change speed. "
-                + "Advanced enables separate, action-specific Hz overrides only. Restart DOOM to apply.";
-        // The disabled owner-painted slider cannot receive a normal tooltip;
-        // its surrounding visible title/value remain active hover targets.
-        statusToolTip.SetToolTip(cinematicKillSpeedTitle, explanation);
-        statusToolTip.SetToolTip(cinematicKillSpeedValue, explanation);
-        cinematicKillSpeed.AccessibleDescription = explanation;
+        cinematicKillSpeedTitle.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
+        cinematicKillSpeedValue.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
+        // The selected button already displays the chosen preset.
+        // Avoid repeating its value in the header; show status only.
+        cinematicKillSpeedValue.Text=nativeFastChecked
+            ? "Locked by Fast Kills"
+            : actionOverridesActive ? "Paused · action overrides" : "";
+        var explanation=nativeFastChecked
+            ? "Fast Glory Kills or Fast Chainsaw Kills uses DOOM's native sync bypass. "
+                +"Turn both off to use presets. Saved: "+savedValue+"."
+            : actionOverridesActive
+                ? "Action overrides are active. The five presets are disabled; "
+                    +"native baseline is used outside selected actions. "
+                    +"Uncheck every action (or close Advanced) to restore saved "+savedValue+"."
+                : "1 = native timing; 5 = fastest synchronized-action preset (30 Hz). "
+                    +"Action overrides disable this entire preset bar while active. "
+                    +"Restart DOOM after changes.";
+        statusToolTip.SetToolTip(cinematicKillSpeedTitle,explanation);
+        statusToolTip.SetToolTip(cinematicKillSpeedValue,explanation);
+        cinematicKillSpeed.AccessibleDescription=explanation;
     }
 
     private void UpdateSpeedSliderLabels()
