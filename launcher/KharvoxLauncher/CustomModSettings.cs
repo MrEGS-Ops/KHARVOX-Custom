@@ -11,7 +11,7 @@ internal sealed class ActionSpeedSetting
 internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
-    { "glory", "chainsaw", "ledge", "gauss", "scripted" };
+    { "glory", "chainsaw", "ledge" };
     // Only verified lifecycle actions are editable. Exploratory input probes
     // are read-only and live behind the single Log Test checkbox.
     internal static readonly string[] All = Controllable;
@@ -198,9 +198,11 @@ internal static class CustomModSettingsStore
             profiles.ActionSpeedProfiles["reload"] =
                 new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
             ActionSpeedCatalog.Validate(profiles);
-            if (profiles.ActionSpeedProfiles.Count != 5
+            if (profiles.ActionSpeedProfiles.Count != 3
                 || profiles.ActionSpeedProfiles.ContainsKey("enemy")
                 || profiles.ActionSpeedProfiles.ContainsKey("reload")
+                || profiles.ActionSpeedProfiles.ContainsKey("gauss")
+                || profiles.ActionSpeedProfiles.ContainsKey("scripted")
                 || !ActionSpeedCatalog.HasActiveOverrides(profiles)
                 || profiles.ActionSpeedProfiles["glory"].TargetHz != 200)
                 throw new InvalidDataException("Legacy dead probes must be removed without losing action choices.");
