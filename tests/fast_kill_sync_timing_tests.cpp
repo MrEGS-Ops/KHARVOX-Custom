@@ -65,9 +65,15 @@ int main() {
     // The old Glory Kill Speed control is also native mode.
     assert(!shouldForceCinematicAdaptiveTickPacing(
         nativeFastKillSyncRequested(false,false,0)));
-    // 90ms projection-only exit handoff begins after the native sync flag
-    // goes low; the final cinematic->gameplay switch must see a released
-    // layer anchor without touching DOOM player-camera or animation state.
+    // Original 90ms blend remains unchanged; now start during the first
+    // portion of native sync instead of near its exit.
+    assert(nativeSyncEntryHandoffDelayMs(0)==40);
+    assert(nativeSyncEntryHandoffDelayMs(80)==80);
+    assert(nativeSyncEntryHandoffDelayMs(999)==400);
+    assert(!nativeSyncEarlyHandoffReady(80'000'001,1,80,true));
+    assert(nativeSyncEarlyHandoffReady(80'000'002,1,80,true));
+    assert(!nativeSyncEarlyHandoffReady(400'000'002,1,80,false));
+    assert(!nativeSyncEarlyHandoffReady(50,0,40,true));
     assert(nativeSyncExitHandoffFraction(0,0)==0.f);
     assert(nativeSyncExitHandoffFraction(100,100)==0.f);
     assert(nativeSyncExitHandoffFraction(45'000'100,100)==.5f);

@@ -104,11 +104,23 @@ constexpr int nativeSyncAdaptiveTickAfterCinematic(
     return fastKillsEnabled ? 1 : priorValue;
 }
 
-// Late native-sync exit handoff: release the OpenXR position anchor before
-// the render source changes from cinematic to gameplay. The 90ms transition
-// is confined to headset projection; DOOM's authored camera, player physics,
-// initial sync alignment and animation timing are never changed.
+// Native-sync camera-anchor handoff. Enter alignment is retained for a
+// configurable number of milliseconds, then the XR layer position blends
+// back to live tracking while the execution is still playing. This alters
+// only OpenXR positioning, never the DOOM camera, player physics or animation.
+// If a very short execution ends first, the existing exit-time fallback runs.
 constexpr std::int64_t nativeSyncExitHandoffNs = 90'000'000;
+constexpr int nativeSyncEntryHandoffDelayMs(int requestedMs) {
+    return requestedMs < 40 ? 40 : requestedMs > 400 ? 400 : requestedMs;
+}
+constexpr bool nativeSyncEarlyHandoffReady(
+    std::int64_t displayNs,std::int64_t entryNs,int delayMs,
+    bool nativeSyncActive) {
+    return nativeSyncActive && entryNs > 0 && displayNs >= entryNs
+        && displayNs-entryNs
+            >= static_cast<std::int64_t>(nativeSyncEntryHandoffDelayMs(delayMs))
+                *1'000'000;
+}
 constexpr float nativeSyncExitHandoffFraction(
     std::int64_t displayNs,std::int64_t exitStartNs) {
     if(exitStartNs<=0||displayNs<=exitStartNs)return 0.f;

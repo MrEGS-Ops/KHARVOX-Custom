@@ -213,6 +213,7 @@ struct State {
     // Scoped early release for GK/chainsaw native sync only (not ledge or boss).
     bool immersiveCinematicSyncSeen{},immersiveCinematicExitHandoffActive{},immersiveCinematicExitReleased{};
     XrTime immersiveCinematicExitStart{};
+    XrTime immersiveCinematicSyncEnteredAt{};
     XrVector3f immersiveCinematicExitStartPosition{};
     std::array<XrPosef,2> cachedEyePose{}; std::array<XrFovf,2> cachedEyeFov{}; std::array<bool,2> cachedEyeViewValid{}; std::array<float,2> cachedEyeArtificialTurn{}; std::array<std::uint64_t,2> cachedEyeSnapGeneration{};
     std::array<XrPosef,2> previousCachedEyePose{}; std::array<XrFovf,2> previousCachedEyeFov{}; std::array<bool,2> previousCachedEyeViewValid{};
@@ -5368,24 +5369,41 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
-    // The native sync-attack flag goes low about 130–180ms before the GK or
-    // chainsaw camera returns to gameplay in headset logs. Use that native
-    // transition to finish releasing the XR position anchor BEFORE the final
-    // scene/source handoff, rather than snapping the anchor off on the same
-    // frame as the return. This changes *only* OpenXR projection alignment.
+    static const int cinematicExitHandoffDelayMs=[]{
+        char value[24]{};
+        const DWORD length=GetEnvironmentVariableA(
+            "KHARVOX_MOD_CINEMATIC_EXIT_DELAY_MS",value,sizeof(value));
+        if(!length||length>=sizeof(value))return 80;
+        char* end{};
+        const long parsed=std::strtol(value,&end,10);
+        if(end==value||*end!='\0')return 80;
+        return kharvox::nativeSyncEntryHandoffDelayMs(
+            static_cast<int>(std::clamp(parsed,40L,400L)));
+    }();
+    // A headset trace shows native sync enters ~1s BEFORE its exit. Begin
+    // releasing the XR position anchor near entry, after the native snap has
+    // aligned the first stereo pair, then NEVER re-anchor during this attack.
+    // The prior exit-triggered blend is retained only for executions too
+    // short to reach the chosen entry delay before the sync flag goes low.
+    // DOOM's animated camera/physics and the initial kill snap are untouched.
     if(!s.immersiveCinematicFreelookActive){
         if(s.immersiveCinematicLayerPositionHeld){
             s.immersiveCinematicLayerPositionHeld=false;
             log("[IMMERSIVE] OpenXR layer position hold released");
         }
         s.immersiveCinematicSyncSeen=false;
+        s.immersiveCinematicSyncEnteredAt=0;
         s.immersiveCinematicExitHandoffActive=false;
         s.immersiveCinematicExitReleased=false;
     }else{
         const bool nativeSyncActive=KharvoxCameraSyncAttackActive();
-        if(nativeSyncActive&&!s.immersiveCinematicExitHandoffActive
-            &&!s.immersiveCinematicExitReleased)
+        if(nativeSyncActive&&!s.immersiveCinematicSyncSeen
+            &&!s.immersiveCinematicExitHandoffActive
+            &&!s.immersiveCinematicExitReleased){
             s.immersiveCinematicSyncSeen=true;
+            s.immersiveCinematicSyncEnteredAt=frame.predictedDisplayTime;
+            log("[GK-EARLY-HANDOFF] native sync entered with cinematic headset anchor; initial alignment retained");
+        }
         if(!s.immersiveCinematicLayerPositionHeld
             &&!s.immersiveCinematicExitReleased){
             s.immersiveCinematicLayerPosition=sourceMonoPose.position;
@@ -5393,13 +5411,24 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             log("[IMMERSIVE] OpenXR layer position held at cinematic entry; rendered HMD rotation pose synchronized");
         }
         if(s.customMods.cinematicExitHandoff&&s.immersiveCinematicSyncSeen
-            &&!nativeSyncActive&&!s.immersiveCinematicExitHandoffActive
+            &&!s.immersiveCinematicExitHandoffActive
             &&!s.immersiveCinematicExitReleased
             &&s.immersiveCinematicLayerPositionHeld){
-            s.immersiveCinematicExitHandoffActive=true;
-            s.immersiveCinematicExitStart=frame.predictedDisplayTime;
-            s.immersiveCinematicExitStartPosition=s.immersiveCinematicLayerPosition;
-            log("[GK-EXIT-HANDOFF] native sync released; 90ms early headset position handoff begun while cinematic still active");
+            const bool nearEntry=kharvox::nativeSyncEarlyHandoffReady(
+                frame.predictedDisplayTime,s.immersiveCinematicSyncEnteredAt,
+                cinematicExitHandoffDelayMs,nativeSyncActive);
+            // Fallback to the previous release point if the configured delay
+            // exceeds this attack's entire native-sync lifetime.
+            const bool fallbackAtExit=!nativeSyncActive;
+            if(nearEntry||fallbackAtExit){
+                s.immersiveCinematicExitHandoffActive=true;
+                s.immersiveCinematicExitStart=frame.predictedDisplayTime;
+                s.immersiveCinematicExitStartPosition=s.immersiveCinematicLayerPosition;
+                log(std::string("[GK-EARLY-HANDOFF] camera-position blend begins trigger=")
+                    +(nearEntry?"early-native-entry":"short-sync-exit-fallback")
+                    +" delayMs="+std::to_string(cinematicExitHandoffDelayMs)
+                    +" fadeMs=90; first kill alignment preserved");
+            }
         }
         if(s.immersiveCinematicExitHandoffActive){
             const float blend=kharvox::nativeSyncExitHandoffFraction(
@@ -5413,7 +5442,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 s.immersiveCinematicLayerPositionHeld=false;
                 s.immersiveCinematicExitHandoffActive=false;
                 s.immersiveCinematicExitReleased=true;
-                log("[GK-EXIT-HANDOFF] early headset position handoff completed before normal cinematic return");
+                log("[GK-EARLY-HANDOFF] anchor fully released, live headset translation retained until gameplay");
             }
         }
     }
