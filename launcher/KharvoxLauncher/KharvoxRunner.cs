@@ -316,6 +316,16 @@ internal static class KharvoxRunner
         // HudHook. Never overwrite later intentional in-game calibration.
         CactusHandHudRestore.EnsureRestored(runtimeDir, statusUpdate);
 
+        // Fail closed: snapshot campaign saves BEFORE developer/resource
+        // mods are staged, and on each later launch. Never overwrite the clean
+        // reference with a modded save; the Save Manager restores it explicitly.
+        var selectedResourceMods = DoomSaveProtection.SelectedResourceMods(options.GameDirectory);
+        await Task.Run(() =>
+            DoomSaveProtection.BeforeLaunch(selectedResourceMods)).ConfigureAwait(false);
+        statusUpdate?.Invoke(selectedResourceMods
+            ? "Protected clean DOOM save backup verified before mod launch."
+            : "DOOM save protection checked; current saves backed up.");
+
         // Resource mods are installed before DOOM starts, while the exclusive
         // launch gate and game-not-running checks are active. No controller or
         // native KHARVOX remapping code is changed by this integration.

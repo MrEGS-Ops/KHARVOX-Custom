@@ -753,11 +753,13 @@ public sealed partial class MainForm
                     "Rating buttons are clipped, misaligned or lack tooltips.");
             var doomGrid = doom.Controls.OfType<TableLayoutPanel>().Single();
             doomGrid.PerformLayout();
-            if (doomGrid.RowCount != 5
+            if (doomGrid.RowCount != 6
                 || doomGrid.RowStyles[2].SizeType != SizeType.Absolute
                 || doomGrid.RowStyles[2].Height != 32
                 || doomGrid.RowStyles[4].SizeType != SizeType.Absolute
-                || doomGrid.RowStyles[4].Height != 27)
+                || doomGrid.RowStyles[4].Height != 34
+                || doomGrid.RowStyles[5].SizeType != SizeType.Absolute
+                || doomGrid.RowStyles[5].Height != 27)
                 throw new InvalidDataException(
                     "DOOM toolbar and bottom Nexus Mods link rows are not fixed-height.");
             var loaderRow = doomGrid.GetControlFromPosition(0, 0)
@@ -886,8 +888,18 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Nexus new-window commands must match the displayed Custom Mods bounds.");
 
+            var saveControls = doomGrid.Controls.OfType<TableLayoutPanel>()
+                .SingleOrDefault(row => doomGrid.GetRow(row)==4);
+            if (saveControls is null
+                || saveControls.Controls.OfType<Button>().Count()!=2
+                || saveControls.Controls.OfType<Button>().All(button =>
+                    button.AccessibleName!="Backup DOOM saves")
+                || saveControls.Controls.OfType<Button>().All(button =>
+                    button.AccessibleName!="Manage or restore DOOM save backups"))
+                throw new InvalidDataException(
+                    "Persistent Save Protection controls must be visible above Nexus.");
             var nexusLink = doomGrid.Controls.OfType<LinkLabel>()
-                .SingleOrDefault(label => doomGrid.GetRow(label) == 4);
+                .SingleOrDefault(label => doomGrid.GetRow(label) == 5);
             if (nexusLink is null || nexusLink.Parent != doomGrid
                 || !nexusLink.Visible || nexusLink.Height < 18
                 || nexusLink.AccessibleName != "Browse DOOM mods on Nexus Mods"

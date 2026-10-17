@@ -727,16 +727,16 @@ public sealed partial class MainForm : Form
         doomMods.ForeColor = Color.White;
         var doomGrid = new TableLayoutPanel
         {
-            // Keep loader, packaged mods, USER MODS controls and list in
-            // separate rows; pin the external browse link at the very bottom
-            // so it never becomes part of the scanned/scrolling mod list.
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5,
+            // Save protection belongs beneath USER MODS and ABOVE Nexus,
+            // not hidden in the scrolling mod list.
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 6,
             Padding = new Padding(12, 2, 12, 2), BackColor = PanelColor
         };
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         doomGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
         var loaderStatusLabel = new Label
         {
@@ -1145,6 +1145,55 @@ public sealed partial class MainForm : Form
 
         doomGrid.Controls.Add(doomModItems, 0, 3);
 
+        var saveProtectionRow = new TableLayoutPanel
+        {
+            Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,
+            Margin=Padding.Empty,Padding=Padding.Empty,BackColor=PanelColor
+        };
+        saveProtectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        saveProtectionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,50));
+        saveProtectionRow.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var backupNow = new Button
+        {
+            Text="Backup saves",AccessibleName="Backup DOOM saves",
+            Dock=DockStyle.Fill,FlatStyle=FlatStyle.Flat,
+            BackColor=Color.FromArgb(43,43,47),ForeColor=Color.WhiteSmoke,
+            Margin=new Padding(2,1,2,2)
+        };
+        var manageSaves = new Button
+        {
+            Text="Manage / Restore saves…",
+            AccessibleName="Manage or restore DOOM save backups",
+            Dock=DockStyle.Fill,FlatStyle=FlatStyle.Flat,
+            BackColor=Color.FromArgb(43,43,47),ForeColor=Color.WhiteSmoke,
+            Margin=new Padding(2,1,2,2)
+        };
+        backupNow.FlatAppearance.BorderColor=Color.DimGray;
+        manageSaves.FlatAppearance.BorderColor=Color.DimGray;
+        statusToolTip.SetToolTip(backupNow,
+            "Back up BOTH DOOM 2016 savegame folders now. DOOM must be closed.");
+        statusToolTip.SetToolTip(manageSaves,
+            "View verified snapshots, locate saves, restore clean/modded saves, "
+            +"and open the persistent backup folder. Restoring always takes a rescue copy.");
+        backupNow.Click += (_,_) =>
+        {
+            try{
+                var mode=DoomSaveProtection.SelectedResourceMods(doomPath.Text)
+                    ?"modded":"normal";
+                var snapshot=DoomSaveProtection.Capture("Manual backup",mode);
+                MessageBox.Show(customOptionsForm??this,
+                    "Verified save backup: "+snapshot.Id,
+                    "KHARVOX — Save protected",MessageBoxButtons.OK,MessageBoxIcon.Information);
+            }catch(Exception error){
+                MessageBox.Show(customOptionsForm??this,error.Message,
+                    "KHARVOX — Backup failed",MessageBoxButtons.OK,MessageBoxIcon.Warning);
+            }
+        };
+        manageSaves.Click+=(_,_)=>OpenSaveProtectionManager();
+        saveProtectionRow.Controls.Add(backupNow,0,0);
+        saveProtectionRow.Controls.Add(manageSaves,1,0);
+        doomGrid.Controls.Add(saveProtectionRow,0,4);
+
         // Low-key discovery link only; external content is not installed or
         // automatically selected, and the link stays usable without DML.
         var nexusModsLink = new LinkLabel
@@ -1205,7 +1254,7 @@ public sealed partial class MainForm : Form
                 nexusModsLink.Enabled = true;
             }
         };
-        doomGrid.Controls.Add(nexusModsLink, 0, 4);
+        doomGrid.Controls.Add(nexusModsLink, 0, 5);
         doomMods.Controls.Add(doomGrid);
 
         var modColumns = new TableLayoutPanel
@@ -2710,6 +2759,9 @@ public sealed partial class MainForm : Form
             else
                 rendererMode.SelectedIndex = RendererSelection.Index("AER");
         }
+        // Mod selection is not a save migration. Prompt before returning to
+        // normal DOOM; never silently restore or overwrite active progress.
+        if (!ConfirmReturnToCleanSaves()) return;
         SaveSettings();
         launchOperationInProgress = true;
         launchButton.Enabled = false;
