@@ -1733,9 +1733,11 @@ public sealed partial class MainForm : Form
         }
         cinematicKillSpeedTitle.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
         cinematicKillSpeedValue.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
+        // The selected button already displays the chosen preset.
+        // Avoid repeating its value in the header; show status only.
         cinematicKillSpeedValue.Text=nativeFastChecked
             ? "Locked by Fast Kills"
-            : actionOverridesActive ? "Paused · action overrides" : savedValue;
+            : actionOverridesActive ? "Paused · action overrides" : "";
         var explanation=nativeFastChecked
             ? "Fast Glory Kills or Fast Chainsaw Kills uses DOOM's native sync bypass. "
                 +"Turn both off to use presets. Saved: "+savedValue+"."
