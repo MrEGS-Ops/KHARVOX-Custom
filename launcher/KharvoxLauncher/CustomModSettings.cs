@@ -23,6 +23,7 @@ internal sealed class CustomModSettings
     // Native cinematic tick-Hz experiment: 1 original, 5 near-max adaptive.
     public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool CinematicSpeedFineTune { get; set; }
+    public bool SpeedAdvancedExpanded { get; set; }
     public int CinematicSpeedFineTuneHz { get; set; } = 35;
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
@@ -94,7 +95,7 @@ internal static class CustomModSettingsStore
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-            value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(60, value.CinematicSpeedFineTuneHz));
+            value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(200, value.CinematicSpeedFineTuneHz));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -112,7 +113,7 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-        value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(60, value.CinematicSpeedFineTuneHz));
+        value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(200, value.CinematicSpeedFineTuneHz));
         value.CinematicExitHandoffDelayMs = Math.Max(40, Math.Min(400,
             ((value.CinematicExitHandoffDelayMs + 20) / 40) * 40));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
