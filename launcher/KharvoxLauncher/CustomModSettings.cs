@@ -11,7 +11,7 @@ internal sealed class ActionSpeedSetting
 internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
-    { "glory", "chainsaw", "ledge" };
+    { "glory", "chainsaw", "ledge", "cinematic" };
     // Only verified lifecycle actions are editable. Exploratory input probes
     // are read-only and live behind the single Log Test checkbox.
     internal static readonly string[] All = Controllable;
@@ -199,20 +199,33 @@ internal static class CustomModSettingsStore
                 new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
             profiles.ActionSpeedProfiles["reload"] =
                 new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
+            profiles.ActionSpeedProfiles["scripted"] =
+                new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
             ActionSpeedCatalog.Validate(profiles);
-            if (profiles.ActionSpeedProfiles.Count != 3
+            if (profiles.ActionSpeedProfiles.Count != 4
                 || profiles.ActionSpeedProfiles.ContainsKey("enemy")
                 || profiles.ActionSpeedProfiles.ContainsKey("reload")
                 || profiles.ActionSpeedProfiles.ContainsKey("gauss")
                 || profiles.ActionSpeedProfiles.ContainsKey("scripted")
+                || !profiles.ActionSpeedProfiles.ContainsKey("cinematic")
+                || profiles.ActionSpeedProfiles["cinematic"].Enabled
                 || !ActionSpeedCatalog.HasActiveOverrides(profiles)
                 || profiles.ActionSpeedProfiles["glory"].TargetHz != 200)
                 throw new InvalidDataException("Legacy dead probes must be removed without losing action choices.");
+            // The new Foundry-specific override must NOT inherit the older
+            // broad, unverified "scripted" probe's enabled state.
+            profiles.ActionSpeedProfiles["cinematic"] =
+                new ActionSpeedSetting { Enabled = true, TargetHz = 170 };
+            ActionSpeedCatalog.Validate(profiles);
+            if (!ActionSpeedCatalog.HasActiveOverrides(profiles)
+                || profiles.ActionSpeedProfiles["cinematic"].TargetHz != 170)
+                throw new InvalidDataException("Scripted cinematic settings were not preserved.");
             profiles.SpeedAdvancedExpanded = false;
             if (ActionSpeedCatalog.HasActiveOverrides(profiles))
                 throw new InvalidDataException("Collapsed Advanced must suspend selected overrides.");
             profiles.SpeedAdvancedExpanded = true;
             profiles.ActionSpeedProfiles["glory"].Enabled = false;
+            profiles.ActionSpeedProfiles["cinematic"].Enabled = false;
             if (ActionSpeedCatalog.HasActiveOverrides(profiles))
                 throw new InvalidDataException("Inactive overrides must restore preset mode.");
             // Existing preferences receive newly tested mods exactly once.

@@ -671,7 +671,8 @@ const kharvox::ActionSpeedTargets& actionSpeedTargets(){
     static const kharvox::ActionSpeedTargets p{
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ")};
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ"),
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CINEMATIC_HZ")};
     return p;
 }
 unsigned actionSpeedProbeMask(){
@@ -5433,6 +5434,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool chainsawAction=s.chainsawKillLatched
         &&(syncAction||KharvoxCameraCutsceneActive());
     const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
+    // Foundry-style interactions are native non-execution cutscenes.
+    // Camera routing alone must not force a target tick; this signal is
+    // considered ONLY when the user enabled the dedicated action override.
+    const bool scriptedCinematicCandidate=KharvoxCameraCutsceneActive()
+        &&!syncAction&&!chainsawAction&&!ledgeAction;
     logActionSpeedProbes(s.meleePressed,syncAction,chainsawAction,ledgeAction);
     const bool originalCinematicHold=!bossAction
         &&kharvox::shouldHoldImmersiveRefresh(
@@ -5445,7 +5451,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!KharvoxHudFullscreenMenuActive()&&!KharvoxHudTutorialActive();
     const auto selectedAction=actionProfileEligible
         ?kharvox::selectActionSpeed(
-            {syncAction,chainsawAction,ledgeAction},
+            {syncAction,chainsawAction,ledgeAction,scriptedCinematicCandidate},
             actionSpeedTargets())
         :kharvox::ActionSpeedChoice{};
     // External opt-ins do not steal normal movement or alter the native
@@ -5455,8 +5461,28 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ||s.customMods.fastChainsawKills;
     const auto activeAction=fastKillsRequested
         ?kharvox::ActionSpeedChoice{}:selectedAction;
+    // The CineWindow checkbox selects PRESENTATION, not animation speed.
+    // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
+    // cutscene=1, syncAttack=0. DOOM native timing is the default. ONLY the
+    // explicit "Scripted cinematics" override may change their tick Hz;
+    // immersive camera/projection/freelook are independent.
+    const bool actionTimingAllowed=kharvox::shouldApplyImmersiveActionTiming(
+        originalCinematicHold,syncAction,chainsawAction,ledgeAction,
+        activeAction.hz>0);
+    static bool previouslyPreservedPassiveTiming=false;
+    const bool passiveTimingPreserved=originalCinematicHold
+        &&!actionTimingAllowed;
+    if(passiveTimingPreserved&&!previouslyPreservedPassiveTiming){
+        log("[CINEMATIC-HZ] scripted/passive immersive sequence: "
+            "DOOM native tick timing PRESERVED (no 120 Hz minimum); "
+            "cinematic projection/freelook unchanged; cutscene="
+            +std::to_string(KharvoxCameraCutsceneActive()?1:0)
+            +" nativeSync="+std::to_string(syncAction?1:0)
+            +" participantGuard="+std::to_string(nativeAdaptiveParticipantGuard?1:0));
+    }
+    previouslyPreservedPassiveTiming=passiveTimingPreserved;
     updateImmersiveCinematicRefresh(
-        originalCinematicHold||activeAction.hz>0,
+        actionTimingAllowed,
         frame.predictedDisplayPeriod,activeAction);
     updateCinewindowAnchor(vs,frame.predictedDisplayTime);
     kharvox::hudgpu::QuadCandidate hudSource{};

@@ -38,6 +38,20 @@ constexpr bool shouldHoldImmersiveRefresh(
             || nativeAdaptiveParticipantGuardActive);
 }
 
+// Presentation routing and engine animation timing are independent.
+// A passive in-world cinematic (scanner, switch, scripted NPC, upgrade,
+// door, etc.) may remain stereoscopic, but MUST NOT force a new engine
+// tick minimum merely because its camera is immersive. Only a confirmed
+// execution / ledge transition or an explicit action-Hz override may
+// borrow the scoped legacy timing hold.
+constexpr bool shouldApplyImmersiveActionTiming(
+    bool immersiveRefreshCandidate,
+    bool nativeSyncAttack, bool chainsawExecution,
+    bool ledgeTransition, bool explicitActionOverride) {
+    return explicitActionOverride || (immersiveRefreshCandidate
+        && (nativeSyncAttack || chainsawExecution || ledgeTransition));
+}
+
 constexpr unsigned long long updateNativeAdaptiveParticipantGuardUntil(
     bool eligible,
     bool participantObserved,

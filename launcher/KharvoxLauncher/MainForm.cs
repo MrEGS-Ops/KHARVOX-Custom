@@ -574,17 +574,22 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        // Only the five validated action-state triggers get controls.
-        // Read-only exploratory input probes are consolidated into one
-        // diagnostic toggle: no dead sliders or misleading animation options.
+        // Three verified execution/climbing actions and one narrowly gated
+        // experimental Foundry-style scripted cinematic override. There
+        // are no fake animation probe sliders.
         var actionNames = new Dictionary<string,string> {
             ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
-            ["ledge"]="Ledge climbing"
+            ["ledge"]="Ledge climbing",
+            ["cinematic"]="Scripted cinematics"
         };
         var actionHints = new Dictionary<string,string> {
             ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
             ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action.",
-            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target."
+            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target.",
+            ["cinematic"]="Experimental: applies ONLY to immersive, non-execution cutscenes "
+                +"such as Foundry's arm-rip, hand scanner and console interactions. "
+                +"Glory Kills, chainsaw and ledge events take priority. "
+                +"Unchecked preserves DOOM's original scripted timing."
         };
         const int actionHeaderHeight=30;
         const int actionRowHeight=38;
@@ -665,9 +670,10 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "Log confirmed Glory Kill/chainsaw/ledge state transitions and "
-            +"observed melee input edges. Melee is NOT a verified animation "
-            +"lifecycle. No grenade, reload, enemy, boss, Gauss or wheel probes. "
+            "Log confirmed Glory Kill/chainsaw/ledge/scripted cinematic "
+            +"state transitions and observed melee input edges. Melee is "
+            +"NOT a verified animation lifecycle. No grenade, reload, "
+            +"enemy, boss, Gauss or wheel probes. "
             +"Logging does NOT change timing. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;

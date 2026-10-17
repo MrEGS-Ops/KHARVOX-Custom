@@ -80,13 +80,24 @@ int main() {
     assert(nativeSyncExitHandoffFraction(45'000'100,100)==.5f);
     assert(nativeSyncExitHandoffFraction(90'000'100,100)==1.f);
     assert(nativeSyncExitHandoffFraction(200'000'100,100)==1.f);
+    // Foundry regression: passive cutscene when "Regular cinematics in
+    // CineWindow" is unchecked was inadvertently setting minHz=120 from
+    // headset cadence even with syncAttack=0. Projection cannot imply speed.
+    assert(!shouldApplyImmersiveActionTiming(true,false,false,false,false));
+    assert(!shouldApplyImmersiveActionTiming(false,false,false,false,false));
+    assert(shouldApplyImmersiveActionTiming(true,true,false,false,false));
+    assert(shouldApplyImmersiveActionTiming(true,false,true,false,false));
+    assert(shouldApplyImmersiveActionTiming(true,false,false,true,false));
+    // Explicit action override is allowed to borrow the scoped timing hold.
+    assert(shouldApplyImmersiveActionTiming(false,false,false,false,true));
+    assert(!shouldApplyImmersiveActionTiming(false,true,false,false,false));
     // Action targets never falsely claim independent enemy/reload clocks.
     assert(!validActionSpeedTarget(0));
     assert(!validActionSpeedTarget(29));
     assert(validActionSpeedTarget(30));
     assert(validActionSpeedTarget(240));
     assert(!validActionSpeedTarget(241));
-    const ActionSpeedTargets target{50,60,80};
+    const ActionSpeedTargets target{50,60,80,170};
     assert(selectActionSpeed({true,true,false},target).kind
         ==ActionSpeedKind::Chainsaw);
     assert(selectActionSpeed({true,false,false},target).hz==60);
@@ -94,5 +105,18 @@ int main() {
     assert(selectActionSpeed({},target).kind==ActionSpeedKind::None);
     assert(selectActionSpeed({true,false,false},{}).hz==0);
     assert(selectActionSpeed({true,true,true},target).hz==50);
+    assert(selectActionSpeed({false,false,false,true},target).kind
+        ==ActionSpeedKind::ScriptedCinematic);
+    assert(selectActionSpeed({false,false,false,true},target).hz==170);
+    assert(selectActionSpeed({false,false,false,true},{}).hz==0);
+    // A cutscene classifier may outlive the execution's native flag by a
+    // frame; never allow scripted cinematic to steal a kill/ledge target.
+    assert(selectActionSpeed({true,false,false,true},target).hz==60);
+    assert(selectActionSpeed({false,true,false,true},target).hz==50);
+    assert(selectActionSpeed({false,false,true,true},target).hz==80);
+    assert(selectActionSpeed({true,false,false,true},{0,0,0,170}).hz==0);
+    assert(selectActionSpeed({false,false,true,true},{0,0,0,170}).hz==0);
+    assert(selectActionSpeed({false,false,false,true},{0,0,0,241}).hz==0);
+
     return 0;
 }
