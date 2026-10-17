@@ -169,6 +169,7 @@ kharvox::OffhandHudConfig offhandHudConfig;
 std::atomic<bool> offhandCalibrationActive{};
 std::atomic<int> offhandSelectedSurface{};
 std::atomic<unsigned long long> offhandSelectionUntil{};
+bool backOfHandHudFlipActive(){static const bool value=kharvox::customModEnvironmentEnabled("KHARVOX_MOD_BACK_OF_HAND_HUD");return value;}
 bool offhandHudLeftMode(){static const bool value=[](){char text[16]{};return GetEnvironmentVariableA("KHARVOX_LEFT_HANDED",text,sizeof(text))&&std::strcmp(text,"0");}();return value;}
 void reloadOffhandHud(){
     static unsigned long long last{};const auto now=GetTickCount64();if(last&&now-last<500)return;last=now;
@@ -625,6 +626,8 @@ void __fastcall offhandHudCanvasSize(void* entity,int width,int height,float ext
         &&((pending.weaponWheel&&width>0&&height>0)||(width==512&&height==300))
         &&kharvox::centeredOffhandHud(pending.center,pending.axis,pending.width,
             float(width)/float(height),origin,extentX,extentY);
+    if(owned)kharvox::flipOffhandHudCanvasHorizontally(
+        backOfHandHudFlipActive(),pending.surface,pending.axis,origin,extentX);
     originalHudCanvasSize(entity,width,height,extentX,extentY);
     if(!owned)return;
     auto bytes=static_cast<unsigned char*>(entity);
@@ -2023,6 +2026,8 @@ bool renderProgMeter(void* swf,void* view,void* sprite,void* state,int time,bool
     if(!kharvox::centeredOffhandHud(center,axis,width,512.f/300.f,origin,ex,ey)){progResetGeometry();return false;}
     ex*=512.f/progMeter.pixelWidth;ey*=512.f/progMeter.pixelWidth;
     for(int j=0;j<3;++j)origin[j]=center[j]-axis[j]*ex*(progMeter.midX/512.f)-axis[3+j]*ey*(progMeter.midY/300.f);
+    kharvox::flipOffhandHudCanvasHorizontally(
+        backOfHandHudFlipActive(),2,axis,origin,ex,progMeter.midX/512.f);
     originalHudCanvasSize(progMeter.gui,512,300,ex,ey);
     auto setOrigin=progNative<void(__fastcall*)(void*,const float*)>(0x3b7500);
     auto setAxis=progNative<void(__fastcall*)(void*,const float*)>(0x3b5400);

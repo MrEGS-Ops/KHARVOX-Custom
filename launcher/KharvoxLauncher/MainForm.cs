@@ -70,7 +70,8 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
-    // Native Cactus HUD is configured by offhand_hud.cfg, not a custom mod.
+    // Horizontal picture flip only; stock Cactus v1.1.1 pose is unchanged.
+    private readonly CheckBox customBackOfHandHud = MakeCheck("Back of Hand HUD", false);
     private readonly CheckBox customBoxingGuard = MakeCheck("Boxing Guard Mode", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
@@ -383,6 +384,7 @@ public sealed partial class MainForm : Form
         {
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
+            (customBackOfHandHud, "Mirror only the watch HUD picture horizontally to read it from the back of your hand. Keeps original Cactus v1.1.1 hand HUD position, rotation, size and all other HUDs unchanged."),
             (customGaussChargeSlowMovement, "Movement assist while Gauss Siege charge is held. Designed for 45% stick movement, but DOOM may inhibit native movement; this is still under investigation."),
             (customBoxingGuard, "Raise both hands in a guarding pose: head focus and slight time dilation activate after 180 ms, then return to hand focus 900 ms after the guard ends. Native Glory Kill speed while guarding. Peripheral blur is pending a tested renderer hook."),
             (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Boxing Guard Mode independently switches to head focus when both guards are raised."),
@@ -1533,7 +1535,8 @@ public sealed partial class MainForm : Form
             customDirectionalDash.Enabled = false; // unsafe native dash halted
             customDisableWeaponWheel.Enabled = !customBehindHeadWeaponWheel.Checked
                 && !customDirectionalDash.Checked;
-            // Original hand HUD is not controlled by these checkboxes.
+            // The Back of Hand mod flips the restored Cactus HUD image only.
+            // It does not change Cactus calibration or disable native HUDs.
             // Both kill toggles request the proven native DOOM sync slowdown
             // bypass (Build #83), not an experimental animation multiplier.
             // DOOM exposes this as a shared sync setting, so it applies to
@@ -1571,7 +1574,7 @@ public sealed partial class MainForm : Form
         DisableHud = customDisableHud.Checked,
         DisableWeaponWheel = customDisableWeaponWheel.Checked,
         GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
-        BackOfHandHud = false,
+        BackOfHandHud = customBackOfHandHud.Checked,
         BoxingGuard = customBoxingGuard.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,
@@ -1619,6 +1622,7 @@ public sealed partial class MainForm : Form
             customDisableHud.Checked = mods.DisableHud;
             customDisableWeaponWheel.Checked = mods.DisableWeaponWheel;
             customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
+            customBackOfHandHud.Checked = mods.BackOfHandHud;
             customBoxingGuard.Checked = mods.BoxingGuard;
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;

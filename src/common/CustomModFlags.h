@@ -41,8 +41,8 @@ inline CustomModFlags loadCustomModFlags() {
     flags.disableHud = customModEnvironmentEnabled("KHARVOX_MOD_DISABLE_HUD");
     flags.disableWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_DISABLE_WEAPON_WHEEL");
     flags.gaussChargeSlowMovement = customModEnvironmentEnabled("KHARVOX_MOD_GAUSS_SLOW_CHARGE");
-    // Back-of-hand HUD is not a mod. Cactus offhand_hud.cfg owns its presentation.
-    flags.backOfHandHud = false;
+    // The separate mod only mirrors the already-restored Cactus hand HUD.
+    flags.backOfHandHud = customModEnvironmentEnabled("KHARVOX_MOD_BACK_OF_HAND_HUD");
     flags.boxingGuard=customModEnvironmentEnabled("KHARVOX_MOD_BOXING_GUARD");
     flags.fastGloryKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS");
     flags.fastChainsawKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");

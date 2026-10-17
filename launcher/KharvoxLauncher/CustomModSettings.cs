@@ -10,7 +10,7 @@ internal sealed class CustomModSettings
     public bool DisableHud { get; set; }
     public bool DisableWeaponWheel { get; set; }
     public bool GaussChargeSlowMovement { get; set; }
-    // Legacy field is read for compatibility; native HUD follows Cactus config.
+    // Opt-in horizontal flip only; native Cactus v1.1.1 HUD pose remains fixed.
     public bool BackOfHandHud { get; set; }
     public bool BoxingGuard { get; set; }
     public bool FastGloryKills { get; set; }

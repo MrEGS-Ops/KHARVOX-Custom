@@ -102,6 +102,24 @@ int main() {
         offhandHudBasis(hand,config.modes[1],panel);if(!near(panel[0],0)||!near(panel[1],1))return 106;
     }
 
+    // The back-of-hand mod mirrors only owned panel canvases. It must
+    // preserve the calibrated wrist center, including off-centre ProgMeter.
+    {
+        const float axes[9]{1,0,0,0,1,0,0,0,1};
+        float origin[3]{-5,-3,0};float sx=10;
+        flipOffhandHudCanvasHorizontally(false,0,axes,origin,sx);
+        if(!near(origin[0],-5)||!near(sx,10))return 180;
+        flipOffhandHudCanvasHorizontally(true,-1,axes,origin,sx);
+        if(!near(origin[0],-5)||!near(sx,10))return 181;
+        flipOffhandHudCanvasHorizontally(true,0,axes,origin,sx);
+        if(!near(origin[0],5)||!near(sx,-10)
+            ||!near(origin[0]+.5f*sx,0))return 182;
+        float progOrigin[3]{-2,1,0};float progExtent=8;
+        flipOffhandHudCanvasHorizontally(true,2,axes,progOrigin,progExtent,.25f);
+        if(!near(progOrigin[0],2)||!near(progExtent,-8)
+            ||!near(progOrigin[0]+.25f*progExtent,0))return 183;
+    }
+
     // Legacy calibration migration preserves both accepted panels and seeds
     // an independent ProgMeter pose for each handedness.
     {
