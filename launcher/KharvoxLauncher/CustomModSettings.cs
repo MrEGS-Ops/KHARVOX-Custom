@@ -50,7 +50,7 @@ internal static class CustomModSettingsStore
             var value = Serializer.Deserialize<CustomModSettings>(File.ReadAllText(path));
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
-            value.CinematicKillSpeedLevel = Math.Clamp(value.CinematicKillSpeedLevel, 1, 5);
+            value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
             return value;
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -67,7 +67,7 @@ internal static class CustomModSettingsStore
     {
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
-        value.CinematicKillSpeedLevel = Math.Clamp(value.CinematicKillSpeedLevel, 1, 5);
+        value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try

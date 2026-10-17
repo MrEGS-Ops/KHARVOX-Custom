@@ -1699,7 +1699,7 @@ public sealed partial class MainForm : Form
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customFastGloryKills.Checked = mods.FastGloryKills;
             customFastChainsawKills.Checked = mods.FastChainsawKills;
-            cinematicKillSpeed.Value = Math.Clamp(mods.CinematicKillSpeedLevel, 1, 5);
+            cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
