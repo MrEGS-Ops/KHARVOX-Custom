@@ -562,11 +562,11 @@ internal static class KharvoxRunner
             // Separate action triggers only activate their own scoped override.
             // Unverified enemy/reload states are diagnostic-only, never runtime
             // CVars. Zero means OFF and always restores the existing baseline.
-            foreach (var key in ActionSpeedCatalog.Controllable)
+            foreach (var actionKey in ActionSpeedCatalog.Controllable)
             {
-                var p = customMods.ActionSpeedProfiles.TryGetValue(key, out var value)
+                var p = customMods.ActionSpeedProfiles.TryGetValue(actionKey, out var value)
                     ? value : new ActionSpeedSetting();
-                psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + key.ToUpperInvariant() + "_HZ"] =
+                psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + actionKey.ToUpperInvariant() + "_HZ"] =
                     p.Enabled ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
             }
             var probeMask = 0;
