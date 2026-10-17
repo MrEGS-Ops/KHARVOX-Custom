@@ -12,9 +12,16 @@ internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
     { "glory", "chainsaw", "ledge", "gauss", "scripted" };
-    internal static readonly string[] Probes =
-    { "melee", "reload", "grenade", "enemy", "boss", "wheel" };
-    internal static readonly string[] All = Controllable.Concat(Probes).ToArray();
+    // Only verified lifecycle actions are editable. Exploratory input probes
+    // are read-only and live behind the single Log Test checkbox.
+    internal static readonly string[] All = Controllable;
+
+    internal static bool HasActiveOverrides(CustomModSettings settings) =>
+        settings.SpeedAdvancedExpanded && Controllable.Any(key =>
+            settings.ActionSpeedProfiles != null
+            && settings.ActionSpeedProfiles.TryGetValue(key, out var profile)
+            && profile != null && profile.Enabled);
+
 
     internal static void Validate(CustomModSettings settings)
     {
