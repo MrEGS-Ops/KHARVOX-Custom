@@ -19,7 +19,7 @@ internal sealed class CustomModSettings
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
     public bool CinematicExitHandoff { get; set; }
-    public int CinematicExitHandoffDelayMs { get; set; } = 80;
+    public int CinematicExitHandoffDelayMs { get; set; } = 40;
     // Native cinematic tick-Hz experiment: 1 original, 5 near-max adaptive.
     public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool CinematicSpeedFineTune { get; set; }
@@ -62,8 +62,8 @@ internal static class CustomModSettingsStore
         }
         if (value.DevelopmentTestDefaultsRevision < 2)
         {
-            // New 30–40 Hz fine tune is auto checked once only.
-            value.CinematicSpeedFineTune = true;
+            // Advanced has one checkbox and is collapsed on fresh installs.
+            value.CinematicSpeedFineTune = false;
             value.CinematicSpeedFineTuneHz = 35;
             value.DevelopmentTestDefaultsRevision = 2;
         }
@@ -76,8 +76,14 @@ internal static class CustomModSettingsStore
             value.CinematicExitHandoff = true;
             value.DevelopmentTestDefaultsRevision = 3;
         }
-        value.CinematicExitHandoffDelayMs = Math.Max(40,
-            Math.Min(400, ((value.CinematicExitHandoffDelayMs + 20) / 40) * 40));
+        // Retire stored handoff overrides. Every native sync execution now
+        // uses the confirmed 40ms entry release with no UI toggle.
+        value.CinematicExitHandoff = true;
+        value.CinematicExitHandoffDelayMs = 40;
+        // Legacy Fine Tune checked state is migrated into Advanced.
+        value.SpeedAdvancedExpanded |= value.CinematicSpeedFineTune;
+        value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
+        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
         value.BackOfHandHud = false; // paused until composite image mirror exists
         return value;
     }
@@ -95,7 +101,7 @@ internal static class CustomModSettingsStore
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-            value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(200, value.CinematicSpeedFineTuneHz));
+            value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -113,9 +119,10 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-        value.CinematicSpeedFineTuneHz = Math.Max(20, Math.Min(200, value.CinematicSpeedFineTuneHz));
-        value.CinematicExitHandoffDelayMs = Math.Max(40, Math.Min(400,
-            ((value.CinematicExitHandoffDelayMs + 20) / 40) * 40));
+        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
+        value.CinematicExitHandoff = true;
+        value.CinematicExitHandoffDelayMs = 40;
+        value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
@@ -146,25 +153,27 @@ internal static class CustomModSettingsStore
             }, path);
             var first = Load(path);
             if (first.BackOfHandHud || !first.CinematicExitHandoff
-                || first.CinematicExitHandoffDelayMs != 80
-                || !first.CinematicSpeedFineTune || first.CinematicSpeedFineTuneHz != 35
+                || first.CinematicExitHandoffDelayMs != 40
+                || first.CinematicSpeedFineTune || first.SpeedAdvancedExpanded
+                || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("New test mod not auto-checked on first launch.");
             first.BackOfHandHud = false;
-            first.CinematicExitHandoff = false;
-            first.CinematicExitHandoffDelayMs = 160;
-            first.CinematicSpeedFineTune = false;
+            first.CinematicExitHandoff = false; // old saved OFF is ignored
+            first.CinematicExitHandoffDelayMs = 160; // retired override ignored
+            first.SpeedAdvancedExpanded = true;
+            first.CinematicSpeedFineTune = true;
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
-            if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
-                || Load(path).CinematicExitHandoffDelayMs != 160
-                || Load(path).CinematicSpeedFineTune
+            if (Load(path).BackOfHandHud || !Load(path).CinematicExitHandoff
+                || Load(path).CinematicExitHandoffDelayMs != 40
+                || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || !fresh.CinematicExitHandoff
-                || fresh.CinematicExitHandoffDelayMs != 80
-                || !fresh.CinematicSpeedFineTune)
+                || fresh.CinematicExitHandoffDelayMs != 40
+                || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install should auto-check active test mod.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
