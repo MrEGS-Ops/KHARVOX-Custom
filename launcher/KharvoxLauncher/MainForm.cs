@@ -90,12 +90,12 @@ public sealed partial class MainForm : Form
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
     private readonly FlatGloryKillSlider cinematicFineTuneHz = new()
     {
-        Minimum = 30, Maximum = 40, Value = 35,
+        Minimum = 20, Maximum = 60, Value = 35,
         AccessibleName = "Fine tune cinematic Hz minus number plus"
     };
     private readonly Label cinematicFineTuneTitle = new()
     {
-        Text = "Fine Tune (30–40 Hz)", Width = 180, Height = 29,
+        Text = "Fine Tune (20–60 Hz)", Width = 180, Height = 29,
         ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
         Margin = new Padding(0, 0, 10, 0)
     };
@@ -427,7 +427,7 @@ public sealed partial class MainForm : Form
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customFastGloryKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to unlock the Cinematic Kill Speed slider and restore its selected timing. No speed multiplier or animation rewrite."),
             (customFastChainsawKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either Fast Kills checkbox overrides the slider. Disable BOTH to unlock the slider. Chainsaw effectiveness still needs headset verification."),
-            (customCinematicFineTune, "AUTO-CHECKED ONCE: fine-tune the existing DOOM cinematic adaptive tick target 30–40 Hz in 1 Hz steps. Overrides numbered Cinematic Kill Speed while selected. Fast Kills overrides both. Restart DOOM after adjusting."),
+            (customCinematicFineTune, "AUTO-CHECKED ONCE: fine-tune the existing DOOM cinematic adaptive tick target 20–60 Hz in 1 Hz steps. Overrides numbered Cinematic Kill Speed while selected. Fast Kills overrides both. Restart DOOM after adjusting."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -1513,7 +1513,7 @@ public sealed partial class MainForm : Form
         var fineTip = nativeFastChecked
             ? "Fast Glory/Chainsaw overrides fine tune. Uncheck both to edit."
             : fineTuneChecked
-                ? "Use −/+ for 30–40 Hz in 1 Hz steps. Restart DOOM to apply."
+                ? "Use −/+ for 20–60 Hz in 1 Hz steps. Restart DOOM to apply."
                 : "Check Cinematic Speed Fine Tune to enable this control.";
         statusToolTip.SetToolTip(cinematicFineTuneTitle, fineTip);
         statusToolTip.SetToolTip(cinematicFineTuneValue, fineTip);
@@ -1527,7 +1527,7 @@ public sealed partial class MainForm : Form
                 + "Uncheck BOTH mods to enable Cinematic Kill Speed. "
                 + "Saved slider position: " + savedValue + "."
             : fineTuneChecked
-                ? "Disabled by Cinematic Speed Fine Tune (30–40 Hz). Uncheck that mod to unlock."
+                ? "Disabled by Cinematic Speed Fine Tune (20–60 Hz). Uncheck that mod to unlock."
                 : "Cinematic Kill Speed: click −/+; 1 native; 2 90 Hz; "
                 + "3 70 Hz; 4 50 Hz; 5 experimental 31 Hz near-max. "
                 + "True max uses Fast Kills mods. Restart DOOM to apply.";
@@ -1779,7 +1779,7 @@ public sealed partial class MainForm : Form
             customFastChainsawKills.Checked = mods.FastChainsawKills;
             cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
             customCinematicFineTune.Checked = mods.CinematicSpeedFineTune;
-            cinematicFineTuneHz.Value = Math.Max(30, Math.Min(40, mods.CinematicSpeedFineTuneHz));
+            cinematicFineTuneHz.Value = Math.Max(20, Math.Min(60, mods.CinematicSpeedFineTuneHz));
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
