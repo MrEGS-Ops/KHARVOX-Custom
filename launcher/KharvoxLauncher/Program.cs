@@ -25,6 +25,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-save-protection",
+                StringComparison.OrdinalIgnoreCase)))
+            return DoomSaveProtection.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-doom-staging",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomResourceModSession.RunSelfTest();
