@@ -11,6 +11,37 @@ struct ActionSpeedTargets {
     int chainsaw{}, gloryKill{}, ledgeClimb{}, scriptedCinematic{};
 };
 struct ActionSpeedChoice { ActionSpeedKind kind{ActionSpeedKind::None}; int hz{}; };
+// DOOM keeps its generic cutscene flag alive after a Glory Kill, chainsaw
+// execution or ledge transition ends. That tail is NOT a new scripted scene.
+// Do not let the optional scripted-cinematic Hz override steal those frames.
+// Require the old cutscene to close, followed by a short classification gap.
+// This is only a detection guard: it adds NO delay to the game or VR camera.
+struct ScriptedCinematicBoundaryState {
+    bool awaitingPreviousCutsceneEnd{};
+    unsigned long long allowNewSceneAfterMs{};
+};
+constexpr unsigned long long safeScriptedGateDeadline(
+    unsigned long long now, unsigned long long graceMs) {
+    return (~0ull-now)<graceMs ? ~0ull : now+graceMs;
+}
+constexpr bool acceptIndependentScriptedCinematic(
+    ScriptedCinematicBoundaryState& state, bool cutscene,
+    bool gloryKill, bool chainsaw, bool ledge,
+    unsigned long long nowMs, unsigned long long graceMs=250) {
+    if(gloryKill||chainsaw||ledge) {
+        state.awaitingPreviousCutsceneEnd=true;
+        state.allowNewSceneAfterMs=safeScriptedGateDeadline(nowMs,graceMs);
+        return false;
+    }
+    if(state.awaitingPreviousCutsceneEnd) {
+        if(!cutscene) {
+            state.awaitingPreviousCutsceneEnd=false;
+            state.allowNewSceneAfterMs=safeScriptedGateDeadline(nowMs,graceMs);
+        }
+        return false;
+    }
+    return cutscene&&nowMs>=state.allowNewSceneAfterMs;
+}
 constexpr bool validActionSpeedTarget(int hz) { return hz>=30&&hz<=240; }
 constexpr ActionSpeedChoice selectActionSpeed(ActionSpeedCandidates a,ActionSpeedTargets t) {
     if(a.chainsawKill&&validActionSpeedTarget(t.chainsaw))return {ActionSpeedKind::Chainsaw,t.chainsaw};
