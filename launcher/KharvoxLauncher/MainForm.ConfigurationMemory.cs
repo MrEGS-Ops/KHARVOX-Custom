@@ -159,8 +159,8 @@ public sealed partial class MainForm
             customBoxingGuard, customHandFocusedRs, customDirectionalDash,
             customBehindHeadWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
-            customPhysicalGrenadeThrow, customPersistentSsgReload, customFastGloryKills,
-            customFastChainsawKills, customHapticOverhaul
+            customPhysicalGrenadeThrow, customPersistentSsgReload,
+            customHapticOverhaul, cinematicSpeedSelector
         }) yield return control;
     }
 
@@ -204,8 +204,12 @@ public sealed partial class MainForm
                     case TextBox field: field.Text = (string)entry.Value; break;
                 }
             }
+            // The hidden native full-speed flag is derived from the selector.
+            // Restore it explicitly because events are suppressed here.
+            cinematicFullSpeedMode=cinematicSpeedSelector.SelectedIndex==5;
+            if(cinematicSpeedSelector.SelectedIndex>=0&&cinematicSpeedSelector.SelectedIndex<5)
+                cinematicKillSpeed.Value=cinematicSpeedSelector.SelectedIndex+1;
             // WinForms restoration bypasses user click dependency handlers.
-            // Reassert mod-required launcher locks before saving the restored state.
             ApplyCustomModDependencies(null);
             DoomUserMods.SaveSelections(new HashSet<string>(snapshot.DoomMods,
                 StringComparer.OrdinalIgnoreCase));
@@ -570,8 +574,6 @@ public sealed partial class MainForm
                 main.customPhysicalGrenadeThrow,
                 main.customGaussChargeSlowMovement,
                 main.customPersistentSsgReload,
-                main.customFastGloryKills,
-                main.customFastChainsawKills,
                 main.customBackOfHandHud,
                 main.customDisableHud,
                 main.customDisableWeaponWheel,
@@ -581,13 +583,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 17 || checks.Distinct().Count() != 17
+                || checks.Length != 15 || checks.Distinct().Count() != 15
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 12 ? 2
-                        : index < 15 ? 3 : index < 16 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 17
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 10 ? 2
+                        : index < 13 ? 3 : index < 14 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 15
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -602,7 +604,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 6 + 17 * 28 + 6 * 20
+                || layout.Height < 6 + 15 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
@@ -669,10 +671,11 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
-            if (!main.customFastGloryKills.Text.Contains("Fast Glory Kills")
-                || !main.customFastChainsawKills.Text.Contains("Fast Chainsaw Kills")
-                || !main.customBoxingGuard.Text.Contains("Boxing Guard"))
-                throw new InvalidDataException("Native/full-speed GK, chainsaw and boxing switches are missing.");
+            if (main.cinematicSpeedSelector.Items.Count != 6
+                || !main.cinematicSpeedSelector.Items[5]!.ToString()!.Contains("Full speed")
+                || !main.customBoxingGuard.Text.Contains("Boxing Guard")
+                || main.modOrderRows.Any(row=>row.Id=="fast-glory-kills"||row.Id=="fast-chainsaw"))
+                throw new InvalidDataException("Fast Kills must live in Sync Action Speed, not draggable VR mods.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
             if (!SfsProfileRecovery.RunSelfTest())
@@ -727,11 +730,11 @@ public sealed partial class MainForm
             // The CI desktop can be narrower than launcher + 930px sidecar:
             // docking may shrink it to fit, without changing the preferred size.
             if (window.ClientSize.Width < 520 || window.ClientSize.Width > 950
-                || main.customFastGloryKills.Width < 95)
+                || main.cinematicSpeedSelector.Width < 190)
                 throw new InvalidDataException(
-                    "Rendered Custom Mods panel or Fast Glory Kills checkbox is clipped."
+                    "Rendered Custom Mods panel or Sync Action Speed selector is clipped."
                     + " clientWidth=" + window.ClientSize.Width
-                    + " checkboxWidth=" + main.customFastGloryKills.Width
+                    + " selectorWidth=" + main.cinematicSpeedSelector.Width
                     + " desktopWidth=" + Screen.FromControl(window).WorkingArea.Width);
             ratingBar.PerformLayout();
             if (!ratingBar.Visible || ratingBar.Top > 7
@@ -1004,12 +1007,13 @@ public sealed partial class MainForm
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
-            main.customFastGloryKills, main.customFastChainsawKills,
             main.customBoxingGuard, main.speedAdvanced
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
-        var originalLeftMode = main.leftHanded.Checked;
+        var originalLeftMode=main.leftHanded.Checked;
+        var originalFullSpeed=main.cinematicFullSpeedMode;
+        var originalSpeedLevel=main.cinematicKillSpeed.Value;
         main.restoringConfiguration = true;
         try
         {
@@ -1023,9 +1027,9 @@ public sealed partial class MainForm
             main.weaponWheelRemap.Checked = false;
             main.showHands.Checked = false;
             main.swapJumpCrouch.Checked = true;
-            main.customFastGloryKills.Checked = false;
-            main.customFastChainsawKills.Checked = false;
-            main.customBoxingGuard.Checked = false;
+            main.cinematicFullSpeedMode=false;
+            main.cinematicKillSpeed.Value=1;
+            main.customBoxingGuard.Checked=false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
@@ -1033,43 +1037,36 @@ public sealed partial class MainForm
             if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff
                 || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 40)
                 throw new InvalidDataException("Native sync camera handoff must be fixed at 40ms.");
-            // Presets are always visible above the grouped mod list, and
-            // the retired global Target Tick Hz slider has no UI or runtime.
-            if (main.cinematicPresetButtons.Count != 5
-                || main.cinematicPresetButtons[0].Parent?.Parent is not Control presetPanel
+            // One compact selector: Native, 90/70/50/30 Hz, and the
+            // proven native Full speed (no slowdown) bypass.
+            if (main.cinematicSpeedSelector.Items.Count!=6
+                || main.cinematicSpeedSelector.Parent?.Parent is not Control presetPanel
                 || main.speedCustomModsGrid is null
-                || main.speedCustomModsGrid.GetRow(presetPanel) != 0
+                || main.speedCustomModsGrid.GetRow(presetPanel)!=0
                 || main.speedAdvancedPanel is null
-                || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel) != 1
-                || main.speedAdvancedPanel.ColumnStyles[1].SizeType != SizeType.Percent)
-                throw new InvalidDataException(
-                    "Preset bar must be above the mod checklist with expandable wide action sliders.");
-            main.cinematicKillSpeed.Value = 5;
+                || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel)!=1
+                || main.speedAdvancedPanel.ColumnStyles[1].SizeType!=SizeType.Percent)
+                throw new InvalidDataException("Compact selector must remain above Advanced and grouped mods.");
+            main.cinematicFullSpeedMode=false;
+            main.cinematicKillSpeed.Value=5;
             main.UpdateCinematicKillSpeedLabel();
-            if (main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192, 148, 54)
-                || main.cinematicPresetButtons.Take(4).Any(button =>
-                    button.BackColor == Color.FromArgb(192, 148, 54))
+            if(main.cinematicSpeedSelector.SelectedIndex!=4
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
-                throw new InvalidDataException(
-                    "Preset #5 must highlight without activating the retired global Hz slider.");
-            main.applyingCustomModDependencies = true;
-            main.speedAdvanced.Checked = true;
-            main.applyingCustomModDependencies = false;
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz!=30)
+                throw new InvalidDataException("30 Hz mode must map to preset 5.");
+            main.applyingCustomModDependencies=true;
+            main.speedAdvanced.Checked=true;
+            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if (main.speedAdvancedRowStyle is null
-                || main.speedAdvancedRowStyle.Height != main.speedAdvancedHeight || !main.speedAdvancedVisible)
-                throw new InvalidDataException("Advanced section did not expand.");
-            main.ApplyCustomModDependencies(null);
-            if (!main.cinematicKillSpeed.Enabled
-                || main.cinematicPresetButtons.Any(button => !button.Enabled)
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
-                throw new InvalidDataException("Advanced must retain visible, usable presets without global Hz override.");
-            // Five real action overrides only: no dead probe sliders.
-            if (ActionSpeedCatalog.Controllable.Length != 5
-                || main.speedActionChecks.Count != 5
-                || main.speedActionSliders.Count != 5
+            if(main.speedAdvancedRowStyle is null
+                || main.speedAdvancedRowStyle.Height!=main.speedAdvancedHeight
+                || !main.speedAdvancedVisible
+                || !main.cinematicSpeedSelector.Enabled)
+                throw new InvalidDataException("Advanced expansion without overrides must not lock the selector.");
+            // Three real action overrides: no Gauss, scripted or dead probes.
+            if (ActionSpeedCatalog.Controllable.Length != 3
+                || main.speedActionChecks.Count != 3
+                || main.speedActionSliders.Count != 3
                 || main.speedActionChecks.Values.Any(box=>box.Checked)
                 || main.speedActionLogTest.Checked)
                 throw new InvalidDataException("Compact action override list is missing or auto-enabled.");
@@ -1088,10 +1085,9 @@ public sealed partial class MainForm
                 || !profileConfig.ActionSpeedLogTestEnabled
                 || !ActionSpeedCatalog.HasActiveOverrides(profileConfig))
                 throw new InvalidDataException("Selected action override was not retained.");
-            // Checked action must pause all 5 presets, not merely recolour them.
-            if (main.cinematicKillSpeed.Enabled
-                || main.cinematicPresetButtons.Any(button=>button.Enabled)
-                || !main.cinematicKillSpeedValue.Text.Contains("Paused")
+            // Checked action pauses the shared speed, saving its current choice.
+            if (main.cinematicSpeedSelector.Enabled
+                || !main.cinematicKillSpeedValue.Text.Contains("Action override")
                 || main.cinematicKillSpeed.Value!=5)
                 throw new InvalidDataException("Action override must disable shared presets without discarding selection.");
             main.applyingCustomModDependencies = true;
@@ -1100,9 +1096,8 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.speedAdvancedRowStyle.Height != 0 || main.speedAdvancedVisible
                 || main.speedActionSliders["glory"].Enabled
-                || !main.cinematicKillSpeed.Enabled
-                || main.cinematicPresetButtons.Any(button=>!button.Enabled)
-                || main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192,148,54)
+                || !main.cinematicSpeedSelector.Enabled
+                || main.cinematicSpeedSelector.SelectedIndex!=4
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
                 || main.ReadCustomModSettingsFromControls().SpeedAdvancedExpanded
                 || ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls())
@@ -1113,7 +1108,7 @@ public sealed partial class MainForm
             main.speedAdvanced.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (main.cinematicPresetButtons.Any(button=>button.Enabled)
+            if (main.cinematicSpeedSelector.Enabled
                 || main.cinematicKillSpeed.Enabled)
                 throw new InvalidDataException("Reopening Advanced must reinstate checked override exclusivity.");
             main.applyingCustomModDependencies = true;
@@ -1121,9 +1116,8 @@ public sealed partial class MainForm
             main.speedActionLogTest.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (!main.cinematicKillSpeed.Enabled
-                || main.cinematicPresetButtons.Any(button=>!button.Enabled)
-                || main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192,148,54))
+            if (!main.cinematicSpeedSelector.Enabled
+                || main.cinematicSpeedSelector.SelectedIndex!=4)
                 throw new InvalidDataException("Unchecking last action must re-enable the stored preset.");
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
@@ -1180,56 +1174,44 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
 
-            // Build #83's binary native sync bypass, not animation multipliers.
-            // Boxing Guard stays an independent, opt-in guard-time slowdown.
-            main.applyingCustomModDependencies = true;
-            main.customFastGloryKills.Checked = true;
-            main.customFastChainsawKills.Checked = false;
-            main.customBoxingGuard.Checked = false;
-            main.applyingCustomModDependencies = false;
+            // The working Build #83 Full speed bypass is now integrated into
+            // the compact speed selector, not duplicated by two mod controls.
+            main.applyingCustomModDependencies=true;
+            main.cinematicFullSpeedMode=true;
+            main.customBoxingGuard.Checked=false;
+            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 0
-                || main.cinematicKillSpeed.Enabled
-                || main.cinematicPresetButtons.Any(button => button.Enabled)
-                || main.cinematicKillSpeedTitle.ForeColor != Color.Gray
-                || main.cinematicKillSpeedValue.ForeColor != Color.Gray
-                || !main.cinematicKillSpeedValue.Text.Contains("Locked")
-                || !main.detachedModToolTip.GetToolTip(main.customFastGloryKills)
-                    .Contains("DISABLES SYNC ACTION SPEED"))
-                throw new InvalidDataException(
-                    "Fast Glory Kills must select native fast mode and visibly disable the speed slider.");
-
-            main.applyingCustomModDependencies = true;
-            main.customFastGloryKills.Checked = false;
-            main.customFastChainsawKills.Checked = true;
-            main.applyingCustomModDependencies = false;
+            var fullChoice=main.ReadCustomModSettingsFromControls();
+            if(main.gloryKillSlowmo.Value!=0
+                || main.cinematicSpeedSelector.SelectedIndex!=5
+                || !main.cinematicSpeedSelector.Enabled
+                || !fullChoice.FastGloryKills || !fullChoice.FastChainsawKills)
+                throw new InvalidDataException("Full speed must preserve native bypass for both execution types.");
+            main.applyingCustomModDependencies=true;
+            main.speedActionChecks["glory"].Checked=true;
+            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 0
-                || main.cinematicKillSpeed.Enabled
-                || !main.detachedModToolTip.GetToolTip(main.customFastChainsawKills)
-                    .Contains("DISABLES SYNC ACTION SPEED"))
-                throw new InvalidDataException(
-                    "Fast Chainsaw Kills must reuse native fast mode and visibly disable the speed slider.");
-
-            main.applyingCustomModDependencies = true;
-            main.customFastChainsawKills.Checked = false;
-            main.customBoxingGuard.Checked = true;
-            main.applyingCustomModDependencies = false;
+            if(main.gloryKillSlowmo.Value!=10
+                || main.cinematicSpeedSelector.Enabled
+                || main.cinematicSpeedSelector.SelectedIndex!=5)
+                throw new InvalidDataException("Action overrides must suspend, not overwrite, Full speed.");
+            main.applyingCustomModDependencies=true;
+            main.speedActionChecks["glory"].Checked=false;
+            main.customBoxingGuard.Checked=true;
+            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 10 || !main.customBoxingGuard.Checked
-                || !main.cinematicKillSpeed.Enabled
-                || main.cinematicKillSpeedTitle.ForeColor == Color.Gray
-                || main.cinematicKillSpeedValue.Text.Contains("Locked"))
-                throw new InvalidDataException(
-                    "Fast Kills off must restore native sync timing and unlock the speed slider without disabling Boxing Guard.");
-
-            main.applyingCustomModDependencies = true;
-            main.customFastGloryKills.Checked = true;
-            main.applyingCustomModDependencies = false;
+            if(main.gloryKillSlowmo.Value!=0
+                || !main.customBoxingGuard.Checked
+                || !main.cinematicSpeedSelector.Enabled)
+                throw new InvalidDataException("Full speed and Boxing Guard must remain independent.");
+            main.applyingCustomModDependencies=true;
+            main.cinematicFullSpeedMode=false;
+            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if (main.gloryKillSlowmo.Value != 0 || !main.customBoxingGuard.Checked)
-                throw new InvalidDataException(
-                    "Boxing Guard must remain selectable alongside fast native kills.");
+            if(main.gloryKillSlowmo.Value!=10
+                || main.cinematicSpeedSelector.SelectedIndex!=4
+                || main.ReadCustomModSettingsFromControls().FastGloryKills)
+                throw new InvalidDataException("Exiting Full speed must return to saved Hz preset.");
         }
         finally
         {
@@ -1240,6 +1222,8 @@ public sealed partial class MainForm
             {
                 if (index != 1) tracked[index].Checked = original[index];
             }
+            main.cinematicFullSpeedMode=originalFullSpeed;
+            main.cinematicKillSpeed.Value=originalSpeedLevel;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             main.restoringConfiguration = previousRestore;

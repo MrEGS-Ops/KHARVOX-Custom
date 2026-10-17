@@ -469,12 +469,17 @@ internal static class KharvoxRunner
             // already-running Steam client loses this process environment and
             // can race the temporary implicit-layer registration, producing a
             // normal flat DOOM launch with no KHARVOX.log activity.
+            // Scoped action override trumps the selected shared speed mode.
+            // Full is a distinct proven native no-slowmo path (not 30 Hz).
+            var actionOverridesActive = ActionSpeedCatalog.HasActiveOverrides(customMods);
+            var nativeFullSpeed = !actionOverridesActive
+                && (customMods.FastGloryKills || customMods.FastChainsawKills);
             var psi = new ProcessStartInfo(gameExe) {
                 UseShellExecute = false,
                 WorkingDirectory = options.GameDirectory,
                 Arguments = JoinArguments(BuildGameArguments(
                     options, false, effectiveRenderScale, nativeStereoEnabled,
-                    customMods.FastGloryKills || customMods.FastChainsawKills)),
+                    nativeFullSpeed)),
                 RedirectStandardOutput = options.ExtendedLogging,
                 RedirectStandardError = options.ExtendedLogging
             };
@@ -544,19 +549,18 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = options.WeaponWheelRemapEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = options.WeaponWheelRemapEnabled ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] = options.GloryKillSlowmoLevel.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] =
+                (actionOverridesActive ? 10 : options.GloryKillSlowmoLevel).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_WEAPON_WHEEL"] = customMods.DisableWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_GAUSS_SLOW_CHARGE"] = customMods.GaussChargeSlowMovement ? "1" : "0";
             // The toggle only mirrors the original Cactus 1.1.1 wrist HUD.
             psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = "0"; // pause distorted mirror
             psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
-            // Action overrides and shared speed presets are mutually exclusive.
-            // Remember the selected preset but use native timing outside actions.
-            var actionOverridesActive = ActionSpeedCatalog.HasActiveOverrides(customMods)
-                && !customMods.FastGloryKills && !customMods.FastChainsawKills;
+            psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = nativeFullSpeed ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = nativeFullSpeed ? "1" : "0";
+            // Preserve selected mode in settings while action overrides run
+            // against normal/native baseline timing.
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
                 (actionOverridesActive ? 1 : Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)))
                 .ToString(Invariant);

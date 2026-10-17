@@ -1,60 +1,59 @@
-# KHARVOX Sync Action Speed — focused action testing
+# KHARVOX Sync Action Speed — focused control and logging
 
-These are **experimental whole-engine tick targets**, not rendered FPS
-or independent animation clocks. No action overrides turn on automatically.
+## Sync Action Speed selector
 
-## Interface
+One compact dropdown replaces five oversized buttons. It offers:
 
-- Presets **1 Native, 2 90 Hz, 3 70 Hz, 4 50 Hz, 5 30 Hz** remain at the
-  top of VR Mods, outside Advanced.
-- Checking **any** of the five action overrides in Advanced greys out **all
-  five** presets. On launch, the previously chosen preset is temporarily
-  replaced by Native (1) as the between-action baseline; the saved choice is
-  not deleted.
-- Uncheck the overrides, or collapse Advanced (which suspends their runtime
-  effects), to restore the saved preset selection.
-- Five editable action targets: **Glory Kill, Chainsaw kill, Ledge climbing,
-  Gauss Siege charge, Scripted action**. They start unchecked.
-- Sliders have no tick-mark clutter. **Right = faster synchronized action
-  (30 Hz); left = slower action (240 Hz)** based on the current experiment.
-  A higher tick target does not guarantee higher actual frame rate.
-- **Log action events (melee + grenade probes)** is the only read-only
-  diagnostic option. Melee and grenade markers are input pulses, not
-  confirmed animation start/end boundaries.
-- Removed dead controls: weapon reload, enemy animation, boss sequence and
-  weapon wheel probes. Their absent per-animation hooks were never usable
-  for independent timing; weapon wheel retains its existing slowdown.
+- **Native**: original DOOM sync-action timing
+- **90 Hz, 70 Hz, 50 Hz, 30 Hz**: experimental engine timing presets,
+  with lower Hz generally producing faster synchronized actions in current tests
+- **Full speed · no slow-mo**: the **separate, proven native
+  `sync_noAdaptiveTick` bypass**, used for BOTH Glory Kills and chainsaw
+  executions. This is not equivalent to 30 Hz and must not be removed
 
-## Controlled test
+The former independent *Fast Glory Kills* and *Fast Chainsaw Kills*
+checkboxes have been removed from VR Mods. Existing saved preferences for
+either switch migrate into **Full speed**, preserving Build #83 behaviour.
 
-1. Select preset 3 or 5, tick Advanced, then tick **one** action override.
-   Confirm all five preset buttons grey out, preserving their selected value.
-2. Set the action's slider e.g. 200 Hz, tick **Log action events**, restart DOOM.
-3. Perform the action several times and capture `logs/KHARVOX.log`.
-4. Disable its checkbox and verify the saved preset bar is enabled. Repeat
-   the same action with comparable conditions. Compare individual launches,
-   not unrelated 30 Hz and 200 Hz sessions.
-5. Repeat for Gauss: *equipping* Gauss must not start an action override.
-   Active Siege charge should produce a state edge only while firing.
+Changing the selector is direct: click and choose, or use keyboard arrow
+keys. Restart DOOM after changing the speed selection.
 
-## Log evidence
+## Advanced (3 measured action states)
 
-- `[ACTION-HZ] ENTER ... target=... Hz`: verified active override.
-- `[ACTION-HZ] TRANSITION ...`: action state changed within a native hold.
-- `[ACTION-HZ][TEST] ... elapsedMs=... measuredPresentHz=...`: event
-  duration and presentation estimate (not unique simulation frames).
-- `[ACTION-HZ] RESTORE ... engine minHz=...`: original values restored.
-- `[ACTION-HZ][PROBE]`: melee/grenade **input edges**, and the five
-  confirmed native action states, with no unsupported animation claims.
-- `[CINEMATIC-HZ]`: shared adaptive-tick CVar policy and hold accounting.
+Only confirmed action types with useful events remain: **Glory Kill,
+Chainsaw kill, Ledge climbing**.
 
-## Safety
+- Tick a row to enable its reversible **30–240 Hz** whole-engine tick
+  override for that action.
+- Slider **right = faster action (30 Hz)**; **left = slower action
+  (240 Hz)**. This is *not* a rendered frame-rate limit.
+- Any checked action greys out the shared selector. The saved selector
+  choice, including Full speed, returns when you uncheck the action or
+  collapse Advanced. Between active overridden actions, Native timing
+  is used instead of the stored shared preset.
+- The old **Gauss Siege charge** and **Other scripted action** speed
+  entries are retired (the latter produced no useful events). The
+  separate **Gauss Charge Slow Movement** VR mod remains unchanged.
+- No unverified enemy/reload/boss/wheel/grenade animation controls remain.
 
-- Fast Glory Kills and Fast Chainsaw Kills always take precedence and
-  preserve the previously verified `sync_noAdaptiveTick` native bypass.
-- All action Hz overrides are scoped and experimental. The active
-  whole-engine rate can also affect other nearby gameplay; no per-enemy
-  animation clock is implemented.
-- The game CVars are restored after action/hold exit.
-- Keep backup Build #473, and stop any override test that produces a VR
-  snap, black frame, discomfort or engine instability.
+**Log native actions + melee input** is the only diagnostic checkbox.
+It prints action-state transitions and observed melee input edges; the
+melee edge is NOT a confirmed animation lifecycle. This checkbox does
+not change gameplay speed.
+
+## Suggested headset test
+
+1. Start with **30 Hz**. Perform several Glory Kills and chainsaw kills.
+2. Switch to **Full speed** (no slow-mo), restart DOOM, and repeat.
+   Compare actual execution times and head-position comfort.
+3. Choose the previous preset, expand Advanced, then enable only one of
+   the 3 action overrides. Verify that the shared dropdown becomes
+   disabled while the row is checked.
+4. Choose 200 Hz for that action; capture its ENTER / TRANSITION / TEST /
+   RESTORE events in `logs/KHARVOX.log`. Confirm the saved engine minimum
+   tick rate returns after the action ends.
+5. Collapse Advanced and verify the stored selector mode is available again.
+
+Do not confuse 30 Hz and Full speed: the first changes engine timing
+while Full speed bypasses native synchronization slow-motion. Keep
+a known-good backup (Build #473) for headset rollback.

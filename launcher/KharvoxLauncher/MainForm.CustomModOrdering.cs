@@ -153,8 +153,6 @@ public sealed partial class MainForm
             Define(customPhysicalGrenadeThrow, "physical-grenade", 2),
             Define(customGaussChargeSlowMovement, "gauss-slow-movement", 2),
             Define(customPersistentSsgReload, "persistent-ssg-reload", 2),
-            Define(customFastGloryKills, "fast-glory-kills", 2),
-            Define(customFastChainsawKills, "fast-chainsaw", 2),
             Define(customBackOfHandHud, "back-of-hand-hud", 3),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
@@ -450,9 +448,6 @@ public sealed partial class MainForm
 
                 else if (item.Box == customDynamicShoulderHolster)
                     dependencies = " — Requires #Hands";
-                else if (item.Box == customFastGloryKills
-                    || item.Box == customFastChainsawKills)
-                    dependencies = " — Disables Speed Slider";
                 // The mod's own caption and tooltip move to the new position,
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;

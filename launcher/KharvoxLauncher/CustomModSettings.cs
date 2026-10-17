@@ -11,7 +11,7 @@ internal sealed class ActionSpeedSetting
 internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
-    { "glory", "chainsaw", "ledge", "gauss", "scripted" };
+    { "glory", "chainsaw", "ledge" };
     // Only verified lifecycle actions are editable. Exploratory input probes
     // are read-only and live behind the single Log Test checkbox.
     internal static readonly string[] All = Controllable;
@@ -54,6 +54,8 @@ internal sealed class CustomModSettings
     // Only the wrist HUD presentation is mirrored; Cactus pose is unchanged.
     public bool BackOfHandHud { get; set; }
     public bool BoxingGuard { get; set; }
+    // Legacy serialized fields: the unified Full speed selector writes both
+    // as true so the proven native kill-slowdown bypass remains available.
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
     public bool CinematicExitHandoff { get; set; }
@@ -198,9 +200,11 @@ internal static class CustomModSettingsStore
             profiles.ActionSpeedProfiles["reload"] =
                 new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
             ActionSpeedCatalog.Validate(profiles);
-            if (profiles.ActionSpeedProfiles.Count != 5
+            if (profiles.ActionSpeedProfiles.Count != 3
                 || profiles.ActionSpeedProfiles.ContainsKey("enemy")
                 || profiles.ActionSpeedProfiles.ContainsKey("reload")
+                || profiles.ActionSpeedProfiles.ContainsKey("gauss")
+                || profiles.ActionSpeedProfiles.ContainsKey("scripted")
                 || !ActionSpeedCatalog.HasActiveOverrides(profiles)
                 || profiles.ActionSpeedProfiles["glory"].TargetHz != 200)
                 throw new InvalidDataException("Legacy dead probes must be removed without losing action choices.");

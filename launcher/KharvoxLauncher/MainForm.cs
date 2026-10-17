@@ -82,8 +82,20 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDynamicShoulderHolster = MakeCheck("Dynamic Quick Holsters", false);
     private readonly CheckBox customPersistentSsgReload = MakeCheck("Persistent Super Shotgun Reload", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
-    private readonly CheckBox customFastGloryKills = MakeCheck("Fast Glory Kills", false);
-    private readonly CheckBox customFastChainsawKills = MakeCheck("Fast Chainsaw Kills", false);
+    // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
+    private bool cinematicFullSpeedMode;
+    private bool refreshingSpeedSelector;
+    private readonly ComboBox cinematicSpeedSelector = new()
+    {
+        DropDownStyle = ComboBoxStyle.DropDownList,
+        FlatStyle = FlatStyle.Flat,
+        DrawMode = DrawMode.OwnerDrawFixed,
+        ItemHeight = 24,
+        BackColor = Color.FromArgb(35,35,39),
+        ForeColor = Color.WhiteSmoke,
+        Font = new Font("Segoe UI", 9f),
+        AccessibleName = "Sync Action Speed"
+    };
     private readonly CheckBox speedAdvanced = MakeCheck("Advanced", false);
     private TableLayoutPanel? speedAdvancedPanel;
     private TableLayoutPanel? speedCustomModsGrid;
@@ -93,11 +105,10 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> speedActionChecks = new();
     private readonly Dictionary<string, TrackBar> speedActionSliders = new();
     private readonly Dictionary<string, Label> speedActionValues = new();
-    private readonly CheckBox speedActionLogTest = MakeCheck("Log action events", false);
+    private readonly CheckBox speedActionLogTest = MakeCheck("Log native actions + melee input", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
-    private readonly List<Button> cinematicPresetButtons = new();
     private readonly Label cinematicKillSpeedTitle = new()
     {
         Text = "Sync Action Speed", Width = 165, Height = 29,
@@ -419,8 +430,6 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customFastGloryKills, "DISABLES SYNC ACTION SPEED presets and Advanced action Hz overrides while enabled. Uses the proven native DOOM sync slowdown bypass, shared with chainsaw. Uncheck BOTH Fast Kills toggles to unlock adjustable timing. No animation speed multiplier."),
-            (customFastChainsawKills, "DISABLES SYNC ACTION SPEED presets and Advanced action Hz overrides while enabled. Uses the proven native DOOM sync slowdown bypass shared with Glory Kills. Uncheck BOTH Fast Kills toggles to unlock adjustable pacing."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
 
@@ -446,97 +455,114 @@ public sealed partial class MainForm : Form
             .ToArray();
         InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
         speedCustomModsGrid = customModsGrid;
-        // Keep the speed presets at the very TOP of VR Mods so they cannot be
-        // clipped below the grouped mod checklist when Advanced is collapsed.
-        // Five direct-choice buttons replace the cramped minus/number/plus row.
+        // One practical, keyboard-accessible selector instead of five
+        // oversized buttons. The sixth choice retains the separate proven
+        // native sync_noAdaptiveTick bypass under this same speed heading.
+        const int speedPresetHeight=64;
         var speedPresetPanel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1,
-            Margin = new Padding(4, 1, 2, 1), Padding = new Padding(2, 2, 2, 2),
-            BackColor = PanelColor, Height = 86
+            Margin = new Padding(4, 1, 2, 1), Padding = new Padding(3, 1, 3, 1),
+            BackColor = PanelColor, Height = speedPresetHeight
         };
-        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var speedPresetHeading = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2,
-            BackColor = PanelColor, Padding = Padding.Empty,
-            Margin = Padding.Empty
+            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
         };
         speedPresetHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedPresetHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 190));
+        speedPresetHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
         cinematicKillSpeedTitle.Dock = DockStyle.Fill;
         cinematicKillSpeedTitle.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
         cinematicKillSpeedTitle.Text = "SYNC ACTION SPEED";
         cinematicKillSpeedTitle.TextAlign = ContentAlignment.MiddleLeft;
         cinematicKillSpeedValue.Dock = DockStyle.Fill;
         cinematicKillSpeedValue.TextAlign = ContentAlignment.MiddleRight;
-        cinematicKillSpeedValue.Margin = new Padding(0, 0, 5, 0);
+        cinematicKillSpeedValue.Margin = new Padding(0,0,3,0);
         speedPresetHeading.Controls.Add(cinematicKillSpeedTitle, 0, 0);
         speedPresetHeading.Controls.Add(cinematicKillSpeedValue, 1, 0);
         speedPresetPanel.Controls.Add(speedPresetHeading, 0, 0);
         var presetChoiceRow = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 6,
-            BackColor = PanelColor, Padding = Padding.Empty,
-            Margin = Padding.Empty
+            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 3,
+            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
         };
-        for (var presetNumber = 1; presetNumber <= 5; presetNumber++)
-            presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20));
-        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 224));
+        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
         presetChoiceRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        string[] presetNames = { "1 · Native", "2 · 90 Hz", "3 · 70 Hz", "4 · 50 Hz", "5 · 30 Hz" };
-        for (var i = 0; i < presetNames.Length; i++)
+        cinematicSpeedSelector.Dock = DockStyle.Fill;
+        cinematicSpeedSelector.Margin = new Padding(1,2,3,5);
+        cinematicSpeedSelector.Items.AddRange(new object[] {
+            "Native · original timing", "90 Hz · slower", "70 Hz",
+            "50 Hz", "30 Hz · faster", "Full speed · no slow-mo"
+        });
+        cinematicSpeedSelector.DrawItem += (_, e) =>
         {
-            var selectedLevel = i + 1;
-            var choice = new Button
-            {
-                Text = presetNames[i], AccessibleName = "Sync Action Speed preset " + selectedLevel,
-                Dock = DockStyle.Fill, FlatStyle = FlatStyle.Flat,
-                BackColor = Color.FromArgb(36, 36, 39),
-                ForeColor = Color.Gainsboro,
-                Font = new Font("Segoe UI", 8.5f, FontStyle.Regular),
-                UseVisualStyleBackColor = false,
-                Margin = new Padding(2, 3, 2, 3),
-                TabStop = true
-            };
-            choice.FlatAppearance.BorderSize = 1;
-            choice.FlatAppearance.BorderColor = Color.FromArgb(76, 76, 82);
-            choice.FlatAppearance.MouseOverBackColor = Color.FromArgb(71, 65, 49);
-            choice.Click += (_, _) =>
-            {
-                if (choice.Enabled) cinematicKillSpeed.Value = selectedLevel;
-            };
-            statusToolTip.SetToolTip(choice,
-                "Select preset " + selectedLevel
-                + ". Higher preset number = faster synchronized animations. Restart DOOM.");
-            cinematicPresetButtons.Add(choice);
-            presetChoiceRow.Controls.Add(choice, i, 0);
-        }
-        speedAdvanced.AutoSize = false;
-        speedAdvanced.Dock = DockStyle.Fill;
-        speedAdvanced.Margin = new Padding(8, 3, 0, 3);
-        presetChoiceRow.Controls.Add(speedAdvanced, 5, 0);
-        speedPresetPanel.Controls.Add(presetChoiceRow, 0, 1);
+            if(e.Index < 0 || e.Index >= cinematicSpeedSelector.Items.Count)return;
+            var selected = (e.State & DrawItemState.Selected) != 0;
+            using var background = new SolidBrush(selected
+                ? Color.FromArgb(111,85,39) : Color.FromArgb(35,35,39));
+            e.Graphics.FillRectangle(background,e.Bounds);
+            TextRenderer.DrawText(e.Graphics, cinematicSpeedSelector.Items[e.Index]!.ToString(),
+                cinematicSpeedSelector.Font,e.Bounds,Color.WhiteSmoke,
+                TextFormatFlags.VerticalCenter|TextFormatFlags.Left|TextFormatFlags.EndEllipsis);
+            e.DrawFocusRectangle();
+        };
+        cinematicSpeedSelector.SelectedIndex=0;
+        cinematicSpeedSelector.SelectedIndexChanged += (_,_) =>
+        {
+            if(refreshingSpeedSelector||restoringConfiguration||applyingCustomModDependencies)return;
+            var index=cinematicSpeedSelector.SelectedIndex;
+            if(index<0)return;
+            cinematicFullSpeedMode=index==5;
+            if(index<5)cinematicKillSpeed.Value=index+1;
+            ApplyCustomModDependencies(null);
+            SaveCustomModSettings();
+            OptionChanged(cinematicSpeedSelector,EventArgs.Empty);
+        };
+        presetChoiceRow.Controls.Add(cinematicSpeedSelector, 0, 0);
+        var speedHint = new Label
+        {
+            Text="Native  →  30 Hz  →  Full",
+            Dock=DockStyle.Fill,
+            ForeColor=Color.FromArgb(158,159,166),
+            Font=new Font("Segoe UI",8f),
+            TextAlign=ContentAlignment.MiddleCenter,
+            AutoEllipsis=true, Margin=Padding.Empty
+        };
+        presetChoiceRow.Controls.Add(speedHint,1,0);
+        speedAdvanced.AutoSize=false;
+        speedAdvanced.Dock=DockStyle.Fill;
+        speedAdvanced.Margin=new Padding(4,3,0,3);
+        presetChoiceRow.Controls.Add(speedAdvanced,2,0);
+        speedPresetPanel.Controls.Add(presetChoiceRow,0,1);
+        statusToolTip.SetToolTip(cinematicSpeedSelector,
+            "Native = original DOOM sync pacing. 90/70/50/30 Hz are experimental "
+            +"engine tick targets (lower Hz often makes actions faster). "
+            +"Full speed uses the proven native sync_noAdaptiveTick bypass for "
+            +"Glory Kills AND chainsaw kills. Restart DOOM.");
+        statusToolTip.SetToolTip(speedHint,
+            "Choose the speed directly in the dropdown. 30 Hz and Full speed "
+            +"are different mechanisms; Full speed disables native kill slow motion.");
         statusToolTip.SetToolTip(speedAdvanced,
-            "Expand the independent action-speed sliders and diagnostic probes. "
-            + "The presets above remain available. Restart DOOM after changing timing.");
-        statusToolTip.SetToolTip(cinematicKillSpeedTitle,
-            "Native uses DOOM's original pacing; presets 2–5 use 90, 70, 50 and 30 Hz. "
-            + "Right = faster. These values change global synchronized-action timing.");
+            "Expand the three detected action overrides and optional diagnostic log. "
+            +"Active overrides pause the saved Sync Action Speed mode.");
         UpdateCinematicKillSpeedLabel();
         cinematicKillSpeed.ValueChanged += (_, _) =>
         {
-            if (restoringConfiguration || applyingCustomModDependencies) return;
+            if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateCinematicKillSpeedLabel();
             SaveCustomModSettings();
-            OptionChanged(cinematicKillSpeed, EventArgs.Empty);
+            OptionChanged(cinematicKillSpeed,EventArgs.Empty);
         };
-        var speedRowIndex = customModsGrid.RowCount++;
-        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
-        customModsGrid.Controls.Add(speedPresetPanel, 0, speedRowIndex);
-        customModsGrid.SetColumnSpan(speedPresetPanel, 2);
-        customModsGrid.Height += 86;
+        var speedRowIndex=customModsGrid.RowCount++;
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute,speedPresetHeight));
+        customModsGrid.Controls.Add(speedPresetPanel,0,speedRowIndex);
+        customModsGrid.SetColumnSpan(speedPresetPanel,2);
+        customModsGrid.Height+=speedPresetHeight;
         // Advanced exposes action-scoped overrides only. A separate global
         // Target Tick Hz setting is intentionally unavailable.
         speedAdvancedPanel = new TableLayoutPanel
@@ -553,15 +579,12 @@ public sealed partial class MainForm : Form
         // diagnostic toggle: no dead sliders or misleading animation options.
         var actionNames = new Dictionary<string,string> {
             ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
-            ["ledge"]="Ledge climbing",["gauss"]="Gauss Siege charge",
-            ["scripted"]="Scripted action"
+            ["ledge"]="Ledge climbing"
         };
         var actionHints = new Dictionary<string,string> {
             ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
-            ["chainsaw"]="Confirmed chainsaw execution state; Fast Kills takes precedence.",
-            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target.",
-            ["gauss"]="Gauss Cannon Siege charging while Fire is held, not just weapon equipped.",
-            ["scripted"]="Native scripted/adaptive participant transitions. Experimental."
+            ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action.",
+            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target."
         };
         const int actionHeaderHeight=30;
         const int actionRowHeight=38;
@@ -635,16 +658,16 @@ public sealed partial class MainForm : Form
         foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
         int logRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
-        speedActionLogTest.Text="Log action events (melee + grenade probes)";
+        speedActionLogTest.Text="Log action edges + melee input";
         speedActionLogTest.AutoSize=true;
         speedActionLogTest.Font=new Font("Segoe UI",8.5f);
         speedActionLogTest.Margin=new Padding(6,8,0,0);
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "Log confirmed Glory Kill/chainsaw/ledge/Gauss/scripted states, plus "
-            +"melee and grenade input edges (not verified animations). "
-            +"Removed: useless reload, enemy-animation, boss and weapon-wheel probes. "
+            "Log confirmed Glory Kill/chainsaw/ledge state transitions and "
+            +"observed melee input edges. Melee is NOT a verified animation "
+            +"lifecycle. No grenade, reload, enemy, boss, Gauss or wheel probes. "
             +"Logging does NOT change timing. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
@@ -680,7 +703,7 @@ public sealed partial class MainForm : Form
         customModsGrid.SetRow(speedPresetPanel, 0);
         customModsGrid.SetRow(speedAdvancedPanel, 1);
         customModsGrid.RowStyles.Clear();
-        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 86));
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, speedPresetHeight));
         customModsGrid.RowStyles.Add(speedAdvancedRowStyle);
         foreach (var rowStyle in existingModStyles)
             customModsGrid.RowStyles.Add(rowStyle);
@@ -1687,67 +1710,49 @@ public sealed partial class MainForm : Form
     {
         foreach (string key in ActionSpeedCatalog.Controllable)
         {
-            if (!speedActionChecks.TryGetValue(key, out var check)
-                || !speedActionSliders.TryGetValue(key, out var slider)
-                || !speedActionValues.TryGetValue(key, out var label)) continue;
-            var enabled=check.Checked && speedAdvanced.Checked
-                && !customFastGloryKills.Checked && !customFastChainsawKills.Checked;
+            if (!speedActionChecks.TryGetValue(key,out var check)
+                || !speedActionSliders.TryGetValue(key,out var slider)
+                || !speedActionValues.TryGetValue(key,out var label))continue;
+            var enabled=check.Checked&&speedAdvanced.Checked;
             slider.Enabled=enabled;
-            label.Text=check.Checked ? (270-slider.Value)+" Hz" : "Off";
-            label.ForeColor=enabled ? Color.WhiteSmoke : Color.FromArgb(141,142,149);
+            label.Text=check.Checked?(270-slider.Value)+" Hz":"Off";
+            label.ForeColor=enabled?Color.WhiteSmoke:Color.FromArgb(141,142,149);
         }
     }
 
+    private bool HasActiveActionSpeedOverrides() =>
+        speedAdvanced.Checked && ActionSpeedCatalog.Controllable.Any(key =>
+            speedActionChecks.TryGetValue(key,out var box) && box.Checked);
+
     private void UpdateCinematicKillSpeedLabel()
     {
-        var savedValue = cinematicKillSpeed.Value switch
+        var overrides=HasActiveActionSpeedOverrides();
+        var selectedIndex=cinematicFullSpeedMode?5:cinematicKillSpeed.Value-1;
+        if(cinematicSpeedSelector.Items.Count==6
+            &&cinematicSpeedSelector.SelectedIndex!=selectedIndex)
         {
-            1 => "1 · Native",
-            2 => "2 · 90 Hz (test)",
-            3 => "3 · 70 Hz (test)",
-            4 => "4 · 50 Hz (test)",
-            _ => "5 · 30 Hz fastest preset"
-        };
-        var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
-        // Collapsing Advanced suspends action overrides without deleting
-        // any saved checkbox/slider settings.
-        var actionOverridesActive = speedAdvanced.Checked
-            && ActionSpeedCatalog.Controllable.Any(key =>
-                speedActionChecks.TryGetValue(key, out var check) && check.Checked);
-        var presetsEnabled = !nativeFastChecked && !actionOverridesActive;
+            refreshingSpeedSelector=true;
+            try{cinematicSpeedSelector.SelectedIndex=selectedIndex;}
+            finally{refreshingSpeedSelector=false;}
+        }
         RefreshSpeedAdvancedVisibility();
         UpdateActionSpeedLabels();
-        cinematicKillSpeed.Enabled = presetsEnabled;
-        for (var i=0; i<cinematicPresetButtons.Count; i++)
-        {
-            var button=cinematicPresetButtons[i];
-            var selected = presetsEnabled && i+1==cinematicKillSpeed.Value;
-            button.Enabled=presetsEnabled;
-            button.BackColor=selected
-                ? Color.FromArgb(192,148,54)
-                : Color.FromArgb(36,36,39);
-            button.ForeColor=presetsEnabled
-                ? (selected ? Color.Black : Color.Gainsboro) : Color.FromArgb(112,113,119);
-            button.FlatAppearance.BorderColor=selected
-                ? Color.FromArgb(228,190,104) : Color.FromArgb(76,76,82);
-        }
-        cinematicKillSpeedTitle.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
-        cinematicKillSpeedValue.ForeColor=presetsEnabled?Color.WhiteSmoke:Color.Gray;
-        // The selected button already displays the chosen preset.
-        // Avoid repeating its value in the header; show status only.
-        cinematicKillSpeedValue.Text=nativeFastChecked
-            ? "Locked by Fast Kills"
-            : actionOverridesActive ? "Paused · action overrides" : "";
-        var explanation=nativeFastChecked
-            ? "Fast Glory Kills or Fast Chainsaw Kills uses DOOM's native sync bypass. "
-                +"Turn both off to use presets. Saved: "+savedValue+"."
-            : actionOverridesActive
-                ? "Action overrides are active. The five presets are disabled; "
-                    +"native baseline is used outside selected actions. "
-                    +"Uncheck every action (or close Advanced) to restore saved "+savedValue+"."
-                : "1 = native timing; 5 = fastest synchronized-action preset (30 Hz). "
-                    +"Action overrides disable this entire preset bar while active. "
-                    +"Restart DOOM after changes.";
+        var enabled=!overrides;
+        cinematicSpeedSelector.Enabled=enabled;
+        cinematicKillSpeed.Enabled=enabled;
+        cinematicKillSpeedTitle.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
+        cinematicKillSpeedValue.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
+        cinematicKillSpeedValue.Text=overrides?"Action override active":"";
+        var mode=cinematicFullSpeedMode?"Full speed":cinematicKillSpeed.Value switch{
+            1=>"Native", 2=>"90 Hz", 3=>"70 Hz", 4=>"50 Hz", _=>"30 Hz"
+        };
+        var explanation=overrides
+            ?"Action override is active. The shared speed choice is paused and "
+                +"Native timing applies between actions. Uncheck all overrides "
+                +"or collapse Advanced to restore saved "+mode+"."
+            :"Sync Action Speed = "+mode+". The Full speed option uses the "
+                +"proven native no-slowmo bypass for Glory Kill and chainsaw, "
+                +"not the experimental 30 Hz tick setting. Restart DOOM.";
         statusToolTip.SetToolTip(cinematicKillSpeedTitle,explanation);
         statusToolTip.SetToolTip(cinematicKillSpeedValue,explanation);
         cinematicKillSpeed.AccessibleDescription=explanation;
@@ -1889,12 +1894,10 @@ public sealed partial class MainForm : Form
                 && !customDirectionalDash.Checked;
             // The Back of Hand mod flips the restored Cactus HUD image only.
             // It does not change Cactus calibration or disable native HUDs.
-            // Both kill toggles request the proven native DOOM sync slowdown
-            // bypass (Build #83), not an experimental animation multiplier.
-            // DOOM exposes this as a shared sync setting, so it applies to
-            // both execution types. Boxing's guard slowdown remains separate.
+            // Full speed remains the proven native no-slowmo bypass. Action
+            // overrides temporarily suspend it without deleting the choice.
             gloryKillSlowmo.Value =
-                customFastGloryKills.Checked || customFastChainsawKills.Checked ? 0 : 10;
+                cinematicFullSpeedMode&&!HasActiveActionSpeedOverrides()?0:10;
             UpdateCinematicKillSpeedLabel();
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
@@ -1945,8 +1948,10 @@ public sealed partial class MainForm : Form
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
-        FastGloryKills = customFastGloryKills.Checked,
-        FastChainsawKills = customFastChainsawKills.Checked,
+        // Existing native flags remain as the runtime contract, now owned
+        // by the single Full speed choice rather than draggable mod checkboxes.
+        FastGloryKills = cinematicFullSpeedMode,
+        FastChainsawKills = cinematicFullSpeedMode,
         CinematicKillSpeedLevel = cinematicKillSpeed.Value,
         CinematicSpeedFineTune = false,
         SpeedAdvancedExpanded = speedAdvanced.Checked,
@@ -2001,9 +2006,8 @@ public sealed partial class MainForm : Form
             customDynamicShoulderHolster.Checked = mods.DynamicShoulderHolster;
             customPersistentSsgReload.Checked = mods.PersistentSuperShotgunReload;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
-            customFastGloryKills.Checked = mods.FastGloryKills;
-            customFastChainsawKills.Checked = mods.FastChainsawKills;
-            cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
+            cinematicFullSpeedMode=mods.FastGloryKills||mods.FastChainsawKills;
+            cinematicKillSpeed.Value=Math.Max(1,Math.Min(5,mods.CinematicKillSpeedLevel));
             // Legacy fine tune files expand Advanced so no active override is hidden.
             speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
             foreach(string key in ActionSpeedCatalog.All){
