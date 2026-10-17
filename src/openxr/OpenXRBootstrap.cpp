@@ -210,6 +210,10 @@ struct State {
     XrPosef programmedMonoPose{}; XrFovf programmedMonoFov{}; bool programmedMonoPoseValid{};
     std::array<XrPosef,2> programmedMonoEyePose{}; std::array<XrFovf,2> programmedMonoEyeFov{}; bool programmedMonoEyeViewsValid{}; bool steamLinkMonoCameraActive{};
     XrVector3f immersiveCinematicLayerPosition{}; bool immersiveCinematicLayerPositionHeld{};
+    // Scoped early release for GK/chainsaw native sync only (not ledge or boss).
+    bool immersiveCinematicSyncSeen{},immersiveCinematicExitHandoffActive{},immersiveCinematicExitReleased{};
+    XrTime immersiveCinematicExitStart{};
+    XrVector3f immersiveCinematicExitStartPosition{};
     std::array<XrPosef,2> cachedEyePose{}; std::array<XrFovf,2> cachedEyeFov{}; std::array<bool,2> cachedEyeViewValid{}; std::array<float,2> cachedEyeArtificialTurn{}; std::array<std::uint64_t,2> cachedEyeSnapGeneration{};
     std::array<XrPosef,2> previousCachedEyePose{}; std::array<XrFovf,2> previousCachedEyeFov{}; std::array<bool,2> previousCachedEyeViewValid{};
     std::array<XrPosef,2> steamXrAerCapturePose{}; std::array<XrFovf,2> steamXrAerCaptureFov{}; std::array<bool,2> steamXrAerCaptureEyesReady{}; bool steamXrAerCaptureValid{}; float steamXrAerCaptureArtificialTurn{};
@@ -5364,8 +5368,55 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
-    if(s.immersiveCinematicFreelookActive&&!s.immersiveCinematicLayerPositionHeld){s.immersiveCinematicLayerPosition=sourceMonoPose.position;s.immersiveCinematicLayerPositionHeld=true;log("[IMMERSIVE] OpenXR layer position held at cinematic entry; rendered HMD rotation pose synchronized");}
-    else if(!s.immersiveCinematicFreelookActive&&s.immersiveCinematicLayerPositionHeld){s.immersiveCinematicLayerPositionHeld=false;log("[IMMERSIVE] OpenXR layer position hold released");}
+    // The native sync-attack flag goes low about 130–180ms before the GK or
+    // chainsaw camera returns to gameplay in headset logs. Use that native
+    // transition to finish releasing the XR position anchor BEFORE the final
+    // scene/source handoff, rather than snapping the anchor off on the same
+    // frame as the return. This changes *only* OpenXR projection alignment.
+    if(!s.immersiveCinematicFreelookActive){
+        if(s.immersiveCinematicLayerPositionHeld){
+            s.immersiveCinematicLayerPositionHeld=false;
+            log("[IMMERSIVE] OpenXR layer position hold released");
+        }
+        s.immersiveCinematicSyncSeen=false;
+        s.immersiveCinematicExitHandoffActive=false;
+        s.immersiveCinematicExitReleased=false;
+    }else{
+        const bool nativeSyncActive=KharvoxCameraSyncAttackActive();
+        if(nativeSyncActive&&!s.immersiveCinematicExitHandoffActive
+            &&!s.immersiveCinematicExitReleased)
+            s.immersiveCinematicSyncSeen=true;
+        if(!s.immersiveCinematicLayerPositionHeld
+            &&!s.immersiveCinematicExitReleased){
+            s.immersiveCinematicLayerPosition=sourceMonoPose.position;
+            s.immersiveCinematicLayerPositionHeld=true;
+            log("[IMMERSIVE] OpenXR layer position held at cinematic entry; rendered HMD rotation pose synchronized");
+        }
+        if(s.customMods.cinematicExitHandoff&&s.immersiveCinematicSyncSeen
+            &&!nativeSyncActive&&!s.immersiveCinematicExitHandoffActive
+            &&!s.immersiveCinematicExitReleased
+            &&s.immersiveCinematicLayerPositionHeld){
+            s.immersiveCinematicExitHandoffActive=true;
+            s.immersiveCinematicExitStart=frame.predictedDisplayTime;
+            s.immersiveCinematicExitStartPosition=s.immersiveCinematicLayerPosition;
+            log("[GK-EXIT-HANDOFF] native sync released; 90ms early headset position handoff begun while cinematic still active");
+        }
+        if(s.immersiveCinematicExitHandoffActive){
+            const float blend=kharvox::nativeSyncExitHandoffFraction(
+                frame.predictedDisplayTime,s.immersiveCinematicExitStart);
+            const auto start=s.immersiveCinematicExitStartPosition;
+            s.immersiveCinematicLayerPosition={
+                start.x+(sourceMonoPose.position.x-start.x)*blend,
+                start.y+(sourceMonoPose.position.y-start.y)*blend,
+                start.z+(sourceMonoPose.position.z-start.z)*blend};
+            if(blend>=1.f){
+                s.immersiveCinematicLayerPositionHeld=false;
+                s.immersiveCinematicExitHandoffActive=false;
+                s.immersiveCinematicExitReleased=true;
+                log("[GK-EXIT-HANDOFF] early headset position handoff completed before normal cinematic return");
+            }
+        }
+    }
     if(nativeBackend){
         kharvox::native::FramePose next{};next.serial=s.frame+1;
         next.displayTime=frame.predictedDisplayTime;next.head=locatedMonoPose;
