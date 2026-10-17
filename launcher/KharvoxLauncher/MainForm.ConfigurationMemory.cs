@@ -1066,27 +1066,34 @@ public sealed partial class MainForm
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
                 throw new InvalidDataException("Advanced must retain visible, usable presets without global Hz override.");
-            // The per-action controls must be present and default OFF.
-            if(main.speedActionChecks.Count!=ActionSpeedCatalog.All.Length
-                ||main.speedActionSliders.Count!=ActionSpeedCatalog.All.Length
-                ||main.speedActionChecks.Values.Any(box=>box.Checked)
-                ||main.speedActionLogTest.Checked)
-                throw new InvalidDataException("Action checklist missing entries or contains unsafe auto-enabled profiles.");
+            // Five real action overrides only: no dead probe sliders.
+            if (ActionSpeedCatalog.Controllable.Length != 5
+                || main.speedActionChecks.Count != 5
+                || main.speedActionSliders.Count != 5
+                || main.speedActionChecks.Values.Any(box=>box.Checked)
+                || main.speedActionLogTest.Checked)
+                throw new InvalidDataException("Compact action override list is missing or auto-enabled.");
+            if (main.speedActionSliders.Values.Any(slider=>slider.TickStyle!=TickStyle.None))
+                throw new InvalidDataException("Action sliders must hide cluttered tick marks.");
             main.applyingCustomModDependencies = true;
             main.speedActionChecks["glory"].Checked = true;
             main.speedActionSliders["glory"].Value = 70; // 200 Hz from 240..30 track
-            main.speedActionChecks["enemy"].Checked = true;
             main.speedActionLogTest.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             var profileConfig=main.ReadCustomModSettingsFromControls();
-            if(!main.speedActionSliders["glory"].Enabled
-                ||main.speedActionSliders["enemy"].Enabled
-                ||!profileConfig.ActionSpeedProfiles["glory"].Enabled
-                ||profileConfig.ActionSpeedProfiles["glory"].TargetHz!=200
-                ||!profileConfig.ActionSpeedProfiles["enemy"].Enabled
-                ||!profileConfig.ActionSpeedLogTestEnabled)
-                throw new InvalidDataException("Supported profiles and diagnostic-only probes misconfigured.");
+            if (!main.speedActionSliders["glory"].Enabled
+                || !profileConfig.ActionSpeedProfiles["glory"].Enabled
+                || profileConfig.ActionSpeedProfiles["glory"].TargetHz!=200
+                || !profileConfig.ActionSpeedLogTestEnabled
+                || !ActionSpeedCatalog.HasActiveOverrides(profileConfig))
+                throw new InvalidDataException("Selected action override was not retained.");
+            // Checked action must pause all 5 presets, not merely recolour them.
+            if (main.cinematicKillSpeed.Enabled
+                || main.cinematicPresetButtons.Any(button=>button.Enabled)
+                || !main.cinematicKillSpeedValue.Text.Contains("Paused")
+                || main.cinematicKillSpeed.Value!=5)
+                throw new InvalidDataException("Action override must disable shared presets without discarding selection.");
             main.applyingCustomModDependencies = true;
             main.speedAdvanced.Checked = false;
             main.applyingCustomModDependencies = false;
@@ -1094,17 +1101,30 @@ public sealed partial class MainForm
             if (main.speedAdvancedRowStyle.Height != 0 || main.speedAdvancedVisible
                 || main.speedActionSliders["glory"].Enabled
                 || !main.cinematicKillSpeed.Enabled
+                || main.cinematicPresetButtons.Any(button=>!button.Enabled)
+                || main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192,148,54)
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
                 || main.ReadCustomModSettingsFromControls().SpeedAdvancedExpanded
+                || ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls())
                 || !main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].Enabled
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
-                throw new InvalidDataException("Collapsing Advanced must restore presets and preserve selected Hz.");
+                throw new InvalidDataException("Collapsing Advanced must restore saved preset and suspend action overrides.");
+            main.applyingCustomModDependencies = true;
+            main.speedAdvanced.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.cinematicPresetButtons.Any(button=>button.Enabled)
+                || main.cinematicKillSpeed.Enabled)
+                throw new InvalidDataException("Reopening Advanced must reinstate checked override exclusivity.");
             main.applyingCustomModDependencies = true;
             main.speedActionChecks["glory"].Checked = false;
-            main.speedActionChecks["enemy"].Checked = false;
             main.speedActionLogTest.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
+            if (!main.cinematicKillSpeed.Enabled
+                || main.cinematicPresetButtons.Any(button=>!button.Enabled)
+                || main.cinematicPresetButtons[4].BackColor != Color.FromArgb(192,148,54))
+                throw new InvalidDataException("Unchecking last action must re-enable the stored preset.");
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(
