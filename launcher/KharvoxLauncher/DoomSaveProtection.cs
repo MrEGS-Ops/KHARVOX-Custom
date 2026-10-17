@@ -427,7 +427,7 @@ internal static class DoomSaveProtection
         }
     }
 
-    internal static Snapshot Restore(string id)
+    internal static Snapshot? Restore(string id)
     {
         EnsureGameClosed();
         var source = SaveRoot();
@@ -437,7 +437,11 @@ internal static class DoomSaveProtection
         if (!SamePath(selected.Source, source))
             throw new InvalidOperationException("Cannot restore a different profile's save.");
         CheckHashes(selected, SnapshotFolder(id)); // Verify BEFORE touching live saves.
-        var rescue = Capture("SAFETY COPY before restore", state.LastMode);
+        // Recovery must still work if a mod deleted ALL current save files.
+        // Preserve existing data whenever it exists; none is not an error.
+        Snapshot? rescue = HasSaveData(source)
+            ? Capture("SAFETY COPY before restore", state.LastMode) : null;
+        Directory.CreateDirectory(source);
         try
         {
             ReplaceLiveFolders(source, SnapshotFolder(id), selected);
@@ -445,8 +449,9 @@ internal static class DoomSaveProtection
         catch (Exception error)
         {
             throw new InvalidOperationException(
-                "Restore failed. Your untouched pre-restore safety snapshot: "
-                + rescue.Id + ". DOOM was not launched.", error);
+                "Restore failed. Pre-restore safety snapshot: "
+                + (rescue?.Id ?? "none; active saves were already missing")
+                + ". DOOM was not launched.", error);
         }
         state.LastMode = selected.Mode == "normal" ? "normal" : "modded";
         state.Source = source;
