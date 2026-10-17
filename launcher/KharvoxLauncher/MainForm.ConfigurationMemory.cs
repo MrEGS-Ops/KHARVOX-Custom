@@ -1075,10 +1075,13 @@ public sealed partial class MainForm
                 || !main.speedAdvancedVisible
                 || !main.cinematicSpeedSelector.Enabled)
                 throw new InvalidDataException("Advanced expansion without overrides must not lock the selector.");
-            // Three real action overrides: no Gauss, scripted or dead probes.
-            if (ActionSpeedCatalog.Controllable.Length != 3
-                || main.speedActionChecks.Count != 3
-                || main.speedActionSliders.Count != 3
+            // Three established action overrides and one optional narrow
+            // Foundry-style scripted cinematic target. No dead probe sliders.
+            if (ActionSpeedCatalog.Controllable.Length != 4
+                || main.speedActionChecks.Count != 4
+                || main.speedActionSliders.Count != 4
+                || !main.speedActionChecks.ContainsKey("cinematic")
+                || !main.speedActionSliders.ContainsKey("cinematic")
                 || main.speedActionChecks.Values.Any(box=>box.Checked)
                 || main.speedActionLogTest.Checked)
                 throw new InvalidDataException("Compact action override list is missing or auto-enabled.");
@@ -1131,6 +1134,25 @@ public sealed partial class MainForm
             if (!main.cinematicSpeedSelector.Enabled
                 || main.cinematicSpeedSelector.SelectedIndex!=4)
                 throw new InvalidDataException("Unchecking last action must re-enable the stored preset.");
+            // Default OFF even for formerly saved broad "scripted" probes.
+            // When enabled this action must save correctly and pause preset.
+            main.applyingCustomModDependencies=true;
+            main.speedActionChecks["cinematic"].Checked=true;
+            main.speedActionSliders["cinematic"].Value=100; // 170 Hz
+            main.applyingCustomModDependencies=false;
+            main.ApplyCustomModDependencies(null);
+            var scriptedConfig=main.ReadCustomModSettingsFromControls();
+            if (main.cinematicSpeedSelector.Enabled
+                || !scriptedConfig.ActionSpeedProfiles["cinematic"].Enabled
+                || scriptedConfig.ActionSpeedProfiles["cinematic"].TargetHz!=170)
+                throw new InvalidDataException("Scripted cinematic override must pause preset and retain 170 Hz.");
+            main.applyingCustomModDependencies=true;
+            main.speedActionChecks["cinematic"].Checked=false;
+            main.applyingCustomModDependencies=false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.cinematicSpeedSelector.Enabled)
+                throw new InvalidDataException("Unchecking scripted cinematic must restore native preset.");
+
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(
