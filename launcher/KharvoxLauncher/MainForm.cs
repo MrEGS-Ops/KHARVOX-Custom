@@ -496,8 +496,8 @@ public sealed partial class MainForm : Form
             "Expand advanced native speed controls and tests. Collapsing Advanced "
             + "disables the fine-tune override and restores the selected preset.");
         statusToolTip.SetToolTip(cinematicKillSpeed,
-            "Click −/+ for speed 1–5. 1 native; 2/3/4 = 90/70/50 Hz; "
-            + "5 is experimental 31 Hz near-max (may remove blink). "
+            "Sync Action Speed: 1 native; 2/3/4 = 90/70/50 Hz; "
+            + "5 is experimental 31 Hz. Tick Advanced to explore 20–200 Hz. "
             + "Fast Kills checkboxes retain true full-speed native bypass "
             + "and disable this control. Restart DOOM to apply changes.");
         UpdateCinematicKillSpeedLabel();
@@ -1621,6 +1621,20 @@ public sealed partial class MainForm : Form
         cinematicExitDelay.AccessibleDescription=tooltip;
     }
 
+    private void RefreshSpeedAdvancedVisibility()
+    {
+        if (speedAdvancedPanel is null || speedAdvancedRowStyle is null
+            || speedCustomModsGrid is null) return;
+        var expanded = speedAdvanced.Checked;
+        if (speedAdvancedVisible != expanded)
+        {
+            speedCustomModsGrid.Height += expanded ? 104 : -104;
+            speedAdvancedVisible = expanded;
+        }
+        speedAdvancedRowStyle.Height = expanded ? 104 : 0;
+        speedAdvancedPanel.Visible = expanded;
+    }
+
     private void UpdateCinematicKillSpeedLabel()
     {
         var savedValue = cinematicKillSpeed.Value switch
@@ -1632,20 +1646,23 @@ public sealed partial class MainForm : Form
             _ => "5 · 31 Hz near-max"
         };
         var nativeFastChecked = customFastGloryKills.Checked || customFastChainsawKills.Checked;
-        var fineTuneChecked = customCinematicFineTune.Checked;
+        RefreshSpeedAdvancedVisibility();
+        var fineTuneChecked = speedAdvanced.Checked && customCinematicFineTune.Checked;
         cinematicKillSpeed.Enabled = !nativeFastChecked && !fineTuneChecked;
-        cinematicFineTuneHz.Enabled = !nativeFastChecked && fineTuneChecked;
+        customCinematicFineTune.Enabled = speedAdvanced.Checked && !nativeFastChecked;
+        cinematicFineTuneHz.Enabled = speedAdvanced.Checked
+            && !nativeFastChecked && fineTuneChecked;
         cinematicFineTuneTitle.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
         cinematicFineTuneValue.ForeColor = cinematicFineTuneHz.Enabled ? Color.WhiteSmoke : Color.Gray;
         cinematicFineTuneValue.Text = nativeFastChecked
             ? "Locked by Fast Kills"
             : fineTuneChecked ? cinematicFineTuneHz.Value + " Hz · restart DOOM"
-            : "Enable Fine Tune mod";
+            : "Check override above";
         var fineTip = nativeFastChecked
             ? "Fast Glory/Chainsaw overrides fine tune. Uncheck both to edit."
             : fineTuneChecked
-                ? "Use −/+ for 20–60 Hz in 1 Hz steps. Restart DOOM to apply."
-                : "Check Cinematic Speed Fine Tune to enable this control.";
+                ? "Drag for exact 20–200 Hz in 1 Hz increments. Restart DOOM to apply."
+                : "Check Override preset with Hz Fine Tune in Advanced to enable this control.";
         statusToolTip.SetToolTip(cinematicFineTuneTitle, fineTip);
         statusToolTip.SetToolTip(cinematicFineTuneValue, fineTip);
         cinematicFineTuneHz.AccessibleDescription = fineTip;
@@ -1655,11 +1672,11 @@ public sealed partial class MainForm : Form
             : fineTuneChecked ? "Locked by Fine Tune" : savedValue;
         var explanation = nativeFastChecked
             ? "Disabled by Fast Glory Kills or Fast Chainsaw Kills. "
-                + "Uncheck BOTH mods to enable Cinematic Kill Speed. "
+                + "Uncheck BOTH mods to enable Sync Action Speed. "
                 + "Saved slider position: " + savedValue + "."
             : fineTuneChecked
-                ? "Disabled by Cinematic Speed Fine Tune (20–60 Hz). Uncheck that mod to unlock."
-                : "Cinematic Kill Speed: click −/+; 1 native; 2 90 Hz; "
+                ? "Disabled by Advanced Hz Fine Tune. Uncheck its override or collapse Advanced to unlock."
+                : "Sync Action Speed: click −/+; 1 native; 2 90 Hz; "
                 + "3 70 Hz; 4 50 Hz; 5 experimental 31 Hz near-max. "
                 + "True max uses Fast Kills mods. Restart DOOM to apply.";
         // The disabled owner-painted slider cannot receive a normal tooltip;
@@ -1811,8 +1828,6 @@ public sealed partial class MainForm : Form
             // both execution types. Boxing's guard slowdown remains separate.
             gloryKillSlowmo.Value =
                 customFastGloryKills.Checked || customFastChainsawKills.Checked ? 0 : 10;
-            customCinematicFineTune.Enabled = !customFastGloryKills.Checked
-                && !customFastChainsawKills.Checked;
             UpdateCinematicKillSpeedLabel();
             UpdateCinematicExitHandoffLabel();
             // Main-launcher dependencies: keep the effective required state
@@ -1866,7 +1881,8 @@ public sealed partial class MainForm : Form
         FastGloryKills = customFastGloryKills.Checked,
         FastChainsawKills = customFastChainsawKills.Checked,
         CinematicKillSpeedLevel = cinematicKillSpeed.Value,
-        CinematicSpeedFineTune = customCinematicFineTune.Checked,
+        CinematicSpeedFineTune = speedAdvanced.Checked && customCinematicFineTune.Checked,
+        SpeedAdvancedExpanded = speedAdvanced.Checked,
         CinematicSpeedFineTuneHz = cinematicFineTuneHz.Value,
         HapticOverhaul = customHapticOverhaul.Checked
     };
@@ -1919,7 +1935,9 @@ public sealed partial class MainForm : Form
             customFastChainsawKills.Checked = mods.FastChainsawKills;
             cinematicKillSpeed.Value = Math.Max(1, Math.Min(5, mods.CinematicKillSpeedLevel));
             customCinematicFineTune.Checked = mods.CinematicSpeedFineTune;
-            cinematicFineTuneHz.Value = Math.Max(20, Math.Min(60, mods.CinematicSpeedFineTuneHz));
+            // Legacy fine tune files expand Advanced so no active override is hidden.
+            speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
+            cinematicFineTuneHz.Value = Math.Max(20, Math.Min(200, mods.CinematicSpeedFineTuneHz));
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
