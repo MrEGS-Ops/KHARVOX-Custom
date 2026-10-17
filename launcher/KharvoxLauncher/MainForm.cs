@@ -70,8 +70,8 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customDisableHud = MakeCheck("No HUD", false);
     private readonly CheckBox customDisableWeaponWheel = MakeCheck("No Weapon Wheel", false);
     private readonly CheckBox customGaussChargeSlowMovement = MakeCheck("Gauss Charge Slow Movement", false);
-    // Horizontal picture flip only; stock Cactus v1.1.1 pose is unchanged.
-    private readonly CheckBox customBackOfHandHud = MakeCheck("Back of Hand HUD", false);
+    // First-run development-test default; saved manual choices always win.
+    private readonly CheckBox customBackOfHandHud = MakeCheck("Back of Hand HUD", true);
     private readonly CheckBox customBoxingGuard = MakeCheck("Boxing Guard Mode", false);
     private readonly CheckBox customHandFocusedRs = MakeCheck("Hand Focus", false);
     private readonly CheckBox customDirectionalDash = MakeCheck("Directional Dash", false);
@@ -396,7 +396,7 @@ public sealed partial class MainForm : Form
         {
             (customDisableHud, "Hide the normal combat HUD while keeping game menus available."),
             (customDisableWeaponWheel, "Disable weapon-wheel presentation/selection for a harder no-wheel mode."),
-            (customBackOfHandHud, "Mirror only the watch HUD picture horizontally to read it from the back of your hand. Keeps original Cactus v1.1.1 hand HUD position, rotation, size and all other HUDs unchanged."),
+            (customBackOfHandHud, "AUTO-CHECKED ONCE for the current development test. You can uncheck it, and KHARVOX will remember that choice. Mirrors the wrist HUD's local-Y presentation for back-of-hand viewing; native Cactus v1.1.1 position and scale remain unchanged. Orientation still requires headset confirmation."),
             (customGaussChargeSlowMovement, "Movement assist while Gauss Siege charge is held. Designed for 45% stick movement, but DOOM may inhibit native movement; this is still under investigation."),
             (customBoxingGuard, "Raise both hands in a guarding pose: head focus and slight time dilation activate after 180 ms, then return to hand focus 900 ms after the guard ends. Native Glory Kill speed while guarding. Peripheral blur is pending a tested renderer hook."),
             (customHandFocusedRs, "Use the controller/hand for focus with RS activation. Boxing Guard Mode independently switches to head focus when both guards are raised."),
@@ -1650,6 +1650,7 @@ public sealed partial class MainForm : Form
         DisableWeaponWheel = customDisableWeaponWheel.Checked,
         GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
         BackOfHandHud = customBackOfHandHud.Checked,
+        DevelopmentTestDefaultsRevision = CustomModSettingsStore.CurrentDevelopmentTestDefaultsRevision,
         BoxingGuard = customBoxingGuard.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
         DirectionalDash = customDirectionalDash.Checked,

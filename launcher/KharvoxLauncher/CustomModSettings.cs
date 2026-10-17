@@ -10,7 +10,10 @@ internal sealed class CustomModSettings
     public bool DisableHud { get; set; }
     public bool DisableWeaponWheel { get; set; }
     public bool GaussChargeSlowMovement { get; set; }
-    // Opt-in horizontal flip only; native Cactus v1.1.1 HUD pose remains fixed.
+    // Per-build development-test selections are offered ON only once.
+    // Users retain complete control after the first launch of a new test build.
+    public int DevelopmentTestDefaultsRevision { get; set; }
+    // Only the wrist HUD presentation is mirrored; Cactus pose is unchanged.
     public bool BackOfHandHud { get; set; }
     public bool BoxingGuard { get; set; }
     public bool FastGloryKills { get; set; }
@@ -36,7 +39,24 @@ internal sealed class CustomModSettings
 
 internal static class CustomModSettingsStore
 {
+    // Bump this only when the next KHARVOX build introduces a different
+    // opt-in mod that should start checked for the user's test session.
+    // Never force it on again after the user deliberately unticks it.
+    internal const int CurrentDevelopmentTestDefaultsRevision = 1;
     private static readonly JavaScriptSerializer Serializer = new();
+
+    internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
+    {
+        if (value.DevelopmentTestDefaultsRevision < 1)
+        {
+            // October 17: the Back of Hand HUD was accidentally left off for
+            // its headset test. Enable it ONCE for both fresh and existing
+            // configs, then allow the user's choice to persist normally.
+            value.BackOfHandHud = true;
+            value.DevelopmentTestDefaultsRevision = 1;
+        }
+        return value;
+    }
 
     internal static string DefaultPath =>
         Path.Combine(AppContext.BaseDirectory, "kharvox-custom-mods.json");
@@ -46,12 +66,12 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         try
         {
-            if (!File.Exists(path)) return new CustomModSettings();
+            if (!File.Exists(path)) return ApplyDevelopmentTestDefaults(new CustomModSettings());
             var value = Serializer.Deserialize<CustomModSettings>(File.ReadAllText(path));
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-            return value;
+            return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
             || ex is InvalidDataException || ex is ArgumentException
@@ -90,6 +110,23 @@ internal static class CustomModSettingsStore
             Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true }, path);
             if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload)
                 throw new InvalidDataException("Valid custom mod option was lost.");
+            // Existing preferences receive newly tested mods exactly once.
+            // A later explicit uncheck must survive all subsequent launches.
+            Save(new CustomModSettings
+            {
+                BackOfHandHud = false, DevelopmentTestDefaultsRevision = 0
+            }, path);
+            var first = Load(path);
+            if (!first.BackOfHandHud
+                || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
+                throw new InvalidDataException("New test mod not auto-checked on first launch.");
+            first.BackOfHandHud = false;
+            Save(first, path);
+            if (Load(path).BackOfHandHud)
+                throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
+            var fresh = Load(Path.Combine(root, "new-user.json"));
+            if (!fresh.BackOfHandHud)
+                throw new InvalidDataException("Fresh install should auto-check active test mod.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
             try { Load(path); }
