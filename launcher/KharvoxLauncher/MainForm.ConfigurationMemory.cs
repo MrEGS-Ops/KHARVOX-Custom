@@ -1087,6 +1087,8 @@ public sealed partial class MainForm
                 || main.speedActionSliders["glory"].Enabled
                 || !main.cinematicKillSpeed.Enabled
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
+                || main.ReadCustomModSettingsFromControls().SpeedAdvancedExpanded
+                || !main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].Enabled
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
                 throw new InvalidDataException("Collapsing Advanced must restore presets and preserve selected Hz.");
             main.applyingCustomModDependencies = true;

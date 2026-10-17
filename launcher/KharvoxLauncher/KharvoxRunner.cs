@@ -567,13 +567,16 @@ internal static class KharvoxRunner
                 var p = customMods.ActionSpeedProfiles.TryGetValue(actionKey, out var value)
                     ? value : new ActionSpeedSetting();
                 psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + actionKey.ToUpperInvariant() + "_HZ"] =
-                    p.Enabled ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
+                    (customMods.SpeedAdvancedExpanded && p.Enabled)
+                        ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
             }
             var probeMask = 0;
             for (int i = 0; i < ActionSpeedCatalog.Probes.Length; i++)
-                if (customMods.ActionSpeedProfiles.TryGetValue(ActionSpeedCatalog.Probes[i], out var p)
+                if (customMods.SpeedAdvancedExpanded
+                    && customMods.ActionSpeedProfiles.TryGetValue(ActionSpeedCatalog.Probes[i], out var p)
                     && p.Enabled) probeMask |= 1 << i;
-            if (customMods.ActionSpeedLogTestEnabled) probeMask |= 63; // all read-only probes
+            if (customMods.SpeedAdvancedExpanded && customMods.ActionSpeedLogTestEnabled)
+                probeMask |= 63; // all read-only probes
             psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] = probeMask.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
