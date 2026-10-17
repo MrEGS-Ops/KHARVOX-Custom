@@ -555,10 +555,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
                 Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)).ToString(Invariant);
-            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] =
-                customMods.CinematicSpeedFineTune
-                    ? Math.Max(30, Math.Min(240, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
-                    : "0";
+            // Disable the deprecated global tick slider even for old saved profiles.
+            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] = "0";
             // Separate action triggers only activate their own scoped override.
             // Unverified enemy/reload states are diagnostic-only, never runtime
             // CVars. Zero means OFF and always restores the existing baseline.
