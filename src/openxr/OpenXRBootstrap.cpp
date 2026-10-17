@@ -677,9 +677,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(end==text||*end!='\0'||value<1||value>5)return 1;
         return static_cast<int>(value);
     }();
-    const int hzSpeedLevel=(s.customMods.fastGloryKills
-        ||s.customMods.fastChainsawKills||legacySpeedLevel<10)
-        ?5:cinematicSpeedLevel;
+    const int hzSpeedLevel=cinematicSpeedLevel;
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
         s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
         legacySpeedLevel,cinematicSpeedLevel);
@@ -768,6 +766,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             +std::to_string(hold.savedAdaptiveTick)+"/"+std::to_string(hold.savedMinHz)
             +"/"+std::to_string(hold.savedMaxHz)+"/"+std::to_string(hold.savedImmediateMode)
             +"/"+std::to_string(hold.savedSyncNoAdaptiveTick)+"/"+std::to_string(hold.savedFixedTic)
+            +" speedLevel="+std::to_string(cinematicSpeedLevel)
+            +" syncAttack="+std::to_string(KharvoxCameraSyncAttackActive()?1:0)
+            +" cutscene="+std::to_string(KharvoxCameraCutsceneActive()?1:0)
             +" FAST_KILLS="+(fastKillsEnabled?"ON":"OFF")
             +" pacing="+(forceRefresh ? "original-native-adaptive-Hz-path":"DOOM-native")
             +" nativeSyncDuringHold="+std::to_string(

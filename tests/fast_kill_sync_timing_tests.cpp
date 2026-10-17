@@ -45,13 +45,14 @@ int main() {
     assert(cinematicKillTargetTickHz(2,120)==90);
     assert(cinematicKillTargetTickHz(3,120)==70);
     assert(cinematicKillTargetTickHz(4,120)==50);
-    assert(cinematicKillTargetTickHz(5,120)==0);
-    for (int level=2; level<=4; ++level) {
+    assert(cinematicKillTargetTickHz(5,120)==40);
+    for (int level=2; level<=5; ++level) {
         assert(!nativeFastKillSyncRequested(false,false,10,level));
         assert(shouldForceCinematicAdaptiveTickPacing(false,level));
     }
     assert(!nativeFastKillSyncRequested(false,false,10,1));
-    assert(nativeFastKillSyncRequested(false,false,10,5));
+    assert(!nativeFastKillSyncRequested(false,false,10,5));
+    assert(shouldForceCinematicAdaptiveTickPacing(false,5));
     assert(!shouldForceCinematicAdaptiveTickPacing(true,5));
     for(bool glory : {false,true}) {
         for(bool chainsaw : {false,true}) {

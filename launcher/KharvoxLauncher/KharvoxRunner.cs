@@ -474,8 +474,7 @@ internal static class KharvoxRunner
                 WorkingDirectory = options.GameDirectory,
                 Arguments = JoinArguments(BuildGameArguments(
                     options, false, effectiveRenderScale, nativeStereoEnabled,
-                    customMods.FastGloryKills || customMods.FastChainsawKills
-                        || customMods.CinematicKillSpeedLevel == 5)),
+                    customMods.FastGloryKills || customMods.FastChainsawKills)),
                 RedirectStandardOutput = options.ExtendedLogging,
                 RedirectStandardError = options.ExtendedLogging
             };

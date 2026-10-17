@@ -72,16 +72,14 @@ constexpr bool nativeFastKillSyncRequested(
     bool fastGlory, bool fastChainsaw, int legacySpeedLevel,
     int cinematicSpeedLevel = 1) {
     return fastGlory || fastChainsaw
-        || (legacySpeedLevel >= 0 && legacySpeedLevel < 10)
-        || cinematicSpeedLevel == 5;
+        || (legacySpeedLevel >= 0 && legacySpeedLevel < 10);
 }
 
-// Existing native adaptive-tick Hz lever. Level 1 leaves the normal
-// immersive slow cinematic target untouched. Level 5 is the exact, proven
-// #473 bypass: zero forced tick Hz. The middle values are experimental.
+// Existing adaptive-tick Hz lever. 1 native slow; 2–5 = 90/70/50/40 Hz
+// on the original immersive path. Fast Kills checkboxes retain true bypass.
 constexpr int cinematicKillTargetTickHz(int level, int headsetTargetHz) {
     return level == 2 ? 90 : level == 3 ? 70 : level == 4 ? 50
-        : level == 5 ? 0 : headsetTargetHz;
+        : level == 5 ? 40 : headsetTargetHz;
 }
 
 // The headset's 120 Hz *display period* is NOT the game's achieved frame
@@ -93,10 +91,8 @@ constexpr int cinematicKillTargetTickHz(int level, int headsetTargetHz) {
 // or affect the native weapon-wheel slow motion.
 constexpr bool shouldForceCinematicAdaptiveTickPacing(
     bool fastKillsEnabled, int cinematicSpeedLevel = 1) {
-    // Do not touch the confirmed #473 full-speed path (level 5). Middle
-    // positions use precisely the original immersive-refresh CVar pathway.
-    return !fastKillsEnabled
-        || (cinematicSpeedLevel >= 2 && cinematicSpeedLevel <= 4);
+    // Only the true full-speed Fast Kills mod overrides skip this path.
+    return !fastKillsEnabled;
 }
 
 constexpr int nativeSyncAdaptiveTickDuringCinematic(bool fastKillsEnabled) {
