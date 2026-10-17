@@ -694,6 +694,7 @@ int configuredGloryKillSlowmoLevel() {
 
 std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
 std::atomic<bool> boxingGuardTimeDilationRequested{};
+std::atomic<bool> storyCinematicFastForwardRequested{};
 std::atomic<bool> latestSyncAttackClassified{};
 std::atomic<bool> latestChainsawTakedownCinematic{};
 
@@ -965,11 +966,13 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
     const bool boxingRequested =
         boxingGuardTimeDilationRequested.load(std::memory_order_acquire);
     const bool guardSlowmo=boxingRequested&&!syncAttackActive;
+    const bool storyFastForward=storyCinematicFastForwardRequested.load(
+        std::memory_order_acquire)&&!syncAttackActive&&!boxingRequested;
     // Level 0 is the proven native sync bypass: never replace its timing
     // with the later experimental game-timescale override.
     const bool configuredOverride=level>0&&level<10;
     const bool motionOverrideActive=motionOverride>0.f;
-    const bool wantOverride=guardSlowmo
+    const bool wantOverride=storyFastForward||guardSlowmo
         ||(syncAttackActive&&(configuredOverride||motionOverrideActive));
 
     static SRWLOCK lock = SRWLOCK_INIT;
@@ -1001,7 +1004,11 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         applied=true;
     }
     constexpr float guardTimeScale=.75f; // noticeable guard slowdown, never freezes time
-    const float target=guardSlowmo?guardTimeScale
+    // Story acceleration is opt-in, reversible and never touches execution
+    // or weapon-wheel time dilation. Native CVars remain DOOM-owned when off.
+    constexpr float storyFastForwardTimescale=4.0f;
+    const float target=storyFastForward?storyFastForwardTimescale
+        :guardSlowmo?guardTimeScale
         :motionOverrideActive?std::clamp(motionOverride,.10f,2.f)
         :gloryKillCustomTimescale(level);
     LONG bits{};
@@ -1011,7 +1018,8 @@ void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
         loggedTarget=target;
         std::ostringstream verified;
         const float readback=interlockedFloatLoad(current);
-        verified << (guardSlowmo ? "boxing guard" : "sync kill")
+        verified << (storyFastForward ? "story fast-forward"
+                :guardSlowmo ? "boxing guard" : "sync kill")
             << " target=" << target << " readback=" << readback
             << " syncClassified=" << (syncAttackActive?1:0);
         logGlorySlowmo(verified.str());
@@ -2770,6 +2778,7 @@ void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
 }
 void KharvoxCameraResetCombatTimeDilation() {
     boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
+    storyCinematicFastForwardRequested.store(false,std::memory_order_release);
     gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
     latestSyncAttackClassified.store(false,std::memory_order_release);
     latestChainsawTakedownCinematic.store(false,std::memory_order_release);
@@ -2791,6 +2800,25 @@ void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
     updateGloryKillSlowmoTimescale(
         latestSyncAttackClassified.load(std::memory_order_acquire)
         ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+}
+
+bool KharvoxCameraSetStoryCinematicFastForward(bool enabled) {
+    // Never select a guessed pointer. The existing validated resolver may
+    // reject this DOOM binary; if so, leave game time entirely unchanged.
+    if(enabled&&!resolveTimescaleCvarCurrent()) {
+        storyCinematicFastForwardRequested.store(false,std::memory_order_release);
+        logGlorySlowmo("story RS fast-forward UNAVAILABLE: native timescale unresolved");
+        return false;
+    }
+    const bool previous=storyCinematicFastForwardRequested.exchange(
+        enabled,std::memory_order_acq_rel);
+    if(previous!=enabled)
+        logGlorySlowmo(std::string("story RS fast-forward ")
+            +(enabled?"ON (4x requested)":"OFF (restore native)"));
+    updateGloryKillSlowmoTimescale(
+        latestSyncAttackClassified.load(std::memory_order_acquire)
+        ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+    return true;
 }
 
 void KharvoxCameraSetChainsawTakedownCinematic(bool active) {
