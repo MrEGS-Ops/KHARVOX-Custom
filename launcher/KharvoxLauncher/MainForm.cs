@@ -455,7 +455,7 @@ public sealed partial class MainForm : Form
             Margin = new Padding(4, 3, 0, 0), Padding = Padding.Empty
         };
         cinematicSpeedRow.Controls.Add(cinematicKillSpeedTitle);
-        cinematicKillSpeed.Width = 145;
+        cinematicKillSpeed.Width = 192;
         cinematicSpeedRow.Controls.Add(cinematicKillSpeed);
         speedAdvanced.AutoSize = true;
         speedAdvanced.Margin = new Padding(8, 5, 4, 0);
@@ -464,8 +464,8 @@ public sealed partial class MainForm : Form
         cinematicKillSpeedValue.Height = 29;
         cinematicSpeedRow.Controls.Add(cinematicKillSpeedValue);
         statusToolTip.SetToolTip(speedAdvanced,
-            "Check to use an exact Hz setting rather than speed presets 1–5. "
-            + "Uncheck to return to presets. Restart DOOM after changing the speed.");
+            "Show longer, independent action-speed sliders and the diagnostic probes. "
+            + "Sync Action Speed presets 1–5 remain available. Restart DOOM after changing timing.");
         statusToolTip.SetToolTip(cinematicKillSpeed,
             "Controls how quickly DOOM plays synced actions, including Glory Kills "
             + "and chainsaw executions. 1 is the original slow timing; 5 is the "
@@ -1103,8 +1103,10 @@ public sealed partial class MainForm : Form
         };
         // Give each column only what its actual controls need. The VR column
         // should no longer waste most of the window width on blank space.
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
-        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
+        // The Advanced action-Hz sliders need room for accurate 1 Hz adjustment.
+        // Retain DOOM Mods' original usable width while giving VR Mods more space.
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        modColumns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
         customMods.Dock = DockStyle.Fill;
         doomMods.Dock = DockStyle.Fill;
         modColumns.Controls.Add(doomMods, 0, 0);
@@ -2044,8 +2046,8 @@ public sealed partial class MainForm : Form
             Text = "KHARVOX Custom Mods",
             // Open at the SAME narrowest width the resize border allows:
             // the user should not need to drag the edge inward every time.
-            ClientSize = new Size(916, 600),
-            MinimumSize = new Size(930, 530),
+            ClientSize = new Size(1180, 600),
+            MinimumSize = new Size(1194, 530),
             FormBorderStyle = FormBorderStyle.FixedSingle,
             StartPosition = FormStartPosition.Manual,
             BackColor = Color.Black,
@@ -2097,8 +2099,8 @@ public sealed partial class MainForm : Form
             Padding = new Padding(0, 5, 0, 0)
         };
         closeRow.Controls.Add(closeButton);
-        // Keep credit subdued and anchored in the Custom Mods footer, just
-        // to the left of Close. Neither mod list nor window sizing is changed.
+        // Keep credit subdued and anchored in the Custom Mods footer,
+        // to the left of Close.
         var customModsCredit = new Label
         {
             AccessibleName = "Custom Mods creator credit",
