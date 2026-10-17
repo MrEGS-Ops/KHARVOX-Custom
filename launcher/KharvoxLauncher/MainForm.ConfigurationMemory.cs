@@ -570,6 +570,7 @@ public sealed partial class MainForm
                 main.customPersistentSsgReload,
                 main.customFastGloryKills,
                 main.customFastChainsawKills,
+                main.customCinematicFineTune,
                 main.customBackOfHandHud,
                 main.customDisableHud,
                 main.customDisableWeaponWheel,
@@ -579,13 +580,13 @@ public sealed partial class MainForm
             // A persisted layout may reorder WITHIN a group. Never allow a mod
             // to cross into another category, disappear or become duplicated.
             if (!scroll.AutoScroll || layout.AutoScroll
-                || checks.Length != 17 || checks.Distinct().Count() != 17
+                || checks.Length != 18 || checks.Distinct().Count() != 18
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 12 ? 2
-                        : index < 15 ? 3 : index < 16 ? 4 : 5)).Any()
-                || main.modOrderSlots.Count != 17
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 13 ? 2
+                        : index < 16 ? 3 : index < 17 ? 4 : 5)).Any()
+                || main.modOrderSlots.Count != 18
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
                     || slot.Number.Text != (index + 1).ToString("00") + "."
@@ -600,7 +601,7 @@ public sealed partial class MainForm
                 || main.modOrderHeaders.Count != 6
                 || main.modOrderHeaders.Any(header =>
                     layout.GetRow(header) < 1 || !header.Text.Contains("  "))
-                || layout.Height < 6 + 17 * 28 + 6 * 20
+                || layout.Height < 6 + 18 * 28 + 6 * 20
                 || main.modOrderSlots.Any(slot => slot.Dependency is null
                     || slot.Grip is null)
                 || main.modOrderSlots.Any(slot => slot.Panel.RowCount != 1
@@ -1003,7 +1004,7 @@ public sealed partial class MainForm
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
             main.customFastGloryKills, main.customFastChainsawKills,
-            main.customBoxingGuard
+            main.customBoxingGuard, main.customCinematicFineTune
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1023,6 +1024,7 @@ public sealed partial class MainForm
             main.swapJumpCrouch.Checked = true;
             main.customFastGloryKills.Checked = false;
             main.customFastChainsawKills.Checked = false;
+            main.customCinematicFineTune.Checked = false;
             main.customBoxingGuard.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
@@ -1032,6 +1034,23 @@ public sealed partial class MainForm
                 || FlatGloryKillSlider.ChangedValueForClick(2, 160, 1) != 1
                 || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
                 throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
+            if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 35, 30, 40) != 34
+                || FlatGloryKillSlider.ChangedValueForClick(156, 160, 35, 30, 40) != 36
+                || FlatGloryKillSlider.ChangedValueForClick(2, 160, 30, 30, 40) != 30
+                || FlatGloryKillSlider.ChangedValueForClick(157, 160, 40, 30, 40) != 40)
+                throw new InvalidDataException("Fine Tune bounds incorrect.");
+            main.applyingCustomModDependencies = true;
+            main.customCinematicFineTune.Checked = true;
+            main.cinematicFineTuneHz.Value = 37;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.cinematicFineTuneHz.Enabled || main.cinematicKillSpeed.Enabled
+                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 37)
+                throw new InvalidDataException("Fine Tune override not persisted.");
+            main.applyingCustomModDependencies = true;
+            main.customCinematicFineTune.Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(
@@ -1097,6 +1116,8 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.gloryKillSlowmo.Value != 0
                 || main.cinematicKillSpeed.Enabled
+                || main.cinematicFineTuneHz.Enabled
+                || main.customCinematicFineTune.Enabled
                 || main.cinematicKillSpeedTitle.ForeColor != Color.Gray
                 || main.cinematicKillSpeedValue.ForeColor != Color.Gray
                 || !main.cinematicKillSpeedValue.Text.Contains("Locked")
