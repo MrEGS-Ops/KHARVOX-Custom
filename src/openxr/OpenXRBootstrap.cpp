@@ -671,9 +671,7 @@ const kharvox::ActionSpeedTargets& actionSpeedTargets(){
     static const kharvox::ActionSpeedTargets p{
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GAUSS_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_SCRIPTED_HZ")};
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ")};
     return p;
 }
 unsigned actionSpeedProbeMask(){
@@ -687,29 +685,23 @@ unsigned actionSpeedProbeMask(){
     }();
     return mask;
 }
-void logActionSpeedProbes(bool melee,bool grenade,
-                          bool sync,bool chain,bool ledge,bool gauss,bool scripted){
-    // Only two actual input probes plus the verified native action states.
-    // Reload and enemy animation lifecycle hooks are NOT verified.
+void logActionSpeedProbes(bool melee,bool sync,bool chain,bool ledge){
+    // Only a demonstrated melee input edge remains as a read-only probe.
+    // Glory, chainsaw and ledge transitions are observed native states.
     if(!actionSpeedProbeMask())return;
     static unsigned lastState=~0u;
-    const unsigned state=(melee?1u:0u)|(grenade?2u:0u)
-        |(sync?4u:0u)|(chain?8u:0u)|(ledge?16u:0u)
-        |(gauss?32u:0u)|(scripted?64u:0u);
+    const unsigned state=(melee?1u:0u)|(sync?2u:0u)
+        |(chain?4u:0u)|(ledge?8u:0u);
     if(state==lastState)return;
     lastState=state;
     log("[ACTION-HZ][PROBE] meleeInput="+std::to_string(melee)
-        +" grenadeInputPulse="+std::to_string(grenade)
         +" nativeSync="+std::to_string(sync)
         +" chainsawLatch="+std::to_string(chain)
-        +" ledge="+std::to_string(ledge)
-        +" gauss="+std::to_string(gauss)
-        +" scripted="+std::to_string(scripted));
+        +" ledge="+std::to_string(ledge));
     static bool explained=false;
     if(!explained){
         explained=true;
-        log("[ACTION-HZ][PROBE] melee/grenade are INPUT pulses only; "
-            "no animation start/end is inferred");
+        log("[ACTION-HZ][PROBE] melee is input-only, NOT an animation lifecycle");
     }
 }
 void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
@@ -5441,16 +5433,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool chainsawAction=s.chainsawKillLatched
         &&(syncAction||KharvoxCameraCutsceneActive());
     const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
-    // The native "siege" declaration can remain active while simply equipped.
-    // Require a held fire trigger and the Gauss weapon before overriding Hz.
-    const bool gaussAction=KharvoxWeaponGaussSiegeChargeActive()
-        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
-        &&s.primaryFireDown&&KharvoxCameraGameplayActive();
-    const bool scriptedAction=upgradeCinematicRefreshGuard
-        ||(nativeAdaptiveParticipantGuard&&!syncAction&&!chainsawAction&&!ledgeAction);
-    logActionSpeedProbes(s.meleePressed,
-        frame.predictedDisplayTime<s.equipmentThrowPulseUntil,
-        syncAction,chainsawAction,ledgeAction,gaussAction,scriptedAction);
+    logActionSpeedProbes(s.meleePressed,syncAction,chainsawAction,ledgeAction);
     const bool originalCinematicHold=!bossAction
         &&kharvox::shouldHoldImmersiveRefresh(
             s.immersiveCinematics||comfortInteractiveParticipant,s.quadMode,
@@ -5462,7 +5445,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!KharvoxHudFullscreenMenuActive()&&!KharvoxHudTutorialActive();
     const auto selectedAction=actionProfileEligible
         ?kharvox::selectActionSpeed(
-            {syncAction,chainsawAction,ledgeAction,gaussAction,scriptedAction},
+            {syncAction,chainsawAction,ledgeAction},
             actionSpeedTargets())
         :kharvox::ActionSpeedChoice{};
     // External opt-ins do not steal normal movement or alter the native
