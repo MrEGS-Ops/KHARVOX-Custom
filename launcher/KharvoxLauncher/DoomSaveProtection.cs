@@ -423,7 +423,7 @@ internal static class DoomSaveProtection
                 catch { }
             }
             // Failed restore retains .kharvox-stage / .kharvox-old folders
-            // for forensic recovery, plus the verified rescue snapshot.
+            // for forensic recovery. The caller also holds a rescue snapshot.
         }
     }
 
@@ -491,7 +491,7 @@ internal static class DoomSaveProtection
             File.WriteAllText(Path.Combine(main, "profile.bin"), "my new progress");
             rejected = false;
             try { ReplaceLiveFolders(live, target, expected); }
-            catch (InvalidDataException) { rejected = true; }
+            catch (InvalidOperationException) { rejected = true; }
             if (!rejected || File.ReadAllText(Path.Combine(main, "profile.bin")) != "my new progress")
                 throw new InvalidDataException("Tampered snapshot overwrote live saves.");
             return 0;
