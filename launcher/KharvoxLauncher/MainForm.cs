@@ -89,6 +89,24 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
+    // One step = 40ms. Min 40ms lets the initial stereo pair settle;
+    // 80ms default releases the camera anchor near the start of a GK.
+    private readonly FlatGloryKillSlider cinematicExitDelay = new()
+    {
+        Minimum = 1, Maximum = 10, Value = 2,
+        AccessibleName = "Glory Kill camera handoff delay from start"
+    };
+    private readonly Label cinematicExitDelayTitle = new()
+    {
+        Text = "Handoff After Start", Width = 180, Height = 29,
+        ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
+        Margin = new Padding(0, 0, 10, 0)
+    };
+    private readonly Label cinematicExitDelayValue = new()
+    {
+        Width = 172, Height = 29, ForeColor = Color.WhiteSmoke,
+        TextAlign = ContentAlignment.MiddleLeft
+    };
     private readonly FlatGloryKillSlider cinematicFineTuneHz = new()
     {
         Minimum = 20, Maximum = 60, Value = 35,
@@ -428,7 +446,7 @@ public sealed partial class MainForm : Form
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customFastGloryKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Restores the Build #83 native sync slowdown disable for fast VR Glory Kills. This native DOOM switch is shared with chainsaw executions: either Fast Kills checkbox enables it; disable BOTH to unlock the Cinematic Kill Speed slider and restore its selected timing. No speed multiplier or animation rewrite."),
             (customFastChainsawKills, "DISABLES CINEMATIC KILL SPEED SLIDER AND FINE TUNE while enabled. Requests the same Build #83 native sync slowdown bypass for chainsaw executions. DOOM uses a shared sync switch, not independent per-weapon speeds: either Fast Kills checkbox overrides the slider. Disable BOTH to unlock the slider. Chainsaw effectiveness still needs headset verification."),
-            (customCinematicExitHandoff, "AUTO-CHECKED ONCE: Glory Kill and chainsaw-only camera-exit test. Keep the native entrance alignment; when the sync-attack flag ends, release the OpenXR held headset position over 90ms BEFORE the gameplay camera returns. No DOOM animation/physics changes. Uncheck to use previous exit behaviour."),
+            (customCinematicExitHandoff, "Optional GK/chainsaw camera-position handoff: preserve the initial execution snap, then fade the held headset position to live tracking near the START of the animation, after the configurable delay. Stops re-anchoring for the remainder of the kill. Original animation, DOOM physics, kill speed and menu cameras remain unchanged."),
             (customCinematicFineTune, "AUTO-CHECKED ONCE: fine-tune the existing DOOM cinematic adaptive tick target 20–60 Hz in 1 Hz steps. Overrides numbered Cinematic Kill Speed while selected. Fast Kills overrides both. Restart DOOM after adjusting."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
@@ -510,6 +528,32 @@ public sealed partial class MainForm : Form
         customModsGrid.Controls.Add(fineTuneRow, 0, fineTuneRowIndex);
         customModsGrid.SetColumnSpan(fineTuneRow, 2);
         customModsGrid.Height += 36;
+        // Independent timing from the kill-speed Hz controls; this adjusts
+        // only WHEN to release the headset position (90ms blend is unchanged).
+        var handoffDelayRow = new FlowLayoutPanel
+        {
+            Dock = DockStyle.Fill, Height = 36, AutoSize = false,
+            WrapContents = false, BackColor = PanelColor,
+            FlowDirection = FlowDirection.LeftToRight,
+            Margin = new Padding(4, 3, 0, 0), Padding = Padding.Empty
+        };
+        handoffDelayRow.Controls.Add(cinematicExitDelayTitle);
+        cinematicExitDelay.Width = 160;
+        handoffDelayRow.Controls.Add(cinematicExitDelay);
+        handoffDelayRow.Controls.Add(cinematicExitDelayValue);
+        cinematicExitDelay.ValueChanged += (_, _) =>
+        {
+            if(restoringConfiguration||applyingCustomModDependencies)return;
+            UpdateCinematicExitHandoffLabel();
+            SaveCustomModSettings();
+            OptionChanged(cinematicExitDelay, EventArgs.Empty);
+        };
+        var handoffDelayRowIndex = customModsGrid.RowCount++;
+        customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+        customModsGrid.Controls.Add(handoffDelayRow, 0, handoffDelayRowIndex);
+        customModsGrid.SetColumnSpan(handoffDelayRow, 2);
+        customModsGrid.Height += 36;
+        UpdateCinematicExitHandoffLabel();
         var customModsScroll = new Panel
         {
             Dock = DockStyle.Fill, AutoScroll = true,
@@ -1492,6 +1536,23 @@ public sealed partial class MainForm : Form
         >= 10 => 1, >= 7 => 2, >= 5 => 3, >= 2 => 4, _ => 5
     };
 
+    private void UpdateCinematicExitHandoffLabel()
+    {
+        var enabled=customCinematicExitHandoff.Checked;
+        cinematicExitDelay.Enabled=enabled;
+        cinematicExitDelayTitle.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
+        cinematicExitDelayValue.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
+        cinematicExitDelayValue.Text=enabled
+            ? (cinematicExitDelay.Value*40)+" ms · restart DOOM"
+            : "Disabled · original camera";
+        var tooltip=enabled
+            ? "Wait "+(cinematicExitDelay.Value*40)+"ms after native GK/chainsaw entry, then smoothly release the held headset position over 90ms. Minus = earlier. Plus = later. This does NOT change animation speed. Restart DOOM to apply."
+            : "Enable Cinematic Exit Handoff above to activate. Unchecked retains the original end-of-cinematic headset position release.";
+        statusToolTip.SetToolTip(cinematicExitDelayTitle,tooltip);
+        statusToolTip.SetToolTip(cinematicExitDelayValue,tooltip);
+        cinematicExitDelay.AccessibleDescription=tooltip;
+    }
+
     private void UpdateCinematicKillSpeedLabel()
     {
         var savedValue = cinematicKillSpeed.Value switch
@@ -1685,6 +1746,7 @@ public sealed partial class MainForm : Form
             customCinematicFineTune.Enabled = !customFastGloryKills.Checked
                 && !customFastChainsawKills.Checked;
             UpdateCinematicKillSpeedLabel();
+            UpdateCinematicExitHandoffLabel();
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
@@ -1718,6 +1780,7 @@ public sealed partial class MainForm : Form
         GaussChargeSlowMovement = customGaussChargeSlowMovement.Checked,
         BackOfHandHud = false,
         CinematicExitHandoff = customCinematicExitHandoff.Checked,
+        CinematicExitHandoffDelayMs = cinematicExitDelay.Value*40,
         DevelopmentTestDefaultsRevision = CustomModSettingsStore.CurrentDevelopmentTestDefaultsRevision,
         BoxingGuard = customBoxingGuard.Checked,
         HandFocusedRs = customHandFocusedRs.Checked,
@@ -1771,6 +1834,8 @@ public sealed partial class MainForm : Form
             customGaussChargeSlowMovement.Checked = mods.GaussChargeSlowMovement;
             customBackOfHandHud.Checked = false;
             customCinematicExitHandoff.Checked = mods.CinematicExitHandoff;
+            cinematicExitDelay.Value = Math.Max(1, Math.Min(10,
+                (mods.CinematicExitHandoffDelayMs+20)/40));
             customBoxingGuard.Checked = mods.BoxingGuard;
             customHandFocusedRs.Checked = mods.HandFocusedRs;
             customDirectionalDash.Checked = mods.DirectionalDash;

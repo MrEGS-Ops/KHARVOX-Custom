@@ -552,6 +552,9 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_BACK_OF_HAND_HUD"] = "0"; // pause distorted mirror
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_EXIT_HANDOFF"] =
                 customMods.CinematicExitHandoff ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_EXIT_DELAY_MS"] =
+                Math.Max(40,Math.Min(400,customMods.CinematicExitHandoffDelayMs))
+                    .ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_BOXING_GUARD"] = customMods.BoxingGuard ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_GLORY_KILLS"] = customMods.FastGloryKills ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = customMods.FastChainsawKills ? "1" : "0";

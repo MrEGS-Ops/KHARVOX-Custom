@@ -1032,6 +1032,10 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
                 throw new InvalidDataException("Distorted Back of Hand HUD mirror must remain paused.");
+            if (main.cinematicExitDelay.Minimum != 1 || main.cinematicExitDelay.Maximum != 10
+                || main.cinematicExitDelay.Value != 2
+                || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 80)
+                throw new InvalidDataException("Early camera handoff must default to 80ms with 40–400ms range.");
             if (FlatGloryKillSlider.ChangedValueForClick(5, 160, 3) != 2
                 || FlatGloryKillSlider.ChangedValueForClick(156, 160, 3) != 4
                 || FlatGloryKillSlider.ChangedValueForClick(80, 160, 3) != 3
