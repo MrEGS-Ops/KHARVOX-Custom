@@ -557,8 +557,23 @@ internal static class KharvoxRunner
                 Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] =
                 customMods.CinematicSpeedFineTune
-                    ? Math.Max(30, Math.Min(200, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
+                    ? Math.Max(30, Math.Min(240, customMods.CinematicSpeedFineTuneHz)).ToString(Invariant)
                     : "0";
+            // Separate action triggers only activate their own scoped override.
+            // Unverified enemy/reload states are diagnostic-only, never runtime
+            // CVars. Zero means OFF and always restores the existing baseline.
+            foreach (var key in ActionSpeedCatalog.Controllable)
+            {
+                var p = customMods.ActionSpeedProfiles.TryGetValue(key, out var value)
+                    ? value : new ActionSpeedSetting();
+                psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + key.ToUpperInvariant() + "_HZ"] =
+                    p.Enabled ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
+            }
+            var probeMask = 0;
+            for (int i = 0; i < ActionSpeedCatalog.Probes.Length; i++)
+                if (customMods.ActionSpeedProfiles.TryGetValue(ActionSpeedCatalog.Probes[i], out var p)
+                    && p.Enabled) probeMask |= 1 << i;
+            psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] = probeMask.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";

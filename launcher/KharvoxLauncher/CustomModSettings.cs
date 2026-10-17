@@ -2,6 +2,37 @@ using System.Web.Script.Serialization;
 
 namespace KharvoxLauncher;
 
+internal sealed class ActionSpeedSetting
+{
+    public bool Enabled { get; set; }
+    public int TargetHz { get; set; } = 30;
+}
+
+internal static class ActionSpeedCatalog
+{
+    internal static readonly string[] Controllable =
+    { "glory", "chainsaw", "ledge", "gauss", "scripted" };
+    internal static readonly string[] Probes =
+    { "melee", "reload", "grenade", "enemy", "boss", "wheel" };
+    internal static readonly string[] All = Controllable.Concat(Probes).ToArray();
+
+    internal static void Validate(CustomModSettings settings)
+    {
+        settings.ActionSpeedProfiles ??= new Dictionary<string, ActionSpeedSetting>();
+        foreach (string key in All)
+        {
+            if (!settings.ActionSpeedProfiles.TryGetValue(key, out var profile)
+                || profile is null)
+                settings.ActionSpeedProfiles[key] = new ActionSpeedSetting();
+            else
+                profile.TargetHz = Math.Max(30, Math.Min(240, profile.TargetHz));
+        }
+        // Profiles from unknown or future builds never get launched.
+        foreach (var key in settings.ActionSpeedProfiles.Keys.Except(All).ToArray())
+            settings.ActionSpeedProfiles.Remove(key);
+    }
+}
+
 internal sealed class CustomModSettings
 {
     internal const int CurrentSchema = 1;
@@ -25,6 +56,7 @@ internal sealed class CustomModSettings
     public bool CinematicSpeedFineTune { get; set; }
     public bool SpeedAdvancedExpanded { get; set; }
     public int CinematicSpeedFineTuneHz { get; set; } = 35;
+    public Dictionary<string, ActionSpeedSetting> ActionSpeedProfiles { get; set; } = new();
     public bool HandFocusedRs { get; set; }
     public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }
@@ -84,6 +116,7 @@ internal static class CustomModSettingsStore
         value.SpeedAdvancedExpanded |= value.CinematicSpeedFineTune;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
+        ActionSpeedCatalog.Validate(value);
         value.BackOfHandHud = false; // paused until composite image mirror exists
         return value;
     }
@@ -123,6 +156,7 @@ internal static class CustomModSettingsStore
         value.CinematicExitHandoff = true;
         value.CinematicExitHandoffDelayMs = 40;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
+        ActionSpeedCatalog.Validate(value);
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
