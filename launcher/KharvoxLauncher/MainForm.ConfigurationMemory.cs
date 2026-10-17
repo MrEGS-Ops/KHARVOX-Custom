@@ -1038,7 +1038,7 @@ public sealed partial class MainForm
                 || FlatGloryKillSlider.ChangedValueForClick(158, 160, 5) != 5)
                 throw new InvalidDataException("Cinematic − number + control steps or limits incorrect.");
             if (main.cinematicFineTuneHz.Minimum != 30
-                || main.cinematicFineTuneHz.Maximum != 200
+                || main.cinematicFineTuneHz.Maximum != 240
                 || main.cinematicFineTuneHz.SmallChange != 1
                 || main.cinematicFineTuneHz.TickFrequency != 10)
                 throw new InvalidDataException("Advanced drag must support 200-left to 30-right at 1 Hz resolution.");
@@ -1047,10 +1047,10 @@ public sealed partial class MainForm
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (main.speedAdvancedRowStyle is null
-                || main.speedAdvancedRowStyle.Height != 44 || !main.speedAdvancedVisible)
+                || main.speedAdvancedRowStyle.Height != main.speedAdvancedHeight || !main.speedAdvancedVisible)
                 throw new InvalidDataException("Advanced section did not expand.");
             main.applyingCustomModDependencies = true;
-            main.cinematicFineTuneHz.Value = 63; // inverted: 230 - 63 = 167 Hz
+            main.cinematicFineTuneHz.Value = 103; // reversed 270 - 103 = 167 Hz
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (!main.cinematicFineTuneHz.Enabled || main.cinematicKillSpeed.Enabled
@@ -1058,15 +1058,39 @@ public sealed partial class MainForm
                 || !main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
                 throw new InvalidDataException("Fine Tune override not persisted.");
+            // The per-action controls must be present and default OFF.
+            if(main.speedActionChecks.Count!=ActionSpeedCatalog.All.Length
+                ||main.speedActionSliders.Count!=ActionSpeedCatalog.All.Length
+                ||main.speedActionChecks.Values.Any(box=>box.Checked))
+                throw new InvalidDataException("Action checklist missing entries or contains unsafe auto-enabled profiles.");
+            main.applyingCustomModDependencies = true;
+            main.speedActionChecks["glory"].Checked = true;
+            main.speedActionSliders["glory"].Value = 70; // 200 Hz from 240..30 track
+            main.speedActionChecks["enemy"].Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            var profileConfig=main.ReadCustomModSettingsFromControls();
+            if(!main.speedActionSliders["glory"].Enabled
+                ||main.speedActionSliders["enemy"].Enabled
+                ||!profileConfig.ActionSpeedProfiles["glory"].Enabled
+                ||profileConfig.ActionSpeedProfiles["glory"].TargetHz!=200
+                ||!profileConfig.ActionSpeedProfiles["enemy"].Enabled)
+                throw new InvalidDataException("Supported profiles and diagnostic-only probes misconfigured.");
             main.applyingCustomModDependencies = true;
             main.speedAdvanced.Checked = false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (main.speedAdvancedRowStyle.Height != 0 || main.speedAdvancedVisible
+                || main.speedActionSliders["glory"].Enabled
                 || !main.cinematicKillSpeed.Enabled
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
                 || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 167)
                 throw new InvalidDataException("Collapsing Advanced must restore presets and preserve selected Hz.");
+            main.applyingCustomModDependencies = true;
+            main.speedActionChecks["glory"].Checked = false;
+            main.speedActionChecks["enemy"].Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
                 throw new InvalidDataException(

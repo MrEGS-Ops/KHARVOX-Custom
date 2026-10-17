@@ -507,7 +507,7 @@ public sealed partial class MainForm : Form
             Visible = false, Height = 44, BackColor = PanelColor,
             Margin = new Padding(14, 2, 10, 0), Padding = Padding.Empty
         };
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 116));
+        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 178));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));

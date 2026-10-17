@@ -115,7 +115,7 @@ internal static class CustomModSettingsStore
         // Legacy Fine Tune checked state is migrated into Advanced.
         value.SpeedAdvancedExpanded |= value.CinematicSpeedFineTune;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
-        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
+        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
         value.BackOfHandHud = false; // paused until composite image mirror exists
         return value;
@@ -134,7 +134,7 @@ internal static class CustomModSettingsStore
             if (value is null || value.Schema != CustomModSettings.CurrentSchema)
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-            value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
+            value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -152,7 +152,7 @@ internal static class CustomModSettingsStore
         path ??= DefaultPath;
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
-        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(200, value.CinematicSpeedFineTuneHz));
+        value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         value.CinematicExitHandoff = true;
         value.CinematicExitHandoffDelayMs = 40;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
