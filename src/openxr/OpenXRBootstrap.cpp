@@ -49,6 +49,7 @@
 #include "NativeXrReleasePolicy.h"
 #include "CinematicRefreshPolicy.h"
 #include "ActionSpeedPolicy.h"
+#include "StoryCinematicSkipPolicy.h"
 #include "CinewindowPosePolicy.h"
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
@@ -271,6 +272,7 @@ struct State {
     bool nativeUiInputContext{};
     bool jumpSuppressedUntilRelease{},crouchSuppressedUntilRelease{};
     bool meleePressed{},missionInfoPressed{};
+    kharvox::StoryCinematicSkipState storySkip{};
     bool handsJumpEnabled{}; kharvox::HandsJumpState handsJump{};
     bool physicalGlorykillEnabled{};
     float physicalGlorykillSpeed{2.8f};
@@ -2341,6 +2343,8 @@ void updateWeapon6Dof(){
 }
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
+        s.storySkip={};
         s.primaryFireDown=false;
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         return;
@@ -2359,6 +2363,7 @@ void updateGameplayActions(XrTime displayTime){
         releaseMovement();
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
+        s.storySkip={};
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
         KharvoxCameraResetCombatTimeDilation();
@@ -3124,6 +3129,29 @@ void updateGameplayActions(XrTime displayTime){
         s.chainsawKillLatched=true;
         log("[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified");
     }
+    // RS is normally Melee/Use. During an independent scripted story scene
+    // it toggles a reversible, opt-in 4x game-time request. No script jumps.
+    const auto storySkipDecision=kharvox::updateStoryCinematicSkip(
+        s.storySkip,s.customMods.storyCinematicSkip,cutscene,
+        syncAttackActive,s.chainsawKillLatched&&cutscene,
+        KharvoxCameraLedgeTransitionActive(),KharvoxCameraBossSequenceActive(),
+        pauseMenu||fullscreenMenu||deathMenu||KharvoxHudTutorialActive(),
+        gameplayWorld,meleeDown,GetTickCount64());
+    if(storySkipDecision.changed){
+        const bool applied=KharvoxCameraSetStoryCinematicFastForward(
+            storySkipDecision.accelerate);
+        if(storySkipDecision.accelerate&&!applied){
+            s.storySkip.accelerating=false;
+            s.storySkip.acceleratingSinceMs=0;
+            log("[STORY-SKIP] RS fast-forward unavailable: native timescale CVar not uniquely resolved; game unchanged");
+        }else{
+            log(std::string("[STORY-SKIP] RS ")
+                +(storySkipDecision.accelerate?"4x fast-forward ON"
+                    :storySkipDecision.expired?"auto-restore after 20s"
+                    :"4x fast-forward OFF")
+                +"; native scripts and VR camera unchanged");
+        }
+    }
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
@@ -3725,6 +3753,7 @@ bool createGameplayActions(){
         +" fastGK="+(s.customMods.fastGloryKills?"on":"off")
         +" fastChainsaw="+(s.customMods.fastChainsawKills?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
+        +" storySkipRS="+(s.customMods.storyCinematicSkip?"on (experimental native 4x)":"off")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
