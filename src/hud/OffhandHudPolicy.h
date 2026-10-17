@@ -105,19 +105,17 @@ inline bool centeredOffhandHud(const float* center,const float* axis,float width
     return true;
 }
 
-// Flip only the hand-owned HUD canvas's horizontal presentation, without
-// moving its Cactus wrist anchor or modifying any other GUI. Negating the
-// canvas X extent mirrors its content; shifting its origin keeps the same
-// physical pivot, including the separately extracted ProgMeter subtree.
-inline void flipOffhandHudCanvasHorizontally(bool enabled,int surface,
-    const float* axis,float* origin,float& extentX,float pivotXFraction=.5f){
+// Back-of-hand watch: mirror local Y, NOT the native Cactus horizontal
+// extent. This retains the original aspect, world size and wrist anchor.
+inline void flipOffhandHudCanvasVertically(bool enabled,int surface,
+    const float* axis,float* origin,float& extentY,float pivotYFraction=.5f){
     if(!enabled||surface<0||surface>2||!axis||!origin
-        ||!std::isfinite(extentX)||extentX<=0.f
-        ||!std::isfinite(pivotXFraction)||pivotXFraction<0.f
-        ||pivotXFraction>1.f)return;
-    const float shift=2.f*pivotXFraction*extentX;
-    for(int i=0;i<3;++i)origin[i]+=axis[i]*shift;
-    extentX=-extentX;
+        ||!std::isfinite(extentY)||extentY<=0.f
+        ||!std::isfinite(pivotYFraction)||pivotYFraction<0.f
+        ||pivotYFraction>1.f)return;
+    const float shift=2.f*pivotYFraction*extentY;
+    for(int i=0;i<3;++i)origin[i]+=axis[3+i]*shift;
+    extentY=-extentY;
 }
 
 }

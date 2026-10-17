@@ -105,19 +105,25 @@ int main() {
     // The back-of-hand mod mirrors only owned panel canvases. It must
     // preserve the calibrated wrist center, including off-centre ProgMeter.
     {
+        // Watch mirror must retain original Cactus physical canvas dimensions.
         const float axes[9]{1,0,0,0,1,0,0,0,1};
-        float origin[3]{-5,-3,0};float sx=10;
-        flipOffhandHudCanvasHorizontally(false,0,axes,origin,sx);
-        if(!near(origin[0],-5)||!near(sx,10))return 180;
-        flipOffhandHudCanvasHorizontally(true,-1,axes,origin,sx);
-        if(!near(origin[0],-5)||!near(sx,10))return 181;
-        flipOffhandHudCanvasHorizontally(true,0,axes,origin,sx);
-        if(!near(origin[0],5)||!near(sx,-10)
-            ||!near(origin[0]+.5f*sx,0))return 182;
-        float progOrigin[3]{-2,1,0};float progExtent=8;
-        flipOffhandHudCanvasHorizontally(true,2,axes,progOrigin,progExtent,.25f);
-        if(!near(progOrigin[0],2)||!near(progExtent,-8)
-            ||!near(progOrigin[0]+.25f*progExtent,0))return 183;
+        float center[3]{0,0,0},origin[3]{};
+        float sx{},sy{};
+        if(!centeredOffhandHud(center,axes,10,512.f/300.f,origin,sx,sy))return 180;
+        const float width=sx,height=sy;
+        flipOffhandHudCanvasVertically(false,0,axes,origin,sy);
+        if(!near(sx,width)||!near(sy,height))return 181;
+        flipOffhandHudCanvasVertically(true,0,axes,origin,sy);
+        if(!near(sx,width)||!near(sy,-height)
+            ||!near(sx/std::abs(sy),512.f/300.f)
+            ||!near(origin[1]+.5f*sy,0))return 182;
+        float progOrigin[3]{-2,1,0},progExtent=8;
+        flipOffhandHudCanvasVertically(true,2,axes,progOrigin,progExtent,.25f);
+        if(!near(progOrigin[1],5)||!near(progExtent,-8)
+            ||!near(progOrigin[1]+.25f*progExtent,3))return 183;
+        float untouched[3]{1,2,3},unownedExtent=4;
+        flipOffhandHudCanvasVertically(true,-1,axes,untouched,unownedExtent);
+        if(!near(untouched[1],2)||!near(unownedExtent,4))return 184;
     }
 
     // Legacy calibration migration preserves both accepted panels and seeds

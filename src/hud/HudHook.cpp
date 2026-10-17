@@ -626,8 +626,9 @@ void __fastcall offhandHudCanvasSize(void* entity,int width,int height,float ext
         &&((pending.weaponWheel&&width>0&&height>0)||(width==512&&height==300))
         &&kharvox::centeredOffhandHud(pending.center,pending.axis,pending.width,
             float(width)/float(height),origin,extentX,extentY);
-    if(owned)kharvox::flipOffhandHudCanvasHorizontally(
-        backOfHandHudFlipActive(),pending.surface,pending.axis,origin,extentX);
+    // Do not change native canvas X extent or 512x300 calibration.
+    if(owned)kharvox::flipOffhandHudCanvasVertically(
+        backOfHandHudFlipActive(),pending.surface,pending.axis,origin,extentY);
     originalHudCanvasSize(entity,width,height,extentX,extentY);
     if(!owned)return;
     auto bytes=static_cast<unsigned char*>(entity);
@@ -2026,8 +2027,8 @@ bool renderProgMeter(void* swf,void* view,void* sprite,void* state,int time,bool
     if(!kharvox::centeredOffhandHud(center,axis,width,512.f/300.f,origin,ex,ey)){progResetGeometry();return false;}
     ex*=512.f/progMeter.pixelWidth;ey*=512.f/progMeter.pixelWidth;
     for(int j=0;j<3;++j)origin[j]=center[j]-axis[j]*ex*(progMeter.midX/512.f)-axis[3+j]*ey*(progMeter.midY/300.f);
-    kharvox::flipOffhandHudCanvasHorizontally(
-        backOfHandHudFlipActive(),2,axis,origin,ex,progMeter.midX/512.f);
+    kharvox::flipOffhandHudCanvasVertically(
+        backOfHandHudFlipActive(),2,axis,origin,ey,progMeter.midY/300.f);
     originalHudCanvasSize(progMeter.gui,512,300,ex,ey);
     auto setOrigin=progNative<void(__fastcall*)(void*,const float*)>(0x3b7500);
     auto setAxis=progNative<void(__fastcall*)(void*,const float*)>(0x3b5400);
