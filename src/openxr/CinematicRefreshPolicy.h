@@ -64,10 +64,10 @@ constexpr bool nativeAdaptiveParticipantGuardIsActive(
 // sync_noAdaptiveTick=1. The immersive-cinematic refresh hold used to
 // overwrite it with 0 every Present and re-enable DOOM's sync slow motion.
 // Preserve the original slow-cinematic behavior when fast kills are OFF,
-// but NEVER clear the opt-in native bypass while either fast-kill mod is ON.
-// The launcher can activate the exact Oct 5 native no-slowmo option from
-// either custom checkbox OR the older Glory Kill Speed selector. Keep the
-// OpenXR present path aligned with the launcher command-line policy.
+// but NEVER clear the opt-in native bypass while Full speed is selected.
+// The launcher migrates both old Fast Kills checkboxes into the shared
+// Full speed selector choice and still honors the legacy Glory Kill Speed
+// option. Keep the OpenXR present path aligned with launcher command line.
 constexpr bool nativeFastKillSyncRequested(
     bool fastGlory, bool fastChainsaw, int legacySpeedLevel,
     int cinematicSpeedLevel = 1) {
@@ -76,7 +76,7 @@ constexpr bool nativeFastKillSyncRequested(
 }
 
 // Existing adaptive-tick Hz lever. 1 native slow; 2–5 = 90/70/50/30 Hz
-// on the original immersive path. Fast Kills checkboxes retain true bypass.
+// on the original immersive path. Full speed retains the separate native bypass.
 constexpr int cinematicKillTargetTickHz(int level, int headsetTargetHz) {
     return level == 2 ? 90 : level == 3 ? 70 : level == 4 ? 50
         : level == 5 ? 30 : headsetTargetHz;
