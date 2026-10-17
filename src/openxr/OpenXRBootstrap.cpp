@@ -48,6 +48,7 @@
 #include "RuntimeVulkanDispatch.h"
 #include "NativeXrReleasePolicy.h"
 #include "CinematicRefreshPolicy.h"
+#include "ActionSpeedPolicy.h"
 #include "CinewindowPosePolicy.h"
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
@@ -166,6 +167,7 @@ struct CinematicAdaptiveTickHold {
     bool layoutChecked{},layoutAvailable{},active{};
     LONG savedAdaptiveTick{},savedMinHz{},savedMaxHz{},savedImmediateMode{},savedSyncNoAdaptiveTick{},savedFixedTic{};
     int targetHz{};
+    kharvox::ActionSpeedKind lastAction{kharvox::ActionSpeedKind::None};
     LARGE_INTEGER startedAt{};
     uint64_t presents{};
 };
@@ -357,6 +359,7 @@ struct State {
     std::array<float,3> previousPhysicsOrigin{}; bool previousPhysicsOriginValid{};
     std::array<float,3> previousRoomscaleWorldDirection{}; XrVector3f previousRoomscaleTrackingDirection{};
     bool cinematicBodyPoseHeld{};
+    bool actionSpeedWheelObserved{};
     bool previousRoomscaleCommand{};
     kharvox::CustomModFlags customMods{kharvox::loadCustomModFlags()};
     PFN_xrGetVulkanGraphicsRequirements2KHR requirements2{}; PFN_xrGetVulkanGraphicsDevice2KHR graphicsDevice2{}; PFN_xrCreateVulkanInstanceKHR createVulkanInstance{}; PFN_xrCreateVulkanDeviceKHR createVulkanDevice{}; PFN_xrGetVulkanGraphicsRequirementsKHR requirements1{}; PFN_xrGetVulkanGraphicsDeviceKHR graphicsDevice1{};
@@ -653,7 +656,69 @@ bool consumeNativeAdaptiveParticipantObservation(){
     if(!ensureImmersiveAdaptiveTickSupport())return false;
     return InterlockedExchange(&nativeAdaptiveParticipantObserved,0)!=0;
 }
-void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
+int actionSpeedEnvironmentHz(const char* name){
+    char buffer[24]{};
+    const DWORD n=GetEnvironmentVariableA(name,buffer,sizeof(buffer));
+    if(n==0||n>=sizeof(buffer))return 0;
+    char* end{};
+    const long value=std::strtol(buffer,&end,10);
+    return end!=buffer&&*end=='\0'&&kharvox::validActionSpeedTarget(static_cast<int>(value))
+        ?static_cast<int>(value):0;
+}
+const kharvox::ActionSpeedTargets& actionSpeedTargets(){
+    static const kharvox::ActionSpeedTargets p{
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ"),
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GAUSS_HZ"),
+        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_SCRIPTED_HZ")};
+    return p;
+}
+unsigned actionSpeedProbeMask(){
+    static const unsigned mask=[]{
+        char buf[24]{};
+        const DWORD n=GetEnvironmentVariableA("KHARVOX_ACTION_SPEED_PROBES",buf,sizeof(buf));
+        if(!n||n>=sizeof(buf))return 0u;
+        char* end{};
+        const unsigned long value=std::strtoul(buf,&end,10);
+        return end!=buf&&*end=='\0' ? static_cast<unsigned>(value&63u):0u;
+    }();
+    return mask;
+}
+void logActionSpeedProbes(bool melee,bool grenade,bool boss,bool wheel,
+                          bool sync,bool chain,bool ledge,bool gauss,bool scripted){
+    const unsigned mask=actionSpeedProbeMask();
+    if(!mask)return;
+    static unsigned lastState=~0u;
+    const unsigned state=(melee?1u:0u)|(grenade?2u:0u)
+        |(boss?4u:0u)|(wheel?8u:0u)|(sync?16u:0u)
+        |(chain?32u:0u)|(ledge?64u:0u)|(gauss?128u:0u)
+        |(scripted?256u:0u);
+    if(state==lastState)return;
+    lastState=state;
+    log("[ACTION-HZ][PROBE] input/state edges melee="+std::to_string(melee)
+        +" grenadePulse="+std::to_string(grenade)
+        +" boss="+std::to_string(boss)+" wheel="+std::to_string(wheel)
+        +" nativeSync="+std::to_string(sync)+" chainsawLatch="+std::to_string(chain)
+        +" ledge="+std::to_string(ledge)+" gauss="+std::to_string(gauss)
+        +" scripted="+std::to_string(scripted));
+    static bool unavailableLogged=false;
+    if(!unavailableLogged){
+        unavailableLogged=true;
+        if(mask&kharvox::actionProbeReload)
+            log("[ACTION-HZ][PROBE] weapon reload: UNAVAILABLE (no verified native animation lifecycle hook)");
+        if(mask&kharvox::actionProbeEnemies)
+            log("[ACTION-HZ][PROBE] enemy animation: UNAVAILABLE (no per-enemy animation clock or start/end detector)");
+        if(mask&kharvox::actionProbeMelee)
+            log("[ACTION-HZ][PROBE] melee: input edge only, NOT confirmed native animation");
+        if(mask&kharvox::actionProbeGrenade)
+            log("[ACTION-HZ][PROBE] grenade: native input pulse only, NOT confirmed throw animation");
+        if(mask&kharvox::actionProbeWeaponWheel)
+            log("[ACTION-HZ][PROBE] weapon wheel: user input state, separate existing slowdown maintained");
+    }
+}
+void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
+                                   kharvox::ActionSpeedChoice action={}){
     s.fastestDisplayPeriod=kharvox::selectFastestPlausibleDisplayPeriod(
         s.fastestDisplayPeriod,displayPeriod);
     auto& hold=s.cinematicAdaptiveTick;
@@ -689,7 +754,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         if(!copied||copied>=sizeof(text))return 0;
         char* end{};
         const long value=std::strtol(text,&end,10);
-        if(end==text||*end!='\0'||value<20||value>200)return 0;
+        if(end==text||*end!='\0'||value<30||value>240)return 0;
         return static_cast<int>(value);
     }();
     const int hzSpeedLevel=cinematicSpeedLevel;
@@ -735,6 +800,10 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             out<<" [FAST-KILLS] syncNoAdaptiveTickReadback="
                <<read(syncNoAdaptiveTickCurrentRva)<<" expected=1";
         log(out.str());
+        if(hold.lastAction!=kharvox::ActionSpeedKind::None)
+            log(std::string("[ACTION-HZ] RESTORE after ")+kharvox::actionSpeedName(hold.lastAction)
+                +" engine minHz="+std::to_string(hold.savedMinHz));
+        hold.lastAction=kharvox::ActionSpeedKind::None;
         hold.active=false;
         hold.presents=0;
     };
@@ -750,12 +819,15 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
     if(!ensureImmersiveAdaptiveTickSupport()||!image)return;
     const int detectedTarget=kharvox::targetGameHzForDisplayPeriod(s.fastestDisplayPeriod);
     if(detectedTarget<=0)return;
-    // A 20–60 Hz fine-tune overrides only the existing adaptive-tick
+    // Fine-tune overrides only the existing adaptive-tick
     // target. Native full-speed bypass and all other timing remain unchanged.
     const int cinematicTarget=cinematicFineTuneHz>0 && !fastKillsEnabled
         ?cinematicFineTuneHz
         :kharvox::cinematicKillTargetTickHz(hzSpeedLevel,detectedTarget);
-    const int effectiveTarget=cinematicTarget>0?cinematicTarget:detectedTarget;
+    // An enabled, detected action temporarily overrides the general speed;
+    // no action profile changes the normal native CVar outside its scope.
+    const int effectiveTarget=action.hz>0&&!fastKillsEnabled ?action.hz
+        :(cinematicTarget>0?cinematicTarget:detectedTarget);
     if(!hold.active){
         hold.savedAdaptiveTick=read(adaptiveTickCurrentRva);
         hold.savedMinHz=read(minHzCurrentRva);
@@ -776,9 +848,15 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
         }
         // Honor fine-tune below DOOM's saved ~30 Hz native floor only while
         // the existing cinematic hold is active; restore it on hold exit.
-        hold.targetHz=cinematicFineTuneHz>0 && !fastKillsEnabled
+        hold.targetHz=(action.hz>0 || cinematicFineTuneHz>0)&&!fastKillsEnabled
             ?effectiveTarget
             :std::max(effectiveTarget,static_cast<int>(hold.savedMinHz));
+        hold.lastAction=action.hz>0&&!fastKillsEnabled
+            ?action.kind:kharvox::ActionSpeedKind::None;
+        if(hold.lastAction!=kharvox::ActionSpeedKind::None)
+            log(std::string("[ACTION-HZ] ENTER ")+kharvox::actionSpeedName(hold.lastAction)
+                +" target="+std::to_string(hold.targetHz)
+                +" Hz; prior engine minHz="+std::to_string(hold.savedMinHz));
         hold.presents=0;
         QueryPerformanceCounter(&hold.startedAt);
         hold.active=true;
@@ -796,9 +874,19 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod){
             +" pacing="+(forceRefresh ? "original-native-adaptive-Hz-path":"DOOM-native")
             +" nativeSyncDuringHold="+std::to_string(
                 kharvox::nativeSyncAdaptiveTickDuringCinematic(fastKillsEnabled)));
-    }else if(effectiveTarget>hold.targetHz && hzSpeedLevel==1){
+    }else if(!fastKillsEnabled && action.kind!=hold.lastAction) {
+        const auto prior=hold.lastAction;
+        hold.lastAction=action.kind;
         hold.targetHz=effectiveTarget;
-        log("[CINEMATIC-HZ] faster headset cadence detected; target raised to "+std::to_string(hold.targetHz)+" Hz");
+        log(std::string("[ACTION-HZ] TRANSITION ")+kharvox::actionSpeedName(prior)
+            +" -> "+kharvox::actionSpeedName(action.kind)
+            +" target="+std::to_string(hold.targetHz)+" Hz");
+    }else if(!fastKillsEnabled && action.kind==kharvox::ActionSpeedKind::None
+        && effectiveTarget>hold.targetHz && hzSpeedLevel==1
+        && cinematicFineTuneHz==0) {
+        hold.targetHz=effectiveTarget;
+        log("[CINEMATIC-HZ] faster headset cadence detected; target raised to "
+            +std::to_string(hold.targetHz)+" Hz");
     }
     // The native fast-kill bit is independent of game tick pacing.
     // DOOM was presenting at 37-39 fps while this function forced
