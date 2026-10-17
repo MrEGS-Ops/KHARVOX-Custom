@@ -1,51 +1,60 @@
-# KHARVOX Action-Speed Diagnostic Test (Build 512+)
+# KHARVOX Sync Action Speed — focused action testing
 
-This is an **experimental engine-tick timing** test. The slider targets do not
-represent rendered FPS, and do not independently control enemy animations.
-No action profiles are enabled automatically.
+These are **experimental whole-engine tick targets**, not rendered FPS
+or independent animation clocks. No action overrides turn on automatically.
 
-## Launcher setup
+## Interface
 
-1. Under **Sync Action Speed**, tick **Advanced**.
-2. Choose a 30 Hz general target (far right) if you want a common baseline.
-3. Tick **Log Test: All detected actions** at the bottom of Advanced.
-4. Optionally tick **one** validated action profile (Glory Kill, Chainsaw,
-   Ledge climbing, Gauss Siege charge, Other scripted action) and choose a
-   different target, e.g. 80 Hz. Higher values typically slow scripted
-   animations in current KHARVOX testing. They do NOT guarantee higher FPS.
-5. Restart DOOM to load the selections. Attempt that action several times
-   and then repeat with its override disabled.
-6. Upload the latest `logs/KHARVOX.log` and launcher log.
+- Presets **1 Native, 2 90 Hz, 3 70 Hz, 4 50 Hz, 5 30 Hz** remain at the
+  top of VR Mods, outside Advanced.
+- Checking **any** of the five action overrides in Advanced greys out **all
+  five** presets. On launch, the previously chosen preset is temporarily
+  replaced by Native (1) as the between-action baseline; the saved choice is
+  not deleted.
+- Uncheck the overrides, or collapse Advanced (which suspends their runtime
+  effects), to restore the saved preset selection.
+- Five editable action targets: **Glory Kill, Chainsaw kill, Ledge climbing,
+  Gauss Siege charge, Scripted action**. They start unchecked.
+- Sliders have no tick-mark clutter. **Right = faster synchronized action
+  (30 Hz); left = slower action (240 Hz)** based on the current experiment.
+  A higher tick target does not guarantee higher actual frame rate.
+- **Log action events (melee + grenade probes)** is the only read-only
+  diagnostic option. Melee and grenade markers are input pulses, not
+  confirmed animation start/end boundaries.
+- Removed dead controls: weapon reload, enemy animation, boss sequence and
+  weapon wheel probes. Their absent per-animation hooks were never usable
+  for independent timing; weapon wheel retains its existing slowdown.
 
-## Log markers
+## Controlled test
 
-- `[ACTION-HZ] ENTER <action> target=... Hz`: selected, verified trigger.
-- `[ACTION-HZ] TRANSITION <old> -> <new>`: two action states or fallback
-  to baseline while the native cinematic hold is still active.
-- `[ACTION-HZ][TEST] ... completed; presents=... elapsedMs=... measuredPresentHz=...`:
-  event duration and observed presentation rate, not unique engine frames.
-- `[ACTION-HZ] RESTORE ... engine minHz=...`: saved CVars restored after the
-  scoped override ends. **Confirm this for each action**.
-- `[ACTION-HZ][PROBE]`: read-only state edges, including melee input,
-  grenade throw input, boss camera state, weapon wheel, native sync and ledge.
-- `UNAVAILABLE`: native reload and per-enemy animation lifecycle hooks are
-  **not verified**. Their checkboxes only enable diagnostic reporting; their
-  grey sliders do not change any speed.
-- `[CINEMATIC-HZ]`: the existing adaptive-tick CVar path and full-hold
-  presentation counts.
+1. Select preset 3 or 5, tick Advanced, then tick **one** action override.
+   Confirm all five preset buttons grey out, preserving their selected value.
+2. Set the action's slider e.g. 200 Hz, tick **Log action events**, restart DOOM.
+3. Perform the action several times and capture `logs/KHARVOX.log`.
+4. Disable its checkbox and verify the saved preset bar is enabled. Repeat
+   the same action with comparable conditions. Compare individual launches,
+   not unrelated 30 Hz and 200 Hz sessions.
+5. Repeat for Gauss: *equipping* Gauss must not start an action override.
+   Active Siege charge should produce a state edge only while firing.
 
-## Safety boundaries and experiment design
+## Log evidence
 
-- Fast Glory Kills and Fast Chainsaw Kills retain higher priority; the
-  proven sync_noAdaptiveTick native bypass must not be overwritten.
-- Action Hz affects the *whole engine tick while an action is detected*,
-  not only that animation. Ledge, Gauss, and scripted profiles are
-  **experimental**. Keep them OFF except for controlled tests.
-- A profile is disabled automatically when its native state is no longer
-  detected. Original CVar values are restored, including when VR stops.
-- Never claim enemy-specific or weapon-reload-specific speed control based
-  on a button press. Logs only identify what is actually observed.
-- Compare the **same execution type** under baseline and selected Hz.
-  Turn on one timing profile at a time before testing overlap/priority.
-- If a kill causes a headset snap, a black frame, nausea, or engine instability,
-  discontinue that profile and provide its logs. Keep backup Build #473.
+- `[ACTION-HZ] ENTER ... target=... Hz`: verified active override.
+- `[ACTION-HZ] TRANSITION ...`: action state changed within a native hold.
+- `[ACTION-HZ][TEST] ... elapsedMs=... measuredPresentHz=...`: event
+  duration and presentation estimate (not unique simulation frames).
+- `[ACTION-HZ] RESTORE ... engine minHz=...`: original values restored.
+- `[ACTION-HZ][PROBE]`: melee/grenade **input edges**, and the five
+  confirmed native action states, with no unsupported animation claims.
+- `[CINEMATIC-HZ]`: shared adaptive-tick CVar policy and hold accounting.
+
+## Safety
+
+- Fast Glory Kills and Fast Chainsaw Kills always take precedence and
+  preserve the previously verified `sync_noAdaptiveTick` native bypass.
+- All action Hz overrides are scoped and experimental. The active
+  whole-engine rate can also affect other nearby gameplay; no per-enemy
+  animation clock is implemented.
+- The game CVars are restored after action/hold exit.
+- Keep backup Build #473, and stop any override test that produces a VR
+  snap, black frame, discomfort or engine instability.
