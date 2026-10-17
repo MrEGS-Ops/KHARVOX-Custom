@@ -2730,6 +2730,7 @@ void updateGameplayActions(XrTime displayTime){
             ||displayTime<s.weaponSwitchPulseUntil);
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&((weaponSelectDown&&s.weaponWheelOpened)||s.wheelCancelDrain.active());
+    s.actionSpeedWheelObserved=weaponWheelActive;
     if(weaponWheelActive!=s.hudWeaponWheelPresented){
         // Reset renderer-local wheel transform/pivot at BOTH edges. Original
         // native menu size and distance remain unchanged.
@@ -5423,12 +5424,43 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     }
     const bool comfortInteractiveParticipant=
         s.comfortInteractiveParticipantActive;
-    updateImmersiveCinematicRefresh(
-        !KharvoxCameraBossSequenceActive()&&kharvox::shouldHoldImmersiveRefresh(
+    const bool bossAction=KharvoxCameraBossSequenceActive();
+    const bool syncAction=KharvoxCameraSyncAttackActive();
+    const bool chainsawAction=s.chainsawKillLatched
+        &&(syncAction||KharvoxCameraCutsceneActive());
+    const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
+    const bool gaussAction=KharvoxWeaponGaussSiegeChargeActive()
+        &&KharvoxCameraGameplayActive();
+    const bool scriptedAction=upgradeCinematicRefreshGuard
+        ||(nativeAdaptiveParticipantGuard&&!syncAction&&!chainsawAction&&!ledgeAction);
+    logActionSpeedProbes(s.meleePressed,
+        frame.predictedDisplayTime<s.equipmentThrowPulseUntil,bossAction,
+        s.actionSpeedWheelObserved,syncAction,chainsawAction,
+        ledgeAction,gaussAction,scriptedAction);
+    const bool originalCinematicHold=!bossAction
+        &&kharvox::shouldHoldImmersiveRefresh(
             s.immersiveCinematics||comfortInteractiveParticipant,s.quadMode,
             KharvoxCameraCutsceneActive(),upgradeCinematicRefreshGuard,
-            nativeAdaptiveParticipantGuard),
-        frame.predictedDisplayPeriod);
+            nativeAdaptiveParticipantGuard);
+    const bool actionProfileEligible=s.immersiveCinematics&&!s.quadMode
+        &&!bossAction&&KharvoxCameraWorldActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
+        &&!KharvoxHudFullscreenMenuActive()&&!KharvoxHudTutorialActive();
+    const auto selectedAction=actionProfileEligible
+        ?kharvox::selectActionSpeed(
+            {syncAction,chainsawAction,ledgeAction,gaussAction,scriptedAction},
+            actionSpeedTargets())
+        :kharvox::ActionSpeedChoice{};
+    // External opt-ins do not steal normal movement or alter the native
+    // fast-kill bypass. A selected profile may briefly arm the existing
+    // reversible CVar hold outside an immersive cinematic (ledge/charge).
+    const bool fastKillsRequested=s.customMods.fastGloryKills
+        ||s.customMods.fastChainsawKills;
+    const auto activeAction=fastKillsRequested
+        ?kharvox::ActionSpeedChoice{}:selectedAction;
+    updateImmersiveCinematicRefresh(
+        originalCinematicHold||activeAction.hz>0,
+        frame.predictedDisplayPeriod,activeAction);
     updateCinewindowAnchor(vs,frame.predictedDisplayTime);
     kharvox::hudgpu::QuadCandidate hudSource{};
     const bool hudQuadRequested = !s.quadMode
