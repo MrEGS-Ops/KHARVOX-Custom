@@ -114,8 +114,12 @@ internal static class FirstPartyDoomModGenerator
         int secondsCount, attackersCount;
         text = EditScalar(text, "secondsBetweenUses", cooldown, out secondsCount);
         text = EditScalar(text, "maxSimultaneousUsers", simultaneous.ToString(), out attackersCount);
-        if (secondsCount != attackersCount)
-            throw new InvalidDataException("AI cooldown and simultaneous attacker fields differ");
+        // Real DOOM aiGlobalSettings has legitimate differing field counts:
+        // the cooldown and simultaneous-user values are configured in
+        // different sets of token entries. Require each actual field to
+        // exist, but do not assume a one-to-one correspondence.
+        if (secondsCount < 1 || attackersCount < 1)
+            throw new InvalidDataException("Original AI settings missing a required numeric field");
         return text;
     }
 
@@ -307,6 +311,14 @@ internal static class FirstPartyDoomModGenerator
             + " maxLimbsToRemove = 3;\r\n gibImpulse = 25;\r\n } }\r\n";
         string a = Aggressive(aiText, 6, "0.5");
         string b = EnhancedGibs(gibText, 2, 5, 48);
+        // Real v5 AI declarations do not always contain equal numbers of
+        // cooldown and simultaneous-attacker settings.
+        string asymmetricAi = aiText.Replace(
+            " maxSimultaneousUsers = 2;", " maxSimultaneousUsers = 2;\n maxSimultaneousUsers = 3;");
+        string asymmetricResult = Aggressive(asymmetricAi, 6, "0.5");
+        if (Regex.Matches(asymmetricResult, @"maxSimultaneousUsers = 6;").Count != 2
+            || Regex.Matches(asymmetricResult, @"secondsBetweenUses = 0.5;").Count != 1)
+            return false;
         if (!a.Contains("secondsBetweenUses = 0.5;")
             || !a.Contains("maxSimultaneousUsers = 6;")
             || !b.Contains("minLimbsToRemove = 2;")
