@@ -15,6 +15,7 @@
 #include "CameraHook.h"
 #include "CameraBasisPolicy.h"
 #include "PlayerControlPolicy.h"
+#include "../openxr/StoryFreeWalkPolicy.h"
 #include "../common/RuntimePaths.h"
 #include "../hud/HudHook.h"
 #include "../weapon/WeaponHook.h"
@@ -3342,6 +3343,110 @@ bool KharvoxCameraPlayerWeaponControlActive() {
 #else
     return kharvox::playerWeaponControlAvailable(*flagsAddress);
 #endif
+}
+
+bool KharvoxCameraApplyStoryFreeWalk(bool requested, bool eligible) {
+    // DOOM 6.66 reflected player field, validated at startup.
+    // The low two directional inhibit bits are known in related idTech;
+    // corroborate against this DOOM binary's live gameplay baseline AND
+    // a stable, independent cinematic transition before touching memory.
+    constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
+    static uintptr_t baselineOwner{};
+    static std::uint32_t baselineFlags{};
+    static bool baselineKnown{};
+    static bool wasRequested{};
+    static std::uint32_t candidateMask{};
+    static unsigned candidateFrames{};
+    static bool verifiedMovementBits{};
+    static unsigned long long nextReasonLogMs{};
+    const auto now=GetTickCount64();
+    const bool cutscene=KharvoxCameraCutsceneActive();
+    const uintptr_t owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    const bool classifier=playerControlClassifierSupported.load(
+        std::memory_order_acquire);
+    const bool ownerReady=classifier
+        &&playerPhysicsOriginValid.load(std::memory_order_acquire)
+        &&owner&&owner<=UINTPTR_MAX-inhibitFlagsOffset-sizeof(std::uint32_t);
+    volatile LONG* flagsAddress=ownerReady
+        ?reinterpret_cast<volatile LONG*>(owner+inhibitFlagsOffset):nullptr;
+    std::uint32_t current{};
+    const bool readable=flagsAddress
+        &&readableMemory(const_cast<const LONG*>(flagsAddress),sizeof(LONG))
+        &&readInterlockedLongSafely(flagsAddress,current);
+
+    if(!requested||!eligible||!cutscene) {
+        if(wasRequested)
+            log("[STORY-FREE-WALK] request OFF; DOOM resumes ownership of movement inhibition");
+        wasRequested=false;
+        candidateMask=0;
+        candidateFrames=0;
+        verifiedMovementBits=false;
+        if(readable&&!cutscene&&KharvoxCameraGameplayActive()
+            &&(current&kharvox::storyHorizontalInhibitMask)==0) {
+            baselineOwner=owner;
+            baselineFlags=current;
+            baselineKnown=true;
+        }
+        return false;
+    }
+    if(!wasRequested){
+        log("[STORY-FREE-WALK] request ON; checking native player movement-only inhibits");
+        wasRequested=true;
+        nextReasonLogMs=0;
+    }
+    const bool samePlayer=baselineKnown&&owner==baselineOwner;
+    if(!readable||!samePlayer
+        ||(baselineFlags&kharvox::storyHorizontalInhibitMask)!=0) {
+        if(now>=nextReasonLogMs) {
+            log(std::string("[STORY-FREE-WALK] fail closed: ")
+                +(readable?"no matching unrestricted gameplay baseline"
+                    :"native player inhibit flags unavailable"));
+            nextReasonLogMs=now+2500;
+        }
+        return false;
+    }
+    const std::uint32_t movementBits=
+        current&kharvox::storyHorizontalInhibitMask;
+    if(!movementBits) {
+        if(now>=nextReasonLogMs) {
+            log("[STORY-FREE-WALK] no horizontal inhibit bit observed; motion may be held by cinematic physics/anchor");
+            nextReasonLogMs=now+2500;
+        }
+        return verifiedMovementBits;
+    }
+    if(candidateMask!=movementBits) {
+        candidateMask=movementBits;
+        candidateFrames=1;
+    }else if(candidateFrames<6) {
+        ++candidateFrames;
+    }
+    if(candidateFrames<6) return false;
+    if(!kharvox::storyHorizontalWriteAllowed(
+            classifier,samePlayer,cutscene,baselineKnown,baselineFlags,current)
+        ||!writableMemory(const_cast<const LONG*>(flagsAddress),sizeof(LONG))) {
+        if(now>=nextReasonLogMs) {
+            log("[STORY-FREE-WALK] movement-specific write gate rejected; engine flags unchanged");
+            nextReasonLogMs=now+2500;
+        }
+        return false;
+    }
+    // Strictly horizontal inhibit 0x01 and 0x02, never all inhibit flags.
+    // The engine's other control, cutscene, and objective states remain intact.
+    if(!clearInterlockedMaskSafely(flagsAddress,movementBits)) {
+        log("[STORY-FREE-WALK] safe atomic horizontal inhibit clear FAILED");
+        return false;
+    }
+    if(!verifiedMovementBits) {
+        verifiedMovementBits=true;
+        std::ostringstream out;
+        out<<"[STORY-FREE-WALK] horizontal inhibit release APPLIED"
+            <<" before=0x"<<std::hex<<current
+            <<" mask=0x"<<movementBits
+            <<" baseline=0x"<<baselineFlags<<std::dec
+            <<" (walking still requires headset verification)";
+        log(out.str());
+    }
+    return true;
 }
 
 void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
