@@ -1801,14 +1801,27 @@ public sealed partial class MainForm : Form
     }
 
     private bool HasActiveActionSpeedOverrides() =>
-        speedAdvanced.Checked && ActionSpeedCatalog.Controllable.Any(key =>
-            speedActionChecks.TryGetValue(key,out var box) && box.Checked);
+        ActionSpeedCatalog.Controllable.Any(key =>
+            speedActionChecks.TryGetValue(key,out var check) && check.Checked);
+
+    // Advanced only controls panel visibility; never whether an active
+    // preset applies. Native (0), Fast (1), Maximum (2), Custom (3).
+    private int SelectedActionSpeedPreset()
+    {
+        if(!HasActiveActionSpeedOverrides())return 0;
+        if(ScopedActionKeys.All(key => speedActionChecks[key].Checked))
+        {
+            var hz=ScopedActionKeys.Select(key=>270-speedActionSliders[key].Value).ToArray();
+            if(hz.SequenceEqual(new[]{70,70,70}))return 1;
+            if(hz.SequenceEqual(new[]{30,40,50}))return 2;
+        }
+        return 3;
+    }
 
     private void UpdateCinematicKillSpeedLabel()
     {
-        var overrides=HasActiveActionSpeedOverrides();
-        var selectedIndex=cinematicFullSpeedMode?5:cinematicKillSpeed.Value-1;
-        if(cinematicSpeedSelector.Items.Count==6
+        var selectedIndex=SelectedActionSpeedPreset();
+        if(cinematicSpeedSelector.Items.Count==4
             &&cinematicSpeedSelector.SelectedIndex!=selectedIndex)
         {
             refreshingSpeedSelector=true;
@@ -1817,22 +1830,23 @@ public sealed partial class MainForm : Form
         }
         RefreshSpeedAdvancedVisibility();
         UpdateActionSpeedLabels();
-        var enabled=!overrides;
-        cinematicSpeedSelector.Enabled=enabled;
-        cinematicKillSpeed.Enabled=enabled;
-        cinematicKillSpeedTitle.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
-        cinematicKillSpeedValue.ForeColor=enabled?Color.WhiteSmoke:Color.Gray;
-        cinematicKillSpeedValue.Text=overrides?"Action override active":"";
-        var mode=cinematicFullSpeedMode?"Full speed":cinematicKillSpeed.Value switch{
-            1=>"Native", 2=>"90 Hz", 3=>"70 Hz", 4=>"50 Hz", _=>"30 Hz"
+        cinematicSpeedSelector.Enabled=true;
+        cinematicKillSpeed.Enabled=false; // retired shared mode, not rendered
+        cinematicKillSpeedTitle.ForeColor=Color.WhiteSmoke;
+        cinematicKillSpeedValue.ForeColor=Color.WhiteSmoke;
+        cinematicKillSpeedValue.Text=selectedIndex switch {
+            0=>"Game native",1=>"Fast actions",2=>"Maximum actions",
+            _=>"Custom override"
         };
-        var explanation=overrides
-            ?"Action override is active. The shared speed choice is paused and "
-                +"Native timing applies between actions. Uncheck all overrides "
-                +"or collapse Advanced to restore saved "+mode+"."
-            :"Sync Action Speed = "+mode+". The Full speed option uses the "
-                +"proven native no-slowmo bypass for Glory Kill and chainsaw, "
-                +"not the experimental 30 Hz tick setting. Restart DOOM.";
+        var explanation=selectedIndex switch {
+            0=>"DOOM's original action timings. No engine tick override.",
+            1=>"Fast: Glory Kill 70 Hz, Chainsaw 70 Hz, Ledge 70 Hz.",
+            2=>"Maximum: Glory Kill 30 Hz, Chainsaw 40 Hz, Ledge 50 Hz.",
+            _=>"Custom: manually changed action checkbox or slider."
+        };
+        explanation += " Scripted cinematics always remain DOOM native. "
+            +"Advanced only shows or hides the sliders; it never disables "
+            +"their active settings. Restart DOOM after adjustments.";
         statusToolTip.SetToolTip(cinematicKillSpeedTitle,explanation);
         statusToolTip.SetToolTip(cinematicKillSpeedValue,explanation);
         cinematicKillSpeed.AccessibleDescription=explanation;
@@ -2031,9 +2045,9 @@ public sealed partial class MainForm : Form
         PhysicalChainsawGestures = false,
         // Existing native flags remain as the runtime contract, now owned
         // by the single Full speed choice rather than draggable mod checkboxes.
-        FastGloryKills = cinematicFullSpeedMode,
-        FastChainsawKills = cinematicFullSpeedMode,
-        CinematicKillSpeedLevel = cinematicKillSpeed.Value,
+        FastGloryKills = false,
+        FastChainsawKills = false,
+        CinematicKillSpeedLevel = 1,
         CinematicSpeedFineTune = false,
         SpeedAdvancedExpanded = speedAdvanced.Checked,
         CinematicSpeedFineTuneHz = 30,
@@ -2089,8 +2103,10 @@ public sealed partial class MainForm : Form
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customStoryCinematicSkip.Checked = mods.StoryCinematicSkip;
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
-            cinematicFullSpeedMode=mods.FastGloryKills||mods.FastChainsawKills;
-            cinematicKillSpeed.Value=Math.Max(1,Math.Min(5,mods.CinematicKillSpeedLevel));
+            // Legacy shared engine-speed presets have been retired. Native
+            // between actions is the unambiguous default for the new menu.
+            cinematicFullSpeedMode=false;
+            cinematicKillSpeed.Value=1;
             // Legacy fine tune files expand Advanced so no active override is hidden.
             speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
             foreach(string key in ActionSpeedCatalog.All){
