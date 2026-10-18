@@ -159,8 +159,16 @@ internal static class FirstPartyDoomModGenerator
         string baseDir = Path.Combine(game, "base");
         string indexPath = Path.Combine(baseDir, "gameresources.index");
         string resourcesPath = Path.Combine(baseDir, "gameresources.resources");
+        // ZIP/extractor names append ";type", but DOOM's binary index
+        // stores the resource filename and resource FileType separately.
+        // Never search the index for the exported "path;type" as a filename.
+        int separator = relative.LastIndexOf(';');
+        if (separator <= 0 || separator == relative.Length - 1)
+            throw new InvalidDataException("Malformed typed DOOM resource name: " + relative);
+        string requiredPath = relative.Substring(0, separator);
+        string requiredType = relative.Substring(separator + 1);
         long offset = -1;
-        int plain = 0, stored = 0, found = 0;
+        int plain = 0, stored = 0, found = 0, pathMatches = 0, typeMatches = 0;
         using (var stream = new FileStream(indexPath, FileMode.Open, FileAccess.Read, FileShare.Read))
         using (var reader = new BinaryReader(stream, Encoding.UTF8)) {
             if (Encoding.ASCII.GetString(reader.ReadBytes(4)) != "\x05SER")
@@ -174,21 +182,38 @@ internal static class FirstPartyDoomModGenerator
                 throw new InvalidDataException("Invalid original resource record count");
             for (uint i = 0; i < records; ++i) {
                 reader.ReadBytesExact(4);
-                ReadName(reader); ReadName(reader);
-                var name = ReadName(reader);
+                string fileType = ReadName(reader);
+                string shortName = ReadName(reader);
+                string fullName = ReadName(reader);
+                var name = string.IsNullOrEmpty(fullName) ? shortName : fullName;
                 long valueOffset = ReadBigInt64(reader);
                 int valuePlain = ReadBigInt32(reader);
                 int valueStored = ReadBigInt32(reader);
                 ReadBigInt32(reader); // flags
                 byte patch = reader.ReadByte();
-                if (!string.Equals(name, relative, StringComparison.OrdinalIgnoreCase)) continue;
+                bool pathMatchesHere = string.Equals(name, requiredPath,
+                    StringComparison.OrdinalIgnoreCase);
+                bool typeMatchesHere = string.Equals(fileType, requiredType,
+                    StringComparison.OrdinalIgnoreCase);
+                if (pathMatchesHere) ++pathMatches;
+                if (typeMatchesHere) ++typeMatches;
+                if (!pathMatchesHere || !typeMatchesHere) continue;
                 ++found;
                 if (patch != 0)
                     throw new InvalidDataException("Target declaration is patched; restore original files");
                 offset = valueOffset; plain = valuePlain; stored = valueStored;
             }
-            if (stream.Position != stream.Length || found != 1)
-                throw new InvalidDataException("Original resource absent/ambiguous in game index: " + relative);
+            if (stream.Position != stream.Length)
+                throw new InvalidDataException("DOOM index record layout or record count is invalid");
+            if (found != 1)
+                throw new InvalidDataException("DOOM original resource lookup "
+                    + (found == 0 ? "not found" : "ambiguous") + ": " + relative
+                    + " (exact typed matches=" + found
+                    + ", path matches=" + pathMatches
+                    + ", type matches=" + typeMatches + "). "
+                    + "Expected the original filename and FileType separately. "
+                    + "If the target is absent from the base index, a newer patched "
+                    + "resource index may be in use; no resource was modified.");
         }
         if (plain < 3 || plain > 2_000_000 || stored < 1 || stored > 2_000_000)
             throw new InvalidDataException("Unexpected original resource size");
@@ -293,6 +318,9 @@ internal static class FirstPartyDoomModGenerator
             }
             using (var entries = new MemoryStream())
             using (var eb = new BinaryWriter(entries, Encoding.UTF8, true)) {
+                // Same path with the WRONG type is a deliberate decoy:
+                // an index match must verify both path and fileType.
+                WriteFixtureRecord(eb, Ai, 4, sourceAi.Length, packedAi.Length, "wrongType");
                 WriteFixtureRecord(eb, Ai, 4, sourceAi.Length, packedAi.Length);
                 WriteFixtureRecord(eb, Gib, 4 + packedAi.Length, sourceGib.Length, sourceGib.Length);
                 eb.Flush();
@@ -301,7 +329,7 @@ internal static class FirstPartyDoomModGenerator
                     header.Write(new byte[] { 5, 83, 69, 82 });
                     WriteFixtureBig(header, checked((uint)(4 + entries.Length)));
                     header.Write(new byte[24]);
-                    WriteFixtureBig(header, (uint)2);
+                    WriteFixtureBig(header, (uint)3);
                     header.Write(entries.ToArray());
                 }
             }
@@ -329,11 +357,16 @@ internal static class FirstPartyDoomModGenerator
         }
     }
 
-    private static void WriteFixtureRecord(BinaryWriter writer, string name, long offset, int plain, int stored)
+    private static void WriteFixtureRecord(BinaryWriter writer, string name, long offset, int plain, int stored,
+        string? typeOverride = null)
     {
+        var separator = name.LastIndexOf(';');
+        if (separator <= 0 || separator == name.Length - 1)
+            throw new InvalidDataException("Invalid synthetic DOOM resource type");
         writer.Write(new byte[] { 0, 0, 0, 1 });
-        WriteFixtureName(writer, "original"); WriteFixtureName(writer, "default");
-        WriteFixtureName(writer, name);
+        WriteFixtureName(writer, typeOverride ?? name.Substring(separator + 1));
+        WriteFixtureName(writer, "default");
+        WriteFixtureName(writer, name.Substring(0, separator));
         foreach (byte b in BitConverter.GetBytes(offset).Reverse()) writer.Write(b);
         WriteFixtureBig(writer, unchecked((uint)plain));
         WriteFixtureBig(writer, unchecked((uint)stored));
