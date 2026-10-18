@@ -110,6 +110,10 @@ volatile LONG immersiveCinematicFovRequested{};
 volatile LONG immersiveCinematicFovHookActive{};
 volatile LONG immersiveCinematicFreelookRequested{};
 volatile LONG storyCameraFocusRequested{};
+// Native ledge SetState is authored by DOOM on the gameplay thread.
+// Its active flag may disappear before the final climbing cutscene camera
+// frames: latch until the gameplay camera itself returns.
+std::atomic<bool> storyFocusLedgeCinematicHeld{};
 std::atomic<float> stereoEyeOffset{};
 std::atomic<float> stereoFovX{};
 std::atomic<float> stereoFovY{};
@@ -500,6 +504,8 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     const uintptr_t owner = *reinterpret_cast<const uintptr_t*>(mechanic + 0x10);
     playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
     playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
+    if(newState!=-1 && !storyFocusLedgeCinematicHeld.exchange(true,std::memory_order_acq_rel))
+        log("[STORY-FOCUS] ledge transition captured: authored story yaw excluded until gameplay camera returns");
 }
 
 bool installPlayerLedgeStateCapture(unsigned char* image) {
@@ -1153,6 +1159,7 @@ void invalidateLevelReferences() {
     playerPhysicsOwner.store(0, std::memory_order_release);
     playerLedgeTransitionOwner.store(0, std::memory_order_release);
     playerLedgeTransitionActive.store(false, std::memory_order_release);
+    storyFocusLedgeCinematicHeld.store(false, std::memory_order_release);
     playerPhysicsCapturePresent.store(0, std::memory_order_release);
     stableBodyViewOffsetValid.store(false, std::memory_order_release);
     stableBodyViewOffsetOwner.store(0, std::memory_order_release);
@@ -2085,6 +2092,7 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
                     KharvoxCameraSyncAttackActive(),
                     latestChainsawTakedownCinematic.load(std::memory_order_acquire),
                     KharvoxCameraLedgeTransitionActive(),
+                    storyFocusLedgeCinematicHeld.load(std::memory_order_acquire),
                     KharvoxCameraBossSequenceActive());
             float hmdBasis[9]{};
             if(independentStoryFocus) {
@@ -2184,6 +2192,9 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         return;
     }
     const bool gameplayCamera = callerRva == 0xE3F96A;
+    if(gameplayCamera&&!KharvoxCameraLedgeTransitionActive()
+        &&storyFocusLedgeCinematicHeld.exchange(false,std::memory_order_acq_rel))
+        log("[STORY-FOCUS] native ledge cinematic ended; story yaw eligible again on independent scenes");
     const bool cinematicEnded = gameplayCamera
         && cutsceneActive.exchange(false, std::memory_order_acq_rel);
     if (cinematicEnded) {
