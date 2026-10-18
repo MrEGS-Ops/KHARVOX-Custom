@@ -560,7 +560,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = options.WeaponWheelRemapEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = options.WeaponWheelRemapEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] =
-                (actionOverridesActive ? 10 : options.GloryKillSlowmoLevel).ToString(Invariant);
+                "10"; // Three presets own speed; disable legacy shared sync speed
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_WEAPON_WHEEL"] = customMods.DisableWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_GAUSS_SLOW_CHARGE"] = customMods.GaussChargeSlowMovement ? "1" : "0";
@@ -571,9 +571,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_FAST_CHAINSAW_KILLS"] = nativeFullSpeed ? "1" : "0";
             // Preserve selected mode in settings while action overrides run
             // against normal/native baseline timing.
-            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] =
-                (actionOverridesActive ? 1 : Math.Max(1, Math.Min(5, customMods.CinematicKillSpeedLevel)))
-                .ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_KILL_SPEED"] = "1";
             // Disable the deprecated global tick slider even for old saved profiles.
             psi.EnvironmentVariables["KHARVOX_MOD_CINEMATIC_FINE_TUNE_HZ"] = "0";
             // Separate action triggers only activate their own scoped override.
@@ -584,14 +582,17 @@ internal static class KharvoxRunner
                 var p = customMods.ActionSpeedProfiles.TryGetValue(actionKey, out var value)
                     ? value : new ActionSpeedSetting();
                 psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + actionKey.ToUpperInvariant() + "_HZ"] =
-                    (customMods.SpeedAdvancedExpanded && p.Enabled)
+                    (p.Enabled)
                         ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
             }
+            // Story cinematics are never given an action-speed override,
+            // even when older saved settings had this enabled.
+            psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_CINEMATIC_HZ"] = "0";
             // One log switch; native logs only melee/grenade input pulses
             // alongside verified action transitions. No fake animation clocks.
+            // Optional debug logging is independent of whether Advanced is open.
             psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_PROBES"] =
-                customMods.SpeedAdvancedExpanded && customMods.ActionSpeedLogTestEnabled
-                    ? "1" : "0";
+                customMods.ActionSpeedLogTestEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAND_FOCUS_RS"] = customMods.HandFocusedRs ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DIRECTIONAL_DASH"] = customMods.DirectionalDash ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL"] = customMods.BehindHeadWeaponWheel ? "1" : "0";
