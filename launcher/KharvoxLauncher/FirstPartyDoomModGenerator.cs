@@ -380,13 +380,13 @@ internal static class FirstPartyDoomModGenerator
                 if (!Utf8Strict.GetString(copy.ToArray()).Contains("gibImpulse = 48;"))
                     return false;
             }
-            // Simulate a legitimate same-path index entry WITHOUT ;type.
+            // Simulate the older same-path spelling WITH ;type.
             // Generator must use the original index resource name in its ZIP,
             // not a guessed path that can silently fail to override anything.
-            string bareAi = Ai.Substring(0, Ai.IndexOf(';'));
+            string typedAi = Ai + ";" + AiType;
             using (var records = new MemoryStream())
             using (var recordWriter = new BinaryWriter(records, Encoding.UTF8, true)) {
-                WriteFixtureRecord(recordWriter, bareAi, 4, sourceAi.Length, packedAi.Length);
+                WriteFixtureRecord(recordWriter, typedAi, 4, sourceAi.Length, packedAi.Length);
                 WriteFixtureRecord(recordWriter, Gib, 4 + packedAi.Length, sourceGib.Length, sourceGib.Length);
                 recordWriter.Flush();
                 using (var indexStream = File.Create(Path.Combine(baseDir, "gameresources.index")))
@@ -401,7 +401,7 @@ internal static class FirstPartyDoomModGenerator
             string aliasOut = Path.Combine(root, "alias-out");
             GenerateFromGame(game, aliasOut);
             using (var archive = ZipFile.OpenRead(Path.Combine(aliasOut, AiArchive))) {
-                if (archive.Entries.Count != 1 || archive.Entries[0].FullName != bareAi)
+                if (archive.Entries.Count != 1 || archive.Entries[0].FullName != typedAi)
                     return false;
                 using (var entry = archive.Entries[0].Open())
                 using (var copy = new MemoryStream()) {
