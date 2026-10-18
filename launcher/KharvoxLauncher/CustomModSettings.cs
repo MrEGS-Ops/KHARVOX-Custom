@@ -197,45 +197,41 @@ internal static class CustomModSettingsStore
             Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true }, path);
             if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload)
                 throw new InvalidDataException("Valid custom mod option was lost.");
-            // Legacy builds stored unsupported animation/probe sliders.
-            // Migrated settings must prune them, preserve usable actions,
-            // and activate exclusive preset mode only when Advanced is open.
-            var profiles = new CustomModSettings { SpeedAdvancedExpanded = true };
-            profiles.ActionSpeedProfiles["glory"] =
-                new ActionSpeedSetting { Enabled = true, TargetHz = 200 };
-            profiles.ActionSpeedProfiles["enemy"] =
-                new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
-            profiles.ActionSpeedProfiles["reload"] =
-                new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
-            profiles.ActionSpeedProfiles["scripted"] =
-                new ActionSpeedSetting { Enabled = true, TargetHz = 240 };
+            // Old broad/scripted sliders must be dropped, even if saved ON.
+            // Advanced is presentation only and may not deactivate presets.
+            var profiles=new CustomModSettings { SpeedAdvancedExpanded=false };
+            profiles.ActionSpeedProfiles["glory"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=200
+            };
+            profiles.ActionSpeedProfiles["enemy"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=240
+            };
+            profiles.ActionSpeedProfiles["reload"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=240
+            };
+            profiles.ActionSpeedProfiles["scripted"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=240
+            };
+            profiles.ActionSpeedProfiles["cinematic"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=170
+            };
             ActionSpeedCatalog.Validate(profiles);
-            if (profiles.ActionSpeedProfiles.Count != 4
+            if(profiles.ActionSpeedProfiles.Count!=3
+                || profiles.ActionSpeedProfiles.ContainsKey("scripted")
+                || profiles.ActionSpeedProfiles.ContainsKey("cinematic")
                 || profiles.ActionSpeedProfiles.ContainsKey("enemy")
                 || profiles.ActionSpeedProfiles.ContainsKey("reload")
-                || profiles.ActionSpeedProfiles.ContainsKey("gauss")
-                || profiles.ActionSpeedProfiles.ContainsKey("scripted")
-                || !profiles.ActionSpeedProfiles.ContainsKey("cinematic")
-                || profiles.ActionSpeedProfiles["cinematic"].Enabled
-                || !ActionSpeedCatalog.HasActiveOverrides(profiles)
-                || profiles.ActionSpeedProfiles["glory"].TargetHz != 200)
-                throw new InvalidDataException("Legacy dead probes must be removed without losing action choices.");
-            // The new Foundry-specific override must NOT inherit the older
-            // broad, unverified "scripted" probe's enabled state.
-            profiles.ActionSpeedProfiles["cinematic"] =
-                new ActionSpeedSetting { Enabled = true, TargetHz = 170 };
-            ActionSpeedCatalog.Validate(profiles);
-            if (!ActionSpeedCatalog.HasActiveOverrides(profiles)
-                || profiles.ActionSpeedProfiles["cinematic"].TargetHz != 170)
-                throw new InvalidDataException("Scripted cinematic settings were not preserved.");
-            profiles.SpeedAdvancedExpanded = false;
-            if (ActionSpeedCatalog.HasActiveOverrides(profiles))
-                throw new InvalidDataException("Collapsed Advanced must suspend selected overrides.");
-            profiles.SpeedAdvancedExpanded = true;
-            profiles.ActionSpeedProfiles["glory"].Enabled = false;
-            profiles.ActionSpeedProfiles["cinematic"].Enabled = false;
-            if (ActionSpeedCatalog.HasActiveOverrides(profiles))
-                throw new InvalidDataException("Inactive overrides must restore preset mode.");
+                || !profiles.ActionSpeedProfiles["glory"].Enabled
+                || profiles.ActionSpeedProfiles["glory"].TargetHz!=200
+                || !ActionSpeedCatalog.HasActiveOverrides(profiles))
+                throw new InvalidDataException("Migrate old action settings without retaining cinematic tick override.");
+            profiles.SpeedAdvancedExpanded=true;
+            if(!ActionSpeedCatalog.HasActiveOverrides(profiles))
+                throw new InvalidDataException("Advanced expansion must not change applied speeds.");
+            profiles.SpeedAdvancedExpanded=false;
+            profiles.ActionSpeedProfiles["glory"].Enabled=false;
+            if(ActionSpeedCatalog.HasActiveOverrides(profiles))
+                throw new InvalidDataException("Native timing must restore when all action overrides are disabled.");
             // Existing preferences receive newly tested mods exactly once.
             // A later explicit uncheck must survive all subsequent launches.
             Save(new CustomModSettings
