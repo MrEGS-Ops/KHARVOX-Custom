@@ -30,6 +30,7 @@
 #include "GameImageLifetime.h"
 #include "../camera/CameraHook.h"
 #include "../camera/StoryCameraFocusPolicy.h"
+#include "ActionExitHandoffPolicy.h"
 #include "../debug/CameraScanner.h"
 #include "../hud/HudGpuDiagnostic.h"
 #include "../hud/HudHook.h"
@@ -3840,7 +3841,7 @@ bool createGameplayActions(){
         +" storyFreeWalkRS="+(s.customMods.storyFreeWalk?"ON (experimental horizontal movement)":"off")
         +" storyCameraFocus="+(s.customMods.storyCameraFocus?"ON (native scripted heading test)":"off")
         +" uninterruptedStory="+(s.customMods.uninterruptedStory?"ON (automatic hold analyzer)":"off")
-        +" actionExit40ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
+        +" actionExitGK700ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
@@ -5670,16 +5671,18 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd;
     // Passing false is the same switch used when the user unchecks Focus.
     KharvoxCameraSetStoryCameraFocus(focusEffective);
-    // Early native sync handoff is now a TEMPORARY opt-in test. When OFF,
-    // do not start KHARVOX's 40ms early release: keep the original camera
-    // path exactly as before the experimental handoff. ON retains the
-    // calibrated 90ms OpenXR translation blend after the 40ms entry delay.
-    constexpr int cinematicExitHandoffDelayMs = 40;
-    // A headset trace shows native sync enters ~1s BEFORE its exit. Begin
-    // releasing the XR position anchor near entry, after the native snap has
-    // aligned the first stereo pair, then NEVER re-anchor during this attack.
-    // The prior exit-triggered blend is retained only for executions too
-    // short to reach the chosen entry delay before the sync flag goes low.
+    // Action Exit Handoff is an optional, reversible experiment. The shortest
+    // complete GK action interval in the 2026-10-18 logs was 929.139 ms
+    // (124 samples, excluding a 21.495ms GK->chainsaw classifier transition).
+    // Hold the camera anchor until ~700ms after native sync enters; fade the
+    // lock to live HMD translation over the next 90ms. This leaves >100ms
+    // expected margin in the observed 30-Hz mode. Chainsaw and full-speed
+    // kills retain the previous early 40ms strategy because their durations
+    // are not bounded by the 30-Hz Glory Kill measurements.
+    // When OFF, always leave DOOM's original camera release untouched.
+    // Fallback still releases on native-sync exit for a shorter execution.
+    const int cinematicExitHandoffDelayMs=kharvox::actionExitHandoffDelayMs(
+        chainsawAction,fastKillsEnabled);
     // DOOM's animated camera/physics and the initial kill snap are untouched.
     if(!s.immersiveCinematicFreelookActive){
         if(s.immersiveCinematicLayerPositionHeld){
