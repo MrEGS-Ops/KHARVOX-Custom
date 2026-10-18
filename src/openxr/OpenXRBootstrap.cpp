@@ -3804,6 +3804,7 @@ bool createGameplayActions(){
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" storySkipRS="+(s.customMods.storyCinematicSkip&&!s.customMods.storyFreeWalk?"on (experimental native 4x)":"off")
         +" storyFreeWalkRS="+(s.customMods.storyFreeWalk?"ON (experimental horizontal movement)":"off")
+        +" storyCameraFocus="+(s.customMods.storyCameraFocus?"ON (native scripted heading test)":"off")
         +" actionExit40ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
@@ -5607,6 +5608,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
+    KharvoxCameraSetStoryCameraFocus(s.customMods.storyCameraFocus
+        &&immersiveCameraArmed&&s.immersiveCinematicFreelook
+        &&!KharvoxCameraBossSequenceActive());
     // Early native sync handoff is now a TEMPORARY opt-in test. When OFF,
     // do not start KHARVOX's 40ms early release: keep the original camera
     // path exactly as before the experimental handoff. ON retains the
