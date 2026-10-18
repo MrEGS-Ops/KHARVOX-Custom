@@ -206,9 +206,8 @@ public sealed partial class MainForm
             }
             // The hidden native full-speed flag is derived from the selector.
             // Restore it explicitly because events are suppressed here.
-            cinematicFullSpeedMode=cinematicSpeedSelector.SelectedIndex==5;
-            if(cinematicSpeedSelector.SelectedIndex>=0&&cinematicSpeedSelector.SelectedIndex<5)
-                cinematicKillSpeed.Value=cinematicSpeedSelector.SelectedIndex+1;
+            cinematicFullSpeedMode=false; // shared full-speed selector retired
+            cinematicKillSpeed.Value=1;
             // WinForms restoration bypasses user click dependency handlers.
             ApplyCustomModDependencies(null);
             DoomUserMods.SaveSelections(new HashSet<string>(snapshot.DoomMods,
@@ -673,8 +672,8 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
-            if (main.cinematicSpeedSelector.Items.Count != 6
-                || !main.cinematicSpeedSelector.Items[5]!.ToString()!.Contains("Full speed")
+            if (main.cinematicSpeedSelector.Items.Count != 4
+                || !main.cinematicSpeedSelector.Items[2]!.ToString()!.Contains("Maximum")
                 || !main.customBoxingGuard.Text.Contains("Boxing Guard")
                 || main.modOrderRows.Any(row=>row.Id=="fast-glory-kills"||row.Id=="fast-chainsaw"))
                 throw new InvalidDataException("Fast Kills must live in Sync Action Speed, not draggable VR mods.");
@@ -1057,109 +1056,64 @@ public sealed partial class MainForm
             if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff)
                 throw new InvalidDataException("Manual early action-exit test toggle was lost.");
             main.customActionExitHandoff.Checked=false;
-            // One compact selector: Native, 90/70/50/30 Hz, and the
-            // proven native Full speed (no slowdown) bypass.
-            if (main.cinematicSpeedSelector.Items.Count!=6
+            // Three action presets, and a read-only Custom status.
+            if (main.cinematicSpeedSelector.Items.Count!=4
                 || main.cinematicSpeedSelector.Parent?.Parent is not Control presetPanel
                 || main.speedCustomModsGrid is null
                 || main.speedCustomModsGrid.GetRow(presetPanel)!=0
                 || main.speedAdvancedPanel is null
                 || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel)!=1
                 || main.speedAdvancedPanel.ColumnStyles[1].SizeType!=SizeType.Percent)
-                throw new InvalidDataException("Compact selector must remain above Advanced and grouped mods.");
-            main.cinematicFullSpeedMode=false;
-            main.cinematicKillSpeed.Value=5;
-            main.UpdateCinematicKillSpeedLabel();
-            if(main.cinematicSpeedSelector.SelectedIndex!=4
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz!=30)
-                throw new InvalidDataException("30 Hz mode must map to preset 5.");
-            main.applyingCustomModDependencies=true;
+                throw new InvalidDataException("Three action presets must remain directly above Advanced.");
+            if (ActionSpeedCatalog.Controllable.Length!=3
+                || main.speedActionChecks.Count!=3 || main.speedActionSliders.Count!=3
+                || main.speedActionChecks.ContainsKey("cinematic")
+                || main.speedActionLogTest.Checked
+                || main.speedActionSliders.Values.Any(slider=>slider.TickStyle!=TickStyle.None))
+                throw new InvalidDataException("Scripted cinematics must have no user tick override.");
+            main.ApplyActionSpeedPreset(0);
+            var native=main.ReadCustomModSettingsFromControls();
+            if (main.cinematicSpeedSelector.SelectedIndex!=0
+                || ActionSpeedCatalog.HasActiveOverrides(native)
+                || native.FastGloryKills || native.FastChainsawKills
+                || native.CinematicKillSpeedLevel!=1)
+                throw new InvalidDataException("Native preset must use original DOOM action timing.");
+            main.ApplyActionSpeedPreset(1);
+            var fast=main.ReadCustomModSettingsFromControls();
+            if (main.cinematicSpeedSelector.SelectedIndex!=1
+                || !fast.ActionSpeedProfiles.Values.All(p=>p.Enabled&&p.TargetHz==70)
+                || !ActionSpeedCatalog.HasActiveOverrides(fast))
+                throw new InvalidDataException("Fast preset must enable all three 70 Hz actions.");
+            main.speedAdvanced.Checked=false;
+            main.ApplyCustomModDependencies(null);
+            var collapsed=main.ReadCustomModSettingsFromControls();
+            if (main.speedAdvancedVisible || main.speedAdvancedRowStyle!.Height!=0
+                || main.cinematicSpeedSelector.SelectedIndex!=1
+                || !ActionSpeedCatalog.HasActiveOverrides(collapsed)
+                || main.speedActionSliders["glory"].Enabled)
+                throw new InvalidDataException("Collapsing Advanced must not disable selected presets.");
             main.speedAdvanced.Checked=true;
-            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if(main.speedAdvancedRowStyle is null
-                || main.speedAdvancedRowStyle.Height!=main.speedAdvancedHeight
-                || !main.speedAdvancedVisible
-                || !main.cinematicSpeedSelector.Enabled)
-                throw new InvalidDataException("Advanced expansion without overrides must not lock the selector.");
-            // Three established action overrides and one optional narrow
-            // Foundry-style scripted cinematic target. No dead probe sliders.
-            if (ActionSpeedCatalog.Controllable.Length != 4
-                || main.speedActionChecks.Count != 4
-                || main.speedActionSliders.Count != 4
-                || !main.speedActionChecks.ContainsKey("cinematic")
-                || !main.speedActionSliders.ContainsKey("cinematic")
-                || main.speedActionChecks.Values.Any(box=>box.Checked)
-                || main.speedActionLogTest.Checked)
-                throw new InvalidDataException("Compact action override list is missing or auto-enabled.");
-            if (main.speedActionSliders.Values.Any(slider=>slider.TickStyle!=TickStyle.None))
-                throw new InvalidDataException("Action sliders must hide cluttered tick marks.");
-            main.applyingCustomModDependencies = true;
-            main.speedActionChecks["glory"].Checked = true;
-            main.speedActionSliders["glory"].Value = 70; // 200 Hz from 240..30 track
-            main.speedActionLogTest.Checked = true;
-            main.applyingCustomModDependencies = false;
-            main.ApplyCustomModDependencies(null);
-            var profileConfig=main.ReadCustomModSettingsFromControls();
-            if (!main.speedActionSliders["glory"].Enabled
-                || !profileConfig.ActionSpeedProfiles["glory"].Enabled
-                || profileConfig.ActionSpeedProfiles["glory"].TargetHz!=200
-                || !profileConfig.ActionSpeedLogTestEnabled
-                || !ActionSpeedCatalog.HasActiveOverrides(profileConfig))
-                throw new InvalidDataException("Selected action override was not retained.");
-            // Checked action pauses the shared speed, saving its current choice.
-            if (main.cinematicSpeedSelector.Enabled
-                || !main.cinematicKillSpeedValue.Text.Contains("Action override")
-                || main.cinematicKillSpeed.Value!=5)
-                throw new InvalidDataException("Action override must disable shared presets without discarding selection.");
-            main.applyingCustomModDependencies = true;
-            main.speedAdvanced.Checked = false;
-            main.applyingCustomModDependencies = false;
-            main.ApplyCustomModDependencies(null);
-            if (main.speedAdvancedRowStyle.Height != 0 || main.speedAdvancedVisible
-                || main.speedActionSliders["glory"].Enabled
-                || !main.cinematicSpeedSelector.Enabled
-                || main.cinematicSpeedSelector.SelectedIndex!=4
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTune
-                || main.ReadCustomModSettingsFromControls().SpeedAdvancedExpanded
-                || ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls())
-                || !main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].Enabled
-                || main.ReadCustomModSettingsFromControls().CinematicSpeedFineTuneHz != 30)
-                throw new InvalidDataException("Collapsing Advanced must restore saved preset and suspend action overrides.");
-            main.applyingCustomModDependencies = true;
-            main.speedAdvanced.Checked = true;
-            main.applyingCustomModDependencies = false;
-            main.ApplyCustomModDependencies(null);
-            if (main.cinematicSpeedSelector.Enabled
-                || main.cinematicKillSpeed.Enabled)
-                throw new InvalidDataException("Reopening Advanced must reinstate checked override exclusivity.");
-            main.applyingCustomModDependencies = true;
-            main.speedActionChecks["glory"].Checked = false;
-            main.speedActionLogTest.Checked = false;
-            main.applyingCustomModDependencies = false;
-            main.ApplyCustomModDependencies(null);
-            if (!main.cinematicSpeedSelector.Enabled
-                || main.cinematicSpeedSelector.SelectedIndex!=4)
-                throw new InvalidDataException("Unchecking last action must re-enable the stored preset.");
-            // Default OFF even for formerly saved broad "scripted" probes.
-            // When enabled this action must save correctly and pause preset.
-            main.applyingCustomModDependencies=true;
-            main.speedActionChecks["cinematic"].Checked=true;
-            main.speedActionSliders["cinematic"].Value=100; // 170 Hz
-            main.applyingCustomModDependencies=false;
-            main.ApplyCustomModDependencies(null);
-            var scriptedConfig=main.ReadCustomModSettingsFromControls();
-            if (main.cinematicSpeedSelector.Enabled
-                || !scriptedConfig.ActionSpeedProfiles["cinematic"].Enabled
-                || scriptedConfig.ActionSpeedProfiles["cinematic"].TargetHz!=170)
-                throw new InvalidDataException("Scripted cinematic override must pause preset and retain 170 Hz.");
-            main.applyingCustomModDependencies=true;
-            main.speedActionChecks["cinematic"].Checked=false;
-            main.applyingCustomModDependencies=false;
-            main.ApplyCustomModDependencies(null);
-            if (!main.cinematicSpeedSelector.Enabled)
-                throw new InvalidDataException("Unchecking scripted cinematic must restore native preset.");
+            main.speedActionSliders["glory"].Value=270-140;
+            main.UpdateCinematicKillSpeedLabel();
+            if (main.cinematicSpeedSelector.SelectedIndex!=3
+                || main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].TargetHz!=140)
+                throw new InvalidDataException("Manual slider changes must show Custom.");
+            main.ApplyActionSpeedPreset(2);
+            var maximum=main.ReadCustomModSettingsFromControls();
+            if (main.cinematicSpeedSelector.SelectedIndex!=2
+                || maximum.ActionSpeedProfiles["glory"].TargetHz!=30
+                || maximum.ActionSpeedProfiles["chainsaw"].TargetHz!=40
+                || maximum.ActionSpeedProfiles["ledge"].TargetHz!=50)
+                throw new InvalidDataException("Maximum preset must use proven 30/40/50 test values.");
+            main.speedActionLogTest.Checked=true;
+            if (!main.ReadCustomModSettingsFromControls().ActionSpeedLogTestEnabled)
+                throw new InvalidDataException("Optional action diagnostic selection was lost.");
+            main.ApplyActionSpeedPreset(0);
+            main.speedActionLogTest.Checked=false;
+            if (ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls())
+                || main.cinematicSpeedSelector.SelectedIndex!=0)
+                throw new InvalidDataException("Native preset must clear all active action overrides.");
 
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
@@ -1216,44 +1170,17 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Disabling a mod must unlock relevant launcher options; left wheel cannot force global handedness.");
 
-            // The working Build #83 Full speed bypass is now integrated into
-            // the compact speed selector, not duplicated by two mod controls.
-            main.applyingCustomModDependencies=true;
-            main.cinematicFullSpeedMode=true;
-            main.customBoxingGuard.Checked=false;
-            main.applyingCustomModDependencies=false;
-            main.ApplyCustomModDependencies(null);
-            var fullChoice=main.ReadCustomModSettingsFromControls();
-            if(main.gloryKillSlowmo.Value!=0
-                || main.cinematicSpeedSelector.SelectedIndex!=5
-                || !main.cinematicSpeedSelector.Enabled
-                || !fullChoice.FastGloryKills || !fullChoice.FastChainsawKills)
-                throw new InvalidDataException("Full speed must preserve native bypass for both execution types.");
-            main.applyingCustomModDependencies=true;
-            main.speedActionChecks["glory"].Checked=true;
-            main.applyingCustomModDependencies=false;
-            main.ApplyCustomModDependencies(null);
-            if(main.gloryKillSlowmo.Value!=10
-                || main.cinematicSpeedSelector.Enabled
-                || main.cinematicSpeedSelector.SelectedIndex!=5)
-                throw new InvalidDataException("Action overrides must suspend, not overwrite, Full speed.");
-            main.applyingCustomModDependencies=true;
-            main.speedActionChecks["glory"].Checked=false;
+            // Boxing remains independent of the scoped tick overrides.
+            main.ApplyActionSpeedPreset(2);
             main.customBoxingGuard.Checked=true;
-            main.applyingCustomModDependencies=false;
             main.ApplyCustomModDependencies(null);
-            if(main.gloryKillSlowmo.Value!=0
-                || !main.customBoxingGuard.Checked
-                || !main.cinematicSpeedSelector.Enabled)
-                throw new InvalidDataException("Full speed and Boxing Guard must remain independent.");
-            main.applyingCustomModDependencies=true;
-            main.cinematicFullSpeedMode=false;
-            main.applyingCustomModDependencies=false;
-            main.ApplyCustomModDependencies(null);
-            if(main.gloryKillSlowmo.Value!=10
-                || main.cinematicSpeedSelector.SelectedIndex!=4
+            if (!main.customBoxingGuard.Checked
+                || main.gloryKillSlowmo.Value!=10
+                || main.cinematicSpeedSelector.SelectedIndex!=2
                 || main.ReadCustomModSettingsFromControls().FastGloryKills)
-                throw new InvalidDataException("Exiting Full speed must return to saved Hz preset.");
+                throw new InvalidDataException("Scoped action presets must not resurrect the retired shared speed mode.");
+            main.customBoxingGuard.Checked=false;
+            main.ApplyActionSpeedPreset(0);
         }
         finally
         {
