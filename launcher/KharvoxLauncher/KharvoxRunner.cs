@@ -482,8 +482,9 @@ internal static class KharvoxRunner
             // Scoped action override trumps the selected shared speed mode.
             // Full is a distinct proven native no-slowmo path (not 30 Hz).
             var actionOverridesActive = ActionSpeedCatalog.HasActiveOverrides(customMods);
-            var nativeFullSpeed = !actionOverridesActive
-                && (customMods.FastGloryKills || customMods.FastChainsawKills);
+            // The old global sync speed mode is retired by the three scoped
+            // presets; do not resurrect it from an older saved JSON file.
+            const bool nativeFullSpeed = false;
             var psi = new ProcessStartInfo(gameExe) {
                 UseShellExecute = false,
                 WorkingDirectory = options.GameDirectory,
