@@ -34,6 +34,7 @@ struct CustomModFlags {
     bool physicalGrenadeThrow{};
     bool storyCinematicSkip{};
     bool storyFreeWalk{};
+    bool storyCameraFocus{};
     bool motionGloryKillSpeed{};
     bool physicalChainsawGestures{};
     bool hapticOverhaul{};
@@ -72,6 +73,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");
     flags.storyCinematicSkip = customModEnvironmentEnabled("KHARVOX_MOD_STORY_SKIP_RS");
     flags.storyFreeWalk = customModEnvironmentEnabled("KHARVOX_MOD_STORY_FREE_WALK_RS");
+    flags.storyCameraFocus = customModEnvironmentEnabled("KHARVOX_MOD_STORY_CAMERA_FOCUS");
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
     flags.physicalChainsawGestures = false; // retired; fast/native toggle replaces gesture speed control
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
