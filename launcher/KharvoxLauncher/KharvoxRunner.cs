@@ -499,6 +499,12 @@ internal static class KharvoxRunner
             // compatible patch has already disabled that requirement.
             if (activeDoomResourceMods)
                 psi.Arguments += " +devMode_enable 1";
+            // Narrative-flow test needs to distinguish script callbacks from
+            // player-control locks. This is a documented DOOM debug CVar;
+            // request thread start/stop prints only in opt-in extended logs.
+            // It never advances or disables the running mission script.
+            if (customMods.UninterruptedStory && options.ExtendedLogging)
+                psi.Arguments += " +g_debugScript 1";
             EnableLayerForGame(psi);
             DisableConflictingOpenXrApiLayers(psi);
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
