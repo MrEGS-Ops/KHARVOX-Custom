@@ -45,8 +45,9 @@ inline CustomModFlags loadCustomModFlags() {
     flags.gaussChargeSlowMovement = customModEnvironmentEnabled("KHARVOX_MOD_GAUSS_SLOW_CHARGE");
     // The separate mod only mirrors the already-restored Cactus hand HUD.
     flags.backOfHandHud = customModEnvironmentEnabled("KHARVOX_MOD_BACK_OF_HAND_HUD");
-    // Built-in native GK/chainsaw position release; no user-facing mod switch.
-    flags.cinematicExitHandoff = true;
+    // Opt-in diagnostic. OFF leaves DOOM/native cinematic entry and exit
+    // handling unchanged; do not force early handoff as a global default.
+    flags.cinematicExitHandoff = customModEnvironmentEnabled("KHARVOX_MOD_ACTION_EXIT_HANDOFF");
     flags.boxingGuard=customModEnvironmentEnabled("KHARVOX_MOD_BOXING_GUARD");
     flags.fastGloryKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS");
     flags.fastChainsawKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");
