@@ -29,6 +29,7 @@
 #include "OpenXRBootstrap.h"
 #include "GameImageLifetime.h"
 #include "../camera/CameraHook.h"
+#include "../camera/StoryCameraFocusPolicy.h"
 #include "../debug/CameraScanner.h"
 #include "../hud/HudGpuDiagnostic.h"
 #include "../hud/HudHook.h"
@@ -336,6 +337,7 @@ struct State {
     XrDuration fastestDisplayPeriod{};
     CinematicAdaptiveTickHold cinematicAdaptiveTick{};
     kharvox::ScriptedCinematicBoundaryState scriptedCinematicBoundary{};
+    kharvox::StoryCameraFocusAutoSuspend storyCameraFocusAutoSuspend{};
     unsigned long long nativeAdaptiveParticipantGuardUntilTick{};
     bool nativeAdaptiveParticipantGuardActive{};
     bool comfortInteractiveParticipantActive{};
@@ -5566,6 +5568,20 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // than inventing a timing timeout or changing any action refresh rate.
     KharvoxCameraSetStoryFocusActionTail(
         s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd);
+    // The user confirmed that switching Camera Focus OFF eliminates the blink.
+    // Suspend the *effective option*, not merely the authored-heading branch,
+    // throughout any GK/chainsaw/ledge and its complete native camera tail.
+    // The launcher checkbox remains untouched and is restored on gameplay.
+    const bool focusWasSuspended=s.storyCameraFocusAutoSuspend.suspended;
+    const bool focusNowSuspended=s.storyCameraFocusAutoSuspend.update(
+        syncAction||chainsawAction||ledgeAction,
+        KharvoxCameraCutsceneActive(),
+        KharvoxCameraGameplayActive()&&!KharvoxCameraCutsceneActive());
+    if(focusNowSuspended!=focusWasSuspended)
+        log(std::string("[STORY-FOCUS][AUTO-SUSPEND] ")
+            +(focusNowSuspended
+                ?"OFF for execution/ledge; waiting for normal gameplay camera"
+                :"restored user Focus setting after gameplay camera returned"));
     static bool tailBlockWasLogged=false;
     const bool tailBlocked=rawScriptedCandidate
         &&s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd;
@@ -5647,9 +5663,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
-    KharvoxCameraSetStoryCameraFocus(s.customMods.storyCameraFocus
+    const bool focusEffective=s.customMods.storyCameraFocus
         &&immersiveCameraArmed&&s.immersiveCinematicFreelook
-        &&!KharvoxCameraBossSequenceActive());
+        &&!KharvoxCameraBossSequenceActive()
+        &&!s.storyCameraFocusAutoSuspend.suspended
+        &&!s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd;
+    // Passing false is the same switch used when the user unchecks Focus.
+    KharvoxCameraSetStoryCameraFocus(focusEffective);
     // Early native sync handoff is now a TEMPORARY opt-in test. When OFF,
     // do not start KHARVOX's 40ms early release: keep the original camera
     // path exactly as before the experimental handoff. ON retains the
