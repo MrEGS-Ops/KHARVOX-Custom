@@ -44,7 +44,8 @@ internal static class FirstPartyDoomModGenerator
         };
         var pending = new List<(string resource, string filename, byte[] content)>();
         foreach (var input in inputs) {
-            byte[] original = ReadOriginal(gameDir, input.resource);
+            var source = ReadOriginal(gameDir, input.resource);
+            byte[] original = source.data;
             string text = Decode(original);
             bool ai = input.resource == Ai;
             string result = ai
@@ -58,7 +59,8 @@ internal static class FirstPartyDoomModGenerator
                 encoded = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(encoded).ToArray();
             if (original.SequenceEqual(encoded))
                 throw new InvalidDataException("Values do not change original declaration: " + input.resource);
-            pending.Add((input.resource, input.filename, encoded));
+            // Use the verified index path, not a guessed ZIP identifier.
+            pending.Add((source.resourceName, input.filename, encoded));
         }
 
         Directory.CreateDirectory(outputDir);
@@ -154,13 +156,30 @@ internal static class FirstPartyDoomModGenerator
         return Utf8Strict.GetString(data, bom, data.Length - bom);
     }
 
-    private static byte[] ReadOriginal(string game, string relative)
+    // Only a semicolon-free spelling of the SAME declaration is a safe alias.
+    // Never substitute an unrelated resource because its category happens to match.
+    private static bool EquivalentIndexName(string indexed, string expected)
+    {
+        var expectedParts = expected.Split(new[] { ';' }, 2);
+        var indexedParts = indexed.Replace('\\', '/').Split(new[] { ';' }, 2);
+        return string.Equals(indexedParts[0], expectedParts[0], StringComparison.OrdinalIgnoreCase)
+            && (indexedParts.Length == 1
+                || (expectedParts.Length == 2
+                    && string.Equals(indexedParts[1], expectedParts[1], StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static (byte[] data, string resourceName) ReadOriginal(string game, string relative)
     {
         string baseDir = Path.Combine(game, "base");
         string indexPath = Path.Combine(baseDir, "gameresources.index");
         string resourcesPath = Path.Combine(baseDir, "gameresources.resources");
         long offset = -1;
-        int plain = 0, stored = 0, found = 0;
+        int plain = 0, stored = 0;
+        string resolvedName = "";
+        var exact = new List<(string name, long offset, int plain, int stored, byte patch)>();
+        var aliases = new List<(string name, long offset, int plain, int stored, byte patch)>();
+        var candidates = new List<string>();
+        int indexCount = 0;
         using (var stream = new FileStream(indexPath, FileMode.Open, FileAccess.Read, FileShare.Read))
         using (var reader = new BinaryReader(stream, Encoding.UTF8)) {
             if (Encoding.ASCII.GetString(reader.ReadBytes(4)) != "\x05SER")
@@ -174,21 +193,44 @@ internal static class FirstPartyDoomModGenerator
                 throw new InvalidDataException("Invalid original resource record count");
             for (uint i = 0; i < records; ++i) {
                 reader.ReadBytesExact(4);
-                ReadName(reader); ReadName(reader);
+                var category = ReadName(reader);
+                var shortName = ReadName(reader);
                 var name = ReadName(reader);
                 long valueOffset = ReadBigInt64(reader);
                 int valuePlain = ReadBigInt32(reader);
                 int valueStored = ReadBigInt32(reader);
                 ReadBigInt32(reader); // flags
                 byte patch = reader.ReadByte();
-                if (!string.Equals(name, relative, StringComparison.OrdinalIgnoreCase)) continue;
-                ++found;
-                if (patch != 0)
-                    throw new InvalidDataException("Target declaration is patched; restore original files");
-                offset = valueOffset; plain = valuePlain; stored = valueStored;
+                ++indexCount;
+                var record = (name, valueOffset, valuePlain, valueStored, patch);
+                if (string.Equals(name, relative, StringComparison.OrdinalIgnoreCase))
+                    exact.Add(record);
+                else if (EquivalentIndexName(name, relative))
+                    aliases.Add(record);
+                // A limited, read-only hint for resolving other installation layouts.
+                if (name.IndexOf(relative.Contains("aiglobalsettings") ? "aiglobalsettings" : "8_gauge",
+                        StringComparison.OrdinalIgnoreCase) >= 0 && candidates.Count < 6)
+                    candidates.Add(category + " / " + shortName + " : " + name);
             }
-            if (stream.Position != stream.Length || found != 1)
-                throw new InvalidDataException("Original resource absent/ambiguous in game index: " + relative);
+            if (stream.Position != stream.Length)
+                throw new InvalidDataException("Unexpected trailing DOOM resource index data");
+            var matches = exact.Count > 0 ? exact : aliases;
+            if (matches.Count != 1)
+                throw new InvalidDataException(
+                    "Cannot uniquely identify original declaration: " + relative
+                    + Environment.NewLine + "Exact matches=" + exact.Count
+                    + ", safe path aliases=" + aliases.Count + ", index entries=" + indexCount
+                    + Environment.NewLine
+                    + (candidates.Count == 0 ? "No similarly named entries found."
+                        : "Nearby index entries:" + Environment.NewLine + string.Join(Environment.NewLine, candidates))
+                    + Environment.NewLine + "Nothing was generated. To investigate, supply DOOM/base/gameresources.index (metadata only).");
+            var match = matches[0];
+            if (match.patch != 0)
+                throw new InvalidDataException("Target declaration is patched; restore original files");
+            resolvedName = match.name;
+            offset = match.offset; plain = match.plain; stored = match.stored;
+            if(exact.Count == 0)
+                System.Diagnostics.Debug.WriteLine("KHARVOX original declaration resolved by exact base path: " + resolvedName);
         }
         if (plain < 3 || plain > 2_000_000 || stored < 1 || stored > 2_000_000)
             throw new InvalidDataException("Unexpected original resource size");
@@ -218,7 +260,7 @@ internal static class FirstPartyDoomModGenerator
             if (data.Length != plain)
                 throw new InvalidDataException("Original resource length mismatch");
             Decode(data);
-            return data;
+            return (data, resolvedName);
         }
     }
 
