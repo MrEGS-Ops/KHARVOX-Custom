@@ -90,7 +90,7 @@ internal static class CustomModSettingsStore
     // Bump this only when the next KHARVOX build introduces a different
     // opt-in mod that should start checked for the user's test session.
     // Never force it on again after the user deliberately unticks it.
-    internal const int CurrentDevelopmentTestDefaultsRevision = 3;
+    internal const int CurrentDevelopmentTestDefaultsRevision = 4;
     private static readonly JavaScriptSerializer Serializer = new();
 
     internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
@@ -119,9 +119,14 @@ internal static class CustomModSettingsStore
             value.CinematicExitHandoff = true;
             value.DevelopmentTestDefaultsRevision = 3;
         }
-        // Retire stored handoff overrides. Every native sync execution now
-        // uses the confirmed 40ms entry release with no UI toggle.
-        value.CinematicExitHandoff = true;
+        if (value.DevelopmentTestDefaultsRevision < 4)
+        {
+            // Return to DOOM/game default once, even for users whose earlier
+            // test builds forced the 40 ms exit on. Future manual choices stick.
+            value.CinematicExitHandoff = false;
+            value.DevelopmentTestDefaultsRevision = 4;
+        }
+        // The optional early release uses the same proven 40 ms timing.
         value.CinematicExitHandoffDelayMs = 40;
         // Legacy Fine Tune checked state is migrated into Advanced.
         value.SpeedAdvancedExpanded |= value.CinematicSpeedFineTune;
@@ -164,7 +169,7 @@ internal static class CustomModSettingsStore
         value.Schema = CustomModSettings.CurrentSchema;
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
-        value.CinematicExitHandoff = true;
+        // Respect user preference. Do not silently re-enable early action exit.
         value.CinematicExitHandoffDelayMs = 40;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
@@ -236,14 +241,14 @@ internal static class CustomModSettingsStore
                 BackOfHandHud = false, DevelopmentTestDefaultsRevision = 0
             }, path);
             var first = Load(path);
-            if (first.BackOfHandHud || !first.CinematicExitHandoff
+            if (first.BackOfHandHud || first.CinematicExitHandoff
                 || first.CinematicExitHandoffDelayMs != 40
                 || first.CinematicSpeedFineTune || first.SpeedAdvancedExpanded
                 || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
-                throw new InvalidDataException("New test mod not auto-checked on first launch.");
+                throw new InvalidDataException("Action exit must default to game timing on first launch.");
             first.BackOfHandHud = false;
-            first.CinematicExitHandoff = false; // old saved OFF is ignored
+            first.CinematicExitHandoff = true; // explicit diagnostic opt-in must persist
             first.CinematicExitHandoffDelayMs = 160; // retired override ignored
             first.SpeedAdvancedExpanded = true;
             first.CinematicSpeedFineTune = true;
@@ -255,10 +260,10 @@ internal static class CustomModSettingsStore
                 || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
-            if (fresh.BackOfHandHud || !fresh.CinematicExitHandoff
+            if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
                 || fresh.CinematicExitHandoffDelayMs != 40
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
-                throw new InvalidDataException("Fresh install should auto-check active test mod.");
+                throw new InvalidDataException("Fresh install must retain game-default action exit.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
             try { Load(path); }
