@@ -32,6 +32,9 @@ void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
     bool requested, bool active);
 void KharvoxCameraSetImmersiveCinematicFreelook(bool requested);
+// Experimental: apply authored camera yaw in non-execution story cinematics
+// while retaining HMD residual rotation. Defaults to OFF.
+void KharvoxCameraSetStoryCameraFocus(bool requested);
 bool KharvoxCameraWorldActive();
 bool KharvoxCameraGameplayActive();
 bool KharvoxCameraNativeStereoActive();
