@@ -266,7 +266,92 @@ internal static class FirstPartyDoomModGenerator
         catch (InvalidDataException) { }
         try { EnhancedGibs("edit = {}", 2, 5, 48); return false; }
         catch (InvalidDataException) { }
-        return !CanOffer("") && !CanOffer(Path.Combine(Path.GetTempPath(), "missing-doom"));
+        if (CanOffer("") || CanOffer(Path.Combine(Path.GetTempPath(), "missing-doom")))
+            return false;
+        // End-to-end deterministic synthetic DOOM v5 index/archive fixture.
+        // No Bethesda assets or locally installed Python are involved.
+        string root = Path.Combine(Path.GetTempPath(), "kharvox-native-mods-" + Guid.NewGuid().ToString("N"));
+        try {
+            string game = Path.Combine(root, "game");
+            string baseDir = Path.Combine(game, "base");
+            Directory.CreateDirectory(baseDir);
+            File.WriteAllBytes(Path.Combine(game, "DOOMx64vk.exe"), new byte[] { 0 });
+            byte[] sourceAi = Utf8Strict.GetBytes(aiText);
+            byte[] sourceGib = Utf8Strict.GetBytes(gibText);
+            byte[] packedAi;
+            using (var compressed = new MemoryStream()) {
+                using (var deflater = new DeflateStream(compressed, CompressionLevel.Optimal, true))
+                    deflater.Write(sourceAi, 0, sourceAi.Length);
+                packedAi = compressed.ToArray();
+            }
+            // Fixture must exercise both compressed and uncompressed records.
+            using (var resources = new FileStream(Path.Combine(baseDir,"gameresources.resources"),
+                       FileMode.CreateNew)) {
+                resources.Write(new byte[] { 5, 83, 69, 82 }, 0, 4);
+                resources.Write(packedAi, 0, packedAi.Length);
+                resources.Write(sourceGib, 0, sourceGib.Length);
+            }
+            using (var entries = new MemoryStream())
+            using (var eb = new BinaryWriter(entries, Encoding.UTF8, true)) {
+                WriteFixtureRecord(eb, Ai, 4, sourceAi.Length, packedAi.Length);
+                WriteFixtureRecord(eb, Gib, 4 + packedAi.Length, sourceGib.Length, sourceGib.Length);
+                eb.Flush();
+                using (var indexStream = File.Create(Path.Combine(baseDir,"gameresources.index")))
+                using (var header = new BinaryWriter(indexStream)) {
+                    header.Write(new byte[] { 5, 83, 69, 82 });
+                    WriteFixtureBig(header, checked((uint)(4 + entries.Length)));
+                    header.Write(new byte[24]);
+                    WriteFixtureBig(header, (uint)2);
+                    header.Write(entries.ToArray());
+                }
+            }
+            if (!CanOffer(game)) return false;
+            string outDir = Path.Combine(root, "out");
+            string report = GenerateFromGame(game, outDir);
+            if (!report.Contains(AiArchive) || !report.Contains(GibArchive)) return false;
+            using (var zip = ZipFile.OpenRead(Path.Combine(outDir, AiArchive)))
+            using (var entry = zip.Entries.Single().Open())
+            using (var copy = new MemoryStream()) {
+                entry.CopyTo(copy);
+                if (!Utf8Strict.GetString(copy.ToArray()).Contains("maxSimultaneousUsers = 6;"))
+                    return false;
+            }
+            using (var zip = ZipFile.OpenRead(Path.Combine(outDir, GibArchive)))
+            using (var entry = zip.Entries.Single().Open())
+            using (var copy = new MemoryStream()) {
+                entry.CopyTo(copy);
+                if (!Utf8Strict.GetString(copy.ToArray()).Contains("gibImpulse = 48;"))
+                    return false;
+            }
+            return true;
+        } finally {
+            if (Directory.Exists(root)) Directory.Delete(root,true);
+        }
+    }
+
+    private static void WriteFixtureRecord(BinaryWriter writer, string name, long offset, int plain, int stored)
+    {
+        writer.Write(new byte[] { 0, 0, 0, 1 });
+        WriteFixtureName(writer, "original"); WriteFixtureName(writer, "default");
+        WriteFixtureName(writer, name);
+        foreach (byte b in BitConverter.GetBytes(offset).Reverse()) writer.Write(b);
+        WriteFixtureBig(writer, unchecked((uint)plain));
+        WriteFixtureBig(writer, unchecked((uint)stored));
+        WriteFixtureBig(writer, 0u);
+        writer.Write((byte)0);
+    }
+    private static void WriteFixtureName(BinaryWriter writer,string text)
+    {
+        var raw=Utf8Strict.GetBytes(text);
+        writer.Write((uint)raw.Length); // little endian
+        writer.Write(raw);
+    }
+    private static void WriteFixtureBig(BinaryWriter writer,uint value)
+    {
+        writer.Write((byte)(value>>24));
+        writer.Write((byte)(value>>16));
+        writer.Write((byte)(value>>8));
+        writer.Write((byte)value);
     }
 }
 
