@@ -42,11 +42,11 @@ int main() {
     assert(!step(1000,false).eligible);
     assert(!step(1200,true).eligible);
     assert(!step(1450,true,true).changed);
-    assert(step(1650,true,false).eligible);
-    assert(step(1700,true,true).requested);
-    assert(step(1800,true,false,false,true).changed);
-    assert(!step(1900,true,true).requested);
-    assert(!step(2200,true,false,false,false,true).requested);
+    assert(step(1851,true,false).eligible);
+    assert(step(1900,true,true).requested);
+    assert(step(1950,true,false,false,true).changed);
+    assert(!step(2050,true,true).requested);
+    assert(!step(2350,true,false,false,false,true).requested);
     assert(!step(3000,true,true,false,false,false,false).requested);
     // The only native-write candidates are stable horizontal movement bits
     // on the same player whose gameplay baseline had neither bit set.
