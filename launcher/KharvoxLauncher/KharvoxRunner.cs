@@ -604,8 +604,9 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_SSG_PERSISTENT_RELOAD"] = customMods.PersistentSuperShotgunReload ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_STORY_SKIP_RS"] = customMods.StoryCinematicSkip && !customMods.StoryFreeWalk ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_STORY_FREE_WALK_RS"] = customMods.StoryFreeWalk ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_STORY_SKIP_RS"] = customMods.StoryCinematicSkip && !customMods.StoryFreeWalk && !customMods.UninterruptedStory ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_STORY_FREE_WALK_RS"] = customMods.StoryFreeWalk && !customMods.UninterruptedStory ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_UNINTERRUPTED_STORY"] = customMods.UninterruptedStory ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_STORY_CAMERA_FOCUS"] = customMods.StoryCameraFocus ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_ACTION_EXIT_HANDOFF"] = customMods.CinematicExitHandoff ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = "0";
