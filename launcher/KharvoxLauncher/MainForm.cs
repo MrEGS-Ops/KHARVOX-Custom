@@ -530,22 +530,7 @@ public sealed partial class MainForm : Form
                 UpdateCinematicKillSpeedLabel();
                 return;
             }
-            applyingCustomModDependencies=true;
-            try{
-                cinematicFullSpeedMode=false;
-                cinematicKillSpeed.Value=1;
-                for(int i=0;i<ScopedActionKeys.Length;i++){
-                    var key=ScopedActionKeys[i];
-                    speedActionChecks[key].Checked=index!=0;
-                    int hz=index switch{
-                        1=>70,
-                        2=>i==0?30:i==1?40:50,
-                        _=>30
-                    };
-                    speedActionSliders[key].Value=270-hz;
-                }
-                if(index>0)speedAdvanced.Checked=true;
-            }finally{applyingCustomModDependencies=false;}
+            ApplyActionSpeedPreset(index);
             ApplyCustomModDependencies(null);
             SaveCustomModSettings();
             OptionChanged(cinematicSpeedSelector,EventArgs.Empty);
@@ -1803,6 +1788,27 @@ public sealed partial class MainForm : Form
     private bool HasActiveActionSpeedOverrides() =>
         ActionSpeedCatalog.Controllable.Any(key =>
             speedActionChecks.TryGetValue(key,out var check) && check.Checked);
+
+    private void ApplyActionSpeedPreset(int index)
+    {
+        if(index<0||index>2)return;
+        var wasApplying=applyingCustomModDependencies;
+        applyingCustomModDependencies=true;
+        try{
+            cinematicFullSpeedMode=false;
+            cinematicKillSpeed.Value=1;
+            for(int i=0;i<ScopedActionKeys.Length;i++){
+                var key=ScopedActionKeys[i];
+                speedActionChecks[key].Checked=index!=0;
+                int hz=index switch {
+                    1=>70,2=>i==0?30:i==1?40:50,_=>30
+                };
+                speedActionSliders[key].Value=270-hz;
+            }
+            if(index>0)speedAdvanced.Checked=true;
+        }finally{applyingCustomModDependencies=wasApplying;}
+        UpdateCinematicKillSpeedLabel();
+    }
 
     // Advanced only controls panel visibility; never whether an active
     // preset applies. Native (0), Fast (1), Maximum (2), Custom (3).
