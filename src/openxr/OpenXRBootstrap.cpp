@@ -273,6 +273,7 @@ struct State {
     bool jumpSuppressedUntilRelease{},crouchSuppressedUntilRelease{};
     bool meleePressed{},missionInfoPressed{};
     kharvox::StoryCinematicSkipState storySkip{};
+    bool storySkipInputWasDown{};
     bool handsJumpEnabled{}; kharvox::HandsJumpState handsJump{};
     bool physicalGlorykillEnabled{};
     float physicalGlorykillSpeed{2.8f};
@@ -2345,6 +2346,7 @@ void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
+        s.storySkipInputWasDown=false;
         s.primaryFireDown=false;
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         return;
@@ -2364,6 +2366,7 @@ void updateGameplayActions(XrTime displayTime){
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.storySkip={};
+        s.storySkipInputWasDown=false;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
         KharvoxCameraResetCombatTimeDilation();
@@ -3137,6 +3140,29 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraLedgeTransitionActive(),KharvoxCameraBossSequenceActive(),
         pauseMenu||fullscreenMenu||deathMenu||KharvoxHudTutorialActive(),
         gameplayWorld,meleeDown,GetTickCount64());
+    // A story-like console / locked-terminal scene may suppress weapons
+    // without setting DOOM's generic cutscene camera flag. Log actual RS
+    // context (once per edge) so the next headset run can distinguish a
+    // classifier miss from the unresolved native timescale writer.
+    static unsigned long long lastStorySkipContextLogTick{};
+    const unsigned long long storySkipContextTick=GetTickCount64();
+    if(s.customMods.storyCinematicSkip&&meleeDown&&!s.storySkipInputWasDown
+        &&storySkipContextTick-lastStorySkipContextLogTick>=500){
+        lastStorySkipContextLogTick=storySkipContextTick;
+        log(std::string("[STORY-SKIP][INPUT-CONTEXT] rs=pressed cutscene=")
+            +(cutscene?"1":"0")
+            +" world="+std::to_string(gameplayWorld?1:0)
+            +" weaponControl="+std::to_string(KharvoxCameraPlayerWeaponControlActive()?1:0)
+            +" sync="+std::to_string(syncAttackActive?1:0)
+            +" chainsaw="+std::to_string(s.chainsawKillLatched?1:0)
+            +" ledge="+std::to_string(KharvoxCameraLedgeTransitionActive()?1:0)
+            +" boss="+std::to_string(KharvoxCameraBossSequenceActive()?1:0)
+            +" menu="+std::to_string((pauseMenu||fullscreenMenu||deathMenu)?1:0)
+            +" tutorial="+std::to_string(KharvoxHudTutorialActive()?1:0)
+            +" accepted="+std::to_string(storySkipDecision.eligible?1:0)
+            +" independent="+std::to_string(storySkipDecision.consumeRs?1:0));
+    }
+    s.storySkipInputWasDown=meleeDown;
     if(storySkipDecision.changed){
         const bool applied=KharvoxCameraSetStoryCinematicFastForward(
             storySkipDecision.accelerate);
@@ -3754,6 +3780,7 @@ bool createGameplayActions(){
         +" fastChainsaw="+(s.customMods.fastChainsawKills?"on":"off")
         +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" storySkipRS="+(s.customMods.storyCinematicSkip?"on (experimental native 4x)":"off")
+        +" actionExit40ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
@@ -5556,9 +5583,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicActive);
     KharvoxCameraSetImmersiveCinematicFreelook(
         immersiveCameraArmed&&s.immersiveCinematicFreelook&&!KharvoxCameraBossSequenceActive());
-    // Built into native sync actions: 40ms is the earliest calibrated
-    // delay that preserves the initial execution alignment; retain the proven
-    // 90ms OpenXR position blend and never re-anchor until the kill ends.
+    // Early native sync handoff is now a TEMPORARY opt-in test. When OFF,
+    // do not start KHARVOX's 40ms early release: keep the original camera
+    // path exactly as before the experimental handoff. ON retains the
+    // calibrated 90ms OpenXR translation blend after the 40ms entry delay.
     constexpr int cinematicExitHandoffDelayMs = 40;
     // A headset trace shows native sync enters ~1s BEFORE its exit. Begin
     // releasing the XR position anchor near entry, after the native snap has
