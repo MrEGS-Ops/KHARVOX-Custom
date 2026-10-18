@@ -111,6 +111,13 @@ volatile LONG immersiveCinematicFovRequested{};
 volatile LONG immersiveCinematicFovHookActive{};
 volatile LONG immersiveCinematicFreelookRequested{};
 volatile LONG storyCameraFocusRequested{};
+// Camera-thread action latch and XR action-boundary guard prevent scripted
+// Glory Kill/ledge exit frames from being treated as an independent story.
+std::atomic<bool> storyFocusLocalActionTail{};
+std::atomic<bool> storyFocusXrActionTail{};
+std::atomic<bool> storyFocusTailReported{};
+std::array<std::atomic<float>,3> lastCinematicSourceOrigin{};
+std::atomic<bool> lastCinematicSourceOriginValid{};
 std::atomic<float> stereoEyeOffset{};
 std::atomic<float> stereoFovX{};
 std::atomic<float> stereoFovY{};
@@ -2065,6 +2072,24 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
             preCinematicGameplayAxisValid.store(true, std::memory_order_release);
             log("cinematic entry: gravity-level gameplay body basis held");
         }
+        const bool focusSyncAttack=KharvoxCameraSyncAttackActive();
+        const bool focusChainsaw=latestChainsawTakedownCinematic.load(std::memory_order_acquire);
+        const bool focusLedge=KharvoxCameraLedgeTransitionActive();
+        const bool focusActionActive=focusSyncAttack||focusChainsaw||focusLedge;
+        if(focusActionActive){
+            if(!storyFocusLocalActionTail.exchange(true,std::memory_order_acq_rel))
+                log("[STORY-FOCUS][ACTION-TAIL] execution/ledge observed; authored story yaw blocked until gameplay returns");
+            storyFocusTailReported.store(false,std::memory_order_release);
+        }
+        const bool focusActionTail=storyFocusLocalActionTail.load(std::memory_order_acquire)
+            ||storyFocusXrActionTail.load(std::memory_order_acquire);
+        if(focusActionTail&&!focusActionActive
+            &&InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0
+            &&!storyFocusTailReported.exchange(true,std::memory_order_acq_rel))
+            log("[STORY-FOCUS][ACTION-TAIL] action flag cleared, but cutscene persists; native story yaw remains blocked");
+        for(int axis=0;axis<3;++axis)
+            lastCinematicSourceOrigin[axis].store(unmodifiedPosition[axis],std::memory_order_relaxed);
+        lastCinematicSourceOriginValid.store(true,std::memory_order_release);
         const bool immersiveHmdRotation =
             InterlockedCompareExchange(&immersiveCinematicFreelookRequested, 0, 0) != 0
             && worldCameraActive.load(std::memory_order_acquire)
@@ -2082,10 +2107,11 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
                     InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0,
                     immersiveHmdRotation,
                     worldCameraActive.load(std::memory_order_acquire),
-                    KharvoxCameraSyncAttackActive(),
-                    latestChainsawTakedownCinematic.load(std::memory_order_acquire),
-                    KharvoxCameraLedgeTransitionActive(),
-                    KharvoxCameraBossSequenceActive());
+                    focusSyncAttack,
+                    focusChainsaw,
+                    focusLedge,
+                    KharvoxCameraBossSequenceActive(),
+                    focusActionTail);
             float hmdBasis[9]{};
             if(independentStoryFocus) {
                 // Preserve source camera basis before optical stereo eye
@@ -2186,7 +2212,21 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
     const bool gameplayCamera = callerRva == 0xE3F96A;
     const bool cinematicEnded = gameplayCamera
         && cutsceneActive.exchange(false, std::memory_order_acq_rel);
+    if(gameplayCamera&&storyFocusLocalActionTail.exchange(false,std::memory_order_acq_rel)){
+        storyFocusTailReported.store(false,std::memory_order_release);
+        log("[STORY-FOCUS][ACTION-TAIL] gameplay camera returned; local action suppression released");
+    }
     if (cinematicEnded) {
+        if(lastCinematicSourceOriginValid.exchange(false,std::memory_order_acq_rel)){
+            float nativeDelta[3]{};
+            for(int axis=0;axis<3;++axis)
+                nativeDelta[axis]=unmodifiedPosition[axis]-
+                    lastCinematicSourceOrigin[axis].load(std::memory_order_relaxed);
+            log("[CAMERA-HANDOFF] native cinematic-to-gameplay source delta xyz="
+                +std::to_string(nativeDelta[0])+","+
+                std::to_string(nativeDelta[1])+","+
+                std::to_string(nativeDelta[2])+" (DOOM units, observational)");
+        }
         postCinematicGameplayCameraReturned.store(true,std::memory_order_release);
         log("[IMMERSIVE] cinematic-to-gameplay return: forced gravity-level camera basis until participant guard clears");
     }
@@ -2616,6 +2656,13 @@ void KharvoxCameraSetImmersiveCinematicFov(
             log("[FOV] DOOMCutsceneFOV override inactive outside cinematic");
         }
     }
+}
+
+void KharvoxCameraSetStoryFocusActionTail(bool blocked) {
+    const bool prior=storyFocusXrActionTail.exchange(blocked,std::memory_order_acq_rel);
+    if(prior!=blocked)
+        log(std::string("[STORY-FOCUS][ACTION-TAIL] XR boundary ")
+            +(blocked?"BLOCKED (execution/ledge tail)":"released"));
 }
 
 void KharvoxCameraSetStoryCameraFocus(bool requested) {
