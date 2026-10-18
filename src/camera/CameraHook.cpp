@@ -504,7 +504,8 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     const uintptr_t owner = *reinterpret_cast<const uintptr_t*>(mechanic + 0x10);
     playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
     playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
-    if(newState!=-1 && !storyFocusLedgeCinematicHeld.exchange(true,std::memory_order_acq_rel))
+    if(newState!=-1 && owner && owner==playerPhysicsOwner.load(std::memory_order_acquire)
+        &&!storyFocusLedgeCinematicHeld.exchange(true,std::memory_order_acq_rel))
         log("[STORY-FOCUS] ledge transition captured: authored story yaw excluded until gameplay camera returns");
 }
 
