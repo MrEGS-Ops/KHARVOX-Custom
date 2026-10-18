@@ -3521,10 +3521,16 @@ void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement) {
     const bool flagsKnown=address
         &&readableMemory(const_cast<const LONG*>(address),sizeof(LONG))
         &&readInterlockedLongSafely(address,flags);
+    // Read snapshots maintained by the existing gameplay camera hook.
+    // Never invoke DOOM physics vtable methods from the XR input thread.
+    const auto serial=cameraPresentSerial.load(std::memory_order_acquire);
+    const auto captured=playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    const bool freshOrigin=ownerOkay&&captured&&serial>=captured
+        &&serial-captured<=2;
     float origin[3]{};
-    uintptr_t measuredOwner{};
-    const bool freshOrigin=readLivePlayerPhysicsOrigin(origin,&measuredOwner)
-        &&measuredOwner==owner;
+    if(freshOrigin)
+        for(int axis=0;axis<3;++axis)
+            origin[axis]=playerPhysicsOrigin[axis].load(std::memory_order_relaxed);
     float displacement=-1.f;
     if(freshOrigin&&priorOriginValid&&lastOwner==owner){
         const float dx=origin[0]-lastOrigin[0];
@@ -3535,8 +3541,6 @@ void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement) {
     priorOriginValid=freshOrigin;
     lastOwner=owner;
     if(freshOrigin)std::memcpy(lastOrigin,origin,sizeof(lastOrigin));
-    const auto serial=cameraPresentSerial.load(std::memory_order_acquire);
-    const auto captured=playerPhysicsCapturePresent.load(std::memory_order_acquire);
     std::ostringstream out;
     out<<"[UNINTERRUPTED-STORY] scene-hold"
        <<" cutscene="<<static_cast<int>(cutsceneActive.load(std::memory_order_acquire))
