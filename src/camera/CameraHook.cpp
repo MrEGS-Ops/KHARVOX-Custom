@@ -19,6 +19,7 @@
 #include "../openxr/StoryFreeWalkPolicy.h"
 #include "../common/RuntimePaths.h"
 #include "../common/RuntimeLog.h"
+#include "MajorStoryFocusPolicy.h"
 #include "../hud/HudHook.h"
 #include "../weapon/WeaponHook.h"
 
@@ -111,6 +112,8 @@ volatile LONG immersiveCinematicFovRequested{};
 volatile LONG immersiveCinematicFovHookActive{};
 volatile LONG immersiveCinematicFreelookRequested{};
 volatile LONG storyCameraFocusRequested{};
+std::mutex majorStoryFocusMutex;
+kharvox::MajorStoryFocusState majorStoryFocus{};
 // Camera-thread action latch and XR action-boundary guard prevent scripted
 // Glory Kill/ledge exit frames from being treated as an independent story.
 std::atomic<bool> storyFocusLocalActionTail{};
@@ -2055,8 +2058,11 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         // top of the gameplay body basis held at cinematic entry. HMD
         // translation remains disabled so the animation still owns position.
         const bool wasCutscene = cutsceneActive.exchange(true, std::memory_order_acq_rel);
-        if (!wasCutscene)
+        if (!wasCutscene){
             postCinematicGameplayCameraReturned.store(false, std::memory_order_release);
+            std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+            majorStoryFocus.begin(GetTickCount64());
+        }
         if (!wasCutscene && bodyCameraValid.load(std::memory_order_acquire)) {
             preCinematicGameplayAxisValid.store(false, std::memory_order_release);
             float entryBasis[9]{};
@@ -2112,24 +2118,48 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
                     focusLedge,
                     KharvoxCameraBossSequenceActive(),
                     focusActionTail);
+            // DOOM does not expose a reliable "Pinky story" scene ID here.
+            // Keep native first-person heading disabled through short
+            // interactions. Only substantial, sustained scripted camera yaw
+            // qualifies, and introduce that authored yaw gradually.
             float hmdBasis[9]{};
-            if(independentStoryFocus) {
-                // Preserve source camera basis before optical stereo eye
-                // offsets. DOOM's authored focus is NOT a hardcoded left turn.
-                std::memcpy(hmdBasis,unmodifiedBasis,sizeof(hmdBasis));
-                static std::atomic<bool> loggedStoryFocus{};
-                if(!loggedStoryFocus.exchange(true,std::memory_order_acq_rel))
-                    log("[STORY-FOCUS] native animated yaw + tracked HMD residual ACTIVE; sync executions excluded");
-            } else {
-                for (int index=0;index<9;++index)
-                    hmdBasis[index]=preCinematicGameplayAxis[index].load(
-                        std::memory_order_relaxed);
+            for(int i=0;i<9;++i)
+                hmdBasis[i]=preCinematicGameplayAxis[i].load(std::memory_order_relaxed);
+            const float heldYaw=std::atan2(hmdBasis[1],hmdBasis[0])*57.2957795131f;
+            const float nativeYaw=std::atan2(unmodifiedBasis[1],unmodifiedBasis[0])*57.2957795131f;
+            const float yawDelta=kharvox::shortestYawDegrees(nativeYaw,heldYaw);
+            kharvox::MajorStoryFocusResult majorFocus{};
+            const bool independentLongStory=independentStoryFocus
+                &&!KharvoxWeaponCollectibleAnimationActive()
+                &&!KharvoxCameraPlayerWeaponControlActive();
+            {
+                std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+                majorFocus=kharvox::updateMajorStoryFocus(
+                    majorStoryFocus,GetTickCount64(),
+                    InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0,
+                    independentLongStory,yawDelta);
+            }
+            if(majorFocus.newlyEngaged)
+                log("[STORY-FOCUS][MAJOR] sustained authored story rotation recognized; "
+                    "blending DOOM heading over 500ms, short interactions unaffected");
+            if(majorFocus.weight>0.0f){
+                // Only rotate the gravity-level basis around Z. The headset
+                // still supplies pitch/roll and all translation; never inject
+                // DOOM-authored roll/pitch into the player's VR horizon.
+                const float radians=yawDelta*majorFocus.weight*0.0174532925199433f;
+                const float cosine=std::cos(radians),sine=std::sin(radians);
+                for(int row=0;row<3;++row){
+                    const int base=row*3;
+                    const float x=hmdBasis[base],y=hmdBasis[base+1];
+                    hmdBasis[base]=cosine*x-sine*y;
+                    hmdBasis[base+1]=sine*x+cosine*y;
+                }
             }
             applyResidualHeadOrientation(hmdBasis);
             std::memcpy(unmodifiedBasis,hmdBasis,sizeof(hmdBasis));
             if(!wasCutscene)
                 log(independentStoryFocus
-                    ?"[STORY-FOCUS] native authored story heading at cinematic entry"
+                    ?"[STORY-FOCUS][MAJOR] candidate started; Focus dormant pending sustained authored rotation"
                     :"[IMMERSIVE] animation position + HMD-only rotation ACTIVE; HMD translation disabled");
         }
         const float nativeFovX = *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70);
@@ -2217,6 +2247,16 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         log("[STORY-FOCUS][ACTION-TAIL] gameplay camera returned; local action suppression released");
     }
     if (cinematicEnded) {
+        {
+            std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+            if(majorStoryFocus.active){
+                const auto elapsed=GetTickCount64()-majorStoryFocus.beganMs;
+                log("[STORY-FOCUS][MAJOR] scene end durationMs="+std::to_string(elapsed)
+                    +" maxAuthoredYawDeg="+std::to_string(majorStoryFocus.largestNativeYawDegrees)
+                    +" classifiedMajor="+std::to_string(majorStoryFocus.engaged?1:0));
+                majorStoryFocus.reset();
+            }
+        }
         if(lastCinematicSourceOriginValid.exchange(false,std::memory_order_acq_rel)){
             float nativeDelta[3]{};
             for(int axis=0;axis<3;++axis)
