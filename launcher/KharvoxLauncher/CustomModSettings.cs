@@ -11,13 +11,15 @@ internal sealed class ActionSpeedSetting
 internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
-    { "glory", "chainsaw", "ledge", "cinematic" };
+    { "glory", "chainsaw", "ledge" };
+    // Story cinematics always keep native tick timing. Do not expose a
+    // global tick override for their cutscene and execution-tail frames.
     // Only verified lifecycle actions are editable. Exploratory input probes
     // are read-only and live behind the single Log Test checkbox.
     internal static readonly string[] All = Controllable;
 
     internal static bool HasActiveOverrides(CustomModSettings settings) =>
-        settings.SpeedAdvancedExpanded && Controllable.Any(key =>
+        Controllable.Any(key =>
             settings.ActionSpeedProfiles != null
             && settings.ActionSpeedProfiles.TryGetValue(key, out var profile)
             && profile != null && profile.Enabled);
