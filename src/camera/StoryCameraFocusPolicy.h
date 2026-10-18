@@ -8,7 +8,6 @@ constexpr bool storyFocusCanUseAuthoredYaw(
         &&!syncAttack&&!chainsawExecution&&!ledgeClimb&&!boss
         &&!recentActionTail;
 }
-}
 
 // Preserve the user's Focus preference while temporarily overriding its
 // effective state through a native execution/ledge and its camera-return tail.
@@ -23,3 +22,4 @@ struct StoryCameraFocusAutoSuspend {
         return suspended;
     }
 };
+}
