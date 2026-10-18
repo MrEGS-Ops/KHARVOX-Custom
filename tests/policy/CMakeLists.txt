@@ -90,3 +90,7 @@ add_test(NAME major-story-focus-selection COMMAND KharvoxMajorStoryFocusPolicyTe
 add_executable(KharvoxActionExitHandoffPolicyTests ../action_exit_handoff_policy_tests.cpp)
 target_compile_features(KharvoxActionExitHandoffPolicyTests PRIVATE cxx_std_17)
 add_test(NAME action-exit-handoff-duration COMMAND KharvoxActionExitHandoffPolicyTests)
+
+add_executable(KharvoxChainsawMotionSpeedTests ../chainsaw_motion_speed_policy_tests.cpp)
+target_compile_features(KharvoxChainsawMotionSpeedTests PRIVATE cxx_std_17)
+add_test(NAME chainsaw-motion-live-speed COMMAND KharvoxChainsawMotionSpeedTests)
