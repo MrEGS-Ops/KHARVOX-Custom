@@ -92,6 +92,13 @@ def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
     if not index.is_file() or not resources.is_file():
         raise ModGenerationError(
             "DOOM v5 gameresources.index/resources not found in " + str(game / "base"))
+    # The exporter uses "path;fileType" but the index has two
+    # independent string fields. Neither string includes the semicolon.
+    if ";" not in relative:
+        raise ModGenerationError("DOOM resource must specify path;fileType")
+    requested_path, requested_type = relative.rsplit(";", 1)
+    if not requested_path or not requested_type:
+        raise ModGenerationError("Malformed original typed resource name")
     with index.open("rb") as stream:
         if stream.read(4) != b"\x05SER":
             raise ModGenerationError("Unrecognized game resource index")
@@ -125,7 +132,9 @@ def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
             if len(fields) != 21:
                 raise ModGenerationError("Truncated game resource offsets")
             offset, plain, stored, flags, patch = struct.unpack(">qiiiB", fields)
-            if filename.casefold() == relative.casefold():
+            full_name = filename if filename else short_name
+            if (full_name.casefold() == requested_path.casefold()
+                    and category.casefold() == requested_type.casefold()):
                 found.append((offset, plain, stored, patch))
         if stream.tell() != total or len(found) != 1:
             raise ModGenerationError(
@@ -251,7 +260,7 @@ def self_test() -> None:
             struct.pack(">i", 1)
             + encoded_name("aiGlobalSettings")
             + encoded_name("default")
-            + encoded_name(AI)
+            + encoded_name(AI.rsplit(";", 1)[0])
             + struct.pack(">qiiiB", 16, len(baseline), len(compressed), 0, 0)
         )
         header = (b"\x05SER" + struct.pack(">I", 4 + len(record))
