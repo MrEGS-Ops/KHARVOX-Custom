@@ -83,6 +83,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customPersistentSsgReload = MakeCheck("Persistent Super Shotgun Reload", false);
     private readonly CheckBox customPhysicalGrenadeThrow = MakeCheck("Physical Grenade Throw", false);
     private readonly CheckBox customStoryCinematicSkip = MakeCheck("Story Cinematic Skip (RS)", false);
+    private readonly CheckBox customStoryFreeWalk = MakeCheck("Story Free Walk (RS) · Experimental", false);
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
@@ -435,6 +436,7 @@ public sealed partial class MainForm : Form
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
+            (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
             (customActionExitHandoff, "TEMPORARY A/B TEST. OFF (default): DOOM/native cinematic action exit, no KHARVOX early 40 ms handoff. ON: KHARVOX releases the cinematic position anchor 40 ms after confirmed sync entry (90 ms smooth blend), with exit fallback. Test both, especially camera tilt and blink after Glory Kills. No tick Hz or animation speed changes."),
             (customHapticOverhaul, "EXPERIMENTAL: fixed-strength damage vibration with duration based on HP/AP lost (50ms per point, 600ms maximum). Pending a verified live health and armour reader; no damage pulses will occur until that input is available. Existing DOOM weapon feedback remains unchanged.")
         };
@@ -2046,6 +2048,7 @@ public sealed partial class MainForm : Form
         PersistentSuperShotgunReload = customPersistentSsgReload.Checked,
         PhysicalGrenadeThrow = customPhysicalGrenadeThrow.Checked,
         StoryCinematicSkip = customStoryCinematicSkip.Checked,
+        StoryFreeWalk = customStoryFreeWalk.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
         // Existing native flags remain as the runtime contract, now owned
@@ -2107,6 +2110,7 @@ public sealed partial class MainForm : Form
             customPersistentSsgReload.Checked = mods.PersistentSuperShotgunReload;
             customPhysicalGrenadeThrow.Checked = mods.PhysicalGrenadeThrow;
             customStoryCinematicSkip.Checked = mods.StoryCinematicSkip;
+            customStoryFreeWalk.Checked = mods.StoryFreeWalk;
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
             // Legacy shared engine-speed presets have been retired. Native
             // between actions is the unambiguous default for the new menu.
