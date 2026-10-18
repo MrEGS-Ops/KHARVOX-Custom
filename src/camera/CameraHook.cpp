@@ -18,6 +18,7 @@
 #include "StoryCameraFocusPolicy.h"
 #include "../openxr/StoryFreeWalkPolicy.h"
 #include "../common/RuntimePaths.h"
+#include "../common/RuntimeLog.h"
 #include "../hud/HudHook.h"
 #include "../weapon/WeaponHook.h"
 
@@ -209,11 +210,10 @@ RenderHeadPose renderHeadPose() {
 }
 
 void log(const std::string& text) {
-    if (!kharvox::extendedDiagnosticsEnabled()) return;
-    char temp[MAX_PATH]{};
-    GetTempPathA(MAX_PATH, temp);
-    std::ofstream out(std::string(temp) + "KHARVOX.log", std::ios::app);
-    out << "[KHARVOX][CAMERA] " << text << '\n';
+    // Use the same runtime-owned logs/KHARVOX.log as the XR layer and launcher.
+    // The previous %TEMP%/KHARVOX.log silently excluded movement diagnostics
+    // from the launcher's collected /logs bundle.
+    kharvox::writeRuntimeLog("[KHARVOX][CAMERA]", text);
 }
 
 void rotateCameraBasis(float* basis, float yaw, float pitch, float roll) {
