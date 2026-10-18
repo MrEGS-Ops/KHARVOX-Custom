@@ -676,7 +676,7 @@ const kharvox::ActionSpeedTargets& actionSpeedTargets(){
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CINEMATIC_HZ")};
+        0 /* passive scripted scenes must always remain game-native */};
     return p;
 }
 unsigned actionSpeedProbeMask(){
@@ -5534,9 +5534,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ?kharvox::ActionSpeedChoice{}:selectedAction;
     // The CineWindow checkbox selects PRESENTATION, not animation speed.
     // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
-    // cutscene=1, syncAttack=0. DOOM native timing is the default. ONLY the
-    // explicit "Scripted cinematics" override may change their tick Hz;
-    // immersive camera/projection/freelook are independent.
+    // cutscene=1, syncAttack=0. DOOM native timing is unconditional:
+    // no action-speed target may claim their timing; VR projection and the
+    // independent RS story skip detector remain unchanged.
     const bool actionTimingAllowed=kharvox::shouldApplyImmersiveActionTiming(
         originalCinematicHold,syncAction,chainsawAction,ledgeAction,
         activeAction.hz>0);
