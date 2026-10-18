@@ -5631,7 +5631,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ?s.leftGripController:s.rightGripController;
     const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked
         &&movingHand.linearVelocityValid;
-    const int motionFullSpeedCmSec=[](){
+    static const int motionFullSpeedCmSec=[](){
         char raw[16]{};
         const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S",raw,sizeof(raw));
         if(n==0||n>=sizeof(raw))return 180;
