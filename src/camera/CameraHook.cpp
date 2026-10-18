@@ -781,6 +781,8 @@ volatile LONG* resolveTimescaleCvarCurrent() {
     unsigned bestScore{};
     int bestNameOffset{-1};
     bool ambiguous{};
+    unsigned topScoreTies{};
+    std::array<uintptr_t,4> topCandidateRvas{};
     constexpr uint32_t nameOffsets[]{0, 8, 16, 24, 32};
     for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
         const auto& sec = section[index];
@@ -819,14 +821,28 @@ volatile LONG* resolveTimescaleCvarCurrent() {
                     bestCurrent = valueAddress;
                     bestNameOffset = static_cast<int>(nameOffset);
                     ambiguous = false;
+                    topScoreTies = 1;
+                    topCandidateRvas = {valueAddress-reinterpret_cast<uintptr_t>(image),0,0,0};
                 } else if (score == bestScore && valueAddress != bestCurrent) {
                     ambiguous = true;
+                    if(topScoreTies<topCandidateRvas.size())
+                        topCandidateRvas[topScoreTies]=valueAddress-reinterpret_cast<uintptr_t>(image);
+                    ++topScoreTies;
                 }
             }
         }
     }
 
     if (!bestCurrent || bestScore < 55 || ambiguous) {
+        // Read-only candidate diagnostics for this exact EXE. Never guess
+        // which identically scored CVar to write; preserve fail-closed mode.
+        std::ostringstream reason;
+        reason << "timescale resolver FAIL nameMatches=" << nameAddresses.size()
+            << " bestScore=" << bestScore << " nameOffset=" << bestNameOffset
+            << " tiedTopCandidates=" << topScoreTies << " firstRvas=";
+        for(size_t n=0;n<std::min<size_t>(topScoreTies,topCandidateRvas.size());++n)
+            reason << "0x" << std::hex << topCandidateRvas[n] << std::dec << ",";
+        logGlorySlowmo(reason.str());
         logGlorySlowmo("timescale cvar current value could not be resolved uniquely");
         state.store(-1, std::memory_order_release);
         return nullptr;
