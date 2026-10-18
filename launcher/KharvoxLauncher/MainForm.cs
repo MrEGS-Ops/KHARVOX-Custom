@@ -87,6 +87,8 @@ public sealed partial class MainForm : Form
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
+    private static readonly string[] ScopedActionKeys = { "glory", "chainsaw", "ledge" };
+    // Three selectable presets plus a read-only custom-profile indicator.
     private readonly ComboBox cinematicSpeedSelector = new()
     {
         DropDownStyle = ComboBoxStyle.DropDownList,
@@ -500,8 +502,10 @@ public sealed partial class MainForm : Form
         cinematicSpeedSelector.Dock = DockStyle.Fill;
         cinematicSpeedSelector.Margin = new Padding(1,2,3,5);
         cinematicSpeedSelector.Items.AddRange(new object[] {
-            "Native · original timing", "90 Hz · slower", "70 Hz",
-            "50 Hz", "30 Hz · faster", "Full speed · no slow-mo"
+            "Native · DOOM defaults",
+            "Fast · 70 / 70 / 70 Hz",
+            "Maximum · 30 / 40 / 50 Hz",
+            "Custom · manual overrides"
         });
         cinematicSpeedSelector.DrawItem += (_, e) =>
         {
@@ -521,8 +525,27 @@ public sealed partial class MainForm : Form
             if(refreshingSpeedSelector||restoringConfiguration||applyingCustomModDependencies)return;
             var index=cinematicSpeedSelector.SelectedIndex;
             if(index<0)return;
-            cinematicFullSpeedMode=index==5;
-            if(index<5)cinematicKillSpeed.Value=index+1;
+            if(index==3) {
+                // Read-only status when any manual slider differs from presets.
+                UpdateCinematicKillSpeedLabel();
+                return;
+            }
+            applyingCustomModDependencies=true;
+            try{
+                cinematicFullSpeedMode=false;
+                cinematicKillSpeed.Value=1;
+                for(int i=0;i<ScopedActionKeys.Length;i++){
+                    var key=ScopedActionKeys[i];
+                    speedActionChecks[key].Checked=index!=0;
+                    int hz=index switch{
+                        1=>70,
+                        2=>i==0?30:i==1?40:50,
+                        _=>30
+                    };
+                    speedActionSliders[key].Value=270-hz;
+                }
+                if(index>0)speedAdvanced.Checked=true;
+            }finally{applyingCustomModDependencies=false;}
             ApplyCustomModDependencies(null);
             SaveCustomModSettings();
             OptionChanged(cinematicSpeedSelector,EventArgs.Empty);
@@ -530,7 +553,7 @@ public sealed partial class MainForm : Form
         presetChoiceRow.Controls.Add(cinematicSpeedSelector, 0, 0);
         var speedHint = new Label
         {
-            Text="Native  →  30 Hz  →  Full",
+            Text="Glory / Chainsaw / Ledge",
             Dock=DockStyle.Fill,
             ForeColor=Color.FromArgb(158,159,166),
             Font=new Font("Segoe UI",8f),
@@ -544,16 +567,17 @@ public sealed partial class MainForm : Form
         presetChoiceRow.Controls.Add(speedAdvanced,2,0);
         speedPresetPanel.Controls.Add(presetChoiceRow,0,1);
         statusToolTip.SetToolTip(cinematicSpeedSelector,
-            "Native = original DOOM sync pacing. 90/70/50/30 Hz are experimental "
-            +"engine tick targets (lower Hz often makes actions faster). "
-            +"Full speed uses the proven native sync_noAdaptiveTick bypass for "
-            +"Glory Kills AND chainsaw kills. Restart DOOM.");
+            "Three action presets: Native (no override), Fast (70/70/70 Hz) "
+            +"and Maximum (30/40/50 Hz for Glory/Chainsaw/Ledge). "
+            +"Manually editing action sliders shows Custom. "
+            +"Scripted cinematics always use DOOM's native tick settings. Restart DOOM.");
         statusToolTip.SetToolTip(speedHint,
-            "Choose the speed directly in the dropdown. 30 Hz and Full speed "
-            +"are different mechanisms; Full speed disables native kill slow motion.");
+            "Values are scoped to Glory Kill, Chainsaw and Ledge. "
+            +"Smaller Hz = faster actions in our current tests; "
+            +"this is not the headset render refresh rate.");
         statusToolTip.SetToolTip(speedAdvanced,
-            "Expand the three detected action overrides and optional diagnostic log. "
-            +"Active overrides pause the saved Sync Action Speed mode.");
+            "Show/hide three action override sliders and optional debug logging. "
+            +"Collapsing Advanced does not deactivate an applied speed preset.");
         UpdateCinematicKillSpeedLabel();
         cinematicKillSpeed.ValueChanged += (_, _) =>
         {
@@ -578,22 +602,16 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        // Three verified execution/climbing actions and one narrowly gated
-        // experimental Foundry-style scripted cinematic override. There
-        // are no fake animation probe sliders.
+        // Exactly three editable action overrides. DOOM-native scripted
+        // cinematics cannot be accelerated by this whole-engine tick mod.
         var actionNames = new Dictionary<string,string> {
             ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
-            ["ledge"]="Ledge climbing",
-            ["cinematic"]="Scripted cinematics"
+            ["ledge"]="Ledge climbing"
         };
         var actionHints = new Dictionary<string,string> {
             ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
             ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action.",
-            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target.",
-            ["cinematic"]="Experimental: applies ONLY to immersive, non-execution cutscenes "
-                +"such as Foundry's arm-rip, hand scanner and console interactions. "
-                +"Glory Kills, chainsaw and ledge events take priority. "
-                +"Unchecked preserves DOOM's original scripted timing."
+            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target."
         };
         const int actionHeaderHeight=30;
         const int actionRowHeight=38;
@@ -611,9 +629,10 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.Controls.Add(actionHeader,0,0);
         speedAdvancedPanel.SetColumnSpan(actionHeader,3);
         statusToolTip.SetToolTip(actionHeader,
-            "Each checked action temporarily overrides the engine tick target. "
-            + "Presets above pause until all overrides are unchecked. "
-            + "Higher Hz = slower synchronized actions in current tests, not higher rendered FPS.");
+            "Presets set checked actions and their tick targets. You can edit "
+            +"each slider to create a Custom profile. Scripted cinematics "
+            +"always keep the original DOOM timing. Lower Hz = faster action, "
+            +"not more rendered FPS.");
         void AddActionSpeedRow(string key)
         {
             int row=speedAdvancedPanel.RowCount++;
@@ -642,14 +661,18 @@ public sealed partial class MainForm : Form
             speedAdvancedPanel.Controls.Add(value,2,row);
             string tip=actionHints[key]
                 +" Right = faster action (30 Hz); left = slower (240 Hz). "
-                +"Presets pause while any override is enabled. Restart DOOM.";
+                +"Manual changes show Custom in the preset selector. Restart DOOM.";
             statusToolTip.SetToolTip(check,tip);
             statusToolTip.SetToolTip(value,tip);
             statusToolTip.SetToolTip(slider,tip);
             slider.AccessibleDescription=tip;
-            slider.ValueChanged+=(_,_)=>UpdateActionSpeedLabels();
+            slider.ValueChanged+=(_,_)=>{
+                if(restoringConfiguration||applyingCustomModDependencies)return;
+                UpdateCinematicKillSpeedLabel();
+            };
             void Commit(){
                 if(restoringConfiguration||applyingCustomModDependencies)return;
+                UpdateCinematicKillSpeedLabel();
                 SaveCustomModSettings();
                 OptionChanged(slider,EventArgs.Empty);
             }
@@ -667,18 +690,16 @@ public sealed partial class MainForm : Form
         foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
         int logRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
-        speedActionLogTest.Text="Log action edges + melee input";
+        speedActionLogTest.Text="Diagnostic: action edges + melee (optional)";
         speedActionLogTest.AutoSize=true;
         speedActionLogTest.Font=new Font("Segoe UI",8.5f);
         speedActionLogTest.Margin=new Padding(6,8,0,0);
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "Log confirmed Glory Kill/chainsaw/ledge/scripted cinematic "
-            +"state transitions and observed melee input edges. Melee is "
-            +"NOT a verified animation lifecycle. No grenade, reload, "
-            +"enemy, boss, Gauss or wheel probes. "
-            +"Logging does NOT change timing. Restart DOOM.");
+            "For troubleshooting only. Record confirmed action state edges "
+            +"and observed melee button transitions. Off during normal play; "
+            +"it does not change timing or fix an animation. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
