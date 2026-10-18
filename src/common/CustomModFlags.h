@@ -38,6 +38,7 @@ struct CustomModFlags {
     bool uninterruptedStory{};
     bool motionGloryKillSpeed{};
     bool physicalChainsawGestures{};
+    bool motionChainsawKillSpeed{};
     bool hapticOverhaul{};
 };
 
@@ -77,7 +78,8 @@ inline CustomModFlags loadCustomModFlags() {
     flags.storyCameraFocus = customModEnvironmentEnabled("KHARVOX_MOD_STORY_CAMERA_FOCUS");
     flags.uninterruptedStory = customModEnvironmentEnabled("KHARVOX_MOD_UNINTERRUPTED_STORY");
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
-    flags.physicalChainsawGestures = false; // retired; fast/native toggle replaces gesture speed control
+    flags.physicalChainsawGestures = false; // old timescale gesture remains retired
+    flags.motionChainsawKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_CHAINSAW_SPEED");
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
     return flags;
 }
