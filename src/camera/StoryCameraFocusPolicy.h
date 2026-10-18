@@ -2,8 +2,10 @@
 namespace kharvox {
 constexpr bool storyFocusCanUseAuthoredYaw(
     bool requested, bool immersiveHmdLook, bool world,
-    bool syncAttack, bool chainsawExecution, bool ledgeClimb, bool boss) {
+    bool syncAttack, bool chainsawExecution, bool ledgeClimb,
+    bool ledgeCinematicHeld, bool boss) {
     return requested&&immersiveHmdLook&&world
-        &&!syncAttack&&!chainsawExecution&&!ledgeClimb&&!boss;
+        &&!syncAttack&&!chainsawExecution&&!ledgeClimb
+        &&!ledgeCinematicHeld&&!boss;
 }
 }
