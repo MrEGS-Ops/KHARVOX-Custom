@@ -48,12 +48,9 @@ constexpr ActionSpeedChoice selectActionSpeed(ActionSpeedCandidates a,ActionSpee
     if(a.syncAttack&&!a.chainsawKill&&validActionSpeedTarget(t.gloryKill))return {ActionSpeedKind::GloryKill,t.gloryKill};
     if(a.ledgeClimb&&validActionSpeedTarget(t.ledgeClimb))
         return {ActionSpeedKind::LedgeClimb,t.ledgeClimb};
-    // Passive scripted cinematic is distinct from all execution and ledge
-    // states. Never fall back to this target when a higher-priority action
-    // was detected but its own override is intentionally OFF.
-    if(a.scriptedCinematic&&!a.syncAttack&&!a.chainsawKill&&!a.ledgeClimb
-        &&validActionSpeedTarget(t.scriptedCinematic))
-        return {ActionSpeedKind::ScriptedCinematic,t.scriptedCinematic};
+    // Scripted story scenes keep original DOOM timing unconditionally.
+    // The classifier remains available to RS skip diagnostics, but must
+    // never create a gameplay engine tick override, even with stale values.
     return {};
 }
 constexpr const char* actionSpeedName(ActionSpeedKind k) {
