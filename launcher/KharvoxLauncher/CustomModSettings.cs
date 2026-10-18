@@ -81,6 +81,7 @@ internal sealed class CustomModSettings
     public bool PhysicalGrenadeThrow { get; set; }
     public bool StoryCinematicSkip { get; set; } // legacy opt-in; timescale unreliable
     public bool StoryFreeWalk { get; set; } // separate explicit opt-in, never migrated from old skip
+    public bool StoryCameraFocus { get; set; } // opt-in native authored story-camera yaw
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
     public bool HapticOverhaul { get; set; }
