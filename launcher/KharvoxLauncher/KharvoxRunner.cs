@@ -617,6 +617,10 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_ACTION_EXIT_HANDOFF"] = customMods.CinematicExitHandoff ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_CHAINSAW_SPEED"] =
+                customMods.MotionChainsawKillSpeed ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S"] =
+                Math.Max(70,Math.Min(300,customMods.ChainsawMotionFullSpeedCmPerSec)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
