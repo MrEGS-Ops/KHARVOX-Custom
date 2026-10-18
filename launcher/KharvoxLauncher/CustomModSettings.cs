@@ -61,7 +61,7 @@ internal sealed class CustomModSettings
     public bool FastGloryKills { get; set; }
     public bool FastChainsawKills { get; set; }
     public bool CinematicExitHandoff { get; set; }
-    public int CinematicExitHandoffDelayMs { get; set; } = 40;
+    public int CinematicExitHandoffDelayMs { get; set; } = 700; // fixed normal-speed GK delay; chainsaw/full speed remain 40ms
     // Native cinematic tick-Hz experiment: 1 original, 5 near-max adaptive.
     public int CinematicKillSpeedLevel { get; set; } = 1;
     public bool CinematicSpeedFineTune { get; set; }
@@ -131,8 +131,9 @@ internal static class CustomModSettingsStore
             value.CinematicExitHandoff = false;
             value.DevelopmentTestDefaultsRevision = 4;
         }
-        // The optional early release uses the same proven 40 ms timing.
-        value.CinematicExitHandoffDelayMs = 40;
+        // Fixed measured regular-GK delay; changing JSON does not alter the native
+        // action-specific 700ms/40ms selection in this experimental build.
+        value.CinematicExitHandoffDelayMs = 700;
         // Legacy Fine Tune checked state is migrated into Advanced.
         value.SpeedAdvancedExpanded |= value.CinematicSpeedFineTune;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
@@ -243,7 +244,7 @@ internal static class CustomModSettingsStore
             }, path);
             var first = Load(path);
             if (first.BackOfHandHud || first.CinematicExitHandoff
-                || first.CinematicExitHandoffDelayMs != 40
+                || first.CinematicExitHandoffDelayMs != 700
                 || first.CinematicSpeedFineTune || first.SpeedAdvancedExpanded
                 || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
