@@ -3483,6 +3483,83 @@ bool KharvoxCameraApplyStoryFreeWalk(bool requested, bool eligible) {
     return true;
 }
 
+void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement) {
+    // Reuse the narrowly validated movement-only idPlayer mask gate.
+    // Crucially: this never calls gameplay scripts or modifies player physics
+    // position, doors, weapons, camera animation, or mission state.
+    const bool requested=active&&stickMovement;
+    const bool attempted=KharvoxCameraApplyStoryFreeWalk(requested,active);
+    static unsigned long long lastProfile{};
+    static bool priorActive{};
+    static uintptr_t lastOwner{};
+    static float lastOrigin[3]{};
+    static bool priorOriginValid{};
+    const unsigned long long now=GetTickCount64();
+    if(!active){
+        if(priorActive)
+            log("[UNINTERRUPTED-STORY] cinematic ended; default engine controls restored");
+        priorActive=false;
+        lastProfile=0;
+        lastOwner=0;
+        priorOriginValid=false;
+        return;
+    }
+    const bool first=!priorActive;
+    priorActive=true;
+    if(!first&&lastProfile&&now-lastProfile<1500) return;
+    lastProfile=now;
+
+    constexpr uintptr_t offset=0x14C4C;
+    const uintptr_t owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    const bool metadata=playerControlClassifierSupported.load(std::memory_order_acquire);
+    const bool ownerOkay=metadata
+        &&playerPhysicsOriginValid.load(std::memory_order_acquire)
+        &&owner&&owner<=UINTPTR_MAX-offset-sizeof(LONG);
+    volatile LONG* address=ownerOkay
+        ?reinterpret_cast<volatile LONG*>(owner+offset):nullptr;
+    std::uint32_t flags{};
+    const bool flagsKnown=address
+        &&readableMemory(const_cast<const LONG*>(address),sizeof(LONG))
+        &&readInterlockedLongSafely(address,flags);
+    float origin[3]{};
+    uintptr_t measuredOwner{};
+    const bool freshOrigin=readLivePlayerPhysicsOrigin(origin,&measuredOwner)
+        &&measuredOwner==owner;
+    float displacement=-1.f;
+    if(freshOrigin&&priorOriginValid&&lastOwner==owner){
+        const float dx=origin[0]-lastOrigin[0];
+        const float dy=origin[1]-lastOrigin[1];
+        const float dz=origin[2]-lastOrigin[2];
+        displacement=std::sqrt(dx*dx+dy*dy+dz*dz);
+    }
+    priorOriginValid=freshOrigin;
+    lastOwner=owner;
+    if(freshOrigin)std::memcpy(lastOrigin,origin,sizeof(lastOrigin));
+    const auto serial=cameraPresentSerial.load(std::memory_order_acquire);
+    const auto captured=playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    std::ostringstream out;
+    out<<"[UNINTERRUPTED-STORY] scene-hold"
+       <<" cutscene="<<static_cast<int>(cutsceneActive.load(std::memory_order_acquire))
+       <<" stick="<<static_cast<int>(stickMovement)
+       <<" playerMetadata="<<static_cast<int>(metadata)
+       <<" flagsKnown="<<static_cast<int>(flagsKnown)
+       <<" inhibit=0x"<<std::hex<<flags<<std::dec
+       <<" moveBits=0x"<<std::hex
+           <<(flags & kharvox::storyHorizontalInhibitMask)<<std::dec
+       <<" weaponControl="<<static_cast<int>(flagsKnown
+           &&kharvox::playerWeaponControlAvailable(flags))
+       <<" originFresh="<<static_cast<int>(freshOrigin)
+       <<" frameAge="<<(serial>=captured?serial-captured:0ull)
+       <<" displacementUnits="<<displacement
+       <<" horizontalRelease="<<static_cast<int>(attempted)
+       <<" generation="<<levelTransitionGeneration.load(std::memory_order_acquire);
+    log(out.str());
+    if(stickMovement&&!freshOrigin) {
+        log("[UNINTERRUPTED-STORY] player physics hook not refreshing during story; "
+            "input unlock alone cannot prove movement. Script/animation anchor investigation needed.");
+    }
+}
+
 void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
     constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
     static std::atomic<std::uint32_t> normalFlags{};
