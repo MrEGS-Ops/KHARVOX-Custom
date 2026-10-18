@@ -114,6 +114,7 @@ volatile LONG storyCameraFocusRequested{};
 // Its active flag may disappear before the final climbing cutscene camera
 // frames: latch until the gameplay camera itself returns.
 std::atomic<bool> storyFocusLedgeCinematicHeld{};
+std::atomic<unsigned long long> storyFocusLedgeArmedAtMs{};
 std::atomic<float> stereoEyeOffset{};
 std::atomic<float> stereoFovX{};
 std::atomic<float> stereoFovY{};
@@ -505,8 +506,10 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
     playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
     if(newState!=-1 && owner && owner==playerPhysicsOwner.load(std::memory_order_acquire)
-        &&!storyFocusLedgeCinematicHeld.exchange(true,std::memory_order_acq_rel))
+        &&!storyFocusLedgeCinematicHeld.exchange(true,std::memory_order_acq_rel)) {
+        storyFocusLedgeArmedAtMs.store(GetTickCount64(),std::memory_order_release);
         log("[STORY-FOCUS] ledge transition captured: authored story yaw excluded until gameplay camera returns");
+    }
 }
 
 bool installPlayerLedgeStateCapture(unsigned char* image) {
@@ -1161,6 +1164,7 @@ void invalidateLevelReferences() {
     playerLedgeTransitionOwner.store(0, std::memory_order_release);
     playerLedgeTransitionActive.store(false, std::memory_order_release);
     storyFocusLedgeCinematicHeld.store(false, std::memory_order_release);
+    storyFocusLedgeArmedAtMs.store(0, std::memory_order_release);
     playerPhysicsCapturePresent.store(0, std::memory_order_release);
     stableBodyViewOffsetValid.store(false, std::memory_order_release);
     stableBodyViewOffsetOwner.store(0, std::memory_order_release);
@@ -2193,11 +2197,19 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
         return;
     }
     const bool gameplayCamera = callerRva == 0xE3F96A;
-    if(gameplayCamera&&!KharvoxCameraLedgeTransitionActive()
-        &&storyFocusLedgeCinematicHeld.exchange(false,std::memory_order_acq_rel))
-        log("[STORY-FOCUS] native ledge cinematic ended; story yaw eligible again on independent scenes");
     const bool cinematicEnded = gameplayCamera
         && cutsceneActive.exchange(false, std::memory_order_acq_rel);
+    const auto storyLedgeNowMs=GetTickCount64();
+    if(kharvox::storyFocusCanClearLedgeHold(gameplayCamera,
+        KharvoxCameraLedgeTransitionActive(),cinematicEnded,
+        cutsceneActive.load(std::memory_order_acquire),
+        storyFocusLedgeArmedAtMs.load(std::memory_order_acquire),storyLedgeNowMs)
+        &&storyFocusLedgeCinematicHeld.exchange(false,std::memory_order_acq_rel)) {
+        storyFocusLedgeArmedAtMs.store(0,std::memory_order_release);
+        log(cinematicEnded
+            ?"[STORY-FOCUS] ledge camera completed; authored story yaw restored for independent scenes"
+            :"[STORY-FOCUS] abandoned ledge hold expired in gameplay; authored story yaw restored");
+    }
     if (cinematicEnded) {
         postCinematicGameplayCameraReturned.store(true,std::memory_order_release);
         log("[IMMERSIVE] cinematic-to-gameplay return: forced gravity-level camera basis until participant guard clears");
