@@ -180,7 +180,9 @@ internal static class CustomModSettingsStore
         value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         // Respect user preference. Do not silently re-enable early action exit.
-        value.CinematicExitHandoffDelayMs = 40;
+        // Retired user-configurable delay: native policy chooses 150ms for
+        // regular Glory Kills and 40ms for chainsaw/full-speed executions.
+        value.CinematicExitHandoffDelayMs = 150;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
@@ -262,7 +264,7 @@ internal static class CustomModSettingsStore
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
             if (Load(path).BackOfHandHud || !Load(path).CinematicExitHandoff
-                || Load(path).CinematicExitHandoffDelayMs != 40
+                || Load(path).CinematicExitHandoffDelayMs != 150
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
@@ -284,7 +286,7 @@ internal static class CustomModSettingsStore
                 throw new InvalidDataException("Manual action-exit ON did not persist.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
-                || fresh.CinematicExitHandoffDelayMs != 40
+                || fresh.CinematicExitHandoffDelayMs != 150
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install must retain game-default action exit.");
             File.WriteAllText(path, "{BROKEN");
