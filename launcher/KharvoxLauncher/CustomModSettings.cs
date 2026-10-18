@@ -79,7 +79,8 @@ internal sealed class CustomModSettings
     public bool DynamicShoulderHolster { get; set; }
     public bool PersistentSuperShotgunReload { get; set; }
     public bool PhysicalGrenadeThrow { get; set; }
-    public bool StoryCinematicSkip { get; set; } // opt-in; safe native timescale only
+    public bool StoryCinematicSkip { get; set; } // legacy opt-in; timescale unreliable
+    public bool StoryFreeWalk { get; set; } // separate explicit opt-in, never migrated from old skip
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
     public bool HapticOverhaul { get; set; }
