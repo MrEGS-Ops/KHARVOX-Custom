@@ -8,6 +8,7 @@
 - No RS press required. While you push the movement stick, it tries the existing *validated, bounded* idPlayer horizontal movement-inhibit release. Other inhibit bits, camera pose, origin, weapons, audio, scripts, objectives and doors are left to the original engine.
 - Excludes glory kills, chainsaw kills, ledges, bosses, menus, invalid tracking and other non-world contexts. Stops on exit or after 45 seconds, even if a cutscene flag stays stuck.
 - Temporarily supersedes older RS Story Skip and RS Free Walk if those checkboxes were saved ON. They are not deleted or modified. When the new option is OFF, previous mods are unaffected.
+- With Extended Logging enabled, requests DOOM's documented `g_debugScript=1` thread lifecycle diagnostics in addition to KHARVOX logging (the game may route native prints to a separate console or file; no script is modified).
 - Emits `[UNINTERRUPTED-STORY]` log lines every ~1.5s while active: native cutscene flag, whether movement stick is pushed, validated idPlayer inhibit mask, movement bits, weapon-control inhibition, physics-origin freshness, player-origin displacement, last capture age, native narrow release result and level generation.
 - The important diagnostic distinction: a moving stick with **no fresh physics origin** or **no horizontal inhibition** means script/animation or physics ownership must be investigated. Merely clearing input inhibition cannot force normal locomotion.
 - The prior 30/40/50 Hz scoped action presets, cinematic camera focus, camera exit A/B, rendering and XR input mapping are unchanged.
