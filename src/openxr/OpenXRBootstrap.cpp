@@ -3225,8 +3225,9 @@ void updateGameplayActions(XrTime displayTime){
             :"[UNINTERRUPTED-STORY] story scene ended; engine ownership restored");
     const bool narrativeStick=std::abs(movementStick.x)>.18f
         ||std::abs(movementStick.y)>.18f;
-    KharvoxCameraServiceUninterruptedStory(
-        uninterrupted.active,narrativeStick);
+    if(s.customMods.uninterruptedStory)
+        KharvoxCameraServiceUninterruptedStory(
+            uninterrupted.active,narrativeStick);
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
