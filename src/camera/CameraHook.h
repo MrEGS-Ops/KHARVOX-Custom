@@ -64,6 +64,9 @@ bool KharvoxCameraLedgeTransitionActive();
 // view control and weapon buttons. This distinguishes playable first-person
 // scripted intervals from passive scenes which merely render a weapon model.
 bool KharvoxCameraPlayerWeaponControlActive();
+// Opt-in RS experiment: conditionally clears only validated movement-direction
+// inhibit bits. Never touches view, weapons, physics position or mission flags.
+bool KharvoxCameraApplyStoryFreeWalk(bool requested, bool eligible);
 // While Gauss Siege is charging, learn and clear only charge-added movement
 // inhibit bits. Calling with false updates the normal gameplay baseline.
 void KharvoxCameraSetGaussChargeMovementOverride(bool active);
