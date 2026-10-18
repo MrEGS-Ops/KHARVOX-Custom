@@ -15,6 +15,7 @@
 #include "CameraHook.h"
 #include "CameraBasisPolicy.h"
 #include "PlayerControlPolicy.h"
+#include "StoryCameraFocusPolicy.h"
 #include "../openxr/StoryFreeWalkPolicy.h"
 #include "../common/RuntimePaths.h"
 #include "../hud/HudHook.h"
@@ -2077,11 +2078,14 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
             // Exclude ALL executions/ledge/boss events to avoid changing
             // proven Glory Kill and chainsaw camera mechanics.
             const bool independentStoryFocus =
-                InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0
-                && !KharvoxCameraSyncAttackActive()
-                && !latestChainsawTakedownCinematic.load(std::memory_order_acquire)
-                && !KharvoxCameraLedgeTransitionActive()
-                && !KharvoxCameraBossSequenceActive();
+                kharvox::storyFocusCanUseAuthoredYaw(
+                    InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0,
+                    immersiveHmdRotation,
+                    worldCameraActive.load(std::memory_order_acquire),
+                    KharvoxCameraSyncAttackActive(),
+                    latestChainsawTakedownCinematic.load(std::memory_order_acquire),
+                    KharvoxCameraLedgeTransitionActive(),
+                    KharvoxCameraBossSequenceActive());
             float hmdBasis[9]{};
             if(independentStoryFocus) {
                 // Preserve source camera basis before optical stereo eye
