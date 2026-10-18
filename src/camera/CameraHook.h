@@ -70,6 +70,9 @@ bool KharvoxCameraPlayerWeaponControlActive();
 // Opt-in RS experiment: conditionally clears only validated movement-direction
 // inhibit bits. Never touches view, weapons, physics position or mission flags.
 bool KharvoxCameraApplyStoryFreeWalk(bool requested, bool eligible);
+// Independent, opt-in automatic narrative diagnostic and conditional motion
+// release. Script/audio/mission events are never advanced by this API.
+void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement);
 // While Gauss Siege is charging, learn and clear only charge-added movement
 // inhibit bits. Calling with false updates the normal gameplay baseline.
 void KharvoxCameraSetGaussChargeMovementOverride(bool active);
