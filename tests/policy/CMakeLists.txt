@@ -82,3 +82,7 @@ add_test(NAME offhand-hud-mirror-policy COMMAND KharvoxOffhandHudPolicyTests)
 add_executable(KharvoxStoryCameraFocusPolicyTests ../story_camera_focus_policy_tests.cpp)
 target_compile_features(KharvoxStoryCameraFocusPolicyTests PRIVATE cxx_std_17)
 add_test(NAME story-camera-focus-action-tail COMMAND KharvoxStoryCameraFocusPolicyTests)
+
+add_executable(KharvoxMajorStoryFocusPolicyTests ../major_story_focus_policy_tests.cpp)
+target_compile_features(KharvoxMajorStoryFocusPolicyTests PRIVATE cxx_std_17)
+add_test(NAME major-story-focus-selection COMMAND KharvoxMajorStoryFocusPolicyTests)
