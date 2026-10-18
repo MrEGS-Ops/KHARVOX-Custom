@@ -53,9 +53,10 @@ def aggressive(text: str, simultaneous: int, cooldown: float) -> str:
     text, a = scalar(text, "secondsBetweenUses",
                      format(cooldown, ".2f").rstrip("0").rstrip("."))
     text, b = scalar(text, "maxSimultaneousUsers", str(simultaneous))
-    if a != b:
-        raise ModGenerationError(
-            "AI cooldown and simultaneous-attacker field counts differ")
+    # Actual DOOM records need not contain one cooldown per attacker limit.
+    # scalar() rejects a missing field, so each remains independently verified.
+    if a < 1 or b < 1:
+        raise ModGenerationError("Missing a required original AI numeric field")
     return text
 
 
@@ -282,6 +283,12 @@ def self_test() -> None:
         with zipfile.ZipFile(game_output / MODS["aggressive"][1]) as generated:
             if b"maxSimultaneousUsers = 6;" not in generated.read(AI):
                 raise AssertionError("Generator did not patch local game baseline")
+
+        asymmetric_ai = (root / AI).read_text().replace(
+            " maxSimultaneousUsers = 2;", " maxSimultaneousUsers = 2;\n maxSimultaneousUsers = 3;")
+        asymmetric_result = aggressive(asymmetric_ai, 6, .5)
+        assert asymmetric_result.count("maxSimultaneousUsers = 6;") == 2
+        assert asymmetric_result.count("secondsBetweenUses = 0.5;") == 1
 
         for bad in (
             lambda: aggressive("tokenData = {}", 6, .5),
