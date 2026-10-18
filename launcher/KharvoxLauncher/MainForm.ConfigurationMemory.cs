@@ -1053,8 +1053,8 @@ public sealed partial class MainForm
             if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
                 throw new InvalidDataException("Distorted Back of Hand HUD mirror must remain paused.");
             if (main.ReadCustomModSettingsFromControls().CinematicExitHandoff
-                || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 40)
-                throw new InvalidDataException("Action exit must default to game timing with 40ms opt-in calibration.");
+                || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 150)
+                throw new InvalidDataException("Action exit must default OFF with the 150ms regular GK test calibration.");
             main.customActionExitHandoff.Checked=true;
             if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff)
                 throw new InvalidDataException("Manual early action-exit test toggle was lost.");
