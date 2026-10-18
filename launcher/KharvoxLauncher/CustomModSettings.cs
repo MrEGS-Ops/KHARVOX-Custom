@@ -203,8 +203,8 @@ internal static class CustomModSettingsStore
         {
             Directory.CreateDirectory(root);
             var path = Path.Combine(root, "custom-mods.json");
-            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true }, path);
-            if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload)
+            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220 }, path);
+            if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220)
                 throw new InvalidDataException("Valid custom mod option was lost.");
             // Old broad/scripted sliders must be dropped, even if saved ON.
             // Advanced is presentation only and may not deactivate presets.
