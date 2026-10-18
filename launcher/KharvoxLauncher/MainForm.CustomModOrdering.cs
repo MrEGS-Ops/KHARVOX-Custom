@@ -157,6 +157,7 @@ public sealed partial class MainForm
             Define(customStoryCinematicSkip, "story-cinematic-skip", 3),
             Define(customStoryFreeWalk, "story-free-walk", 3),
             Define(customStoryCameraFocus, "story-camera-focus", 3),
+            Define(customUninterruptedStory, "uninterrupted-story", 3),
             Define(customActionExitHandoff, "action-exit-handoff", 3),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
