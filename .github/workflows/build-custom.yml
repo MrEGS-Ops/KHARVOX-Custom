@@ -2,7 +2,7 @@ name: KHARVOX Custom Build
 
 on:
   push:
-    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish, work/full-integrated-sfs-build, work/vr-wheel-holster-crouch-dash-fixes, work/oct13-ui-and-gameplay-feedback, work/oct13-followup-regression-fixes, work/oct14-restore-native-fast-kills, work/oct17-back-of-hand-hud-prototype, work/oct17-action-hz-isolation-gauss-guard-no-build, work/oct17-action-speed-ui-cleanup, work/oct17-speed-selector-trim, work/oct17-doom-save-protection, work/oct17-scripted-cinematic-native-timing, work/oct18-scripted-cinematic-execution-tail-guard, work/oct18-rs-story-cinematic-fast-forward]
+    branches: [clean/custom-core, audit/mod-fixes-no-build, work/custom-mod-priority-order-no-build, work/custom-mod-ui-compact-doom-drag-no-build, work/haptic-overhaul-prototype-no-build, work/launcher-oct11-feedback-polish, work/launcher-182-polish, work/full-integrated-sfs-build, work/vr-wheel-holster-crouch-dash-fixes, work/oct13-ui-and-gameplay-feedback, work/oct13-followup-regression-fixes, work/oct14-restore-native-fast-kills, work/oct17-back-of-hand-hud-prototype, work/oct17-action-hz-isolation-gauss-guard-no-build, work/oct17-action-speed-ui-cleanup, work/oct17-speed-selector-trim, work/oct17-doom-save-protection, work/oct17-scripted-cinematic-native-timing, work/oct18-scripted-cinematic-execution-tail-guard, work/oct18-rs-story-cinematic-fast-forward, work/oct18-optional-action-exit-and-story-skip-diagnostics]
   workflow_dispatch:
 
 permissions:
