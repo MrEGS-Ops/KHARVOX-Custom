@@ -3841,7 +3841,7 @@ bool createGameplayActions(){
         +" storyFreeWalkRS="+(s.customMods.storyFreeWalk?"ON (experimental horizontal movement)":"off")
         +" storyCameraFocus="+(s.customMods.storyCameraFocus?"ON (native scripted heading test)":"off")
         +" uninterruptedStory="+(s.customMods.uninterruptedStory?"ON (automatic hold analyzer)":"off")
-        +" actionExitGK700ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
+        +" actionExitGK150ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
@@ -5672,10 +5672,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Passing false is the same switch used when the user unchecks Focus.
     KharvoxCameraSetStoryCameraFocus(focusEffective);
     // Action Exit Handoff is an optional, reversible experiment. The shortest
-    // complete GK action interval in the 2026-10-18 logs was 929.139 ms
-    // (124 samples, excluding a 21.495ms GK->chainsaw classifier transition).
-    // Hold the camera anchor until ~700ms after native sync enters; fade the
-    // lock to live HMD translation over the next 90ms. This leaves >100ms
+    // complete GK action interval in the 2026-10-18 logs was 362.214 ms
+    // (18 presents, prior run; 21ms GK->chainsaw transition excluded).
+    // Hold the camera anchor until ~150ms after native sync enters; fade the
+    // lock to live HMD translation over the next 90ms. This leaves ~100ms
     // expected margin in the observed 30-Hz mode. Chainsaw and full-speed
     // kills retain the previous early 40ms strategy because their durations
     // are not bounded by the 30-Hz Glory Kill measurements.
