@@ -575,6 +575,7 @@ public sealed partial class MainForm
                 main.customGaussChargeSlowMovement,
                 main.customPersistentSsgReload,
                 main.customStoryCinematicSkip,
+                main.customActionExitHandoff,
                 main.customBackOfHandHud,
                 main.customDisableHud,
                 main.customDisableWeaponWheel,
@@ -589,7 +590,7 @@ public sealed partial class MainForm
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
                     != (index < 5 ? 0 : index < 7 ? 1 : index < 10 ? 2
-                        : index < 14 ? 3 : index < 15 ? 4 : 5)).Any()
+                        : index < 15 ? 3 : index < 16 ? 4 : 5)).Any()
                 || main.modOrderSlots.Count != expectedChecks.Length
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
