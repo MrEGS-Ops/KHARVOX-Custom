@@ -134,9 +134,10 @@ int main() {
     assert(selectActionSpeed({},target).kind==ActionSpeedKind::None);
     assert(selectActionSpeed({true,false,false},{}).hz==0);
     assert(selectActionSpeed({true,true,true},target).hz==50);
+    // Even a stale nonzero scripted slider must never change story tick Hz.
     assert(selectActionSpeed({false,false,false,true},target).kind
-        ==ActionSpeedKind::ScriptedCinematic);
-    assert(selectActionSpeed({false,false,false,true},target).hz==170);
+        ==ActionSpeedKind::None);
+    assert(selectActionSpeed({false,false,false,true},target).hz==0);
     assert(selectActionSpeed({false,false,false,true},{}).hz==0);
     // A cutscene classifier may outlive the execution's native flag by a
     // frame; never allow scripted cinematic to steal a kill/ledge target.
