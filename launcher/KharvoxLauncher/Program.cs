@@ -46,6 +46,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-resource-patcher",
                 StringComparison.OrdinalIgnoreCase)))
             return KharvoxResourcePatcher.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-native-mod-generator",
+                StringComparison.OrdinalIgnoreCase)))
+            return FirstPartyDoomModGenerator.RunSelfTest() ? 0 : 1;
         if (args.Any(argument => string.Equals(argument, "--self-test-config-merge",
                 StringComparison.OrdinalIgnoreCase)))
             return KharvoxSimpleConfigMerge.RunSelfTest();
