@@ -13,8 +13,12 @@ namespace KharvoxLauncher;
 // No Python, Store execution aliases, Python downloads or game-file writes.
 internal static class FirstPartyDoomModGenerator
 {
-    private const string Ai = "generated/decls/aiglobalsettings/default.decl;aiGlobalSettings";
-    private const string Gib = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl;goreBehavior";
+    private const string Ai = "generated/decls/aiglobalsettings/default.decl";
+    private const string AiType = "aiGlobalSettings";
+    private const string AiShort = "default";
+    private const string Gib = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl";
+    private const string GibType = "goreBehavior";
+    private const string GibShort = "gorebehavior/firearm/8_gauge";
     private const string AiArchive = "KHARVOX-Aggressive-Demons.zip";
     private const string GibArchive = "KHARVOX-Enhanced-Gibs.zip";
     private static readonly UTF8Encoding Utf8Strict = new UTF8Encoding(false, true);
@@ -44,10 +48,11 @@ internal static class FirstPartyDoomModGenerator
         };
         var pending = new List<(string resource, string filename, byte[] content)>();
         foreach (var input in inputs) {
-            var source = ReadOriginal(gameDir, input.resource);
+            bool ai = input.resource == Ai;
+            var source = ReadOriginal(gameDir, input.resource,
+                ai ? AiType : GibType, ai ? AiShort : GibShort);
             byte[] original = source.data;
             string text = Decode(original);
-            bool ai = input.resource == Ai;
             string result = ai
                 ? Aggressive(text, 6, "0.5")
                 : EnhancedGibs(text, 2, 5, 48);
@@ -156,19 +161,16 @@ internal static class FirstPartyDoomModGenerator
         return Utf8Strict.GetString(data, bom, data.Length - bom);
     }
 
-    // Only a semicolon-free spelling of the SAME declaration is a safe alias.
-    // Never substitute an unrelated resource because its category happens to match.
-    private static bool EquivalentIndexName(string indexed, string expected)
+    // DOOM's v5 index stores resource type separately from its bare filename.
+    // A legacy filename-with-';type' is accepted only when both fields agree.
+    private static bool EquivalentIndexName(string indexed, string expected, string expectedType)
     {
-        var expectedParts = expected.Split(new[] { ';' }, 2);
-        var indexedParts = indexed.Replace('\\', '/').Split(new[] { ';' }, 2);
-        return string.Equals(indexedParts[0], expectedParts[0], StringComparison.OrdinalIgnoreCase)
-            && (indexedParts.Length == 1
-                || (expectedParts.Length == 2
-                    && string.Equals(indexedParts[1], expectedParts[1], StringComparison.OrdinalIgnoreCase)));
+        return string.Equals(indexed.Replace('\\', '/'),
+            expected + ";" + expectedType, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static (byte[] data, string resourceName) ReadOriginal(string game, string relative)
+    private static (byte[] data, string resourceName) ReadOriginal(
+        string game, string relative, string expectedType, string expectedShortName)
     {
         string baseDir = Path.Combine(game, "base");
         string indexPath = Path.Combine(baseDir, "gameresources.index");
@@ -203,9 +205,14 @@ internal static class FirstPartyDoomModGenerator
                 byte patch = reader.ReadByte();
                 ++indexCount;
                 var record = (name, valueOffset, valuePlain, valueStored, patch);
-                if (string.Equals(name, relative, StringComparison.OrdinalIgnoreCase))
+                bool matchingDeclaration =
+                    string.Equals(category, expectedType, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(shortName, expectedShortName, StringComparison.OrdinalIgnoreCase);
+                if (matchingDeclaration
+                    && string.Equals(name, relative, StringComparison.OrdinalIgnoreCase))
                     exact.Add(record);
-                else if (EquivalentIndexName(name, relative))
+                else if (matchingDeclaration
+                    && EquivalentIndexName(name, relative, expectedType))
                     aliases.Add(record);
                 // A limited, read-only hint for resolving other installation layouts.
                 if (name.IndexOf(relative.Contains("aiglobalsettings") ? "aiglobalsettings" : "8_gauge",
@@ -219,7 +226,9 @@ internal static class FirstPartyDoomModGenerator
                 throw new InvalidDataException(
                     "Cannot uniquely identify original declaration: " + relative
                     + Environment.NewLine + "Exact matches=" + exact.Count
-                    + ", safe path aliases=" + aliases.Count + ", index entries=" + indexCount
+                    + ", typed-name aliases=" + aliases.Count + ", index entries=" + indexCount
+                    + Environment.NewLine + "Required type=" + expectedType
+                    + ", short name=" + expectedShortName
                     + Environment.NewLine
                     + (candidates.Count == 0 ? "No similarly named entries found."
                         : "Nearby index entries:" + Environment.NewLine + string.Join(Environment.NewLine, candidates))
@@ -230,7 +239,7 @@ internal static class FirstPartyDoomModGenerator
             resolvedName = match.name;
             offset = match.offset; plain = match.plain; stored = match.stored;
             if(exact.Count == 0)
-                System.Diagnostics.Debug.WriteLine("KHARVOX original declaration resolved by exact base path: " + resolvedName);
+                System.Diagnostics.Debug.WriteLine("KHARVOX legacy typed-name declaration resolved: " + resolvedName);
         }
         if (plain < 3 || plain > 2_000_000 || stored < 1 || stored > 2_000_000)
             throw new InvalidDataException("Unexpected original resource size");
@@ -304,11 +313,11 @@ internal static class FirstPartyDoomModGenerator
             || !b.Contains("maxLimbsToRemove = 5;")
             || !b.Contains("gibImpulse = 48;"))
             return false;
-        // Same unmodified declaration may be indexed without the ;type suffix.
-        // A different suffix or a different resource path must never match.
-        if (!EquivalentIndexName("generated/decls/aiglobalsettings/default.decl", Ai)
-            || EquivalentIndexName("generated/decls/aiglobalsettings/default.decl;wrongType", Ai)
-            || EquivalentIndexName("generated/decls/aiglobalsettings/other.decl", Ai))
+        // Actual DOOM v5 index stores the type in its own field, with bare
+        // filenames. A legacy typed-name spelling is allowed only if it agrees.
+        if (!EquivalentIndexName(Ai + ";" + AiType, Ai, AiType)
+            || EquivalentIndexName(Ai + ";wrongType", Ai, AiType)
+            || EquivalentIndexName("generated/decls/aiglobalsettings/other.decl", Ai, AiType))
             return false;
         try { Aggressive("tokenData = {}", 6, "0.5"); return false; }
         catch (InvalidDataException) { }
@@ -410,7 +419,9 @@ internal static class FirstPartyDoomModGenerator
     private static void WriteFixtureRecord(BinaryWriter writer, string name, long offset, int plain, int stored)
     {
         writer.Write(new byte[] { 0, 0, 0, 1 });
-        WriteFixtureName(writer, "original"); WriteFixtureName(writer, "default");
+        bool isAi = name.StartsWith("generated/decls/aiglobalsettings/", StringComparison.OrdinalIgnoreCase);
+        WriteFixtureName(writer, isAi ? AiType : GibType);
+        WriteFixtureName(writer, isAi ? AiShort : GibShort);
         WriteFixtureName(writer, name);
         foreach (byte b in BitConverter.GetBytes(offset).Reverse()) writer.Write(b);
         WriteFixtureBig(writer, unchecked((uint)plain));
