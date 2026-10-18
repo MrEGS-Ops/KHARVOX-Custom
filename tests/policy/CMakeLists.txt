@@ -78,3 +78,7 @@ add_test(NAME camera-basis-return-to-gameplay COMMAND KharvoxCameraBasisPolicyTe
 add_executable(KharvoxOffhandHudPolicyTests ../hud_layout_policy_tests.cpp)
 target_compile_features(KharvoxOffhandHudPolicyTests PRIVATE cxx_std_17)
 add_test(NAME offhand-hud-mirror-policy COMMAND KharvoxOffhandHudPolicyTests)
+
+add_executable(KharvoxStoryCameraFocusPolicyTests ../story_camera_focus_policy_tests.cpp)
+target_compile_features(KharvoxStoryCameraFocusPolicyTests PRIVATE cxx_std_17)
+add_test(NAME story-camera-focus-action-tail COMMAND KharvoxStoryCameraFocusPolicyTests)
