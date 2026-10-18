@@ -86,3 +86,7 @@ add_test(NAME story-camera-focus-action-tail COMMAND KharvoxStoryCameraFocusPoli
 add_executable(KharvoxMajorStoryFocusPolicyTests ../major_story_focus_policy_tests.cpp)
 target_compile_features(KharvoxMajorStoryFocusPolicyTests PRIVATE cxx_std_17)
 add_test(NAME major-story-focus-selection COMMAND KharvoxMajorStoryFocusPolicyTests)
+
+add_executable(KharvoxActionExitHandoffPolicyTests ../action_exit_handoff_policy_tests.cpp)
+target_compile_features(KharvoxActionExitHandoffPolicyTests PRIVATE cxx_std_17)
+add_test(NAME action-exit-handoff-duration COMMAND KharvoxActionExitHandoffPolicyTests)
