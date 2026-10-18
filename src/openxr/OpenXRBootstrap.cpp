@@ -5740,7 +5740,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // When OFF, always leave DOOM's original camera release untouched.
     // Fallback still releases on native-sync exit for a shorter execution.
     const int cinematicExitHandoffDelayMs=kharvox::actionExitHandoffDelayMs(
-        chainsawAction,fastKillsEnabled);
+        chainsawAction,fastKillsRequested);
     // DOOM's animated camera/physics and the initial kill snap are untouched.
     if(!s.immersiveCinematicFreelookActive){
         if(s.immersiveCinematicLayerPositionHeld){
