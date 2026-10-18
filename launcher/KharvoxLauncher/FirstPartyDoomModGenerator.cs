@@ -304,6 +304,12 @@ internal static class FirstPartyDoomModGenerator
             || !b.Contains("maxLimbsToRemove = 5;")
             || !b.Contains("gibImpulse = 48;"))
             return false;
+        // Same unmodified declaration may be indexed without the ;type suffix.
+        // A different suffix or a different resource path must never match.
+        if (!EquivalentIndexName("generated/decls/aiglobalsettings/default.decl", Ai)
+            || EquivalentIndexName("generated/decls/aiglobalsettings/default.decl;wrongType", Ai)
+            || EquivalentIndexName("generated/decls/aiglobalsettings/other.decl", Ai))
+            return false;
         try { Aggressive("tokenData = {}", 6, "0.5"); return false; }
         catch (InvalidDataException) { }
         try { EnhancedGibs("edit = {}", 2, 5, 48); return false; }
@@ -364,6 +370,36 @@ internal static class FirstPartyDoomModGenerator
                 entry.CopyTo(copy);
                 if (!Utf8Strict.GetString(copy.ToArray()).Contains("gibImpulse = 48;"))
                     return false;
+            }
+            // Simulate a legitimate same-path index entry WITHOUT ;type.
+            // Generator must use the original index resource name in its ZIP,
+            // not a guessed path that can silently fail to override anything.
+            string bareAi = Ai.Substring(0, Ai.IndexOf(';'));
+            using (var records = new MemoryStream())
+            using (var recordWriter = new BinaryWriter(records, Encoding.UTF8, true)) {
+                WriteFixtureRecord(recordWriter, bareAi, 4, sourceAi.Length, packedAi.Length);
+                WriteFixtureRecord(recordWriter, Gib, 4 + packedAi.Length, sourceGib.Length, sourceGib.Length);
+                recordWriter.Flush();
+                using (var indexStream = File.Create(Path.Combine(baseDir, "gameresources.index")))
+                using (var header = new BinaryWriter(indexStream)) {
+                    header.Write(new byte[] { 5, 83, 69, 82 });
+                    WriteFixtureBig(header, checked((uint)(4 + records.Length)));
+                    header.Write(new byte[24]);
+                    WriteFixtureBig(header, (uint)2);
+                    header.Write(records.ToArray());
+                }
+            }
+            string aliasOut = Path.Combine(root, "alias-out");
+            GenerateFromGame(game, aliasOut);
+            using (var archive = ZipFile.OpenRead(Path.Combine(aliasOut, AiArchive))) {
+                if (archive.Entries.Count != 1 || archive.Entries[0].FullName != bareAi)
+                    return false;
+                using (var entry = archive.Entries[0].Open())
+                using (var copy = new MemoryStream()) {
+                    entry.CopyTo(copy);
+                    if (!Utf8Strict.GetString(copy.ToArray()).Contains("maxSimultaneousUsers = 6;"))
+                        return false;
+                }
             }
             return true;
         } finally {
