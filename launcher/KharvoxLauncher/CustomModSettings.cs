@@ -259,6 +259,22 @@ internal static class CustomModSettingsStore
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
                 throw new InvalidDataException("Manual uncheck must persist across launcher restarts.");
+            // Regression: previous builds forced this mod ON in settings.
+            // Revision 4 must disable it exactly once, then retain a later ON.
+            var oldActionExitPath = Path.Combine(root, "old-action-exit.json");
+            Save(new CustomModSettings
+            {
+                DevelopmentTestDefaultsRevision = 3,
+                CinematicExitHandoff = true
+            }, oldActionExitPath);
+            var migratedExit = Load(oldActionExitPath);
+            if (migratedExit.CinematicExitHandoff
+                || migratedExit.DevelopmentTestDefaultsRevision != 4)
+                throw new InvalidDataException("Old forced early handoff must migrate OFF.");
+            migratedExit.CinematicExitHandoff = true;
+            Save(migratedExit, oldActionExitPath);
+            if (!Load(oldActionExitPath).CinematicExitHandoff)
+                throw new InvalidDataException("Manual action-exit ON did not persist.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
                 || fresh.CinematicExitHandoffDelayMs != 40
