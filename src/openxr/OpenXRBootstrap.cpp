@@ -217,6 +217,7 @@ struct State {
     XrPosef programmedMonoPose{}; XrFovf programmedMonoFov{}; bool programmedMonoPoseValid{};
     std::array<XrPosef,2> programmedMonoEyePose{}; std::array<XrFovf,2> programmedMonoEyeFov{}; bool programmedMonoEyeViewsValid{}; bool steamLinkMonoCameraActive{};
     XrVector3f immersiveCinematicLayerPosition{}; bool immersiveCinematicLayerPositionHeld{};
+    bool immersiveLedgeLiveTranslationLatched{}; // experimental ledge-only snap/blink isolation
     // Scoped early release for GK/chainsaw native sync only (not ledge or boss).
     bool immersiveCinematicSyncSeen{},immersiveCinematicExitHandoffActive{},immersiveCinematicExitReleased{};
     XrTime immersiveCinematicExitStart{};
@@ -5663,8 +5664,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.immersiveCinematicSyncEnteredAt=0;
         s.immersiveCinematicExitHandoffActive=false;
         s.immersiveCinematicExitReleased=false;
+        s.immersiveLedgeLiveTranslationLatched=false;
     }else{
         const bool nativeSyncActive=KharvoxCameraSyncAttackActive();
+        // A ledge pull used to pin the OpenXR layer position for the whole
+        // animation, then abruptly restore physical head translation at the
+        // end. Ledge transitions have no GK entry snap to preserve, so keep
+        // the runtime's live head translation throughout this ledge only.
+        // Latch across DOOM's trailing generic cutscene frames to prevent the
+        // position hold from rearming after the ledge flag clears.
+        if(ledgeAction&&!nativeSyncActive&&!chainsawAction){
+            if(!s.immersiveLedgeLiveTranslationLatched)
+                log("[LEDGE-BLINK] live HMD translation enabled for ledge and tail; cinematic position pin bypassed");
+            s.immersiveLedgeLiveTranslationLatched=true;
+            s.immersiveCinematicLayerPositionHeld=false;
+            s.immersiveCinematicExitHandoffActive=false;
+            s.immersiveCinematicExitReleased=true;
+        }
         if(nativeSyncActive&&!s.immersiveCinematicSyncSeen
             &&!s.immersiveCinematicExitHandoffActive
             &&!s.immersiveCinematicExitReleased){
