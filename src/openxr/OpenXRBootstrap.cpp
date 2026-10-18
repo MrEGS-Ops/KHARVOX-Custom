@@ -31,6 +31,7 @@
 #include "../camera/CameraHook.h"
 #include "../camera/StoryCameraFocusPolicy.h"
 #include "ActionExitHandoffPolicy.h"
+#include "ChainsawMotionSpeedPolicy.h"
 #include "../debug/CameraScanner.h"
 #include "../hud/HudGpuDiagnostic.h"
 #include "../hud/HudHook.h"
@@ -327,6 +328,9 @@ struct State {
     XrTime grenadeCyclePulseUntil{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
+    kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{};
+    int chainsawMotionLastLoggedHz{200};
+    unsigned long long chainsawMotionLastLogMs{};
     XrTime lastChainsawAttackAt{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
@@ -897,6 +901,15 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
         log(std::string("[ACTION-HZ] TRANSITION ")+kharvox::actionSpeedName(prior)
             +" -> "+kharvox::actionSpeedName(action.kind)
             +" target="+std::to_string(hold.targetHz)+" Hz");
+    }else if(!fastKillsEnabled
+        &&s.customMods.motionChainsawKillSpeed
+        &&action.kind==kharvox::ActionSpeedKind::Chainsaw
+        &&hold.lastAction==kharvox::ActionSpeedKind::Chainsaw
+        &&hold.targetHz!=effectiveTarget){
+        // Unlike static action presets, continuously follow live controller
+        // motion during a SINGLE chainsaw execution. Preserve the original
+        // saved CVars and action-present counters until real action exit.
+        hold.targetHz=effectiveTarget;
     }else if(!fastKillsEnabled && action.kind==kharvox::ActionSpeedKind::None
         && effectiveTarget>hold.targetHz && hzSpeedLevel==1
         && cinematicFineTuneHz==0) {
@@ -3844,6 +3857,7 @@ bool createGameplayActions(){
         +" actionExitGK150ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
+        +" chainsawMotionHz="+(s.customMods.motionChainsawKillSpeed?"on (200..30Hz dynamic)":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
@@ -5606,13 +5620,57 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             {syncAction,chainsawAction,ledgeAction,scriptedCinematicCandidate},
             actionSpeedTargets())
         :kharvox::ActionSpeedChoice{};
+    // Live chainsaw kill speed: current weapon-hand GRIP velocity, not a
+    // gesture ON/OFF. Stops naturally decelerate back to 200Hz. Only the
+    // established native chainsaw execution lifecycle is eligible.
+    const bool fastKillsRequested=s.customMods.fastGloryKills
+        ||s.customMods.fastChainsawKills;
+    const bool motionChainsawActive=s.customMods.motionChainsawKillSpeed
+        &&actionProfileEligible&&chainsawAction&&!fastKillsRequested;
+    const auto& movingHand=s.weaponHandLeft
+        ?s.leftGripController:s.rightGripController;
+    const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked
+        &&movingHand.linearVelocityValid;
+    const int motionFullSpeedCmSec=[](){
+        char raw[16]{};
+        const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S",raw,sizeof(raw));
+        if(n==0||n>=sizeof(raw))return 180;
+        char* end{};
+        const long parsed=std::strtol(raw,&end,10);
+        return end!=raw&&*end=='\0'&&parsed>=70&&parsed<=300
+            ?static_cast<int>(parsed):180;
+    }();
+    const auto motion=kharvox::updateChainsawMotionSpeed(
+        s.chainsawMotionSpeed,motionChainsawActive,movingHandTracked,
+        movingHand.linearVelocity.x,movingHand.linearVelocity.y,
+        movingHand.linearVelocity.z,GetTickCount64(),motionFullSpeedCmSec);
+    if(motion.started){
+        s.chainsawMotionLastLoggedHz=motion.targetHz;
+        s.chainsawMotionLastLogMs=GetTickCount64();
+        log("[CHAINSAW-MOTION-HZ] confirmed kill: live hand movement enabled, "
+            "stationary=200Hz fastest=30Hz (lower Hz = faster animation); "
+            "weaponHand="+std::string(s.weaponHandLeft?"left":"right")
+            +" fullSpeedCmSec="+std::to_string(motionFullSpeedCmSec));
+    }else if(motionChainsawActive){
+        const auto now=GetTickCount64();
+        if(now-s.chainsawMotionLastLogMs>=250
+            &&std::abs(motion.targetHz-s.chainsawMotionLastLoggedHz)>=12){
+            log("[CHAINSAW-MOTION-HZ] handSpeed="
+                +std::to_string(motion.filteredMetersPerSecond)
+                +"m/s effectiveTarget="+std::to_string(motion.targetHz)
+                +"Hz tracking="+std::to_string(movingHandTracked?1:0));
+            s.chainsawMotionLastLoggedHz=motion.targetHz;
+            s.chainsawMotionLastLogMs=now;
+        }
+    }
+    const auto effectiveSelectedAction=motionChainsawActive
+        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,motion.targetHz}
+        :selectedAction;
     // External opt-ins do not steal normal movement or alter the native
     // fast-kill bypass. A selected profile may briefly arm the existing
     // reversible CVar hold outside an immersive cinematic (ledge/charge).
-    const bool fastKillsRequested=s.customMods.fastGloryKills
-        ||s.customMods.fastChainsawKills;
     const auto activeAction=fastKillsRequested
-        ?kharvox::ActionSpeedChoice{}:selectedAction;
+        ?kharvox::ActionSpeedChoice{}:effectiveSelectedAction;
     // The CineWindow checkbox selects PRESENTATION, not animation speed.
     // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
     // cutscene=1, syncAttack=0. DOOM native timing is unconditional:
