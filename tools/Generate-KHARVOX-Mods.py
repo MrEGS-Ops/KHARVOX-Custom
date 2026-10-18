@@ -16,11 +16,16 @@ import tempfile
 import zipfile
 import zlib
 
-AI = "generated/decls/aiglobalsettings/default.decl;aiGlobalSettings"
-GIB = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl;goreBehavior"
+AI = "generated/decls/aiglobalsettings/default.decl"
+GIB = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl"
 MODS = {
     "aggressive": (AI, "KHARVOX-Aggressive-Demons.zip"),
     "gibs": (GIB, "KHARVOX-Enhanced-Gibs.zip"),
+}
+# DOOM v5 stores the type and short name separately from the filename.
+RECORD_IDENTITIES = {
+    AI: ("aiGlobalSettings", "default"),
+    GIB: ("goreBehavior", "gorebehavior/firearm/8_gauge"),
 }
 NUMBER = r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)"
 
@@ -114,6 +119,8 @@ def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
                 raise ModGenerationError("Truncated game resource name")
             return value.decode("utf-8")
         found = []
+        expected_type, expected_short = RECORD_IDENTITIES[relative]
+        nearby = []
         for _ in range(count):
             record_id = stream.read(4)
             if len(record_id) != 4:
@@ -125,11 +132,20 @@ def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
             if len(fields) != 21:
                 raise ModGenerationError("Truncated game resource offsets")
             offset, plain, stored, flags, patch = struct.unpack(">qiiiB", fields)
-            if filename.casefold() == relative.casefold():
+            if (filename.casefold() == relative.casefold()
+                    and category.casefold() == expected_type.casefold()
+                    and short_name.casefold() == expected_short.casefold()):
                 found.append((offset, plain, stored, patch))
-        if stream.tell() != total or len(found) != 1:
+            if (("aiglobalsettings" if relative == AI else "8_gauge")
+                    in filename.casefold() and len(nearby) < 6):
+                nearby.append(f"{category} / {short_name} : {filename}")
+        if stream.tell() != total:
+            raise ModGenerationError("Unexpected trailing data in game index")
+        if len(found) != 1:
             raise ModGenerationError(
-                "Original resource is absent/ambiguous in game index: " + relative)
+                f"Original declaration absent/ambiguous in game index: {relative}"
+                f" (matches={len(found)}, expected type={expected_type},"
+                f" short name={expected_short}). Nearby: {nearby}")
     offset, plain, stored, patch = found[0]
     if patch != 0:
         raise ModGenerationError(
@@ -259,6 +275,8 @@ def self_test() -> None:
         (base / "gameresources.index").write_bytes(header + record)
         if load_from_game(game, AI)[0] != baseline:
             raise AssertionError("Original v5 game declaration export mismatch")
+        if ";" in AI or ";" in GIB:
+            raise AssertionError("DOOM v5 filename must not include its separate resource type")
         game_output = Path(tmp) / "game-generated"
         build(None, game_output, ("aggressive",), 6, .5, 2, 5, 48, game=game)
         with zipfile.ZipFile(game_output / MODS["aggressive"][1]) as generated:
