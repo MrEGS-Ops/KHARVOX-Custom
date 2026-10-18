@@ -108,6 +108,7 @@ alignas(4) volatile LONG immersiveCinematicFovYBits{};
 volatile LONG immersiveCinematicFovRequested{};
 volatile LONG immersiveCinematicFovHookActive{};
 volatile LONG immersiveCinematicFreelookRequested{};
+volatile LONG storyCameraFocusRequested{};
 std::atomic<float> stereoEyeOffset{};
 std::atomic<float> stereoFovX{};
 std::atomic<float> stereoFovY{};
@@ -2070,14 +2071,36 @@ extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress)
             && preCinematicGameplayAxisValid.load(std::memory_order_acquire)
             && headValid.load(std::memory_order_acquire);
         if (immersiveHmdRotation) {
+            // Opt-in story test: DOOM owns the animated yaw (e.g. Pinky on
+            // player's left), while the physical headset still contributes
+            // residual look. The default still freezes the entry body basis.
+            // Exclude ALL executions/ledge/boss events to avoid changing
+            // proven Glory Kill and chainsaw camera mechanics.
+            const bool independentStoryFocus =
+                InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0
+                && !KharvoxCameraSyncAttackActive()
+                && !latestChainsawTakedownCinematic.load(std::memory_order_acquire)
+                && !KharvoxCameraLedgeTransitionActive()
+                && !KharvoxCameraBossSequenceActive();
             float hmdBasis[9]{};
-            for (int index = 0; index < 9; ++index)
-                hmdBasis[index] = preCinematicGameplayAxis[index].load(
-                    std::memory_order_relaxed);
+            if(independentStoryFocus) {
+                // Preserve source camera basis before optical stereo eye
+                // offsets. DOOM's authored focus is NOT a hardcoded left turn.
+                std::memcpy(hmdBasis,unmodifiedBasis,sizeof(hmdBasis));
+                static std::atomic<bool> loggedStoryFocus{};
+                if(!loggedStoryFocus.exchange(true,std::memory_order_acq_rel))
+                    log("[STORY-FOCUS] native animated yaw + tracked HMD residual ACTIVE; sync executions excluded");
+            } else {
+                for (int index=0;index<9;++index)
+                    hmdBasis[index]=preCinematicGameplayAxis[index].load(
+                        std::memory_order_relaxed);
+            }
             applyResidualHeadOrientation(hmdBasis);
-            std::memcpy(unmodifiedBasis, hmdBasis, sizeof(hmdBasis));
-            if (!wasCutscene)
-                log("[IMMERSIVE] animation position + HMD-only rotation ACTIVE; HMD translation disabled");
+            std::memcpy(unmodifiedBasis,hmdBasis,sizeof(hmdBasis));
+            if(!wasCutscene)
+                log(independentStoryFocus
+                    ?"[STORY-FOCUS] native authored story heading at cinematic entry"
+                    :"[IMMERSIVE] animation position + HMD-only rotation ACTIVE; HMD translation disabled");
         }
         const float nativeFovX = *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70);
         const float nativeFovY = *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x74);
@@ -2589,6 +2612,13 @@ void KharvoxCameraSetImmersiveCinematicFov(
             log("[FOV] DOOMCutsceneFOV override inactive outside cinematic");
         }
     }
+}
+
+void KharvoxCameraSetStoryCameraFocus(bool requested) {
+    const LONG previous=InterlockedExchange(&storyCameraFocusRequested,requested?1:0);
+    if(previous!=(requested?1:0))
+        log(std::string("[STORY-FOCUS] native story camera yaw ")
+            +(requested?"ENABLED (test)":"disabled/default"));
 }
 
 void KharvoxCameraSetImmersiveCinematicFreelook(bool requested) {
