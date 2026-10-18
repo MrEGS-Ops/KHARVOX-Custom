@@ -3206,8 +3206,12 @@ void updateGameplayActions(XrTime displayTime){
                 :freeWalkDecision.expired?"automatic 30-second stop":"re-lock requested"));
     // Called unconditionally to capture untouched gameplay inhibit flags.
     // If DOOM rejects or reasserts the release, diagnostics remain read-only.
-    KharvoxCameraApplyStoryFreeWalk(
-        freeWalkDecision.requested,freeWalkDecision.eligible);
+    // The new automatic experiment shares the *same* native bounded
+    // movement-mask gate. Do not reset its six-frame validation by calling
+    // the retired RS service with false on every active narrative frame.
+    if(!s.customMods.uninterruptedStory)
+        KharvoxCameraApplyStoryFreeWalk(
+            freeWalkDecision.requested,freeWalkDecision.eligible);
     // Automatic noncombat story-flow experiment. No RS click required;
     // dialogue, native script timing and animation callbacks remain DOOM-owned.
     const auto uninterrupted=kharvox::updateUninterruptedStory(
