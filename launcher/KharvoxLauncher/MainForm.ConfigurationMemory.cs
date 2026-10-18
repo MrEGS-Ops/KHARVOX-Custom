@@ -1021,7 +1021,8 @@ public sealed partial class MainForm
             main.customDynamicShoulderHolster, main.weaponWheelRemap,
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
-            main.customBoxingGuard, main.speedAdvanced
+            main.customBoxingGuard, main.speedAdvanced,
+            main.customActionExitHandoff
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1044,13 +1045,18 @@ public sealed partial class MainForm
             main.cinematicFullSpeedMode=false;
             main.cinematicKillSpeed.Value=1;
             main.customBoxingGuard.Checked=false;
+            main.customActionExitHandoff.Checked=false;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
             if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
                 throw new InvalidDataException("Distorted Back of Hand HUD mirror must remain paused.");
-            if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff
+            if (main.ReadCustomModSettingsFromControls().CinematicExitHandoff
                 || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 40)
-                throw new InvalidDataException("Native sync camera handoff must be fixed at 40ms.");
+                throw new InvalidDataException("Action exit must default to game timing with 40ms opt-in calibration.");
+            main.customActionExitHandoff.Checked=true;
+            if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff)
+                throw new InvalidDataException("Manual early action-exit test toggle was lost.");
+            main.customActionExitHandoff.Checked=false;
             // One compact selector: Native, 90/70/50/30 Hz, and the
             // proven native Full speed (no slowdown) bypass.
             if (main.cinematicSpeedSelector.Items.Count!=6
