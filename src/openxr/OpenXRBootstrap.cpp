@@ -51,6 +51,7 @@
 #include "ActionSpeedPolicy.h"
 #include "StoryCinematicSkipPolicy.h"
 #include "StoryFreeWalkPolicy.h"
+#include "UninterruptedStoryPolicy.h"
 #include "CinewindowPosePolicy.h"
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
@@ -275,6 +276,7 @@ struct State {
     bool meleePressed{},missionInfoPressed{};
     kharvox::StoryCinematicSkipState storySkip{};
     kharvox::StoryFreeWalkState storyFreeWalk{};
+    kharvox::UninterruptedStoryState uninterruptedStory{};
     bool storySkipInputWasDown{};
     bool handsJumpEnabled{}; kharvox::HandsJumpState handsJump{};
     bool physicalGlorykillEnabled{};
@@ -2349,6 +2351,8 @@ void updateGameplayActions(XrTime displayTime){
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
         s.storyFreeWalk={};
+        s.uninterruptedStory={};
+        KharvoxCameraServiceUninterruptedStory(false,false);
         KharvoxCameraApplyStoryFreeWalk(false,false);
         s.storySkipInputWasDown=false;
         s.primaryFireDown=false;
@@ -2371,6 +2375,8 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.storySkip={};
         s.storyFreeWalk={};
+        s.uninterruptedStory={};
+        KharvoxCameraServiceUninterruptedStory(false,false);
         KharvoxCameraApplyStoryFreeWalk(false,false);
         s.storySkipInputWasDown=false;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
@@ -3141,7 +3147,8 @@ void updateGameplayActions(XrTime displayTime){
     // RS is normally Melee/Use. During an independent scripted story scene
     // it toggles a reversible, opt-in 4x game-time request. No script jumps.
     const auto storySkipDecision=kharvox::updateStoryCinematicSkip(
-        s.storySkip,s.customMods.storyCinematicSkip&&!s.customMods.storyFreeWalk,cutscene,
+        s.storySkip,s.customMods.storyCinematicSkip&&!s.customMods.storyFreeWalk
+            &&!s.customMods.uninterruptedStory,cutscene,
         syncAttackActive,s.chainsawKillLatched&&cutscene,
         KharvoxCameraLedgeTransitionActive(),KharvoxCameraBossSequenceActive(),
         pauseMenu||fullscreenMenu||deathMenu||KharvoxHudTutorialActive(),
@@ -3188,7 +3195,7 @@ void updateGameplayActions(XrTime displayTime){
     // This only requests horizontal player-input release: native collision,
     // weapon control, camera tracking and story script flags are untouched.
     const auto freeWalkDecision=kharvox::updateStoryFreeWalk(
-        s.storyFreeWalk,s.customMods.storyFreeWalk,cutscene,
+        s.storyFreeWalk,s.customMods.storyFreeWalk&&!s.customMods.uninterruptedStory,cutscene,
         syncAttackActive,s.chainsawKillLatched&&cutscene,
         KharvoxCameraLedgeTransitionActive(),KharvoxCameraBossSequenceActive(),
         pauseMenu||fullscreenMenu||deathMenu||KharvoxHudTutorialActive(),
@@ -3201,6 +3208,25 @@ void updateGameplayActions(XrTime displayTime){
     // If DOOM rejects or reasserts the release, diagnostics remain read-only.
     KharvoxCameraApplyStoryFreeWalk(
         freeWalkDecision.requested,freeWalkDecision.eligible);
+    // Automatic noncombat story-flow experiment. No RS click required;
+    // dialogue, native script timing and animation callbacks remain DOOM-owned.
+    const auto uninterrupted=kharvox::updateUninterruptedStory(
+        s.uninterruptedStory,s.customMods.uninterruptedStory,cutscene,
+        syncAttackActive,s.chainsawKillLatched&&cutscene,
+        KharvoxCameraLedgeTransitionActive(),KharvoxCameraBossSequenceActive(),
+        pauseMenu||fullscreenMenu||deathMenu||KharvoxHudTutorialActive(),
+        gameplayWorld,s.head.valid&&s.trackingHeadPositionValid,
+        GetTickCount64());
+    if(uninterrupted.entered)
+        log("[UNINTERRUPTED-STORY] independent story detected; automatic movement check armed");
+    if(uninterrupted.exited)
+        log(uninterrupted.expired
+            ?"[UNINTERRUPTED-STORY] 45-second safety timeout; engine ownership restored"
+            :"[UNINTERRUPTED-STORY] story scene ended; engine ownership restored");
+    const bool narrativeStick=std::abs(movementStick.x)>.18f
+        ||std::abs(movementStick.y)>.18f;
+    KharvoxCameraServiceUninterruptedStory(
+        uninterrupted.active,narrativeStick);
     const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
         &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
@@ -3805,6 +3831,7 @@ bool createGameplayActions(){
         +" storySkipRS="+(s.customMods.storyCinematicSkip&&!s.customMods.storyFreeWalk?"on (experimental native 4x)":"off")
         +" storyFreeWalkRS="+(s.customMods.storyFreeWalk?"ON (experimental horizontal movement)":"off")
         +" storyCameraFocus="+(s.customMods.storyCameraFocus?"ON (native scripted heading test)":"off")
+        +" uninterruptedStory="+(s.customMods.uninterruptedStory?"ON (automatic hold analyzer)":"off")
         +" actionExit40ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
