@@ -1996,8 +1996,7 @@ public sealed partial class MainForm : Form
             // It does not change Cactus calibration or disable native HUDs.
             // Full speed remains the proven native no-slowmo bypass. Action
             // overrides temporarily suspend it without deleting the choice.
-            gloryKillSlowmo.Value =
-                cinematicFullSpeedMode&&!HasActiveActionSpeedOverrides()?0:10;
+            gloryKillSlowmo.Value = 10; // retired shared Full speed mode
             UpdateCinematicKillSpeedLabel();
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
