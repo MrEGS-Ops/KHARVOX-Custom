@@ -5560,6 +5560,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         kharvox::acceptIndependentScriptedCinematic(
             s.scriptedCinematicBoundary,KharvoxCameraCutsceneActive(),
             syncAction,chainsawAction,ledgeAction,GetTickCount64());
+    // DOOM releases execution and ledge flags before the animated camera
+    // returns to gameplay. Block authored story yaw throughout those tails.
+    // This shares the already-tested cinematic-speed boundary state rather
+    // than inventing a timing timeout or changing any action refresh rate.
+    KharvoxCameraSetStoryFocusActionTail(
+        s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd);
     static bool tailBlockWasLogged=false;
     const bool tailBlocked=rawScriptedCandidate
         &&s.scriptedCinematicBoundary.awaitingPreviousCutsceneEnd;
