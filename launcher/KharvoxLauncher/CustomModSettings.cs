@@ -85,6 +85,8 @@ internal sealed class CustomModSettings
     public bool UninterruptedStory { get; set; } // opt-in automatic, never migrated ON
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
+    public bool MotionChainsawKillSpeed { get; set; } // opt-in live native tick target, separate from retired timescale gestures
+    public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // 0.7-3.0 m/s adjustable
     public bool HapticOverhaul { get; set; }
 
     public bool SupervisorRequired => RevengeDemon;
@@ -139,6 +141,7 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
+        value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         value.BackOfHandHud = false; // paused until composite image mirror exists
         return value;
     }
@@ -157,6 +160,7 @@ internal static class CustomModSettingsStore
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
             value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
+            value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
             return ApplyDevelopmentTestDefaults(value);
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
@@ -179,6 +183,7 @@ internal static class CustomModSettingsStore
         value.CinematicExitHandoffDelayMs = 40;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
+        value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
