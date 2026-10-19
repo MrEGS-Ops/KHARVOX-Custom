@@ -5851,6 +5851,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             +"Hz targetStroke="+std::to_string(
                 static_cast<int>(kharvox::chainsawSingleSwipeDistanceMeters*100.f+.5f))
             +"cm triggerRearms="+std::to_string(s.chainsawExperiment.triggerRestarts)
+            +" fastFinish="+std::to_string(s.chainsawExperiment.fastFinishLatched?1:0)
+            +" motionFloorHz="+std::to_string(kharvox::chainsawPhysicalMotionFastHz)
+            +" releaseIdleHz="+std::to_string(kharvox::chainsawTriggerReleaseIdleHz)
             +" legacyCalibration="+std::to_string(strokeDistanceCm)+"cm");
     const int percentage=static_cast<int>(experiment.progress*100.f);
     if(experiment.armed
@@ -5861,7 +5864,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         log("[CHAINSAW-EXPERIMENT] mode="+std::string(experiment.detail)
             +" progress="+std::to_string(percentage)+"%"
             +" tickHz="+std::to_string(experiment.targetHz)
-            +" completed="+(experiment.completed?"yes":"no")
+            +" maxSpeed="+(experiment.completed?"yes":"no")
+            +" fastFinish="+(s.chainsawExperiment.fastFinishLatched?"yes":"no")
             +" trigger="+(s.chainsawTriggerPressure>.55f?"held":"released")
             +" tracking="+(movingHandTracked?"valid":"lost"));
         s.chainsawStrokeLastLogPercent=percentage;
@@ -5944,9 +5948,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // ONE timing owner. Physical motion wins if enabled, irrespective of
     // legacy launcher preset flags, and ONLY on confirmed native chainsaw
     // executions. Ledge/stabilization never become chainsaw actions.
-    // IMPORTANT: if the hand has not yet entered the circle, do NOT
-    // force its 300/480Hz "idle" timing onto the native execution.
-    // Native speed continues until a deliberate entrance while Trigger held.
+    // Before first oval arm: NATIVE timing. Once armed: motion floor 60 Hz;
+    // release: 300 Hz; second press: latched 30 Hz until native kill exit.
     const auto effectiveSelectedAction=physicalChainsawActive
         ?(experiment.armed
            ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,experiment.targetHz}

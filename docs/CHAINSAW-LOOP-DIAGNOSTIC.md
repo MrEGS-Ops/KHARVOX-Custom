@@ -61,17 +61,23 @@ report **not yet feasible** rather than guessing DOOM offsets or touching
 global game time. Damage, audio, fuel, camera, death and level transitions
 must NOT repeat or stick.
 
-## 25 cm stroke and accidental-release recovery (next build)
+## Physical chainsaw: two-stage trigger and capped hand motion
 
-The physical chainsaw swipe threshold is 25 cm rather than 16 cm. Stopping
-before the threshold still reduces requested animation speed; reaching the
-threshold commits the native kill to the existing 30 Hz finishing speed.
-Accidental trigger release disarms the timing immediately but marks the
-current **previously armed** native execution as eligible for one or more
-re-presses. Re-pressing inside that same execution restarts the hand-speed
-stroke measurement from zero **without a new oval entry**; a fresh execution
-cannot reuse the earlier latch. New diagnostic arming lines show the stroke
-threshold and trigger-restart counter, without touching animation memory.
+The first trigger press starts DOOM's normal chainsaw attack; entering the
+single oval with Trigger held arms timing. The 25 cm measured controller stroke
+starts AFTER the oval-entry frame, rather than including the reaching gesture.
+No initial boost is applied. While holding the first press, *live* hand motion
+changes target engine tick Hz down to a **60 Hz floor**; holding the hand still
+returns toward the configured idle Hz. Crossing 25 cm is now diagnostic and
+never automatically forces a 30 Hz full-speed finish.
+
+After the first arm, releasing Trigger keeps **300 Hz** while the SAME verified
+native kill remains active, even though motion cutting has disengaged. A
+**second Trigger press**, anywhere (no oval re-entry), latches **30 Hz** for the
+ENTIRE REMAINDER of that native execution, even if the trigger is later released.
+Native execution exit restores DOOM timing; a new kill requires an initial oval
+crossing again. No animation rewind, damage/fuel modification, or non-chainsaw
+action speed changes are performed. The engine-Hz values are not headset FPS.
 
 ## Safety / rollback
 The checkbox only enables structured logs, not additional ticks, new hooks,

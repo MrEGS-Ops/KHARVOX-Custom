@@ -734,8 +734,9 @@ public sealed partial class MainForm : Form
         AddChainsawCalibrationRow("Chainsaw idle Hz",chainsawStrokeIdleHz,
             chainsawStrokeIdleHzValue,
             "TEMPORARY CHAINSAW ONLY. LEFT = 480 Hz, SLOWEST cut at rest; "
-            +"RIGHT = 30 Hz, fastest. Movement progress always ramps toward 30 Hz. "
-            +"This is game engine tick pacing, NOT Quest headset Hz or vibration Hz.");
+            +"RIGHT = 30 Hz at rest. Motion cutting caps at 60 Hz; "
+            +"Trigger release explicitly holds 300 Hz, double press latches 30 Hz. "
+            +"This is engine tick pacing, NOT headset/vibration Hz.");
         // Only one physical chainsaw mod remains.
         customTriggerChainsawThrottle.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
@@ -748,9 +749,11 @@ public sealed partial class MainForm : Form
                     +"Reach OUTSIDE it, hold normal Trigger to start a native "
                     +"kill, and pull INTO the circle without releasing Trigger. "
                     +"Once armed, hand movement controls the cut anywhere, "
-                    +"with a 25 cm full-stroke target. Stop midway to slow. "
-                    +"If Trigger slips, re-press it to restart hand control "
-                    +"within the SAME kill, no second oval entry needed."),
+                    +"with a measured 25 cm stroke STARTING AFTER entry. "
+                    +"Hand motion caps at 60 Hz and slows when you stop. "
+                    +"Release Trigger to hold 300 Hz; press Trigger AGAIN "
+                    +"to latch 30 Hz super-fast until this kill completes. "
+                    +"No new oval entry needed for the second press."),
             (Box:chainsawPointer, Number:3,
                 Tip:"Existing alternative test: sweep the virtual weapon-hand "
                     +"pointer roughly 28 degrees to accelerate a native chainsaw "
