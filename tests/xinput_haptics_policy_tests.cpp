@@ -251,5 +251,17 @@ int main() {
     queueControllerZoneCue(zone,3000,50,.20f,100.f);
     if (!near(mixControllerZoneCue(clickOnly,zone,3010).amplitude,.5f))
         return 51;
+    // The radial guide overrides old high chainsaw rumble, so the
+    // zone centre may genuinely be silent, on the weapon hand only.
+    const XInputHapticSignal zoneCentre{};
+    const XInputHapticSignal zoneEdge{.86f,125.f,true};
+    if(mixChainsawZoneGuidance(normalStrong,zoneCentre,true,true).active)return 52;
+    const auto nearEdge=mixChainsawZoneGuidance(normalStrong,zoneEdge,true,true);
+    if(!nearEdge.active||!near(nearEdge.amplitude,.86f)
+        ||!near(nearEdge.frequencyHz,125.f))return 53;
+    if(!near(mixChainsawZoneGuidance(normalStrong,zoneEdge,true,false).amplitude,.95f)
+        ||!near(mixChainsawZoneGuidance(normalStrong,zoneEdge,false,true).amplitude,.95f))return 54;
+    const auto zoneDamage=mergeDamageImpactHapticSignal(zoneCentre,.9f,115.f,true);
+    if(!zoneDamage.active||!near(zoneDamage.amplitude,.9f))return 55;
     return 0;
 }

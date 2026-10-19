@@ -67,7 +67,7 @@ The first trigger press starts DOOM's normal chainsaw attack; entering the
 single oval with Trigger held arms timing. The 25 cm measured controller stroke
 starts AFTER the oval-entry frame, rather than including the reaching gesture.
 No initial boost is applied. While holding the first press, *live* hand motion
-changes target engine tick Hz down to a **60 Hz floor**; holding the hand still
+changes target engine tick Hz down to a **45 Hz floor**; holding the hand still
 returns toward the configured idle Hz. Crossing 25 cm is now diagnostic and
 never automatically forces a 30 Hz full-speed finish.
 
@@ -78,6 +78,27 @@ ENTIRE REMAINDER of that native execution, even if the trigger is later released
 Native execution exit restores DOOM timing; a new kill requires an initial oval
 crossing again. No animation rewind, damage/fuel modification, or non-chainsaw
 action speed changes are performed. The engine-Hz values are not headset FPS.
+
+## Constant radial chainsaw zone guidance (weapon hand only)
+
+Once DOOM confirms a native chainsaw execution, physical Circle mode replaces
+its ordinary intense chopping haptic with a steady 125 Hz OpenXR rumble:
+- zero at the projected oval centre;
+- smoothly increasing as the weapon-hand projection approaches the edge;
+- about 86% amplitude at the oval exit radius (.81), constant maximum outside;
+- absent/silent if hand projection or tracking is invalid; no false "outside";
+- automatically stops at native kill exit, never affects ordinary weapon idle,
+  the other hand, bHaptics, or the native game action/tick controls.
+
+The vibration uses the same projection as the visible circle, including hands
+closer to the headset than the circle itself. Prior one-shot entry pulses and
+per-stroke chop bursts are suppressed during physical Circle mode, because they
+otherwise mask the quiet centre and mislead the user. External damage impacts
+still take precedence. The existing output writer refreshes sustained
+100 ms XR vibrations at most every 75 ms and uses fallback frequency on
+runtimes that reject an explicit 125 Hz value. Logged [CHAINSAW-ONE-ZONE]
+lines include guideAmp for headset-side comparison; actual tactile strength
+requires in-headset validation.
 
 ## Safety / rollback
 The checkbox only enables structured logs, not additional ticks, new hooks,

@@ -82,6 +82,17 @@ struct XInputHapticSignal {
 // Preserve the existing DOOM/weapon pulse when it is stronger, but give
 // damage a separate steady-frequency impact when the native effect is weak.
 // No additional controller write: this is mixed by the normal OpenXR writer.
+// The positional guide deliberately replaces chainsaw motor/cutting texture
+// ONLY on the weapon hand of a confirmed native execution. Without priority,
+// strong cutting rumble drowns out the near-silent centre of the circle.
+// Caller still merges damage after this, so genuine impacts are preserved.
+inline XInputHapticSignal mixChainsawZoneGuidance(
+    const XInputHapticSignal& base,
+    const XInputHapticSignal& guidance,
+    bool guideActive,bool weaponHand) noexcept {
+    return guideActive&&weaponHand?guidance:base;
+}
+
 inline XInputHapticSignal mergeDamageImpactHapticSignal(
     const XInputHapticSignal& existing,
     float damageAmplitude, float damageFrequencyHz, bool damageActive) {

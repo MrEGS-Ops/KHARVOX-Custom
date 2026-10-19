@@ -16,6 +16,16 @@ int main(){
     CHECK(chainsawZoneQuadHeightMeters>chainsawZoneQuadWidthMeters);
     CHECK(chainsawZoneQuadWidthMeters>1.2f);
     CHECK(std::abs(chainsawSingleSwipeDistanceMeters-.25f)<.0001f);
+    CHECK(chainsawPhysicalMotionFastHz==45);
+    CHECK(chainsawZoneGuidanceAmplitude(-1.f)==0.f);
+    CHECK(chainsawZoneGuidanceAmplitude(0.f)==0.f);
+    CHECK(chainsawZoneGuidanceAmplitude(.01f)>.0f);
+    CHECK(chainsawZoneGuidanceAmplitude(.15f)>chainsawZoneGuidanceAmplitude(.01f));
+    CHECK(chainsawZoneGuidanceAmplitude(.40f)>chainsawZoneGuidanceAmplitude(.15f));
+    CHECK(chainsawZoneGuidanceAmplitude(.69f)>chainsawZoneGuidanceAmplitude(.40f));
+    CHECK(chainsawZoneGuidanceAmplitude(.81f)==chainsawZoneGuideMaxAmplitude);
+    CHECK(chainsawZoneGuidanceAmplitude(1.40f)==chainsawZoneGuideMaxAmplitude);
+    CHECK(chainsawZoneGuidanceAmplitude(std::nanf(""))==0.f);
     CHECK(gripZoneOutlineAlpha(0,0)==0);
     CHECK(gripZoneOutlineAlpha(1,1)==0);
     CHECK(gripZoneOutlineAlpha(.69f,0)>120);
@@ -37,6 +47,15 @@ int main(){
         head,farHand,center,forward,right,up);
     CHECK(nearProj.valid&&farProj.valid);
     CHECK(nearProj.normalizedRadius<chainsawZoneEnterRadius);
+    const auto atCentre=projectChainsawHandToOval(
+        head,handAt(0.f,0.f,.48f),center,forward,right,up);
+    const auto atCentreFar=projectChainsawHandToOval(
+        head,handAt(0.f,0.f,.90f),center,forward,right,up);
+    CHECK(atCentre.valid&&atCentreFar.valid);
+    CHECK(chainsawZoneGuidanceAmplitude(atCentre.normalizedRadius)<.005f);
+    CHECK(chainsawZoneGuidanceAmplitude(atCentreFar.normalizedRadius)<.005f);
+    CHECK(std::abs(chainsawZoneGuidanceAmplitude(farProj.normalizedRadius)-
+        chainsawZoneGuidanceAmplitude(nearProj.normalizedRadius))<.0001f);
     CHECK(std::abs(nearProj.normalizedRadius-farProj.normalizedRadius)<.001f);
     CHECK(!projectChainsawHandToOval(head,handAt(0,0,-.4f),
         center,forward,right,up).valid);
@@ -53,7 +72,7 @@ int main(){
             480,32,head,0.f,true,forward,right,up);
     };
     // Initial oval entry arms, but does NOT count as physical stroke or
-    // inject a 30 Hz entry boost. First-press live motion caps at 60 Hz.
+    // inject a 30 Hz entry boost. First-press live motion caps at 45 Hz.
     ChainsawExperimentState st{};
     CHECK(!sample(st,false,true,true,.70f,0,.48f,100).armed);
     CHECK(!sample(st,true,true,true,.70f,0,.48f,110).armed);
@@ -72,7 +91,7 @@ int main(){
     CHECK(sample(st,true,true,true,.70f,0,.48f,210).armed);
     CHECK(sample(st,true,true,true,.85f,0,.48f,225).armed);
     CHECK(st.oneSwipeCommitted); // distance still tracked, no 30 Hz latch
-    CHECK(sample(st,true,true,true,.85f,0,.48f,500).targetHz>60);
+    CHECK(sample(st,true,true,true,.85f,0,.48f,500).targetHz>45);
     // Trigger release must keep 300 Hz even when configured first-press
     // idle is 480 Hz; no fast-finish before the second press.
     const auto released=sample(st,true,false,true,.85f,0,.48f,515);
@@ -115,7 +134,7 @@ int main(){
     const auto longCut=sample(single,true,true,true,.82f,0,.48f,430);
     CHECK(longCut.armed&&single.oneSwipeCommitted);
     CHECK(single.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters);
-    CHECK(longCut.targetHz==60&&!single.fastFinishLatched);
+    CHECK(longCut.targetHz==45&&!single.fastFinishLatched);
     ChainsawExperimentResult stationary{};
     for(int i=0;i<12;i++)
         stationary=sample(single,true,true,true,.82f,0,.48f,500+60*i);
@@ -136,10 +155,10 @@ int main(){
     CHECK(pause.strokeTravelMeters==0.f);
     CHECK(sample(pause,true,true,true,.20f,0,.48f,1530).armed);
     CHECK(pause.strokeTravelMeters>0.f&&!pause.oneSwipeCommitted);
-    CHECK(sample(pause,true,true,true,.20f,0,.48f,1800).targetHz>60);
+    CHECK(sample(pause,true,true,true,.20f,0,.48f,1800).targetHz>45);
     CHECK(!pause.oneSwipeCommitted);
     const auto resumeCut=sample(pause,true,true,true,-.14f,0,.48f,1815);
-    CHECK(resumeCut.armed&&pause.oneSwipeCommitted&&resumeCut.targetHz>=60);
+    CHECK(resumeCut.armed&&pause.oneSwipeCommitted&&resumeCut.targetHz>=45);
     CHECK(!sample(pause,false,true,true,-.14f,0,.48f,1830).armed);
     // Releasing Trigger BEFORE the oval ever arms cannot claim 300 Hz
     // or enable second-press fast finish.

@@ -50,10 +50,21 @@ constexpr float chainsawZoneQuadWidthMeters=1.30f;
 constexpr float chainsawZoneQuadHeightMeters=1.72f;
 constexpr float chainsawZoneEnterRadius=.69f; // normalized ellipse radius
 constexpr float chainsawZoneExitRadius=.81f;  // hysteresis on leaving
+// Continuous guide on the weapon hand while a native chainsaw kill runs.
+// Uses the SAME perspective-correct quad projection as the rendered oval.
+// Zero at centre, increases smoothly to 86% at the EXIT radius and remains
+// at that maximum outside the circle. Invalid tracking means NO misleading cue.
+constexpr float chainsawZoneGuideMaxAmplitude=.86f;
+constexpr float chainsawZoneGuideFrequencyHz=125.f;
+inline float chainsawZoneGuidanceAmplitude(float projectedRadius) noexcept {
+    if(!std::isfinite(projectedRadius)||projectedRadius<0.f)return 0.f;
+    const float fraction=std::clamp(projectedRadius/chainsawZoneExitRadius,0.f,1.f);
+    return chainsawZoneGuideMaxAmplitude*std::pow(fraction,1.5f);
+}
 // A deliberate 25 cm tracked stroke starts AFTER oval entry, never on entry.
 // Reaching it is diagnostic, not a forced fast-finish; live hand speed rules.
 constexpr float chainsawSingleSwipeDistanceMeters=.25f;
-constexpr int chainsawPhysicalMotionFastHz=60;
+constexpr int chainsawPhysicalMotionFastHz=45;
 constexpr int chainsawDoubleTriggerFastFinishHz=30;
 constexpr int chainsawTriggerReleaseIdleHz=300;
 struct ChainsawZoneProjection {

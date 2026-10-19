@@ -349,6 +349,7 @@ struct State {
     int chainsawStrokeLastLogPercent{-1};
     float chainsawTriggerPressure{};
     kharvox::XInputHapticSignal chainsawTriggerHaptic{};
+    bool chainsawZoneGuideActive{}; // native execution only, weapon hand
     kharvox::ChainsawHapticPreviewRequest hapticLabPreview{};
     std::uint64_t hapticLabPreviewUntil{}, hapticLabPreviewNextPoll{};
     bool hapticLabPreviewAcknowledged{};
@@ -1248,13 +1249,17 @@ void updateXInputHaptics(){
             nativeDesired[hand],s.wheelClicks[hand],now);
         const auto baseDesired=kharvox::mixControllerZoneCue(
             clickDesired,s.handZoneCues[hand],now);
-        // Never send the chainsaw texture to the support hand or bHaptics.
-        // Keep stronger native rumble and damage impacts intact.
+        // During confirmed chainsaw kills, guide takes priority on the
+        // weapon hand: prior cutting rumble must not mask the quiet centre.
+        // Outside execution, native rumble is unchanged; damage still merges.
         const bool weaponHand=hand==(s.weaponHandLeft?size_t{0}:size_t{1});
-        const auto withChainsaw=weaponHand&&s.chainsawTriggerHaptic.active
+        const auto regularChainsaw=weaponHand&&s.chainsawTriggerHaptic.active
             &&(!baseDesired.active
                 ||baseDesired.amplitude<s.chainsawTriggerHaptic.amplitude)
             ?s.chainsawTriggerHaptic:baseDesired;
+        const auto withChainsaw=kharvox::mixChainsawZoneGuidance(
+            regularChainsaw,s.chainsawTriggerHaptic,
+            s.chainsawZoneGuideActive,weaponHand);
         auto desired=focused?kharvox::mergeDamageImpactHapticSignal(
             withChainsaw,damageImpact.amplitude,damageImpact.frequencyHz,
             damageImpact.active):kharvox::XInputHapticSignal{};
@@ -5814,13 +5819,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         gazeVector,rightVector,upVector);
     if(experiment.enteredZone&&experimentActive
         &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
-        // A distinct, quiet contact cue, weapon hand ONLY; does not fire
-        // weapon, drain fuel, alter melee mapping or start a new execution.
-        const auto hapticIndex=s.weaponHandLeft?0u:1u;
-        kharvox::queueControllerZoneCue(s.handZoneCues[hapticIndex],
-            strokeNow,72,.34f,165.f);
+        // Continuous radial guide replaces the old one-shot entry pulse.
         log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
-            +" oval; holding Trigger and moving INTO it starts the cut");
+            +" oval; hold Trigger and move INTO it to start the cut");
     }
     if(experimentActive && experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
         // Explain a missing stroke without spamming the log every XR frame.
@@ -5841,6 +5842,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 std::to_string((status&16u)!=0)+" armed="+
                 std::to_string((status&1u)!=0)+
                 " ovalRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
+                " guideAmp="+std::to_string(kharvox::chainsawZoneGuidanceAmplitude(
+                    s.chainsawExperiment.lastZoneRadius))+
                 " handDepthM="+std::to_string(s.chainsawExperiment.lastHandDepth));
         }
     }
@@ -5934,21 +5937,37 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             textured.hapticAmplitude=idleSnap?.66f:.035f;
             textured.hapticFrequencyHz=idleSnap?190.f:55.f;
         }
-        if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
-            // Sharp full-strength chop. The OpenXR controller/runtime remains
-            // responsible for hardware limits. Only weapon hand, never all.
-            textured.hapticAmplitude=1.f;
-            textured.hapticFrequencyHz=
-                (s.chainsawExperiment.impactIndex%2==0)?95.f:185.f;
+        const bool circleGuide=experimentActive
+            &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull;
+        s.chainsawZoneGuideActive=circleGuide;
+        if(circleGuide){
+            // Continuous 125 Hz tactile compass: silent centre, rising
+            // intensity toward the oval's exit boundary, maximum outside.
+            // Invalid projection = silence, NOT a false outside warning.
+            const float amplitude=kharvox::chainsawZoneGuidanceAmplitude(
+                s.chainsawExperiment.lastZoneRadius);
+            s.chainsawTriggerHaptic={
+                amplitude,kharvox::chainsawZoneGuideFrequencyHz,
+                amplitude>=.015f};
+        }else{
+            if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
+                // Retain original impact cues for non-oval Pointer Focus.
+                textured.hapticAmplitude=1.f;
+                textured.hapticFrequencyHz=
+                    (s.chainsawExperiment.impactIndex%2==0)?95.f:185.f;
+            }
+            s.chainsawTriggerHaptic={
+                textured.hapticAmplitude,textured.hapticFrequencyHz,true};
         }
-        s.chainsawTriggerHaptic={
-            textured.hapticAmplitude,textured.hapticFrequencyHz,true};
-    }else s.chainsawTriggerHaptic={};
+    }else{
+        s.chainsawTriggerHaptic={};
+        s.chainsawZoneGuideActive=false;
+    }
     s.chainsawTriggerSpeedWasActive=physicalChainsawActive;
     // ONE timing owner. Physical motion wins if enabled, irrespective of
     // legacy launcher preset flags, and ONLY on confirmed native chainsaw
     // executions. Ledge/stabilization never become chainsaw actions.
-    // Before first oval arm: NATIVE timing. Once armed: motion floor 60 Hz;
+    // Before first oval arm: NATIVE timing. Once armed: motion floor 45 Hz;
     // release: 300 Hz; second press: latched 30 Hz until native kill exit.
     const auto effectiveSelectedAction=physicalChainsawActive
         ?(experiment.armed
