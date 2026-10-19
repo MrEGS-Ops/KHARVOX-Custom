@@ -45,21 +45,26 @@ inline ChainsawVec3 singleZoneCenter(ChainsawVec3 head,ChainsawVec3 gaze,
             head.z+1.10f*gaze.z/mag};
 }
 // The procedural outline is centred at texture-space radius .69.
-// Match the quad's REAL ellipse, rather than an unreachable 3D sphere.
-constexpr float chainsawZoneQuadWidthMeters=1.30f;
-constexpr float chainsawZoneQuadHeightMeters=1.72f;
-constexpr float chainsawZoneEnterRadius=.69f; // normalized ellipse radius
-constexpr float chainsawZoneExitRadius=.81f;  // hysteresis on leaving
-// Continuous guide on the weapon hand while a native chainsaw kill runs.
-// Uses the SAME perspective-correct quad projection as the rendered oval.
-// Zero at centre, increases smoothly to 86% at the EXIT radius and remains
-// at that maximum outside the circle. Invalid tracking means NO misleading cue.
-constexpr float chainsawZoneGuideMaxAmplitude=.86f;
-constexpr float chainsawZoneGuideFrequencyHz=125.f;
-inline float chainsawZoneGuidanceAmplitude(float projectedRadius) noexcept {
-    if(!std::isfinite(projectedRadius)||projectedRadius<0.f)return 0.f;
-    const float fraction=std::clamp(projectedRadius/chainsawZoneExitRadius,0.f,1.f);
-    return chainsawZoneGuideMaxAmplitude*std::pow(fraction,1.5f);
+// Enlarge the physical and drawn oval together by ~15%; capture projection
+// and OpenXR quad sizing both use these SAME dimensions.
+constexpr float chainsawZoneQuadWidthMeters=1.50f;
+constexpr float chainsawZoneQuadHeightMeters=1.98f;
+constexpr float chainsawZoneEnterRadius=.69f; // VISIBLE ring/inside threshold
+constexpr float chainsawZoneExitRadius=.81f;  // initial outside-arm hysteresis
+// Execution-only weapon-hand OUTSIDE cue: unmistakable "bzzz ... bzzz ...".
+// Strong 150 Hz vibration for 160ms, 200ms silence; never a steady buzz.
+// Pulse phase starts immediately upon moving outside the visible ring.
+// Inside, missing projection, and lost tracking remain absolutely silent.
+constexpr float chainsawZoneGuidePulseAmplitude=.92f;
+constexpr float chainsawZoneGuidePulseFrequencyHz=150.f;
+constexpr std::uint64_t chainsawZoneGuidePulsePeriodMs=360;
+constexpr std::uint64_t chainsawZoneGuidePulseOnMs=160;
+inline bool chainsawZoneOutsidePulseOn(
+    float projectedRadius,std::uint64_t millisecondsOutside) noexcept {
+    return std::isfinite(projectedRadius)
+        && projectedRadius>=chainsawZoneEnterRadius
+        && millisecondsOutside%chainsawZoneGuidePulsePeriodMs
+            <chainsawZoneGuidePulseOnMs;
 }
 // A deliberate 25 cm tracked stroke starts AFTER oval entry, never on entry.
 // Reaching it is diagnostic, not a forced fast-finish; live hand speed rules.
@@ -102,6 +107,8 @@ struct ChainsawExperimentState {
     bool seenOutside{},inside{},lastTracked{},oneSwipeCommitted{};
     bool resumeEligible{}; // only after a successfully armed kill is interrupted
     bool fastFinishLatched{}; // second Trigger press: 30 Hz until native kill end
+    bool zoneGuideWasOutside{}; // reset pulse phase at actual visible-ring exit
+    std::uint64_t zoneGuideOutsideSinceMs{};
     unsigned triggerRestarts{}; // same native execution, never a new kill
     float lastZoneRadius{-1.f},lastHandDepth{};
     int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
@@ -167,6 +174,11 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             :ChainsawZoneProjection{};
         st.lastZoneRadius=projection.normalizedRadius;
         st.lastHandDepth=projection.handDepthMeters;
+        const bool guideOutside=projection.valid
+            &&projection.normalizedRadius>=chainsawZoneEnterRadius;
+        if(guideOutside&&!st.zoneGuideWasOutside)
+            st.zoneGuideOutsideSinceMs=nowMs;
+        st.zoneGuideWasOutside=guideOutside;
         // Release AFTER arming holds an explicit 300 Hz idle (near-freeze).
         // Do not undo fast-finish once its second-press latch is set.
         if(!triggerHeld&&!st.fastFinishLatched){

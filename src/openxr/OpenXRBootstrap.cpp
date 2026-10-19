@@ -5842,8 +5842,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 std::to_string((status&16u)!=0)+" armed="+
                 std::to_string((status&1u)!=0)+
                 " ovalRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
-                " guideAmp="+std::to_string(kharvox::chainsawZoneGuidanceAmplitude(
-                    s.chainsawExperiment.lastZoneRadius))+
+                " guideOutside="+std::to_string(s.chainsawExperiment.zoneGuideWasOutside?1:0)+
+                " guidePulse="+std::to_string(kharvox::chainsawZoneOutsidePulseOn(
+                    s.chainsawExperiment.lastZoneRadius,
+                    strokeNow-s.chainsawExperiment.zoneGuideOutsideSinceMs)?1:0)+
                 " handDepthM="+std::to_string(s.chainsawExperiment.lastHandDepth));
         }
     }
@@ -5939,16 +5941,22 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         }
         const bool circleGuide=experimentActive
             &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull;
+        if(circleGuide&&!s.chainsawZoneGuideActive)
+            log("[CHAINSAW-ZONES] OUTSIDE pulse guide active: "
+                "150Hz haptic 160ms ON / 200ms OFF, 92% strength; "
+                "INSIDE visible oval = silence; circle enlarged 15%");
         s.chainsawZoneGuideActive=circleGuide;
         if(circleGuide){
-            // Continuous 125 Hz tactile compass: silent centre, rising
-            // intensity toward the oval's exit boundary, maximum outside.
-            // Invalid projection = silence, NOT a false outside warning.
-            const float amplitude=kharvox::chainsawZoneGuidanceAmplitude(
-                s.chainsawExperiment.lastZoneRadius);
+            // Absolute on/off: no rumble inside the visible ring.
+            // Strong intermittent buzzing outside, including before arming
+            // the initial stroke; stop instantly on re-entry/tracking loss.
+            // The existing OpenXR haptic writer handles pulse refresh/stops.
+            const bool pulseOn=kharvox::chainsawZoneOutsidePulseOn(
+                s.chainsawExperiment.lastZoneRadius,
+                strokeNow-s.chainsawExperiment.zoneGuideOutsideSinceMs);
             s.chainsawTriggerHaptic={
-                amplitude,kharvox::chainsawZoneGuideFrequencyHz,
-                amplitude>=.015f};
+                pulseOn?kharvox::chainsawZoneGuidePulseAmplitude:0.f,
+                kharvox::chainsawZoneGuidePulseFrequencyHz,pulseOn};
         }else{
             if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
                 // Retain original impact cues for non-oval Pointer Focus.

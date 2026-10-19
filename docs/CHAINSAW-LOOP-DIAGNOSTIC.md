@@ -79,26 +79,29 @@ Native execution exit restores DOOM timing; a new kill requires an initial oval
 crossing again. No animation rewind, damage/fuel modification, or non-chainsaw
 action speed changes are performed. The engine-Hz values are not headset FPS.
 
-## Constant radial chainsaw zone guidance (weapon hand only)
+## Outside-the-circle pulsing guidance (weapon hand only)
 
-Once DOOM confirms a native chainsaw execution, physical Circle mode replaces
-its ordinary intense chopping haptic with a steady 125 Hz OpenXR rumble:
-- zero at the projected oval centre;
-- smoothly increasing as the weapon-hand projection approaches the edge;
-- about 86% amplitude at the oval exit radius (.81), constant maximum outside;
-- absent/silent if hand projection or tracking is invalid; no false "outside";
-- automatically stops at native kill exit, never affects ordinary weapon idle,
-  the other hand, bHaptics, or the native game action/tick controls.
+The physical Circle mode increases the visible oval and the *same* 3D
+controller projection capture region ~15% (quad 1.50m x 1.98m vs 1.30m x
+1.72m, rendering at the unchanged normalized ring radius .69).
 
-The vibration uses the same projection as the visible circle, including hands
-closer to the headset than the circle itself. Prior one-shot entry pulses and
-per-stroke chop bursts are suppressed during physical Circle mode, because they
-otherwise mask the quiet centre and mislead the user. External damage impacts
-still take precedence. The existing output writer refreshes sustained
-100 ms XR vibrations at most every 75 ms and uses fallback frequency on
-runtimes that reject an explicit 125 Hz value. Logged [CHAINSAW-ONE-ZONE]
-lines include guideAmp for headset-side comparison; actual tactile strength
-requires in-headset validation.
+During a **confirmed native chainsaw execution**, the weapon controller is
+**completely silent while INSIDE** the visible ring. As soon as the hand moves
+OUTSIDE the drawn ring, it receives repeated clearly separated buzz bursts:
+**150 Hz haptic frequency, 92% amplitude, 160ms ON / 200ms OFF**. Each outside
+entry begins with a burst, with pulse phase anchored at that exit event.
+Moving back inside stops it immediately; unavailable/invalid tracking is
+also silent, never falsely "outside". The guide starts at native execution
+entry even before the first oval arming gesture, so the pulse indicates
+the starting side of a deliberate reach-and-cut.
+
+The guide replaces old sustained cutting vibration and the previous
+one-shot ring-entry/chop pulse in Circle mode to prevent masking its silent
+inside region. Controller haptic pulses use the existing OpenXR output
+writer; genuine damage still takes precedence, and pointer mode, other hand,
+bHaptics, idle weapon haptics, native game execution and action timing remain
+unchanged. Log [CHAINSAW-ONE-ZONE] gives guideOutside / guidePulse states.
+Actual physical pulse sensation still needs testing in the headset.
 
 ## Safety / rollback
 The checkbox only enables structured logs, not additional ticks, new hooks,

@@ -14,18 +14,23 @@ int main(){
     CHECK(length3(minus3(zonePosition(head,0,0),center))<.001f);
     CHECK(length3(minus3(singleZoneCenter(head,{0,0,0}),center))<.001f);
     CHECK(chainsawZoneQuadHeightMeters>chainsawZoneQuadWidthMeters);
-    CHECK(chainsawZoneQuadWidthMeters>1.2f);
+    CHECK(std::abs(chainsawZoneQuadWidthMeters-1.50f)<.001f);
+    CHECK(std::abs(chainsawZoneQuadHeightMeters-1.98f)<.001f);
     CHECK(std::abs(chainsawSingleSwipeDistanceMeters-.25f)<.0001f);
     CHECK(chainsawPhysicalMotionFastHz==45);
-    CHECK(chainsawZoneGuidanceAmplitude(-1.f)==0.f);
-    CHECK(chainsawZoneGuidanceAmplitude(0.f)==0.f);
-    CHECK(chainsawZoneGuidanceAmplitude(.01f)>.0f);
-    CHECK(chainsawZoneGuidanceAmplitude(.15f)>chainsawZoneGuidanceAmplitude(.01f));
-    CHECK(chainsawZoneGuidanceAmplitude(.40f)>chainsawZoneGuidanceAmplitude(.15f));
-    CHECK(chainsawZoneGuidanceAmplitude(.69f)>chainsawZoneGuidanceAmplitude(.40f));
-    CHECK(chainsawZoneGuidanceAmplitude(.81f)==chainsawZoneGuideMaxAmplitude);
-    CHECK(chainsawZoneGuidanceAmplitude(1.40f)==chainsawZoneGuideMaxAmplitude);
-    CHECK(chainsawZoneGuidanceAmplitude(std::nanf(""))==0.f);
+    CHECK(chainsawZoneGuidePulseAmplitude>.85f);
+    CHECK(chainsawZoneGuidePulseFrequencyHz==150.f);
+    CHECK(chainsawZoneGuidePulseOnMs<chainsawZoneGuidePulsePeriodMs);
+    CHECK(!chainsawZoneOutsidePulseOn(-1.f,0));
+    CHECK(!chainsawZoneOutsidePulseOn(std::nanf(""),0));
+    CHECK(!chainsawZoneOutsidePulseOn(0.f,0));
+    CHECK(!chainsawZoneOutsidePulseOn(.68f,0));
+    CHECK(chainsawZoneOutsidePulseOn(.69f,0));
+    CHECK(chainsawZoneOutsidePulseOn(.90f,159));
+    CHECK(!chainsawZoneOutsidePulseOn(.90f,160));
+    CHECK(!chainsawZoneOutsidePulseOn(.90f,359));
+    CHECK(chainsawZoneOutsidePulseOn(.90f,360));
+    CHECK(!chainsawZoneOutsidePulseOn(.20f,360));
     CHECK(gripZoneOutlineAlpha(0,0)==0);
     CHECK(gripZoneOutlineAlpha(1,1)==0);
     CHECK(gripZoneOutlineAlpha(.69f,0)>120);
@@ -52,10 +57,13 @@ int main(){
     const auto atCentreFar=projectChainsawHandToOval(
         head,handAt(0.f,0.f,.90f),center,forward,right,up);
     CHECK(atCentre.valid&&atCentreFar.valid);
-    CHECK(chainsawZoneGuidanceAmplitude(atCentre.normalizedRadius)<.005f);
-    CHECK(chainsawZoneGuidanceAmplitude(atCentreFar.normalizedRadius)<.005f);
-    CHECK(std::abs(chainsawZoneGuidanceAmplitude(farProj.normalizedRadius)-
-        chainsawZoneGuidanceAmplitude(nearProj.normalizedRadius))<.0001f);
+    CHECK(!chainsawZoneOutsidePulseOn(atCentre.normalizedRadius,0));
+    CHECK(!chainsawZoneOutsidePulseOn(atCentreFar.normalizedRadius,0));
+    CHECK(chainsawZoneOutsidePulseOn(
+        projectChainsawHandToOval(head,handAt(.60f,0.f,.48f),
+            center,forward,right,up).normalizedRadius,0));
+    CHECK(!chainsawZoneOutsidePulseOn(nearProj.normalizedRadius,0));
+    CHECK(!chainsawZoneOutsidePulseOn(farProj.normalizedRadius,0));
     CHECK(std::abs(nearProj.normalizedRadius-farProj.normalizedRadius)<.001f);
     CHECK(!projectChainsawHandToOval(head,handAt(0,0,-.4f),
         center,forward,right,up).valid);
@@ -76,11 +84,13 @@ int main(){
     ChainsawExperimentState st{};
     CHECK(!sample(st,false,true,true,.70f,0,.48f,100).armed);
     CHECK(!sample(st,true,true,true,.70f,0,.48f,110).armed);
-    CHECK(st.seenOutside);
+    CHECK(st.seenOutside&&st.zoneGuideWasOutside);
+    CHECK(st.zoneGuideOutsideSinceMs==110);
     CHECK(!sample(st,true,true,true,.59f,0,.48f,125).armed);
     const auto entry=sample(st,true,true,true,.25f,0,.48f,140);
     CHECK(entry.started&&entry.armed&&entry.enteredZone);
     CHECK(entry.targetHz==480); // test idle is deliberately 480
+    CHECK(!st.zoneGuideWasOutside); // inside ring is completely silent
     CHECK(st.strokeTravelMeters==0.f&&!st.oneSwipeCommitted);
     CHECK(!st.fastFinishLatched&&st.triggerRestarts==0);
     const auto cut=sample(st,true,true,true,.1f,0,.48f,160);
@@ -89,6 +99,7 @@ int main(){
     CHECK(!sample(st,true,true,false,.1f,0,.48f,175).armed);
     CHECK(sample(st,true,true,true,.08f,0,.48f,190).armed);
     CHECK(sample(st,true,true,true,.70f,0,.48f,210).armed);
+    CHECK(st.zoneGuideWasOutside&&st.zoneGuideOutsideSinceMs==210);
     CHECK(sample(st,true,true,true,.85f,0,.48f,225).armed);
     CHECK(st.oneSwipeCommitted); // distance still tracked, no 30 Hz latch
     CHECK(sample(st,true,true,true,.85f,0,.48f,500).targetHz>45);
