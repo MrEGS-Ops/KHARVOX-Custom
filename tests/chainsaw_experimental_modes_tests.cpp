@@ -123,7 +123,7 @@ int main(){
 
     // Insufficient stroke distance must still use live hand-speed control.
     ChainsawExperimentState shortSwipe{};
-    CHECK(!sample(shortSwipe,true,true,true,.52f,0,.48f,1300).armed);
+    CHECK(!sample(shortSwipe,true,true,true,.56f,0,.48f,1300).armed);
     const auto smallEntry=sample(shortSwipe,true,true,true,.44f,0,.48f,1315);
     CHECK(smallEntry.armed&&!shortSwipe.oneSwipeCommitted);
     CHECK(shortSwipe.strokeTravelMeters<chainsawSingleSwipeDistanceMeters);
