@@ -12,6 +12,7 @@ namespace kharvox {
 // While holding Trigger, leave the projected oval, then return INTO it.
 // Once latched, tracked hand motion controls speed ANYWHERE. Completing one
 // meaningful swipe holds the fastest tick until native kill end / Trigger release.
+// A re-press in the SAME kill may re-arm without the oval entry gesture.
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
@@ -49,9 +50,9 @@ constexpr float chainsawZoneQuadWidthMeters=1.30f;
 constexpr float chainsawZoneQuadHeightMeters=1.72f;
 constexpr float chainsawZoneEnterRadius=.69f; // normalized ellipse radius
 constexpr float chainsawZoneExitRadius=.81f;  // hysteresis on leaving
-// One deliberate 16 cm tracked stroke is enough; a held hand should not
-// require repeated back-and-forth cutting to finish the native DOOM sequence.
-constexpr float chainsawSingleSwipeDistanceMeters=.16f;
+// A deliberate 25 cm tracked stroke leaves room to stop partway through.
+// Once reached, keep 30 Hz until native kill exit or Trigger release.
+constexpr float chainsawSingleSwipeDistanceMeters=.25f;
 struct ChainsawZoneProjection {
     bool valid{};
     float normalizedRadius{-1.f};
@@ -85,6 +86,8 @@ inline ChainsawZoneProjection projectChainsawHandToOval(
 struct ChainsawExperimentState {
     bool active{},releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
     bool seenOutside{},inside{},lastTracked{},oneSwipeCommitted{};
+    bool resumeEligible{}; // only after a successfully armed kill is interrupted
+    unsigned triggerRestarts{}; // same native execution, never a new kill
     float lastZoneRadius{-1.f},lastHandDepth{};
     int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
     std::array<ChainsawVec3,4> zones{}; // only zones[0] rendered/used
@@ -149,9 +152,11 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             :ChainsawZoneProjection{};
         st.lastZoneRadius=projection.normalizedRadius;
         st.lastHandDepth=projection.handDepthMeters;
-        // Trigger release disarms; a second press INSIDE the oval cannot
-        // bypass the deliberate outside -> inside cut gesture.
+        // Release drops engine timing immediately but remembers that THIS
+        // verified native execution was already armed. An accidental release
+        // must not require another outside -> inside gesture.
         if(!triggerHeld){
+            if(st.latchedGrip)st.resumeEligible=true;
             st.latchedGrip=false;
             st.seenOutside=false;
             st.filteredSpeed=0.f;
@@ -171,12 +176,25 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.hovered=projection.valid&&st.inside?0:-1;
         entered=st.hovered==0&&st.lastHover!=0;
         st.lastHover=st.hovered;
-        if(!st.latchedGrip&&st.seenOutside&&st.inside
-           &&projection.valid&&triggerHeld){
+        // An initial cut must cross into the oval with Trigger held.
+        // Once that happened, release/re-press may restart a fresh stroke
+        // ANYWHERE in the same confirmed native kill (including outside).
+        const bool canInitialArm=st.seenOutside&&st.inside&&projection.valid;
+        if(!st.latchedGrip&&triggerHeld&&valid
+           &&(st.resumeEligible||canInitialArm)){
+            const bool restarting=st.resumeEligible;
+            st.resumeEligible=false;
             st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
             st.filteredSpeed=.40f;
             st.strokeTravelMeters=0.f;
             st.oneSwipeCommitted=false;
+            if(restarting){
+                ++st.triggerRestarts;
+                // Start measuring from the new trigger press, not from
+                // a controller movement made while the trigger was released.
+                st.previous=hand;
+                st.lastTracked=false;
+            }
             started=true;
         }
         // The oval is an INITIAL activation gate only. Once latched, the

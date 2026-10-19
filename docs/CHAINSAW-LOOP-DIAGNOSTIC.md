@@ -28,7 +28,10 @@ kill or control your headset.
   then resume without releasing Trigger.
 - Kill 3: slow, deliberate swipe across the oval and back out.
 - Kill 4: quick single swipe, keep Trigger pressed and hand stationary.
-- Kill 5: release Trigger partway if DOOM allows; then do one uninterrupted cut.
+- Kill 5: release Trigger partway, re-press it **without re-entering the oval**
+  and try finishing a fresh 25 cm stroke within the same kill. If the native
+  kill has already ended, a new kill still requires the regular oval entry.
+  Then do one uninterrupted cut.
   Also test pulling the chainsaw out with no kill, and ordinary ledge climbing
   (negative controls). These should not produce a chainsaw execution session.
 
@@ -57,6 +60,18 @@ and test event ownership in isolation. If no such playhead is verified,
 report **not yet feasible** rather than guessing DOOM offsets or touching
 global game time. Damage, audio, fuel, camera, death and level transitions
 must NOT repeat or stick.
+
+## 25 cm stroke and accidental-release recovery (next build)
+
+The physical chainsaw swipe threshold is 25 cm rather than 16 cm. Stopping
+before the threshold still reduces requested animation speed; reaching the
+threshold commits the native kill to the existing 30 Hz finishing speed.
+Accidental trigger release disarms the timing immediately but marks the
+current **previously armed** native execution as eligible for one or more
+re-presses. Re-pressing inside that same execution restarts the hand-speed
+stroke measurement from zero **without a new oval entry**; a fresh execution
+cannot reuse the earlier latch. New diagnostic arming lines show the stroke
+threshold and trigger-restart counter, without touching animation memory.
 
 ## Safety / rollback
 The checkbox only enables structured logs, not additional ticks, new hooks,

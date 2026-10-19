@@ -15,6 +15,7 @@ int main(){
     CHECK(length3(minus3(singleZoneCenter(head,{0,0,0}),center))<.001f);
     CHECK(chainsawZoneQuadHeightMeters>chainsawZoneQuadWidthMeters);
     CHECK(chainsawZoneQuadWidthMeters>1.2f);
+    CHECK(std::abs(chainsawSingleSwipeDistanceMeters-.25f)<.0001f);
     CHECK(gripZoneOutlineAlpha(0,0)==0);
     CHECK(gripZoneOutlineAlpha(1,1)==0);
     CHECK(gripZoneOutlineAlpha(.69f,0)>120);
@@ -71,16 +72,23 @@ int main(){
     const auto outsideStroke=sample(st,true,true,true,.85f,0,.48f,225);
     CHECK(outsideStroke.armed&&outsideStroke.targetHz<480);
     CHECK(sample(st,true,true,true,.15f,0,.48f,240).armed);
-    // Trigger release disarms even outside the oval. Re-press INSIDE
-    // cannot bypass the original outside-to-inside arming requirement.
+    // Releasing Trigger DISARMS immediately, but preserves re-press
+    // eligibility only for this already-armed native kill.
     CHECK(!sample(st,true,false,true,.15f,0,.48f,255).armed);
-    CHECK(!st.seenOutside&&!st.latchedGrip);
+    CHECK(!st.seenOutside&&!st.latchedGrip&&st.resumeEligible);
     CHECK(!st.oneSwipeCommitted&&st.strokeTravelMeters==0.f);
-    CHECK(!sample(st,true,true,true,.15f,0,.48f,270).armed);
-    CHECK(!sample(st,true,true,true,.80f,0,.48f,285).armed);
-    CHECK(sample(st,true,true,true,.15f,0,.48f,300).armed);
+    const auto repressed=sample(st,true,true,true,.15f,0,.48f,270);
+    CHECK(repressed.armed&&repressed.started);
+    CHECK(st.triggerRestarts==1&&!st.resumeEligible);
+    CHECK(st.strokeTravelMeters==0.f&&!st.oneSwipeCommitted);
+    // Another release and re-press works even OUTSIDE the oval; prevent
+    // accumulated movement from the unheld interval counting as a cut.
+    CHECK(!sample(st,true,false,true,.80f,0,.48f,285).armed);
+    const auto repressedOutside=sample(st,true,true,true,.80f,0,.48f,300);
+    CHECK(repressedOutside.armed&&repressedOutside.started);
+    CHECK(st.triggerRestarts==2&&st.strokeTravelMeters==0.f);
     CHECK(!sample(st,false,true,true,.15f,0,.48f,315).armed);
-    CHECK(!st.active);
+    CHECK(!st.active&&!st.resumeEligible&&st.triggerRestarts==0);
 
     // Starting inside MUST require Trigger held OUTSIDE, then re-entry.
     ChainsawExperimentState inside{};
@@ -92,9 +100,10 @@ int main(){
     CHECK(inside.seenOutside);
     CHECK(sample(inside,true,true,true,.2f,0,.48f,135).armed);
     CHECK(!sample(inside,true,false,true,.2f,0,.48f,150).armed);
-    CHECK(!inside.seenOutside&&!inside.latchedGrip);
-    CHECK(!sample(inside,true,true,true,.18f,0,.48f,165).armed);
-    CHECK(!sample(inside,true,true,true,.78f,0,.48f,180).armed);
+    CHECK(!inside.seenOutside&&!inside.latchedGrip&&inside.resumeEligible);
+    CHECK(sample(inside,true,true,true,.18f,0,.48f,165).armed);
+    CHECK(inside.triggerRestarts==1);
+    CHECK(sample(inside,true,true,true,.78f,0,.48f,180).armed);
     CHECK(sample(inside,true,true,true,.15f,0,.48f,195).armed);
     CHECK(!sample(inside,false,true,true,.15f,0,.48f,210).armed);
 
@@ -102,12 +111,14 @@ int main(){
     // still held, stopping or moving back outside must retain 30 Hz until
     // the native execution ends; never require another swipe.
     ChainsawExperimentState single{};
-    CHECK(!sample(single,true,true,true,.75f,0,.48f,400).armed);
-    const auto singleEntry=sample(single,true,true,true,.29f,0,.48f,415);
+    CHECK(!sample(single,true,true,true,.84f,0,.48f,400).armed);
+    // ~26.6 cm of actual controller travel, below the teleport rejection
+    // and above the new 25 cm stroke threshold.
+    const auto singleEntry=sample(single,true,true,true,.23f,0,.48f,415);
     CHECK(singleEntry.armed&&single.oneSwipeCommitted);
     CHECK(single.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters);
     CHECK(singleEntry.targetHz==30);
-    const auto noMovement=sample(single,true,true,true,.29f,0,.48f,800);
+    const auto noMovement=sample(single,true,true,true,.23f,0,.48f,800);
     CHECK(noMovement.armed&&noMovement.targetHz==30);
     const auto moveOut=sample(single,true,true,true,.82f,0,.48f,815);
     CHECK(moveOut.armed&&moveOut.targetHz==30);
@@ -117,8 +128,10 @@ int main(){
     CHECK(!sample(single,true,true,false,.82f,0,.48f,1115).armed);
     CHECK(sample(single,true,true,true,.82f,0,.48f,1130).targetHz==30);
     CHECK(!sample(single,true,false,true,.82f,0,.48f,1145).armed);
-    CHECK(!single.oneSwipeCommitted);
-    CHECK(!sample(single,true,true,true,.20f,0,.48f,1160).armed);
+    CHECK(!single.oneSwipeCommitted&&single.resumeEligible);
+    const auto resumed=sample(single,true,true,true,.20f,0,.48f,1160);
+    CHECK(resumed.armed&&resumed.started);
+    CHECK(!single.oneSwipeCommitted&&single.strokeTravelMeters==0.f);
     CHECK(!sample(single,false,true,true,.20f,0,.48f,1175).armed);
 
     // Insufficient stroke distance must still use live hand-speed control.
@@ -128,6 +141,22 @@ int main(){
     CHECK(smallEntry.armed&&!shortSwipe.oneSwipeCommitted);
     CHECK(shortSwipe.strokeTravelMeters<chainsawSingleSwipeDistanceMeters);
     CHECK(!sample(shortSwipe,false,true,true,.44f,0,.48f,1330).armed);
+    // Pause before 25 cm; stationary hand must never commit the swipe.
+    ChainsawExperimentState pause{};
+    CHECK(!sample(pause,true,true,true,.84f,0,.48f,1500).armed);
+    CHECK(sample(pause,true,true,true,.44f,0,.48f,1515).armed);
+    CHECK(pause.strokeTravelMeters>0.f&&!pause.oneSwipeCommitted);
+    CHECK(sample(pause,true,true,true,.44f,0,.48f,1800).armed);
+    CHECK(!pause.oneSwipeCommitted);
+    CHECK(sample(pause,true,true,true,.20f,0,.48f,1815).armed);
+    CHECK(pause.oneSwipeCommitted);
+    CHECK(!sample(pause,false,true,true,.20f,0,.48f,1830).armed);
+    // A new native kill cannot inherit the release-and-repress allowance.
+    ChainsawExperimentState fresh{};
+    CHECK(!sample(fresh,true,true,true,.14f,0,.48f,2000).armed);
+    CHECK(!sample(fresh,true,false,true,.14f,0,.48f,2015).armed);
+    CHECK(!sample(fresh,true,true,true,.14f,0,.48f,2030).armed);
+    CHECK(!fresh.resumeEligible);
 
     ChainsawExperimentState ray{};
     const auto begin=updateChainsawExperiment(

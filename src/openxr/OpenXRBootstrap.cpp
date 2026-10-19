@@ -5848,7 +5848,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         log("[CHAINSAW-EXPERIMENT] armed="+
             std::string(kharvox::chainsawModeName(experimentMode))
             +" idle="+std::to_string(strokeIdleHz)
-            +"Hz distance="+std::to_string(strokeDistanceCm)+"cm");
+            +"Hz targetStroke="+std::to_string(
+                static_cast<int>(kharvox::chainsawSingleSwipeDistanceMeters*100.f+.5f))
+            +"cm triggerRearms="+std::to_string(s.chainsawExperiment.triggerRestarts)
+            +" legacyCalibration="+std::to_string(strokeDistanceCm)+"cm");
     const int percentage=static_cast<int>(experiment.progress*100.f);
     if(experiment.armed
         &&(s.chainsawStrokeLastLogPercent<0

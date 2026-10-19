@@ -747,8 +747,10 @@ public sealed partial class MainForm : Form
                 Tip:"See ONE target circle ahead of the chainsaw BEFORE the kill. "
                     +"Reach OUTSIDE it, hold normal Trigger to start a native "
                     +"kill, and pull INTO the circle without releasing Trigger. "
-                    +"While inside, faster hand motion accelerates the cut; "
-                    +"stopping slows it. No second Trigger press needed."),
+                    +"Once armed, hand movement controls the cut anywhere, "
+                    +"with a 25 cm full-stroke target. Stop midway to slow. "
+                    +"If Trigger slips, re-press it to restart hand control "
+                    +"within the SAME kill, no second oval entry needed."),
             (Box:chainsawPointer, Number:3,
                 Tip:"Existing alternative test: sweep the virtual weapon-hand "
                     +"pointer roughly 28 degrees to accelerate a native chainsaw "
