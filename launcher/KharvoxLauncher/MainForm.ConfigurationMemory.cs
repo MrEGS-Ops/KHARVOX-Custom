@@ -568,11 +568,11 @@ public sealed partial class MainForm
                 || main.chainsawPointer.Parent!=main.speedAdvancedPanel
                 || main.chainsawShowGripZones.Parent!=main.speedAdvancedPanel)
                 throw new InvalidDataException(
-                    "Chainsaw experiment mode checkboxes must be exclusive and visible under Advanced.");
+                    "Chainsaw motion modes must be exclusive and remain under Advanced.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
-                || !main.customMotionChainsawKillSpeed.Enabled || !main.customTriggerChainsawThrottle.Enabled
+                || !main.customTriggerChainsawThrottle.Enabled
                 || !main.cinematicSpeedSelector.Enabled)
                 throw new InvalidDataException("Paused features must be grey while active features remain selectable.");
             var checks = orderedRows.Select(row => row.Box).ToArray();
@@ -589,7 +589,6 @@ public sealed partial class MainForm
                 main.customGaussChargeSlowMovement,
                 main.customPersistentSsgReload,
                 main.customTriggerChainsawThrottle,
-                main.customMotionChainsawKillSpeed,
                 main.customStoryCinematicSkip,
                 main.customStoryFreeWalk,
                 main.customStoryCameraFocus,
@@ -608,8 +607,8 @@ public sealed partial class MainForm
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 12 ? 2
-                        : index < 20 ? 3 : index < 21 ? 4 : 5)).Any()
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 11 ? 2
+                        : index < 19 ? 3 : index < 20 ? 4 : 5)).Any()
                 || main.modOrderSlots.Count != expectedChecks.Length
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index

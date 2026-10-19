@@ -25,8 +25,11 @@ bool initializeGripZoneDebug(const std::vector<int64_t>& formats) {
         const float nx=(float(x)+.5f)/float(width)*2.f-1.f;
         const float ny=(float(y)+.5f)/float(height)*2.f-1.f;
         const auto p=(size_t(y)*width+x)*4;
-        pixels[p+0]=90; pixels[p+1]=195;pixels[p+2]=235;
-        pixels[p+3]=kharvox::gripZoneOutlineAlpha(nx,ny);
+        const auto alpha=kharvox::gripZoneOutlineAlpha(nx,ny);
+        pixels[p+0]=static_cast<unsigned char>((90u*alpha)/255u);
+        pixels[p+1]=static_cast<unsigned char>((225u*alpha)/255u);
+        pixels[p+2]=static_cast<unsigned char>((255u*alpha)/255u);
+        pixels[p+3]=alpha;
     }
 
     VkBuffer buffer{};

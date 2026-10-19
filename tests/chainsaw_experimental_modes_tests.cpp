@@ -9,25 +9,25 @@ int main(){
     // transparent, thin visible round circumference at radius .78.
     CHECK(gripZoneOutlineAlpha(1.f,1.f)==0);
     CHECK(gripZoneOutlineAlpha(0.f,0.f)==0);
-    CHECK(gripZoneOutlineAlpha(.78f,0.f)>30);
-    CHECK(gripZoneOutlineAlpha(0.f,.78f)>30);
+    CHECK(gripZoneOutlineAlpha(.69f,0.f)>120);
+    CHECK(gripZoneOutlineAlpha(0.f,.69f)>120);
     CHECK(gripZoneOutlineAlpha(.78f,.78f)==0);
     CHECK(gripZoneOutlineAlpha(.35f,0.f)<2);
     const ChainsawVec3 h{0.f,1.7f,0.f};
     for(int i=0;i<4;++i){
         const auto z=zonePosition(h,0.f,i);
-        CHECK(length3(minus3(z,h))<1.30f);
+        CHECK(length3(minus3(z,h))<1.05f);
         // Exact two-times separation horizontally and vertically;
         // more than twice as far away in front of the HMD.
-        CHECK(z.z<-.82f&&z.z>-.86f);
-        CHECK(z.y<h.y);
+        CHECK(z.z<-.63f&&z.z>-.67f);
+        CHECK(z.y<h.y+.01f);
         for(int j=0;j<i;++j)
-            CHECK(length3(minus3(z,zonePosition(h,0.f,j)))>.60f);
+            CHECK(length3(minus3(z,zonePosition(h,0.f,j)))>.40f);
     }
     CHECK(std::abs(zonePosition(h,0.f,1).x
-        -zonePosition(h,0.f,0).x-1.0f)<.001f);
+        -zonePosition(h,0.f,0).x-.60f)<.001f);
     CHECK(std::abs(zonePosition(h,0.f,2).y
-        -zonePosition(h,0.f,3).y-.88f)<.001f);
+        -zonePosition(h,0.f,3).y-.58f)<.001f);
     // Each of the FOUR start spheres must allow a single deliberate
     // pull toward any of the OTHER THREE. Native kill and fresh Grip are
     // required. Legacy Circular mode 2 safely collapses to Grip Zones.

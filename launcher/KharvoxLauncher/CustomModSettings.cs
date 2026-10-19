@@ -171,6 +171,9 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
+        value.ChainsawTriggerThrottle |= value.MotionChainsawKillSpeed;
+        value.MotionChainsawKillSpeed = false;
+        if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
         value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
         value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
@@ -193,7 +196,10 @@ internal static class CustomModSettingsStore
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
             value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
-            value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
+            value.ChainsawTriggerThrottle |= value.MotionChainsawKillSpeed;
+        value.MotionChainsawKillSpeed = false;
+        if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
+        value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
             value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
         value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
             value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
@@ -222,6 +228,9 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
         ApplyCurrentAvailability(value);
+        value.ChainsawTriggerThrottle |= value.MotionChainsawKillSpeed;
+        value.MotionChainsawKillSpeed = false;
+        if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
         value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
         value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
@@ -248,7 +257,7 @@ internal static class CustomModSettingsStore
             ChainsawHapticPreview.RunSelfTest(root);
             var path = Path.Combine(root, "custom-mods.json");
             Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220, ChainsawStrokeDistanceCm = 42, ChainsawStrokeIdleHz = 285, ChainsawExperimentMode = 3 }, path);
-            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220
+            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).ChainsawTriggerThrottle || Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220
                 || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285
                 || Load(path).ChainsawExperimentMode != 3)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");

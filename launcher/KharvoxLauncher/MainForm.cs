@@ -87,15 +87,15 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customStoryCameraFocus = MakeCheck("Story Camera Focus: Major Scenes Only (Test)", false);
     private readonly CheckBox customUninterruptedStory = MakeCheck("Uninterrupted Story (Experimental)", false);
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
-    private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Chainsaw Trigger Throttle (Experimental)", false);
-    private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Motion-Controlled Chainsaw Kill Speed (Test)", false);
+    private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Physical Chainsaw · Motion / Haptics / Zones", false);
+    private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Retired Chainsaw Motion (migrated)", false);
     // Temporary, chainsaw-only one-stroke calibration; unrelated action speed
     // sliders remain at 30–240Hz and ledge progression stays DOOM native.
     private readonly TrackBar chainsawStrokeDistance = MakeSlider(18,60,32,2,1);
     private readonly Label chainsawStrokeDistanceValue = MakeSliderValueLabel();
     private readonly TrackBar chainsawStrokeIdleHz = MakeSlider(30,480,30,10,1);
     private readonly Label chainsawStrokeIdleHzValue = MakeSliderValueLabel();
-    private readonly CheckBox chainsawGripPull = MakeCheck("1 · Grip & Pull", true);
+    private readonly CheckBox chainsawGripPull = MakeCheck("1 · Trigger & Pull", true);
     private readonly CheckBox chainsawShowGripZones = MakeCheck("Show Grab Zones · translucent debug markers", false);
     private readonly CheckBox chainsawPointer = MakeCheck("3 · Pointer Focus", false);
     private bool selectingChainsawExperimentMode;
@@ -450,8 +450,8 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customTriggerChainsawThrottle, "CHAINSAW GRIP-ZONE TEST: Once DOOM starts a native chainsaw kill, move your weapon hand inside LEFT/RIGHT/UP/DOWN debug zone, RELEASE then SQUEEZE Grip inside it and pull toward another zone. Circular Saw retired. Enables soft idle and aggressive rip-and-tear haptics. Optional Show Grab Zones uses translucent stereo VR markers; a light pulse confirms zone entry. Chainsaw-only idle animation target is adjustable to 480 Hz. Trigger still controls regular chainsaw execution. OFF by default."),
-            (customMotionChainsawKillSpeed, "EXPERIMENTAL: Use one of the active Sync Action Speed > Advanced chainsaw movement prototypes: 4 FIXED Grip Grab Zones or virtual Pointer Focus. Retired Circle mode cannot be selected. Distinct idle/cutting haptics are fixed. Uses existing DOOM native chainsaw execution lifecycle only; never force-finishes it. OFF by default."),
+            (customTriggerChainsawThrottle, "Physical Chainsaw: all chainsaw grip-zone, Trigger and pointer motion control, idle/cutting haptics, zone visuals and temporary chainsaw Hz belong to ONE mod. Start native kill with Trigger, RELEASE and re-press Trigger in any visible zone, then hold and sweep toward another zone. If enabled, Chainsaw Action Speed Override is disabled to prevent conflicting engine tick ownership. Does not slow ledge grabs or hard landings."),
+
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
             (customUninterruptedStory, "AUTOMATIC NONCOMBAT STORY HOLD TEST, DEFAULT OFF. Detects independent story sequences; after a 900ms interaction lead-in it attempts only validated horizontal movement-inhibit release when you move the left stick. NO RS click required. Audio/dialogue, game script clocks, player physics, door scripting, weapons, tracking and objectives are NOT forcibly advanced. Logs the actual movement lock and player physics-origin movement to distinguish input inhibition from animation anchors. Fails closed if native player data or baseline is unknown; stops on scene exit, execution, boss, menu or after 45 seconds. It supersedes both unsuccessful RS skip/free-walk experiments while selected. May still not allow walking if game scripts own the physics anchor; back up your save for testing."),
@@ -687,6 +687,7 @@ public sealed partial class MainForm : Form
             slider.Leave+=(_,_)=>Commit();
             check.CheckedChanged+=(_,_)=>{
                 if(restoringConfiguration||applyingCustomModDependencies)return;
+                if(key=="chainsaw" && check.Checked)customTriggerChainsawThrottle.Checked=false;
                 UpdateCinematicKillSpeedLabel();
                 SaveCustomModSettings();
                 OptionChanged(check,EventArgs.Empty);
@@ -741,10 +742,7 @@ public sealed partial class MainForm : Form
             "TEMPORARY CHAINSAW ONLY. LEFT = 480 Hz, SLOWEST cut at rest; "
             +"RIGHT = 30 Hz, fastest. Movement progress always ramps toward 30 Hz. "
             +"This is game engine tick pacing, NOT Quest headset Hz or vibration Hz.");
-        customMotionChainsawKillSpeed.CheckedChanged+=(_,_)=>{
-            if(restoringConfiguration||applyingCustomModDependencies)return;
-            UpdateActionSpeedLabels();
-        };
+        // Only one physical chainsaw mod remains.
         customTriggerChainsawThrottle.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateActionSpeedLabels();
@@ -752,11 +750,9 @@ public sealed partial class MainForm : Form
         // Circle retired. Two exclusive prototypes remain for A/B testing.
         var modeChoices=new[] {
             (Box:chainsawGripPull, Number:1,
-                Tip:"After a NATIVE chainsaw kill begins, move weapon hand into "
-                    +"one of FOUR fixed zones (left/right/up/down). A light pulse "
-                    +"confirms you are inside a zone. RELEASE then SQUEEZE Grip "
-                    +"inside that sphere, and pull toward any other zone. "
-                    +"Grip release pauses progress. Does not trigger melee."),
+                Tip:"After starting a native kill, release then re-press the primary "
+                    +"TRIGGER inside one of four zones. A pulse confirms zone entry. "
+                    +"Hold Trigger and move into another zone to accelerate the cut."),
             (Box:chainsawPointer, Number:3,
                 Tip:"Existing alternative test: sweep the virtual weapon-hand "
                     +"pointer roughly 28 degrees to accelerate a native chainsaw "
@@ -1914,8 +1910,9 @@ public sealed partial class MainForm : Form
 
     private void UpdateActionSpeedLabels()
     {
-        var strokeControls=speedAdvanced.Checked
-            &&(customMotionChainsawKillSpeed.Checked||customTriggerChainsawThrottle.Checked);
+        var strokeControls=speedAdvanced.Checked&&customTriggerChainsawThrottle.Checked;
+        if(speedActionChecks.TryGetValue("chainsaw",out var chainOverride))
+            chainOverride.Enabled=!customTriggerChainsawThrottle.Checked&&speedAdvanced.Checked;
         chainsawStrokeDistance.Enabled=strokeControls;
         chainsawStrokeIdleHz.Enabled=strokeControls;
         chainsawGripPull.Enabled=strokeControls;
@@ -1947,6 +1944,7 @@ public sealed partial class MainForm : Form
         try{
             cinematicFullSpeedMode=false;
             cinematicKillSpeed.Value=1;
+            if(index>0)customTriggerChainsawThrottle.Checked=false;
             for(int i=0;i<ScopedActionKeys.Length;i++){
                 var key=ScopedActionKeys[i];
                 speedActionChecks[key].Checked=index!=0;
@@ -2072,6 +2070,9 @@ public sealed partial class MainForm : Form
         applyingCustomModDependencies = true;
         try
         {
+            if(customTriggerChainsawThrottle.Checked
+                &&speedActionChecks.TryGetValue("chainsaw",out var chainCheck))
+                chainCheck.Checked=false;
             // Preserve all active inputs; retire dormant features before
             // dependency resolution so stale checked state cannot steal controls.
             foreach (var paused in PausedCustomModControls())
@@ -2228,7 +2229,7 @@ public sealed partial class MainForm : Form
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
         ChainsawTriggerThrottle = customTriggerChainsawThrottle.Checked,
-        MotionChainsawKillSpeed = customMotionChainsawKillSpeed.Checked,
+        MotionChainsawKillSpeed = false,
         ChainsawStrokeDistanceCm = chainsawStrokeDistance.Value,
         ChainsawStrokeIdleHz = 510-chainsawStrokeIdleHz.Value,
         ChainsawShowGripZones = chainsawShowGripZones.Checked,
@@ -2296,8 +2297,8 @@ public sealed partial class MainForm : Form
             customStoryCameraFocus.Checked = mods.StoryCameraFocus;
             customUninterruptedStory.Checked = mods.UninterruptedStory;
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
-            customTriggerChainsawThrottle.Checked = mods.ChainsawTriggerThrottle;
-            customMotionChainsawKillSpeed.Checked = mods.MotionChainsawKillSpeed;
+            customTriggerChainsawThrottle.Checked = mods.ChainsawTriggerThrottle||mods.MotionChainsawKillSpeed;
+            customMotionChainsawKillSpeed.Checked = false;
             chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
             chainsawStrokeIdleHz.Value=510-Math.Max(30,Math.Min(480,mods.ChainsawStrokeIdleHz));
             chainsawShowGripZones.Checked=mods.ChainsawShowGripZones;

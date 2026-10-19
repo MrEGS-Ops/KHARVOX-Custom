@@ -589,7 +589,7 @@ internal static class KharvoxRunner
                 var p = customMods.ActionSpeedProfiles.TryGetValue(actionKey, out var value)
                     ? value : new ActionSpeedSetting();
                 psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_" + actionKey.ToUpperInvariant() + "_HZ"] =
-                    (p.Enabled)
+                    (p.Enabled && !(actionKey=="chainsaw" && customMods.ChainsawTriggerThrottle))
                         ? Math.Max(30, Math.Min(240, p.TargetHz)).ToString(Invariant) : "0";
             }
             // Story cinematics are never given an action-speed override,
@@ -618,8 +618,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_ACTION_EXIT_HANDOFF"] = customMods.CinematicExitHandoff ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_GLORY_SPEED"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_GESTURES"] = "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_CHAINSAW_SPEED"] =
-                customMods.MotionChainsawKillSpeed ? "1" : "0";
+            // One physical chainsaw mod, no parallel legacy velocity driver.
+            psi.EnvironmentVariables["KHARVOX_MOD_MOTION_CHAINSAW_SPEED"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE"] =
                 customMods.ChainsawTriggerThrottle ? "1" : "0";
             // FIXED two-phase chainsaw haptics. User chose no more lab or

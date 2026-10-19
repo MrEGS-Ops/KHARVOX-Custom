@@ -3237,7 +3237,9 @@ void updateGameplayActions(XrTime displayTime){
     const bool syncAttackActive=KharvoxCameraSyncAttackActive();
     // DOOM may switch the active weapon declaration as sync-kill begins.
     // Retain a recent Chainsaw attack only through the confirmed kill.
-    if(activeWeaponKind==KharvoxWeaponKind::Chainsaw&&triggerDown&&gameplay)
+    if(activeWeaponKind==KharvoxWeaponKind::Chainsaw&&triggerDown&&gameplay
+        &&!KharvoxCameraLedgeTransitionActive()
+        &&!KharvoxCameraCutsceneActive())
         s.lastChainsawAttackAt=displayTime;
     // Chainsaw kills can transition into native cinematic mode without
     // exposing the same sync-attack flag as ordinary hand Glory Kills.
@@ -3246,10 +3248,18 @@ void updateGameplayActions(XrTime displayTime){
     const bool recentChainsawAttack=s.lastChainsawAttackAt>0
         &&displayTime>=s.lastChainsawAttackAt
         &&displayTime-s.lastChainsawAttackAt<2500000000LL;
-    if(!syncAttackActive&&!cutscene)s.chainsawKillLatched=false;
-    else if(!s.chainsawKillLatched
-        &&(activeWeaponKind==KharvoxWeaponKind::Chainsaw
-            ||recentChainsawAttack)){
+    // CRITICAL: prior code classified ANY generic cutscene/sync state as
+    // chainsaw when it was simply EQUIPPED. Ledge grabs and hard landings
+    // could therefore enter 300Hz slow mode. Require an actual recent
+    // primary-trigger attack and disallow ledge and player stabilization.
+    const bool chainsawKillEvidence=recentChainsawAttack
+        &&!KharvoxCameraLedgeTransitionActive()
+        &&(syncAttackActive||cutscene);
+    if(KharvoxCameraLedgeTransitionActive()
+        ||(!syncAttackActive&&!cutscene)
+        ||(!recentChainsawAttack&&!s.chainsawKillLatched)){
+        s.chainsawKillLatched=false;
+    }else if(chainsawKillEvidence&&!s.chainsawKillLatched){
         s.chainsawKillLatched=true;
         log("[FAST-CHAINSAW] chainsaw attack -> native sync/cinematic kill classified");
     }
@@ -5662,9 +5672,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.comfortInteractiveParticipantActive;
     const bool bossAction=KharvoxCameraBossSequenceActive();
     const bool syncAction=KharvoxCameraSyncAttackActive();
-    const bool chainsawAction=s.chainsawKillLatched
-        &&(syncAction||KharvoxCameraCutsceneActive());
     const bool ledgeAction=KharvoxCameraLedgeTransitionActive();
+    const bool chainsawAction=s.chainsawKillLatched
+        &&(syncAction||KharvoxCameraCutsceneActive())
+        &&!ledgeAction;
     // Native DOOM cutscene=1 often outlives syncAttack=1 by 100-800 ms.
     // In the diagnostic run 60 Glory Kills switched directly into the
     // Scripted Cinematics override when the execution flag cleared.
@@ -5714,7 +5725,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!bossAction&&KharvoxCameraWorldActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()&&!KharvoxHudTutorialActive();
-    const auto selectedAction=actionProfileEligible
+    const bool equippedWithoutKill=!chainsawAction
+        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
+    const auto selectedAction=actionProfileEligible&&!equippedWithoutKill
         ?kharvox::selectActionSpeed(
             {syncAction,chainsawAction,ledgeAction,scriptedCinematicCandidate},
             actionSpeedTargets())
@@ -5726,11 +5739,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ||s.customMods.fastChainsawKills;
     // The trigger throttle is its own opt-in mod. If both are checked it
     // owns the confirmed execution; motion-only stays available independently.
-    const bool triggerChainsawActive=s.customMods.chainsawTriggerThrottle
-        &&actionProfileEligible&&chainsawAction&&!ledgeAction&&!fastKillsRequested;
-    const bool motionChainsawActive=!triggerChainsawActive
-        &&s.customMods.motionChainsawKillSpeed
-        &&actionProfileEligible&&chainsawAction&&!ledgeAction&&!fastKillsRequested;
+    const bool physicalChainsawEnabled=s.customMods.chainsawTriggerThrottle
+        ||s.customMods.motionChainsawKillSpeed; // legacy saved mod migration
+    const bool physicalChainsawActive=physicalChainsawEnabled
+        &&actionProfileEligible&&chainsawAction&&!ledgeAction
+        &&!fastKillsRequested&&s.sessionState==XR_SESSION_STATE_FOCUSED;
     const auto& movingHand=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
     const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked;
@@ -5742,7 +5755,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(n==0||n>=sizeof(text))return 300;
         char* end{};
         const long value=std::strtol(text,&end,10);
-        return end!=text&&*end=='\0'&&value>=30&&value<=300
+        return end!=text&&*end=='\0'&&value>=30&&value<=480
             ?static_cast<int>(value):300;
     }();
     static const int strokeDistanceCm=[](){
@@ -5767,12 +5780,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             default:return kharvox::ChainsawExperimentalMode::GripPull;
         }
     }();
-    const bool strokeFeatureEnabled=s.customMods.motionChainsawKillSpeed
-        ||s.customMods.chainsawTriggerThrottle;
-    const bool experimentActive=strokeFeatureEnabled
-        &&actionProfileEligible&&chainsawAction&&!ledgeAction
-        &&!fastKillsRequested
-        &&s.sessionState==XR_SESSION_STATE_FOCUSED;
+    const bool strokeFeatureEnabled=physicalChainsawEnabled;
+    const bool experimentActive=physicalChainsawActive;
     // The controller orientation is used only for Pointer Focus. This
     // rotation creates a virtual ray; no DOOM laser model is spawned.
     const auto pointerForward=rotateVector(
@@ -5789,7 +5798,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto strokeNow=GetTickCount64();
     const auto experiment=kharvox::updateChainsawExperiment(
         s.chainsawExperiment,experimentMode,experimentActive,
-        s.secondaryFireGripPressed,movingHandTracked,
+        s.chainsawTriggerPressure>.55f,movingHandTracked,
         movingHand.position.x,movingHand.position.y,movingHand.position.z,
         pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
         strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked);
@@ -5801,7 +5810,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         kharvox::queueControllerZoneCue(s.handZoneCues[hapticIndex],
             strokeNow,72,.34f,165.f);
         log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
-            +" capture zone; squeeze Grip to latch");
+            +" capture zone; release and press Trigger to latch");
     }
     if(experiment.started)
         log("[CHAINSAW-EXPERIMENT] armed="+
@@ -5818,7 +5827,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             +" progress="+std::to_string(percentage)+"%"
             +" tickHz="+std::to_string(experiment.targetHz)
             +" completed="+(experiment.completed?"yes":"no")
-            +" grip="+(s.secondaryFireGripPressed?"held":"released")
+            +" trigger="+(s.chainsawTriggerPressure>.55f?"held":"released")
             +" tracking="+(movingHandTracked?"valid":"lost"));
         s.chainsawStrokeLastLogPercent=percentage;
         s.chainsawStrokeLastLogMs=strokeNow;
@@ -5874,15 +5883,17 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         auto textured=kharvox::textureChainsawTriggerHaptics(
             base,GetTickCount64(),hapticConfig);
         if(!ripping){
-            // Low engine hum interrupted by rare, deterministic 100 ms
-            // hard blips. Hash of time bucket makes it irregular but
-            // reproducible in diagnostics; this is vibration, NOT game Hz.
-            const auto bucket=strokeNow/4400ull;
-            const auto offset=1000ull+((bucket*2654435761ull+12345ull)%2100ull);
-            const bool idleSnap=(strokeNow%4400ull)>=offset
-                &&(strokeNow%4400ull)<offset+100ull;
-            textured.hapticAmplitude=idleSnap?.48f:.055f;
-            textured.hapticFrequencyHz=idleSnap?195.f:58.f;
+            // More distinct, pseudo-random isolated short spikes while
+            // retaining a very soft continuous idle. Entirely haptic-only.
+            // Deterministic 1.3s buckets keep test runs reproducible.
+            const auto bucket=strokeNow/1300ull;
+            const auto scatter=((bucket*747796405ull+2891336453ull)^
+                ((bucket+11ull)*277803737ull));
+            const auto offset=90ull+(scatter%820ull);
+            const bool idleSnap=(strokeNow%1300ull)>=offset
+                &&(strokeNow%1300ull)<offset+65ull;
+            textured.hapticAmplitude=idleSnap?.66f:.035f;
+            textured.hapticFrequencyHz=idleSnap?190.f:55.f;
         }
         if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
             // Sharp full-strength chop. The OpenXR controller/runtime remains
@@ -5894,8 +5905,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.chainsawTriggerHaptic={
             textured.hapticAmplitude,textured.hapticFrequencyHz,true};
     }else s.chainsawTriggerHaptic={};
-    s.chainsawTriggerSpeedWasActive=triggerChainsawActive;
-    const auto effectiveSelectedAction=(triggerChainsawActive||motionChainsawActive)
+    s.chainsawTriggerSpeedWasActive=physicalChainsawActive;
+    // ONE timing owner. Physical motion wins if enabled, irrespective of
+    // legacy launcher preset flags, and ONLY on confirmed native chainsaw
+    // executions. Ledge/stabilization never become chainsaw actions.
+    const auto effectiveSelectedAction=physicalChainsawActive
         ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,experiment.targetHz}
         :selectedAction;
     // No input/control remapping changes here. Adaptive-tick hold only for
@@ -7454,8 +7468,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             // The debug texture stores straight (UNPREMULTIPLIED) RGBA.
             // Without this flag some OpenXR compositors shade the entire
             // square instead of respecting faint circular alpha.
-            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT
-                |XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
+            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
             marker.space=s.space;
             marker.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
             marker.subImage.swapchain=gripZoneDebug.handle;
@@ -7465,7 +7478,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             marker.pose.orientation=s.views[0].pose.orientation;
             const auto& pos=s.chainsawExperiment.zones[i];
             marker.pose.position={pos.x,pos.y,pos.z};
-            marker.size={.27f,.27f}; // 11cm actual grab radius; 10.5cm visible ring
+            marker.size={.37f,.37f}; // 13cm grab radius
         }
     }
     std::array<const XrCompositionLayerBaseHeader*,9> layers{};

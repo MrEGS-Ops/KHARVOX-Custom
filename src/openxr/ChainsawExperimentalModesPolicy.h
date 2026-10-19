@@ -24,16 +24,17 @@ inline float length3(ChainsawVec3 a) noexcept {
 inline ChainsawVec3 zonePosition(ChainsawVec3 head,float yaw,int zone) noexcept {
     // Head-relative four-zone cross in REAL OpenXR tracking space.
     // User headset feedback #591: targets were up in their face and cramped.
-    // New centres are 84cm in front (previous 40cm), 50cm below eye centre,
-    // with DOUBLED horizontal (2*25 -> 2*50 cm) and vertical (2*22 -> 2*44cm)
-    // offsets. Capture volume stays 11cm radius, precisely matching the rings.
+    // Bring the targets into reachable hand range: 65cm ahead, roughly
+    // shoulder-/chest-height. Previous 84cm-forward/100cm-wide targets
+    // were outside the headset FOV and difficult to physically reach.
+    // Keep a 13cm capture sphere, exactly matched by the visual cue.
     // Zones remain fixed for the duration of the native chainsaw execution.
     const float sx=std::sin(yaw),cx=std::cos(yaw);
-    const float sideways=(zone==0?-.50f:zone==1?.50f:0.f);
-    const float vertical=(zone==2?.44f:zone==3?-.44f:0.f);
-    return {head.x+cx*sideways-sx*.84f,
-            head.y-.50f+vertical,
-            head.z-sx*sideways-cx*.84f};
+    const float sideways=(zone==0?-.30f:zone==1?.30f:0.f);
+    const float vertical=(zone==2?.29f:zone==3?-.29f:0.f);
+    return {head.x+cx*sideways-sx*.65f,
+            head.y-.37f+vertical,
+            head.z-sx*sideways-cx*.65f};
 }
 struct ChainsawExperimentState {
     bool active{}, releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
@@ -56,10 +57,10 @@ struct ChainsawExperimentResult {
 };
 // 'worldHead' and 'yaw' are captured from the XR LOCAL reference at the
 // first confirmed DOOM execution frame, never updated until execution exit.
-// Press Grip only while within one of the fixed capture spheres.
+// After triggering a native execution, RELEASE then PRESS weapon Trigger inside a zone.
 inline ChainsawExperimentResult updateChainsawExperiment(
     ChainsawExperimentState& st,ChainsawExperimentalMode mode,
-    bool nativeExecution,bool gripHeld,bool handTracked,
+    bool nativeExecution,bool triggerHeld,bool handTracked,
     float x,float y,float z,bool rayValid,float rayX,float rayY,float rayZ,
     std::uint64_t nowMs,int idleHz=300,int strokeDistanceCm=32,
     ChainsawVec3 worldHead={},float worldYaw=0.f,bool headTracked=true) noexcept {
@@ -76,7 +77,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         &&std::isfinite(worldHead.x)&&std::isfinite(worldHead.y)&&std::isfinite(worldHead.z);
     if(!st.active){
         if(!validHead)return {idleHz};
-        st.active=true;st.mode=mode;st.releasedGrip=!gripHeld;st.lastUpdateMs=nowMs;
+        st.active=true;st.mode=mode;st.releasedGrip=!triggerHeld;st.lastUpdateMs=nowMs;
         for(int i=0;i<4;++i)st.zones[i]=zonePosition(worldHead,worldYaw,i);
     }
     if(st.mode!=mode){st.reset();return {idleHz};}
@@ -84,10 +85,12 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     st.lastUpdateMs=nowMs;
     bool started=false,impact=false,entered=false;
     if(mode==ChainsawExperimentalMode::GripPull){
-        const bool freshGrip=gripHeld&&!st.wasGripHeld;
-        st.wasGripHeld=gripHeld;
-        if(!gripHeld)st.releasedGrip=true;
-        int nearest=-1;float best=.11f;
+        // Primary weapon trigger only. Fresh edge INSIDE a zone after
+        // native kill started; do not steal the primary fire/XInput route.
+        const bool freshTrigger=triggerHeld&&!st.wasGripHeld;
+        st.wasGripHeld=triggerHeld;
+        if(!triggerHeld)st.releasedGrip=true;
+        int nearest=-1;float best=.13f;
         if(valid){
             for(int i=0;i<4;++i){
                 const float d=length3(minus3(hand,st.zones[i]));
@@ -98,11 +101,11 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         entered=nearest>=0&&nearest!=st.lastHover&&!st.latchedGrip;
         st.lastHover=nearest;
         if(!st.latchedGrip){
-            if(st.releasedGrip&&freshGrip&&nearest>=0&&valid){
+            if(st.releasedGrip&&freshTrigger&&nearest>=0&&valid){
                 st.latchedGrip=true;st.startZone=nearest;
                 st.previous=hand;started=true;
             }
-        }else if(gripHeld&&valid&&!st.finished){
+        }else if(triggerHeld&&valid&&!st.finished){
             const float step=length3(minus3(hand,st.previous));
             if(timely&&step<=.30f){
                 const ChainsawVec3 from=st.zones[st.startZone];
@@ -123,7 +126,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
                     st.peak=std::max(st.peak,std::max(0.f,toward));
                     st.progress=std::max(st.progress,std::clamp(
                         (st.peak-.035f)/(distance-.035f),0.f,1.f));
-                    if(length3(minus3(hand,st.zones[st.targetZone]))<=.11f)
+                    if(length3(minus3(hand,st.zones[st.targetZone]))<=.13f)
                         st.progress=1.f; // arrive in another ACTUAL zone
                 }
             }
