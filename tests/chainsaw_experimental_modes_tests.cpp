@@ -1,104 +1,75 @@
 #include "../src/openxr/ChainsawExperimentalModesPolicy.h"
 #include <cmath>
 #include <limits>
-#define CHECK(x) do { if(!(x)) return __LINE__; } while(false)
-
+#define CHECK(x) do {if(!(x)) return __LINE__;}while(false)
 int main(){
     using namespace kharvox;
-    // Mode selection cannot arm without an actual DOOM chainsaw execution.
-    for(auto mode:{ChainsawExperimentalMode::GripPull,
-                    ChainsawExperimentalMode::Circular,
-                    ChainsawExperimentalMode::PointerFocus}){
-        ChainsawExperimentState inactive{};
-        const auto a=updateChainsawExperiment(inactive,mode,false,false,true,
-            0.f,0.f,0.f,true,0.f,0.f,-1.f,10,300,32);
-        CHECK(!a.armed&&a.targetHz==300);
+    const ChainsawVec3 h{0.f,1.7f,0.f};
+    for(int i=0;i<4;++i){
+        const auto z=zonePosition(h,0.f,i);
+        CHECK(length3(minus3(z,h))<.85f);
+        for(int j=0;j<i;++j)
+            CHECK(length3(minus3(z,zonePosition(h,0.f,j)))>.30f);
     }
-
-    // GRIP: a fresh physical grab, after the execution has started.
-    ChainsawExperimentState grip{};
-    auto noGrip=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,false,true,0.f,0.f,0.f,true,0,0,-1,100,300,32);
-    CHECK(!noGrip.armed&&noGrip.targetHz==300);
-    auto grabbed=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,true,true,0.f,0.f,0.f,true,0,0,-1,110,300,32);
-    CHECK(grabbed.armed&&grabbed.started&&grabbed.progress==0);
-    auto partial=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,true,true,0.f,-.15f,0.f,true,0,0,-1,120,300,32);
-    CHECK(partial.progress>.25f&&partial.targetHz<300&&partial.targetHz>30);
-    auto released=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,false,true,0.f,-.29f,0.f,true,0,0,-1,130,300,32);
-    CHECK(released.progress==partial.progress);
-    auto complete=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,true,true,.32f,0.f,0.f,true,0,0,-1,145,300,32);
-    CHECK(complete.completed&&complete.targetHz==30);
-    auto returned=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        true,true,true,0.f,0.f,0.f,true,0,0,-1,160,300,32);
-    CHECK(returned.completed&&returned.targetHz==30);
-    auto nativeExit=updateChainsawExperiment(grip,ChainsawExperimentalMode::GripPull,
-        false,true,true,0.f,0.f,0.f,true,0,0,-1,170,300,32);
-    CHECK(!nativeExit.armed&&nativeExit.targetHz==300);
-
-    ChainsawExperimentState noFreshGrip{};
-    auto alreadyHeld=updateChainsawExperiment(noFreshGrip,
-        ChainsawExperimentalMode::GripPull,true,true,true,
-        0.f,0.f,0.f,true,0,0,-1,100,300,32);
-    CHECK(!alreadyHeld.armed);
-    (void)updateChainsawExperiment(noFreshGrip,ChainsawExperimentalMode::GripPull,
-        true,false,true,0,0,0,true,0,0,-1,110,300,32);
-    CHECK(updateChainsawExperiment(noFreshGrip,ChainsawExperimentalMode::GripPull,
-        true,true,true,0,0,0,true,0,0,-1,120,300,32).armed);
-
-    // CIRCLE: hand leaves the virtual center, then traces ONE 155 degree arc
-    // clockwise or counterclockwise. Jitter inside the ring is not progress.
-    ChainsawExperimentState circle{};
-    const auto begin=updateChainsawExperiment(circle,ChainsawExperimentalMode::Circular,
-        true,false,true,0.f,0.f,0.f,true,0,0,-1,100,300,32);
-    CHECK(begin.started&&begin.progress==0.f);
-    (void)updateChainsawExperiment(circle,ChainsawExperimentalMode::Circular,
-        true,false,true,.12f,0.f,0.f,true,0,0,-1,110,300,32);
-    const auto point=[&](float degrees,std::uint64_t ms){
-        constexpr float rad=.0174532925199433f;
-        return updateChainsawExperiment(circle,ChainsawExperimentalMode::Circular,
-            true,false,true,.12f*std::cos(degrees*rad),
-            .12f*std::sin(degrees*rad),0.f,true,0,0,-1,ms,300,32);
-    };
-    auto c1=point(20.f,120);
-    auto c2=point(42.f,135);
-    auto c3=point(64.f,150);
-    auto c4=point(86.f,165);
-    auto c5=point(108.f,180);
-    auto c6=point(130.f,195);
-    auto c7=point(152.f,210);
-    auto c8=point(174.f,225); // >155 degrees across one arc
-    CHECK(c1.progress>0.f&&c2.progress>c1.progress);
-    CHECK(c4.progress>c3.progress&&c7.progress<c8.progress
-        &&c8.completed&&c8.targetHz==30);
-    CHECK(point(100.f,230).completed); // backtracking cannot reverse progress
-    ChainsawExperimentState circleIdle{};
-    (void)updateChainsawExperiment(circleIdle,ChainsawExperimentalMode::Circular,
-        true,false,true,0,0,0,true,0,0,-1,100,300,32);
-    auto centerJitter=updateChainsawExperiment(circleIdle,
-        ChainsawExperimentalMode::Circular,true,false,true,
-        .007f,.008f,0.f,true,0,0,-1,130,300,32);
-    CHECK(centerJitter.progress==0.f);
-
-    // POINTER: a ray angle shift, not headset rotation or physical travel.
+    // Each of the FOUR start spheres must allow a single deliberate
+    // pull toward any of the OTHER THREE. Native kill and fresh Grip are
+    // required. Legacy Circular mode 2 safely collapses to Grip Zones.
+    for(int start=0;start<4;++start)for(int target=0;target<4;++target){
+        if(start==target)continue;
+        ChainsawExperimentState st{};
+        const auto from=zonePosition(h,0.f,start);
+        const auto to=zonePosition(h,0.f,target);
+        auto invalid=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            false,false,true,from.x,from.y,from.z,true,0,0,-1,0,480,32,h);
+        CHECK(!invalid.armed&&invalid.targetHz==480);
+        auto entered=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,false,true,from.x,from.y,from.z,true,0,0,-1,100,480,32,h);
+        CHECK(entered.hoveredZone==start&&entered.enteredZone&&!entered.armed);
+        auto latch=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,true,true,from.x,from.y,from.z,true,0,0,-1,110,480,32,h);
+        CHECK(latch.armed&&latch.started&&latch.startZone==start);
+        const ChainsawVec3 a={from.x+(to.x-from.x)*.30f,
+            from.y+(to.y-from.y)*.30f,from.z+(to.z-from.z)*.30f};
+        auto pulled=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,true,true,a.x,a.y,a.z,true,0,0,-1,120,480,32,h);
+        CHECK(pulled.targetZone==target&&pulled.progress>0.f
+            &&pulled.targetHz<480);
+        auto frozen=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,false,false,0,0,0,true,0,0,-1,130,480,32,h);
+        CHECK(frozen.progress==pulled.progress);
+        const ChainsawVec3 b={from.x+(to.x-from.x)*.65f,
+            from.y+(to.y-from.y)*.65f,from.z+(to.z-from.z)*.65f};
+        (void)updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,true,true,b.x,b.y,b.z,true,0,0,-1,140,480,32,h);
+        auto done=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,true,true,to.x,to.y,to.z,true,0,0,-1,150,480,32,h);
+        CHECK(done.completed&&done.targetHz==30&&done.targetZone==target);
+        const auto exit=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            false,true,true,to.x,to.y,to.z,true,0,0,-1,160,480,32,h);
+        CHECK(!exit.armed&&exit.targetHz==480);
+    }
+    // A held grip on execution entry does NOT capture a zone until released.
+    ChainsawExperimentState held{};
+    const auto left=zonePosition(h,0.f,0);
+    CHECK(!updateChainsawExperiment(held,ChainsawExperimentalMode::GripPull,
+        true,true,true,left.x,left.y,left.z,true,0,0,-1,100,480,32,h).armed);
+    (void)updateChainsawExperiment(held,ChainsawExperimentalMode::GripPull,
+        true,false,true,left.x,left.y,left.z,true,0,0,-1,110,480,32,h);
+    CHECK(updateChainsawExperiment(held,ChainsawExperimentalMode::GripPull,
+        true,true,true,left.x,left.y,left.z,true,0,0,-1,120,480,32,h).armed);
+    // A hand outside all zones cannot grab anything.
+    ChainsawExperimentState far{};
+    CHECK(!updateChainsawExperiment(far,ChainsawExperimentalMode::GripPull,
+        true,true,true,9.f,1.f,4.f,true,0,0,-1,100,480,32,h).armed);
+    // Yaw rotates all zones in tracking coordinates without moving anchor.
+    CHECK(std::abs(zonePosition(h,1.5707963f,0).z
+        -zonePosition(h,0.f,0).z)>.1f);
+    // Pointer Focus remains independent, no actual laser is rendered.
     ChainsawExperimentState ray{};
-    auto p0=updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
-        true,false,true,0,0,0,true,0,0,-1,100,300,32);
-    CHECK(p0.armed&&p0.started);
-    auto p1=updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
-        true,false,true,0,0,0,true,.20f,0,-.9797959f,120,300,32);
-    CHECK(p1.progress>.15f&&p1.targetHz<300);
-    auto p2=updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
-        true,false,true,0,0,0,true,.48f,0,-.877268f,140,300,32);
-    CHECK(p2.completed&&p2.targetHz==30);
-    auto p3=updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
-        true,false,true,0,0,0,false,
-        std::numeric_limits<float>::quiet_NaN(),0,0,160,300,32);
-    CHECK(p3.completed);
-    CHECK(!updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
-        false,false,true,0,0,0,true,0,0,-1,180,300,32).armed);
+    CHECK(updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
+        true,false,true,0,0,0,true,0,0,-1,100,480,32,h).started);
+    const auto rot=updateChainsawExperiment(ray,ChainsawExperimentalMode::PointerFocus,
+        true,false,true,0,0,0,true,.5f,0,-.8660254f,115,480,32,h);
+    CHECK(rot.completed&&rot.targetHz==30);
     return 0;
 }

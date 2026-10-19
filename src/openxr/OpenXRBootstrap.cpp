@@ -127,6 +127,13 @@ static uint64_t nativeQualityPresentEpoch{}; // Protected by the XR state mutex.
 struct EyeSwapchain { XrSwapchain handle{XR_NULL_HANDLE}; uint32_t width{},height{}; std::vector<XrSwapchainImageVulkanKHR> images; std::vector<bool> initialized; };
 EyeSwapchain pauseBindings;
 bool pauseBindingsReady{};
+EyeSwapchain gripZoneDebug;
+bool gripZoneDebugReady{};
+bool gripZonesDebugRequested(){
+    char v[8]{};
+    return GetEnvironmentVariableA("KHARVOX_CHAINSAW_ZONES_DEBUG",v,sizeof(v))==1
+        &&v[0]=='1';
+}
 struct HeadPose { XrQuaternionf orientation{0,0,0,1}; XrVector3f position{}; float yaw{},pitch{},roll{}; bool valid{}; };
 struct ControllerPose {
     bool valid{},linearVelocityValid{},positionTracked{};
@@ -4531,6 +4538,7 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 }
 
 #include "PauseBindings.inc"
+#include "GripZoneDebug.inc"
 
 bool createSwapchains() {
     uint32_t viewCount{};
@@ -4695,6 +4703,10 @@ bool createSwapchains() {
     log(initializePauseBindings(formats)
         ? "[PAUSE-BINDINGS] static controller image uploaded; pause root only"
         : "[PAUSE-BINDINGS] image unavailable; normal pause menu retained");
+    if(gripZonesDebugRequested())
+        log(initializeGripZoneDebug(formats)
+            ? "[CHAINSAW-ZONES] four translucent XR markers ready (stereo tracked)"
+            : "[CHAINSAW-ZONES] OpenXR marker texture unavailable; grip haptics/logs remain active");
     log("Swapchains ready");
     return true;
 }
@@ -5749,7 +5761,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(n==0||n>=sizeof(text))return kharvox::ChainsawExperimentalMode::GripPull;
         const int selected=std::atoi(text);
         switch(selected){
-            case 2:return kharvox::ChainsawExperimentalMode::Circular;
+            case 2:return kharvox::ChainsawExperimentalMode::GripPull; // retired
             case 3:return kharvox::ChainsawExperimentalMode::PointerFocus;
             default:return kharvox::ChainsawExperimentalMode::GripPull;
         }
@@ -5765,13 +5777,31 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto pointerForward=rotateVector(
         movingHand.orientation,XrVector3f{0.f,0.f,-1.f});
     const bool pointerTracked=movingHand.valid;
+    // Extract unmodified tracking-space yaw, so the four sphere centres
+    // match the same OpenXR LOCAL domain as the weapon-hand pose.
+    const auto headQ=s.views[0].pose.orientation;
+    const float xrYaw=std::atan2(2.f*(headQ.w*headQ.y+headQ.x*headQ.z),
+        1.f-2.f*(headQ.x*headQ.x+headQ.y*headQ.y));
+    const bool headTracked=s.trackingHeadPositionValid&&s.head.valid;
+    const auto currentHead=kharvox::ChainsawVec3{
+        s.trackingHeadPosition.x,s.trackingHeadPosition.y,s.trackingHeadPosition.z};
     const auto strokeNow=GetTickCount64();
     const auto experiment=kharvox::updateChainsawExperiment(
         s.chainsawExperiment,experimentMode,experimentActive,
         s.secondaryFireGripPressed,movingHandTracked,
         movingHand.position.x,movingHand.position.y,movingHand.position.z,
         pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
-        strokeNow,strokeIdleHz,strokeDistanceCm);
+        strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked);
+    if(experiment.enteredZone&&experimentActive
+        &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
+        // A distinct, quiet contact cue, weapon hand ONLY; does not fire
+        // weapon, drain fuel, alter melee mapping or start a new execution.
+        const auto hapticIndex=s.weaponHandLeft?0u:1u;
+        kharvox::queueControllerZoneCue(s.handZoneCues[hapticIndex],
+            strokeNow,72,.34f,165.f);
+        log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
+            +" capture zone; squeeze Grip to latch");
+    }
     if(experiment.started)
         log("[CHAINSAW-EXPERIMENT] armed="+
             std::string(kharvox::chainsawModeName(experimentMode))
@@ -5836,11 +5866,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         // Fixed heavy rumble when equipped (no trigger); switch to aggressive
         // serrated cutting once DOOM confirms a native chainsaw execution.
         // The two haptic phases are deterministic in all three experiments.
-        const float triggerPressure=chainsawAction?1.f:0.f;
+        const bool ripping=chainsawAction&&experiment.armed;
+        const float triggerPressure=ripping?1.f:0.f;
         const auto base=kharvox::evaluateChainsawTriggerThrottle(
             triggerPressure,virtualStrokeSpeed,1.8f,hapticConfig);
         auto textured=kharvox::textureChainsawTriggerHaptics(
             base,GetTickCount64(),hapticConfig);
+        if(!ripping){
+            // Low engine hum interrupted by rare, deterministic 100 ms
+            // hard blips. Hash of time bucket makes it irregular but
+            // reproducible in diagnostics; this is vibration, NOT game Hz.
+            const auto bucket=strokeNow/4400ull;
+            const auto offset=1000ull+((bucket*2654435761ull+12345ull)%2100ull);
+            const bool idleSnap=(strokeNow%4400ull)>=offset
+                &&(strokeNow%4400ull)<offset+100ull;
+            textured.hapticAmplitude=idleSnap?.48f:.055f;
+            textured.hapticFrequencyHz=idleSnap?195.f:58.f;
+        }
         if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
             // Sharp full-strength chop. The OpenXR controller/runtime remains
             // responsible for hardware limits. Only weapon hand, never all.
@@ -7393,7 +7435,35 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const float hudWidthMeters=std::max(0.05f,hudAngularWidthMeters);
     hudQuadLayer.size={hudWidthMeters,hudWidthMeters/hudContentAspect};
 
-    std::array<const XrCompositionLayerBaseHeader*,5> layers{};
+    // Temporary 4 world-anchored translucent grip-zone billboards.
+    // One procedural round-alpha image is reused on independent quads.
+    // Quads are NOT real volumetric spheres, but possess stereo depth and
+    // sit exactly on the same physical centres used by grip validation.
+    std::array<XrCompositionLayerQuad,4> gripZoneLayers{};
+    const bool submitGripZones=gripZoneDebugReady
+        &&gripZonesDebugRequested()
+        &&s.chainsawExperiment.active
+        &&s.chainsawExperiment.mode==kharvox::ChainsawExperimentalMode::GripPull
+        &&s.sessionState==XR_SESSION_STATE_FOCUSED
+        &&gripZoneDebug.handle!=XR_NULL_HANDLE;
+    if(submitGripZones){
+        for(size_t i=0;i<gripZoneLayers.size();++i){
+            auto& marker=gripZoneLayers[i];
+            marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            marker.space=s.space;
+            marker.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+            marker.subImage.swapchain=gripZoneDebug.handle;
+            marker.subImage.imageRect={{0,0},
+                {static_cast<int32_t>(gripZoneDebug.width),
+                 static_cast<int32_t>(gripZoneDebug.height)}};
+            marker.pose.orientation=s.views[0].pose.orientation;
+            const auto& pos=s.chainsawExperiment.zones[i];
+            marker.pose.position={pos.x,pos.y,pos.z};
+            marker.size={.22f,.22f};
+        }
+    }
+    std::array<const XrCompositionLayerBaseHeader*,9> layers{};
     uint32_t layerCount{};
     layers[layerCount++]=s.quadMode
         ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad)
@@ -7413,6 +7483,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 <<KharvoxHudQuadScale()<<"x; Num +/- preview, Num * save";
             log(activated.str());
         }
+    }
+    if(submitGripZones){
+        for(const auto& marker:gripZoneLayers)
+            layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&marker);
     }
     XrFrameEndInfo ei{XR_TYPE_FRAME_END_INFO};
     ei.displayTime=frame.predictedDisplayTime;

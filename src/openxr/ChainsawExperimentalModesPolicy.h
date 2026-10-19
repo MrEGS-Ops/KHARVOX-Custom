@@ -1,173 +1,149 @@
 #pragma once
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 
 namespace kharvox {
-
-// Three isolated experimental motion policies. OpenXR supplies a pre-existing,
-// native DOOM chainsaw execution flag; no mode starts a kill or seeks frames.
-// A mode is latched for the full execution and can never control GK/ledge.
-// Inputs are XR local-space metres and a world-space controller forward ray.
-enum class ChainsawExperimentalMode : int {
-    GripPull=1, Circular=2, PointerFocus=3
-};
-inline const char* chainsawModeName(ChainsawExperimentalMode mode) noexcept {
-    switch(mode){
-        case ChainsawExperimentalMode::GripPull:return "GRIP_PULL";
-        case ChainsawExperimentalMode::Circular:return "CIRCULAR";
-        case ChainsawExperimentalMode::PointerFocus:return "POINTER_FOCUS";
-        default:return "INVALID";
-    }
+// Circular Saw retired. 2 is accepted only as a saved legacy value and maps
+// to Grip Zones. 3 remains Pointer Focus for independent A/B testing.
+enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
+inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
+    return m==ChainsawExperimentalMode::PointerFocus?"POINTER_FOCUS":"GRIP_ZONES";
+}
+struct ChainsawVec3 {float x{},y{},z{};};
+inline ChainsawVec3 minus3(ChainsawVec3 a,ChainsawVec3 b) noexcept {
+    return {a.x-b.x,a.y-b.y,a.z-b.z};
+}
+inline float dot3(ChainsawVec3 a,ChainsawVec3 b) noexcept {
+    return a.x*b.x+a.y*b.y+a.z*b.z;
+}
+inline float length3(ChainsawVec3 a) noexcept {
+    const float d=dot3(a,a);return d>=0.f&&std::isfinite(d)?std::sqrt(d):0.f;
+}
+inline ChainsawVec3 zonePosition(ChainsawVec3 head,float yaw,int zone) noexcept {
+    // Head-relative fixed four-zone cross, in REAL OpenXR tracking space.
+    // 40 cm forward / 34 cm below HMD. Zones remain fixed until kill exits.
+    // An 11 cm radius accepts natural hand positions without precision pinching.
+    const float sx=std::sin(yaw),cx=std::cos(yaw);
+    const float sideways=(zone==0?-.25f:zone==1?.25f:0.f);
+    const float vertical=(zone==2?.22f:zone==3?-.22f:0.f);
+    return {head.x+cx*sideways-sx*.40f,
+            head.y-.34f+vertical,
+            head.z-sx*sideways-cx*.40f};
 }
 struct ChainsawExperimentState {
-    bool active{}, finished{}, releasedGrip{}, latchedGrip{}, ringStarted{}, pointerStarted{};
-    bool directionLocked{};
+    bool active{}, releasedGrip{},latchedGrip{},finished{},pointerStarted{};
+    int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
+    std::array<ChainsawVec3,4> zones{};
     ChainsawExperimentalMode mode{ChainsawExperimentalMode::GripPull};
-    float originX{},originY{},originZ{};
-    float previousX{},previousY{},ringPreviousAngle{};
-    float ringTravelRadians{},ringDirection{};
-    float rayStartX{},rayStartY{},rayStartZ{};
-    float travelled{}, progress{};
+    ChainsawVec3 previous{},rayStart{};
+    float progress{},peak{};
     unsigned impactIndex{};
-    std::uint64_t firstSeenMs{},lastUpdateMs{};
-    void reset() noexcept { *this={}; }
+    std::uint64_t lastUpdateMs{};
+    void reset() noexcept {*this={};}
 };
 struct ChainsawExperimentResult {
     int targetHz{300};
     float progress{};
     bool armed{},completed{},started{},impact{};
     const char* detail{"WAIT"};
+    int hoveredZone{-1},startZone{-1},targetZone{-1};
+    bool enteredZone{};
 };
-inline float safeLength3(float x,float y,float z) noexcept {
-    const float length=std::sqrt(x*x+y*y+z*z);
-    return std::isfinite(length)?length:0.f;
-}
-inline float safeAngle(float a) noexcept {
-    constexpr float pi=3.14159265358979323846f;
-    while(a>pi)a-=2.f*pi;
-    while(a< -pi)a+=2.f*pi;
-    return a;
-}
+// 'worldHead' and 'yaw' are captured from the XR LOCAL reference at the
+// first confirmed DOOM execution frame, never updated until execution exit.
+// Press Grip only while within one of the fixed capture spheres.
 inline ChainsawExperimentResult updateChainsawExperiment(
-    ChainsawExperimentState& state,
-    ChainsawExperimentalMode mode,
-    bool nativeChainsawExecution,bool gripHeld,
-    bool trackingValid,float x,float y,float z,
-    bool forwardValid,float forwardX,float forwardY,float forwardZ,
-    std::uint64_t nowMs,int idleHz=300,int strokeDistanceCm=32) noexcept {
-    idleHz=std::clamp(idleHz,30,300);
+    ChainsawExperimentState& st,ChainsawExperimentalMode mode,
+    bool nativeExecution,bool gripHeld,bool handTracked,
+    float x,float y,float z,bool rayValid,float rayX,float rayY,float rayZ,
+    std::uint64_t nowMs,int idleHz=300,int strokeDistanceCm=32,
+    ChainsawVec3 worldHead={},float worldYaw=0.f,bool headTracked=true) noexcept {
+    idleHz=std::clamp(idleHz,30,480);
     strokeDistanceCm=std::clamp(strokeDistanceCm,18,60);
-    if(!nativeChainsawExecution||mode!=ChainsawExperimentalMode::GripPull
-        &&mode!=ChainsawExperimentalMode::Circular
-        &&mode!=ChainsawExperimentalMode::PointerFocus){
-        state.reset();return {idleHz};
+    if(!nativeExecution){st.reset();return {idleHz};}
+    if(mode!=ChainsawExperimentalMode::GripPull
+        &&mode!=ChainsawExperimentalMode::PointerFocus)
+        mode=ChainsawExperimentalMode::GripPull;
+    const bool valid=handTracked&&std::isfinite(x)&&std::isfinite(y)
+        &&std::isfinite(z)&&std::abs(x)<20.f&&std::abs(y)<20.f&&std::abs(z)<20.f;
+    const ChainsawVec3 hand{x,y,z};
+    const bool validHead=headTracked&&std::isfinite(worldYaw)
+        &&std::isfinite(worldHead.x)&&std::isfinite(worldHead.y)&&std::isfinite(worldHead.z);
+    if(!st.active){
+        if(!validHead)return {idleHz};
+        st.active=true;st.mode=mode;st.releasedGrip=!gripHeld;st.lastUpdateMs=nowMs;
+        for(int i=0;i<4;++i)st.zones[i]=zonePosition(worldHead,worldYaw,i);
     }
-    const bool poseValid=trackingValid&&std::isfinite(x)&&std::isfinite(y)
-        &&std::isfinite(z)&&std::abs(x)<20.f&&std::abs(y)<20.f
-        &&std::abs(z)<20.f;
-    const bool rayValid=forwardValid
-        &&std::isfinite(forwardX)&&std::isfinite(forwardY)&&std::isfinite(forwardZ)
-        &&safeLength3(forwardX,forwardY,forwardZ)>.8f
-        &&safeLength3(forwardX,forwardY,forwardZ)<1.2f;
-    if(!state.active){
-        state.active=true;state.mode=mode;state.firstSeenMs=nowMs;
-        state.lastUpdateMs=nowMs;state.releasedGrip=!gripHeld;
-    }
-    if(state.mode!=mode){state.reset();return {idleHz};}
-    // We do not infer motion from stale tracking or improbable world-space
-    // jumps. A short dropout freezes progress without resetting the mode.
-    const bool timely=nowMs>=state.lastUpdateMs
-        &&nowMs-state.lastUpdateMs<=175;
-    state.lastUpdateMs=nowMs;
-    const bool ready=(mode==ChainsawExperimentalMode::PointerFocus)
-        ?rayValid:poseValid;
-    bool justStarted=false;
+    if(st.mode!=mode){st.reset();return {idleHz};}
+    const bool timely=nowMs>=st.lastUpdateMs&&nowMs-st.lastUpdateMs<=175;
+    st.lastUpdateMs=nowMs;
+    bool started=false,impact=false,entered=false;
     if(mode==ChainsawExperimentalMode::GripPull){
-        if(!gripHeld)state.releasedGrip=true;
-        if(!state.latchedGrip){
-            if(!state.releasedGrip||!gripHeld||!poseValid)
-                return {idleHz,0.f,false,false,false,false,"RELEASE_THEN_GRAB"};
-            state.latchedGrip=true;justStarted=true;
-            state.originX=x;state.originY=y;state.originZ=z;
-            state.previousX=x;state.previousY=y;
-        }
-        if(gripHeld&&ready&&!state.finished){
-            const float dx=x-state.originX,dy=y-state.originY,dz=z-state.originZ;
-            const float distance=safeLength3(dx,dy,dz);
-            // Ignore tracking teleports: distance is relative to a latched
-            // grip point, with a 45cm/frame sanity cap.
-            if(distance<=1.f){
-                state.travelled=std::max(state.travelled,distance);
-                state.progress=std::clamp((state.travelled-.035f)/
-                    std::max(.10f,strokeDistanceCm/100.f-.035f),0.f,1.f);
+        if(!gripHeld)st.releasedGrip=true;
+        int nearest=-1;float best=.11f;
+        if(valid){
+            for(int i=0;i<4;++i){
+                const float d=length3(minus3(hand,st.zones[i]));
+                if(d<best){best=d;nearest=i;}
             }
-            state.previousX=x;state.previousY=y;
         }
-    }else if(mode==ChainsawExperimentalMode::Circular){
-        // A *single* large invisible ring, centered at the first hand pose.
-        // Once the hand enters the ring (8–28 cm radius), a 155-degree arc
-        // advances the chain. Neither small jitters nor back-and-forth turns
-        // can fill the arc: direction locks at the first 8-degree turn.
-        if(!state.ringStarted){
-            if(!poseValid)return {idleHz,0.f,false,false,false,false,"TRACKING"};
-            state.originX=x;state.originY=y;state.originZ=z;
-            state.ringStarted=true;justStarted=true;
-        }else if(ready&&!state.finished){
-            const float dx=x-state.originX,dy=y-state.originY;
-            const float radius=std::sqrt(dx*dx+dy*dy);
-            if(radius>=.08f&&radius<=.28f){
-                const float angle=std::atan2(dy,dx);
-                if(!state.pointerStarted){
-                    state.pointerStarted=true;state.ringPreviousAngle=angle;
-                }else{
-                    const float da=safeAngle(angle-state.ringPreviousAngle);
-                    // Short segments only. Never count a teleport as an arc.
-                    if(timely&&std::abs(da)<.45f){
-                        if(!state.directionLocked&&std::abs(da)>.14f){
-                            state.directionLocked=true;
-                            state.ringDirection=da>0.f?1.f:-1.f;
-                        }
-                        if(state.directionLocked&&da*state.ringDirection>0.f)
-                            state.ringTravelRadians+=da*state.ringDirection;
-                        state.progress=std::clamp(
-                            state.ringTravelRadians/2.70526f,0.f,1.f);
+        st.hovered=nearest;
+        entered=nearest>=0&&nearest!=st.lastHover&&!st.latchedGrip;
+        st.lastHover=nearest;
+        if(!st.latchedGrip){
+            if(st.releasedGrip&&gripHeld&&nearest>=0&&valid){
+                st.latchedGrip=true;st.startZone=nearest;
+                st.previous=hand;started=true;
+            }
+        }else if(gripHeld&&valid&&!st.finished){
+            const float step=length3(minus3(hand,st.previous));
+            if(timely&&step<=.30f){
+                const ChainsawVec3 from=st.zones[st.startZone];
+                if(st.targetZone<0&&length3(minus3(hand,from))>=.055f){
+                    const ChainsawVec3 toward=minus3(hand,from);
+                    float highest=-1.f;
+                    for(int i=0;i<4;++i){
+                        if(i==st.startZone)continue;
+                        const ChainsawVec3 path=minus3(st.zones[i],from);
+                        const float advance=dot3(toward,path)/length3(path);
+                        if(advance>highest){highest=advance;st.targetZone=i;}
                     }
-                    state.ringPreviousAngle=angle;
+                }
+                if(st.targetZone>=0){
+                    const ChainsawVec3 path=minus3(st.zones[st.targetZone],from);
+                    const float distance=length3(path);
+                    const float toward=dot3(minus3(hand,from),path)/distance;
+                    st.peak=std::max(st.peak,std::max(0.f,toward));
+                    st.progress=std::max(st.progress,std::clamp(
+                        (st.peak-.035f)/(distance-.035f),0.f,1.f));
+                    if(length3(minus3(hand,st.zones[st.targetZone]))<=.11f)
+                        st.progress=1.f; // arrive in another ACTUAL zone
                 }
             }
+            st.previous=hand;
         }
     }else{
-        // A virtual laser pointer from the weapon-hand controller.
-        // Aim changes relative to a latched ray, not headset gaze or velocity.
-        // There is intentionally NO visible beam in this diagnostic version.
-        if(!state.pointerStarted){
-            if(!rayValid)return {idleHz,0.f,false,false,false,false,"TRACKING"};
-            state.rayStartX=forwardX;state.rayStartY=forwardY;state.rayStartZ=forwardZ;
-            state.pointerStarted=true;justStarted=true;
-        }else if(rayValid&&!state.finished){
-            const float dot=std::clamp(
-                state.rayStartX*forwardX+state.rayStartY*forwardY
-                +state.rayStartZ*forwardZ,-1.f,1.f);
-            const float angle=std::acos(dot);
-            // One deliberate 28 degree pointer sweep, no recentering.
-            // Suppress the first two degrees of rotational noise.
-            state.progress=std::max(state.progress,
-                std::clamp((angle-.03491f)/.45379f,0.f,1.f));
+        const ChainsawVec3 ray{rayX,rayY,rayZ};
+        const bool rayOk=rayValid&&std::isfinite(rayX)&&std::isfinite(rayY)
+            &&std::isfinite(rayZ)&&length3(ray)>.8f&&length3(ray)<1.2f;
+        if(!st.pointerStarted&&rayOk){st.pointerStarted=true;st.rayStart=ray;started=true;}
+        else if(rayOk&&!st.finished){
+            const float dot=std::clamp(dot3(st.rayStart,ray),-1.f,1.f);
+            st.progress=std::max(st.progress,std::clamp(
+                (std::acos(dot)-.03491f)/.45379f,0.f,1.f));
         }
     }
-    if(state.progress>=.999f)state.finished=true;
-    // Advance earlier than the hand arrives: DOOM's native sync animation
-    // cannot be frame-scrubbed from a VR pose. 70% physical stroke is enough
-    // to reach the fastest permitted engine pacing; native execution still
-    // decides when it actually finishes.
-    const float speedProgress=std::clamp(state.progress/.70f,0.f,1.f);
+    if(st.progress>=.999f)st.finished=true;
+    const float speed=std::clamp(st.progress/.70f,0.f,1.f);
     const int hz=std::clamp(static_cast<int>(std::lround(
-        idleHz-(idleHz-30)*speedProgress)),30,idleHz);
-    const unsigned impacts=std::min(4u,static_cast<unsigned>(state.progress*4.f));
-    const bool impact=impacts>state.impactIndex;
-    state.impactIndex=std::max(state.impactIndex,impacts);
-    return {hz,state.progress,state.latchedGrip||state.ringStarted||state.pointerStarted,
-        state.finished,justStarted,impact,chainsawModeName(mode)};
+        idleHz-(idleHz-30)*speed)),30,idleHz);
+    const unsigned quarters=std::min(4u,static_cast<unsigned>(st.progress*4.f));
+    impact=quarters>st.impactIndex;
+    st.impactIndex=std::max(st.impactIndex,quarters);
+    return {hz,st.progress,st.latchedGrip||st.pointerStarted,
+        st.finished,started,impact,chainsawModeName(mode),
+        st.hovered,st.startZone,st.targetZone,entered};
 }
 } // namespace kharvox

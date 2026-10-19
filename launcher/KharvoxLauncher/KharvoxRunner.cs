@@ -627,7 +627,7 @@ internal static class KharvoxRunner
             // Ignore stale haptic-lab JSON entirely; this is deterministic.
             var idleAndRip = new ChainsawHapticProfile {
                 Name = "KHARVOX: Heavy Idle / Rip & Tear",
-                IdlePercent = 38,
+                IdlePercent = 7,
                 CuttingPercent = 100,
                 PulseRate = 18,
                 PulseDurationMs = 35,
@@ -652,9 +652,11 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_DISTANCE_CM"] =
                 Math.Max(18,Math.Min(60,customMods.ChainsawStrokeDistanceCm)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] =
-                Math.Max(30,Math.Min(300,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
+                Math.Max(30,Math.Min(480,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] =
-                Math.Max(1,Math.Min(3,customMods.ChainsawExperimentMode)).ToString(Invariant);
+                (customMods.ChainsawExperimentMode==3?3:1).ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] =
+                customMods.ChainsawShowGripZones?"1":"0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";

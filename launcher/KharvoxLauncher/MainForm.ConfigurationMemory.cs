@@ -562,12 +562,11 @@ public sealed partial class MainForm
             var orderedRows = main.modOrderRows.ToArray();
             // Three prototype checkboxes are single-select and reside in
             // the dedicated chainsaw pacing panel, not the draggable mod list.
-            if(new[] {main.chainsawGripPull,main.chainsawCircular,
-                      main.chainsawPointer}.Count(c=>c.Checked)!=1
-                || main.SelectedChainsawExperimentMode is < 1 or > 3
+            if(new[] {main.chainsawGripPull,main.chainsawPointer}.Count(c=>c.Checked)!=1
+                || main.SelectedChainsawExperimentMode is not (1 or 3)
                 || main.chainsawGripPull.Parent!=main.speedAdvancedPanel
-                || main.chainsawCircular.Parent!=main.speedAdvancedPanel
-                || main.chainsawPointer.Parent!=main.speedAdvancedPanel)
+                || main.chainsawPointer.Parent!=main.speedAdvancedPanel
+                || main.chainsawShowGripZones.Parent!=main.speedAdvancedPanel)
                 throw new InvalidDataException(
                     "Chainsaw experiment mode checkboxes must be exclusive and visible under Advanced.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)

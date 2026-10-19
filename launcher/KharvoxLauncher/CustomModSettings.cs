@@ -90,7 +90,8 @@ internal sealed class CustomModSettings
     public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // deprecated v1 velocity calibration, retained for old JSON
     public int ChainsawStrokeDistanceCm { get; set; } = 32; // one full directional cut 18–60 cm
     public int ChainsawStrokeIdleHz { get; set; } = 300; // experimental: 300 slowest, 30 fastest; chainsaw ONLY
-    public int ChainsawExperimentMode { get; set; } = 1; // 1 Grip & Pull, 2 Circular, 3 Pointer Focus
+    public int ChainsawExperimentMode { get; set; } = 1; // 1 Grip Zones, 3 Pointer; legacy 2 migrates to 1
+    public bool ChainsawShowGripZones { get; set; } // debug stereo round markers, off by default
     public bool HapticOverhaul { get; set; }
 
     public bool SupervisorRequired => RevengeDemon;
@@ -171,8 +172,8 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
-        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=Math.Max(1,Math.Min(3,value.ChainsawExperimentMode));
+        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
+        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         ApplyCurrentAvailability(value);
         return value;
@@ -193,8 +194,8 @@ internal static class CustomModSettingsStore
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
             value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
             value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
-            value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=Math.Max(1,Math.Min(3,value.ChainsawExperimentMode));
+            value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
+        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
             value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
             return ApplyDevelopmentTestDefaults(value);
         }
@@ -222,8 +223,8 @@ internal static class CustomModSettingsStore
         ActionSpeedCatalog.Validate(value);
         ApplyCurrentAvailability(value);
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
-        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=Math.Max(1,Math.Min(3,value.ChainsawExperimentMode));
+        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
+        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
