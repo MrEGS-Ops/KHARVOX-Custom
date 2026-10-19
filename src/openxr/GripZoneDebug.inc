@@ -1,4 +1,3 @@
-#include "GripZoneMarkerPolicy.h"
 // Four stereo-correct world-anchored circular grip zone outlines.
 // Procedural zero-alpha background and low-opacity circular stroke.
 // One static swapchain, four XR quads: not volumetric spheres.

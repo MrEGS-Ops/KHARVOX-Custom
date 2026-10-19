@@ -34,6 +34,7 @@
 #include "ChainsawMotionSpeedPolicy.h"
 #include "ChainsawStrokePolicy.h"
 #include "ChainsawExperimentalModesPolicy.h"
+#include "GripZoneMarkerPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
 #include "../debug/CameraScanner.h"
