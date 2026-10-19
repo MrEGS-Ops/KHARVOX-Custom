@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Web.Script.Serialization;
 
 namespace KharvoxLauncher;
@@ -24,6 +25,34 @@ internal sealed class ChainsawHapticProfile
     public int MotionSmoothingMs { get; set; } = 50;
     public int ReleaseMs { get; set; } = 70;
 
+    // The only five supported UI choices. Legacy names remain loadable
+    // without losing an old saved profile; the user explicitly selects
+    // one of these new choices to replace it.
+    internal static readonly string[] RecommendedPresets =
+    {
+        "Heavy Chainsaw", "Deep Rumble", "Jackhammer", "Ripping Teeth", "Brutal Chop"
+    };
+
+    internal static string ExplainPreset(string name) => name switch
+    {
+        "Heavy Chainsaw" =>
+            "Baseline · Balanced continuous engine rumble with a light gritty edge. "
+            + "Useful for comparing whether the new presets actually feel stronger.",
+        "Deep Rumble" =>
+            "Low, weighty vibration with longer beats and a stronger engine idle. "
+            + "Prioritises the sensation of weight over sharp teeth.",
+        "Jackhammer" =>
+            "Punchy, interrupted impacts rather than a smooth buzz. "
+            + "Best for hard contact and repeated hits.",
+        "Ripping Teeth" =>
+            "Rapid, serrated tearing texture: short sharp pulses, "
+            + "high cutting intensity, little idle vibration.",
+        "Brutal Chop" =>
+            "Maximum cutting intensity and roughness with slow, chunky pulses. "
+            + "Recommended first test for aggressive chopping feedback.",
+        _ => "Choose one of the five recommended haptic presets."
+    };
+
     public void Validate()
     {
         if (SchemaVersion != 1) throw new InvalidDataException("Unsupported haptic profile schema.");
@@ -46,21 +75,37 @@ internal sealed class ChainsawHapticProfile
         ChainsawHapticProfile p;
         switch (name)
         {
-            case "Diesel Idle":
-                p = new ChainsawHapticProfile { Name = name, IdlePercent = 35, CuttingPercent = 65, PulseRate = 25, PulseDurationMs = 35, RoughnessPercent = 10, MotionSensitivityPercent = 55 }; break;
-            case "Demon Shredder":
-                p = new ChainsawHapticProfile { Name = name, IdlePercent = 15, CuttingPercent = 100, PulseRate = 65, PulseDurationMs = 15, RoughnessPercent = 75, MotionSensitivityPercent = 95 }; break;
-            case "Jackhammer":
-                p = new ChainsawHapticProfile { Name = name, IdlePercent = 10, CuttingPercent = 95, PulseRate = 35, PulseDurationMs = 25, RoughnessPercent = 55, MotionSensitivityPercent = 90 }; break;
-            case "Brutal Chop":
-                // Audible-in-the-hand, not a guarantee of physical force:
-                // near-maximum cutting output, alternating chunky gaps,
-                // 12 pulses per second to avoid invisible high-rate aliasing.
-                p = new ChainsawHapticProfile {
-                    Name=name,IdlePercent=28,CuttingPercent=100,
-                    PulseRate=12,PulseDurationMs=32,RoughnessPercent=100,
-                    MotionSensitivityPercent=100,MotionSmoothingMs=18,ReleaseMs=42
+            case "Deep Rumble":
+                p = new ChainsawHapticProfile
+                {
+                    Name = name, IdlePercent = 40, CuttingPercent = 82,
+                    PulseRate = 18, PulseDurationMs = 45,
+                    RoughnessPercent = 25, MotionSensitivityPercent = 65
                 }; break;
+            case "Jackhammer":
+                p = new ChainsawHapticProfile
+                {
+                    Name = name, IdlePercent = 15, CuttingPercent = 97,
+                    PulseRate = 38, PulseDurationMs = 20,
+                    RoughnessPercent = 80, MotionSensitivityPercent = 90
+                }; break;
+            case "Ripping Teeth":
+                p = new ChainsawHapticProfile
+                {
+                    Name = name, IdlePercent = 16, CuttingPercent = 100,
+                    PulseRate = 65, PulseDurationMs = 10,
+                    RoughnessPercent = 90, MotionSensitivityPercent = 95
+                }; break;
+            case "Brutal Chop":
+                p = new ChainsawHapticProfile
+                {
+                    Name = name, IdlePercent = 28, CuttingPercent = 100,
+                    PulseRate = 12, PulseDurationMs = 32,
+                    RoughnessPercent = 100, MotionSensitivityPercent = 100,
+                    MotionSmoothingMs = 18, ReleaseMs = 42
+                }; break;
+            // Original stock behaviour is kept intact as an A/B control.
+            case "Heavy Chainsaw":
             default:
                 p = new ChainsawHapticProfile(); break;
         }
@@ -104,18 +149,41 @@ internal sealed class ChainsawHapticProfile
         var path = Path.Combine(directory, "test-chainsaw-haptics.json");
         if (LoadOrDefault(path).IdlePercent != 20)
             throw new InvalidDataException("Haptic Lab default changed.");
-        var chosen = Preset("Demon Shredder");
+        var chosen = Preset("Jackhammer");
         chosen.IdlePercent = 22;
         chosen.RoughnessPercent = 83;
         chosen.MotionSensitivityPercent = 94;
         chosen.Save(path);
         var restored = Load(path);
-        if (restored.Name != "Demon Shredder" || restored.IdlePercent != 22
+        if (restored.Name != "Jackhammer" || restored.IdlePercent != 22
             || restored.RoughnessPercent != 83 || restored.MotionSensitivityPercent != 94)
             throw new InvalidDataException("Haptic Lab failed to persist calibration.");
-        foreach (var preset in new[] {"Heavy Chainsaw","Diesel Idle","Demon Shredder","Jackhammer","Brutal Chop"})
+        foreach (var preset in RecommendedPresets)
             if (Preset(preset).IdlePercent < 0 || Preset(preset).CuttingPercent > 100)
                 throw new InvalidDataException("Haptic Lab preset out of bounds.");
+        if(RecommendedPresets.Length!=5
+            || RecommendedPresets.Distinct().Count()!=5)
+            throw new InvalidDataException("Haptic preset dropdown must contain exactly five distinct profiles.");
+        var distinctValues = RecommendedPresets.Select(name => Preset(name))
+            .Select(p => p.IdlePercent + "/" + p.CuttingPercent + "/" + p.PulseRate
+                + "/" + p.PulseDurationMs + "/" + p.RoughnessPercent + "/" + p.MotionSensitivityPercent)
+            .Distinct().Count();
+        if(distinctValues!=5)
+            throw new InvalidDataException("All five haptic presets must differ.");
+        foreach(var name in RecommendedPresets)
+        {
+            if(string.IsNullOrWhiteSpace(ExplainPreset(name)))
+                throw new InvalidDataException("Haptic preset description missing.");
+            var selected=Preset(name);
+            selected.Save(path);
+            var stored=Load(path);
+            if(stored.Name!=selected.Name || stored.IdlePercent!=selected.IdlePercent
+                || stored.CuttingPercent!=selected.CuttingPercent || stored.PulseRate!=selected.PulseRate
+                || stored.PulseDurationMs!=selected.PulseDurationMs
+                || stored.RoughnessPercent!=selected.RoughnessPercent
+                || stored.MotionSensitivityPercent!=selected.MotionSensitivityPercent)
+                throw new InvalidDataException("Haptic preset did not survive a save/load cycle.");
+        }
         var brutal=Preset("Brutal Chop");
         if(brutal.CuttingPercent!=100||brutal.RoughnessPercent!=100
             ||brutal.PulseRate!=12)

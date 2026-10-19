@@ -565,7 +565,7 @@ public sealed partial class MainForm
                     .Any(check => ReferenceEquals(check, main.customTriggerChainsawThrottle)));
             if (main.hapticLabButton.Parent != hapticRow.Panel
                 || !main.hapticLabButton.Enabled
-                || !main.hapticLabButton.Text.Contains("Haptic Lab")
+                || !main.hapticLabButton.Text.Contains("Presets")
                 || hapticRow.Panel.ColumnStyles[2].Width < 85)
                 throw new InvalidDataException("Chainsaw Haptic Lab button must be visible beside its mod.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)

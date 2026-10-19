@@ -38,7 +38,7 @@ public sealed partial class MainForm
 
     private readonly Button hapticLabButton = new()
     {
-        Text = "Haptic Lab", AccessibleName = "Open Chainsaw Haptic Lab",
+        Text = "Presets", AccessibleName = "Choose chainsaw haptic preset",
         Dock = DockStyle.Fill, AutoSize = false, FlatStyle = FlatStyle.Flat,
         BackColor = Color.FromArgb(82, 44, 38),
         ForeColor = Color.WhiteSmoke,
@@ -150,8 +150,9 @@ public sealed partial class MainForm
             lab.ShowDialog(customOptionsForm ?? this);
         };
         detachedModToolTip.SetToolTip(hapticLabButton,
-            "Tune chainsaw-controller vibration, choose a preset and save. "
-            + "Saved settings apply at next DOOM launch with Chainsaw Trigger Throttle enabled.");
+            "Five fixed profiles. Pick one from the dropdown and save it. "
+            + "No unreliable live test; compare the feel during actual chainsaw gameplay "
+            + "after restarting DOOM.");
         var tips = available.ToDictionary(item => item.Box, item => item.Tip);
         ModOrderRow Define(CheckBox check, string id, int group) => new()
         {
