@@ -560,6 +560,14 @@ public sealed partial class MainForm
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
+            var hapticRow = main.modOrderSlots.Single(slot =>
+                slot.Panel.Controls.OfType<CheckBox>()
+                    .Any(check => ReferenceEquals(check, main.customTriggerChainsawThrottle)));
+            if (main.hapticLabButton.Parent != hapticRow.Panel
+                || !main.hapticLabButton.Enabled
+                || !main.hapticLabButton.Text.Contains("Haptic Lab")
+                || hapticRow.Panel.ColumnStyles[2].Width < 85)
+                throw new InvalidDataException("Chainsaw Haptic Lab button must be visible beside its mod.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled

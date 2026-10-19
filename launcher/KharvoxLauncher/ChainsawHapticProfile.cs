@@ -11,6 +11,8 @@ namespace KharvoxLauncher;
 /// </summary>
 internal sealed class ChainsawHapticProfile
 {
+    internal static string DefaultPath => Path.Combine(AppContext.BaseDirectory, "kharvox-chainsaw-haptics.json");
+
     public int SchemaVersion { get; set; } = 1;
     public string Name { get; set; } = "Heavy Chainsaw";
     public int IdlePercent { get; set; } = 20;
@@ -65,11 +67,49 @@ internal sealed class ChainsawHapticProfile
         return p;
     }
 
+    public static ChainsawHapticProfile LoadOrDefault(string? path = null)
+    {
+        path ??= DefaultPath;
+        return File.Exists(path) ? Load(path) : new ChainsawHapticProfile();
+    }
+
+    // Atomic profile updates: closing/cancelling the Lab never writes anything,
+    // and a write failure cannot destroy the previous working calibration.
     public void Save(string path)
     {
         Validate();
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-        File.WriteAllText(path, new JavaScriptSerializer().Serialize(this));
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            File.WriteAllText(temporary, new JavaScriptSerializer().Serialize(this));
+            if (File.Exists(path)) File.Replace(temporary, path, null);
+            else File.Move(temporary, path);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    internal static void RunHapticProfileSelfTest(string directory)
+    {
+        var path = Path.Combine(directory, "test-chainsaw-haptics.json");
+        if (LoadOrDefault(path).IdlePercent != 20)
+            throw new InvalidDataException("Haptic Lab default changed.");
+        var chosen = Preset("Demon Shredder");
+        chosen.IdlePercent = 22;
+        chosen.RoughnessPercent = 83;
+        chosen.MotionSensitivityPercent = 94;
+        chosen.Save(path);
+        var restored = Load(path);
+        if (restored.Name != "Demon Shredder" || restored.IdlePercent != 22
+            || restored.RoughnessPercent != 83 || restored.MotionSensitivityPercent != 94)
+            throw new InvalidDataException("Haptic Lab failed to persist calibration.");
+        foreach (var preset in new[] {"Heavy Chainsaw","Diesel Idle","Demon Shredder","Jackhammer"})
+            if (Preset(preset).IdlePercent < 0 || Preset(preset).CuttingPercent > 100)
+                throw new InvalidDataException("Haptic Lab preset out of bounds.");
+        var legacy = new ChainsawHapticProfile { PulseRate = 200, PulseDurationMs = -5 };
+        legacy.Validate();
+        if (legacy.PulseRate != 100 || legacy.PulseDurationMs != 5)
+            throw new InvalidDataException("Haptic Lab failed to clamp imported calibration.");
     }
 }

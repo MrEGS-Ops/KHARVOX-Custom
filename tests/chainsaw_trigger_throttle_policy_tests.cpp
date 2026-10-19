@@ -20,6 +20,41 @@ int main(){
    std::numeric_limits<float>::quiet_NaN(),
    std::numeric_limits<float>::infinity());
  CHECK(!bad.motionEnabled&&bad.tickHz==240);
+ // Haptic Lab parameters modify physical rumble but MUST NOT touch engine Hz.
+ const kharvox::ChainsawHapticConfig heavy{};
+ kharvox::ChainsawHapticConfig diesel=heavy;
+ diesel.idlePercent=35;
+ diesel.cuttingPercent=65;
+ diesel.pulseRate=25;
+ diesel.pulseDurationMs=35;
+ diesel.roughnessPercent=10;
+ diesel.motionSensitivityPercent=55;
+ const auto heavyIdle=evaluateChainsawTriggerThrottle(0.f,3.f,1.8f,heavy);
+ const auto dieselIdle=evaluateChainsawTriggerThrottle(0.f,3.f,1.8f,diesel);
+ CHECK(heavyIdle.tickHz==dieselIdle.tickHz
+     &&dieselIdle.hapticAmplitude>heavyIdle.hapticAmplitude);
+ const auto heavyCut=evaluateChainsawTriggerThrottle(1.f,2.f,1.8f,heavy);
+ const auto dieselCut=evaluateChainsawTriggerThrottle(1.f,2.f,1.8f,diesel);
+ CHECK(heavyCut.tickHz==dieselCut.tickHz
+     &&heavyCut.hapticAmplitude>dieselCut.hapticAmplitude);
+ CHECK(heavyCut.hapticFrequencyHz!=dieselCut.hapticFrequencyHz);
+ const auto smooth=kharvox::textureChainsawTriggerHaptics(heavyCut,0,
+     kharvox::ChainsawHapticConfig{20,90,45,20,0,75});
+ const auto rough=kharvox::textureChainsawTriggerHaptics(heavyCut,0,
+     kharvox::ChainsawHapticConfig{20,90,45,20,100,75});
+ CHECK(smooth.hapticAmplitude>rough.hapticAmplitude);
+ kharvox::ChainsawHapticConfig longPulse=heavy;
+ kharvox::ChainsawHapticConfig shortPulse=heavy;
+ longPulse.pulseDurationMs=35;
+ shortPulse.pulseDurationMs=5;
+ CHECK(kharvox::textureChainsawTriggerHaptics(heavyCut,12,longPulse).hapticAmplitude
+     >kharvox::textureChainsawTriggerHaptics(heavyCut,12,shortPulse).hapticAmplitude);
+ kharvox::ChainsawHapticConfig sensitive=heavy;
+ sensitive.motionSensitivityPercent=100;
+ CHECK(evaluateChainsawTriggerThrottle(1.f,.9f,1.8f,sensitive).tickHz
+     ==evaluateChainsawTriggerThrottle(1.f,.9f,1.8f,heavy).tickHz);
+ CHECK(evaluateChainsawTriggerThrottle(1.f,.9f,1.8f,sensitive).hapticAmplitude
+     >evaluateChainsawTriggerThrottle(1.f,.9f,1.8f,heavy).hapticAmplitude);
  const auto p=kharvox::textureChainsawTriggerHaptics(full,0);
  const auto q=kharvox::textureChainsawTriggerHaptics(full,28);
  CHECK(p.hapticAmplitude<q.hapticAmplitude);

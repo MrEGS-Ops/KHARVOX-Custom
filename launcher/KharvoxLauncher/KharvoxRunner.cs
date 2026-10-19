@@ -622,6 +622,30 @@ internal static class KharvoxRunner
                 customMods.MotionChainsawKillSpeed ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE"] =
                 customMods.ChainsawTriggerThrottle ? "1" : "0";
+            // Haptic Lab calibrations are independent of general VR mod settings.
+            // Malformed/missing profiles safely fall back to the original defaults
+            // without blocking game launch or affecting non-chainsaw weapons.
+            ChainsawHapticProfile chainsawHaptics;
+            try { chainsawHaptics = ChainsawHapticProfile.LoadOrDefault(); }
+            catch (Exception e) when (e is IOException || e is ArgumentException
+                || e is InvalidDataException || e is InvalidOperationException
+                || e is UnauthorizedAccessException)
+            {
+                chainsawHaptics = new ChainsawHapticProfile();
+                statusUpdate?.Invoke("Haptic Lab profile unavailable; using default chainsaw vibration.");
+            }
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_IDLE_PCT"] =
+                chainsawHaptics.IdlePercent.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_CUTTING_PCT"] =
+                chainsawHaptics.CuttingPercent.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_PULSE_RATE"] =
+                chainsawHaptics.PulseRate.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_PULSE_MS"] =
+                chainsawHaptics.PulseDurationMs.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_ROUGHNESS_PCT"] =
+                chainsawHaptics.RoughnessPercent.ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT"] =
+                chainsawHaptics.MotionSensitivityPercent.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S"] =
                 Math.Max(70,Math.Min(300,customMods.ChainsawMotionFullSpeedCmPerSec)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";

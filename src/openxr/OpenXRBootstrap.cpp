@@ -5669,9 +5669,31 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             ||s.chainsawTriggerPressure>.10f),
         movingHand.linearVelocity.x,movingHand.linearVelocity.y,
         movingHand.linearVelocity.z,GetTickCount64(),motionFullSpeedCmSec);
+    // The Haptic Lab file is read by the launcher and sanitized before
+    // dispatch. Parse process-local numbers once; malformed external env
+    // values fall back safely. This changes ONLY chainsaw vibration.
+    static const kharvox::ChainsawHapticConfig hapticConfig=[](){
+        auto read=[](const char* key,int fallback,int low,int high){
+            char text[24]{};
+            const auto n=GetEnvironmentVariableA(key,text,sizeof(text));
+            if(n==0||n>=sizeof(text))return fallback;
+            char* end{};
+            const long value=std::strtol(text,&end,10);
+            return end!=text&&*end=='\0'&&value>=low&&value<=high
+                ?static_cast<int>(value):fallback;
+        };
+        kharvox::ChainsawHapticConfig config{};
+        config.idlePercent=read("KHARVOX_CHAINSAW_HAPTIC_IDLE_PCT",20,0,100);
+        config.cuttingPercent=read("KHARVOX_CHAINSAW_HAPTIC_CUTTING_PCT",90,0,100);
+        config.pulseRate=read("KHARVOX_CHAINSAW_HAPTIC_PULSE_RATE",45,5,100);
+        config.pulseDurationMs=read("KHARVOX_CHAINSAW_HAPTIC_PULSE_MS",20,5,100);
+        config.roughnessPercent=read("KHARVOX_CHAINSAW_HAPTIC_ROUGHNESS_PCT",35,0,100);
+        config.motionSensitivityPercent=read("KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT",75,0,100);
+        return config;
+    }();
     const auto throttle=kharvox::evaluateChainsawTriggerThrottle(
         s.chainsawTriggerPressure,motion.filteredMetersPerSecond,
-        motionFullSpeedCmSec/100.f);
+        motionFullSpeedCmSec/100.f,hapticConfig);
     // Vibration is useful with the chainsaw equipped even before contacting
     // an enemy; tick-Hz changes remain strictly scoped to a native execution.
     const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
@@ -5683,7 +5705,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!KharvoxCameraBossSequenceActive();
     if(chainsawHapticEligible){
         const auto textured=kharvox::textureChainsawTriggerHaptics(
-            throttle,GetTickCount64());
+            throttle,GetTickCount64(),hapticConfig);
         s.chainsawTriggerHaptic={
             textured.hapticAmplitude,textured.hapticFrequencyHz,true};
     }else s.chainsawTriggerHaptic={};
