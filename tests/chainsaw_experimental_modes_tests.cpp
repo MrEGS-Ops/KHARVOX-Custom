@@ -17,6 +17,7 @@ int main(){
     CHECK(std::abs(chainsawZoneQuadWidthMeters-1.50f)<.001f);
     CHECK(std::abs(chainsawZoneQuadHeightMeters-1.98f)<.001f);
     CHECK(std::abs(chainsawSingleSwipeDistanceMeters-.25f)<.0001f);
+    CHECK(chainsawCutChordLateralTolerance>.20f);
     CHECK(chainsawPhysicalMotionFastHz==45);
     CHECK(chainsawZoneGuidePulseAmplitude>.85f);
     CHECK(chainsawZoneGuidePulseFrequencyHz==150.f);
@@ -79,106 +80,98 @@ int main(){
             hand.x,hand.y,hand.z,true,0,0,-1,ms,
             480,32,head,0.f,true,forward,right,up);
     };
-    // Initial oval entry arms, but does NOT count as physical stroke or
-    // inject a 30 Hz entry boost. First-press live motion caps at 45 Hz.
-    ChainsawExperimentState st{};
-    CHECK(!sample(st,false,true,true,.70f,0,.48f,100).armed);
-    CHECK(!sample(st,true,true,true,.70f,0,.48f,110).armed);
-    CHECK(st.seenOutside&&st.zoneGuideWasOutside);
-    CHECK(st.zoneGuideOutsideSinceMs==110);
-    CHECK(!sample(st,true,true,true,.59f,0,.48f,125).armed);
-    const auto entry=sample(st,true,true,true,.25f,0,.48f,140);
-    CHECK(entry.started&&entry.armed&&entry.enteredZone);
-    CHECK(entry.targetHz==480); // test idle is deliberately 480
-    CHECK(!st.zoneGuideWasOutside); // inside ring is completely silent
-    CHECK(st.strokeTravelMeters==0.f&&!st.oneSwipeCommitted);
-    CHECK(!st.fastFinishLatched&&st.triggerRestarts==0);
-    const auto cut=sample(st,true,true,true,.1f,0,.48f,160);
-    CHECK(cut.armed&&cut.targetHz==chainsawPhysicalMotionFastHz);
-    CHECK(cut.progress>.5f);
-    CHECK(!sample(st,true,true,false,.1f,0,.48f,175).armed);
-    CHECK(sample(st,true,true,true,.08f,0,.48f,190).armed);
-    CHECK(sample(st,true,true,true,.70f,0,.48f,210).armed);
-    CHECK(st.zoneGuideWasOutside&&st.zoneGuideOutsideSinceMs==210);
-    CHECK(sample(st,true,true,true,.85f,0,.48f,225).armed);
-    CHECK(st.oneSwipeCommitted); // distance still tracked, no 30 Hz latch
-    CHECK(sample(st,true,true,true,.85f,0,.48f,500).targetHz>45);
-    // Trigger release must keep 300 Hz even when configured first-press
-    // idle is 480 Hz; no fast-finish before the second press.
-    const auto released=sample(st,true,false,true,.85f,0,.48f,515);
-    CHECK(released.armed&&released.targetHz==300);
-    CHECK(st.resumeEligible&&!st.latchedGrip&&!st.fastFinishLatched);
-    CHECK(st.strokeTravelMeters==0.f&&!st.oneSwipeCommitted);
-    // Second press skips the rest of the native execution at 30 Hz.
-    const auto second=sample(st,true,true,true,.85f,0,.48f,530);
-    CHECK(second.armed&&second.started&&second.targetHz==30);
-    CHECK(st.fastFinishLatched&&st.triggerRestarts==1);
-    CHECK(sample(st,true,true,true,.12f,0,.48f,545).targetHz==30);
-    CHECK(sample(st,true,false,true,.12f,0,.48f,560).targetHz==30);
-    CHECK(sample(st,true,false,false,.12f,0,.48f,575).armed);
-    CHECK(sample(st,true,true,true,.12f,0,.48f,590).targetHz==30);
-    CHECK(!sample(st,false,true,true,.12f,0,.48f,605).armed);
-    CHECK(!st.active&&!st.fastFinishLatched&&!st.resumeEligible);
+    // 2nd trigger press must work BEFORE entering oval, even with no tracking.
+    ChainsawExperimentState quick{};
+    CHECK(!sample(quick,true,true,true,.80f,0,.48f,100).armed);
+    CHECK(!quick.fastFinishLatched&&!quick.cutPathLocked);
+    CHECK(!sample(quick,true,false,true,.80f,0,.48f,120).armed);
+    const auto quickFinish=sample(quick,true,true,false,.80f,0,.48f,140);
+    CHECK(quickFinish.armed&&quickFinish.completed&&quickFinish.targetHz==30);
+    CHECK(quick.fastFinishLatched&&quick.triggerRestarts==1&&!quick.cutPathLocked);
+    CHECK(sample(quick,true,false,false,.20f,0,.48f,160).targetHz==30);
+    CHECK(sample(quick,true,true,false,.20f,0,.48f,180).targetHz==30);
+    CHECK(quick.triggerRestarts==1);
+    CHECK(!sample(quick,false,true,true,.20f,0,.48f,200).armed);
+    CHECK(!quick.fastFinishLatched&&!quick.active);
 
-    // Starting INSIDE requires original outside-to-inside entry on every
-    // NEW native kill, no accidental double-trigger activation.
+    // FIRST held trigger starts the game kill: crossing from right
+    // visible edge through centre to opposite LEFT edge completes gesture.
+    ChainsawExperimentState chord{};
+    CHECK(!sample(chord,true,true,true,.80f,0,.48f,300).armed);
+    CHECK(chord.seenOutside&&chord.zoneGuideWasOutside);
+    const auto entry=sample(chord,true,true,true,.46f,0,.48f,320);
+    CHECK(entry.armed&&entry.started&&entry.targetHz==480);
+    CHECK(chord.cutPathLocked&&chord.cutDirX<-.95f);
+    CHECK(chord.progress==0.f&&chord.strokeTravelMeters==0.f);
+    const auto firstMotion=sample(chord,true,true,true,.20f,0,.48f,340);
+    CHECK(firstMotion.armed&&firstMotion.targetHz==chainsawPhysicalMotionFastHz);
+    CHECK(firstMotion.progress>.1f&&firstMotion.progress<.5f);
+    CHECK(!chord.oneSwipeCommitted);
+    const float halfway=chord.progress;
+    for(int i=0;i<7;i++)
+        CHECK(sample(chord,true,true,true,.20f,0,.48f,360+20*i).armed);
+    CHECK(chord.progress==halfway);
+    CHECK(sample(chord,true,true,true,.20f,0,.48f,500).targetHz>455);
+    CHECK(!chord.oneSwipeCommitted);
+    // Backtrack toward entry: it must not count as finishing.
+    CHECK(sample(chord,true,true,true,.55f,0,.48f,520).armed);
+    CHECK(!chord.oneSwipeCommitted);
+    CHECK(sample(chord,true,true,true,.26f,0,.48f,540).armed);
+    CHECK(sample(chord,true,true,true,0.f,0,.48f,560).armed);
+    CHECK(sample(chord,true,true,true,-.25f,0,.48f,580).armed);
+    CHECK(sample(chord,true,true,true,-.45f,0,.48f,600).armed);
+    const auto edgeDone=sample(chord,true,true,true,-.54f,0,.48f,620);
+    CHECK(edgeDone.armed&&edgeDone.completed&&edgeDone.targetHz==30);
+    CHECK(chord.oneSwipeCommitted&&!chord.fastFinishLatched);
+    CHECK(chord.progress==1.f);
+    CHECK(sample(chord,true,true,true,-.54f,0,.48f,900).targetHz==30);
+    CHECK(sample(chord,true,false,true,-.54f,0,.48f,920).targetHz==30);
+    CHECK(!sample(chord,false,false,true,-.54f,0,.48f,940).armed);
+    CHECK(!chord.oneSwipeCommitted);
+
+    // Leaving on the SAME edge and sweeping sideways is NOT completion.
+    ChainsawExperimentState sideways{};
+    CHECK(!sample(sideways,true,true,true,.84f,0,.48f,1000).armed);
+    CHECK(sample(sideways,true,true,true,.48f,0,.48f,1020).armed);
+    CHECK(sample(sideways,true,true,true,.84f,0,.48f,1040).armed);
+    CHECK(!sideways.oneSwipeCommitted);
+    CHECK(sample(sideways,true,true,true,.40f,0,.48f,1060).armed);
+    CHECK(sample(sideways,true,true,true,.12f,.55f,.48f,1080).armed);
+    CHECK(!sideways.oneSwipeCommitted);
+    CHECK(sample(sideways,true,true,true,-.20f,.58f,.48f,1100).armed);
+    CHECK(!sideways.oneSwipeCommitted);
+    CHECK(!sample(sideways,false,false,true,-.20f,.58f,.48f,1120).armed);
+
+    // Second press AFTER moving partway: immediate fast-finish, NO re-entry.
+    ChainsawExperimentState partial{};
+    CHECK(!sample(partial,true,true,true,.80f,0,.48f,1200).armed);
+    CHECK(sample(partial,true,true,true,.46f,0,.48f,1220).armed);
+    CHECK(sample(partial,true,true,true,.24f,0,.48f,1240).armed);
+    CHECK(partial.progress>0.f&&!partial.oneSwipeCommitted);
+    const auto released=sample(partial,true,false,true,.24f,0,.48f,1260);
+    CHECK(released.armed&&released.targetHz==300&&!partial.fastFinishLatched);
+    const auto skip=sample(partial,true,true,true,.80f,0,.48f,1280);
+    CHECK(skip.armed&&skip.completed&&skip.targetHz==30);
+    CHECK(partial.fastFinishLatched&&partial.triggerRestarts==1);
+    CHECK(sample(partial,true,false,false,.80f,0,.48f,1300).targetHz==30);
+    CHECK(!sample(partial,false,false,false,.80f,0,.48f,1320).armed);
+
+    // Held without release must NEVER be mistaken for a second press.
+    ChainsawExperimentState held{};
+    CHECK(!sample(held,true,true,true,.85f,0,.48f,1400).armed);
+    CHECK(!sample(held,true,true,true,.85f,0,.48f,1420).armed);
+    CHECK(sample(held,true,true,true,.46f,0,.48f,1440).armed);
+    CHECK(!held.fastFinishLatched);
+    CHECK(!sample(held,false,true,true,.46f,0,.48f,1460).armed);
+
+    // New kill resets direction and requires a new outside entry.
     ChainsawExperimentState inside{};
-    CHECK(!sample(inside,true,true,true,.12f,0,.48f,100).armed);
-    CHECK(!sample(inside,true,false,true,.80f,0,.48f,110).armed);
-    CHECK(!sample(inside,true,true,true,.80f,0,.48f,120).armed);
-    CHECK(inside.seenOutside);
-    const auto insideEntry=sample(inside,true,true,true,.20f,0,.48f,135);
-    CHECK(insideEntry.armed&&insideEntry.targetHz==480);
-    CHECK(!inside.oneSwipeCommitted&&inside.strokeTravelMeters==0.f);
-    CHECK(sample(inside,true,false,true,.20f,0,.48f,150).targetHz==300);
-    CHECK(inside.resumeEligible);
-    CHECK(sample(inside,true,true,true,.18f,0,.48f,165).targetHz==30);
-    CHECK(inside.triggerRestarts==1&&inside.fastFinishLatched);
-    CHECK(!sample(inside,false,true,true,.18f,0,.48f,180).armed);
+    CHECK(!sample(inside,true,true,true,.10f,0,.48f,1500).armed);
+    CHECK(!sample(inside,true,true,true,.00f,0,.48f,1520).armed);
+    CHECK(!inside.cutPathLocked&&!inside.fastFinishLatched);
+    CHECK(!sample(inside,false,true,true,0,0,.48f,1540).armed);
 
-    // 25 cm stroke STARTS AFTER entry and never latches maximum speed.
-    ChainsawExperimentState single{};
-    CHECK(!sample(single,true,true,true,.84f,0,.48f,400).armed);
-    const auto singleEntry=sample(single,true,true,true,.23f,0,.48f,415);
-    CHECK(singleEntry.armed&&singleEntry.targetHz==480);
-    CHECK(!single.oneSwipeCommitted&&single.strokeTravelMeters==0.f);
-    const auto longCut=sample(single,true,true,true,.82f,0,.48f,430);
-    CHECK(longCut.armed&&single.oneSwipeCommitted);
-    CHECK(single.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters);
-    CHECK(longCut.targetHz==45&&!single.fastFinishLatched);
-    ChainsawExperimentResult stationary{};
-    for(int i=0;i<12;i++)
-        stationary=sample(single,true,true,true,.82f,0,.48f,500+60*i);
-    CHECK(stationary.armed&&stationary.targetHz>=470);
-    CHECK(stationary.targetHz>longCut.targetHz);
-    CHECK(!sample(single,true,true,false,.82f,0,.48f,1230).armed);
-    CHECK(sample(single,true,true,true,.82f,0,.48f,1245).armed);
-    CHECK(sample(single,true,false,true,.82f,0,.48f,1260).targetHz==300);
-    CHECK(sample(single,true,true,false,.82f,0,.48f,1275).targetHz==30);
-    CHECK(single.fastFinishLatched);
-    CHECK(!sample(single,false,false,false,.82f,0,.48f,1290).armed);
-
-    // Pausing halfway doesn't cross the stroke threshold, and later
-    // resuming is a fresh physical measurement, not a forced 30 Hz finish.
-    ChainsawExperimentState pause{};
-    CHECK(!sample(pause,true,true,true,.84f,0,.48f,1500).armed);
-    CHECK(sample(pause,true,true,true,.44f,0,.48f,1515).armed);
-    CHECK(pause.strokeTravelMeters==0.f);
-    CHECK(sample(pause,true,true,true,.20f,0,.48f,1530).armed);
-    CHECK(pause.strokeTravelMeters>0.f&&!pause.oneSwipeCommitted);
-    CHECK(sample(pause,true,true,true,.20f,0,.48f,1800).targetHz>45);
-    CHECK(!pause.oneSwipeCommitted);
-    const auto resumeCut=sample(pause,true,true,true,-.14f,0,.48f,1815);
-    CHECK(resumeCut.armed&&pause.oneSwipeCommitted&&resumeCut.targetHz>=45);
-    CHECK(!sample(pause,false,true,true,-.14f,0,.48f,1830).armed);
-    // Releasing Trigger BEFORE the oval ever arms cannot claim 300 Hz
-    // or enable second-press fast finish.
-    ChainsawExperimentState fresh{};
-    CHECK(!sample(fresh,true,true,true,.14f,0,.48f,2000).armed);
-    CHECK(!sample(fresh,true,false,true,.14f,0,.48f,2015).armed);
-    CHECK(!sample(fresh,true,true,true,.14f,0,.48f,2030).armed);
-    CHECK(!fresh.resumeEligible&&!fresh.fastFinishLatched);
-
+    // Legacy Pointer Focus intentionally unchanged.
     ChainsawExperimentState ray{};
     const auto begin=updateChainsawExperiment(
         ray,ChainsawExperimentalMode::PointerFocus,

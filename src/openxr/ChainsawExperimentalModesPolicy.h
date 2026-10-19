@@ -10,9 +10,13 @@ namespace kharvox {
 // Test the ray from the HMD through the hand against the quad plane; a 3D
 // sphere centred at the quad incorrectly rejected nearly every real hand.
 // While holding Trigger, leave the projected oval, then return INTO it.
-// Once latched, tracked hand motion controls speed ANYWHERE, capped at 60 Hz.
-// Trigger release holds 300 Hz; the second press latches 30 Hz until native exit.
-// A re-press in the SAME kill does not require another oval entry gesture.
+// A cut is one directed chord: enter the oval on one edge with Trigger
+// held, traverse the same line toward the OPPOSITE edge, then fast-finish.
+// Motion toward the opposite boundary drives native engine tick pacing;
+// sideways flailing/backtracking cannot commit a cut.  This does not
+// seek the DOOM animator playhead (not verified); DOOM owns native exit.
+// Any second Trigger press during the SAME confirmed execution immediately
+// latches 30 Hz, even if no oval was ever entered.
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
@@ -66,8 +70,12 @@ inline bool chainsawZoneOutsidePulseOn(
         && millisecondsOutside%chainsawZoneGuidePulsePeriodMs
             <chainsawZoneGuidePulseOnMs;
 }
-// A deliberate 25 cm tracked stroke starts AFTER oval entry, never on entry.
-// Reaching it is diagnostic, not a forced fast-finish; live hand speed rules.
+// One opposite-edge chord replaces the old arbitrary 25cm cumulative travel.
+// The strict lateral corridor discourages swinging in circles or sideways.
+constexpr float chainsawCutChordLateralTolerance=.26f; // normalized quad
+constexpr float chainsawCutFinishOppositeDot=.57f; // far side, not nearby exit
+constexpr float chainsawCutRateFullSpeedPerSecond=.65f;
+// Kept only for historical trace interpretation, not a completion target.
 constexpr float chainsawSingleSwipeDistanceMeters=.25f;
 constexpr int chainsawPhysicalMotionFastHz=45;
 constexpr int chainsawDoubleTriggerFastFinishHz=30;
@@ -76,6 +84,7 @@ struct ChainsawZoneProjection {
     bool valid{};
     float normalizedRadius{-1.f};
     float handDepthMeters{};
+    float nx{},ny{}; // projected normalized quad position, not just radius
 };
 inline ChainsawZoneProjection projectChainsawHandToOval(
     ChainsawVec3 head,ChainsawVec3 hand,ChainsawVec3 center,
@@ -99,14 +108,15 @@ inline ChainsawZoneProjection projectChainsawHandToOval(
     const float ny=2.f*dot3(fromCenter,up)/chainsawZoneQuadHeightMeters;
     const float radius=std::sqrt(nx*nx+ny*ny);
     if(!std::isfinite(radius))return {};
-    return {true,radius,handDepth};
+    return {true,radius,handDepth,nx,ny};
 }
 
 struct ChainsawExperimentState {
     bool active{},releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
     bool seenOutside{},inside{},lastTracked{},oneSwipeCommitted{};
-    bool resumeEligible{}; // only after a successfully armed kill is interrupted
+    bool resumeEligible{}; // after an armed kill's first trigger release
     bool fastFinishLatched{}; // second Trigger press: 30 Hz until native kill end
+    bool cutPathLocked{}; // one straight chord, locked at oval entry
     bool zoneGuideWasOutside{}; // reset pulse phase at actual visible-ring exit
     std::uint64_t zoneGuideOutsideSinceMs{};
     unsigned triggerRestarts{}; // same native execution, never a new kill
@@ -116,6 +126,9 @@ struct ChainsawExperimentState {
     ChainsawExperimentalMode mode{ChainsawExperimentalMode::GripPull};
     ChainsawVec3 previous{},rayStart{};
     float progress{},peak{},filteredSpeed{},strokeTravelMeters{};
+    float lastOutsideX{},lastOutsideY{};
+    float cutStartX{},cutStartY{},cutDirX{},cutDirY{},cutLength{};
+    float cutLastPositionProgress{};
     unsigned impactIndex{};
     std::uint64_t lastUpdateMs{},entryMs{};
     void reset() noexcept {*this={};}
@@ -133,8 +146,8 @@ struct ChainsawExperimentResult {
 // starts a kill, steals Trigger input, invents collision, or edits other actions.
 // The initial Trigger press normally starts the kill before the first execution
 // frame; therefore we must NOT require a second/released Trigger press.
-// 'progress' here is LIVE hand speed for the current frame, not total animation
-// progress. Normal DOOM decides when the execution finishes.
+// 'progress' is distance along the requested input chord, NEVER native
+// animation frame/playhead progress. DOOM decides when the kill finishes.
 inline ChainsawExperimentResult updateChainsawExperiment(
     ChainsawExperimentState& st,ChainsawExperimentalMode mode,
     bool nativeExecution,bool triggerHeld,bool handTracked,
@@ -158,6 +171,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.active=true;st.mode=mode;st.lastUpdateMs=nowMs;
         st.zones[0]=singleZoneCenter(worldHead,headForward,worldYaw);
         st.previous=hand;st.lastTracked=valid;
+        st.wasGripHeld=triggerHeld; // initial DOOM trigger press preceded native exec
         st.seenOutside=false; // Must observe the hand OUTSIDE with Trigger held.
     }
     if(st.mode!=mode){st.reset();return {idleHz};}
@@ -168,6 +182,15 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     st.lastUpdateMs=nowMs;
     bool started=false,entered=false;
     if(mode==ChainsawExperimentalMode::GripPull){
+        // Count the physical second press independently of oval entry or
+        // tracked-hand status. Initial press started DOOM's native execution
+        // BEFORE its first sample; subsequent released -> held is fast finish.
+        const bool secondPress=triggerHeld&&!st.wasGripHeld;
+        st.wasGripHeld=triggerHeld;
+        if(secondPress&&!st.fastFinishLatched){
+            st.fastFinishLatched=true;
+            ++st.triggerRestarts; // diagnostic: fast-finish press count
+        }
         const auto projection=valid&&validHead
             ?projectChainsawHandToOval(worldHead,hand,st.zones[0],
                 headForward,headRight,headUp)
@@ -181,7 +204,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.zoneGuideWasOutside=guideOutside;
         // Release AFTER arming holds an explicit 300 Hz idle (near-freeze).
         // Do not undo fast-finish once its second-press latch is set.
-        if(!triggerHeld&&!st.fastFinishLatched){
+        if(!triggerHeld&&!st.fastFinishLatched&&!st.oneSwipeCommitted){
             if(st.latchedGrip)st.resumeEligible=true;
             st.latchedGrip=false;
             st.seenOutside=false;
@@ -189,9 +212,14 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             st.progress=0.f;
             st.oneSwipeCommitted=false;
             st.strokeTravelMeters=0.f;
+            st.cutPathLocked=false;
         }
         if(projection.valid&&projection.normalizedRadius>=chainsawZoneExitRadius){
-            if(triggerHeld)st.seenOutside=true;
+            if(triggerHeld){
+                st.seenOutside=true;
+                st.lastOutsideX=projection.nx;
+                st.lastOutsideY=projection.ny;
+            }
             st.inside=false;
         }else if(projection.valid
                  &&projection.normalizedRadius<=chainsawZoneEnterRadius){
@@ -202,59 +230,80 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.hovered=projection.valid&&st.inside?0:-1;
         entered=st.hovered==0&&st.lastHover!=0;
         st.lastHover=st.hovered;
-        // The initial cut requires entering the oval with Trigger held.
-        // ONLY after that cut has armed can release -> second press latch
-        // 30 Hz for the rest of the SAME native execution, even outside the oval.
+        // Initial arm locks a radial chord from the observed OUTSIDE edge
+        // toward the OPPOSITE visible-ring edge. No new chord after trigger
+        // release: the next press fast-finishes at 30Hz at any position.
         const bool canInitialArm=st.seenOutside&&st.inside&&projection.valid;
-        if(!st.latchedGrip&&triggerHeld
-           &&(st.resumeEligible||(valid&&canInitialArm))){
-            const bool restarting=st.resumeEligible;
+        if(!st.latchedGrip&&!st.fastFinishLatched&&triggerHeld&&valid
+           &&canInitialArm){
             st.resumeEligible=false;
             st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
+            st.filteredSpeed=0.f;st.progress=0.f;
+            st.strokeTravelMeters=0.f;st.oneSwipeCommitted=false;
+            const float outsideLength=std::sqrt(
+                st.lastOutsideX*st.lastOutsideX+
+                st.lastOutsideY*st.lastOutsideY);
+            // A fully valid outside observation is required to lock direction.
+            if(outsideLength>=chainsawZoneExitRadius){
+                st.cutDirX=-st.lastOutsideX/outsideLength;
+                st.cutDirY=-st.lastOutsideY/outsideLength;
+                st.cutStartX=projection.nx;st.cutStartY=projection.ny;
+                const float entryAlong=-(projection.nx*st.cutDirX+
+                                         projection.ny*st.cutDirY);
+                st.cutLength=std::max(.40f,chainsawZoneEnterRadius+entryAlong);
+                st.cutLastPositionProgress=0.f;
+                st.cutPathLocked=true;
+                st.previous=hand;st.lastTracked=false; // entry is NOT travel
+                started=true;
+            }else st.latchedGrip=false;
+        }
+        // The physical gesture is one chosen chord. Only forward movement
+        // along it accelerates the animation clock. Stationary/reverse/
+        // lateral motion returns to slow idle; no arbitrary 25cm accumulator
+        // can complete the kill, and tracked-controller teleports are rejected.
+        if(st.latchedGrip&&st.cutPathLocked
+           &&!st.fastFinishLatched&&!st.oneSwipeCommitted){
+            const float dx=projection.nx-st.cutStartX;
+            const float dy=projection.ny-st.cutStartY;
+            const float lateral=std::fabs(-dx*st.cutDirY+dy*st.cutDirX);
+            const float along=dx*st.cutDirX+dy*st.cutDirY;
+            const bool validCorridor=triggerHeld&&valid&&projection.valid
+                &&lateral<=chainsawCutChordLateralTolerance;
+            const float path=validCorridor
+                ?std::clamp(along/st.cutLength,0.f,1.f)
+                :st.cutLastPositionProgress;
+            const float realDelta=st.lastTracked&&timely
+                ?length3(minus3(hand,st.previous)):0.f;
+            const bool genuineStep=st.lastTracked&&timely&&elapsed>0
+                &&realDelta>=.008f&&realDelta<.28f;
+            const float advanced=genuineStep&&validCorridor
+                ?std::max(0.f,path-st.cutLastPositionProgress):0.f;
+            if(genuineStep&&validCorridor){
+                st.strokeTravelMeters+=realDelta;
+                st.progress=std::max(st.progress,path);
+            }
+            const float rate=genuineStep
+                ?std::clamp(advanced*1000.f/float(elapsed),0.f,2.f):0.f;
+            st.filteredSpeed=std::clamp(
+                .68f*rate+.32f*st.filteredSpeed,0.f,2.f);
+            const float opposite=projection.nx*st.cutDirX+
+                                 projection.ny*st.cutDirY;
+            // Finishing is crossing the far VISIBLE ring, on the opposite
+            // side of the start point, inside the same narrow cutting line.
+            if(validCorridor&&genuineStep
+               &&path>=.98f
+               &&projection.normalizedRadius>=chainsawZoneEnterRadius
+               &&opposite>=chainsawCutFinishOppositeDot){
+                st.oneSwipeCommitted=true;
+                st.progress=1.f;
+                st.filteredSpeed=0.f;
+            }
+            if(genuineStep&&validCorridor)st.cutLastPositionProgress=path;
+        }else if(!st.fastFinishLatched){
             st.filteredSpeed=0.f;
-            st.progress=0.f;
-            st.strokeTravelMeters=0.f;
-            st.oneSwipeCommitted=false;
-            if(restarting){
-                ++st.triggerRestarts;
-                st.fastFinishLatched=true;
-            }
-            // Never count the oval crossing or motion while unheld toward
-            // the deliberate 25 cm CUT. Never carry stale velocity forward.
-            if(valid)st.previous=hand;
-            st.lastTracked=false;
-            started=true;
         }
-        // The oval is the INITIAL activation gate only. Hand speed drives
-        // the engine tick ANYWHERE, including beyond the oval. No entry boost.
-        if(st.latchedGrip){
-            if(st.fastFinishLatched){
-                // Second Trigger press: deliberately finish the ENTIRE
-                // remaining native execution at 30 Hz. No animation rewind.
-                st.filteredSpeed=0.f;st.progress=1.f;
-            }else if(!triggerHeld||!valid){
-                st.filteredSpeed=0.f;st.progress=0.f;
-            }else{
-                const float delta=st.lastTracked&&timely
-                    ?length3(minus3(hand,st.previous)):0.f;
-                // Ignore tracking jitter and discontinuous teleports.
-                // Oval ENTRY was excluded when first arming the stroke.
-                const bool genuineStroke=timely&&elapsed>0
-                    &&delta>=.008f&&delta<.28f;
-                if(!st.oneSwipeCommitted&&genuineStroke){
-                    st.strokeTravelMeters+=delta;
-                    st.oneSwipeCommitted=
-                        st.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters;
-                }
-                const float instant=timely&&delta<.28f&&elapsed>0
-                    ?std::clamp(delta*1000.f/float(elapsed),0.f,1.5f):0.f;
-                st.filteredSpeed=std::clamp(
-                    .44f*instant+.56f*st.filteredSpeed,0.f,1.5f);
-                // Reaching 25 cm does not force full speed. Stopping the hand
-                // must STILL slow the cut; second Trigger press is fast finish.
-                st.progress=std::clamp(st.filteredSpeed/.55f,0.f,1.f);
-            }
-        }
+        if(st.fastFinishLatched||st.oneSwipeCommitted)
+            st.progress=1.f;
         if(valid)st.previous=hand;
         st.lastTracked=valid;
     }else{
@@ -269,30 +318,39 @@ inline ChainsawExperimentResult updateChainsawExperiment(
                  -.03491f)/.45379f,0.f,1.f));
         }
     }
-    st.finished=st.progress>=.999f;
+    st.finished=mode==ChainsawExperimentalMode::GripPull
+        ?(st.fastFinishLatched||st.oneSwipeCommitted)
+        :st.progress>=.999f;
     const int physicalFloorHz=std::min(idleHz,chainsawPhysicalMotionFastHz);
+    const float clockMotion=mode==ChainsawExperimentalMode::GripPull
+        ?std::clamp(st.filteredSpeed/chainsawCutRateFullSpeedPerSecond,0.f,1.f)
+        :st.progress;
     int hz=std::clamp(static_cast<int>(std::lround(
         idleHz-(idleHz-(mode==ChainsawExperimentalMode::GripPull
-            ?physicalFloorHz:30))*st.progress)),
+            ?physicalFloorHz:30))*clockMotion)),
         mode==ChainsawExperimentalMode::GripPull?physicalFloorHz:30,idleHz);
     if(mode==ChainsawExperimentalMode::GripPull){
-        if(st.fastFinishLatched)hz=chainsawDoubleTriggerFastFinishHz;
-        else if(st.resumeEligible&&!triggerHeld)hz=chainsawTriggerReleaseIdleHz;
+        if(st.fastFinishLatched||st.oneSwipeCommitted)
+            hz=chainsawDoubleTriggerFastFinishHz;
+        else if(st.resumeEligible&&!triggerHeld)
+            hz=chainsawTriggerReleaseIdleHz;
     }
     const unsigned quarters=std::min(4u,static_cast<unsigned>(st.progress*4.f));
     const bool impact=quarters>st.impactIndex;
     st.impactIndex=std::max(st.impactIndex,quarters);
-    // Timing begins ONLY after a deliberate first oval entry. Afterward,
-    // Trigger release owns 300 Hz, the second press latches 30 Hz, and
-    // native execution exit ALWAYS drops the override. Tracking loss before
-    // fast-finish relinquishes active motion speed, as before.
+    // Native execution exit ALWAYS drops the override. A second press
+    // bypasses even the initial oval arm and missing tracking. Edge-to-edge
+    // completion also latches 30Hz to let DOOM finish its native animation.
+    // Progress here is INPUT stroke fraction, NOT a native animation playhead.
     const bool owningTiming=mode==ChainsawExperimentalMode::PointerFocus
         ?st.pointerStarted
-        :(st.fastFinishLatched||(st.resumeEligible&&!triggerHeld)
+        :(st.fastFinishLatched||st.oneSwipeCommitted
+          ||(st.resumeEligible&&!triggerHeld)
           ||(st.latchedGrip&&triggerHeld&&valid));
     return {hz,st.progress,owningTiming,
         st.finished,started,impact,
-        st.fastFinishLatched?"DOUBLE_TRIGGER_FAST_FINISH":chainsawModeName(mode),
+        st.fastFinishLatched?"DOUBLE_TRIGGER_FAST_FINISH":
+        st.oneSwipeCommitted?"OPPOSITE_EDGE_FINISH":chainsawModeName(mode),
         st.hovered,st.startZone,st.targetZone,entered};
 }
 } // namespace kharvox

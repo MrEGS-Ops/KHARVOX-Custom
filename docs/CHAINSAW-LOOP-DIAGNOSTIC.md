@@ -23,15 +23,14 @@ Do a few kills with short gaps between each. KHARVOX auto-detects and numbers
 each verified native chainsaw execution; it DOES NOT automatically perform a
 kill or control your headset.
 
-- Kill 1: normal single-swipe cut.
-- Kill 2: arm inside the oval, pause hand movement mid-cut for >= 0.5 s,
-  then resume without releasing Trigger.
-- Kill 3: slow, deliberate swipe across the oval and back out.
-- Kill 4: quick single swipe, keep Trigger pressed and hand stationary.
-- Kill 5: release Trigger partway, re-press it **without re-entering the oval**
-  and try finishing a fresh 25 cm stroke within the same kill. If the native
-  kill has already ended, a new kill still requires the regular oval entry.
-  Then do one uninterrupted cut.
+- Kill 1: hold first Trigger and cross circle RIGHT edge to LEFT edge.
+- Kill 2: enter circle, pause halfway >=0.5s, then reach opposite edge.
+- Kill 3: enter, backtrack / move sideways, then cross the original chord.
+- Kill 4: release and re-press Trigger BEFORE ever entering the oval;
+  target should become 30 Hz immediately.
+- Kill 5: enter, move halfway, release Trigger, re-press anywhere for 30 Hz;
+  on a new execution the counter resets and physical cutting needs its
+  own initial outside-to-inside entry.
   Also test pulling the chainsaw out with no kill, and ordinary ledge climbing
   (negative controls). These should not produce a chainsaw execution session.
 
@@ -43,7 +42,7 @@ HAND_RESUMED/SWIPE_COMMITTED/END` in the runtime **logs** directory,
 At a max of one SAMPLE every 50 ms (350 per kill), captures: local monotonic
 elapsed milliseconds; XR frame and display period; native execution/sync/cutscene
 flags; trigger analogue pressure; tracked controller coordinates; oval overlap;
-hand-speed estimate; swipe distance and commit; requested engine Hz; XR headset
+hand-speed estimate; stroke distance, input chord progress and opposite-edge commit; requested engine Hz; XR headset
 position; read-only DOOM-authored cinematic camera source **if known**.
 
 Each END summarizes real kill wall-time, sample count, hand-stationary windows,
@@ -61,23 +60,35 @@ report **not yet feasible** rather than guessing DOOM offsets or touching
 global game time. Damage, audio, fuel, camera, death and level transitions
 must NOT repeat or stick.
 
-## Physical chainsaw: two-stage trigger and capped hand motion
+## Physical chainsaw: directed edge-to-edge stroke and skip-anytime Trigger
 
-The first trigger press starts DOOM's normal chainsaw attack; entering the
-single oval with Trigger held arms timing. The 25 cm measured controller stroke
-starts AFTER the oval-entry frame, rather than including the reaching gesture.
-No initial boost is applied. While holding the first press, *live* hand motion
-changes target engine tick Hz down to a **45 Hz floor**; holding the hand still
-returns toward the configured idle Hz. Crossing 25 cm is now diagnostic and
-never automatically forces a 30 Hz full-speed finish.
+The first Trigger press starts DOOM's normal native chainsaw execution.
+While holding it, move OUTSIDE the enlarged projected oval, then enter.
+KHARVOX locks a single direction from the entry edge directly toward the
+OPPOSITE visible-ring edge. Only forward movement along that narrow chord
+drives requested engine tick pace: quickest physical motion requests **45 Hz**.
+Stopping, reversing, leaving the chord sideways, or losing tracking slows
+toward the idle target; none of those movements completes a gesture.
 
-After the first arm, releasing Trigger keeps **300 Hz** while the SAME verified
-native kill remains active, even though motion cutting has disengaged. A
-**second Trigger press**, anywhere (no oval re-entry), latches **30 Hz** for the
-ENTIRE REMAINDER of that native execution, even if the trigger is later released.
-Native execution exit restores DOOM timing; a new kill requires an initial oval
-crossing again. No animation rewind, damage/fuel modification, or non-chainsaw
-action speed changes are performed. The engine-Hz values are not headset FPS.
+Crossing the opposite VISIBLE edge on the originally locked chord commits
+the input gesture and latches **30 Hz** until DOOM ends that native execution.
+This replaces the old arbitrary 25cm cumulative-travel threshold. Releasing
+Trigger after physical completion does NOT cancel the 30Hz finish.
+
+If the first stroke is not yet complete, releasing Trigger after arming
+holds **300 Hz** while the same native kill remains active. **Any second
+Trigger press, anywhere during that native kill (even BEFORE the oval was
+entered, and even when the hand is untracked), immediately latches 30 Hz**.
+The first Trigger that launched the native kill never counts as a skip.
+Further press/release cannot unset it; native exit resets all latches.
+
+The native animator/playhead remains UNRESOLVED. The chord's INPUT progress
+is NOT animation-frame progress. Moving the hand across the entire ring
+does not literally seek from first to last animation frame; finishing the
+chord accelerates the remaining native frames through the global scoped
+action-clock override. This is a best-supported first iteration toward a
+spatially deliberate cut. No unsafe guessed native animator memory writes
+or rewinds, no changes to other actions, fuel, camera or damage.
 
 ## Outside-the-circle pulsing guidance (weapon hand only)
 

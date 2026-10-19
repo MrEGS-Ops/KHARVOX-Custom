@@ -5831,7 +5831,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             |(s.chainsawTriggerPressure>.55f?2u:0u)
             |(experiment.hoveredZone>=0?4u:0u)
             |(s.chainsawExperiment.seenOutside?8u:0u)
-            |(movingHandTracked?16u:0u);
+            |(movingHandTracked?16u:0u)
+            |(s.chainsawExperiment.cutPathLocked?32u:0u)
+            |(s.chainsawExperiment.oneSwipeCommitted?64u:0u)
+            |(s.chainsawExperiment.fastFinishLatched?128u:0u);
         if(status!=lastDiagnostic||strokeNow-lastDiagnosticMs>=750){
             lastDiagnostic=status;
             lastDiagnosticMs=strokeNow;
@@ -5841,6 +5844,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 std::to_string((status&8u)!=0)+" tracked="+
                 std::to_string((status&16u)!=0)+" armed="+
                 std::to_string((status&1u)!=0)+
+                " chordLocked="+std::to_string((status&32u)!=0)+
+                " oppositeEdge="+std::to_string((status&64u)!=0)+
+                " secondTrigger="+std::to_string((status&128u)!=0)+
+                " chordProgress="+std::to_string(s.chainsawExperiment.progress)+
                 " ovalRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
                 " guideOutside="+std::to_string(s.chainsawExperiment.zoneGuideWasOutside?1:0)+
                 " guidePulse="+std::to_string(kharvox::chainsawZoneOutsidePulseOn(
@@ -5853,9 +5860,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         log("[CHAINSAW-EXPERIMENT] armed="+
             std::string(kharvox::chainsawModeName(experimentMode))
             +" idle="+std::to_string(strokeIdleHz)
-            +"Hz targetStroke="+std::to_string(
-                static_cast<int>(kharvox::chainsawSingleSwipeDistanceMeters*100.f+.5f))
-            +"cm triggerRearms="+std::to_string(s.chainsawExperiment.triggerRestarts)
+            +"Hz gesture=OPPOSITE_EDGE_CHORD triggerRearms="+
+                std::to_string(s.chainsawExperiment.triggerRestarts)
             +" fastFinish="+std::to_string(s.chainsawExperiment.fastFinishLatched?1:0)
             +" motionFloorHz="+std::to_string(kharvox::chainsawPhysicalMotionFastHz)
             +" releaseIdleHz="+std::to_string(kharvox::chainsawTriggerReleaseIdleHz)
@@ -5867,9 +5873,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 &&(std::abs(percentage-s.chainsawStrokeLastLogPercent)>=10
                     ||(experiment.completed&&s.chainsawStrokeLastLogPercent<100))))){
         log("[CHAINSAW-EXPERIMENT] mode="+std::string(experiment.detail)
-            +" progress="+std::to_string(percentage)+"%"
+            +" inputChord="+std::to_string(percentage)+"%"
             +" tickHz="+std::to_string(experiment.targetHz)
-            +" maxSpeed="+(experiment.completed?"yes":"no")
+            +" gestureDone="+(experiment.completed?"yes":"no")
             +" fastFinish="+(s.chainsawExperiment.fastFinishLatched?"yes":"no")
             +" trigger="+(s.chainsawTriggerPressure>.55f?"held":"released")
             +" tracking="+(movingHandTracked?"valid":"lost"));
@@ -5975,8 +5981,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // ONE timing owner. Physical motion wins if enabled, irrespective of
     // legacy launcher preset flags, and ONLY on confirmed native chainsaw
     // executions. Ledge/stabilization never become chainsaw actions.
-    // Before first oval arm: NATIVE timing. Once armed: motion floor 45 Hz;
-    // release: 300 Hz; second press: latched 30 Hz until native kill exit.
+    // Before first oval arm: native timing. First entry locks the
+    // edge-to-opposite-edge chord (NOT a native animation-playhead seek).
+    // Only forward stroke motion uses the physical 45 Hz floor. Far edge
+    // OR any second Trigger press latches 30Hz until native exit.
+    // Release after arming holds 300Hz until subsequent press.
     const auto effectiveSelectedAction=physicalChainsawActive
         ?(experiment.armed
            ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,experiment.targetHz}
@@ -6040,6 +6049,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 <<" handZ="<<movingHand.position.z
                 <<" filteredMps="<<s.chainsawExperiment.filteredSpeed
                 <<" travelM="<<s.chainsawExperiment.strokeTravelMeters
+                <<" chordProgress="<<s.chainsawExperiment.progress
+                <<" chordLocked="<<(s.chainsawExperiment.cutPathLocked?1:0)
+                <<" chordFinished="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
+                <<" secondPress="<<(s.chainsawExperiment.fastFinishLatched?1:0)
                 <<" swipeCommit="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
                 <<" requestedHz="<<activeAction.hz
                 <<" xrDisplayPeriodNs="<<frame.predictedDisplayPeriod
@@ -6056,6 +6069,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(probe.committed)
             log("[CHAINSAW-LOOP-PROBE] SWIPE_COMMITTED kill="+std::to_string(state.killIndex)
                 +" inputTravelM="+std::to_string(s.chainsawExperiment.strokeTravelMeters)
+                +" inputChordProgress="+std::to_string(s.chainsawExperiment.progress)
                 +" nativeAnimationCompleted=NOT_VERIFIED");
         if(probe.ended)
             log("[CHAINSAW-LOOP-PROBE] END kill="+std::to_string(state.killIndex)
