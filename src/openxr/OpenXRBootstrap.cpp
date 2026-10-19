@@ -693,7 +693,7 @@ const kharvox::ActionSpeedTargets& actionSpeedTargets(){
     static const kharvox::ActionSpeedTargets p{
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
-        actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_LEDGE_HZ"),
+        0 /* DOOM progression owns ledge speed unconditionally */,
         0 /* passive scripted scenes must always remain game-native */};
     return p;
 }
@@ -3836,6 +3836,7 @@ void updateGameplayActions(XrTime displayTime){
     // original wheel presentation or takes its native selection input.
     const bool boxingNow=gameplay&&s.customMods.boxingGuard&&s.boxingHeadFocus
         &&!syncAttackActive&&!s.chainsawKillLatched
+        &&!KharvoxCameraLedgeTransitionActive()
         &&!weaponWheelActive&&!s.behindHeadWheelActive;
     KharvoxCameraSetBoxingGuardSlowmo(boxingNow);
     // No custom animation speed path: the launcher enables DOOM's proven
@@ -5645,10 +5646,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // The trigger throttle is its own opt-in mod. If both are checked it
     // owns the confirmed execution; motion-only stays available independently.
     const bool triggerChainsawActive=s.customMods.chainsawTriggerThrottle
-        &&actionProfileEligible&&chainsawAction&&!fastKillsRequested;
+        &&actionProfileEligible&&chainsawAction&&!ledgeAction&&!fastKillsRequested;
     const bool motionChainsawActive=!triggerChainsawActive
         &&s.customMods.motionChainsawKillSpeed
-        &&actionProfileEligible&&chainsawAction&&!fastKillsRequested;
+        &&actionProfileEligible&&chainsawAction&&!ledgeAction&&!fastKillsRequested;
     const auto& movingHand=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
     const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked
@@ -5675,7 +5676,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // an enemy; tick-Hz changes remain strictly scoped to a native execution.
     const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
     const bool chainsawHapticEligible=s.customMods.chainsawTriggerThrottle
-        &&(chainsawEquipped||chainsawAction)
+        &&!ledgeAction&&(chainsawEquipped||chainsawAction)
         &&KharvoxCameraWorldActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
@@ -5724,19 +5725,19 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         :motionChainsawActive
             ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,motion.targetHz}
             :selectedAction;
-    // External opt-ins do not steal normal movement or alter the native
-    // fast-kill bypass. A selected profile may briefly arm the existing
-    // reversible CVar hold outside an immersive cinematic (ledge/charge).
-    const auto activeAction=fastKillsRequested
+    // No input/control remapping changes here. Adaptive-tick hold only for
+    // Glory Kills and Chainsaw executions; ledge engine timing is untouchable.
+    const auto activeAction=fastKillsRequested||ledgeAction
         ?kharvox::ActionSpeedChoice{}:effectiveSelectedAction;
     // The CineWindow checkbox selects PRESENTATION, not animation speed.
     // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
     // cutscene=1, syncAttack=0. DOOM native timing is unconditional:
     // no action-speed target may claim their timing; VR projection and the
     // independent RS story skip detector remain unchanged.
-    const bool actionTimingAllowed=kharvox::shouldApplyImmersiveActionTiming(
-        originalCinematicHold,syncAction,chainsawAction,ledgeAction,
-        activeAction.hz>0);
+    const bool actionTimingAllowed=!ledgeAction
+        &&kharvox::shouldApplyImmersiveActionTiming(
+            originalCinematicHold,syncAction,chainsawAction,ledgeAction,
+            activeAction.hz>0);
     static bool previouslyPreservedPassiveTiming=false;
     const bool passiveTimingPreserved=originalCinematicHold
         &&!actionTimingAllowed;

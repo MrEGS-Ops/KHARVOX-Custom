@@ -48,8 +48,10 @@ constexpr bool shouldApplyImmersiveActionTiming(
     bool immersiveRefreshCandidate,
     bool nativeSyncAttack, bool chainsawExecution,
     bool ledgeTransition, bool explicitActionOverride) {
+    // A ledge climb MUST NOT borrow the global cinematic engine-tick hold.
+    if(ledgeTransition)return false;
     return explicitActionOverride || (immersiveRefreshCandidate
-        && (nativeSyncAttack || chainsawExecution || ledgeTransition));
+        && (nativeSyncAttack || chainsawExecution));
 }
 
 constexpr unsigned long long updateNativeAdaptiveParticipantGuardUntil(

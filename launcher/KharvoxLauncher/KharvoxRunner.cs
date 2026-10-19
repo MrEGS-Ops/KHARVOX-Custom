@@ -595,6 +595,7 @@ internal static class KharvoxRunner
             // Story cinematics are never given an action-speed override,
             // even when older saved settings had this enabled.
             psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_CINEMATIC_HZ"] = "0";
+            psi.EnvironmentVariables["KHARVOX_ACTION_SPEED_LEDGE_HZ"] = "0"; // legacy configs cannot unlock native ledge pacing
             // One log switch; native logs only melee/grenade input pulses
             // alongside verified action transitions. No fake animation clocks.
             // Optional debug logging is independent of whether Advanced is open.

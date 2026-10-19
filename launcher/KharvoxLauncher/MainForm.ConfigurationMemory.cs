@@ -560,6 +560,12 @@ public sealed partial class MainForm
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
+            if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
+                || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
+                || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
+                || !main.customMotionChainsawKillSpeed.Enabled || !main.customTriggerChainsawThrottle.Enabled
+                || !main.cinematicSpeedSelector.Enabled)
+                throw new InvalidDataException("Paused features must be grey while active features remain selectable.");
             var checks = orderedRows.Select(row => row.Box).ToArray();
             var expectedChecks = new[]
             {
@@ -1054,13 +1060,14 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.customBackOfHandHud.Checked || main.customBackOfHandHud.Enabled)
                 throw new InvalidDataException("Distorted Back of Hand HUD mirror must remain paused.");
-            if (main.ReadCustomModSettingsFromControls().CinematicExitHandoff
+            if (main.customActionExitHandoff.Enabled
+                || main.ReadCustomModSettingsFromControls().CinematicExitHandoff
                 || main.ReadCustomModSettingsFromControls().CinematicExitHandoffDelayMs != 150)
                 throw new InvalidDataException("Action exit must default OFF with the 150ms regular GK test calibration.");
             main.customActionExitHandoff.Checked=true;
-            if (!main.ReadCustomModSettingsFromControls().CinematicExitHandoff)
-                throw new InvalidDataException("Manual early action-exit test toggle was lost.");
-            main.customActionExitHandoff.Checked=false;
+            main.ApplyCustomModDependencies(null);
+            if (main.customActionExitHandoff.Checked || main.customActionExitHandoff.Enabled)
+                throw new InvalidDataException("Paused action exit may not be enabled.");
             // Three action presets, and a read-only Custom status.
             if (main.cinematicSpeedSelector.Items.Count!=4
                 || main.cinematicSpeedSelector.Parent?.Parent is not Control presetPanel
@@ -1070,15 +1077,17 @@ public sealed partial class MainForm
                 || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel)!=1
                 || main.speedAdvancedPanel.ColumnStyles[1].SizeType!=SizeType.Percent)
                 throw new InvalidDataException("Three action presets must remain directly above Advanced.");
-            if (ActionSpeedCatalog.Controllable.Length!=3
-                || main.speedActionChecks.Count!=3 || main.speedActionSliders.Count!=3
+            if (ActionSpeedCatalog.Controllable.Length!=2
+                || main.speedActionChecks.Count!=2 || main.speedActionSliders.Count!=2
+                || main.speedActionChecks.ContainsKey("ledge") || main.speedActionSliders.ContainsKey("ledge")
                 || main.speedActionChecks.ContainsKey("cinematic")
                 || main.speedActionLogTest.Checked
                 || main.speedActionSliders.Values.Any(slider=>slider.TickStyle!=TickStyle.None))
-                throw new InvalidDataException("Scripted cinematics must have no user tick override.");
+                throw new InvalidDataException("Ledges and scripted cinematics must have no user tick override.");
             main.ApplyActionSpeedPreset(0);
             var native=main.ReadCustomModSettingsFromControls();
             if (main.cinematicSpeedSelector.SelectedIndex!=0
+                || native.ActionSpeedProfiles.ContainsKey("ledge")
                 || ActionSpeedCatalog.HasActiveOverrides(native)
                 || native.FastGloryKills || native.FastChainsawKills
                 || native.CinematicKillSpeedLevel!=1)
@@ -1088,7 +1097,7 @@ public sealed partial class MainForm
             if (main.cinematicSpeedSelector.SelectedIndex!=1
                 || !fast.ActionSpeedProfiles.Values.All(p=>p.Enabled&&p.TargetHz==70)
                 || !ActionSpeedCatalog.HasActiveOverrides(fast))
-                throw new InvalidDataException("Fast preset must enable all three 70 Hz actions.");
+                throw new InvalidDataException("Fast preset must enable both Glory Kill/Chainsaw profiles.");
             main.speedAdvanced.Checked=false;
             main.ApplyCustomModDependencies(null);
             var collapsed=main.ReadCustomModSettingsFromControls();
@@ -1109,8 +1118,8 @@ public sealed partial class MainForm
             if (main.cinematicSpeedSelector.SelectedIndex!=2
                 || maximum.ActionSpeedProfiles["glory"].TargetHz!=30
                 || maximum.ActionSpeedProfiles["chainsaw"].TargetHz!=40
-                || maximum.ActionSpeedProfiles["ledge"].TargetHz!=50)
-                throw new InvalidDataException("Maximum preset must use proven 30/40/50 test values.");
+                || maximum.ActionSpeedProfiles.ContainsKey("ledge"))
+                throw new InvalidDataException("Maximum preset must use 30/40 Hz and no ledge override.");
             main.speedActionLogTest.Checked=true;
             if (!main.ReadCustomModSettingsFromControls().ActionSpeedLogTestEnabled)
                 throw new InvalidDataException("Optional action diagnostic selection was lost.");
@@ -1125,8 +1134,7 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Unused launcher options must be editable and retain values.");
 
-            // The SSG persistence mod must stand alone: no Hands, Holsters,
-            // weapon wheel, or VR remapping dependency may be forced.
+            // The paused SSG test cannot cause invisible input delays or force dependencies.
             main.applyingCustomModDependencies = true;
             main.customPersistentSsgReload.Checked = true;
             main.applyingCustomModDependencies = false;
@@ -1134,18 +1142,19 @@ public sealed partial class MainForm
             if (!main.showHands.Enabled || main.showHands.Checked
                 || main.customDynamicShoulderHolster.Checked
                 || main.weaponWheelRemap.Checked
-                || main.ReadCustomModSettingsFromControls().PersistentSuperShotgunReload != true)
+                || main.ReadCustomModSettingsFromControls().PersistentSuperShotgunReload
+                || main.customPersistentSsgReload.Enabled)
                 throw new InvalidDataException(
-                    "Persistent Super Shotgun Reload must work without other VR mods.");
+                    "Paused Super Shotgun Reload must remain disabled.");
             main.applyingCustomModDependencies = true;
             main.customPersistentSsgReload.Checked = false;
             main.customDynamicShoulderHolster.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (main.showHands.Enabled || !main.showHands.Checked
-                || !main.showHands.AccessibleDescription.Contains("Dynamic Quick Holsters"))
+            if (!main.showHands.Enabled || main.showHands.Checked
+                || main.customDynamicShoulderHolster.Checked || main.customDynamicShoulderHolster.Enabled)
                 throw new InvalidDataException(
-                    "Dynamic Quick Holsters must force and lock Enable Hands.");
+                    "Paused Quick Holsters must not force Enable Hands.");
             main.applyingCustomModDependencies = true;
             main.customDynamicShoulderHolster.Checked = false;
             main.calibrateHands.Checked = true;
@@ -1179,7 +1188,7 @@ public sealed partial class MainForm
             main.ApplyActionSpeedPreset(2);
             main.customBoxingGuard.Checked=true;
             main.ApplyCustomModDependencies(null);
-            if (!main.customBoxingGuard.Checked
+            if (main.customBoxingGuard.Checked || main.customBoxingGuard.Enabled
                 || main.gloryKillSlowmo.Value!=10
                 || main.cinematicSpeedSelector.SelectedIndex!=2
                 || main.ReadCustomModSettingsFromControls().FastGloryKills)

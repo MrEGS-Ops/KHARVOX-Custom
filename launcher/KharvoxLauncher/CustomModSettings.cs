@@ -11,9 +11,9 @@ internal sealed class ActionSpeedSetting
 internal static class ActionSpeedCatalog
 {
     internal static readonly string[] Controllable =
-    { "glory", "chainsaw", "ledge" };
-    // Story cinematics always keep native tick timing. Do not expose a
-    // global tick override for their cutscene and execution-tail frames.
+    { "glory", "chainsaw" };
+    // Ledge climb progression and story cinematics must remain DOOM-native.
+    // Stale saved ledge profiles are removed, never migrated as active.
     // Only verified lifecycle actions are editable. Exploratory input probes
     // are read-only and live behind the single Log Test checkbox.
     internal static readonly string[] All = Controllable;
@@ -101,6 +101,31 @@ internal static class CustomModSettingsStore
     internal const int CurrentDevelopmentTestDefaultsRevision = 4;
     private static readonly JavaScriptSerializer Serializer = new();
 
+    // Fail-closed allowlist: only confirmed/currently active experiments run.
+    // A paused mod is disabled even in hand-edited or legacy settings files.
+    // Re-enable alongside MainForm.PausedCustomModControls when verified.
+    internal static void ApplyCurrentAvailability(CustomModSettings value)
+    {
+        value.DisableHud = false;
+        value.DisableWeaponWheel = false;
+        value.GaussChargeSlowMovement = false;
+        value.BackOfHandHud = false;
+        value.BoxingGuard = false;
+        value.DirectionalDash = false;
+        value.RevengeDemon = false;
+        value.DynamicShoulderHolster = false;
+        value.PersistentSuperShotgunReload = false;
+        value.PhysicalGrenadeThrow = false;
+        value.StoryCinematicSkip = false;
+        value.StoryFreeWalk = false;
+        value.StoryCameraFocus = false;
+        value.UninterruptedStory = false;
+        value.CinematicExitHandoff = false;
+        value.HapticOverhaul = false;
+        value.MotionGloryKillSpeed = false;
+        value.PhysicalChainsawGestures = false;
+    }
+
     internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
     {
         if (value.DevelopmentTestDefaultsRevision < 1)
@@ -143,7 +168,7 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
-        value.BackOfHandHud = false; // paused until composite image mirror exists
+        ApplyCurrentAvailability(value);
         return value;
     }
 
@@ -186,6 +211,7 @@ internal static class CustomModSettingsStore
         value.CinematicExitHandoffDelayMs = 150;
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
+        ApplyCurrentAvailability(value);
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -207,8 +233,8 @@ internal static class CustomModSettingsStore
             Directory.CreateDirectory(root);
             var path = Path.Combine(root, "custom-mods.json");
             Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220 }, path);
-            if (!Load(path).PhysicalCrouch || !Load(path).HapticOverhaul || !Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220)
-                throw new InvalidDataException("Valid custom mod option was lost.");
+            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220)
+                throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
             // Old broad/scripted sliders must be dropped, even if saved ON.
             // Advanced is presentation only and may not deactivate presets.
             var profiles=new CustomModSettings { SpeedAdvancedExpanded=false };
@@ -227,8 +253,12 @@ internal static class CustomModSettingsStore
             profiles.ActionSpeedProfiles["cinematic"]=new ActionSpeedSetting{
                 Enabled=true,TargetHz=170
             };
+            profiles.ActionSpeedProfiles["ledge"]=new ActionSpeedSetting{
+                Enabled=true,TargetHz=30
+            };
             ActionSpeedCatalog.Validate(profiles);
-            if(profiles.ActionSpeedProfiles.Count!=3
+            if(profiles.ActionSpeedProfiles.Count!=2
+                || profiles.ActionSpeedProfiles.ContainsKey("ledge")
                 || profiles.ActionSpeedProfiles.ContainsKey("scripted")
                 || profiles.ActionSpeedProfiles.ContainsKey("cinematic")
                 || profiles.ActionSpeedProfiles.ContainsKey("enemy")
@@ -258,13 +288,13 @@ internal static class CustomModSettingsStore
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("Action exit must default to game timing on first launch.");
             first.BackOfHandHud = false;
-            first.CinematicExitHandoff = true; // explicit diagnostic opt-in must persist
+            first.CinematicExitHandoff = true; // paused diagnostic should not persist active
             first.CinematicExitHandoffDelayMs = 160; // retired override ignored
             first.SpeedAdvancedExpanded = true;
             first.CinematicSpeedFineTune = true;
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
-            if (Load(path).BackOfHandHud || !Load(path).CinematicExitHandoff
+            if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
                 || Load(path).CinematicExitHandoffDelayMs != 150
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
@@ -283,8 +313,8 @@ internal static class CustomModSettingsStore
                 throw new InvalidDataException("Old forced early handoff must migrate OFF.");
             migratedExit.CinematicExitHandoff = true;
             Save(migratedExit, oldActionExitPath);
-            if (!Load(oldActionExitPath).CinematicExitHandoff)
-                throw new InvalidDataException("Manual action-exit ON did not persist.");
+            if (Load(oldActionExitPath).CinematicExitHandoff)
+                throw new InvalidDataException("Paused action-exit must remain OFF.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
                 || fresh.CinematicExitHandoffDelayMs != 150

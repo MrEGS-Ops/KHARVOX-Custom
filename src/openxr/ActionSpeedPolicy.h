@@ -44,10 +44,10 @@ constexpr bool acceptIndependentScriptedCinematic(
 }
 constexpr bool validActionSpeedTarget(int hz) { return hz>=30&&hz<=240; }
 constexpr ActionSpeedChoice selectActionSpeed(ActionSpeedCandidates a,ActionSpeedTargets t) {
+    // Ledge progress must always be game-owned, even when native sync flags overlap.
+    if(a.ledgeClimb)return {};
     if(a.chainsawKill&&validActionSpeedTarget(t.chainsaw))return {ActionSpeedKind::Chainsaw,t.chainsaw};
     if(a.syncAttack&&!a.chainsawKill&&validActionSpeedTarget(t.gloryKill))return {ActionSpeedKind::GloryKill,t.gloryKill};
-    if(a.ledgeClimb&&validActionSpeedTarget(t.ledgeClimb))
-        return {ActionSpeedKind::LedgeClimb,t.ledgeClimb};
     // Scripted story scenes keep original DOOM timing unconditionally.
     // The classifier remains available to RS skip diagnostics, but must
     // never create a gameplay engine tick override, even with stale values.

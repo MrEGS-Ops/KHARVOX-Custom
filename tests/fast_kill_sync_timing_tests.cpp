@@ -87,7 +87,9 @@ int main() {
     assert(!shouldApplyImmersiveActionTiming(false,false,false,false,false));
     assert(shouldApplyImmersiveActionTiming(true,true,false,false,false));
     assert(shouldApplyImmersiveActionTiming(true,false,true,false,false));
-    assert(shouldApplyImmersiveActionTiming(true,false,false,true,false));
+    assert(!shouldApplyImmersiveActionTiming(true,false,false,true,false));
+assert(!shouldApplyImmersiveActionTiming(true,true,true,true,true));
+assert(!shouldApplyImmersiveActionTiming(false,false,false,true,true));
     // Explicit action override is allowed to borrow the scoped timing hold.
     assert(shouldApplyImmersiveActionTiming(false,false,false,false,true));
     assert(!shouldApplyImmersiveActionTiming(false,true,false,false,false));
@@ -130,10 +132,10 @@ int main() {
     assert(selectActionSpeed({true,true,false},target).kind
         ==ActionSpeedKind::Chainsaw);
     assert(selectActionSpeed({true,false,false},target).hz==60);
-    assert(selectActionSpeed({false,false,true},target).hz==80);
+    assert(selectActionSpeed({false,false,true},target).hz==0);
     assert(selectActionSpeed({},target).kind==ActionSpeedKind::None);
     assert(selectActionSpeed({true,false,false},{}).hz==0);
-    assert(selectActionSpeed({true,true,true},target).hz==50);
+    assert(selectActionSpeed({true,true,true},target).hz==0);
     // Even a stale nonzero scripted slider must never change story tick Hz.
     assert(selectActionSpeed({false,false,false,true},target).kind
         ==ActionSpeedKind::None);
@@ -143,9 +145,10 @@ int main() {
     // frame; never allow scripted cinematic to steal a kill/ledge target.
     assert(selectActionSpeed({true,false,false,true},target).hz==60);
     assert(selectActionSpeed({false,true,false,true},target).hz==50);
-    assert(selectActionSpeed({false,false,true,true},target).hz==80);
+    assert(selectActionSpeed({false,false,true,true},target).hz==0);
     assert(selectActionSpeed({true,false,false,true},{0,0,0,170}).hz==0);
     assert(selectActionSpeed({false,false,true,true},{0,0,0,170}).hz==0);
+assert(selectActionSpeed({true,false,true,true},target).hz==0);
     assert(selectActionSpeed({false,false,false,true},{0,0,0,241}).hz==0);
 
     return 0;

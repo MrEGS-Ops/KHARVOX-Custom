@@ -94,7 +94,7 @@ public sealed partial class MainForm : Form
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
-    private static readonly string[] ScopedActionKeys = { "glory", "chainsaw", "ledge" };
+    private static readonly string[] ScopedActionKeys = { "glory", "chainsaw" };
     // Three selectable presets plus a read-only custom-profile indicator.
     private readonly ComboBox cinematicSpeedSelector = new()
     {
@@ -550,7 +550,7 @@ public sealed partial class MainForm : Form
         presetChoiceRow.Controls.Add(cinematicSpeedSelector, 0, 0);
         var speedHint = new Label
         {
-            Text="Glory / Chainsaw / Ledge",
+            Text="Glory Kill / Chainsaw",
             Dock=DockStyle.Fill,
             ForeColor=Color.FromArgb(158,159,166),
             Font=new Font("Segoe UI",8f),
@@ -564,16 +564,17 @@ public sealed partial class MainForm : Form
         presetChoiceRow.Controls.Add(speedAdvanced,2,0);
         speedPresetPanel.Controls.Add(presetChoiceRow,0,1);
         statusToolTip.SetToolTip(cinematicSpeedSelector,
-            "Three action presets: Native (no override), Fast (70/70/70 Hz) "
-            +"and Maximum (30/40/50 Hz for Glory/Chainsaw/Ledge). "
+            "Three action presets: Native (no override), Fast (70/70 Hz) "
+            +"and Maximum (30/40 Hz for Glory/Chainsaw). "
             +"Manually editing action sliders shows Custom. "
             +"Scripted cinematics always use DOOM's native tick settings. Restart DOOM.");
         statusToolTip.SetToolTip(speedHint,
-            "Values are scoped to Glory Kill, Chainsaw and Ledge. "
+            "Overrides apply only to Glory Kill and Chainsaw. "
+            +"Ledge climb timing, including upgrades, stays DOOM-native. "
             +"Smaller Hz = faster actions in our current tests; "
             +"this is not the headset render refresh rate.");
         statusToolTip.SetToolTip(speedAdvanced,
-            "Show/hide three action override sliders and optional debug logging. "
+            "Show/hide two action override sliders and optional debug logging. "
             +"Collapsing Advanced does not deactivate an applied speed preset.");
         UpdateCinematicKillSpeedLabel();
         cinematicKillSpeed.ValueChanged += (_, _) =>
@@ -599,16 +600,14 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        // Exactly three editable action overrides. DOOM-native scripted
-        // cinematics cannot be accelerated by this whole-engine tick mod.
+        // Two editable actions only; neither ledges nor scripted scenes may
+        // be accelerated by the engine tick override.
         var actionNames = new Dictionary<string,string> {
-            ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill",
-            ["ledge"]="Ledge climbing"
+            ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill"
         };
         var actionHints = new Dictionary<string,string> {
             ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
-            ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action.",
-            ["ledge"]="Native ledge transition only. Experimental whole-engine tick target."
+            ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action."
         };
         const int actionHeaderHeight=30;
         const int actionRowHeight=38;
@@ -1826,7 +1825,8 @@ public sealed partial class MainForm : Form
 
     private void UpdateActionSpeedLabels()
     {
-        chainsawMotionFullSpeed.Enabled=speedAdvanced.Checked&&customMotionChainsawKillSpeed.Checked;
+        chainsawMotionFullSpeed.Enabled=speedAdvanced.Checked
+            &&(customMotionChainsawKillSpeed.Checked||customTriggerChainsawThrottle.Checked);
         chainsawMotionFullSpeedValue.Text=(chainsawMotionFullSpeed.Value/100f).ToString("F2")+" m/s";
         foreach (string key in ActionSpeedCatalog.Controllable)
         {
@@ -1856,7 +1856,7 @@ public sealed partial class MainForm : Form
                 var key=ScopedActionKeys[i];
                 speedActionChecks[key].Checked=index!=0;
                 int hz=index switch {
-                    1=>70,2=>i==0?30:i==1?40:50,_=>30
+                    1=>70,2=>i==0?30:40,_=>30
                 };
                 speedActionSliders[key].Value=270-hz;
             }
@@ -1873,8 +1873,8 @@ public sealed partial class MainForm : Form
         if(ScopedActionKeys.All(key => speedActionChecks[key].Checked))
         {
             var hz=ScopedActionKeys.Select(key=>270-speedActionSliders[key].Value).ToArray();
-            if(hz.SequenceEqual(new[]{70,70,70}))return 1;
-            if(hz.SequenceEqual(new[]{30,40,50}))return 2;
+            if(hz.SequenceEqual(new[]{70,70}))return 1;
+            if(hz.SequenceEqual(new[]{30,40}))return 2;
         }
         return 3;
     }
@@ -1901,11 +1901,11 @@ public sealed partial class MainForm : Form
         };
         var explanation=selectedIndex switch {
             0=>"DOOM's original action timings. No engine tick override.",
-            1=>"Fast: Glory Kill 70 Hz, Chainsaw 70 Hz, Ledge 70 Hz.",
-            2=>"Maximum: Glory Kill 30 Hz, Chainsaw 40 Hz, Ledge 50 Hz.",
+            1=>"Fast: Glory Kill 70 Hz, Chainsaw 70 Hz.",
+            2=>"Maximum: Glory Kill 30 Hz, Chainsaw 40 Hz.",
             _=>"Custom: manually changed action checkbox or slider."
         };
-        explanation += " Scripted cinematics always remain DOOM native. "
+        explanation += " Ledge climbing and scripted cinematics always remain DOOM native. "
             +"Advanced only shows or hides the sliders; it never disables "
             +"their active settings. Restart DOOM after adjustments.";
         statusToolTip.SetToolTip(cinematicKillSpeedTitle,explanation);
@@ -1960,12 +1960,32 @@ public sealed partial class MainForm : Form
         OptionChanged(sender, e);
     }
 
+    // Keep dormant mods visible but grey; confirm them one at a time later.
+    internal CheckBox[] PausedCustomModControls() => new[]
+    {
+        customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
+        customBackOfHandHud, customBoxingGuard, customDirectionalDash,
+        customRevengeDemon, customDynamicShoulderHolster,
+        customPersistentSsgReload, customPhysicalGrenadeThrow,
+        customStoryCinematicSkip, customStoryFreeWalk, customStoryCameraFocus,
+        customUninterruptedStory, customActionExitHandoff, customHapticOverhaul
+    };
+
     private void ApplyCustomModDependencies(CheckBox? changed)
     {
         if (applyingCustomModDependencies) return;
         applyingCustomModDependencies = true;
         try
         {
+            // Preserve all active inputs; retire dormant features before
+            // dependency resolution so stale checked state cannot steal controls.
+            foreach (var paused in PausedCustomModControls())
+            {
+                paused.Checked = false;
+                paused.Enabled = false;
+                paused.AccessibleDescription =
+                    "Paused: unavailable until confirmed or actively developed.";
+            }
             // Fail closed: the previous native dash physics setter caused
             // void teleportation/death. Keep this experimental control visible
             // but unavailable until a verified safe dash replaces it.
@@ -2072,6 +2092,12 @@ public sealed partial class MainForm : Form
             // R-only dependencies must never disable the child's checkbox.
             // Selecting Hand Selection enables its wheel dependency above.
             customBehindHeadWheelHandSelection.Enabled = false; // merged into main head-wheel mod
+            // Last pass: dependencies may toggle Enabled on other mod controls.
+            foreach (var paused in PausedCustomModControls())
+            {
+                paused.Enabled = false;
+                paused.ForeColor = Color.FromArgb(117,117,122);
+            }
         }
         finally
         {
