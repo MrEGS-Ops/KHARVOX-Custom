@@ -33,6 +33,7 @@
 #include "ActionExitHandoffPolicy.h"
 #include "ChainsawMotionSpeedPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
+#include "ChainsawHapticPreviewPolicy.h"
 #include "../debug/CameraScanner.h"
 #include "../hud/HudGpuDiagnostic.h"
 #include "../hud/HudHook.h"
@@ -332,6 +333,9 @@ struct State {
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{};
     float chainsawTriggerPressure{};
     kharvox::XInputHapticSignal chainsawTriggerHaptic{};
+    kharvox::ChainsawHapticPreviewRequest hapticLabPreview{};
+    std::uint64_t hapticLabPreviewUntil{}, hapticLabPreviewNextPoll{};
+    bool hapticLabPreviewAcknowledged{};
     bool chainsawTriggerSpeedWasActive{};
     int chainsawTriggerLastLoggedHz{240};
     std::uint64_t chainsawTriggerLastLogMs{};
@@ -1133,9 +1137,47 @@ void logHapticError(const std::string&message){
 bool hapticCallApplied(XrResult callResult){
     return callResult==XR_SUCCESS;
 }
+void pollHapticLabPreview(std::uint64_t now){
+    if(!s.running||now<s.hapticLabPreviewNextPoll)return;
+    s.hapticLabPreviewNextPoll=now+60;
+    const auto filename=kharvox::runtimePath(L"logs\\haptic-lab-preview.request");
+    std::ifstream request(std::filesystem::path(filename),std::ios::binary);
+    if(!request)return;
+    std::string line;
+    std::getline(request,line);
+    request.close();
+    DeleteFileW(filename.c_str());
+    FILETIME ft{};
+    GetSystemTimeAsFileTime(&ft);
+    ULARGE_INTEGER stamp{};
+    stamp.LowPart=ft.dwLowDateTime;
+    stamp.HighPart=ft.dwHighDateTime;
+    kharvox::ChainsawHapticPreviewRequest parsed{};
+    if(!kharvox::parseChainsawHapticPreviewRequest(line,stamp.QuadPart,parsed)){
+        log("[HAPTIC-LAB] rejected malformed or stale controller test request");
+        return;
+    }
+    if(parsed.hand==2){
+        s.hapticLabPreviewUntil=0;
+        log("[HAPTIC-LAB] preview cancelled by user");
+        return;
+    }
+    s.hapticLabPreview=parsed;
+    s.hapticLabPreviewUntil=now+6000;
+    s.hapticLabPreviewAcknowledged=false;
+    log("[HAPTIC-LAB] test request accepted: hand="
+        +std::string(parsed.hand==0?"left":"right")
+        +" mode="+std::string(parsed.cutting?"cutting":"idle")
+        +" duration=6000ms; awaiting runtime haptic delivery");
+}
 void updateXInputHaptics(){
     if(!s.session)return;
-    if(s.sessionState!=XR_SESSION_STATE_FOCUSED){
+    const auto now=GetTickCount64();
+    pollHapticLabPreview(now);
+    const bool focused=s.sessionState==XR_SESSION_STATE_FOCUSED;
+    const bool testPreview=now<s.hapticLabPreviewUntil
+        &&s.running&&(focused||s.sessionState==XR_SESSION_STATE_VISIBLE);
+    if(!focused&&!testPreview){
         s.wheelClicks={};
         s.motionWheelState={};
         s.wheelStickHaptics={};
@@ -1146,7 +1188,6 @@ void updateXInputHaptics(){
         return;
     }
 
-    const auto now=GetTickCount64();
     kharvox::PlayerVitalsSample vitalSample{};
     if (s.customMods.hapticOverhaul) {
         std::lock_guard<std::mutex> guard(hapticVitalsMailboxMutex);
@@ -1170,8 +1211,8 @@ void updateXInputHaptics(){
     const auto fanout=kharvox::selectAdditiveHapticFanout(
         packed,nativeSignal,weaponFireFallbackActive);
     KharvoxBhapticsSubmitRumble(
-        kharvox::xinputRumbleLowMotor(fanout.bhapticsRumble),
-        kharvox::xinputRumbleHighMotor(fanout.bhapticsRumble));
+        focused?kharvox::xinputRumbleLowMotor(fanout.bhapticsRumble):0,
+        focused?kharvox::xinputRumbleHighMotor(fanout.bhapticsRumble):0);
 
     if(!s.actionsReady||!s.hapticActionsReady||!s.hapticBindingsSuggested
         ||!s.applyHapticFeedback||!s.stopHapticFeedback)return;
@@ -1181,8 +1222,9 @@ void updateXInputHaptics(){
     // Explicit fire input identifies weapon rumble, unlike XInput's motor
     // channels themselves. One-hand fire targets the configured weapon hand;
     // an acquired two-hand grip deliberately keeps the mirrored pair.
-    const auto nativeDesired=kharvox::routeXInputHapticSignal(
-        fanout.controllerSignal,weaponRumble,s.weaponHandLeft,s.twoHandLatched);
+    const auto nativeDesired=focused?kharvox::routeXInputHapticSignal(
+        fanout.controllerSignal,weaponRumble,s.weaponHandLeft,s.twoHandLatched)
+        :std::array<kharvox::XInputHapticSignal,2>{};
 
     const std::array<XrAction,2> actions{s.leftHaptic,s.rightHaptic};
     for(size_t hand=0;hand<actions.size();++hand){
@@ -1197,10 +1239,20 @@ void updateXInputHaptics(){
             &&(!baseDesired.active
                 ||baseDesired.amplitude<s.chainsawTriggerHaptic.amplitude)
             ?s.chainsawTriggerHaptic:baseDesired;
-        const auto desired=kharvox::mergeDamageImpactHapticSignal(
+        auto desired=focused?kharvox::mergeDamageImpactHapticSignal(
             withChainsaw,damageImpact.amplitude,damageImpact.frequencyHz,
-            damageImpact.active);
-        const bool usingDamage=damageImpact.active
+            damageImpact.active):kharvox::XInputHapticSignal{};
+        // Haptic Lab preview explicitly overrides ONLY the requested physical
+        // controller for six seconds. Other controls, animation/tick timing,
+        // health feedback and bHaptics are not modified by the test.
+        const bool previewHand=testPreview
+            &&hand==static_cast<size_t>(s.hapticLabPreview.hand);
+        if(previewHand){
+            const auto test=kharvox::chainsawHapticPreviewSignal(
+                s.hapticLabPreview,now);
+            desired={test.hapticAmplitude,test.hapticFrequencyHz,true};
+        }
+        const bool usingDamage=!previewHand&&focused&&damageImpact.active
             &&(!withChainsaw.active || withChainsaw.amplitude < damageImpact.amplitude);
         auto&outputState=s.hapticOutputStates[hand];
         const auto command=kharvox::selectXInputHapticCommand(
@@ -1243,6 +1295,16 @@ void updateXInputHaptics(){
                 reinterpret_cast<const XrHapticBaseHeader*>(&vibration));
         }
         if(hapticCallApplied(applyResult)){
+            if(previewHand&&!s.hapticLabPreviewAcknowledged){
+                s.hapticLabPreviewAcknowledged=true;
+                const auto path=kharvox::runtimePath(L"logs\\haptic-lab-preview.ack");
+                std::ofstream ack(std::filesystem::path(path),std::ios::trunc);
+                ack<<"KHARVOX_HAPTIC_ACK_V1 "<<s.hapticLabPreview.id
+                   <<" "<<s.hapticLabPreview.hand<<"\n";
+                log("[HAPTIC-LAB] OpenXR accepted preview apply on "
+                    +std::string(hand==0?"left":"right")
+                    +" controller; headset sensation still needs verification");
+            }
             kharvox::noteXInputHapticApplySucceeded(
                 outputState,desired,now,durationMilliseconds);
             if(!s.firstControllerHapticAppliedLogged){

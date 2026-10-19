@@ -1,9 +1,34 @@
 #include "../src/openxr/ChainsawTriggerThrottlePolicy.h"
+#include "../src/openxr/ChainsawHapticPreviewPolicy.h"
 #include <cmath>
 #include <limits>
 #define CHECK(x) do {if(!(x))return __LINE__;}while(false)
 int main(){
  using kharvox::evaluateChainsawTriggerThrottle;
+ // Haptic preview protocol is data-only; no native gameplay/time/CVar writes.
+ const std::uint64_t when=134203393000000000ull;
+ const std::string uid="abcdef0123456789abcdef0123456789";
+ const std::string prefix="KHARVOX_HAPTIC_PREVIEW_V1 "+
+     std::to_string(when)+" "+uid;
+ kharvox::ChainsawHapticPreviewRequest preview{};
+ const std::string cutTest=prefix+" 0 1 20 90 45 20 35 75";
+ CHECK(kharvox::parseChainsawHapticPreviewRequest(cutTest,when,preview));
+ CHECK(preview.hand==0&&preview.cutting&&preview.config.roughnessPercent==35);
+ const auto simulatedCut=kharvox::chainsawHapticPreviewSignal(preview,28);
+ CHECK(simulatedCut.hapticAmplitude>.1f
+     &&simulatedCut.tickHz==30);
+ const auto stopRequest=prefix+" 2 0 20 90 45 20 35 75";
+ CHECK(kharvox::parseChainsawHapticPreviewRequest(stopRequest,when,preview)
+     &&preview.hand==2);
+ CHECK(!kharvox::parseChainsawHapticPreviewRequest(cutTest,
+     when+110000000ull,preview)); // reject older than 10 seconds
+ CHECK(!kharvox::parseChainsawHapticPreviewRequest(
+     prefix+" 0 1 20 200 45 20 35 75",when,preview)); // malformed level
+ CHECK(!kharvox::parseChainsawHapticPreviewRequest(
+     prefix+" 3 0 20 90 45 20 35 75",when,preview)); // unknown side
+ CHECK(!kharvox::parseChainsawHapticPreviewRequest(
+     cutTest+" garbage",when,preview)); // no extra commands
+
  const auto idle=evaluateChainsawTriggerThrottle(0.f,4.f);
  CHECK(!idle.motionEnabled&&idle.tickHz==240&&idle.hapticAmplitude==.20f);
  const auto noise=evaluateChainsawTriggerThrottle(.09f,5.f);

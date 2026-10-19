@@ -18,12 +18,23 @@ internal sealed class ChainsawHapticLabForm : Form
     private readonly TrackBar[] sliders = new TrackBar[6];
     private readonly Label[] values = new Label[6];
     private bool updating;
+    private readonly System.Windows.Forms.Timer previewAckTimer = new() { Interval = 250 };
+    private readonly Label previewStatus = new()
+    {
+        Dock = DockStyle.Fill, AutoEllipsis = true,
+        ForeColor = Color.FromArgb(190, 191, 198),
+        Font = new Font("Segoe UI", 9f),
+        TextAlign = ContentAlignment.MiddleLeft
+    };
+    private string? activePreviewId;
+    private int activePreviewHand;
+    private int previewPollCount;
 
     internal ChainsawHapticLabForm()
     {
         Text = "KHARVOX — Chainsaw Haptic Lab";
-        ClientSize = new Size(720, 610);
-        MinimumSize = new Size(650, 600);
+        ClientSize = new Size(720, 680);
+        MinimumSize = new Size(650, 650);
         BackColor = Color.FromArgb(25, 25, 28);
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9.5f);
@@ -44,7 +55,7 @@ internal sealed class ChainsawHapticLabForm : Form
 
         var root = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 10,
+            Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 12,
             Padding = new Padding(20, 15, 20, 15),
             BackColor = BackColor
         };
@@ -53,8 +64,10 @@ internal sealed class ChainsawHapticLabForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 47));
         for (int i = 0; i < 6; i++)
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100f / 6f));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 72));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 49));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 74)); // hardware preview controls
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 43)); // acknowledgement
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 62)); // disclaimer
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 49)); // Save and Cancel
         Controls.Add(root);
 
         var heading = new Label
@@ -102,18 +115,132 @@ internal sealed class ChainsawHapticLabForm : Form
             "Strength of the vibration increase as you make cutting strokes. "
             + "This does not change execution speed.");
 
+        // Uncommitted slider values are sent directly to KHARVOX's running
+        // OpenXR session. No game start, settings save or controller remap.
+        var previewPanel = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 2,
+            Margin = new Padding(0, 4, 0, 1),
+            Padding = Padding.Empty
+        };
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 145));
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 153));
+        previewPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 136));
+        previewPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));
+        previewPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 33));
+        var testTitle = new Label
+        {
+            Text = "CONTROLLER TEST", Dock = DockStyle.Fill,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            ForeColor = Color.Gainsboro, TextAlign = ContentAlignment.MiddleLeft
+        };
+        previewPanel.Controls.Add(testTitle, 0, 0);
+        var testMode = new ComboBox
+        {
+            Name = "HapticLabTestMode",
+            AccessibleName = "Haptic preview mode",
+            Dock = DockStyle.Fill, DropDownStyle = ComboBoxStyle.DropDownList
+        };
+        testMode.Items.AddRange(new object[] { "Cutting simulation", "Idle simulation" });
+        testMode.SelectedIndex = 0;
+        previewPanel.Controls.Add(testMode, 1, 0);
+        var testLeft = MakeButton("Test LEFT · 6 s", true);
+        testLeft.Name = "HapticLabTestLeft";
+        testLeft.AccessibleName = "Test left VR controller vibration";
+        testLeft.Dock = DockStyle.Fill;
+        previewPanel.Controls.Add(testLeft, 2, 0);
+        var testRight = MakeButton("Test RIGHT · 6 s", true);
+        testRight.Name = "HapticLabTestRight";
+        testRight.AccessibleName = "Test right VR controller vibration";
+        testRight.Dock = DockStyle.Fill;
+        previewPanel.Controls.Add(testRight, 3, 0);
+        var stopTest = MakeButton("Stop test", false);
+        stopTest.Name = "HapticLabStopTest";
+        stopTest.AccessibleName = "Stop Haptic Lab controller test";
+        stopTest.Dock = DockStyle.Fill;
+        previewPanel.Controls.Add(stopTest, 2, 1);
+        previewPanel.SetColumnSpan(stopTest, 2);
+        root.Controls.Add(previewPanel, 0, 8);
+
+        previewStatus.Text =
+            "Launch DOOM with KHARVOX first. Press Test, then return focus to the headset. "
+            + "OpenXR confirmation appears here.";
+        root.Controls.Add(previewStatus, 0, 9);
+        void SendPreview(int hand)
+        {
+            if (!KharvoxRunner.IsRunning)
+            {
+                previewStatus.Text = "No running KHARVOX DOOM session. Launch the game before testing controllers.";
+                previewStatus.ForeColor = Color.Orange;
+                return;
+            }
+            try
+            {
+                var cutting = testMode.SelectedIndex == 0;
+                activePreviewId = ChainsawHapticPreview.Send(profile, hand, cutting);
+                activePreviewHand = hand;
+                previewPollCount = 0;
+                previewStatus.Text = "Test queued for " + (hand == 0 ? "LEFT" : "RIGHT")
+                    + " controller. Return to your active VR session now (up to 6 seconds).";
+                previewStatus.ForeColor = Color.Gainsboro;
+                previewAckTimer.Start();
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException
+                || ex is ArgumentException)
+            {
+                previewStatus.Text = "Could not send the test: " + ex.Message;
+                previewStatus.ForeColor = Color.Orange;
+            }
+        }
+        testLeft.Click += (_, _) => SendPreview(0);
+        testRight.Click += (_, _) => SendPreview(1);
+        stopTest.Click += (_, _) =>
+        {
+            previewAckTimer.Stop();
+            activePreviewId = null;
+            if (KharvoxRunner.IsRunning)
+            {
+                try { ChainsawHapticPreview.Send(profile, 2, false); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            }
+            previewStatus.Text = "Stop requested. Existing DOOM weapon feedback is unaffected.";
+        };
+        previewAckTimer.Tick += (_, _) =>
+        {
+            if (activePreviewId is null) { previewAckTimer.Stop(); return; }
+            if (!ChainsawHapticPreview.Acknowledged(activePreviewId, activePreviewHand))
+            {
+                if (++previewPollCount < 48) return;
+                previewAckTimer.Stop();
+                activePreviewId = null;
+                previewStatus.ForeColor = Color.Orange;
+                previewStatus.Text =
+                    "No OpenXR acknowledgement. Keep the VR game active/focused and try again; "
+                    + "the runtime may not accept haptics while unfocused.";
+                return;
+            }
+            previewAckTimer.Stop();
+            previewStatus.ForeColor = Color.LightGreen;
+            previewStatus.Text = "OpenXR accepted the " +
+                (activePreviewHand == 0 ? "LEFT" : "RIGHT") +
+                " controller haptic command. Whether you felt it depends on the VR runtime.";
+        };
+        Disposed += (_, _) => { previewAckTimer.Stop(); previewAckTimer.Dispose(); };
+
         var notice = new Label
         {
             Dock = DockStyle.Fill, AutoEllipsis = true,
             ForeColor = Color.FromArgb(184, 185, 191),
             Font = new Font("Segoe UI", 9f),
-            Text = "Changes apply on the NEXT DOOM launch when Chainsaw Trigger Throttle "
-                + "is enabled. Only the chainsaw weapon hand receives this custom haptic. "
-                + "No vibration is sent to a disconnected headset from this window. "
-                + "Hardware may limit pulse frequency and texture.",
+            Text = "TEST uses the unsaved slider values on LEFT or RIGHT controller "
+                + "with KHARVOX DOOM running, without affecting animation speed. "
+                + "SAVE applies calibration to normal chainsaw haptics on the NEXT launch. "
+                + "Controllers and runtimes may differ in pulse fidelity.",
             TextAlign = ContentAlignment.MiddleLeft
         };
-        root.Controls.Add(notice, 0, 8);
+        root.Controls.Add(notice, 0, 10);
 
         var buttons = new FlowLayoutPanel
         {
@@ -126,7 +253,7 @@ internal sealed class ChainsawHapticLabForm : Form
         buttons.Controls.Add(save);
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(reset);
-        root.Controls.Add(buttons, 0, 9);
+        root.Controls.Add(buttons, 0, 11);
 
         preset.SelectedIndexChanged += (_, _) =>
         {

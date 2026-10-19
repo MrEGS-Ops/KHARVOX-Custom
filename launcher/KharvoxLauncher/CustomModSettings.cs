@@ -232,6 +232,7 @@ internal static class CustomModSettingsStore
         {
             Directory.CreateDirectory(root);
             ChainsawHapticProfile.RunHapticProfileSelfTest(root);
+            ChainsawHapticPreview.RunSelfTest(root);
             var path = Path.Combine(root, "custom-mods.json");
             Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220 }, path);
             if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220)
