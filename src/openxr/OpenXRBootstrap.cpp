@@ -32,6 +32,7 @@
 #include "../camera/StoryCameraFocusPolicy.h"
 #include "ActionExitHandoffPolicy.h"
 #include "ChainsawMotionSpeedPolicy.h"
+#include "ChainsawStrokePolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
 #include "../debug/CameraScanner.h"
@@ -330,7 +331,10 @@ struct State {
     XrTime grenadeCyclePulseUntil{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
-    kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{};
+    kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{}; // retained for fallback diagnostics
+    kharvox::ChainsawStrokeState chainsawStroke{};
+    std::uint64_t chainsawStrokeImpactUntil{},chainsawStrokeLastLogMs{};
+    int chainsawStrokeLastLogPercent{-1};
     float chainsawTriggerPressure{};
     kharvox::XInputHapticSignal chainsawTriggerHaptic{};
     kharvox::ChainsawHapticPreviewRequest hapticLabPreview{};
@@ -5700,9 +5704,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             {syncAction,chainsawAction,ledgeAction,scriptedCinematicCandidate},
             actionSpeedTargets())
         :kharvox::ActionSpeedChoice{};
-    // Live chainsaw kill speed: current weapon-hand GRIP velocity, not a
-    // gesture ON/OFF. Stops naturally decelerate back to 200Hz. Only the
-    // established native chainsaw execution lifecycle is eligible.
+    // Replace the old velocity-following/flailing policy with one latched
+    // physical hand stroke. Only confirmed native chainsaw executions receive
+    // any simulation timing override; pre-arm is just positional bookkeeping.
     const bool fastKillsRequested=s.customMods.fastGloryKills
         ||s.customMods.fastChainsawKills;
     // The trigger throttle is its own opt-in mod. If both are checked it
@@ -5714,23 +5718,66 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&actionProfileEligible&&chainsawAction&&!ledgeAction&&!fastKillsRequested;
     const auto& movingHand=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
-    const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked
-        &&movingHand.linearVelocityValid;
-    static const int motionFullSpeedCmSec=[](){
-        char raw[16]{};
-        const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S",raw,sizeof(raw));
-        if(n==0||n>=sizeof(raw))return 180;
+    const bool movingHandTracked=movingHand.valid&&movingHand.positionTracked;
+    // Chainsaw ONLY. These temporary launch-time sliders are not related to
+    // global DOOM tick, headset refresh or cinematic/ledge action profiles.
+    static const int strokeIdleHz=[](){
+        char text[16]{};
+        const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_STROKE_IDLE_HZ",text,sizeof(text));
+        if(n==0||n>=sizeof(text))return 300;
         char* end{};
-        const long parsed=std::strtol(raw,&end,10);
-        return end!=raw&&*end=='\0'&&parsed>=70&&parsed<=300
-            ?static_cast<int>(parsed):180;
+        const long value=std::strtol(text,&end,10);
+        return end!=text&&*end=='\0'&&value>=30&&value<=300
+            ?static_cast<int>(value):300;
     }();
-    const auto motion=kharvox::updateChainsawMotionSpeed(
-        s.chainsawMotionSpeed,motionChainsawActive||triggerChainsawActive,
-        movingHandTracked&&(!triggerChainsawActive
-            ||s.chainsawTriggerPressure>.10f),
-        movingHand.linearVelocity.x,movingHand.linearVelocity.y,
-        movingHand.linearVelocity.z,GetTickCount64(),motionFullSpeedCmSec);
+    static const int strokeDistanceCm=[](){
+        char text[16]{};
+        const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_STROKE_DISTANCE_CM",text,sizeof(text));
+        if(n==0||n>=sizeof(text))return 32;
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        return end!=text&&*end=='\0'&&value>=18&&value<=60
+            ?static_cast<int>(value):32;
+    }();
+    // Record start position WHEN TRIGGER FIRST PRESSED, before the game
+    // announces a native execution. The initial stroke chooses one of four
+    // directional zones; each zone reaches max cutting speed in one traverse.
+    // Lost tracking freezes progress; no camera/damage/script modifications.
+    const bool strokeFeatureEnabled=s.customMods.motionChainsawKillSpeed
+        ||s.customMods.chainsawTriggerThrottle;
+    const bool strokeAvailable=strokeFeatureEnabled
+        &&(KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw||chainsawAction)
+        &&!ledgeAction&&!bossAction&&KharvoxCameraWorldActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
+        &&!KharvoxHudFullscreenMenuActive()
+        &&s.sessionState==XR_SESSION_STATE_FOCUSED;
+    const auto stroke=kharvox::updateChainsawStroke(
+        s.chainsawStroke,strokeAvailable,s.chainsawTriggerPressure>.55f,
+        movingHandTracked,movingHand.position.x,movingHand.position.y,
+        movingHand.position.z,chainsawAction,strokeIdleHz,strokeDistanceCm);
+    const auto strokeNow=GetTickCount64();
+    if(stroke.started)
+        log("[CHAINSAW-STROKE] trigger origin captured; need 4.5cm deliberate "
+            "movement to select LEFT/RIGHT/UP/DOWN; distance="+std::to_string(strokeDistanceCm)
+            +"cm idle="+std::to_string(strokeIdleHz)+"Hz");
+    if(stroke.directionLocked
+        &&(s.chainsawStrokeLastLogPercent<0||strokeNow-s.chainsawStrokeLastLogMs>=140)
+        &&(s.chainsawStrokeLastLogPercent<0
+            ||std::abs(static_cast<int>(stroke.progress*100)
+                -s.chainsawStrokeLastLogPercent)>=10
+            ||(stroke.completed&&s.chainsawStrokeLastLogPercent<100))){
+        log("[CHAINSAW-STROKE] zone="+std::string(kharvox::chainsawStrokeZoneName(stroke.zone))
+            +" progress="+std::to_string(static_cast<int>(stroke.progress*100))
+            +"% target="+std::to_string(stroke.targetHz)+"Hz"
+            +" fullStroke="+(stroke.completed?"YES":"no")
+            +" nativeExecution="+(chainsawAction?"yes":"no"));
+        s.chainsawStrokeLastLogPercent=static_cast<int>(stroke.progress*100);
+        s.chainsawStrokeLastLogMs=strokeNow;
+    }else if(!stroke.armed)s.chainsawStrokeLastLogPercent=-1;
+    // A physical change of direction within the same stroke doesn't erase
+    // previous progress. Quarter crossings deliver short chopping hits.
+    if(stroke.impact&&chainsawAction)s.chainsawStrokeImpactUntil=strokeNow+95;
+    if(!stroke.armed)s.chainsawStrokeImpactUntil=0;
     // The Haptic Lab file is read by the launcher and sanitized before
     // dispatch. Parse process-local numbers once; malformed external env
     // values fall back safely. This changes ONLY chainsaw vibration.
@@ -5753,62 +5800,42 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         config.motionSensitivityPercent=read("KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT",75,0,100);
         return config;
     }();
+    const float virtualStrokeSpeed=1.8f*stroke.progress;
     const auto throttle=kharvox::evaluateChainsawTriggerThrottle(
-        s.chainsawTriggerPressure,motion.filteredMetersPerSecond,
-        motionFullSpeedCmSec/100.f,hapticConfig);
+        s.chainsawTriggerPressure,virtualStrokeSpeed,
+        1.8f,hapticConfig);
     // Vibration is useful with the chainsaw equipped even before contacting
     // an enemy; tick-Hz changes remain strictly scoped to a native execution.
     const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
-    const bool chainsawHapticEligible=s.customMods.chainsawTriggerThrottle
+    const bool chainsawHapticEligible=strokeFeatureEnabled
         &&!ledgeAction&&(chainsawEquipped||chainsawAction)
         &&KharvoxCameraWorldActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
         &&!KharvoxCameraBossSequenceActive();
     if(chainsawHapticEligible){
-        const auto textured=kharvox::textureChainsawTriggerHaptics(
-            throttle,GetTickCount64(),hapticConfig);
+        // Motion-only mode also gets cutting vibration now. The trigger mode
+        // retains analogue intensity, but movement comes from stroke progress.
+        const float triggerPressure=s.customMods.chainsawTriggerThrottle
+            ?s.chainsawTriggerPressure:(stroke.armed?1.f:0.f);
+        const auto base=kharvox::evaluateChainsawTriggerThrottle(
+            triggerPressure,virtualStrokeSpeed,1.8f,hapticConfig);
+        auto textured=kharvox::textureChainsawTriggerHaptics(
+            base,GetTickCount64(),hapticConfig);
+        if(chainsawAction&&stroke.armed&&strokeNow<s.chainsawStrokeImpactUntil){
+            // Sharp full-strength chop. The OpenXR controller/runtime remains
+            // responsible for hardware limits. Only weapon hand, never all.
+            textured.hapticAmplitude=1.f;
+            textured.hapticFrequencyHz=
+                (s.chainsawStroke.impactIndex%2==0)?95.f:185.f;
+        }
         s.chainsawTriggerHaptic={
             textured.hapticAmplitude,textured.hapticFrequencyHz,true};
     }else s.chainsawTriggerHaptic={};
-    const auto logTick=GetTickCount64();
-    if(triggerChainsawActive
-        &&(!s.chainsawTriggerSpeedWasActive
-            ||(logTick-s.chainsawTriggerLastLogMs>=350
-                &&std::abs(throttle.tickHz-s.chainsawTriggerLastLoggedHz)>=15))){
-        log("[CHAINSAW-TRIGGER] pressure="+std::to_string(s.chainsawTriggerPressure)
-            +" handMetersPerSec="+std::to_string(motion.filteredMetersPerSecond)
-            +" tickHz="+std::to_string(throttle.tickHz)
-            +" handTracked="+std::to_string(movingHandTracked?1:0));
-        s.chainsawTriggerLastLoggedHz=throttle.tickHz;
-        s.chainsawTriggerLastLogMs=logTick;
-    }else if(s.chainsawTriggerSpeedWasActive&&!triggerChainsawActive)
-        log("[CHAINSAW-TRIGGER] kill finished; game-native action timing restored");
     s.chainsawTriggerSpeedWasActive=triggerChainsawActive;
-    if(motion.started){
-        s.chainsawMotionLastLoggedHz=motion.targetHz;
-        s.chainsawMotionLastLogMs=GetTickCount64();
-        log("[CHAINSAW-MOTION-HZ] confirmed kill: live hand movement enabled, "
-            "stationary=200Hz fastest=30Hz (lower Hz = faster animation); "
-            "weaponHand="+std::string(s.weaponHandLeft?"left":"right")
-            +" fullSpeedCmSec="+std::to_string(motionFullSpeedCmSec));
-    }else if(motionChainsawActive){
-        const auto now=GetTickCount64();
-        if(now-s.chainsawMotionLastLogMs>=250
-            &&std::abs(motion.targetHz-s.chainsawMotionLastLoggedHz)>=12){
-            log("[CHAINSAW-MOTION-HZ] handSpeed="
-                +std::to_string(motion.filteredMetersPerSecond)
-                +"m/s effectiveTarget="+std::to_string(motion.targetHz)
-                +"Hz tracking="+std::to_string(movingHandTracked?1:0));
-            s.chainsawMotionLastLoggedHz=motion.targetHz;
-            s.chainsawMotionLastLogMs=now;
-        }
-    }
-    const auto effectiveSelectedAction=triggerChainsawActive
-        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,throttle.tickHz}
-        :motionChainsawActive
-            ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,motion.targetHz}
-            :selectedAction;
+    const auto effectiveSelectedAction=(triggerChainsawActive||motionChainsawActive)
+        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,stroke.targetHz}
+        :selectedAction;
     // No input/control remapping changes here. Adaptive-tick hold only for
     // Glory Kills and Chainsaw executions; ledge engine timing is untouchable.
     const auto activeAction=fastKillsRequested||ledgeAction

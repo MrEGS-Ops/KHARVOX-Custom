@@ -90,7 +90,7 @@ internal sealed class ChainsawHapticLabForm : Form
         }, 0, 0);
         preset.Items.AddRange(new object[]
         {
-            "Heavy Chainsaw", "Diesel Idle", "Demon Shredder", "Jackhammer", "Custom"
+            "Heavy Chainsaw", "Diesel Idle", "Demon Shredder", "Jackhammer", "Brutal Chop", "Custom"
         });
         presetRow.Controls.Add(preset, 1, 0);
         root.Controls.Add(presetRow, 0, 1);

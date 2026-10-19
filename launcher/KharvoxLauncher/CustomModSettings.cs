@@ -87,7 +87,9 @@ internal sealed class CustomModSettings
     public bool PhysicalChainsawGestures { get; set; }
     public bool ChainsawTriggerThrottle { get; set; } // Separate experimental native trigger + hand-motion chainsaw throttle
     public bool MotionChainsawKillSpeed { get; set; } // opt-in live native tick target, separate from retired timescale gestures
-    public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // 0.7-3.0 m/s adjustable
+    public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // deprecated v1 velocity calibration, retained for old JSON
+    public int ChainsawStrokeDistanceCm { get; set; } = 32; // one full directional cut 18–60 cm
+    public int ChainsawStrokeIdleHz { get; set; } = 300; // experimental: 300 slowest, 30 fastest; chainsaw ONLY
     public bool HapticOverhaul { get; set; }
 
     public bool SupervisorRequired => RevengeDemon;
@@ -167,6 +169,8 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
         ActionSpeedCatalog.Validate(value);
+        value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
+        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         ApplyCurrentAvailability(value);
         return value;
@@ -186,6 +190,8 @@ internal static class CustomModSettingsStore
                 throw new InvalidDataException("Invalid custom-mod settings schema.");
             value.CinematicKillSpeedLevel = Math.Max(1, Math.Min(5, value.CinematicKillSpeedLevel));
             value.CinematicSpeedFineTuneHz = Math.Max(30, Math.Min(240, value.CinematicSpeedFineTuneHz));
+            value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
+            value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
             value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
             return ApplyDevelopmentTestDefaults(value);
         }
@@ -212,6 +218,8 @@ internal static class CustomModSettingsStore
         value.CinematicSpeedFineTune = value.SpeedAdvancedExpanded;
         ActionSpeedCatalog.Validate(value);
         ApplyCurrentAvailability(value);
+        value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
+        value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(300,value.ChainsawStrokeIdleHz));
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -234,8 +242,9 @@ internal static class CustomModSettingsStore
             ChainsawHapticProfile.RunHapticProfileSelfTest(root);
             ChainsawHapticPreview.RunSelfTest(root);
             var path = Path.Combine(root, "custom-mods.json");
-            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220 }, path);
-            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220)
+            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220, ChainsawStrokeDistanceCm = 42, ChainsawStrokeIdleHz = 285 }, path);
+            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220
+                || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
             // Old broad/scripted sliders must be dropped, even if saved ON.
             // Advanced is presentation only and may not deactivate presets.

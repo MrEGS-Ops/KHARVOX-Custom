@@ -89,8 +89,12 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
     private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Chainsaw Trigger Throttle (Experimental)", false);
     private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Motion-Controlled Chainsaw Kill Speed (Test)", false);
-    private readonly TrackBar chainsawMotionFullSpeed = MakeSlider(70,300,180,10,5);
-    private readonly Label chainsawMotionFullSpeedValue = MakeSliderValueLabel();
+    // Temporary, chainsaw-only one-stroke calibration; unrelated action speed
+    // sliders remain at 30–240Hz and ledge progression stays DOOM native.
+    private readonly TrackBar chainsawStrokeDistance = MakeSlider(18,60,32,2,1);
+    private readonly Label chainsawStrokeDistanceValue = MakeSliderValueLabel();
+    private readonly TrackBar chainsawStrokeIdleHz = MakeSlider(30,300,30,10,1);
+    private readonly Label chainsawStrokeIdleHzValue = MakeSliderValueLabel();
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
@@ -441,8 +445,8 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customTriggerChainsawThrottle, "EXPERIMENTAL: Uses the weapon-hand analogue trigger as an independent chainsaw throttle. Release = slow 240 Hz idle, hand movement cannot accelerate the action; pull trigger to rev, then moving your hand faster accelerates a confirmed chainsaw execution toward 30 Hz. Native haptic idle and rough cutting pulses on the weapon hand. Inverse action Hz: lower means faster animation. OFF by default. Overrides the separate Motion-Controlled Chainsaw Kill Speed setting during a confirmed chainsaw kill when both are checked. Hardware vibration texture and game feel require headset verification."),
-            (customMotionChainsawKillSpeed, "EXPERIMENTAL: During a confirmed chainsaw kill, tracked weapon-hand motion dynamically accelerates the existing action tick target. Starts at 200 Hz while still; as the hand moves faster, target decreases toward 30 Hz (lower engine Hz = faster animation). When motion stops, returns smoothly to 200 Hz. Uses live controller velocity, not the retired chainsaw-timescale gesture. Set the hand speed required to reach 30 Hz under Sync Action Speed > Advanced. Overrides the static Chainsaw kill Hz slider while enabled. Other actions and camera are untouched. OFF by default."),
+            (customTriggerChainsawThrottle, "EXPERIMENTAL: Hold the analogue trigger to capture a four-zone chainsaw cutting stroke. A deliberate LEFT→RIGHT, RIGHT→LEFT, UP→DOWN or DOWN→UP traverse moves the execution tick target from your Chainsaw Idle Hz to 30 Hz. Hand movement is positional, not a repeated-velocity wiggle. Haptic Lab controls heavy idle/cutting vibration and rough milestone impacts. When both chainsaw motion mods are selected, this trigger-specific mode takes priority. Native DOOM must still finish the animation. OFF by default."),
+            (customMotionChainsawKillSpeed, "ONE-STROKE TEST: Hold the chainsaw trigger and make ONE deliberate horizontal or vertical stroke. The first 4.5 cm of travel identifies LEFT/RIGHT/UP/DOWN start; full stroke length finishes the speed ramp (no controller flailing required). Progress cannot reverse when you pause. Temporary stroke distance and 300–30 Hz idle calibration are under Sync Action Speed > Advanced. Native DOOM controls the actual execution finish; KHARVOX never forces it. OFF by default."),
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
             (customUninterruptedStory, "AUTOMATIC NONCOMBAT STORY HOLD TEST, DEFAULT OFF. Detects independent story sequences; after a 900ms interaction lead-in it attempts only validated horizontal movement-inhibit release when you move the left stick. NO RS click required. Audio/dialogue, game script clocks, player physics, door scripting, weapons, tracking and objectives are NOT forcibly advanced. Logs the actual movement lock and player physics-origin movement to distinguish input inhibition from animation anchors. Fails closed if native player data or baseline is unknown; stops on scene exit, execution, boss, menu or after 45 seconds. It supersedes both unsuccessful RS skip/free-walk experiments while selected. May still not allow walking if game scripts own the physics anchor; back up your save for testing."),
@@ -684,44 +688,59 @@ public sealed partial class MainForm : Form
             };
         }
         foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
-        int motionRow=speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionRowHeight));
-        var motionLabel=new Label {
-            Text="Chainsaw hand speed",
-            Dock=DockStyle.Fill,AutoEllipsis=true,
-            TextAlign=ContentAlignment.MiddleLeft,
-            ForeColor=Color.WhiteSmoke,
-            Font=new Font("Segoe UI",8.4f),
-            Margin=new Padding(6,2,1,1)
-        };
-        speedAdvancedPanel.Controls.Add(motionLabel,0,motionRow);
-        chainsawMotionFullSpeed.AutoSize=false;
-        chainsawMotionFullSpeed.Dock=DockStyle.Fill;
-        chainsawMotionFullSpeed.TickStyle=TickStyle.None;
-        chainsawMotionFullSpeed.Margin=new Padding(5,4,5,3);
-        chainsawMotionFullSpeed.Enabled=false;
-        speedAdvancedPanel.Controls.Add(chainsawMotionFullSpeed,1,motionRow);
-        chainsawMotionFullSpeedValue.Dock=DockStyle.Fill;
-        chainsawMotionFullSpeedValue.TextAlign=ContentAlignment.MiddleLeft;
-        chainsawMotionFullSpeedValue.AutoEllipsis=true;
-        speedAdvancedPanel.Controls.Add(chainsawMotionFullSpeedValue,2,motionRow);
-        const string motionSpeedTip="Full-speed threshold: move your equipped chainsaw hand at this many m/s to reach 30 Hz. Still hand = 200 Hz; slower/faster strokes interpolate proportionally (LOWER engine Hz means faster animation). Slider LEFT = more sensitive, RIGHT = less sensitive. A live chainsaw execution is required; this does not change camera, damage or other actions.";
-        statusToolTip.SetToolTip(motionLabel,motionSpeedTip);
-        statusToolTip.SetToolTip(chainsawMotionFullSpeed,motionSpeedTip);
-        statusToolTip.SetToolTip(chainsawMotionFullSpeedValue,motionSpeedTip);
-        chainsawMotionFullSpeed.ValueChanged+=(_,_)=>{
+        // Both experimental chainsaw modes use the same four-zone stroke
+        // tracker. These sliders never alter other weapons, ledges or GK speed.
+        void AddChainsawCalibrationRow(string name, TrackBar bar, Label value,
+            string tip)
+        {
+            int row=speedAdvancedPanel.RowCount++;
+            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionRowHeight));
+            var label=new Label {
+                Text=name,Dock=DockStyle.Fill,AutoEllipsis=true,
+                TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.WhiteSmoke,
+                Font=new Font("Segoe UI",8.4f),Margin=new Padding(6,2,1,1)
+            };
+            speedAdvancedPanel.Controls.Add(label,0,row);
+            bar.AutoSize=false;bar.Dock=DockStyle.Fill;
+            bar.TickStyle=TickStyle.None;bar.Margin=new Padding(5,4,5,3);
+            bar.Enabled=false;
+            speedAdvancedPanel.Controls.Add(bar,1,row);
+            value.Dock=DockStyle.Fill;value.TextAlign=ContentAlignment.MiddleLeft;
+            value.AutoEllipsis=true;
+            speedAdvancedPanel.Controls.Add(value,2,row);
+            statusToolTip.SetToolTip(label,tip);
+            statusToolTip.SetToolTip(bar,tip);
+            statusToolTip.SetToolTip(value,tip);
+            bar.AccessibleDescription=tip;
+            bar.ValueChanged+=(_,_)=>{
+                if(restoringConfiguration||applyingCustomModDependencies)return;
+                UpdateActionSpeedLabels();
+            };
+            void Commit(){
+                if(restoringConfiguration||applyingCustomModDependencies)return;
+                SaveCustomModSettings();
+                OptionChanged(bar,EventArgs.Empty);
+            }
+            bar.MouseUp+=(_,_)=>Commit();
+            bar.KeyUp+=(_,_)=>Commit();
+            bar.MouseWheel+=(_,_)=>Commit();
+            bar.Leave+=(_,_)=>Commit();
+        }
+        AddChainsawCalibrationRow("Stroke travel",chainsawStrokeDistance,
+            chainsawStrokeDistanceValue,
+            "ONE complete left/right or up/down cutting stroke. Set the travel from "
+            +"the trigger-captured start to the opposite zone (18–60 cm). "
+            +"Tracking displacement, not hand velocity. Lower = shorter stroke.");
+        AddChainsawCalibrationRow("Chainsaw idle Hz",chainsawStrokeIdleHz,
+            chainsawStrokeIdleHzValue,
+            "TEMPORARY CHAINSAW ONLY. LEFT = 300 Hz, SLOWER cut at rest; "
+            +"RIGHT = 30 Hz, faster. Movement progress always ramps toward 30 Hz. "
+            +"This is game engine tick pacing, NOT Quest headset Hz or vibration Hz.");
+        customMotionChainsawKillSpeed.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateActionSpeedLabels();
         };
-        void CommitChainsawMotion(){
-            if(restoringConfiguration||applyingCustomModDependencies)return;
-            SaveCustomModSettings();
-            OptionChanged(chainsawMotionFullSpeed,EventArgs.Empty);
-        }
-        chainsawMotionFullSpeed.MouseUp+=(_,_)=>CommitChainsawMotion();
-        chainsawMotionFullSpeed.KeyUp+=(_,_)=>CommitChainsawMotion();
-        chainsawMotionFullSpeed.Leave+=(_,_)=>CommitChainsawMotion();
-        customMotionChainsawKillSpeed.CheckedChanged+=(_,_)=>{
+        customTriggerChainsawThrottle.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateActionSpeedLabels();
         };
@@ -742,7 +761,7 @@ public sealed partial class MainForm : Form
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
         speedAdvancedHeight=actionHeaderHeight
-            +(ActionSpeedCatalog.Controllable.Length+1)*actionRowHeight+actionFooterHeight;
+            +(ActionSpeedCatalog.Controllable.Length+2)*actionRowHeight+actionFooterHeight;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         speedAdvanced.CheckedChanged += (_, _) =>
         {
@@ -1825,9 +1844,12 @@ public sealed partial class MainForm : Form
 
     private void UpdateActionSpeedLabels()
     {
-        chainsawMotionFullSpeed.Enabled=speedAdvanced.Checked
+        var strokeControls=speedAdvanced.Checked
             &&(customMotionChainsawKillSpeed.Checked||customTriggerChainsawThrottle.Checked);
-        chainsawMotionFullSpeedValue.Text=(chainsawMotionFullSpeed.Value/100f).ToString("F2")+" m/s";
+        chainsawStrokeDistance.Enabled=strokeControls;
+        chainsawStrokeIdleHz.Enabled=strokeControls;
+        chainsawStrokeDistanceValue.Text=chainsawStrokeDistance.Value+" cm";
+        chainsawStrokeIdleHzValue.Text=(330-chainsawStrokeIdleHz.Value)+" Hz";
         foreach (string key in ActionSpeedCatalog.Controllable)
         {
             if (!speedActionChecks.TryGetValue(key,out var check)
@@ -2134,7 +2156,8 @@ public sealed partial class MainForm : Form
         PhysicalChainsawGestures = false,
         ChainsawTriggerThrottle = customTriggerChainsawThrottle.Checked,
         MotionChainsawKillSpeed = customMotionChainsawKillSpeed.Checked,
-        ChainsawMotionFullSpeedCmPerSec = chainsawMotionFullSpeed.Value,
+        ChainsawStrokeDistanceCm = chainsawStrokeDistance.Value,
+        ChainsawStrokeIdleHz = 330-chainsawStrokeIdleHz.Value,
         // Existing native flags remain as the runtime contract, now owned
         // by the single Full speed choice rather than draggable mod checkboxes.
         FastGloryKills = false,
@@ -2200,7 +2223,8 @@ public sealed partial class MainForm : Form
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
             customTriggerChainsawThrottle.Checked = mods.ChainsawTriggerThrottle;
             customMotionChainsawKillSpeed.Checked = mods.MotionChainsawKillSpeed;
-            chainsawMotionFullSpeed.Value = Math.Max(70,Math.Min(300,mods.ChainsawMotionFullSpeedCmPerSec));
+            chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
+            chainsawStrokeIdleHz.Value=330-Math.Max(30,Math.Min(300,mods.ChainsawStrokeIdleHz));
             // Legacy shared engine-speed presets have been retired. Native
             // between actions is the unambiguous default for the new menu.
             cinematicFullSpeedMode=false;

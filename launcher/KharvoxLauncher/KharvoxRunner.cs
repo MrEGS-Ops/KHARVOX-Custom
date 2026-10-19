@@ -646,8 +646,13 @@ internal static class KharvoxRunner
                 chainsawHaptics.RoughnessPercent.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT"] =
                 chainsawHaptics.MotionSensitivityPercent.ToString(Invariant);
-            psi.EnvironmentVariables["KHARVOX_CHAINSAW_MOTION_FULL_SPEED_CM_S"] =
-                Math.Max(70,Math.Min(300,customMods.ChainsawMotionFullSpeedCmPerSec)).ToString(Invariant);
+            // Temporary chainsaw-only one-stroke calibration. 300 engine Hz
+            // slows idle execution; crossing all four directional zones ramps
+            // down toward 30 Hz. Never forwarded to other action types.
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_DISTANCE_CM"] =
+                Math.Max(18,Math.Min(60,customMods.ChainsawStrokeDistanceCm)).ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] =
+                Math.Max(30,Math.Min(300,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";

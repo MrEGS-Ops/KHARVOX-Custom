@@ -1,10 +1,63 @@
 #include "../src/openxr/ChainsawTriggerThrottlePolicy.h"
+#include "../src/openxr/ChainsawStrokePolicy.h"
 #include "../src/openxr/ChainsawHapticPreviewPolicy.h"
 #include <cmath>
 #include <limits>
 #define CHECK(x) do {if(!(x))return __LINE__;}while(false)
 int main(){
  using kharvox::evaluateChainsawTriggerThrottle;
+ // A SINGLE 32cm pass must reach full speed. Returning or pausing must not
+ // undo progress or demand more arm-waving. All four zones behave symmetrically.
+ auto checkStroke=[](float endX,float endY,kharvox::ChainsawStrokeZone want){
+    kharvox::ChainsawStrokeState st{};
+    const auto origin=kharvox::updateChainsawStroke(st,true,true,true,
+        0.f,0.f,0.f,false,300,32);
+    CHECK(origin.armed&&origin.started&&origin.progress==0.f
+        &&origin.targetHz==300);
+    auto jitter=kharvox::updateChainsawStroke(st,true,true,true,
+        endX*.04f,endY*.04f,0.f,false,300,32);
+    CHECK(!jitter.directionLocked&&jitter.targetHz==300);
+    auto middle=kharvox::updateChainsawStroke(st,true,true,true,
+        endX*.50f,endY*.50f,0.f,true,300,32);
+    CHECK(middle.directionLocked&&middle.zone==want
+        &&middle.targetHz>30&&middle.targetHz<300
+        &&middle.progress>=.49f&&middle.progress<=.51f);
+    auto paused=kharvox::updateChainsawStroke(st,true,true,false,
+        0.f,0.f,0.f,true,300,32);
+    CHECK(paused.progress==middle.progress
+        &&paused.targetHz==middle.targetHz);
+    auto back=kharvox::updateChainsawStroke(st,true,true,true,
+        endX*.25f,endY*.25f,0.f,true,300,32);
+    CHECK(back.progress==middle.progress);
+    auto finished=kharvox::updateChainsawStroke(st,true,true,true,
+        endX,endY,0.f,true,300,32);
+    CHECK(finished.completed&&finished.progress==1.f
+        &&finished.targetHz==30&&finished.impact);
+    auto held=kharvox::updateChainsawStroke(st,true,true,true,
+        0.f,0.f,0.f,true,300,32);
+    CHECK(held.completed&&held.targetHz==30);
+    auto exit=kharvox::updateChainsawStroke(st,true,true,true,
+        0.f,0.f,0.f,false,300,32);
+    CHECK(!exit.armed&&exit.targetHz==300);
+    return 0;
+ };
+ CHECK(checkStroke(.32f,0.f,kharvox::ChainsawStrokeZone::Left)==0);
+ CHECK(checkStroke(-.32f,0.f,kharvox::ChainsawStrokeZone::Right)==0);
+ CHECK(checkStroke(0.f,.32f,kharvox::ChainsawStrokeZone::Down)==0);
+ CHECK(checkStroke(0.f,-.32f,kharvox::ChainsawStrokeZone::Up)==0);
+ kharvox::ChainsawStrokeState stationary{};
+ const auto inactive=kharvox::updateChainsawStroke(stationary,false,true,true,
+     .1f,.2f,0.f,false,300,32);
+ CHECK(!inactive.armed&&inactive.targetHz==300);
+ const auto waiting=kharvox::updateChainsawStroke(stationary,true,false,true,
+     .1f,.2f,0.f,false,300,32);
+ CHECK(!waiting.armed&&waiting.progress==0.f);
+ // Idle slider clamps 30..300 independent of GK/cinematic action targets.
+ CHECK(kharvox::updateChainsawStroke(stationary,true,true,true,
+     0.f,0.f,0.f,false,999,32).targetHz==300);
+ CHECK(kharvox::updateChainsawStroke(stationary,true,true,true,
+     0.f,0.f,0.f,false,30,32).targetHz==30);
+
  // Haptic preview protocol is data-only; no native gameplay/time/CVar writes.
  const std::uint64_t when=134203393000000000ull;
  const std::string uid="abcdef0123456789abcdef0123456789";

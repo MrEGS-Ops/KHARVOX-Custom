@@ -52,6 +52,15 @@ internal sealed class ChainsawHapticProfile
                 p = new ChainsawHapticProfile { Name = name, IdlePercent = 15, CuttingPercent = 100, PulseRate = 65, PulseDurationMs = 15, RoughnessPercent = 75, MotionSensitivityPercent = 95 }; break;
             case "Jackhammer":
                 p = new ChainsawHapticProfile { Name = name, IdlePercent = 10, CuttingPercent = 95, PulseRate = 35, PulseDurationMs = 25, RoughnessPercent = 55, MotionSensitivityPercent = 90 }; break;
+            case "Brutal Chop":
+                // Audible-in-the-hand, not a guarantee of physical force:
+                // near-maximum cutting output, alternating chunky gaps,
+                // 12 pulses per second to avoid invisible high-rate aliasing.
+                p = new ChainsawHapticProfile {
+                    Name=name,IdlePercent=28,CuttingPercent=100,
+                    PulseRate=12,PulseDurationMs=32,RoughnessPercent=100,
+                    MotionSensitivityPercent=100,MotionSmoothingMs=18,ReleaseMs=42
+                }; break;
             default:
                 p = new ChainsawHapticProfile(); break;
         }
@@ -104,9 +113,13 @@ internal sealed class ChainsawHapticProfile
         if (restored.Name != "Demon Shredder" || restored.IdlePercent != 22
             || restored.RoughnessPercent != 83 || restored.MotionSensitivityPercent != 94)
             throw new InvalidDataException("Haptic Lab failed to persist calibration.");
-        foreach (var preset in new[] {"Heavy Chainsaw","Diesel Idle","Demon Shredder","Jackhammer"})
+        foreach (var preset in new[] {"Heavy Chainsaw","Diesel Idle","Demon Shredder","Jackhammer","Brutal Chop"})
             if (Preset(preset).IdlePercent < 0 || Preset(preset).CuttingPercent > 100)
                 throw new InvalidDataException("Haptic Lab preset out of bounds.");
+        var brutal=Preset("Brutal Chop");
+        if(brutal.CuttingPercent!=100||brutal.RoughnessPercent!=100
+            ||brutal.PulseRate!=12)
+            throw new InvalidDataException("Brutal Chop haptic preset changed.");
         var legacy = new ChainsawHapticProfile { PulseRate = 200, PulseDurationMs = -5 };
         legacy.Validate();
         if (legacy.PulseRate != 100 || legacy.PulseDurationMs != 5)
