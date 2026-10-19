@@ -26,6 +26,13 @@ The CSV contains synchronized time series with engine-provided renderer values,
 source freshness, hand/oval/chord state, native-action/sync classification,
 XR frame+period, headset translation and requested game timing.
 
+**Cinematic coverage:** the diagnostic temporarily broadens READ-ONLY capture
+at the already-verified weapon-render and weapon-prop callbacks when the
+chainsaw is the selected weapon and a native world/cinematic scene is active.
+This is cache publication only; normal gameplay-only VR pose modifications
+and the render submission path remain exactly as before. Missing samples are
+explicitly marked invalid rather than fabricated.
+
 **Bounds:** one baseline sample every 200 ms, up to 120 baseline samples;
 up to 1200 samples per kill at >=25 ms intervals, maximum 12 native kills.
 Events are collected immediately even between periodic samples. The file

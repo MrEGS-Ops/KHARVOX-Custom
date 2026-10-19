@@ -2005,13 +2005,34 @@ bool installUpdateHandsTransformHook(unsigned char* image) {
     return true;
 }
 
+// Diagnostic-only extension of the existing VERIFIED native weapon-render
+// observation site. This reads the same incoming arguments during a chainsaw
+// cinematic without touching submitted transforms, hooks or game objects.
+bool readOnlyChainsawInvestigationEnabled(){
+    static const bool enabled=[]{
+        char buf[24]{};
+        const DWORD n=GetEnvironmentVariableA("KHARVOX_ACTION_SPEED_PROBES",
+            buf,sizeof(buf));
+        if(!n||n>=sizeof(buf))return false;
+        char* end{};
+        const unsigned long value=std::strtoul(buf,&end,10);
+        return end!=buf&&*end=='\0'&&value!=0;
+    }();
+    return enabled;
+}
 extern "C" void __fastcall weaponRenderUpdateHook(
     void* renderObject, const float* origin, const float* axis, const float* viewOffset,
     int renderView, int frame, int time, int flags, float modelScale, float depthHack) {
     const auto image = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
     const auto returnAddress = reinterpret_cast<uintptr_t>(_ReturnAddress());
-    const bool weaponPresentation = image && returnAddress - image == 0xD8B0D3
-        && renderObject && KharvoxCameraGameplayActive();
+    const bool verifiedWeaponCaller=image
+        && returnAddress-image==0xD8B0D3&&renderObject;
+    const bool weaponPresentation=verifiedWeaponCaller
+        &&KharvoxCameraGameplayActive();
+    const bool chainsawCinematicObservation=verifiedWeaponCaller
+        &&!weaponPresentation&&readOnlyChainsawInvestigationEnabled()
+        &&activeWeaponKind.load(std::memory_order_acquire)==KharvoxWeaponKind::Chainsaw
+        &&KharvoxCameraWorldActive();
     const float* submittedOrigin = origin;
     const float* submittedAxis = axis;
     float pairedOrigin[3]{}, pairedAxis[9]{};
@@ -2031,7 +2052,10 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         &&weaponHolstered.load(std::memory_order_acquire);
     const float submittedModelScale=hideHolsteredPresentation
         ?0.001f:modelScale;
-    if (weaponPresentation) {
+    // Cache DOOM's original arguments even when a chainsaw kill owns the
+    // camera. This is observational only; existing VR transform submission,
+    // holster logic and material/lighting behaviour are unchanged.
+    if (weaponPresentation||chainsawCinematicObservation) {
         lastWeaponRenderObject.store(reinterpret_cast<uintptr_t>(renderObject),
                                      std::memory_order_release);
         if (submittedOrigin) {
@@ -2562,6 +2586,18 @@ extern "C" void __fastcall setRenderEntityAxisHook(void* rawEntity, const float*
             // the transient child-render scratch object, this exposes the barrel
             // joints consistently for every recognized weapon.
             publishPropLaserMuzzlePose(rawEntity, propOrigin, axisToCopy);
+        } else if(readOnlyChainsawInvestigationEnabled()
+            &&activeWeaponKind.load(std::memory_order_acquire)==KharvoxWeaponKind::Chainsaw
+            &&KharvoxCameraWorldActive()){
+            // Original validated weapon-prop caller, original safe pointers,
+            // no new joint dereference or game memory writes. Include DOOM's
+            // cinematic action, where controller placement is intentionally
+            // disabled and the regular presentation-only cache had no data.
+            for(int i=0;i<3;++i)
+                lastWeaponPropOrigin[i].store(propOrigin[i],
+                                            std::memory_order_relaxed);
+            lastWeaponPropTickMs.store(GetTickCount64(),
+                                       std::memory_order_release);
         }
     }
 
