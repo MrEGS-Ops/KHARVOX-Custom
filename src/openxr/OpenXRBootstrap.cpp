@@ -32,6 +32,7 @@
 #include "../camera/StoryCameraFocusPolicy.h"
 #include "ActionExitHandoffPolicy.h"
 #include "ChainsawMotionSpeedPolicy.h"
+#include "ChainsawTriggerThrottlePolicy.h"
 #include "../debug/CameraScanner.h"
 #include "../hud/HudGpuDiagnostic.h"
 #include "../hud/HudHook.h"
@@ -329,6 +330,11 @@ struct State {
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{};
+    float chainsawTriggerPressure{};
+    kharvox::XInputHapticSignal chainsawTriggerHaptic{};
+    bool chainsawTriggerSpeedWasActive{};
+    int chainsawTriggerLastLoggedHz{240};
+    std::uint64_t chainsawTriggerLastLogMs{};
     int chainsawMotionLastLoggedHz{200};
     unsigned long long chainsawMotionLastLogMs{};
     XrTime lastChainsawAttackAt{};
@@ -902,7 +908,7 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
             +" -> "+kharvox::actionSpeedName(action.kind)
             +" target="+std::to_string(hold.targetHz)+" Hz");
     }else if(!fastKillsEnabled
-        &&s.customMods.motionChainsawKillSpeed
+        &&(s.customMods.motionChainsawKillSpeed||s.customMods.chainsawTriggerThrottle)
         &&action.kind==kharvox::ActionSpeedKind::Chainsaw
         &&hold.lastAction==kharvox::ActionSpeedKind::Chainsaw
         &&hold.targetHz!=effectiveTarget){
@@ -1184,11 +1190,18 @@ void updateXInputHaptics(){
             nativeDesired[hand],s.wheelClicks[hand],now);
         const auto baseDesired=kharvox::mixControllerZoneCue(
             clickDesired,s.handZoneCues[hand],now);
+        // Never send the chainsaw texture to the support hand or bHaptics.
+        // Keep stronger native rumble and damage impacts intact.
+        const bool weaponHand=hand==(s.weaponHandLeft?size_t{0}:size_t{1});
+        const auto withChainsaw=weaponHand&&s.chainsawTriggerHaptic.active
+            &&(!baseDesired.active
+                ||baseDesired.amplitude<s.chainsawTriggerHaptic.amplitude)
+            ?s.chainsawTriggerHaptic:baseDesired;
         const auto desired=kharvox::mergeDamageImpactHapticSignal(
-            baseDesired,damageImpact.amplitude,damageImpact.frequencyHz,
+            withChainsaw,damageImpact.amplitude,damageImpact.frequencyHz,
             damageImpact.active);
         const bool usingDamage=damageImpact.active
-            &&(!baseDesired.active || baseDesired.amplitude < damageImpact.amplitude);
+            &&(!withChainsaw.active || withChainsaw.amplitude < damageImpact.amplitude);
         auto&outputState=s.hapticOutputStates[hand];
         const auto command=kharvox::selectXInputHapticCommand(
             outputState,desired,now);
@@ -2599,8 +2612,11 @@ void updateGameplayActions(XrTime displayTime){
     }
 
     // Sample fire after wheel confirmation; the selected physical trigger owns it.
-    const bool triggerDown=readFloatAction(
-        s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
+    const float weaponTriggerPressure=readFloatAction(
+        s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger);
+    s.chainsawTriggerPressure=std::isfinite(weaponTriggerPressure)
+        ?std::clamp(weaponTriggerPressure,0.f,1.f):0.f;
+    const bool triggerDown=s.chainsawTriggerPressure>.55f;
     const bool legacyWeaponSelectDown=s.weaponWheelRemapEnabled
         ?physicalAButtonDown:crouchStickDown;
     const bool weaponSelectDown=gameplay
@@ -3858,6 +3874,7 @@ bool createGameplayActions(){
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" chainsawMotionHz="+(s.customMods.motionChainsawKillSpeed?"on (200..30Hz dynamic)":"off")
+        +" chainsawTriggerThrottle="+(s.customMods.chainsawTriggerThrottle?"ON (240..30Hz trigger + hand motion)":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
@@ -5625,7 +5642,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // established native chainsaw execution lifecycle is eligible.
     const bool fastKillsRequested=s.customMods.fastGloryKills
         ||s.customMods.fastChainsawKills;
-    const bool motionChainsawActive=s.customMods.motionChainsawKillSpeed
+    // The trigger throttle is its own opt-in mod. If both are checked it
+    // owns the confirmed execution; motion-only stays available independently.
+    const bool triggerChainsawActive=s.customMods.chainsawTriggerThrottle
+        &&actionProfileEligible&&chainsawAction&&!fastKillsRequested;
+    const bool motionChainsawActive=!triggerChainsawActive
+        &&s.customMods.motionChainsawKillSpeed
         &&actionProfileEligible&&chainsawAction&&!fastKillsRequested;
     const auto& movingHand=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
@@ -5641,9 +5663,43 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             ?static_cast<int>(parsed):180;
     }();
     const auto motion=kharvox::updateChainsawMotionSpeed(
-        s.chainsawMotionSpeed,motionChainsawActive,movingHandTracked,
+        s.chainsawMotionSpeed,motionChainsawActive||triggerChainsawActive,
+        movingHandTracked&&(!triggerChainsawActive
+            ||s.chainsawTriggerPressure>.10f),
         movingHand.linearVelocity.x,movingHand.linearVelocity.y,
         movingHand.linearVelocity.z,GetTickCount64(),motionFullSpeedCmSec);
+    const auto throttle=kharvox::evaluateChainsawTriggerThrottle(
+        s.chainsawTriggerPressure,motion.filteredMetersPerSecond,
+        motionFullSpeedCmSec/100.f);
+    // Vibration is useful with the chainsaw equipped even before contacting
+    // an enemy; tick-Hz changes remain strictly scoped to a native execution.
+    const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
+    const bool chainsawHapticEligible=s.customMods.chainsawTriggerThrottle
+        &&(chainsawEquipped||chainsawAction)
+        &&KharvoxCameraWorldActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
+        &&!KharvoxHudFullscreenMenuActive()
+        &&!KharvoxCameraBossSequenceActive();
+    if(chainsawHapticEligible){
+        const auto textured=kharvox::textureChainsawTriggerHaptics(
+            throttle,GetTickCount64());
+        s.chainsawTriggerHaptic={
+            textured.hapticAmplitude,textured.hapticFrequencyHz,true};
+    }else s.chainsawTriggerHaptic={};
+    const auto logTick=GetTickCount64();
+    if(triggerChainsawActive
+        &&(!s.chainsawTriggerSpeedWasActive
+            ||(logTick-s.chainsawTriggerLastLogMs>=350
+                &&std::abs(throttle.tickHz-s.chainsawTriggerLastLoggedHz)>=15))){
+        log("[CHAINSAW-TRIGGER] pressure="+std::to_string(s.chainsawTriggerPressure)
+            +" handMetersPerSec="+std::to_string(motion.filteredMetersPerSecond)
+            +" tickHz="+std::to_string(throttle.tickHz)
+            +" handTracked="+std::to_string(movingHandTracked?1:0));
+        s.chainsawTriggerLastLoggedHz=throttle.tickHz;
+        s.chainsawTriggerLastLogMs=logTick;
+    }else if(s.chainsawTriggerSpeedWasActive&&!triggerChainsawActive)
+        log("[CHAINSAW-TRIGGER] kill finished; game-native action timing restored");
+    s.chainsawTriggerSpeedWasActive=triggerChainsawActive;
     if(motion.started){
         s.chainsawMotionLastLoggedHz=motion.targetHz;
         s.chainsawMotionLastLogMs=GetTickCount64();
@@ -5663,9 +5719,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.chainsawMotionLastLogMs=now;
         }
     }
-    const auto effectiveSelectedAction=motionChainsawActive
-        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,motion.targetHz}
-        :selectedAction;
+    const auto effectiveSelectedAction=triggerChainsawActive
+        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,throttle.tickHz}
+        :motionChainsawActive
+            ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,motion.targetHz}
+            :selectedAction;
     // External opt-ins do not steal normal movement or alter the native
     // fast-kill bypass. A selected profile may briefly arm the existing
     // reversible CVar hold outside an immersive cinematic (ledge/charge).

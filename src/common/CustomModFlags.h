@@ -39,6 +39,7 @@ struct CustomModFlags {
     bool motionGloryKillSpeed{};
     bool physicalChainsawGestures{};
     bool motionChainsawKillSpeed{};
+    bool chainsawTriggerThrottle{};
     bool hapticOverhaul{};
 };
 
@@ -80,6 +81,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.motionGloryKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_GLORY_SPEED");
     flags.physicalChainsawGestures = false; // old timescale gesture remains retired
     flags.motionChainsawKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_CHAINSAW_SPEED");
+    flags.chainsawTriggerThrottle = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE");
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
     return flags;
 }

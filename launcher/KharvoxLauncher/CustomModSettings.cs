@@ -85,7 +85,7 @@ internal sealed class CustomModSettings
     public bool UninterruptedStory { get; set; } // opt-in automatic, never migrated ON
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
-    public bool ChainsawTriggerThrottle { get; set; } // Experimental opt-in; native gating must be implemented before release
+    public bool ChainsawTriggerThrottle { get; set; } // Separate experimental native trigger + hand-motion chainsaw throttle
     public bool MotionChainsawKillSpeed { get; set; } // opt-in live native tick target, separate from retired timescale gestures
     public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // 0.7-3.0 m/s adjustable
     public bool HapticOverhaul { get; set; }
