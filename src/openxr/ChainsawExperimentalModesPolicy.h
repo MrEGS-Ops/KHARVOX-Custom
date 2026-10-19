@@ -22,15 +22,18 @@ inline float length3(ChainsawVec3 a) noexcept {
     const float d=dot3(a,a);return d>=0.f&&std::isfinite(d)?std::sqrt(d):0.f;
 }
 inline ChainsawVec3 zonePosition(ChainsawVec3 head,float yaw,int zone) noexcept {
-    // Head-relative fixed four-zone cross, in REAL OpenXR tracking space.
-    // 40 cm forward / 34 cm below HMD. Zones remain fixed until kill exits.
-    // An 11 cm radius accepts natural hand positions without precision pinching.
+    // Head-relative four-zone cross in REAL OpenXR tracking space.
+    // User headset feedback #591: targets were up in their face and cramped.
+    // New centres are 84cm in front (previous 40cm), 50cm below eye centre,
+    // with DOUBLED horizontal (2*25 -> 2*50 cm) and vertical (2*22 -> 2*44cm)
+    // offsets. Capture volume stays 11cm radius, precisely matching the rings.
+    // Zones remain fixed for the duration of the native chainsaw execution.
     const float sx=std::sin(yaw),cx=std::cos(yaw);
-    const float sideways=(zone==0?-.25f:zone==1?.25f:0.f);
-    const float vertical=(zone==2?.22f:zone==3?-.22f:0.f);
-    return {head.x+cx*sideways-sx*.40f,
-            head.y-.34f+vertical,
-            head.z-sx*sideways-cx*.40f};
+    const float sideways=(zone==0?-.50f:zone==1?.50f:0.f);
+    const float vertical=(zone==2?.44f:zone==3?-.44f:0.f);
+    return {head.x+cx*sideways-sx*.84f,
+            head.y-.50f+vertical,
+            head.z-sx*sideways-cx*.84f};
 }
 struct ChainsawExperimentState {
     bool active{}, releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};

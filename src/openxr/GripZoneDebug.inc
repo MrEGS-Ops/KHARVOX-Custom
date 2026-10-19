@@ -1,6 +1,7 @@
-// Four stereo-correct world-anchored translucent sphere-like billboards.
-// Procedural alpha-gradient texture, one static swapchain, 4 XR quads.
-// True volumetric geometry is not available here; these are round 3D markers.
+#include "GripZoneMarkerPolicy.h"
+// Four stereo-correct world-anchored circular grip zone outlines.
+// Procedural zero-alpha background and low-opacity circular stroke.
+// One static swapchain, four XR quads: not volumetric spheres.
 // Uses the proven PauseBindings Vulkan upload path, but never loads images.
 bool initializeGripZoneDebug(const std::vector<int64_t>& formats) {
     if (gripZoneDebugReady) return true;
@@ -15,17 +16,18 @@ bool initializeGripZoneDebug(const std::vector<int64_t>& formats) {
     if (std::find(formats.begin(), formats.end(), format) == formats.end()) return false;
     std::vector<unsigned char> pixels;
     UINT width{}, height{};
-    width=height=96;
+    // Disc #591 filled the entire quad and looked like four blue squares
+    // in Quest. Generate ACTUAL circles: no fill, 100% transparent centre
+    // and corners, only a slim soft cyan circumference. SOURCE RGB is
+    // unpremultiplied; OpenXR layer declares that convention explicitly.
+    width=height=128;
     pixels.resize(size_t(width)*height*4);
     for(UINT y=0;y<height;++y)for(UINT x=0;x<width;++x){
         const float nx=(float(x)+.5f)/float(width)*2.f-1.f;
         const float ny=(float(y)+.5f)/float(height)*2.f-1.f;
-        const float r=std::sqrt(nx*nx+ny*ny);
-        const float dome=std::sqrt(std::max(0.f,1.f-r*r));
-        const float alpha=r>=1.f?0.f:(.17f+.27f*dome)*(1.f-std::pow(r,7.f));
         const auto p=(size_t(y)*width+x)*4;
-        pixels[p+0]=100; pixels[p+1]=204;pixels[p+2]=240;
-        pixels[p+3]=static_cast<unsigned char>(std::clamp(alpha*255.f,0.f,255.f));
+        pixels[p+0]=90; pixels[p+1]=195;pixels[p+2]=235;
+        pixels[p+3]=kharvox::gripZoneOutlineAlpha(nx,ny);
     }
 
     VkBuffer buffer{};

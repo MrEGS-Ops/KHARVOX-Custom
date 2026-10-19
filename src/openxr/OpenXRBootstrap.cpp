@@ -7435,7 +7435,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const float hudWidthMeters=std::max(0.05f,hudAngularWidthMeters);
     hudQuadLayer.size={hudWidthMeters,hudWidthMeters/hudContentAspect};
 
-    // Temporary 4 world-anchored translucent grip-zone billboards.
+    // Temporary 4 world-anchored, transparent CIRCULAR grip-zone markers.
     // One procedural round-alpha image is reused on independent quads.
     // Quads are NOT real volumetric spheres, but possess stereo depth and
     // sit exactly on the same physical centres used by grip validation.
@@ -7450,7 +7450,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         for(size_t i=0;i<gripZoneLayers.size();++i){
             auto& marker=gripZoneLayers[i];
             marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            // The debug texture stores straight (UNPREMULTIPLIED) RGBA.
+            // Without this flag some OpenXR compositors shade the entire
+            // square instead of respecting faint circular alpha.
+            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT
+                |XR_COMPOSITION_LAYER_UNPREMULTIPLIED_ALPHA_BIT;
             marker.space=s.space;
             marker.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
             marker.subImage.swapchain=gripZoneDebug.handle;
@@ -7460,7 +7464,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             marker.pose.orientation=s.views[0].pose.orientation;
             const auto& pos=s.chainsawExperiment.zones[i];
             marker.pose.position={pos.x,pos.y,pos.z};
-            marker.size={.22f,.22f};
+            marker.size={.27f,.27f}; // 11cm actual grab radius; 10.5cm visible ring
         }
     }
     std::array<const XrCompositionLayerBaseHeader*,9> layers{};

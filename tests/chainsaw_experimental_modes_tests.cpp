@@ -1,16 +1,33 @@
 #include "../src/openxr/ChainsawExperimentalModesPolicy.h"
+#include "../src/openxr/GripZoneMarkerPolicy.h"
 #include <cmath>
 #include <limits>
 #define CHECK(x) do {if(!(x)) return __LINE__;}while(false)
 int main(){
     using namespace kharvox;
+    // A filled square regression must be caught: corners and centre fully
+    // transparent, thin visible round circumference at radius .78.
+    CHECK(gripZoneOutlineAlpha(1.f,1.f)==0);
+    CHECK(gripZoneOutlineAlpha(0.f,0.f)==0);
+    CHECK(gripZoneOutlineAlpha(.78f,0.f)>30);
+    CHECK(gripZoneOutlineAlpha(0.f,.78f)>30);
+    CHECK(gripZoneOutlineAlpha(.78f,.78f)==0);
+    CHECK(gripZoneOutlineAlpha(.35f,0.f)<2);
     const ChainsawVec3 h{0.f,1.7f,0.f};
     for(int i=0;i<4;++i){
         const auto z=zonePosition(h,0.f,i);
-        CHECK(length3(minus3(z,h))<.85f);
+        CHECK(length3(minus3(z,h))<1.30f);
+        // Exact two-times separation horizontally and vertically;
+        // more than twice as far away in front of the HMD.
+        CHECK(z.z<-.82f&&z.z>-.86f);
+        CHECK(z.y<h.y);
         for(int j=0;j<i;++j)
-            CHECK(length3(minus3(z,zonePosition(h,0.f,j)))>.30f);
+            CHECK(length3(minus3(z,zonePosition(h,0.f,j)))>.60f);
     }
+    CHECK(std::abs(zonePosition(h,0.f,1).x
+        -zonePosition(h,0.f,0).x-1.0f)<.001f);
+    CHECK(std::abs(zonePosition(h,0.f,2).y
+        -zonePosition(h,0.f,3).y-.88f)<.001f);
     // Each of the FOUR start spheres must allow a single deliberate
     // pull toward any of the OTHER THREE. Native kill and fresh Grip are
     // required. Legacy Circular mode 2 safely collapses to Grip Zones.
@@ -28,8 +45,8 @@ int main(){
         auto latch=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
             true,true,true,from.x,from.y,from.z,true,0,0,-1,110,480,32,h);
         CHECK(latch.armed&&latch.started&&latch.startZone==start);
-        const ChainsawVec3 a={from.x+(to.x-from.x)*.30f,
-            from.y+(to.y-from.y)*.30f,from.z+(to.z-from.z)*.30f};
+        const ChainsawVec3 a={from.x+(to.x-from.x)*.25f,
+            from.y+(to.y-from.y)*.25f,from.z+(to.z-from.z)*.25f};
         auto pulled=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
             true,true,true,a.x,a.y,a.z,true,0,0,-1,120,480,32,h);
         CHECK(pulled.targetZone==target&&pulled.progress>0.f
@@ -37,12 +54,16 @@ int main(){
         auto frozen=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
             true,false,false,0,0,0,true,0,0,-1,130,480,32,h);
         CHECK(frozen.progress==pulled.progress);
-        const ChainsawVec3 b={from.x+(to.x-from.x)*.65f,
-            from.y+(to.y-from.y)*.65f,from.z+(to.z-from.z)*.65f};
+        const ChainsawVec3 b={from.x+(to.x-from.x)*.50f,
+            from.y+(to.y-from.y)*.50f,from.z+(to.z-from.z)*.50f};
         (void)updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
             true,true,true,b.x,b.y,b.z,true,0,0,-1,140,480,32,h);
+        const ChainsawVec3 c={from.x+(to.x-from.x)*.75f,
+            from.y+(to.y-from.y)*.75f,from.z+(to.z-from.z)*.75f};
+        (void)updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
+            true,true,true,c.x,c.y,c.z,true,0,0,-1,150,480,32,h);
         auto done=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
-            true,true,true,to.x,to.y,to.z,true,0,0,-1,150,480,32,h);
+            true,true,true,to.x,to.y,to.z,true,0,0,-1,160,480,32,h);
         CHECK(done.completed&&done.targetHz==30&&done.targetZone==target);
         const auto exit=updateChainsawExperiment(st,ChainsawExperimentalMode::GripPull,
             false,true,true,to.x,to.y,to.z,true,0,0,-1,160,480,32,h);
