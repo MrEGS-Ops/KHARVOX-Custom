@@ -153,6 +153,7 @@ public sealed partial class MainForm
             Define(customPhysicalGrenadeThrow, "physical-grenade", 2),
             Define(customGaussChargeSlowMovement, "gauss-slow-movement", 2),
             Define(customPersistentSsgReload, "persistent-ssg-reload", 2),
+            Define(customTriggerChainsawThrottle, "chainsaw-trigger-throttle", 2),
             Define(customMotionChainsawKillSpeed, "motion-chainsaw-kill-speed", 2),
             Define(customBackOfHandHud, "back-of-hand-hud", 3),
             Define(customStoryCinematicSkip, "story-cinematic-skip", 3),
