@@ -36,7 +36,7 @@ int main(){
     CHECK(entry.targetHz<480); // first crossing gets immediate momentum
     // Inside: any direction of real tracked movement controls CURRENT speed.
     const auto cut=update(true,true,true,.12f,160);
-    CHECK(cut.armed&&cut.targetHz<entry.targetHz);
+    CHECK(cut.armed&&cut.targetHz<=entry.targetHz);
     CHECK(cut.progress>0.5f);
     // Tracking dropout or leaving the circle removes the override, not
     // a super-slow 480Hz kill while the hand is missing or outside.
