@@ -622,30 +622,30 @@ internal static class KharvoxRunner
                 customMods.MotionChainsawKillSpeed ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE"] =
                 customMods.ChainsawTriggerThrottle ? "1" : "0";
-            // Haptic Lab calibrations are independent of general VR mod settings.
-            // Malformed/missing profiles safely fall back to the original defaults
-            // without blocking game launch or affecting non-chainsaw weapons.
-            ChainsawHapticProfile chainsawHaptics;
-            try { chainsawHaptics = ChainsawHapticProfile.LoadOrDefault(); }
-            catch (Exception e) when (e is IOException || e is ArgumentException
-                || e is InvalidDataException || e is InvalidOperationException
-                || e is UnauthorizedAccessException)
-            {
-                chainsawHaptics = new ChainsawHapticProfile();
-                statusUpdate?.Invoke("Haptic Lab profile unavailable; using default chainsaw vibration.");
-            }
+            // FIXED two-phase chainsaw haptics. User chose no more lab or
+            // selection menu: deep heavy idle / high-contrast Rip & Tear.
+            // Ignore stale haptic-lab JSON entirely; this is deterministic.
+            var idleAndRip = new ChainsawHapticProfile {
+                Name = "KHARVOX: Heavy Idle / Rip & Tear",
+                IdlePercent = 38,
+                CuttingPercent = 100,
+                PulseRate = 18,
+                PulseDurationMs = 35,
+                RoughnessPercent = 94,
+                MotionSensitivityPercent = 100
+            };
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_IDLE_PCT"] =
-                chainsawHaptics.IdlePercent.ToString(Invariant);
+                idleAndRip.IdlePercent.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_CUTTING_PCT"] =
-                chainsawHaptics.CuttingPercent.ToString(Invariant);
+                idleAndRip.CuttingPercent.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_PULSE_RATE"] =
-                chainsawHaptics.PulseRate.ToString(Invariant);
+                idleAndRip.PulseRate.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_PULSE_MS"] =
-                chainsawHaptics.PulseDurationMs.ToString(Invariant);
+                idleAndRip.PulseDurationMs.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_ROUGHNESS_PCT"] =
-                chainsawHaptics.RoughnessPercent.ToString(Invariant);
+                idleAndRip.RoughnessPercent.ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT"] =
-                chainsawHaptics.MotionSensitivityPercent.ToString(Invariant);
+                idleAndRip.MotionSensitivityPercent.ToString(Invariant);
             // Temporary chainsaw-only one-stroke calibration. 300 engine Hz
             // slows idle execution; crossing all four directional zones ramps
             // down toward 30 Hz. Never forwarded to other action types.
@@ -653,6 +653,8 @@ internal static class KharvoxRunner
                 Math.Max(18,Math.Min(60,customMods.ChainsawStrokeDistanceCm)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] =
                 Math.Max(30,Math.Min(300,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] =
+                Math.Max(1,Math.Min(3,customMods.ChainsawExperimentMode)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";

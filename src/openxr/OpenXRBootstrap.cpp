@@ -33,6 +33,7 @@
 #include "ActionExitHandoffPolicy.h"
 #include "ChainsawMotionSpeedPolicy.h"
 #include "ChainsawStrokePolicy.h"
+#include "ChainsawExperimentalModesPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
 #include "../debug/CameraScanner.h"
@@ -332,7 +333,8 @@ struct State {
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{}; // retained for fallback diagnostics
-    kharvox::ChainsawStrokeState chainsawStroke{};
+    kharvox::ChainsawStrokeState chainsawStroke{}; // retired four-zone logic; no longer called
+    kharvox::ChainsawExperimentState chainsawExperiment{};
     std::uint64_t chainsawStrokeImpactUntil{},chainsawStrokeLastLogMs{};
     int chainsawStrokeLastLogPercent{-1};
     float chainsawTriggerPressure{};
@@ -5739,48 +5741,65 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         return end!=text&&*end=='\0'&&value>=18&&value<=60
             ?static_cast<int>(value):32;
     }();
-    // Record start position WHEN TRIGGER FIRST PRESSED, before the game
-    // announces a native execution. The initial stroke chooses one of four
-    // directional zones; each zone reaches max cutting speed in one traverse.
-    // Lost tracking freezes progress; no camera/damage/script modifications.
+    // Native kill MUST be active before any mode arms its reference point:
+    // unlike the old four-zone code, waving BEFORE a kill does not count.
+    static const kharvox::ChainsawExperimentalMode experimentMode=[](){
+        char text[8]{};
+        const auto n=GetEnvironmentVariableA("KHARVOX_CHAINSAW_EXPERIMENT_MODE",text,sizeof(text));
+        if(n==0||n>=sizeof(text))return kharvox::ChainsawExperimentalMode::GripPull;
+        const int selected=std::atoi(text);
+        switch(selected){
+            case 2:return kharvox::ChainsawExperimentalMode::Circular;
+            case 3:return kharvox::ChainsawExperimentalMode::PointerFocus;
+            default:return kharvox::ChainsawExperimentalMode::GripPull;
+        }
+    }();
     const bool strokeFeatureEnabled=s.customMods.motionChainsawKillSpeed
         ||s.customMods.chainsawTriggerThrottle;
-    const bool strokeAvailable=strokeFeatureEnabled
-        &&(KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw||chainsawAction)
-        &&!ledgeAction&&!bossAction&&KharvoxCameraWorldActive()
-        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
-        &&!KharvoxHudFullscreenMenuActive()
+    const bool experimentActive=strokeFeatureEnabled
+        &&actionProfileEligible&&chainsawAction&&!ledgeAction
+        &&!fastKillsRequested
         &&s.sessionState==XR_SESSION_STATE_FOCUSED;
-    const auto stroke=kharvox::updateChainsawStroke(
-        s.chainsawStroke,strokeAvailable,s.chainsawTriggerPressure>.55f,
-        movingHandTracked,movingHand.position.x,movingHand.position.y,
-        movingHand.position.z,chainsawAction,strokeIdleHz,strokeDistanceCm);
+    // The controller orientation is used only for Pointer Focus. This
+    // rotation creates a virtual ray; no DOOM laser model is spawned.
+    const auto pointerForward=rotateVector(
+        movingHand.orientation,XrVector3f{0.f,0.f,-1.f});
+    const bool pointerTracked=movingHand.valid;
     const auto strokeNow=GetTickCount64();
-    if(stroke.started)
-        log("[CHAINSAW-STROKE] trigger origin captured; need 4.5cm deliberate "
-            "movement to select LEFT/RIGHT/UP/DOWN; distance="+std::to_string(strokeDistanceCm)
-            +"cm idle="+std::to_string(strokeIdleHz)+"Hz");
-    if(stroke.directionLocked
-        &&(s.chainsawStrokeLastLogPercent<0||strokeNow-s.chainsawStrokeLastLogMs>=140)
+    const auto experiment=kharvox::updateChainsawExperiment(
+        s.chainsawExperiment,experimentMode,experimentActive,
+        s.secondaryFireGripPressed,movingHandTracked,
+        movingHand.position.x,movingHand.position.y,movingHand.position.z,
+        pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
+        strokeNow,strokeIdleHz,strokeDistanceCm);
+    if(experiment.started)
+        log("[CHAINSAW-EXPERIMENT] armed="+
+            std::string(kharvox::chainsawModeName(experimentMode))
+            +" idle="+std::to_string(strokeIdleHz)
+            +"Hz distance="+std::to_string(strokeDistanceCm)+"cm");
+    const int percentage=static_cast<int>(experiment.progress*100.f);
+    if(experiment.armed
         &&(s.chainsawStrokeLastLogPercent<0
-            ||std::abs(static_cast<int>(stroke.progress*100)
-                -s.chainsawStrokeLastLogPercent)>=10
-            ||(stroke.completed&&s.chainsawStrokeLastLogPercent<100))){
-        log("[CHAINSAW-STROKE] zone="+std::string(kharvox::chainsawStrokeZoneName(stroke.zone))
-            +" progress="+std::to_string(static_cast<int>(stroke.progress*100))
-            +"% target="+std::to_string(stroke.targetHz)+"Hz"
-            +" fullStroke="+(stroke.completed?"YES":"no")
-            +" nativeExecution="+(chainsawAction?"yes":"no"));
-        s.chainsawStrokeLastLogPercent=static_cast<int>(stroke.progress*100);
+            ||(strokeNow-s.chainsawStrokeLastLogMs>=140
+                &&(std::abs(percentage-s.chainsawStrokeLastLogPercent)>=10
+                    ||(experiment.completed&&s.chainsawStrokeLastLogPercent<100))))){
+        log("[CHAINSAW-EXPERIMENT] mode="+std::string(experiment.detail)
+            +" progress="+std::to_string(percentage)+"%"
+            +" tickHz="+std::to_string(experiment.targetHz)
+            +" completed="+(experiment.completed?"yes":"no")
+            +" grip="+(s.secondaryFireGripPressed?"held":"released")
+            +" tracking="+(movingHandTracked?"valid":"lost"));
+        s.chainsawStrokeLastLogPercent=percentage;
         s.chainsawStrokeLastLogMs=strokeNow;
-    }else if(!stroke.armed)s.chainsawStrokeLastLogPercent=-1;
-    // A physical change of direction within the same stroke doesn't erase
-    // previous progress. Quarter crossings deliver short chopping hits.
-    if(stroke.impact&&chainsawAction)s.chainsawStrokeImpactUntil=strokeNow+95;
-    if(!stroke.armed)s.chainsawStrokeImpactUntil=0;
-    // The Haptic Lab file is read by the launcher and sanitized before
-    // dispatch. Parse process-local numbers once; malformed external env
-    // values fall back safely. This changes ONLY chainsaw vibration.
+    }else if(!experiment.armed)s.chainsawStrokeLastLogPercent=-1;
+    // Four position/rotation thresholds each contribute a short tactile
+    // chopping impact; DOOM game damage, weapon input and action boundary
+    // are still owned by native execution.
+    if(experiment.impact&&experimentActive)
+        s.chainsawStrokeImpactUntil=strokeNow+95;
+    if(!experiment.armed)s.chainsawStrokeImpactUntil=0;
+    // Two fixed haptic personalities (heavy idle, aggressive rip & tear)
+    // are launch-scoped. Stale user Haptic Lab JSON is intentionally ignored.
     static const kharvox::ChainsawHapticConfig hapticConfig=[](){
         auto read=[](const char* key,int fallback,int low,int high){
             char text[24]{};
@@ -5800,7 +5819,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         config.motionSensitivityPercent=read("KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT",75,0,100);
         return config;
     }();
-    const float virtualStrokeSpeed=1.8f*stroke.progress;
+    const float virtualStrokeSpeed=1.8f*experiment.progress;
     const auto throttle=kharvox::evaluateChainsawTriggerThrottle(
         s.chainsawTriggerPressure,virtualStrokeSpeed,
         1.8f,hapticConfig);
@@ -5814,27 +5833,27 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!KharvoxHudFullscreenMenuActive()
         &&!KharvoxCameraBossSequenceActive();
     if(chainsawHapticEligible){
-        // Motion-only mode also gets cutting vibration now. The trigger mode
-        // retains analogue intensity, but movement comes from stroke progress.
-        const float triggerPressure=s.customMods.chainsawTriggerThrottle
-            ?s.chainsawTriggerPressure:(stroke.armed?1.f:0.f);
+        // Fixed heavy rumble when equipped (no trigger); switch to aggressive
+        // serrated cutting once DOOM confirms a native chainsaw execution.
+        // The two haptic phases are deterministic in all three experiments.
+        const float triggerPressure=chainsawAction?1.f:0.f;
         const auto base=kharvox::evaluateChainsawTriggerThrottle(
             triggerPressure,virtualStrokeSpeed,1.8f,hapticConfig);
         auto textured=kharvox::textureChainsawTriggerHaptics(
             base,GetTickCount64(),hapticConfig);
-        if(chainsawAction&&stroke.armed&&strokeNow<s.chainsawStrokeImpactUntil){
+        if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
             // Sharp full-strength chop. The OpenXR controller/runtime remains
             // responsible for hardware limits. Only weapon hand, never all.
             textured.hapticAmplitude=1.f;
             textured.hapticFrequencyHz=
-                (s.chainsawStroke.impactIndex%2==0)?95.f:185.f;
+                (s.chainsawExperiment.impactIndex%2==0)?95.f:185.f;
         }
         s.chainsawTriggerHaptic={
             textured.hapticAmplitude,textured.hapticFrequencyHz,true};
     }else s.chainsawTriggerHaptic={};
     s.chainsawTriggerSpeedWasActive=triggerChainsawActive;
     const auto effectiveSelectedAction=(triggerChainsawActive||motionChainsawActive)
-        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,stroke.targetHz}
+        ?kharvox::ActionSpeedChoice{kharvox::ActionSpeedKind::Chainsaw,experiment.targetHz}
         :selectedAction;
     // No input/control remapping changes here. Adaptive-tick hold only for
     // Glory Kills and Chainsaw executions; ledge engine timing is untouchable.

@@ -36,16 +36,6 @@ public sealed partial class MainForm
         ("Haptics & Feedback", "◎")
     };
 
-    private readonly Button hapticLabButton = new()
-    {
-        Text = "Presets", AccessibleName = "Choose chainsaw haptic preset",
-        Dock = DockStyle.Fill, AutoSize = false, FlatStyle = FlatStyle.Flat,
-        BackColor = Color.FromArgb(82, 44, 38),
-        ForeColor = Color.WhiteSmoke,
-        Font = new Font("Segoe UI", 8f, FontStyle.Bold),
-        Margin = new Padding(2, 2, 0, 2), TabStop = true
-    };
-
     private readonly List<ModOrderRow> modOrderRows = new();
     private ModOrderRow[] modOrderDefaultRows = Array.Empty<ModOrderRow>();
     private string[] defaultModIds = Array.Empty<string>();
@@ -144,15 +134,6 @@ public sealed partial class MainForm
         (CheckBox Box, string Tip)[] available)
     {
         modOrderGrid = grid;
-        hapticLabButton.Click += (_, _) =>
-        {
-            using var lab = new ChainsawHapticLabForm();
-            lab.ShowDialog(customOptionsForm ?? this);
-        };
-        detachedModToolTip.SetToolTip(hapticLabButton,
-            "Five fixed profiles. Pick one from the dropdown and save it. "
-            + "No unreliable live test; compare the feel during actual chainsaw gameplay "
-            + "after restarting DOOM.");
         var tips = available.ToDictionary(item => item.Box, item => item.Tip);
         ModOrderRow Define(CheckBox check, string id, int group) => new()
         {
@@ -448,10 +429,6 @@ public sealed partial class MainForm
         grid.SuspendLayout();
         try
         {
-            // The button follows the chainsaw checkbox during within-group
-            // drag ordering; it must never remain in the previous numbered slot.
-            if (hapticLabButton.Parent is Control parent)
-                parent.Controls.Remove(hapticLabButton);
             // First detach every checkbox; the numbered rows, category
             // headers and hover grips NEVER move or get renumbered.
             foreach (var slot in modOrderSlots)
@@ -482,26 +459,13 @@ public sealed partial class MainForm
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;
                 slot.Panel.Controls.Add(item.Box, 1, 0);
-                if (item.Box == customTriggerChainsawThrottle)
-                {
-                    slot.Panel.Controls.Remove(slot.Dependency);
-                    slot.Panel.ColumnStyles[2].Width = 98;
-                    slot.Panel.Controls.Add(hapticLabButton, 2, 0);
-                }
-                else
-                {
-                    slot.Panel.ColumnStyles[2].Width = 0;
-                    if (!slot.Panel.Controls.Contains(slot.Dependency))
-                        slot.Panel.Controls.Add(slot.Dependency, 2, 0);
-                }
+                slot.Panel.ColumnStyles[2].Width = 0;
+                if (!slot.Panel.Controls.Contains(slot.Dependency))
+                    slot.Panel.Controls.Add(slot.Dependency, 2, 0);
                 // The right-click actions follow the current occupant as
                 // checkboxes move between numbered rows.
                 item.Box.ContextMenuStrip = slot.Panel.ContextMenuStrip;
                 PopulateDependencyLinks(slot, item, dependencies, numbers);
-                // Dependency link layout recalculates column width; the Lab
-                // button owns this cell whenever the chainsaw mod occupies it.
-                if (item.Box == customTriggerChainsawThrottle)
-                    slot.Panel.ColumnStyles[2].Width = 98;
                 // No on-screen status badge: it cluttered the narrow layout.
                 // Development information remains accessible in the tooltip.
                 var state = DevelopmentState(item.Id);

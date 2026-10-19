@@ -560,14 +560,16 @@ public sealed partial class MainForm
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
-            var hapticRow = main.modOrderSlots.Single(slot =>
-                slot.Panel.Controls.OfType<CheckBox>()
-                    .Any(check => ReferenceEquals(check, main.customTriggerChainsawThrottle)));
-            if (main.hapticLabButton.Parent != hapticRow.Panel
-                || !main.hapticLabButton.Enabled
-                || !main.hapticLabButton.Text.Contains("Presets")
-                || hapticRow.Panel.ColumnStyles[2].Width < 85)
-                throw new InvalidDataException("Chainsaw Haptic Lab button must be visible beside its mod.");
+            // Three prototype checkboxes are single-select and reside in
+            // the dedicated chainsaw pacing panel, not the draggable mod list.
+            if(new[] {main.chainsawGripPull,main.chainsawCircular,
+                      main.chainsawPointer}.Count(c=>c.Checked)!=1
+                || main.SelectedChainsawExperimentMode is < 1 or > 3
+                || main.chainsawGripPull.Parent!=main.speedAdvancedPanel
+                || main.chainsawCircular.Parent!=main.speedAdvancedPanel
+                || main.chainsawPointer.Parent!=main.speedAdvancedPanel)
+                throw new InvalidDataException(
+                    "Chainsaw experiment mode checkboxes must be exclusive and visible under Advanced.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled

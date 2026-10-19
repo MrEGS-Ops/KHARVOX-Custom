@@ -95,6 +95,12 @@ public sealed partial class MainForm : Form
     private readonly Label chainsawStrokeDistanceValue = MakeSliderValueLabel();
     private readonly TrackBar chainsawStrokeIdleHz = MakeSlider(30,300,30,10,1);
     private readonly Label chainsawStrokeIdleHzValue = MakeSliderValueLabel();
+    private readonly CheckBox chainsawGripPull = MakeCheck("1 · Grip & Pull", true);
+    private readonly CheckBox chainsawCircular = MakeCheck("2 · Circular Saw", false);
+    private readonly CheckBox chainsawPointer = MakeCheck("3 · Pointer Focus", false);
+    private bool selectingChainsawExperimentMode;
+    private int SelectedChainsawExperimentMode =>
+        chainsawCircular.Checked ? 2 : chainsawPointer.Checked ? 3 : 1;
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
@@ -744,6 +750,59 @@ public sealed partial class MainForm : Form
             if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateActionSpeedLabels();
         };
+        // Exclusive checkboxes (rather than an opaque dropdown) so the
+        // three prototype control schemes are visible and A/B-testable.
+        var modeChoices=new[] {
+            (Box:chainsawGripPull, Number:1,
+                Tip:"After a NATIVE chainsaw kill begins, RELEASE then SQUEEZE "
+                    +"weapon-hand Grip, and pull in ANY direction. "
+                    +"The grip-held displacement drives speed. Releasing Grip pauses."),
+            (Box:chainsawCircular, Number:2,
+                Tip:"A single 8–28 cm virtual CIRCLE around the captured hand "
+                    +"position. Move along one continuous clockwise OR counterclockwise "
+                    +"arc of about 155 degrees. No Grip needed; no rendered circle yet."),
+            (Box:chainsawPointer, Number:3,
+                Tip:"A virtual laser POINTER projects forward from the weapon controller. "
+                    +"Sweep its direction roughly 28 degrees in any direction to "
+                    +"accelerate the native cut. No visible beam in this prototype.")
+        };
+        int modesHeaderRow=speedAdvancedPanel.RowCount++;
+        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,26));
+        var modeHeader=new Label{
+            Text="CHAINSAW CONTROL TEST  ·  select ONE checkbox",
+            Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
+            Font=new Font("Segoe UI",8.3f,FontStyle.Bold),
+            ForeColor=Color.FromArgb(179,180,186),Margin=new Padding(5,0,0,0)
+        };
+        speedAdvancedPanel.Controls.Add(modeHeader,0,modesHeaderRow);
+        speedAdvancedPanel.SetColumnSpan(modeHeader,3);
+        foreach(var option in modeChoices){
+            int modeRow=speedAdvancedPanel.RowCount++;
+            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,29));
+            option.Box.Dock=DockStyle.Fill;
+            option.Box.AutoSize=false;
+            option.Box.Font=new Font("Segoe UI",9f);
+            option.Box.Margin=new Padding(8,0,0,0);
+            speedAdvancedPanel.Controls.Add(option.Box,0,modeRow);
+            speedAdvancedPanel.SetColumnSpan(option.Box,3);
+            statusToolTip.SetToolTip(option.Box,option.Tip);
+            option.Box.AccessibleDescription=option.Tip;
+            option.Box.CheckedChanged+=(_,_)=>{
+                if(restoringConfiguration||applyingCustomModDependencies
+                    ||selectingChainsawExperimentMode)return;
+                // The last checked checkbox wins; unchecking it leaves
+                // Grip & Pull selected so no invalid half-config is saved.
+                selectingChainsawExperimentMode=true;
+                try{
+                    var selected=option.Box.Checked?option.Number:1;
+                    chainsawGripPull.Checked=selected==1;
+                    chainsawCircular.Checked=selected==2;
+                    chainsawPointer.Checked=selected==3;
+                }finally{selectingChainsawExperimentMode=false;}
+                SaveCustomModSettings();
+                OptionChanged(option.Box,EventArgs.Empty);
+            };
+        }
         int logRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
         speedActionLogTest.Text="Diagnostic: action edges + melee (optional)";
@@ -761,7 +820,7 @@ public sealed partial class MainForm : Form
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
         speedAdvancedHeight=actionHeaderHeight
-            +(ActionSpeedCatalog.Controllable.Length+2)*actionRowHeight+actionFooterHeight;
+            +(ActionSpeedCatalog.Controllable.Length+2)*actionRowHeight+26+3*29+actionFooterHeight;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         speedAdvanced.CheckedChanged += (_, _) =>
         {
@@ -1848,6 +1907,9 @@ public sealed partial class MainForm : Form
             &&(customMotionChainsawKillSpeed.Checked||customTriggerChainsawThrottle.Checked);
         chainsawStrokeDistance.Enabled=strokeControls;
         chainsawStrokeIdleHz.Enabled=strokeControls;
+        chainsawGripPull.Enabled=strokeControls;
+        chainsawCircular.Enabled=strokeControls;
+        chainsawPointer.Enabled=strokeControls;
         chainsawStrokeDistanceValue.Text=chainsawStrokeDistance.Value+" cm";
         chainsawStrokeIdleHzValue.Text=(330-chainsawStrokeIdleHz.Value)+" Hz";
         foreach (string key in ActionSpeedCatalog.Controllable)
@@ -2158,6 +2220,7 @@ public sealed partial class MainForm : Form
         MotionChainsawKillSpeed = customMotionChainsawKillSpeed.Checked,
         ChainsawStrokeDistanceCm = chainsawStrokeDistance.Value,
         ChainsawStrokeIdleHz = 330-chainsawStrokeIdleHz.Value,
+        ChainsawExperimentMode = SelectedChainsawExperimentMode,
         // Existing native flags remain as the runtime contract, now owned
         // by the single Full speed choice rather than draggable mod checkboxes.
         FastGloryKills = false,
@@ -2225,6 +2288,10 @@ public sealed partial class MainForm : Form
             customMotionChainsawKillSpeed.Checked = mods.MotionChainsawKillSpeed;
             chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
             chainsawStrokeIdleHz.Value=330-Math.Max(30,Math.Min(300,mods.ChainsawStrokeIdleHz));
+            var mode=Math.Max(1,Math.Min(3,mods.ChainsawExperimentMode));
+            chainsawGripPull.Checked=mode==1;
+            chainsawCircular.Checked=mode==2;
+            chainsawPointer.Checked=mode==3;
             // Legacy shared engine-speed presets have been retired. Native
             // between actions is the unambiguous default for the new menu.
             cinematicFullSpeedMode=false;
