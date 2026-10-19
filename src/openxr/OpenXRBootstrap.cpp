@@ -4716,7 +4716,7 @@ bool createSwapchains() {
         : "[PAUSE-BINDINGS] image unavailable; normal pause menu retained");
     if(gripZonesDebugRequested())
         log(initializeGripZoneDebug(formats)
-            ? "[CHAINSAW-ZONES] four translucent XR markers ready (stereo tracked)"
+            ? "[CHAINSAW-ZONES] elliptical XR marker ready (stereo tracked)"
             : "[CHAINSAW-ZONES] OpenXR marker texture unavailable; grip haptics/logs remain active");
     log("Swapchains ready");
     return true;
@@ -5787,8 +5787,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto pointerForward=rotateVector(
         movingHand.orientation,XrVector3f{0.f,0.f,-1.f});
     const bool pointerTracked=movingHand.valid;
-    // Extract unmodified tracking-space yaw, so the four sphere centres
-    // match the same OpenXR LOCAL domain as the weapon-hand pose.
+    // HMD and controller coordinates share OpenXR LOCAL tracking space.
+    // The full HMD basis projects the controller onto the same oval quad
+    // seen in the headset, even when the hand is closer than the quad.
     const auto headQ=s.views[0].pose.orientation;
     const float xrYaw=std::atan2(2.f*(headQ.w*headQ.y+headQ.x*headQ.z),
         1.f-2.f*(headQ.x*headQ.x+headQ.y*headQ.y));
@@ -5796,7 +5797,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto currentHead=kharvox::ChainsawVec3{
         s.trackingHeadPosition.x,s.trackingHeadPosition.y,s.trackingHeadPosition.z};
     const auto gaze=rotateVector(headQ,XrVector3f{0.f,0.f,-1.f});
+    const auto gazeRight=rotateVector(headQ,XrVector3f{1.f,0.f,0.f});
+    const auto gazeUp=rotateVector(headQ,XrVector3f{0.f,1.f,0.f});
     const auto gazeVector=kharvox::ChainsawVec3{gaze.x,gaze.y,gaze.z};
+    const auto rightVector=kharvox::ChainsawVec3{gazeRight.x,gazeRight.y,gazeRight.z};
+    const auto upVector=kharvox::ChainsawVec3{gazeUp.x,gazeUp.y,gazeUp.z};
     const auto strokeNow=GetTickCount64();
     const auto experiment=kharvox::updateChainsawExperiment(
         s.chainsawExperiment,experimentMode,experimentActive,
@@ -5804,7 +5809,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         movingHand.position.x,movingHand.position.y,movingHand.position.z,
         pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
         strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked,
-        gazeVector);
+        gazeVector,rightVector,upVector);
     if(experiment.enteredZone&&experimentActive
         &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
         // A distinct, quiet contact cue, weapon hand ONLY; does not fire
@@ -5813,24 +5818,28 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         kharvox::queueControllerZoneCue(s.handZoneCues[hapticIndex],
             strokeNow,72,.34f,165.f);
         log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
-            +" circle; holding Trigger and moving INTO it starts the cut");
+            +" oval; holding Trigger and moving INTO it starts the cut");
     }
     if(experimentActive && experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
         // Explain a missing stroke without spamming the log every XR frame.
         static unsigned lastDiagnostic=~0u;
+        static std::uint64_t lastDiagnosticMs{};
         const unsigned status=(experiment.armed?1u:0u)
             |(s.chainsawTriggerPressure>.55f?2u:0u)
             |(experiment.hoveredZone>=0?4u:0u)
             |(s.chainsawExperiment.seenOutside?8u:0u)
             |(movingHandTracked?16u:0u);
-        if(status!=lastDiagnostic){
+        if(status!=lastDiagnostic||strokeNow-lastDiagnosticMs>=750){
             lastDiagnostic=status;
+            lastDiagnosticMs=strokeNow;
             log("[CHAINSAW-ONE-ZONE] active=1 trigger="+
                 std::to_string((status&2u)!=0)+" handInside="+
                 std::to_string((status&4u)!=0)+" seenOutside="+
                 std::to_string((status&8u)!=0)+" tracked="+
                 std::to_string((status&16u)!=0)+" armed="+
-                std::to_string((status&1u)!=0));
+                std::to_string((status&1u)!=0)+
+                " ovalRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
+                " handDepthM="+std::to_string(s.chainsawExperiment.lastHandDepth));
         }
     }
     if(experiment.started)
@@ -7476,9 +7485,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const float hudWidthMeters=std::max(0.05f,hudAngularWidthMeters);
     hudQuadLayer.size={hudWidthMeters,hudWidthMeters/hudContentAspect};
 
-    // ONE clearly visible, torso-centred reach-and-cut ring. Preview while
-    // the saw is equipped BEFORE pulling Trigger; when the kill begins, freeze
-    // that circle in tracking space to match the actual input hit volume.
+    // Large, tall enemy-silhouette oval; its quad and controller projection
+    // use exactly the same dimensions. Freeze the centre at execution start.
     std::array<XrCompositionLayerQuad,1> gripZoneLayers{};
     const bool zonePreviewRequested=gripZoneDebugReady
         &&gripZonesDebugRequested()
@@ -7514,7 +7522,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 {forward.x,forward.y,forward.z});
             marker.pose.position={preview.x,preview.y,preview.z};
         }
-        marker.size={.90f,.90f}; // visible ring radius ~.31m; capture radius .30m
+        marker.size={kharvox::chainsawZoneQuadWidthMeters,
+                     kharvox::chainsawZoneQuadHeightMeters};
     }
     std::array<const XrCompositionLayerBaseHeader*,9> layers{};
     uint32_t layerCount{};

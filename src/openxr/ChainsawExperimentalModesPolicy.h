@@ -5,9 +5,11 @@
 #include <cstdint>
 
 namespace kharvox {
-// Circular Saw was retired. A single forward capture region is NOT a rotary
-// gesture: reach OUTSIDE the ring with Trigger held, pull the tracked hand
-// INTO the ring, then hand motion INSIDE controls the native chainsaw tick.
+// Single tall elliptical capture region, aligned with the real OpenXR quad.
+// A tracked hand may be physically closer than the quad yet appear INSIDE it.
+// Test the ray from the HMD through the hand against the quad plane; a 3D
+// sphere centred at the quad incorrectly rejected nearly every real hand.
+// While holding Trigger, leave the projected oval, then return INTO it.
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
@@ -26,25 +28,59 @@ inline float length3(ChainsawVec3 a) noexcept {
 inline ChainsawVec3 zonePosition(ChainsawVec3 head,float yaw,int /*legacyZone*/) noexcept {
     // Fallback where forward XR orientation is absent; NOT a target lock.
     const float s=std::sin(yaw),c=std::cos(yaw);
-    return {head.x-s*1.05f,head.y-.17f,head.z-c*1.05f};
+    return {head.x-s*1.10f,head.y-.17f,head.z-c*1.10f};
 }
 inline ChainsawVec3 singleZoneCenter(ChainsawVec3 head,ChainsawVec3 gaze,
                                     float yaw=0.f) noexcept {
-    // Aim-aligned, ~1.05m forward, ~17cm below viewing direction to visually
+    // Aim-aligned, ~1.10m forward, ~17cm below viewing direction to visually
     // frame an enemy's upper torso. Frozen at native execution entry. We do
     // NOT pretend to know the true demon position without an enemy-target hook.
     const float mag=length3(gaze);
     if(mag<.8f||mag>1.2f)return zonePosition(head,yaw,0);
-    return {head.x+1.05f*gaze.x/mag,
-            head.y+1.05f*gaze.y/mag-.17f,
-            head.z+1.05f*gaze.z/mag};
+    return {head.x+1.10f*gaze.x/mag,
+            head.y+1.10f*gaze.y/mag-.17f,
+            head.z+1.10f*gaze.z/mag};
 }
-constexpr float chainsawZoneEnterRadius=.30f; // 30cm sphere
-constexpr float chainsawZoneExitRadius=.36f;  // hysteresis, avoid edge chatter
+// The procedural outline is centred at texture-space radius .69.
+// Match the quad's REAL ellipse, rather than an unreachable 3D sphere.
+constexpr float chainsawZoneQuadWidthMeters=1.30f;
+constexpr float chainsawZoneQuadHeightMeters=1.72f;
+constexpr float chainsawZoneEnterRadius=.69f; // normalized ellipse radius
+constexpr float chainsawZoneExitRadius=.81f;  // hysteresis on leaving
+struct ChainsawZoneProjection {
+    bool valid{};
+    float normalizedRadius{-1.f};
+    float handDepthMeters{};
+};
+inline ChainsawZoneProjection projectChainsawHandToOval(
+    ChainsawVec3 head,ChainsawVec3 hand,ChainsawVec3 center,
+    ChainsawVec3 forward,ChainsawVec3 right,ChainsawVec3 up) noexcept {
+    const float forwardLen=length3(forward);
+    if(forwardLen<.8f||forwardLen>1.2f||
+       length3(right)<.8f||length3(up)<.8f)return {};
+    const ChainsawVec3 n{forward.x/forwardLen,forward.y/forwardLen,
+                         forward.z/forwardLen};
+    const auto delta=minus3(hand,head);
+    const float handDepth=dot3(delta,n);
+    const float planeDepth=dot3(minus3(center,head),n);
+    // A controller behind/against the player's face is not a cut gesture.
+    if(!std::isfinite(handDepth)||handDepth<.15f||handDepth>2.f||
+       !std::isfinite(planeDepth)||planeDepth<.20f)return {};
+    const float t=planeDepth/handDepth;
+    const ChainsawVec3 projected{head.x+delta.x*t,
+                                 head.y+delta.y*t,head.z+delta.z*t};
+    const auto fromCenter=minus3(projected,center);
+    const float nx=2.f*dot3(fromCenter,right)/chainsawZoneQuadWidthMeters;
+    const float ny=2.f*dot3(fromCenter,up)/chainsawZoneQuadHeightMeters;
+    const float radius=std::sqrt(nx*nx+ny*ny);
+    if(!std::isfinite(radius))return {};
+    return {true,radius,handDepth};
+}
 
 struct ChainsawExperimentState {
     bool active{},releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
     bool seenOutside{},inside{},lastTracked{};
+    float lastZoneRadius{-1.f},lastHandDepth{};
     int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
     std::array<ChainsawVec3,4> zones{}; // only zones[0] rendered/used
     ChainsawExperimentalMode mode{ChainsawExperimentalMode::GripPull};
@@ -75,7 +111,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     float x,float y,float z,bool rayValid,float rayX,float rayY,float rayZ,
     std::uint64_t nowMs,int idleHz=300,int strokeDistanceCm=32,
     ChainsawVec3 worldHead={},float worldYaw=0.f,bool headTracked=true,
-    ChainsawVec3 headForward={}) noexcept {
+    ChainsawVec3 headForward={},ChainsawVec3 headRight={1.f,0.f,0.f},
+    ChainsawVec3 headUp={0.f,1.f,0.f}) noexcept {
     idleHz=std::clamp(idleHz,30,480);
     (void)strokeDistanceCm; // Retained for older saved calibration schemas.
     if(!nativeExecution){st.reset();return {idleHz};}
@@ -91,8 +128,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.active=true;st.mode=mode;st.lastUpdateMs=nowMs;
         st.zones[0]=singleZoneCenter(worldHead,headForward,worldYaw);
         st.previous=hand;st.lastTracked=valid;
-        st.seenOutside=valid
-            &&length3(minus3(hand,st.zones[0]))>=chainsawZoneExitRadius;
+        st.seenOutside=false; // Must observe the hand OUTSIDE with Trigger held.
     }
     if(st.mode!=mode){st.reset();return {idleHz};}
     const bool timely=nowMs>st.lastUpdateMs
@@ -102,41 +138,53 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     st.lastUpdateMs=nowMs;
     bool started=false,entered=false;
     if(mode==ChainsawExperimentalMode::GripPull){
-        const float distance=valid?length3(minus3(hand,st.zones[0])):100.f;
-        // A hand may already be inside at the very beginning of execution.
-        // It must go OUTSIDE and back INSIDE; no extra Trigger press needed.
-        if(valid&&distance>=chainsawZoneExitRadius) {
-            st.seenOutside=true;
+        const auto projection=valid&&validHead
+            ?projectChainsawHandToOval(worldHead,hand,st.zones[0],
+                headForward,headRight,headUp)
+            :ChainsawZoneProjection{};
+        st.lastZoneRadius=projection.normalizedRadius;
+        st.lastHandDepth=projection.handDepthMeters;
+        // Trigger release disarms; a second press INSIDE the oval cannot
+        // bypass the deliberate outside -> inside cut gesture.
+        if(!triggerHeld){
+            st.latchedGrip=false;
+            st.seenOutside=false;
+            st.filteredSpeed=0.f;
+            st.progress=0.f;
+        }
+        if(projection.valid&&projection.normalizedRadius>=chainsawZoneExitRadius){
+            if(triggerHeld)st.seenOutside=true;
             st.inside=false;
-        }else if(valid&&distance<=chainsawZoneEnterRadius)st.inside=true;
-        st.hovered=valid&&st.inside?0:-1;
+        }else if(projection.valid
+                 &&projection.normalizedRadius<=chainsawZoneEnterRadius){
+            st.inside=true;
+        }else if(!projection.valid){
+            st.inside=false;
+        }
+        st.hovered=projection.valid&&st.inside?0:-1;
         entered=st.hovered==0&&st.lastHover!=0;
         st.lastHover=st.hovered;
-        if(!st.latchedGrip){
-            if(st.seenOutside&&st.inside&&valid&&triggerHeld){
-                st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
-                st.filteredSpeed=.40f;started=true;
-            }
+        if(!st.latchedGrip&&st.seenOutside&&st.inside
+           &&projection.valid&&triggerHeld){
+            st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
+            st.filteredSpeed=.40f;started=true;
         }
         // Tracking loss, release or exit NEVER applies simulated speed.
-        // Do not allow stale high-speed state while controller is outside.
+        // Do not allow stale high-speed state outside the visible oval.
         if(st.latchedGrip){
-            if(!triggerHeld||!valid||!st.inside){
+            if(!triggerHeld||!projection.valid||!st.inside){
                 st.filteredSpeed=0.f;st.progress=0.f;
             }else{
                 const float delta=st.lastTracked&&timely
                     ?length3(minus3(hand,st.previous)):0.f;
                 const float instant=timely&&delta<.28f&&elapsed>0
                     ?std::clamp(delta*1000.f/float(elapsed),0.f,1.5f):0.f;
-                // Preserve a short initial forward cutting impulse so
-                // the execution visibly responds AS you pull into the ring.
+                // Short initial cutting impulse, even at shallow hand depth.
                 const float entryBoost=nowMs-st.entryMs<190? .55f:0.f;
                 const float speed=std::max(instant,entryBoost);
                 st.filteredSpeed=std::clamp(
                     .44f*speed+.56f*st.filteredSpeed,0.f,1.5f);
-                // 55cm/s of real hand movement reaches fastest allowed 30Hz.
-                // Stopping dynamically slows the cut; any direction is valid
-                // while the hand is INSIDE the capture region.
+                // 55cm/s of real motion reaches fastest allowed 30Hz.
                 st.progress=std::clamp(st.filteredSpeed/.55f,0.f,1.f);
             }
         }
@@ -161,7 +209,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     const bool impact=quarters>st.impactIndex;
     st.impactIndex=std::max(st.impactIndex,quarters);
     // The engine override is ACTIVE only with Trigger held and the hand
-    // tracked INSIDE the circle. Leaving the circle or losing tracking
+    // tracked INSIDE the projected oval. Leaving or losing tracking
     // restores native execution speed immediately (avoids slow-motion leaks).
     const bool owningTiming=mode==ChainsawExperimentalMode::PointerFocus
         ?st.pointerStarted
