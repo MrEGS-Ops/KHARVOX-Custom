@@ -10,7 +10,8 @@ namespace kharvox {
 // Test the ray from the HMD through the hand against the quad plane; a 3D
 // sphere centred at the quad incorrectly rejected nearly every real hand.
 // While holding Trigger, leave the projected oval, then return INTO it.
-// Once latched, tracked hand motion controls speed ANYWHERE until release or kill end.
+// Once latched, tracked hand motion controls speed ANYWHERE. Completing one
+// meaningful swipe holds the fastest tick until native kill end / Trigger release.
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
@@ -48,6 +49,9 @@ constexpr float chainsawZoneQuadWidthMeters=1.30f;
 constexpr float chainsawZoneQuadHeightMeters=1.72f;
 constexpr float chainsawZoneEnterRadius=.69f; // normalized ellipse radius
 constexpr float chainsawZoneExitRadius=.81f;  // hysteresis on leaving
+// One deliberate 16 cm tracked stroke is enough; a held hand should not
+// require repeated back-and-forth cutting to finish the native DOOM sequence.
+constexpr float chainsawSingleSwipeDistanceMeters=.16f;
 struct ChainsawZoneProjection {
     bool valid{};
     float normalizedRadius{-1.f};
@@ -80,13 +84,13 @@ inline ChainsawZoneProjection projectChainsawHandToOval(
 
 struct ChainsawExperimentState {
     bool active{},releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
-    bool seenOutside{},inside{},lastTracked{};
+    bool seenOutside{},inside{},lastTracked{},oneSwipeCommitted{};
     float lastZoneRadius{-1.f},lastHandDepth{};
     int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
     std::array<ChainsawVec3,4> zones{}; // only zones[0] rendered/used
     ChainsawExperimentalMode mode{ChainsawExperimentalMode::GripPull};
     ChainsawVec3 previous{},rayStart{};
-    float progress{},peak{},filteredSpeed{};
+    float progress{},peak{},filteredSpeed{},strokeTravelMeters{};
     unsigned impactIndex{};
     std::uint64_t lastUpdateMs{},entryMs{};
     void reset() noexcept {*this={};}
@@ -152,6 +156,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             st.seenOutside=false;
             st.filteredSpeed=0.f;
             st.progress=0.f;
+            st.oneSwipeCommitted=false;
+            st.strokeTravelMeters=0.f;
         }
         if(projection.valid&&projection.normalizedRadius>=chainsawZoneExitRadius){
             if(triggerHeld)st.seenOutside=true;
@@ -168,7 +174,10 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         if(!st.latchedGrip&&st.seenOutside&&st.inside
            &&projection.valid&&triggerHeld){
             st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
-            st.filteredSpeed=.40f;started=true;
+            st.filteredSpeed=.40f;
+            st.strokeTravelMeters=0.f;
+            st.oneSwipeCommitted=false;
+            started=true;
         }
         // The oval is an INITIAL activation gate only. Once latched, the
         // physical hand controls speed anywhere, including outside the oval.
@@ -179,6 +188,16 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             }else{
                 const float delta=st.lastTracked&&timely
                     ?length3(minus3(hand,st.previous)):0.f;
+                // Ignore tiny tracking jitter and discontinuous teleports.
+                // This includes the segment which crosses INTO the oval,
+                // so a natural single reach-and-cut can complete the swipe.
+                const bool genuineStroke=timely&&elapsed>0
+                    &&delta>=.008f&&delta<.28f;
+                if(!st.oneSwipeCommitted&&genuineStroke){
+                    st.strokeTravelMeters+=delta;
+                    st.oneSwipeCommitted=
+                        st.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters;
+                }
                 const float instant=timely&&delta<.28f&&elapsed>0
                     ?std::clamp(delta*1000.f/float(elapsed),0.f,1.5f):0.f;
                 // Short initial cutting impulse, even at shallow hand depth.
@@ -186,8 +205,13 @@ inline ChainsawExperimentResult updateChainsawExperiment(
                 const float speed=std::max(instant,entryBoost);
                 st.filteredSpeed=std::clamp(
                     .44f*speed+.56f*st.filteredSpeed,0.f,1.5f);
-                // 55cm/s of real motion reaches fastest allowed 30Hz.
-                st.progress=std::clamp(st.filteredSpeed/.55f,0.f,1.f);
+                // Prior to the committed swipe, hand speed drives animation
+                // continuously. Afterwards retain the fast 30 Hz engine
+                // target until the game's native chainsaw execution ends.
+                // Never synthesize damage, finish the animation or change
+                // timing outside a confirmed native chainsaw execution.
+                st.progress=st.oneSwipeCommitted?1.f:
+                    std::clamp(st.filteredSpeed/.55f,0.f,1.f);
             }
         }
         if(valid)st.previous=hand;

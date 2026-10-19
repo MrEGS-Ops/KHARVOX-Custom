@@ -75,6 +75,7 @@ int main(){
     // cannot bypass the original outside-to-inside arming requirement.
     CHECK(!sample(st,true,false,true,.15f,0,.48f,255).armed);
     CHECK(!st.seenOutside&&!st.latchedGrip);
+    CHECK(!st.oneSwipeCommitted&&st.strokeTravelMeters==0.f);
     CHECK(!sample(st,true,true,true,.15f,0,.48f,270).armed);
     CHECK(!sample(st,true,true,true,.80f,0,.48f,285).armed);
     CHECK(sample(st,true,true,true,.15f,0,.48f,300).armed);
@@ -96,6 +97,37 @@ int main(){
     CHECK(!sample(inside,true,true,true,.78f,0,.48f,180).armed);
     CHECK(sample(inside,true,true,true,.15f,0,.48f,195).armed);
     CHECK(!sample(inside,false,true,true,.15f,0,.48f,210).armed);
+
+    // The reach into the oval can be the ONE complete swipe. With Trigger
+    // still held, stopping or moving back outside must retain 30 Hz until
+    // the native execution ends; never require another swipe.
+    ChainsawExperimentState single{};
+    CHECK(!sample(single,true,true,true,.75f,0,.48f,400).armed);
+    const auto singleEntry=sample(single,true,true,true,.29f,0,.48f,415);
+    CHECK(singleEntry.armed&&single.oneSwipeCommitted);
+    CHECK(single.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters);
+    CHECK(singleEntry.targetHz==30);
+    const auto noMovement=sample(single,true,true,true,.29f,0,.48f,800);
+    CHECK(noMovement.armed&&noMovement.targetHz==30);
+    const auto moveOut=sample(single,true,true,true,.82f,0,.48f,815);
+    CHECK(moveOut.armed&&moveOut.targetHz==30);
+    const auto stillOut=sample(single,true,true,true,.82f,0,.48f,1100);
+    CHECK(stillOut.armed&&stillOut.targetHz==30);
+    // Tracking loss cannot keep applying the global tick override.
+    CHECK(!sample(single,true,true,false,.82f,0,.48f,1115).armed);
+    CHECK(sample(single,true,true,true,.82f,0,.48f,1130).targetHz==30);
+    CHECK(!sample(single,true,false,true,.82f,0,.48f,1145).armed);
+    CHECK(!single.oneSwipeCommitted);
+    CHECK(!sample(single,true,true,true,.20f,0,.48f,1160).armed);
+    CHECK(!sample(single,false,true,true,.20f,0,.48f,1175).armed);
+
+    // Insufficient stroke distance must still use live hand-speed control.
+    ChainsawExperimentState shortSwipe{};
+    CHECK(!sample(shortSwipe,true,true,true,.52f,0,.48f,1300).armed);
+    const auto smallEntry=sample(shortSwipe,true,true,true,.44f,0,.48f,1315);
+    CHECK(smallEntry.armed&&!shortSwipe.oneSwipeCommitted);
+    CHECK(shortSwipe.strokeTravelMeters<chainsawSingleSwipeDistanceMeters);
+    CHECK(!sample(shortSwipe,false,true,true,.44f,0,.48f,1330).armed);
 
     ChainsawExperimentState ray{};
     const auto begin=updateChainsawExperiment(
