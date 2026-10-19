@@ -33,7 +33,7 @@ inline ChainsawVec3 zonePosition(ChainsawVec3 head,float yaw,int zone) noexcept 
             head.z-sx*sideways-cx*.40f};
 }
 struct ChainsawExperimentState {
-    bool active{}, releasedGrip{},latchedGrip{},finished{},pointerStarted{};
+    bool active{}, releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
     int hovered{-1},lastHover{-1},startZone{-1},targetZone{-1};
     std::array<ChainsawVec3,4> zones{};
     ChainsawExperimentalMode mode{ChainsawExperimentalMode::GripPull};
@@ -81,6 +81,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     st.lastUpdateMs=nowMs;
     bool started=false,impact=false,entered=false;
     if(mode==ChainsawExperimentalMode::GripPull){
+        const bool freshGrip=gripHeld&&!st.wasGripHeld;
+        st.wasGripHeld=gripHeld;
         if(!gripHeld)st.releasedGrip=true;
         int nearest=-1;float best=.11f;
         if(valid){
@@ -93,7 +95,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         entered=nearest>=0&&nearest!=st.lastHover&&!st.latchedGrip;
         st.lastHover=nearest;
         if(!st.latchedGrip){
-            if(st.releasedGrip&&gripHeld&&nearest>=0&&valid){
+            if(st.releasedGrip&&freshGrip&&nearest>=0&&valid){
                 st.latchedGrip=true;st.startZone=nearest;
                 st.previous=hand;started=true;
             }
