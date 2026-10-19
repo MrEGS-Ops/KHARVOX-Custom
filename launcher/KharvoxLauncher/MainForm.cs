@@ -87,6 +87,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customStoryCameraFocus = MakeCheck("Story Camera Focus: Major Scenes Only (Test)", false);
     private readonly CheckBox customUninterruptedStory = MakeCheck("Uninterrupted Story (Experimental)", false);
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
+    private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Chainsaw Trigger Throttle (Experimental)", false);
     private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Motion-Controlled Chainsaw Kill Speed (Test)", false);
     private readonly TrackBar chainsawMotionFullSpeed = MakeSlider(70,300,180,10,5);
     private readonly Label chainsawMotionFullSpeedValue = MakeSliderValueLabel();
@@ -440,6 +441,7 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
+            (customTriggerChainsawThrottle, "EXPERIMENTAL / NOT YET ACTIVE IN NATIVE GAME: Proposed analogue trigger throttle for chainsaw cutting. Do not enable until native runtime support is built and tested."),
             (customMotionChainsawKillSpeed, "EXPERIMENTAL: During a confirmed chainsaw kill, tracked weapon-hand motion dynamically accelerates the existing action tick target. Starts at 200 Hz while still; as the hand moves faster, target decreases toward 30 Hz (lower engine Hz = faster animation). When motion stops, returns smoothly to 200 Hz. Uses live controller velocity, not the retired chainsaw-timescale gesture. Set the hand speed required to reach 30 Hz under Sync Action Speed > Advanced. Overrides the static Chainsaw kill Hz slider while enabled. Other actions and camera are untouched. OFF by default."),
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -2104,6 +2106,7 @@ public sealed partial class MainForm : Form
         UninterruptedStory = customUninterruptedStory.Checked,
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
+        ChainsawTriggerThrottle = customTriggerChainsawThrottle.Checked,
         MotionChainsawKillSpeed = customMotionChainsawKillSpeed.Checked,
         ChainsawMotionFullSpeedCmPerSec = chainsawMotionFullSpeed.Value,
         // Existing native flags remain as the runtime contract, now owned
@@ -2169,6 +2172,7 @@ public sealed partial class MainForm : Form
             customStoryCameraFocus.Checked = mods.StoryCameraFocus;
             customUninterruptedStory.Checked = mods.UninterruptedStory;
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
+            customTriggerChainsawThrottle.Checked = mods.ChainsawTriggerThrottle;
             customMotionChainsawKillSpeed.Checked = mods.MotionChainsawKillSpeed;
             chainsawMotionFullSpeed.Value = Math.Max(70,Math.Min(300,mods.ChainsawMotionFullSpeedCmPerSec));
             // Legacy shared engine-speed presets have been retired. Native
