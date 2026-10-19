@@ -95,8 +95,8 @@ public sealed partial class MainForm : Form
     private readonly Label chainsawStrokeDistanceValue = MakeSliderValueLabel();
     private readonly TrackBar chainsawStrokeIdleHz = MakeSlider(30,480,30,10,1);
     private readonly Label chainsawStrokeIdleHzValue = MakeSliderValueLabel();
-    private readonly CheckBox chainsawGripPull = MakeCheck("1 · Trigger & Pull", true);
-    private readonly CheckBox chainsawShowGripZones = MakeCheck("Show Grab Zones · translucent debug markers", false);
+    private readonly CheckBox chainsawGripPull = MakeCheck("1 · Single Cutting Circle (Trigger)", true);
+    private readonly CheckBox chainsawShowGripZones = MakeCheck("Show Cutting Circle · preview in VR", false);
     private readonly CheckBox chainsawPointer = MakeCheck("3 · Pointer Focus", false);
     private bool selectingChainsawExperimentMode;
     private int SelectedChainsawExperimentMode => chainsawPointer.Checked ? 3 : 1;
@@ -450,7 +450,7 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customTriggerChainsawThrottle, "Physical Chainsaw: all chainsaw grip-zone, Trigger and pointer motion control, idle/cutting haptics, zone visuals and temporary chainsaw Hz belong to ONE mod. Start native kill with Trigger, RELEASE and re-press Trigger in any visible zone, then hold and sweep toward another zone. If enabled, Chainsaw Action Speed Override is disabled to prevent conflicting engine tick ownership. Does not slow ledge grabs or hard landings."),
+            (customTriggerChainsawThrottle, "Physical Chainsaw: ONE cutting circle approximating an enemy in your gaze, Trigger-held reach-in, dynamic hand-motion control, idle/cutting haptics and preview. Pull Trigger to initiate the normal kill while your hand is outside, then cross into the circle without releasing. No second Trigger press. Separate Chainsaw Kill timing override remains mutually exclusive."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -694,8 +694,7 @@ public sealed partial class MainForm : Form
             };
         }
         foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
-        // Both experimental chainsaw modes use the same four-zone stroke
-        // tracker. These sliders never alter other weapons, ledges or GK speed.
+        // One cutting circle; calibration never changes ledges or GK.
         void AddChainsawCalibrationRow(string name, TrackBar bar, Label value,
             string tip)
         {
@@ -732,11 +731,6 @@ public sealed partial class MainForm : Form
             bar.MouseWheel+=(_,_)=>Commit();
             bar.Leave+=(_,_)=>Commit();
         }
-        AddChainsawCalibrationRow("Stroke travel",chainsawStrokeDistance,
-            chainsawStrokeDistanceValue,
-            "ONE complete left/right or up/down cutting stroke. Set the travel from "
-            +"the trigger-captured start to the opposite zone (18–60 cm). "
-            +"Tracking displacement, not hand velocity. Lower = shorter stroke.");
         AddChainsawCalibrationRow("Chainsaw idle Hz",chainsawStrokeIdleHz,
             chainsawStrokeIdleHzValue,
             "TEMPORARY CHAINSAW ONLY. LEFT = 480 Hz, SLOWEST cut at rest; "
@@ -747,12 +741,14 @@ public sealed partial class MainForm : Form
             if(restoringConfiguration||applyingCustomModDependencies)return;
             UpdateActionSpeedLabels();
         };
-        // Circle retired. Two exclusive prototypes remain for A/B testing.
+        // The old rotating-hand Circular Saw mode remains retired.
         var modeChoices=new[] {
             (Box:chainsawGripPull, Number:1,
-                Tip:"After starting a native kill, release then re-press the primary "
-                    +"TRIGGER inside one of four zones. A pulse confirms zone entry. "
-                    +"Hold Trigger and move into another zone to accelerate the cut."),
+                Tip:"See ONE target circle ahead of the chainsaw BEFORE the kill. "
+                    +"Reach OUTSIDE it, hold normal Trigger to start a native "
+                    +"kill, and pull INTO the circle without releasing Trigger. "
+                    +"While inside, faster hand motion accelerates the cut; "
+                    +"stopping slows it. No second Trigger press needed."),
             (Box:chainsawPointer, Number:3,
                 Tip:"Existing alternative test: sweep the virtual weapon-hand "
                     +"pointer roughly 28 degrees to accelerate a native chainsaw "
@@ -761,7 +757,7 @@ public sealed partial class MainForm : Form
         int modesHeaderRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,26));
         var modeHeader=new Label{
-            Text="CHAINSAW CONTROL TEST  ·  Grip Zones / Pointer",
+            Text="CHAINSAW CONTROL  ·  one reach circle / pointer",
             Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
             Font=new Font("Segoe UI",8.3f,FontStyle.Bold),
             ForeColor=Color.FromArgb(179,180,186),Margin=new Padding(5,0,0,0)
@@ -802,9 +798,10 @@ public sealed partial class MainForm : Form
         speedAdvancedPanel.Controls.Add(chainsawShowGripZones,0,zoneDebugRow);
         speedAdvancedPanel.SetColumnSpan(chainsawShowGripZones,3);
         statusToolTip.SetToolTip(chainsawShowGripZones,
-            "DEBUG ONLY. Show four stereo-correct translucent round markers "
-            +"in XR LOCAL tracking space during a native chainsaw execution. "
-            +"No enemy hitboxes or damage are changed. Restart DOOM.");
+            "DEBUG: Preview ONE ~60cm cutting circle in front of your gaze "
+            +"with chainsaw equipped, even before a kill starts. The circle "
+            +"freezes at native execution entry. This is an enemy-facing "
+            +"approximation, NOT enemy tracking. Restart DOOM.");
         chainsawShowGripZones.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();
@@ -827,7 +824,7 @@ public sealed partial class MainForm : Form
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
         speedAdvancedHeight=actionHeaderHeight
-            +(ActionSpeedCatalog.Controllable.Length+2)*actionRowHeight+26+2*29+32+actionFooterHeight;
+            +(ActionSpeedCatalog.Controllable.Length+1)*actionRowHeight+26+2*29+32+actionFooterHeight;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         speedAdvanced.CheckedChanged += (_, _) =>
         {
@@ -1913,7 +1910,7 @@ public sealed partial class MainForm : Form
         var strokeControls=speedAdvanced.Checked&&customTriggerChainsawThrottle.Checked;
         if(speedActionChecks.TryGetValue("chainsaw",out var chainOverride))
             chainOverride.Enabled=!customTriggerChainsawThrottle.Checked&&speedAdvanced.Checked;
-        chainsawStrokeDistance.Enabled=strokeControls;
+        chainsawStrokeDistance.Enabled=false; // deprecated config-only
         chainsawStrokeIdleHz.Enabled=strokeControls;
         chainsawGripPull.Enabled=strokeControls;
         chainsawShowGripZones.Enabled=strokeControls&&chainsawGripPull.Checked;
