@@ -10,6 +10,7 @@ namespace kharvox {
 // Test the ray from the HMD through the hand against the quad plane; a 3D
 // sphere centred at the quad incorrectly rejected nearly every real hand.
 // While holding Trigger, leave the projected oval, then return INTO it.
+// Once latched, tracked hand motion controls speed ANYWHERE until release or kill end.
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
@@ -169,10 +170,11 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             st.latchedGrip=true;st.startZone=0;st.entryMs=nowMs;
             st.filteredSpeed=.40f;started=true;
         }
-        // Tracking loss, release or exit NEVER applies simulated speed.
-        // Do not allow stale high-speed state outside the visible oval.
+        // The oval is an INITIAL activation gate only. Once latched, the
+        // physical hand controls speed anywhere, including outside the oval.
+        // Tracking loss or Trigger release must never apply stale high speed.
         if(st.latchedGrip){
-            if(!triggerHeld||!projection.valid||!st.inside){
+            if(!triggerHeld||!valid){
                 st.filteredSpeed=0.f;st.progress=0.f;
             }else{
                 const float delta=st.lastTracked&&timely
@@ -208,12 +210,12 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     const unsigned quarters=std::min(4u,static_cast<unsigned>(st.progress*4.f));
     const bool impact=quarters>st.impactIndex;
     st.impactIndex=std::max(st.impactIndex,quarters);
-    // The engine override is ACTIVE only with Trigger held and the hand
-    // tracked INSIDE the projected oval. Leaving or losing tracking
-    // restores native execution speed immediately (avoids slow-motion leaks).
+    // The engine override starts only after entering the projected oval
+    // with Trigger held. Once armed, EXITING the oval must not revoke control;
+    // release, lost controller tracking or native kill exit stops ownership.
     const bool owningTiming=mode==ChainsawExperimentalMode::PointerFocus
         ?st.pointerStarted
-        :(st.latchedGrip&&triggerHeld&&valid&&st.inside);
+        :(st.latchedGrip&&triggerHeld&&valid);
     return {hz,st.progress,owningTiming,
         st.finished,started,impact,chainsawModeName(mode),
         st.hovered,st.startZone,st.targetZone,entered};

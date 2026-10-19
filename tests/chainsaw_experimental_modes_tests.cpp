@@ -63,10 +63,22 @@ int main(){
     CHECK(cut.armed&&cut.progress>.5f);
     CHECK(!sample(st,true,true,false,.1f,0,.48f,175).armed);
     CHECK(sample(st,true,true,true,.08f,0,.48f,190).armed);
-    CHECK(!sample(st,true,true,true,.70f,0,.48f,210).armed);
-    CHECK(sample(st,true,true,true,.15f,0,.48f,225).armed);
-    CHECK(!sample(st,true,false,true,.15f,0,.48f,240).armed);
-    CHECK(!sample(st,false,true,true,.15f,0,.48f,250).armed);
+    // Leaving the visible oval AFTER the initial arming MUST keep motion
+    // speed control active. No second entrance is required.
+    const auto outside=sample(st,true,true,true,.70f,0,.48f,210);
+    CHECK(outside.armed);
+    CHECK(outside.hoveredZone==-1);
+    const auto outsideStroke=sample(st,true,true,true,.85f,0,.48f,225);
+    CHECK(outsideStroke.armed&&outsideStroke.targetHz<480);
+    CHECK(sample(st,true,true,true,.15f,0,.48f,240).armed);
+    // Trigger release disarms even outside the oval. Re-press INSIDE
+    // cannot bypass the original outside-to-inside arming requirement.
+    CHECK(!sample(st,true,false,true,.15f,0,.48f,255).armed);
+    CHECK(!st.seenOutside&&!st.latchedGrip);
+    CHECK(!sample(st,true,true,true,.15f,0,.48f,270).armed);
+    CHECK(!sample(st,true,true,true,.80f,0,.48f,285).armed);
+    CHECK(sample(st,true,true,true,.15f,0,.48f,300).armed);
+    CHECK(!sample(st,false,true,true,.15f,0,.48f,315).armed);
     CHECK(!st.active);
 
     // Starting inside MUST require Trigger held OUTSIDE, then re-entry.
