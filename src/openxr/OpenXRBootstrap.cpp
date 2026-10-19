@@ -34,6 +34,7 @@
 #include "ChainsawMotionSpeedPolicy.h"
 #include "ChainsawStrokePolicy.h"
 #include "ChainsawExperimentalModesPolicy.h"
+#include "ChainsawLoopProbePolicy.h"
 #include "GripZoneMarkerPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
@@ -343,6 +344,7 @@ struct State {
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{}; // retained for fallback diagnostics
     kharvox::ChainsawStrokeState chainsawStroke{}; // retired four-zone logic; no longer called
     kharvox::ChainsawExperimentState chainsawExperiment{};
+    kharvox::ChainsawLoopProbeState chainsawLoopProbe{};
     std::uint64_t chainsawStrokeImpactUntil{},chainsawStrokeLastLogMs{};
     int chainsawStrokeLastLogPercent{-1};
     float chainsawTriggerPressure{};
@@ -5951,6 +5953,89 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Glory Kills and Chainsaw executions; ledge engine timing is untouchable.
     const auto activeAction=fastKillsRequested||ledgeAction
         ?kharvox::ActionSpeedChoice{}:effectiveSelectedAction;
+    // ONE-RUN CHAINSAW LOOP FEASIBILITY PROBE.
+    // Enabled by the existing Advanced diagnostic checkbox. Every sample
+    // is read-only; no guessed idAnimator pointers or rewinds are performed.
+    static const bool chainsawLoopProbeEnabled=actionSpeedProbeMask()!=0;
+    if(chainsawLoopProbeEnabled){
+        static bool explained=false;
+        if(!explained){
+            explained=true;
+            log("[CHAINSAW-LOOP-PROBE] CONFIG v1; every=50ms maxSamples=350/kill "
+                "scope=chainsaw-only writeAnimation=0 writeClock=0 "
+                "animationPlayhead=UNRESOLVED; capture=trigger,hand,oval,stroke,"
+                "nativeAction,requestedHz,cameraSource,XRframe");
+            log("[CHAINSAW-LOOP-PROBE] TESTS one session: normal kill; "
+                "stationary hand 0.5s mid-cut then resume; "
+                "one slow swipe; one fast swipe; trigger release; "
+                "look for native exit and camera-source continuity");
+        }
+        float nativeSource[3]{};
+        const bool sourceValid=chainsawAction
+            &&KharvoxCameraReadCinematicSourceOrigin(nativeSource);
+        const auto nowProbe=GetTickCount64();
+        const auto probe=kharvox::updateChainsawLoopProbe(
+            s.chainsawLoopProbe,
+            {chainsawAction,s.chainsawTriggerPressure>.55f,movingHandTracked,
+             experiment.armed,s.chainsawExperiment.oneSwipeCommitted,
+             sourceValid,s.chainsawExperiment.filteredSpeed,nowProbe});
+        const auto& state=s.chainsawLoopProbe;
+        if(probe.started)
+            log("[CHAINSAW-LOOP-PROBE] START kill="+std::to_string(state.killIndex)
+                +" xrFrame="+std::to_string(s.frame)
+                +" idleHz="+std::to_string(strokeIdleHz));
+        if(probe.sample){
+            std::ostringstream trace;
+            trace<<std::fixed<<std::setprecision(3)
+                <<"[CHAINSAW-LOOP-PROBE] SAMPLE kill="<<state.killIndex
+                <<" ms="<<(nowProbe-state.killStartMs)
+                <<" xrFrame="<<s.frame
+                <<" nativeExec="<<(chainsawAction?1:0)
+                <<" nativeSync="<<(syncAction?1:0)
+                <<" cutscene="<<(KharvoxCameraCutsceneActive()?1:0)
+                <<" cameraSource="<<(sourceValid?1:0)
+                <<" cameraX="<<(sourceValid?nativeSource[0]:0.f)
+                <<" cameraY="<<(sourceValid?nativeSource[1]:0.f)
+                <<" cameraZ="<<(sourceValid?nativeSource[2]:0.f)
+                <<" trigger="<<s.chainsawTriggerPressure
+                <<" tracked="<<(movingHandTracked?1:0)
+                <<" armed="<<(experiment.armed?1:0)
+                <<" ovalInside="<<(experiment.hoveredZone==0?1:0)
+                <<" ovalRadius="<<s.chainsawExperiment.lastZoneRadius
+                <<" handX="<<movingHand.position.x
+                <<" handY="<<movingHand.position.y
+                <<" handZ="<<movingHand.position.z
+                <<" filteredMps="<<s.chainsawExperiment.filteredSpeed
+                <<" travelM="<<s.chainsawExperiment.strokeTravelMeters
+                <<" swipeCommit="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
+                <<" requestedHz="<<activeAction.hz
+                <<" xrDisplayPeriodNs="<<frame.predictedDisplayPeriod
+                <<" headsetX="<<s.views[0].pose.position.x
+                <<" headsetY="<<s.views[0].pose.position.y
+                <<" headsetZ="<<s.views[0].pose.position.z;
+            log(trace.str());
+        }
+        if(probe.paused)
+            log("[CHAINSAW-LOOP-PROBE] HAND_STATIONARY kill="+std::to_string(state.killIndex)
+                +" observed=160ms; animationPause=NOT_VERIFIED");
+        if(probe.resumed)
+            log("[CHAINSAW-LOOP-PROBE] HAND_RESUMED kill="+std::to_string(state.killIndex));
+        if(probe.committed)
+            log("[CHAINSAW-LOOP-PROBE] SWIPE_COMMITTED kill="+std::to_string(state.killIndex)
+                +" inputTravelM="+std::to_string(s.chainsawExperiment.strokeTravelMeters)
+                +" nativeAnimationCompleted=NOT_VERIFIED");
+        if(probe.ended)
+            log("[CHAINSAW-LOOP-PROBE] END kill="+std::to_string(state.killIndex)
+                +" durationMs="+std::to_string(state.lastDurationMs)
+                +" sampleCount="+std::to_string(state.lastSampleCount)
+                +" stationaryWindows="+std::to_string(state.lastPauseCount)
+                +" resumeWindows="+std::to_string(state.lastResumeCount)
+                +" swipeCommitted="+std::to_string(state.lastSawCommitted?1:0)
+                +" cameraSourceObserved="+std::to_string(state.lastSawCameraSource?1:0)
+                +" trackingLossSamples="+std::to_string(state.lastTrackingLossCount)
+                +" animationPlayhead=UNRESOLVED"
+                +" writes=0");
+    }
     // The CineWindow checkbox selects PRESENTATION, not animation speed.
     // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
     // cutscene=1, syncAttack=0. DOOM native timing is unconditional:

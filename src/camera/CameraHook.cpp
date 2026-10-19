@@ -2910,6 +2910,14 @@ bool KharvoxCameraNativeTwoViewActive() {
 }
 
 bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_order_acquire); }
+bool KharvoxCameraReadCinematicSourceOrigin(float origin[3]) {
+    if(!origin||!cutsceneActive.load(std::memory_order_acquire)
+        ||!lastCinematicSourceOriginValid.load(std::memory_order_acquire))
+        return false;
+    for(int i=0;i<3;++i)
+        origin[i]=lastCinematicSourceOrigin[i].load(std::memory_order_relaxed);
+    return std::isfinite(origin[0])&&std::isfinite(origin[1])&&std::isfinite(origin[2]);
+}
 
 void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
     boxingGuardTimeDilationRequested.store(active,std::memory_order_release);

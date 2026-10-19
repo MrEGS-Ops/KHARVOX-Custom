@@ -42,6 +42,9 @@ bool KharvoxCameraGameplayActive();
 bool KharvoxCameraNativeStereoActive();
 bool KharvoxCameraNativeTwoViewActive();
 bool KharvoxCameraCutsceneActive();
+// Read-only, observed native cinematic camera translation; DOOM world units.
+// This is NOT an animation playhead or proof of an animator state.
+bool KharvoxCameraReadCinematicSourceOrigin(float origin[3]);
 bool KharvoxCameraBossSequenceActive();
 // Writes a narrow death-time idPlayer->managed-entity reference snapshot for
 // the external Supervisor. No continuous diagnostics are performed in-game.

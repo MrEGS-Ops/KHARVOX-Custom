@@ -809,16 +809,18 @@ public sealed partial class MainForm : Form
         };
         int logRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
-        speedActionLogTest.Text="Diagnostic: action edges + melee (optional)";
+        speedActionLogTest.Text="Diagnostic · Chainsaw Loop Feasibility (one run)";
         speedActionLogTest.AutoSize=true;
         speedActionLogTest.Font=new Font("Segoe UI",8.5f);
         speedActionLogTest.Margin=new Padding(6,8,0,0);
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "For troubleshooting only. Record confirmed action state edges "
-            +"and observed melee button transitions. Off during normal play; "
-            +"it does not change timing or fix an animation. Restart DOOM.");
+            "CHAINSAW-ONLY READ-ONLY TEST: captures starts/ends, 50 ms input/"
+            +"camera/Hz samples, pause/resume, and per-kill summaries in "
+            +"logs/KHARVOX-KHARVOX.log. Keeps existing action-edge logging. "
+            +"Perform several different cuts in ONE run; see docs/CHAINSAW-LOOP-DIAGNOSTIC.md. "
+            +"Does NOT loop or modify animations. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
