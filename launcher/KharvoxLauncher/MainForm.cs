@@ -817,18 +817,21 @@ public sealed partial class MainForm : Form
         };
         int logRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
-        speedActionLogTest.Text="Diagnostic · Chainsaw Loop Feasibility (one run)";
+        speedActionLogTest.Text="Diagnostic · Chainsaw Animation Investigator (one run)";
         speedActionLogTest.AutoSize=true;
         speedActionLogTest.Font=new Font("Segoe UI",8.5f);
         speedActionLogTest.Margin=new Padding(6,8,0,0);
         speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
         speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
         statusToolTip.SetToolTip(speedActionLogTest,
-            "CHAINSAW-ONLY READ-ONLY TEST: captures starts/ends, 50 ms input/"
-            +"camera/Hz samples, pause/resume, and per-kill summaries in "
-            +"logs/KHARVOX-KHARVOX.log. Keeps existing action-edge logging. "
-            +"Perform several different cuts in ONE run; see docs/CHAINSAW-LOOP-DIAGNOSTIC.md. "
-            +"Does NOT loop or modify animations. Restart DOOM.");
+            "READ-ONLY ACTIVE EVIDENCE INVESTIGATOR: tracks five candidate "
+            +"native-render signals (render time, presentation pose, prop pose, "
+            +"animated grip joint, cinematic camera), chord/Trigger, clock Hz "
+            +"and XR timing. Bounded 25ms samples + pre-kill baseline, per-kill "
+            +"candidate rankings and a CSV in logs/chainsaw-animation-investigation.csv. "
+            +"Does NOT seek or modify animations; no new memory scanning. "
+            +"Perform 4-6 varied chainsaw kills in ONE session. "
+            +"See docs/CHAINSAW-ANIMATION-INVESTIGATION.md. Restart DOOM.");
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);

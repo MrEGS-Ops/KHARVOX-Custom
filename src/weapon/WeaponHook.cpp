@@ -153,6 +153,7 @@ HideRenderModelMeshFn hideRenderModelMesh{};
 WeaponRenderUpdateFn originalWeaponRenderUpdate{};
 std::array<std::atomic<float>, 3> animatedGripPivot{};
 std::atomic<bool> animatedGripPivotValid{};
+std::atomic<uint64_t> animatedGripPivotTickMs{}; // read-only published timestamp
 std::array<std::atomic<float>, 3> neutralGripPivot{};
 std::atomic<bool> neutralGripPivotValid{};
 std::atomic<unsigned> neutralGripPivotGeneration{};
@@ -171,6 +172,7 @@ std::array<std::atomic<float>, 3> lastWeaponPresentOrigin{};
 std::array<std::atomic<float>, 9> lastWeaponPresentAxis{};
 std::array<std::atomic<float>, 3> lastWeaponPresentViewOffset{};
 std::array<std::atomic<int>, 4> lastWeaponPresentIntegers{};
+std::atomic<uint64_t> lastWeaponPresentTickMs{}; // read-only evidence freshness
 std::atomic<float> lastWeaponPresentModelScale{};
 std::atomic<float> lastWeaponPresentDepthHack{};
 struct LaserSourceSnapshot {
@@ -193,6 +195,7 @@ std::array<unsigned char, weaponObjectSnapshotBytes> baselineWeaponObjectBytes{}
 bool baselineWeaponObjectValid{};
 uintptr_t baselineWeaponObjectAddress{};
 std::array<std::atomic<float>, 3> lastWeaponPropOrigin{};
+std::atomic<uint64_t> lastWeaponPropTickMs{}; // read-only evidence freshness
 std::array<std::atomic<float>, 9> lastWeaponPropAxis{};
 std::atomic<unsigned> boneSnapshotCount{};
 bool boneSnapshotKeyWasDown{};
@@ -610,6 +613,7 @@ void captureAnimatedGripPivot(void* hands) {
     }
     for (int index = 0; index < 3; ++index)
         animatedGripPivot[index].store(origin[index], std::memory_order_relaxed);
+    animatedGripPivotTickMs.store(GetTickCount64(), std::memory_order_release);
     animatedGripPivotValid.store(true, std::memory_order_release);
     jointScanLogged.store(true, std::memory_order_release);
 }
@@ -2051,6 +2055,7 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         // render updates. It does NOT prove the root/prop entity's cached
         // +0x14C value changed; the entity-axis hook logs that independently.
         lastWeaponPresentDepthHack.store(depthHack, std::memory_order_relaxed);
+        lastWeaponPresentTickMs.store(GetTickCount64(), std::memory_order_release);
         static std::atomic<unsigned> depthWeaponsLogged{};
         const auto kind=KharvoxWeaponCurrentKind();
         const auto index=static_cast<unsigned>(kind);
@@ -2551,6 +2556,7 @@ extern "C" void __fastcall setRenderEntityAxisHook(void* rawEntity, const float*
                 lastWeaponPropOrigin[index].store(propOrigin[index], std::memory_order_relaxed);
             for (int index = 0; index < 9; ++index)
                 lastWeaponPropAxis[index].store(axisToCopy[index], std::memory_order_relaxed);
+            lastWeaponPropTickMs.store(GetTickCount64(),std::memory_order_release);
             // This is the actual weapon-prop entity and its final model transform.
             // Query its native animated joints while the entity is valid; unlike
             // the transient child-render scratch object, this exposes the barrel
@@ -2734,6 +2740,58 @@ bool KharvoxWeaponHolstered() {
 
 KharvoxWeaponKind KharvoxWeaponCurrentKind() {
     return activeWeaponKind.load(std::memory_order_acquire);
+}
+
+// No memory reads beyond existing atomic caches populated by verified native
+// callbacks. Stale observations fail closed and never modify game behaviour.
+// Model presentation is partly VR controlled and must not be mistaken for
+// a standalone chainsaw animation clock without independent corroboration.
+KharvoxChainsawAnimationEvidence KharvoxWeaponReadChainsawAnimationEvidence(
+    uint64_t nowMs) {
+    KharvoxChainsawAnimationEvidence out{};
+    if(activeWeaponKind.load(std::memory_order_acquire)!=KharvoxWeaponKind::Chainsaw)
+        return out;
+    constexpr uint64_t maxAgeMs=200;
+    const auto fresh=[&](uint64_t when){
+        return when && nowMs>=when && nowMs-when<=maxAgeMs;
+    };
+    const auto renderTick=lastWeaponPresentTickMs.load(std::memory_order_acquire);
+    out.renderTickMs=renderTick;
+    if(fresh(renderTick)){
+        out.renderTime=lastWeaponPresentIntegers[2].load(std::memory_order_relaxed);
+        out.renderFrame=lastWeaponPresentIntegers[1].load(std::memory_order_relaxed);
+        out.renderFlags=lastWeaponPresentIntegers[3].load(std::memory_order_relaxed);
+        bool sane=true;
+        for(unsigned i=0;i<3;++i){
+            out.presentOrigin[i]=lastWeaponPresentOrigin[i].load(std::memory_order_relaxed);
+            sane &= std::isfinite(out.presentOrigin[i])&&
+                std::fabs(out.presentOrigin[i])<100000.f;
+        }
+        out.renderValid=sane;
+    }
+    const auto propTick=lastWeaponPropTickMs.load(std::memory_order_acquire);
+    out.propTickMs=propTick;
+    if(fresh(propTick)){
+        bool sane=true;
+        for(unsigned i=0;i<3;++i){
+            out.propOrigin[i]=lastWeaponPropOrigin[i].load(std::memory_order_relaxed);
+            sane &= std::isfinite(out.propOrigin[i])&&
+                std::fabs(out.propOrigin[i])<100000.f;
+        }
+        out.propValid=sane;
+    }
+    const auto gripTick=animatedGripPivotTickMs.load(std::memory_order_acquire);
+    out.gripTickMs=gripTick;
+    if(animatedGripPivotValid.load(std::memory_order_acquire)&&fresh(gripTick)){
+        bool sane=true;
+        for(unsigned i=0;i<3;++i){
+            out.gripOrigin[i]=animatedGripPivot[i].load(std::memory_order_relaxed);
+            sane &= std::isfinite(out.gripOrigin[i])&&
+                std::fabs(out.gripOrigin[i])<100000.f;
+        }
+        out.gripValid=sane;
+    }
+    return out;
 }
 
 void KharvoxWeaponCaptureAmmoSnapshot(void* player) {

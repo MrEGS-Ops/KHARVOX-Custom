@@ -1,5 +1,6 @@
 #pragma once
 #include "AerWeaponSource.h"
+#include <cstdint>
 // drawCameraPose points to the validated 12-float origin + 3x3 view basis.
 int KharvoxWeaponResolveAerDraw(kharvox::AerSourceKey source,const float* origin,const float* axis,
     float* targetOrigin,float* targetAxis,uint64_t& matchedPoseId,
@@ -38,6 +39,18 @@ bool KharvoxWeaponInstallHook();
 bool KharvoxWeaponIsTrackingActive();
 bool KharvoxWeaponCollectibleAnimationActive();
 KharvoxWeaponKind KharvoxWeaponCurrentKind();
+// READ-ONLY snapshot of existing validated renderer and grip caches, for the
+// one-run Chainsaw Animation Investigation diagnostic. This is NOT idAnimator
+// playhead data. No new game pointer dereference or memory scanning occurs.
+// Capture timestamps reject stale transforms from before weapon switching.
+struct KharvoxChainsawAnimationEvidence {
+    bool renderValid{},propValid{},gripValid{};
+    int renderTime{},renderFrame{},renderFlags{};
+    uint64_t renderTickMs{},propTickMs{},gripTickMs{};
+    float presentOrigin[3]{},propOrigin[3]{},gripOrigin[3]{};
+};
+KharvoxChainsawAnimationEvidence KharvoxWeaponReadChainsawAnimationEvidence(
+    uint64_t nowMs);
 // True while the live Gauss weapon decl is a charged Siege-mode state.
 bool KharvoxWeaponGaussSiegeChargeActive();
 // Presentation-only holster state: keeps DOOM's selected weapon alive while

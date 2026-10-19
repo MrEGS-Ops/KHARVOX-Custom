@@ -35,6 +35,7 @@
 #include "ChainsawStrokePolicy.h"
 #include "ChainsawExperimentalModesPolicy.h"
 #include "ChainsawLoopProbePolicy.h"
+#include "ChainsawAnimationInvestigationPolicy.h"
 #include "GripZoneMarkerPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
@@ -345,6 +346,7 @@ struct State {
     kharvox::ChainsawStrokeState chainsawStroke{}; // retired four-zone logic; no longer called
     kharvox::ChainsawExperimentState chainsawExperiment{};
     kharvox::ChainsawLoopProbeState chainsawLoopProbe{};
+    kharvox::ChainsawAnimationInvestigationState chainsawAnimationInvestigation{};
     std::uint64_t chainsawStrokeImpactUntil{},chainsawStrokeLastLogMs{};
     int chainsawStrokeLastLogPercent{-1};
     float chainsawTriggerPressure{};
@@ -6082,6 +6084,202 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 +" trackingLossSamples="+std::to_string(state.lastTrackingLossCount)
                 +" animationPlayhead=UNRESOLVED"
                 +" writes=0");
+    }
+    // One-run Chainsaw Animation Investigator, independent of the gameplay
+    // motion controller and the legacy low-rate feasibility probe above.
+    // Operates on existing validated native weapon-render/cache snapshots;
+    // no extra game-memory dereferences, game hooks, animation or clock writes.
+    // The CSV is intentionally capped: 12 kills x 1200 samples, 25ms cadence.
+    if(chainsawLoopProbeEnabled&&(chainsawAction||chainsawEquipped
+        ||s.chainsawAnimationInvestigation.active)){
+        static bool investigationExplained=false;
+        static bool csvAttempted=false;
+        static std::ofstream investigationCsv;
+        if(!csvAttempted){
+            csvAttempted=true;
+            const auto csvPath=kharvox::runtimePath(
+                L"logs\\chainsaw-animation-investigation.csv");
+            investigationCsv.open(std::filesystem::path(csvPath),
+                                  std::ios::out|std::ios::trunc);
+            if(investigationCsv){
+                investigationCsv
+                    <<"event,kill,relMs,monotonicMs,xrFrame,displayPeriodNs,"
+                    <<"nativeExec,nativeSync,trigger,triggerPressure,tracked,"
+                    <<"chordLocked,chordProgress,chordFinished,secondPress,"
+                    <<"ovalRadius,requestedHz,handMetersPerSecond,"
+                    <<"renderValid,renderTimeUnknownUnits,renderFrame,renderFlags,"
+                    <<"renderAgeMs,weaponPresentX,weaponPresentY,weaponPresentZ,"
+                    <<"propValid,propAgeMs,propX,propY,propZ,"
+                    <<"gripValid,gripAgeMs,gripX,gripY,gripZ,"
+                    <<"cameraValid,cameraX,cameraY,cameraZ,"
+                    <<"hmdX,hmdY,hmdZ\n";
+            }else log("[CHAINSAW-ANIM-INVESTIGATOR] CSV unavailable: "
+                "falling back to structured event summaries");
+        }
+        if(!investigationExplained){
+            investigationExplained=true;
+            log("[CHAINSAW-ANIM-INVESTIGATOR] CONFIG v2 source=verified-render-hook-caches "
+                "cadence=25ms maxSamples=1200-per-kill maxKills=12 baseline=120 "
+                "candidateCount=5 output=logs/chainsaw-animation-investigation.csv "
+                "animationPlayhead=UNRESOLVED writes=0 scans=0");
+            log("[CHAINSAW-ANIM-INVESTIGATOR] METHODS render-time-proxy,"
+                "weapon-presentation-transform,native-prop-transform,"
+                "animated-grip-joint,camera-source; ranks are PROXIES only");
+        }
+        const auto nowInvest=GetTickCount64();
+        // Real physical hand speed: distinct from the experiment's
+        // chord progress/speed estimate. Robust against tracking loss.
+        static kharvox::ChainsawVec3 previousHand{};
+        static std::uint64_t previousHandMs{};
+        static bool previousHandValid=false;
+        const kharvox::ChainsawVec3 physicalHand{
+            movingHand.position.x,movingHand.position.y,movingHand.position.z};
+        float handMetersPerSecond=0.f;
+        if(movingHandTracked&&previousHandValid&&nowInvest>previousHandMs
+           &&nowInvest-previousHandMs<=175){
+            const auto meters=kharvox::length3(kharvox::minus3(
+                physicalHand,previousHand));
+            if(meters<.28f)
+                handMetersPerSecond=std::clamp(
+                    meters*1000.f/float(nowInvest-previousHandMs),0.f,20.f);
+        }
+        previousHand=physicalHand;previousHandValid=movingHandTracked;
+        previousHandMs=nowInvest;
+        const auto weaponEvidence=KharvoxWeaponReadChainsawAnimationEvidence(nowInvest);
+        float cameraSource[3]{};
+        const bool cameraValid=chainsawAction
+            &&KharvoxCameraReadCinematicSourceOrigin(cameraSource);
+        kharvox::ChainsawAnimationEvidenceInput obs{};
+        obs.nowMs=nowInvest;obs.nativeExecution=chainsawAction;
+        obs.nativeSync=syncAction;
+        obs.trigger=s.chainsawTriggerPressure>.55f;
+        obs.triggerPressure=s.chainsawTriggerPressure;
+        obs.tracked=movingHandTracked;
+        obs.chordLocked=s.chainsawExperiment.cutPathLocked;
+        obs.chordFinished=s.chainsawExperiment.oneSwipeCommitted;
+        obs.doubleTrigger=s.chainsawExperiment.fastFinishLatched;
+        obs.renderValid=weaponEvidence.renderValid;
+        obs.propValid=weaponEvidence.propValid;
+        obs.gripValid=weaponEvidence.gripValid;
+        obs.cameraValid=cameraValid;
+        obs.requestedHz=activeAction.hz;
+        obs.renderTime=weaponEvidence.renderTime;
+        obs.renderFrame=weaponEvidence.renderFrame;
+        obs.handSpeed=handMetersPerSecond;
+        obs.chordProgress=s.chainsawExperiment.progress;
+        obs.ovalRadius=s.chainsawExperiment.lastZoneRadius;
+        for(int i=0;i<3;++i){
+            obs.renderOrigin[i]=weaponEvidence.presentOrigin[i];
+            obs.propOrigin[i]=weaponEvidence.propOrigin[i];
+            obs.gripOrigin[i]=weaponEvidence.gripOrigin[i];
+            obs.cameraOrigin[i]=cameraSource[i];
+        }
+        const auto inv=kharvox::updateChainsawAnimationInvestigation(
+            s.chainsawAnimationInvestigation,obs);
+        const auto& state=s.chainsawAnimationInvestigation;
+        const auto event=inv.started?"START":inv.ended?"END"
+            :inv.doublePressed?"SECOND_TRIGGER_FAST_FINISH"
+            :inv.chordEnd?"OPPOSITE_EDGE_COMPLETE"
+            :inv.chordStart?"CHORD_ARM"
+            :inv.triggerReleased?"TRIGGER_RELEASE"
+            :inv.triggerPressed?"TRIGGER_PRESS"
+            :inv.clockSwitched?"CLOCK_TRANSITION"
+            :inv.baselineSample?"BASELINE":"SAMPLE";
+        if(inv.started||inv.chordStart||inv.chordEnd||inv.doublePressed
+           ||inv.triggerReleased||inv.triggerPressed||inv.clockSwitched
+           ||inv.ended){
+            log(std::string("[CHAINSAW-ANIM-INVESTIGATOR] ")+event
+                +" kill="+std::to_string(state.killIndex)
+                +" inputChord="+std::to_string(obs.chordProgress)
+                +" requestedHz="+std::to_string(obs.requestedHz)
+                +" renderTimeUnknownUnits="+std::to_string(obs.renderTime)
+                +" renderFresh="+std::to_string(obs.renderValid?1:0)
+                +" gripFresh="+std::to_string(obs.gripValid?1:0)
+                +" propFresh="+std::to_string(obs.propValid?1:0)
+                +" playhead=UNRESOLVED");
+        }
+        if((inv.sample||inv.baselineSample||inv.ended)&&investigationCsv){
+            const auto& a=obs;
+            const std::uint64_t elapsed=state.active&&a.nowMs>=state.startedMs
+                ?a.nowMs-state.startedMs:0;
+            const auto renderAge=a.renderValid&&a.nowMs>=weaponEvidence.renderTickMs
+                ?a.nowMs-weaponEvidence.renderTickMs:0;
+            const auto propAge=a.propValid&&a.nowMs>=weaponEvidence.propTickMs
+                ?a.nowMs-weaponEvidence.propTickMs:0;
+            const auto gripAge=a.gripValid&&a.nowMs>=weaponEvidence.gripTickMs
+                ?a.nowMs-weaponEvidence.gripTickMs:0;
+            investigationCsv<<std::fixed<<std::setprecision(4)
+                <<event<<','<<state.killIndex<<','<<elapsed<<','<<a.nowMs<<','
+                <<s.frame<<','<<frame.predictedDisplayPeriod<<','
+                <<a.nativeExecution<<','<<a.nativeSync<<','<<a.trigger<<','
+                <<a.triggerPressure<<','<<a.tracked<<','
+                <<a.chordLocked<<','<<a.chordProgress<<','<<a.chordFinished<<','
+                <<a.doubleTrigger<<','<<a.ovalRadius<<','<<a.requestedHz<<','
+                <<a.handSpeed<<','<<a.renderValid<<','<<a.renderTime<<','
+                <<a.renderFrame<<','<<weaponEvidence.renderFlags<<','<<renderAge<<','
+                <<a.renderOrigin[0]<<','<<a.renderOrigin[1]<<','<<a.renderOrigin[2]<<','
+                <<a.propValid<<','<<propAge<<','
+                <<a.propOrigin[0]<<','<<a.propOrigin[1]<<','<<a.propOrigin[2]<<','
+                <<a.gripValid<<','<<gripAge<<','
+                <<a.gripOrigin[0]<<','<<a.gripOrigin[1]<<','<<a.gripOrigin[2]<<','
+                <<a.cameraValid<<','
+                <<a.cameraOrigin[0]<<','<<a.cameraOrigin[1]<<','<<a.cameraOrigin[2]<<','
+                <<s.views[0].pose.position.x<<','
+                <<s.views[0].pose.position.y<<','
+                <<s.views[0].pose.position.z<<'\n';
+            if(inv.started||inv.ended||inv.chordEnd||inv.doublePressed
+               ||(inv.sample&&state.sampleCount%24==0))
+                investigationCsv.flush();
+        }
+        if(inv.ended){
+            // Built-in read-only differential search. We rank existing engine
+            // candidates by availability, moving/still changes and requested
+            // clock response; no score is native-playhead confirmation.
+            int highest=-1;unsigned winner=0;
+            for(unsigned c=0;c<kharvox::chainsawEvidenceChannelCount;++c){
+                const auto& v=state.lastStats[c];
+                const auto& base=state.baselineStats[c];
+                const int score=kharvox::chainsawEvidenceProxyScore(v);
+                if(score>highest){highest=score;winner=c;}
+                const double slowRate=v.slowClockMs
+                    ?1000.0*v.slowClockDelta/double(v.slowClockMs):0.0;
+                const double fastRate=v.fastClockMs
+                    ?1000.0*v.fastClockDelta/double(v.fastClockMs):0.0;
+                std::ostringstream report;
+                report<<std::fixed<<std::setprecision(3)
+                    <<"[CHAINSAW-ANIM-INVESTIGATOR] CANDIDATE kill="
+                    <<state.killIndex<<" name="<<kharvox::chainsawEvidenceName(c)
+                    <<" proxyScore="<<score
+                    <<" validPairs="<<v.pairs<<" changed="<<v.changed
+                    <<" changedWhileHandStill="<<v.changedHandStill
+                    <<" changedWhileHandMoving="<<v.changedHandMoving
+                    <<" changedSlowHz="<<v.changedSlowClock
+                    <<" changedFastHz="<<v.changedFastClock
+                    <<" slowDeltaPerSec="<<slowRate
+                    <<" fastDeltaPerSec="<<fastRate
+                    <<" nonKillBaselineChanged="<<base.changed
+                    <<" timeBackwards="<<v.backward
+                    <<" largeJumps="<<v.largeJumps
+                    <<" animationPlayheadVerified=NO";
+                log(report.str());
+            }
+            log("[CHAINSAW-ANIM-INVESTIGATOR] RANKED_PROXY kill="
+                +std::to_string(state.killIndex)
+                +" first="+kharvox::chainsawEvidenceName(winner)
+                +" score="+std::to_string(highest)
+                +" samples="+std::to_string(state.lastSampleCount)
+                +" durationMs="+std::to_string(state.lastKillDurationMs)
+                +" note=requires-native-animation-independent-validation");
+        }
+        if(inv.capped){
+            static bool capLogged=false;
+            if(!capLogged){
+                capLogged=true;
+                log("[CHAINSAW-ANIM-INVESTIGATOR] CAP 12 kills reached; "
+                    "collection stopped for this session");
+                if(investigationCsv)investigationCsv.flush();
+            }
+        }
     }
     // The CineWindow checkbox selects PRESENTATION, not animation speed.
     // Passive scripted interactions (Foundry scanner/switch/NPC arm) are
