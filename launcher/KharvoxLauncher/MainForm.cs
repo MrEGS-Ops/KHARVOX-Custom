@@ -97,9 +97,25 @@ public sealed partial class MainForm : Form
     private readonly Label chainsawStrokeIdleHzValue = MakeSliderValueLabel();
     private readonly CheckBox chainsawGripPull = MakeCheck("1 · Single Cutting Circle (Trigger)", true);
     private readonly CheckBox chainsawShowGripZones = MakeCheck("Show Cutting Circle · preview in VR", false);
-    private readonly CheckBox chainsawPointer = MakeCheck("3 · Pointer Focus", false);
+    private readonly CheckBox chainsawPointer = MakeCheck("Legacy · Pointer Focus", false);
+    private readonly CheckBox chainsawExpSingleSwipe = MakeCheck("X1 · Short Single Swipe", false);
+    private readonly CheckBox chainsawExpThrottle = MakeCheck("X2 · Continuous Throttle", false);
+    private readonly CheckBox chainsawExpThreePhase = MakeCheck("X3 · Three-Phase Hybrid", false);
+    private readonly CheckBox chainsawExpImpact = MakeCheck("X4 · Physical Impact", false);
+    private readonly CheckBox chainsawExpNativeFast = MakeCheck("X5 · Native Fast + Motion Haptics", false);
+    private CheckBox[] ChainsawExperimentBoxes => new[] {
+        chainsawGripPull,chainsawPointer,chainsawExpSingleSwipe,
+        chainsawExpThrottle,chainsawExpThreePhase,chainsawExpImpact,
+        chainsawExpNativeFast
+    };
     private bool selectingChainsawExperimentMode;
-    private int SelectedChainsawExperimentMode => chainsawPointer.Checked ? 3 : 1;
+    private int SelectedChainsawExperimentMode =>
+        chainsawExpSingleSwipe.Checked ? 4 :
+        chainsawExpThrottle.Checked ? 5 :
+        chainsawExpThreePhase.Checked ? 6 :
+        chainsawExpImpact.Checked ? 7 :
+        chainsawExpNativeFast.Checked ? 8 :
+        chainsawPointer.Checked ? 3 : 1;
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
@@ -757,14 +773,38 @@ public sealed partial class MainForm : Form
                     +"Releasing Trigger idles; a second Trigger press ANY "
                     +"TIME fast-finishes at 30 Hz. No native frame seek."),
             (Box:chainsawPointer, Number:3,
-                Tip:"Existing alternative test: sweep the virtual weapon-hand "
-                    +"pointer roughly 28 degrees to accelerate a native chainsaw "
-                    +"execution. No visible laser; Circle mode is retired.")
+                Tip:"Legacy pointer experiment: swing the weapon direction to "
+                    +"accelerate the native execution. No ring; compare as control."),
+            (Box:chainsawExpSingleSwipe, Number:4,
+                Tip:"X1 SHORT SINGLE SWIPE: Trigger held; outside→inside small "
+                    +"circle once, then swipe ANYWHERE. 24cm free-space movement "
+                    +"commits 30Hz finish. 180Hz minimum idle after arming; "
+                    +"hand movement accelerates to 45Hz. Strong cut-end haptic."),
+            (Box:chainsawExpThrottle, Number:5,
+                Tip:"X2 CONTINUOUS THROTTLE: Activate using small circle once, "
+                    +"then hand velocity drives 200→45Hz indefinitely, ANYWHERE. "
+                    +"No distance-based auto-finish. DOOM exits normally or "
+                    +"second Trigger press fast finishes. Velocity-textured haptics."),
+            (Box:chainsawExpThreePhase, Number:6,
+                Tip:"X3 THREE-PHASE HYBRID: activate with circle; approximate "
+                    +"220ms engage at 180Hz (not a clip hook), followed by "
+                    +"movement-controlled cutting. 28cm swipe finishes at 30Hz. "
+                    +"No unverified native animation writes."),
+            (Box:chainsawExpImpact, Number:7,
+                Tip:"X4 PHYSICAL IMPACT: circle activates a constant 155Hz "
+                    +"native cutting pace, with forceful staccato hand-movement "
+                    +"haptic impacts. 22cm movement requests 30Hz finish. "
+                    +"No damage/audio scripting changes."),
+            (Box:chainsawExpNativeFast, Number:8,
+                Tip:"X5 NATIVE FAST + MOTION HAPTICS: NO ring activation. "
+                    +"Run confirmed native chainsaw execution at 40Hz from "
+                    +"start to exit. Hand motion affects haptic intensity only. "
+                    +"Second Trigger press overrides to 30Hz. Reliability fallback.")
         };
         int modesHeaderRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,26));
         var modeHeader=new Label{
-            Text="CHAINSAW CONTROL  ·  one start circle / free motion",
+            Text="CHAINSAW A/B TEST  ·  select ONE mode (restart DOOM)",
             Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
             Font=new Font("Segoe UI",8.3f,FontStyle.Bold),
             ForeColor=Color.FromArgb(179,180,186),Margin=new Padding(5,0,0,0)
@@ -790,8 +830,11 @@ public sealed partial class MainForm : Form
                 selectingChainsawExperimentMode=true;
                 try{
                     var selected=option.Box.Checked?option.Number:1;
-                    chainsawGripPull.Checked=selected==1;
-                    chainsawPointer.Checked=selected==3;
+                    foreach(var selectedBox in ChainsawExperimentBoxes)
+                        selectedBox.Checked=ReferenceEquals(selectedBox,option.Box)
+                            ?selected==option.Number
+                            :ReferenceEquals(selectedBox,chainsawGripPull)
+                                &&selected==1;
                 }finally{selectingChainsawExperimentMode=false;}
                 SaveCustomModSettings();
                 OptionChanged(option.Box,EventArgs.Empty);
@@ -836,7 +879,8 @@ public sealed partial class MainForm : Form
             SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
         speedAdvancedHeight=actionHeaderHeight
-            +(ActionSpeedCatalog.Controllable.Length+1)*actionRowHeight+26+2*29+32+actionFooterHeight;
+            +(ActionSpeedCatalog.Controllable.Length+1)*actionRowHeight
+            +26+modeChoices.Length*29+32+actionFooterHeight;
         speedAdvancedPanel.Height=speedAdvancedHeight;
         speedAdvanced.CheckedChanged += (_, _) =>
         {
@@ -1924,9 +1968,10 @@ public sealed partial class MainForm : Form
             chainOverride.Enabled=!customTriggerChainsawThrottle.Checked&&speedAdvanced.Checked;
         chainsawStrokeDistance.Enabled=false; // deprecated config-only
         chainsawStrokeIdleHz.Enabled=strokeControls;
-        chainsawGripPull.Enabled=strokeControls;
-        chainsawShowGripZones.Enabled=strokeControls&&chainsawGripPull.Checked;
-        chainsawPointer.Enabled=strokeControls;
+        foreach(var modeCheck in ChainsawExperimentBoxes)
+            modeCheck.Enabled=strokeControls;
+        chainsawShowGripZones.Enabled=strokeControls
+            &&!chainsawPointer.Checked&&!chainsawExpNativeFast.Checked;
         chainsawStrokeDistanceValue.Text=chainsawStrokeDistance.Value+" cm";
         chainsawStrokeIdleHzValue.Text=(510-chainsawStrokeIdleHz.Value)+" Hz";
         foreach (string key in ActionSpeedCatalog.Controllable)
@@ -2311,9 +2356,10 @@ public sealed partial class MainForm : Form
             chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
             chainsawStrokeIdleHz.Value=510-Math.Max(30,Math.Min(480,mods.ChainsawStrokeIdleHz));
             chainsawShowGripZones.Checked=mods.ChainsawShowGripZones;
-            var mode=mods.ChainsawExperimentMode==3?3:1;
-            chainsawGripPull.Checked=mode==1;
-            chainsawPointer.Checked=mode==3;
+            var mode=mods.ChainsawExperimentMode;
+            var ids=new[]{1,3,4,5,6,7,8};
+            var checks=ChainsawExperimentBoxes;
+            for(int i=0;i<checks.Length;++i)checks[i].Checked=mode==ids[i];
             // Legacy shared engine-speed presets have been retired. Native
             // between actions is the unambiguous default for the new menu.
             cinematicFullSpeedMode=false;

@@ -5786,6 +5786,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         switch(selected){
             case 2:return kharvox::ChainsawExperimentalMode::GripPull; // retired
             case 3:return kharvox::ChainsawExperimentalMode::PointerFocus;
+            case 4:return kharvox::ChainsawExperimentalMode::ShortSwipe;
+            case 5:return kharvox::ChainsawExperimentalMode::ContinuousThrottle;
+            case 6:return kharvox::ChainsawExperimentalMode::ThreePhase;
+            case 7:return kharvox::ChainsawExperimentalMode::ImpactCut;
+            case 8:return kharvox::ChainsawExperimentalMode::NativeFast;
             default:return kharvox::ChainsawExperimentalMode::GripPull;
         }
     }();
@@ -5820,12 +5825,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked,
         gazeVector,rightVector,upVector);
     if(experiment.enteredZone&&experimentActive
-        &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
+        &&kharvox::chainsawModeUsesCircle(experimentMode)){
         // Continuous radial guide replaces the old one-shot entry pulse.
         log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
             +" activation circle; after ARM cut ANYWHERE with Trigger held");
     }
-    if(experimentActive && experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
+    if(experimentActive && kharvox::chainsawModeUsesCircle(experimentMode)){
         // Explain a missing stroke without spamming the log every XR frame.
         static unsigned lastDiagnostic=~0u;
         static std::uint64_t lastDiagnosticMs{};
@@ -5868,7 +5873,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             +" motionFloorHz="+std::to_string(kharvox::chainsawPhysicalMotionFastHz)
             +" releaseIdleHz="+std::to_string(kharvox::chainsawTriggerReleaseIdleHz)
             +" sweepDistanceCm="+std::to_string(static_cast<int>(
-                kharvox::chainsawSingleSwipeDistanceMeters*100.f))
+                kharvox::chainsawModeSwipeTarget(experimentMode)*100.f+.5f))
             +" legacyCalibration="+std::to_string(strokeDistanceCm)+"cm");
     const int percentage=static_cast<int>(experiment.progress*100.f);
     if(experiment.armed
@@ -5954,7 +5959,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         // Locator BZZZ applies BEFORE first arm only. After that the
         // circle cannot override real cutting haptics or motion timing.
         const bool circleGuide=experimentActive
-            &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull
+            &&kharvox::chainsawModeUsesCircle(experimentMode)
             &&!s.chainsawExperiment.cutPathLocked
             &&!s.chainsawExperiment.fastFinishLatched;
         if(circleGuide&&!s.chainsawZoneGuideActive)
@@ -5974,8 +5979,42 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 pulseOn?kharvox::chainsawZoneGuidePulseAmplitude:0.f,
                 kharvox::chainsawZoneGuidePulseFrequencyHz,pulseOn};
         }else{
-            if(chainsawAction&&experiment.armed&&strokeNow<s.chainsawStrokeImpactUntil){
-                // Retain original impact cues for non-oval Pointer Focus.
+            const float normalizedMotion=std::clamp(
+                s.chainsawExperiment.filteredSpeed/
+                kharvox::chainsawCutFullSpeedMetersPerSecond,0.f,1.f);
+            if(experimentActive){
+                switch(experimentMode){
+                case kharvox::ChainsawExperimentalMode::ShortSwipe:
+                    textured.hapticAmplitude=std::clamp(.20f+.72f*normalizedMotion,0.f,1.f);
+                    textured.hapticFrequencyHz=110.f+65.f*normalizedMotion;
+                    break;
+                case kharvox::ChainsawExperimentalMode::ContinuousThrottle:
+                    textured.hapticAmplitude=.12f+.82f*normalizedMotion;
+                    textured.hapticFrequencyHz=80.f+115.f*normalizedMotion;
+                    break;
+                case kharvox::ChainsawExperimentalMode::ThreePhase:
+                    if(s.chainsawExperiment.phaseId==1){
+                        textured.hapticAmplitude=(strokeNow/90)%2?.27f:.58f;
+                        textured.hapticFrequencyHz=82.f;
+                    }else if(s.chainsawExperiment.phaseId==3){
+                        textured.hapticAmplitude=.86f;
+                        textured.hapticFrequencyHz=170.f;
+                    }
+                    break;
+                case kharvox::ChainsawExperimentalMode::ImpactCut:
+                    textured.hapticAmplitude=(strokeNow%120)<72
+                        ?(.35f+.55f*normalizedMotion):.09f;
+                    textured.hapticFrequencyHz=(strokeNow%120)<72?108.f:63.f;
+                    break;
+                case kharvox::ChainsawExperimentalMode::NativeFast:
+                    textured.hapticAmplitude=.10f+.65f*normalizedMotion;
+                    textured.hapticFrequencyHz=95.f+75.f*normalizedMotion;
+                    break;
+                default:break;
+                }
+            }
+            if(chainsawAction&&experiment.armed
+               &&strokeNow<s.chainsawStrokeImpactUntil){
                 textured.hapticAmplitude=1.f;
                 textured.hapticFrequencyHz=
                     (s.chainsawExperiment.impactIndex%2==0)?95.f:185.f;
@@ -5986,6 +6025,86 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     }else{
         s.chainsawTriggerHaptic={};
         s.chainsawZoneGuideActive=false;
+    }
+    // A/B evaluation log independent of the comprehensive CSV checkbox.
+    // Emits a bounded 130ms sample stream and immediate transition records.
+    // All timing observations are read-only, do not inspect animator memory.
+    {
+        static bool abWasActive=false;
+        static unsigned abKillIndex=0,abSamples=0,abPriorPhase=~0u;
+        static std::uint64_t abStartedMs=0,abLastLogMs=0;
+        static bool abPriorArmed=false,abPriorDone=false,abPriorSkip=false;
+        static int abPriorHz=-1;
+        static float abLastTravel=0.f;
+        const auto& st=s.chainsawExperiment;
+        if(experimentActive&&!abWasActive){
+            ++abKillIndex;abSamples=0;abStartedMs=strokeNow;
+            abPriorPhase=~0u;abPriorArmed=false;abPriorDone=false;
+            abPriorSkip=false;abPriorHz=-1;abLastLogMs=0;
+            log("[CHAINSAW-AB] START kill="+std::to_string(abKillIndex)
+                +" mode="+kharvox::chainsawModeName(experimentMode)
+                +" modeId="+std::to_string(static_cast<int>(experimentMode))
+                +" swipeTargetM="+std::to_string(
+                    kharvox::chainsawModeSwipeTarget(experimentMode))
+                +" ringRequired="+std::to_string(
+                    kharvox::chainsawModeUsesCircle(experimentMode)?1:0)
+                +" animatorWrite=NO");
+        }
+        if(experimentActive){
+            const bool armEdge=st.cutPathLocked&&!abPriorArmed;
+            const bool finishEdge=st.oneSwipeCommitted&&!abPriorDone;
+            const bool skipEdge=st.fastFinishLatched&&!abPriorSkip;
+            const bool phaseEdge=st.phaseId!=abPriorPhase;
+            const bool hzEdge=abPriorHz>=0
+                &&std::abs(experiment.targetHz-abPriorHz)>=75;
+            const bool periodic=strokeNow>=abLastLogMs+130;
+            if(abSamples<350&&(periodic||armEdge||finishEdge||skipEdge
+               ||phaseEdge||hzEdge)){
+                ++abSamples;abLastLogMs=strokeNow;
+                const auto render=KharvoxWeaponReadChainsawAnimationEvidence(strokeNow);
+                log("[CHAINSAW-AB] SAMPLE kill="+std::to_string(abKillIndex)
+                    +" mode="+kharvox::chainsawModeName(experimentMode)
+                    +" ms="+std::to_string(strokeNow-abStartedMs)
+                    +" xrFrame="+std::to_string(s.frame)
+                    +" phase="+std::to_string(st.phaseId)
+                    +" arm="+std::to_string(st.cutPathLocked?1:0)
+                    +" outsideSeen="+std::to_string(st.seenOutside?1:0)
+                    +" circleRadius="+std::to_string(st.lastZoneRadius)
+                    +" tracked="+std::to_string(movingHandTracked?1:0)
+                    +" trigger="+std::to_string(s.chainsawTriggerPressure)
+                    +" handMps="+std::to_string(st.filteredSpeed)
+                    +" traveledM="+std::to_string(st.strokeTravelMeters)
+                    +" strokeFraction="+std::to_string(st.progress)
+                    +" requestedHz="+std::to_string(experiment.targetHz)
+                    +" hapticAmplitude="+std::to_string(s.chainsawTriggerHaptic.amplitude)
+                    +" hapticFrequencyHz="+std::to_string(s.chainsawTriggerHaptic.frequencyHz)
+                    +" hapticActive="+std::to_string(s.chainsawTriggerHaptic.active?1:0)
+                    +" finish="+std::to_string(st.oneSwipeCommitted?1:0)
+                    +" secondPress="+std::to_string(st.fastFinishLatched?1:0)
+                    +" renderValid="+std::to_string(render.renderValid?1:0)
+                    +" renderTimeUnknown="+std::to_string(render.renderTime)
+                    +" renderFrame="+std::to_string(render.renderFrame)
+                    +" stage="+(skipEdge?"SECOND_PRESS":finishEdge?"STROKE_FINISH":
+                        armEdge?"ARM":phaseEdge?"PHASE_CHANGE":
+                        hzEdge?"CLOCK_CHANGE":"SAMPLE"));
+            }
+            abPriorArmed=st.cutPathLocked;
+            abPriorDone=st.oneSwipeCommitted;
+            abPriorSkip=st.fastFinishLatched;
+            abPriorPhase=st.phaseId;
+            abPriorHz=experiment.targetHz;
+            abLastTravel=st.strokeTravelMeters;
+        }
+        if(!experimentActive&&abWasActive){
+            log("[CHAINSAW-AB] END kill="+std::to_string(abKillIndex)
+                +" mode="+kharvox::chainsawModeName(experimentMode)
+                +" durationMs="+std::to_string(strokeNow-abStartedMs)
+                +" samples="+std::to_string(abSamples)
+                +" distanceM="+std::to_string(abLastTravel)
+                +" nativeExit=CONFIRMED"
+                +" nativeAnimatorPlayhead=UNRESOLVED");
+        }
+        abWasActive=experimentActive;
     }
     s.chainsawTriggerSpeedWasActive=physicalChainsawActive;
     // ONE timing owner. Physical motion wins if enabled, irrespective of
@@ -7828,17 +7947,30 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Small circular START marker, same draw/projection dimensions.
     // Once armed, hide it so it cannot imply an ongoing cutting corridor.
     std::array<XrCompositionLayerQuad,1> gripZoneLayers{};
+    // The selected variant is launch-scoped; this is the XR submission
+    // function, not the chainsaw update function which owns experimentMode.
+    // NativeFast and PointerFocus need NO activation circle.
+    static const bool abPreviewCircle=[](){
+        char buf[8]{};
+        const auto n=GetEnvironmentVariableA(
+            "KHARVOX_CHAINSAW_EXPERIMENT_MODE",buf,sizeof(buf));
+        if(!n||n>=sizeof(buf))return true;
+        const int m=std::atoi(buf);
+        return m!=3&&m!=8;
+    }();
     const bool zonePreviewRequested=gripZoneDebugReady
         &&gripZonesDebugRequested()
         &&s.customMods.chainsawTriggerThrottle
         &&s.sessionState==XR_SESSION_STATE_FOCUSED
         &&KharvoxCameraWorldActive()
         &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw
+        &&kharvox::chainsawModeUsesCircle(s.chainsawExperiment.mode)
+        &&abPreviewCircle
         &&!s.chainsawExperiment.cutPathLocked;
     const bool zoneFrozen=gripZoneDebugReady&&gripZonesDebugRequested()
         &&s.chainsawExperiment.active
         &&!s.chainsawExperiment.cutPathLocked
-        &&s.chainsawExperiment.mode==kharvox::ChainsawExperimentalMode::GripPull
+        &&kharvox::chainsawModeUsesCircle(s.chainsawExperiment.mode)
         &&s.sessionState==XR_SESSION_STATE_FOCUSED;
     const bool submitGripZones=(zonePreviewRequested||zoneFrozen)
         &&gripZoneDebug.handle!=XR_NULL_HANDLE;

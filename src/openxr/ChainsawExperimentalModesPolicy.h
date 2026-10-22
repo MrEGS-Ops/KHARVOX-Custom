@@ -16,9 +16,49 @@ namespace kharvox {
 // Any second Trigger press during the SAME confirmed execution immediately
 // latches 30 Hz, even if no oval was ever entered.
 // 3 is the existing independent Pointer Focus experiment.
-enum class ChainsawExperimentalMode:int {GripPull=1,PointerFocus=3};
+enum class ChainsawExperimentalMode:int {
+    GripPull=1, PointerFocus=3, ShortSwipe=4, ContinuousThrottle=5,
+    ThreePhase=6, ImpactCut=7, NativeFast=8
+};
+inline bool chainsawModeIsPhysical(ChainsawExperimentalMode m) noexcept {
+    return m!=ChainsawExperimentalMode::PointerFocus;
+}
+inline bool chainsawModeUsesCircle(ChainsawExperimentalMode m) noexcept {
+    return m!=ChainsawExperimentalMode::PointerFocus
+        &&m!=ChainsawExperimentalMode::NativeFast;
+}
+inline bool chainsawModeValid(int m) noexcept {
+    return m==1||m==3||(m>=4&&m<=8);
+}
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
-    return m==ChainsawExperimentalMode::PointerFocus?"POINTER_FOCUS":"SINGLE_PULL_ZONE";
+    switch(m){
+    case ChainsawExperimentalMode::GripPull:return "BASELINE_FREE_MOTION";
+    case ChainsawExperimentalMode::PointerFocus:return "POINTER_FOCUS";
+    case ChainsawExperimentalMode::ShortSwipe:return "X1_SHORT_SINGLE_SWIPE";
+    case ChainsawExperimentalMode::ContinuousThrottle:return "X2_CONTINUOUS_THROTTLE";
+    case ChainsawExperimentalMode::ThreePhase:return "X3_THREE_PHASE";
+    case ChainsawExperimentalMode::ImpactCut:return "X4_PHYSICAL_IMPACT";
+    case ChainsawExperimentalMode::NativeFast:return "X5_NATIVE_FAST_FEEDBACK";
+    default:return "UNKNOWN";
+    }
+}
+inline float chainsawModeSwipeTarget(ChainsawExperimentalMode m) noexcept {
+    switch(m){
+    case ChainsawExperimentalMode::ShortSwipe:return .24f;
+    case ChainsawExperimentalMode::ThreePhase:return .28f;
+    case ChainsawExperimentalMode::ImpactCut:return .22f;
+    default:return .32f;
+    }
+}
+inline bool chainsawModeStrokeFinish(ChainsawExperimentalMode m) noexcept {
+    return m!=ChainsawExperimentalMode::ContinuousThrottle
+        &&m!=ChainsawExperimentalMode::NativeFast;
+}
+inline int chainsawModeIdleHz(ChainsawExperimentalMode m,int requested) noexcept {
+    if(m==ChainsawExperimentalMode::ShortSwipe)return std::min(requested,180);
+    if(m==ChainsawExperimentalMode::ContinuousThrottle)return std::min(requested,200);
+    if(m==ChainsawExperimentalMode::ImpactCut)return std::min(requested,155);
+    return requested;
 }
 struct ChainsawVec3 {float x{},y{},z{};};
 inline ChainsawVec3 minus3(ChainsawVec3 a,ChainsawVec3 b) noexcept {
@@ -127,6 +167,11 @@ struct ChainsawExperimentState {
     float cutLastPositionProgress{};
     unsigned impactIndex{};
     std::uint64_t lastUpdateMs{},entryMs{};
+    unsigned sampleCount{},physicalStepCount{};
+    std::uint64_t lastMotionMs{};
+    float lastInstantSpeed{};
+    int lastRequestedHz{};
+    unsigned phaseId{};
     void reset() noexcept {*this={};}
 };
 struct ChainsawExperimentResult {
@@ -155,7 +200,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     idleHz=std::clamp(idleHz,30,480);
     (void)strokeDistanceCm; // Retained for older saved calibration schemas.
     if(!nativeExecution){st.reset();return {idleHz};}
-    if(mode!=ChainsawExperimentalMode::PointerFocus)
+    if(!chainsawModeValid(static_cast<int>(mode)))
         mode=ChainsawExperimentalMode::GripPull;
     const bool valid=handTracked&&std::isfinite(x)&&std::isfinite(y)
         &&std::isfinite(z)&&std::abs(x)<20.f&&std::abs(y)<20.f&&std::abs(z)<20.f;
@@ -177,7 +222,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         ?nowMs-st.lastUpdateMs:0;
     st.lastUpdateMs=nowMs;
     bool started=false,entered=false;
-    if(mode==ChainsawExperimentalMode::GripPull){
+    if(chainsawModeIsPhysical(mode)){
         // Count the physical second press independently of oval entry or
         // tracked-hand status. Initial press started DOOM's native execution
         // BEFORE its first sample; subsequent released -> held is fast finish.
@@ -187,6 +232,7 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             st.fastFinishLatched=true;
             ++st.triggerRestarts; // diagnostic: fast-finish press count
         }
+        ++st.sampleCount;
         const auto projection=valid&&validHead
             ?projectChainsawHandToOval(worldHead,hand,st.zones[0],
                 headForward,headRight,headUp)
@@ -198,20 +244,26 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         if(guideOutside&&!st.zoneGuideWasOutside)
             st.zoneGuideOutsideSinceMs=nowMs;
         st.zoneGuideWasOutside=guideOutside;
+        // Native-fast fallback bypasses ring arming; hand motion only haptics.
+        if(mode==ChainsawExperimentalMode::NativeFast){
+            st.cutPathLocked=true;st.latchedGrip=true;
+            if(st.sampleCount==1){started=true;st.entryMs=nowMs;}
+        }
         // Trigger release idles; a later second press latches fast-finish.
         // NEVER re-arm the ring once this native kill is activated.
         if(!triggerHeld&&!st.fastFinishLatched&&!st.oneSwipeCommitted){
             if(st.cutPathLocked)st.resumeEligible=true;
             st.filteredSpeed=0.f;
         }
-        if(projection.valid&&projection.normalizedRadius>=chainsawZoneExitRadius){
+        if(chainsawModeUsesCircle(mode)&&projection.valid
+           &&projection.normalizedRadius>=chainsawZoneExitRadius){
             if(triggerHeld&&!st.cutPathLocked){
                 st.seenOutside=true;
                 st.lastOutsideX=projection.nx;
                 st.lastOutsideY=projection.ny;
             }
             st.inside=false;
-        }else if(projection.valid
+        }else if(chainsawModeUsesCircle(mode)&&projection.valid
                  &&projection.normalizedRadius<=chainsawZoneEnterRadius){
             st.inside=true;
         }else if(!projection.valid){
@@ -222,7 +274,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.lastHover=st.hovered;
         // The single outside -> inside transition permanently activates
         // this execution. No post-arm XY/radius/corridor restrictions.
-        if(!st.cutPathLocked&&!st.fastFinishLatched&&triggerHeld&&valid
+        if(chainsawModeUsesCircle(mode)&&!st.cutPathLocked
+           &&!st.fastFinishLatched&&triggerHeld&&valid
            &&st.seenOutside&&st.inside&&projection.valid){
             st.resumeEligible=false;st.latchedGrip=true;st.cutPathLocked=true;
             st.startZone=0;st.entryMs=nowMs;
@@ -244,13 +297,18 @@ inline ChainsawExperimentResult updateChainsawExperiment(
                 ?step*1000.f/float(elapsed):0.f;
             if(genuineStep){
                 st.strokeTravelMeters+=step;
+                st.lastMotionMs=nowMs;st.lastInstantSpeed=speed;
+                ++st.physicalStepCount;
                 st.progress=std::clamp(st.strokeTravelMeters/
-                    chainsawSingleSwipeDistanceMeters,0.f,1.f);
+                    chainsawModeSwipeTarget(mode),0.f,1.f);
             }
-            st.filteredSpeed=std::clamp(
-                .65f*speed+.35f*st.filteredSpeed,0.f,5.f);
-            if(genuineStep
-               &&st.strokeTravelMeters>=chainsawSingleSwipeDistanceMeters){
+            // A stopped hand must audibly/visibly back off rather than
+            // retaining the previous high-speed tick request for frames.
+            st.filteredSpeed=std::clamp(genuineStep
+                ?(.65f*speed+.35f*st.filteredSpeed)
+                :(.15f*st.filteredSpeed),0.f,5.f);
+            if(chainsawModeStrokeFinish(mode)&&genuineStep
+               &&st.strokeTravelMeters>=chainsawModeSwipeTarget(mode)){
                 st.oneSwipeCommitted=true;
                 st.progress=1.f;st.filteredSpeed=0.f;
             }
@@ -273,23 +331,38 @@ inline ChainsawExperimentResult updateChainsawExperiment(
                  -.03491f)/.45379f,0.f,1.f));
         }
     }
-    st.finished=mode==ChainsawExperimentalMode::GripPull
+    st.finished=chainsawModeIsPhysical(mode)
         ?(st.fastFinishLatched||st.oneSwipeCommitted)
         :st.progress>=.999f;
     const int physicalFloorHz=std::min(idleHz,chainsawPhysicalMotionFastHz);
-    const float clockMotion=mode==ChainsawExperimentalMode::GripPull
+    const float clockMotion=chainsawModeIsPhysical(mode)
         ?std::clamp(st.filteredSpeed/chainsawCutFullSpeedMetersPerSecond,0.f,1.f)
         :st.progress;
+    const int activeIdleHz=chainsawModeIdleHz(mode,idleHz);
     int hz=std::clamp(static_cast<int>(std::lround(
-        idleHz-(idleHz-(mode==ChainsawExperimentalMode::GripPull
+        activeIdleHz-(activeIdleHz-(chainsawModeIsPhysical(mode)
             ?physicalFloorHz:30))*clockMotion)),
-        mode==ChainsawExperimentalMode::GripPull?physicalFloorHz:30,idleHz);
-    if(mode==ChainsawExperimentalMode::GripPull){
+        chainsawModeIsPhysical(mode)?physicalFloorHz:30,idleHz);
+    if(chainsawModeIsPhysical(mode)){
+        if(mode==ChainsawExperimentalMode::NativeFast)hz=40;
+        if(mode==ChainsawExperimentalMode::ThreePhase&&st.cutPathLocked
+           &&nowMs>=st.entryMs&&nowMs-st.entryMs<220
+           &&!st.oneSwipeCommitted)
+            hz=180; // approximate engage interval, NOT animator frame seek
+        if(mode==ChainsawExperimentalMode::ImpactCut&&st.cutPathLocked
+           &&!st.oneSwipeCommitted)
+            hz=155; // consistent native pace; haptics express hit intensity
         if(st.fastFinishLatched||st.oneSwipeCommitted)
             hz=chainsawDoubleTriggerFastFinishHz;
-        else if(st.resumeEligible&&!triggerHeld)
+        else if(st.resumeEligible&&!triggerHeld
+                &&mode!=ChainsawExperimentalMode::NativeFast)
             hz=chainsawTriggerReleaseIdleHz;
     }
+    st.phaseId=st.fastFinishLatched||st.oneSwipeCommitted?3u
+        :!st.cutPathLocked?0u
+        :mode==ChainsawExperimentalMode::ThreePhase
+            &&nowMs>=st.entryMs&&nowMs-st.entryMs<220?1u:2u;
+    st.lastRequestedHz=hz;
     const unsigned quarters=std::min(4u,static_cast<unsigned>(st.progress*4.f));
     const bool impact=quarters>st.impactIndex;
     st.impactIndex=std::max(st.impactIndex,quarters);
@@ -299,13 +372,14 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     // Progress here is INPUT stroke fraction, NOT a native animation playhead.
     const bool owningTiming=mode==ChainsawExperimentalMode::PointerFocus
         ?st.pointerStarted
-        :(st.fastFinishLatched||st.oneSwipeCommitted
+        :(mode==ChainsawExperimentalMode::NativeFast
+          ||st.fastFinishLatched||st.oneSwipeCommitted
           ||(st.resumeEligible&&!triggerHeld)
           ||(st.cutPathLocked&&triggerHeld&&valid));
     return {hz,st.progress,owningTiming,
         st.finished,started,impact,
         st.fastFinishLatched?"DOUBLE_TRIGGER_FAST_FINISH":
-        st.oneSwipeCommitted?"OPPOSITE_EDGE_FINISH":chainsawModeName(mode),
+        st.oneSwipeCommitted?"PHYSICAL_SWIPE_FINISH":chainsawModeName(mode),
         st.hovered,st.startZone,st.targetZone,entered};
 }
 } // namespace kharvox

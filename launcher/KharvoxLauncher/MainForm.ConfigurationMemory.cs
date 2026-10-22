@@ -560,12 +560,11 @@ public sealed partial class MainForm
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
-            // Three prototype checkboxes are single-select and reside in
-            // the dedicated chainsaw pacing panel, not the draggable mod list.
-            if(new[] {main.chainsawGripPull,main.chainsawPointer}.Count(c=>c.Checked)!=1
-                || main.SelectedChainsawExperimentMode is not (1 or 3)
-                || main.chainsawGripPull.Parent!=main.speedAdvancedPanel
-                || main.chainsawPointer.Parent!=main.speedAdvancedPanel
+            // Exactly ONE of seven choices: existing baseline and Pointer,
+            // plus five mutually exclusive A/B variants, all inside Advanced.
+            if(main.ChainsawExperimentBoxes.Count(c=>c.Checked)!=1
+                || !new[]{1,3,4,5,6,7,8}.Contains(main.SelectedChainsawExperimentMode)
+                || main.ChainsawExperimentBoxes.Any(c=>c.Parent!=main.speedAdvancedPanel)
                 || main.chainsawShowGripZones.Parent!=main.speedAdvancedPanel)
                 throw new InvalidDataException(
                     "Chainsaw motion modes must be exclusive and remain under Advanced.");

@@ -176,7 +176,7 @@ internal static class CustomModSettingsStore
         if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
         value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
+        value.ChainsawExperimentMode=ValidChainsawMode(value.ChainsawExperimentMode);
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         ApplyCurrentAvailability(value);
         return value;
@@ -201,7 +201,7 @@ internal static class CustomModSettingsStore
         if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
             value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
+        value.ChainsawExperimentMode=ValidChainsawMode(value.ChainsawExperimentMode);
             value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
             return ApplyDevelopmentTestDefaults(value);
         }
@@ -233,7 +233,7 @@ internal static class CustomModSettingsStore
         if (value.ChainsawTriggerThrottle && value.ActionSpeedProfiles.TryGetValue("chainsaw",out var c)) c.Enabled=false;
         value.ChainsawStrokeDistanceCm=Math.Max(18,Math.Min(60,value.ChainsawStrokeDistanceCm));
         value.ChainsawStrokeIdleHz=Math.Max(30,Math.Min(480,value.ChainsawStrokeIdleHz));
-        value.ChainsawExperimentMode=value.ChainsawExperimentMode==3?3:1;
+        value.ChainsawExperimentMode=ValidChainsawMode(value.ChainsawExperimentMode);
         value.ChainsawMotionFullSpeedCmPerSec=Math.Max(70,Math.Min(300,value.ChainsawMotionFullSpeedCmPerSec));
         Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
         var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -245,6 +245,11 @@ internal static class CustomModSettingsStore
         }
         finally { if (File.Exists(temp)) File.Delete(temp); }
     }
+
+    // Keep all five experimental modes stable across Save/Load.
+    // Legacy mode 2 remains retired, arbitrary JSON is normalized to 1.
+    private static int ValidChainsawMode(int mode) =>
+        mode==1||mode==3||(mode>=4&&mode<=8)?mode:1;
 
     internal static int RunSelfTest()
     {
@@ -261,6 +266,20 @@ internal static class CustomModSettingsStore
                 || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285
                 || Load(path).ChainsawExperimentMode != 3)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
+            foreach(int m in new[]{1,3,4,5,6,7,8}){
+                var modePath=Path.Combine(root,"chainsaw-ab-"+m+".json");
+                Save(new CustomModSettings{ChainsawExperimentMode=m},modePath);
+                if(Load(modePath).ChainsawExperimentMode!=m)
+                    throw new InvalidDataException(
+                        "Chainsaw A/B mode did not roundtrip: "+m);
+            }
+            foreach(int m in new[]{-100,0,2,9,999}){
+                var modePath=Path.Combine(root,"chainsaw-invalid-"+m+".json");
+                Save(new CustomModSettings{ChainsawExperimentMode=m},modePath);
+                if(Load(modePath).ChainsawExperimentMode!=1)
+                    throw new InvalidDataException(
+                        "Unknown chainsaw A/B mode was not clamped: "+m);
+            }
             // Old broad/scripted sliders must be dropped, even if saved ON.
             // Advanced is presentation only and may not deactivate presets.
             var profiles=new CustomModSettings { SpeedAdvancedExpanded=false };
