@@ -506,7 +506,7 @@ internal static class KharvoxRunner
             // chainsaw fuel effect must be checked in game. Do not silently
             // force +devMode_enable 1 (achievements/save compatibility).
             if (customMods.ChainsawFuelDebug)
-                psi.Arguments += " +g_permaInfiniteAmmo 1";
+                psi.Arguments += " +cvarAdd g_permaInfiniteAmmo 1";
             // Narrative-flow test needs to distinguish script callbacks from
             // player-control locks. This is a documented DOOM debug CVar;
             // request thread start/stop prints only in opt-in extended logs.

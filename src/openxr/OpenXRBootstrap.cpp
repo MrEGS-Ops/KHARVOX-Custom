@@ -5759,7 +5759,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const int currentAmmo=KharvoxWeaponReadChainsawAmmoTotal();
         if(!explained){
             explained=true;
-            log("[CHAINSAW-FUEL-DEBUG] +g_permaInfiniteAmmo 1 requested at game launch; "
+            log("[CHAINSAW-FUEL-DEBUG] +cvarAdd g_permaInfiniteAmmo 1 requested at game launch; "
                 "native ammo totals are READ-ONLY; effect on chainsaw fuel NOT VERIFIED");
         }
         if(chainsawAction!=wasChainsawAction){

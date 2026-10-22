@@ -5,7 +5,7 @@ checkbox under VR Mods. It is OFF on all fresh configurations and survives
 later manual ON/OFF selections.
 
 **Implementation:** the next direct DOOM 2016 launch appends the game-native
-command-line setting `+g_permaInfiniteAmmo 1`. The existing CVar is
+command-line setting `+cvarAdd g_permaInfiniteAmmo 1`. The existing CVar is
 documented in DOOM 2016 console-cheat lists, but the setting's effect on
 **chainsaw fuel in this specific executable** has not been verified.
 It may affect regular weapon ammunition, not only chainsaw fuel.
