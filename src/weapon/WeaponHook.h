@@ -61,6 +61,9 @@ bool KharvoxWeaponHolstered();
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
 KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind);
+// Existing signature-checked native inventory getter only. -1 means unknown;
+// raw weapon-ammo total is NOT yet proven to equal chainsaw fuel pips.
+int KharvoxWeaponReadChainsawAmmoTotal();
 // Returns the current rendered weapon muzzle in DOOM world coordinates. The
 // pose is taken from the weapon model's animated joint matrices, not inferred
 // from the controller. Chainsaw/fists and stale weapon frames return false.

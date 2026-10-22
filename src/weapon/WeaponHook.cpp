@@ -121,6 +121,7 @@ std::array<std::atomic<KharvoxWeaponAmmoState>,
     static_cast<size_t>(KharvoxWeaponKind::Count)> weaponAmmoStates{};
 std::atomic<uintptr_t> weaponAmmoSnapshotPlayer{};
 std::atomic<unsigned long long> weaponAmmoSnapshotTick{};
+std::atomic<int> chainsawAmmoReadback{-1}; // native read-only total, -1 unsupported
 std::atomic<unsigned> unknownWeaponRescanCalls{};
 unsigned char* muzzleFireAxisBranch{};
 using HandsFovScaleFn = float(__fastcall*)(void*);
@@ -2845,6 +2846,7 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
     std::array<KharvoxWeaponAmmoState,
         static_cast<size_t>(KharvoxWeaponKind::Count)> snapshot{};
     snapshot.fill(KharvoxWeaponAmmoState::Unknown);
+    int collectedChainsawAmmo=-1;
     for (size_t index = 0; index < snapshot.size(); ++index) {
         const auto kind = static_cast<KharvoxWeaponKind>(index);
         if (shoulderSelectableAmmoKind(kind))
@@ -2880,11 +2882,15 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
             continue;
         }
         int total{};
-        snapshot[kindIndex] = queryWeaponAmmoTotalSafely(item, inventory, total)
-            ? (total > 0 ? KharvoxWeaponAmmoState::Usable : KharvoxWeaponAmmoState::Empty)
+        const bool supportedTotal=queryWeaponAmmoTotalSafely(item,inventory,total);
+        snapshot[kindIndex]=supportedTotal
+            ? (total>0 ? KharvoxWeaponAmmoState::Usable : KharvoxWeaponAmmoState::Empty)
             : KharvoxWeaponAmmoState::Unknown;
+        if(match.kind==KharvoxWeaponKind::Chainsaw&&supportedTotal)
+            collectedChainsawAmmo=total;
     }
 
+    chainsawAmmoReadback.store(collectedChainsawAmmo,std::memory_order_release);
     bool changed = previousPlayer != reinterpret_cast<uintptr_t>(player);
     for (size_t index = 0; index < snapshot.size(); ++index) {
         const auto kind = static_cast<KharvoxWeaponKind>(index);
@@ -2907,6 +2913,15 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
         }
         log(message.str());
     }
+}
+
+int KharvoxWeaponReadChainsawAmmoTotal() {
+    if(!weaponAmmoSnapshotSupported.load(std::memory_order_acquire))
+        return -1;
+    const auto tick=weaponAmmoSnapshotTick.load(std::memory_order_acquire);
+    if(!tick||GetTickCount64()<tick||GetTickCount64()-tick>1500)
+        return -1;
+    return chainsawAmmoReadback.load(std::memory_order_acquire);
 }
 
 KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind) {

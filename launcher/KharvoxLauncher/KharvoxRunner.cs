@@ -499,6 +499,14 @@ internal static class KharvoxRunner
             // compatible patch has already disabled that requirement.
             if (activeDoomResourceMods)
                 psi.Arguments += " +devMode_enable 1";
+            // Dedicated opt-in DOOM 2016 native CVar experiment. This uses
+            // game's OWN launch-time command parser: no inventory-patch,
+            // fuel-cost rewrite, or unverified binary pointer. Some game
+            // builds/devmode configurations may reject the CVar; the actual
+            // chainsaw fuel effect must be checked in game. Do not silently
+            // force +devMode_enable 1 (achievements/save compatibility).
+            if (customMods.ChainsawFuelDebug)
+                psi.Arguments += " +g_permaInfiniteAmmo 1";
             // Narrative-flow test needs to distinguish script callbacks from
             // player-control locks. This is a documented DOOM debug CVar;
             // request thread start/stop prints only in opt-in extended logs.
@@ -622,6 +630,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_MOTION_CHAINSAW_SPEED"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE"] =
                 customMods.ChainsawTriggerThrottle ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_CHAINSAW_FUEL_DEBUG"] =
+                customMods.ChainsawFuelDebug ? "1" : "0";
             // FIXED two-phase chainsaw haptics. User chose no more lab or
             // selection menu: deep heavy idle / high-contrast Rip & Tear.
             // Ignore stale haptic-lab JSON entirely; this is deterministic.

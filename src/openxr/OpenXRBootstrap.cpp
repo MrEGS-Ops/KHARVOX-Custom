@@ -5750,6 +5750,33 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // owns the confirmed execution; motion-only stays available independently.
     const bool physicalChainsawEnabled=s.customMods.chainsawTriggerThrottle
         ||s.customMods.motionChainsawKillSpeed; // legacy saved mod migration
+    // Debug fuel test: record real native chainsaw-ammo getter values at
+    // execution boundaries. Never write inventory/ammo data; this is how
+    // we test whether DOOM actually honoured its startup infinite-ammo CVar.
+    if(s.customMods.chainsawFuelDebug){
+        static bool explained=false,wasChainsawAction=false;
+        static int lastObservedAmmo=-999;
+        const int currentAmmo=KharvoxWeaponReadChainsawAmmoTotal();
+        if(!explained){
+            explained=true;
+            log("[CHAINSAW-FUEL-DEBUG] +g_permaInfiniteAmmo 1 requested at game launch; "
+                "native ammo totals are READ-ONLY; effect on chainsaw fuel NOT VERIFIED");
+        }
+        if(chainsawAction!=wasChainsawAction){
+            log(std::string("[CHAINSAW-FUEL-DEBUG] ")
+                +(chainsawAction?"KILL_ENTER":"KILL_EXIT")
+                +" nativeChainsawAmmo="+std::to_string(currentAmmo)
+                +" priorObserved="+std::to_string(lastObservedAmmo)
+                +" valueMinusOneMeansUnknown=1");
+            wasChainsawAction=chainsawAction;
+        }
+        if(currentAmmo>=0&&currentAmmo!=lastObservedAmmo){
+            log("[CHAINSAW-FUEL-DEBUG] AMMO_CHANGED nativeChainsawAmmo="
+                +std::to_string(currentAmmo)
+                +" previous="+std::to_string(lastObservedAmmo));
+            lastObservedAmmo=currentAmmo;
+        }
+    }
     const bool physicalChainsawActive=physicalChainsawEnabled
         &&actionProfileEligible&&chainsawAction&&!ledgeAction
         &&!fastKillsRequested&&s.sessionState==XR_SESSION_STATE_FOCUSED;

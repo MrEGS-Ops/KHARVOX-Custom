@@ -88,6 +88,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customUninterruptedStory = MakeCheck("Uninterrupted Story (Experimental)", false);
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
     private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Physical Chainsaw · Motion / Haptics / Zones", false);
+    private readonly CheckBox customChainsawFuelDebug = MakeCheck("Unlimited Chainsaw Fuel (Debug · test)", false);
     private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Retired Chainsaw Motion (migrated)", false);
     // Temporary, chainsaw-only one-stroke calibration; unrelated action speed
     // sliders remain at 30–240Hz and ledge progression stays DOOM native.
@@ -451,6 +452,7 @@ public sealed partial class MainForm : Form
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customTriggerChainsawThrottle, "Physical Chainsaw: hold Trigger and cross the enlarged circle from one EDGE to the OPPOSITE EDGE to finish the cutting gesture. Only forward stroke motion controls speed (45 Hz fastest); stopping/backtracking slows down. Finishing the chord requests 30 Hz until DOOM ends the kill. ANY second Trigger press during a native chainsaw execution fast-finishes at 30 Hz, even BEFORE entering the circle. Strong BZZZ pulses outside; silent inside. This is not direct native animation playhead control."),
+            (customChainsawFuelDebug, "EXPERIMENTAL DEBUG, OFF BY DEFAULT. Requests DOOM 2016's documented +g_permaInfiniteAmmo 1 native setting on next game launch. May affect ALL weapon ammo, not just chainsaw. Whether it prevents chainsaw fuel consumption is NOT verified for this DOOM executable; confirm by making multiple kills without picking up fuel. No memory patch or unknown inventory writes. Cheats/developer mode can affect achievements or save behaviour. Uncheck and restart DOOM to stop requesting this setting."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -2239,6 +2241,7 @@ public sealed partial class MainForm : Form
         MotionGloryKillSpeed = false,
         PhysicalChainsawGestures = false,
         ChainsawTriggerThrottle = customTriggerChainsawThrottle.Checked,
+        ChainsawFuelDebug = customChainsawFuelDebug.Checked,
         MotionChainsawKillSpeed = false,
         ChainsawStrokeDistanceCm = chainsawStrokeDistance.Value,
         ChainsawStrokeIdleHz = 510-chainsawStrokeIdleHz.Value,
@@ -2308,6 +2311,7 @@ public sealed partial class MainForm : Form
             customUninterruptedStory.Checked = mods.UninterruptedStory;
             customActionExitHandoff.Checked = mods.CinematicExitHandoff;
             customTriggerChainsawThrottle.Checked = mods.ChainsawTriggerThrottle||mods.MotionChainsawKillSpeed;
+            customChainsawFuelDebug.Checked = mods.ChainsawFuelDebug;
             customMotionChainsawKillSpeed.Checked = false;
             chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
             chainsawStrokeIdleHz.Value=510-Math.Max(30,Math.Min(480,mods.ChainsawStrokeIdleHz));

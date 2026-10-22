@@ -86,6 +86,9 @@ internal sealed class CustomModSettings
     public bool MotionGloryKillSpeed { get; set; }
     public bool PhysicalChainsawGestures { get; set; }
     public bool ChainsawTriggerThrottle { get; set; } // Separate experimental native trigger + hand-motion chainsaw throttle
+    // Native DOOM 2016 g_permaInfiniteAmmo launcher CVar: fuel effect needs in-game verification.
+    // OFF by default; may also affect firearms and developer-mode/achievements.
+    public bool ChainsawFuelDebug { get; set; }
     public bool MotionChainsawKillSpeed { get; set; } // opt-in live native tick target, separate from retired timescale gestures
     public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // deprecated v1 velocity calibration, retained for old JSON
     public int ChainsawStrokeDistanceCm { get; set; } = 32; // one full directional cut 18–60 cm
@@ -256,8 +259,8 @@ internal static class CustomModSettingsStore
             ChainsawHapticProfile.RunHapticProfileSelfTest(root);
             ChainsawHapticPreview.RunSelfTest(root);
             var path = Path.Combine(root, "custom-mods.json");
-            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220, ChainsawStrokeDistanceCm = 42, ChainsawStrokeIdleHz = 285, ChainsawExperimentMode = 3 }, path);
-            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).ChainsawTriggerThrottle || Load(path).MotionChainsawKillSpeed || Load(path).ChainsawMotionFullSpeedCmPerSec != 220
+            Save(new CustomModSettings { PhysicalCrouch = true, HapticOverhaul = true, PersistentSuperShotgunReload = true, MotionChainsawKillSpeed = true, ChainsawMotionFullSpeedCmPerSec = 220, ChainsawStrokeDistanceCm = 42, ChainsawStrokeIdleHz = 285, ChainsawExperimentMode = 3, ChainsawFuelDebug = true }, path);
+            if (!Load(path).PhysicalCrouch || Load(path).HapticOverhaul || Load(path).PersistentSuperShotgunReload || !Load(path).ChainsawTriggerThrottle || Load(path).MotionChainsawKillSpeed || !Load(path).ChainsawFuelDebug || Load(path).ChainsawMotionFullSpeedCmPerSec != 220
                 || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285
                 || Load(path).ChainsawExperimentMode != 3)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
@@ -342,10 +345,20 @@ internal static class CustomModSettingsStore
             if (Load(oldActionExitPath).CinematicExitHandoff)
                 throw new InvalidDataException("Paused action-exit must remain OFF.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
-            if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
+            if (fresh.ChainsawFuelDebug || fresh.BackOfHandHud || fresh.CinematicExitHandoff
                 || fresh.CinematicExitHandoffDelayMs != 150
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install must retain game-default action exit.");
+            // Explicitly unchecking debug fuel must survive future launches.
+            var fuelSaved = Load(oldActionExitPath);
+            fuelSaved.ChainsawFuelDebug = true;
+            Save(fuelSaved, oldActionExitPath);
+            if (!Load(oldActionExitPath).ChainsawFuelDebug)
+                throw new InvalidDataException("Fuel-debug preference did not persist ON.");
+            fuelSaved.ChainsawFuelDebug = false;
+            Save(fuelSaved, oldActionExitPath);
+            if (Load(oldActionExitPath).ChainsawFuelDebug)
+                throw new InvalidDataException("Fuel-debug preference did not persist OFF.");
             File.WriteAllText(path, "{BROKEN");
             var refused = false;
             try { Load(path); }
