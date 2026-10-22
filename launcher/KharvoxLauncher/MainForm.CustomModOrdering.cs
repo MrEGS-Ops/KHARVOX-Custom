@@ -154,7 +154,6 @@ public sealed partial class MainForm
             Define(customGaussChargeSlowMovement, "gauss-slow-movement", 2),
             Define(customPersistentSsgReload, "persistent-ssg-reload", 2),
             Define(customTriggerChainsawThrottle, "chainsaw-trigger-throttle", 2),
-            Define(customChainsawFuelDebug, "chainsaw-fuel-debug", 2),
             // Legacy motion mod merged into Physical Chainsaw; no duplicate row.
             Define(customBackOfHandHud, "back-of-hand-hud", 3),
             Define(customStoryCinematicSkip, "story-cinematic-skip", 3),

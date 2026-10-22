@@ -40,7 +40,6 @@ struct CustomModFlags {
     bool physicalChainsawGestures{};
     bool motionChainsawKillSpeed{};
     bool chainsawTriggerThrottle{};
-    bool chainsawFuelDebug{}; // launch-time native DOOM infinite-ammo setting; not a memory patch
     bool hapticOverhaul{};
 };
 
@@ -83,7 +82,6 @@ inline CustomModFlags loadCustomModFlags() {
     flags.physicalChainsawGestures = false; // old timescale gesture remains retired
     flags.motionChainsawKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_CHAINSAW_SPEED");
     flags.chainsawTriggerThrottle = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE");
-    flags.chainsawFuelDebug = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_FUEL_DEBUG");
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
     return flags;
 }

@@ -5750,33 +5750,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // owns the confirmed execution; motion-only stays available independently.
     const bool physicalChainsawEnabled=s.customMods.chainsawTriggerThrottle
         ||s.customMods.motionChainsawKillSpeed; // legacy saved mod migration
-    // Debug fuel test: record real native chainsaw-ammo getter values at
-    // execution boundaries. Never write inventory/ammo data; this is how
-    // we test whether DOOM actually honoured its startup infinite-ammo CVar.
-    if(s.customMods.chainsawFuelDebug){
-        static bool explained=false,wasChainsawAction=false;
-        static int lastObservedAmmo=-999;
-        const int currentAmmo=KharvoxWeaponReadChainsawAmmoTotal();
-        if(!explained){
-            explained=true;
-            log("[CHAINSAW-FUEL-DEBUG] +cvarAdd g_permaInfiniteAmmo 1 requested at game launch; "
-                "native ammo totals are READ-ONLY; effect on chainsaw fuel NOT VERIFIED");
-        }
-        if(chainsawAction!=wasChainsawAction){
-            log(std::string("[CHAINSAW-FUEL-DEBUG] ")
-                +(chainsawAction?"KILL_ENTER":"KILL_EXIT")
-                +" nativeChainsawAmmo="+std::to_string(currentAmmo)
-                +" priorObserved="+std::to_string(lastObservedAmmo)
-                +" valueMinusOneMeansUnknown=1");
-            wasChainsawAction=chainsawAction;
-        }
-        if(currentAmmo>=0&&currentAmmo!=lastObservedAmmo){
-            log("[CHAINSAW-FUEL-DEBUG] AMMO_CHANGED nativeChainsawAmmo="
-                +std::to_string(currentAmmo)
-                +" previous="+std::to_string(lastObservedAmmo));
-            lastObservedAmmo=currentAmmo;
-        }
-    }
     const bool physicalChainsawActive=physicalChainsawEnabled
         &&actionProfileEligible&&chainsawAction&&!ledgeAction
         &&!fastKillsRequested&&s.sessionState==XR_SESSION_STATE_FOCUSED;
@@ -5824,7 +5797,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         movingHand.orientation,XrVector3f{0.f,0.f,-1.f});
     const bool pointerTracked=movingHand.valid;
     // HMD and controller coordinates share OpenXR LOCAL tracking space.
-    // The full HMD basis projects the controller onto the same oval quad
+    // The full HMD basis projects the controller onto the same circle quad
     // seen in the headset, even when the hand is closer than the quad.
     const auto headQ=s.views[0].pose.orientation;
     const float xrYaw=std::atan2(2.f*(headQ.w*headQ.y+headQ.x*headQ.z),
@@ -5850,7 +5823,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
         // Continuous radial guide replaces the old one-shot entry pulse.
         log("[CHAINSAW-ZONES] hand ENTER "+std::to_string(experiment.hoveredZone)
-            +" oval; hold Trigger and move INTO it to start the cut");
+            +" activation circle; after ARM cut ANYWHERE with Trigger held");
     }
     if(experimentActive && experimentMode==kharvox::ChainsawExperimentalMode::GripPull){
         // Explain a missing stroke without spamming the log every XR frame.
@@ -5873,11 +5846,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 std::to_string((status&8u)!=0)+" tracked="+
                 std::to_string((status&16u)!=0)+" armed="+
                 std::to_string((status&1u)!=0)+
-                " chordLocked="+std::to_string((status&32u)!=0)+
-                " oppositeEdge="+std::to_string((status&64u)!=0)+
+                " motionArmed="+std::to_string((status&32u)!=0)+
+                " freeSweepDone="+std::to_string((status&64u)!=0)+
                 " secondTrigger="+std::to_string((status&128u)!=0)+
-                " chordProgress="+std::to_string(s.chainsawExperiment.progress)+
-                " ovalRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
+                " freeStrokeProgress="+std::to_string(s.chainsawExperiment.progress)+
+                " activationCircleRadius="+std::to_string(s.chainsawExperiment.lastZoneRadius)+
                 " guideOutside="+std::to_string(s.chainsawExperiment.zoneGuideWasOutside?1:0)+
                 " guidePulse="+std::to_string(kharvox::chainsawZoneOutsidePulseOn(
                     s.chainsawExperiment.lastZoneRadius,
@@ -5889,11 +5862,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         log("[CHAINSAW-EXPERIMENT] armed="+
             std::string(kharvox::chainsawModeName(experimentMode))
             +" idle="+std::to_string(strokeIdleHz)
-            +"Hz gesture=OPPOSITE_EDGE_CHORD triggerRearms="+
+            +"Hz gesture=FREE_SPACE_SWEEP_AFTER_CIRCLE_ARM triggerRearms="+
                 std::to_string(s.chainsawExperiment.triggerRestarts)
             +" fastFinish="+std::to_string(s.chainsawExperiment.fastFinishLatched?1:0)
             +" motionFloorHz="+std::to_string(kharvox::chainsawPhysicalMotionFastHz)
             +" releaseIdleHz="+std::to_string(kharvox::chainsawTriggerReleaseIdleHz)
+            +" sweepDistanceCm="+std::to_string(static_cast<int>(
+                kharvox::chainsawSingleSwipeDistanceMeters*100.f))
             +" legacyCalibration="+std::to_string(strokeDistanceCm)+"cm");
     const int percentage=static_cast<int>(experiment.progress*100.f);
     if(experiment.armed
@@ -5902,7 +5877,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 &&(std::abs(percentage-s.chainsawStrokeLastLogPercent)>=10
                     ||(experiment.completed&&s.chainsawStrokeLastLogPercent<100))))){
         log("[CHAINSAW-EXPERIMENT] mode="+std::string(experiment.detail)
-            +" inputChord="+std::to_string(percentage)+"%"
+            +" freeStroke="+std::to_string(percentage)+"%"
             +" tickHz="+std::to_string(experiment.targetHz)
             +" gestureDone="+(experiment.completed?"yes":"no")
             +" fastFinish="+(s.chainsawExperiment.fastFinishLatched?"yes":"no")
@@ -5911,9 +5886,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.chainsawStrokeLastLogPercent=percentage;
         s.chainsawStrokeLastLogMs=strokeNow;
     }else if(!experiment.armed)s.chainsawStrokeLastLogPercent=-1;
-    // Four position/rotation thresholds each contribute a short tactile
-    // chopping impact; DOOM game damage, weapon input and action boundary
-    // are still owned by native execution.
+    // Four stroke-distance thresholds contribute a short tactile impact;
+    // DOOM damage, input and action boundary remain native.
     if(experiment.impact&&experimentActive)
         s.chainsawStrokeImpactUntil=strokeNow+95;
     if(!experiment.armed)s.chainsawStrokeImpactUntil=0;
@@ -5938,7 +5912,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         config.motionSensitivityPercent=read("KHARVOX_CHAINSAW_HAPTIC_MOTION_PCT",75,0,100);
         return config;
     }();
-    const float virtualStrokeSpeed=1.8f*experiment.progress;
+    // Live 3-D hand velocity, not accumulated swipe percentage.
+    const float virtualStrokeSpeed=s.chainsawExperiment.cutPathLocked
+        ?std::clamp(s.chainsawExperiment.filteredSpeed*1.8f/
+            kharvox::chainsawCutFullSpeedMetersPerSecond,0.f,1.8f):0.f;
     const auto throttle=kharvox::evaluateChainsawTriggerThrottle(
         s.chainsawTriggerPressure,virtualStrokeSpeed,
         1.8f,hapticConfig);
@@ -5974,12 +5951,16 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             textured.hapticAmplitude=idleSnap?.66f:.035f;
             textured.hapticFrequencyHz=idleSnap?190.f:55.f;
         }
+        // Locator BZZZ applies BEFORE first arm only. After that the
+        // circle cannot override real cutting haptics or motion timing.
         const bool circleGuide=experimentActive
-            &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull;
+            &&experimentMode==kharvox::ChainsawExperimentalMode::GripPull
+            &&!s.chainsawExperiment.cutPathLocked
+            &&!s.chainsawExperiment.fastFinishLatched;
         if(circleGuide&&!s.chainsawZoneGuideActive)
             log("[CHAINSAW-ZONES] OUTSIDE pulse guide active: "
                 "150Hz haptic 160ms ON / 200ms OFF, 92% strength; "
-                "INSIDE visible oval = silence; circle enlarged 15%");
+                "INSIDE circle = silence; once armed = free-space cutting haptics");
         s.chainsawZoneGuideActive=circleGuide;
         if(circleGuide){
             // Absolute on/off: no rumble inside the visible ring.
@@ -6010,10 +5991,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // ONE timing owner. Physical motion wins if enabled, irrespective of
     // legacy launcher preset flags, and ONLY on confirmed native chainsaw
     // executions. Ledge/stabilization never become chainsaw actions.
-    // Before first oval arm: native timing. First entry locks the
-    // edge-to-opposite-edge chord (NOT a native animation-playhead seek).
-    // Only forward stroke motion uses the physical 45 Hz floor. Far edge
-    // OR any second Trigger press latches 30Hz until native exit.
+    // Before first activation-circle arm: native timing. After first arm:
+    // tracked 3-D movement ANYWHERE sets 45..300 Hz; one 32cm swipe OR
+    // any second Trigger press latches 30Hz until DOOM ends the execution.
+    // No animation playhead seek is attempted.
     // Release after arming holds 300Hz until subsequent press.
     const auto effectiveSelectedAction=physicalChainsawActive
         ?(experiment.armed
@@ -6071,16 +6052,16 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 <<" trigger="<<s.chainsawTriggerPressure
                 <<" tracked="<<(movingHandTracked?1:0)
                 <<" armed="<<(experiment.armed?1:0)
-                <<" ovalInside="<<(experiment.hoveredZone==0?1:0)
-                <<" ovalRadius="<<s.chainsawExperiment.lastZoneRadius
+                <<" activationCircleInside="<<(experiment.hoveredZone==0?1:0)
+                <<" activationCircleRadius="<<s.chainsawExperiment.lastZoneRadius
                 <<" handX="<<movingHand.position.x
                 <<" handY="<<movingHand.position.y
                 <<" handZ="<<movingHand.position.z
                 <<" filteredMps="<<s.chainsawExperiment.filteredSpeed
                 <<" travelM="<<s.chainsawExperiment.strokeTravelMeters
-                <<" chordProgress="<<s.chainsawExperiment.progress
-                <<" chordLocked="<<(s.chainsawExperiment.cutPathLocked?1:0)
-                <<" chordFinished="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
+                <<" freeStrokeProgress="<<s.chainsawExperiment.progress
+                <<" motionArmed="<<(s.chainsawExperiment.cutPathLocked?1:0)
+                <<" freeSweepFinished="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
                 <<" secondPress="<<(s.chainsawExperiment.fastFinishLatched?1:0)
                 <<" swipeCommit="<<(s.chainsawExperiment.oneSwipeCommitted?1:0)
                 <<" requestedHz="<<activeAction.hz
@@ -6098,7 +6079,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(probe.committed)
             log("[CHAINSAW-LOOP-PROBE] SWIPE_COMMITTED kill="+std::to_string(state.killIndex)
                 +" inputTravelM="+std::to_string(s.chainsawExperiment.strokeTravelMeters)
-                +" inputChordProgress="+std::to_string(s.chainsawExperiment.progress)
+                +" freeStrokeProgress="+std::to_string(s.chainsawExperiment.progress)
                 +" nativeAnimationCompleted=NOT_VERIFIED");
         if(probe.ended)
             log("[CHAINSAW-LOOP-PROBE] END kill="+std::to_string(state.killIndex)
@@ -6116,6 +6097,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // motion controller and the legacy low-rate feasibility probe above.
     // Operates on existing validated native weapon-render/cache snapshots;
     // no extra game-memory dereferences, game hooks, animation or clock writes.
+    // The CSV keeps legacy chord* column labels for prior analysis scripts;
+    // these now represent free-space 32cm stroke progress after circle arm.
     // The CSV is intentionally capped: 12 kills x 1200 samples, 25ms cadence.
     if(chainsawLoopProbeEnabled&&(chainsawAction||chainsawEquipped
         ||s.chainsawAnimationInvestigation.active)){
@@ -6206,8 +6189,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const auto& state=s.chainsawAnimationInvestigation;
         const auto event=inv.started?"START":inv.ended?"END"
             :inv.doublePressed?"SECOND_TRIGGER_FAST_FINISH"
-            :inv.chordEnd?"OPPOSITE_EDGE_COMPLETE"
-            :inv.chordStart?"CHORD_ARM"
+            :inv.chordEnd?"FREE_SPACE_SWEEP_COMPLETE"
+            :inv.chordStart?"ACTIVATION_CIRCLE_ARM"
             :inv.triggerReleased?"TRIGGER_RELEASE"
             :inv.triggerPressed?"TRIGGER_PRESS"
             :inv.clockSwitched?"CLOCK_TRANSITION"
@@ -7842,17 +7825,19 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const float hudWidthMeters=std::max(0.05f,hudAngularWidthMeters);
     hudQuadLayer.size={hudWidthMeters,hudWidthMeters/hudContentAspect};
 
-    // Large, tall enemy-silhouette oval; its quad and controller projection
-    // use exactly the same dimensions. Freeze the centre at execution start.
+    // Small circular START marker, same draw/projection dimensions.
+    // Once armed, hide it so it cannot imply an ongoing cutting corridor.
     std::array<XrCompositionLayerQuad,1> gripZoneLayers{};
     const bool zonePreviewRequested=gripZoneDebugReady
         &&gripZonesDebugRequested()
         &&s.customMods.chainsawTriggerThrottle
         &&s.sessionState==XR_SESSION_STATE_FOCUSED
         &&KharvoxCameraWorldActive()
-        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
+        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw
+        &&!s.chainsawExperiment.cutPathLocked;
     const bool zoneFrozen=gripZoneDebugReady&&gripZonesDebugRequested()
         &&s.chainsawExperiment.active
+        &&!s.chainsawExperiment.cutPathLocked
         &&s.chainsawExperiment.mode==kharvox::ChainsawExperimentalMode::GripPull
         &&s.sessionState==XR_SESSION_STATE_FOCUSED;
     const bool submitGripZones=(zonePreviewRequested||zoneFrozen)

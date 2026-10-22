@@ -8,6 +8,33 @@ new game object pointers, change hook signatures, modify DOOM memory, seek
 animation frames or synthesize damage. Its observations come only from the
 existing validated renderer, weapon, camera, controller and timing hooks.
 
+## October 22 behaviour correction: activation circle is NOT a corridor
+
+The new controller only needs one Trigger-held OUTSIDE→INSIDE re-entry to
+activate free-space motion cutting. The visual marker is now a 1.28m circular
+quad (previously 1.50m × 1.98m oval) and disappears immediately after arming.
+From that moment, real 3-D controller movement **anywhere** controls the
+300→45 Hz speed range; 32 cm of accumulated purposeful swipe movement
+requests native 30 Hz finish. Tracking-loss/teleports are discarded.
+Trigger release idles, and any second press fast-finishes regardless of arm
+or controller position. OUTSIDE BZZZ / INSIDE silence only locate the ring
+BEFORE activation; cutting haptics take over afterward.
+
+For CSV compatibility the columns `chordLocked`, `chordProgress` and
+`chordFinished` now represent free-space motion armed, 0–1 physical
+32-cm stroke fraction, and stroke finished respectively; they DO NOT
+indicate a DOOM native animation playhead or spatial chord crossing.
+
+**Current validated research**: weapon-render `renderFrame` behaves like
+an accumulated engine simulation-time counter responding to the requested
+timing Hz. It has NOT been shown to be per-clip animator progress, and the
+instrument's candidates (render/prop transforms and camera) remain
+confounded by camera/controller motion. Therefore: do not write or seek an
+unvalidated animator. Continue sampling native execution time at arm,
+pause and physical stroke completion to estimate remaining native time,
+then validate against extracted per-enemy clip durations before considering
+bounded closed-loop engine-clock correction.
+
 ## Enable and collect
 1. Install the latest KHARVOX build. Launch the standard launcher.
 2. Sync Action Speed → Advanced → **Diagnostic · Chainsaw Animation
