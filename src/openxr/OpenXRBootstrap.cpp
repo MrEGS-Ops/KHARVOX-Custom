@@ -5791,6 +5791,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             case 6:return kharvox::ChainsawExperimentalMode::ThreePhase;
             case 7:return kharvox::ChainsawExperimentalMode::ImpactCut;
             case 8:return kharvox::ChainsawExperimentalMode::NativeFast;
+            case 9:return kharvox::ChainsawExperimentalMode::TriggerRevPulses;
             default:return kharvox::ChainsawExperimentalMode::GripPull;
         }
     }();
@@ -5823,7 +5824,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         movingHand.position.x,movingHand.position.y,movingHand.position.z,
         pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
         strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked,
-        gazeVector,rightVector,upVector);
+        gazeVector,rightVector,upVector,s.chainsawTriggerPressure);
+    if(experimentActive
+       &&experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses){
+        const auto& rev=s.chainsawExperiment;
+        if(experiment.started)
+            log("[CHAINSAW-REV] ARMED outside-to-inside; release below 0.18 "
+                "and press above 0.33 to REV; holding never renews boost");
+        if(rev.revReleaseEdge)
+            log("[CHAINSAW-REV] RELEASE_READY revCount="+
+                std::to_string(rev.revCount)+" trigger="+
+                std::to_string(s.chainsawTriggerPressure));
+        if(rev.revPullEdge)
+            log("[CHAINSAW-REV] PULL revCount="+
+                std::to_string(rev.revCount)+" trigger="+
+                std::to_string(s.chainsawTriggerPressure)+
+                " baselineHz=200 peakTrackingMs=80");
+    }
     if(experiment.enteredZone&&experimentActive
         &&kharvox::chainsawModeUsesCircle(experimentMode)){
         // Continuous radial guide replaces the old one-shot entry pulse.
@@ -6010,6 +6027,18 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     textured.hapticAmplitude=.10f+.65f*normalizedMotion;
                     textured.hapticFrequencyHz=95.f+75.f*normalizedMotion;
                     break;
+                case kharvox::ChainsawExperimentalMode::TriggerRevPulses:{
+                    const auto& rev=s.chainsawExperiment;
+                    const bool newRev=chainsawAction&&rev.cutPathLocked
+                        &&rev.revStartMs
+                        &&strokeNow>=rev.revStartMs
+                        &&strokeNow-rev.revStartMs<90;
+                    // Full amplitude on EACH discrete squeeze; no
+                    // indefinitely sustained vibration from holding Trigger.
+                    textured.hapticAmplitude=newRev?1.f:.045f;
+                    textured.hapticFrequencyHz=newRev?190.f:65.f;
+                    break;
+                }
                 default:break;
                 }
             }
@@ -6036,11 +6065,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         static bool abPriorArmed=false,abPriorDone=false,abPriorSkip=false;
         static int abPriorHz=-1;
         static float abLastTravel=0.f;
+        static unsigned abLastRevCount=0;
         const auto& st=s.chainsawExperiment;
         if(experimentActive&&!abWasActive){
             ++abKillIndex;abSamples=0;abStartedMs=strokeNow;
             abPriorPhase=~0u;abPriorArmed=false;abPriorDone=false;
             abPriorSkip=false;abPriorHz=-1;abLastLogMs=0;
+            abLastTravel=0.f;abLastRevCount=0;
             log("[CHAINSAW-AB] START kill="+std::to_string(abKillIndex)
                 +" mode="+kharvox::chainsawModeName(experimentMode)
                 +" modeId="+std::to_string(static_cast<int>(experimentMode))
@@ -6048,7 +6079,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     kharvox::chainsawModeSwipeTarget(experimentMode))
                 +" ringRequired="+std::to_string(
                     kharvox::chainsawModeUsesCircle(experimentMode)?1:0)
-                +" animatorWrite=NO");
+                +" animatorWrite=NO"
+                +" analogRevRequiresRelease="+std::to_string(
+                    experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses?1:0));
         }
         if(experimentActive){
             const bool armEdge=st.cutPathLocked&&!abPriorArmed;
@@ -6081,6 +6114,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     +" hapticActive="+std::to_string(s.chainsawTriggerHaptic.active?1:0)
                     +" finish="+std::to_string(st.oneSwipeCommitted?1:0)
                     +" secondPress="+std::to_string(st.fastFinishLatched?1:0)
+                    +" revCount="+std::to_string(st.revCount)
+                    +" revReady="+std::to_string(st.revReady?1:0)
+                    +" revPeakPressure="+std::to_string(st.revPeakPressure)
+                    +" revStrength="+std::to_string(st.revStrength)
+                    +" revAgeMs="+std::to_string(st.revStartMs
+                        &&strokeNow>=st.revStartMs
+                            ?strokeNow-st.revStartMs:0)
                     +" renderValid="+std::to_string(render.renderValid?1:0)
                     +" renderTimeUnknown="+std::to_string(render.renderTime)
                     +" renderFrame="+std::to_string(render.renderFrame)
@@ -6094,6 +6134,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             abPriorPhase=st.phaseId;
             abPriorHz=experiment.targetHz;
             abLastTravel=st.strokeTravelMeters;
+            abLastRevCount=st.revCount;
         }
         if(!experimentActive&&abWasActive){
             log("[CHAINSAW-AB] END kill="+std::to_string(abKillIndex)
@@ -6101,6 +6142,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 +" durationMs="+std::to_string(strokeNow-abStartedMs)
                 +" samples="+std::to_string(abSamples)
                 +" distanceM="+std::to_string(abLastTravel)
+                +" revCount="+std::to_string(abLastRevCount)
                 +" nativeExit=CONFIRMED"
                 +" nativeAnimatorPlayhead=UNRESOLVED");
         }

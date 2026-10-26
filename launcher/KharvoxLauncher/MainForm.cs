@@ -103,10 +103,11 @@ public sealed partial class MainForm : Form
     private readonly CheckBox chainsawExpThreePhase = MakeCheck("X3 · Three-Phase Hybrid", false);
     private readonly CheckBox chainsawExpImpact = MakeCheck("X4 · Physical Impact", false);
     private readonly CheckBox chainsawExpNativeFast = MakeCheck("X5 · Native Fast + Motion Haptics", false);
+    private readonly CheckBox chainsawExpRevPulse = MakeCheck("X6 · Trigger Rev Pulses (Release + Pull)", false);
     private CheckBox[] ChainsawExperimentBoxes => new[] {
         chainsawGripPull,chainsawPointer,chainsawExpSingleSwipe,
         chainsawExpThrottle,chainsawExpThreePhase,chainsawExpImpact,
-        chainsawExpNativeFast
+        chainsawExpNativeFast,chainsawExpRevPulse
     };
     private bool selectingChainsawExperimentMode;
     private int SelectedChainsawExperimentMode =>
@@ -115,6 +116,7 @@ public sealed partial class MainForm : Form
         chainsawExpThreePhase.Checked ? 6 :
         chainsawExpImpact.Checked ? 7 :
         chainsawExpNativeFast.Checked ? 8 :
+        chainsawExpRevPulse.Checked ? 9 :
         chainsawPointer.Checked ? 3 : 1;
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
@@ -466,7 +468,7 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customTriggerChainsawThrottle, "Physical Chainsaw: hold Trigger during DOOM's native chainsaw execution. Move hand OUTSIDE the small circular START ring, then back INSIDE once to arm. From that instant, cut anywhere in free space; the circle DISAPPEARS and no longer controls the cut. Real 3D hand velocity changes execution pacing (300 Hz idle to 45 Hz fast). About 32cm of movement in one sweep requests the 30 Hz finish. Release Trigger for idle; ANY second Trigger press fast-finishes even before activation. Before arm: BZZZ pulses outside and silence inside; after arm: cutting haptics. No native animation frame seeking."),
+            (customTriggerChainsawThrottle, "Physical Chainsaw: choose ONE Chainsaw A/B TEST mode in Advanced. X6 Trigger Rev Pulses needs a single outside-then-inside circle activation, then each rev requires a NEW Trigger pull after releasing it. Analog depth sets rev burst strength; simply holding does not accelerate indefinitely. Legacy motion experiments remain available."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -799,7 +801,20 @@ public sealed partial class MainForm : Form
                 Tip:"X5 NATIVE FAST + MOTION HAPTICS: NO ring activation. "
                     +"Run confirmed native chainsaw execution at 40Hz from "
                     +"start to exit. Hand motion affects haptic intensity only. "
-                    +"Second Trigger press overrides to 30Hz. Reliability fallback.")
+                    +"Second Trigger press overrides to 30Hz. Reliability fallback."),
+            (Box:chainsawExpRevPulse, Number:9,
+                Tip:"X6 TRIGGER REV PULSES: slightly larger 1.42m circle. "
+                    +"Hold normal Trigger while moving OUTSIDE -> INSIDE "
+                    +"ONCE to activate; the circle disappears. RELEASE "
+                    +"Trigger below 18%, then squeeze above 33% to REV. "
+                    +"Every discrete squeeze gives one ~90-220ms acceleration "
+                    +"burst followed by a 70ms decay back to slow 200Hz. "
+                    +"Deeper squeeze produces faster native cutting (up to "
+                    +"30Hz). The FULL vibration impulse is applied on EVERY "
+                    +"new pull. HOLDING the trigger cannot maintain or renew "
+                    +"a burst: RELEASE and PULL AGAIN to rev again! "
+                    +"No hand-movement requirement after activation. "
+                    +"Old second-press fast-finish is DISABLED in this mode.")
         };
         int modesHeaderRow=speedAdvancedPanel.RowCount++;
         speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,26));
@@ -836,6 +851,7 @@ public sealed partial class MainForm : Form
                             :ReferenceEquals(selectedBox,chainsawGripPull)
                                 &&selected==1;
                 }finally{selectingChainsawExperimentMode=false;}
+                UpdateActionSpeedLabels();
                 SaveCustomModSettings();
                 OptionChanged(option.Box,EventArgs.Empty);
             };
@@ -1967,13 +1983,17 @@ public sealed partial class MainForm : Form
         if(speedActionChecks.TryGetValue("chainsaw",out var chainOverride))
             chainOverride.Enabled=!customTriggerChainsawThrottle.Checked&&speedAdvanced.Checked;
         chainsawStrokeDistance.Enabled=false; // deprecated config-only
-        chainsawStrokeIdleHz.Enabled=strokeControls;
+        // X6 uses a deliberately fixed 200Hz slow baseline. Don't show an
+        // apparently live slider that is intentionally ignored.
+        chainsawStrokeIdleHz.Enabled=strokeControls
+            &&!chainsawExpRevPulse.Checked;
         foreach(var modeCheck in ChainsawExperimentBoxes)
             modeCheck.Enabled=strokeControls;
         chainsawShowGripZones.Enabled=strokeControls
             &&!chainsawPointer.Checked&&!chainsawExpNativeFast.Checked;
         chainsawStrokeDistanceValue.Text=chainsawStrokeDistance.Value+" cm";
-        chainsawStrokeIdleHzValue.Text=(510-chainsawStrokeIdleHz.Value)+" Hz";
+        chainsawStrokeIdleHzValue.Text=chainsawExpRevPulse.Checked
+            ?"200 Hz (X6 fixed)":(510-chainsawStrokeIdleHz.Value)+" Hz";
         foreach (string key in ActionSpeedCatalog.Controllable)
         {
             if (!speedActionChecks.TryGetValue(key,out var check)
@@ -2357,7 +2377,7 @@ public sealed partial class MainForm : Form
             chainsawStrokeIdleHz.Value=510-Math.Max(30,Math.Min(480,mods.ChainsawStrokeIdleHz));
             chainsawShowGripZones.Checked=mods.ChainsawShowGripZones;
             var mode=mods.ChainsawExperimentMode;
-            var ids=new[]{1,3,4,5,6,7,8};
+            var ids=new[]{1,3,4,5,6,7,8,9};
             var checks=ChainsawExperimentBoxes;
             for(int i=0;i<checks.Length;++i)checks[i].Checked=mode==ids[i];
             // Legacy shared engine-speed presets have been retired. Native

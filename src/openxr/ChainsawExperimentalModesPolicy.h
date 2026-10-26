@@ -18,7 +18,7 @@ namespace kharvox {
 // 3 is the existing independent Pointer Focus experiment.
 enum class ChainsawExperimentalMode:int {
     GripPull=1, PointerFocus=3, ShortSwipe=4, ContinuousThrottle=5,
-    ThreePhase=6, ImpactCut=7, NativeFast=8
+    ThreePhase=6, ImpactCut=7, NativeFast=8, TriggerRevPulses=9
 };
 inline bool chainsawModeIsPhysical(ChainsawExperimentalMode m) noexcept {
     return m!=ChainsawExperimentalMode::PointerFocus;
@@ -28,7 +28,7 @@ inline bool chainsawModeUsesCircle(ChainsawExperimentalMode m) noexcept {
         &&m!=ChainsawExperimentalMode::NativeFast;
 }
 inline bool chainsawModeValid(int m) noexcept {
-    return m==1||m==3||(m>=4&&m<=8);
+    return m==1||m==3||(m>=4&&m<=9);
 }
 inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
     switch(m){
@@ -39,6 +39,7 @@ inline const char* chainsawModeName(ChainsawExperimentalMode m) noexcept {
     case ChainsawExperimentalMode::ThreePhase:return "X3_THREE_PHASE";
     case ChainsawExperimentalMode::ImpactCut:return "X4_PHYSICAL_IMPACT";
     case ChainsawExperimentalMode::NativeFast:return "X5_NATIVE_FAST_FEEDBACK";
+    case ChainsawExperimentalMode::TriggerRevPulses:return "X6_TRIGGER_REV_PULSES";
     default:return "UNKNOWN";
     }
 }
@@ -52,11 +53,13 @@ inline float chainsawModeSwipeTarget(ChainsawExperimentalMode m) noexcept {
 }
 inline bool chainsawModeStrokeFinish(ChainsawExperimentalMode m) noexcept {
     return m!=ChainsawExperimentalMode::ContinuousThrottle
-        &&m!=ChainsawExperimentalMode::NativeFast;
+        &&m!=ChainsawExperimentalMode::NativeFast
+        &&m!=ChainsawExperimentalMode::TriggerRevPulses;
 }
 inline int chainsawModeIdleHz(ChainsawExperimentalMode m,int requested) noexcept {
     if(m==ChainsawExperimentalMode::ShortSwipe)return std::min(requested,180);
-    if(m==ChainsawExperimentalMode::ContinuousThrottle)return std::min(requested,200);
+    if(m==ChainsawExperimentalMode::ContinuousThrottle
+       ||m==ChainsawExperimentalMode::TriggerRevPulses)return std::min(requested,200);
     if(m==ChainsawExperimentalMode::ImpactCut)return std::min(requested,155);
     return requested;
 }
@@ -88,8 +91,8 @@ inline ChainsawVec3 singleZoneCenter(ChainsawVec3 head,ChainsawVec3 gaze,
 }
 // The procedural outline is centred at texture-space radius .69.
 // Smaller 1.28m circular activation marker; matched render/projection.
-constexpr float chainsawZoneQuadWidthMeters=1.28f;
-constexpr float chainsawZoneQuadHeightMeters=1.28f;
+constexpr float chainsawZoneQuadWidthMeters=1.42f;
+constexpr float chainsawZoneQuadHeightMeters=1.42f;
 constexpr float chainsawZoneEnterRadius=.69f; // VISIBLE ring/inside threshold
 constexpr float chainsawZoneExitRadius=.81f;  // initial outside-arm hysteresis
 // Execution-only weapon-hand OUTSIDE cue: unmistakable "bzzz ... bzzz ...".
@@ -172,6 +175,12 @@ struct ChainsawExperimentState {
     float lastInstantSpeed{};
     int lastRequestedHz{};
     unsigned phaseId{};
+    // X6: a genuine RELEASE below 0.18 is mandatory before EVERY new rev.
+    // Continuous trigger hold can produce exactly ONE bounded speed pulse.
+    bool revReady{},revPullEdge{},revReleaseEdge{};
+    unsigned revCount{};
+    std::uint64_t revStartMs{};
+    float revPeakPressure{},revStrength{};
     void reset() noexcept {*this={};}
 };
 struct ChainsawExperimentResult {
@@ -196,9 +205,11 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     std::uint64_t nowMs,int idleHz=300,int strokeDistanceCm=32,
     ChainsawVec3 worldHead={},float worldYaw=0.f,bool headTracked=true,
     ChainsawVec3 headForward={},ChainsawVec3 headRight={1.f,0.f,0.f},
-    ChainsawVec3 headUp={0.f,1.f,0.f}) noexcept {
+    ChainsawVec3 headUp={0.f,1.f,0.f},float triggerPressure=0.f) noexcept {
     idleHz=std::clamp(idleHz,30,480);
     (void)strokeDistanceCm; // Retained for older saved calibration schemas.
+    triggerPressure=std::isfinite(triggerPressure)
+        ?std::clamp(triggerPressure,0.f,1.f):0.f;
     if(!nativeExecution){st.reset();return {idleHz};}
     if(!chainsawModeValid(static_cast<int>(mode)))
         mode=ChainsawExperimentalMode::GripPull;
@@ -228,7 +239,10 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         // BEFORE its first sample; subsequent released -> held is fast finish.
         const bool secondPress=triggerHeld&&!st.wasGripHeld;
         st.wasGripHeld=triggerHeld;
-        if(secondPress&&!st.fastFinishLatched){
+        // In X6, second and subsequent presses are REV events, NEVER
+        // permanent 30Hz fast-finish shortcuts.
+        if(mode!=ChainsawExperimentalMode::TriggerRevPulses
+           &&secondPress&&!st.fastFinishLatched){
             st.fastFinishLatched=true;
             ++st.triggerRestarts; // diagnostic: fast-finish press count
         }
@@ -282,10 +296,38 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             st.filteredSpeed=0.f;st.progress=0.f;
             st.strokeTravelMeters=0.f;st.oneSwipeCommitted=false;
             st.previous=hand;st.lastTracked=valid; // entry step is zero; next step counts
+            if(mode==ChainsawExperimentalMode::TriggerRevPulses){
+                // Initial kill-start Trigger may still be held. No first
+                // burst until it is deliberately released and pulled anew.
+                st.revReady=false;st.revCount=0;st.revStartMs=0;
+            }
             started=true;
         }
+        // X6 is a true single-pull rev mechanism. Every burst needs a fresh
+        // 0.18 -> 0.33 analog threshold crossing. Holding 1.0 forever never
+        // refreshes the deadline and NEVER maintains acceleration.
+        st.revPullEdge=false;st.revReleaseEdge=false;
+        if(mode==ChainsawExperimentalMode::TriggerRevPulses
+           &&st.cutPathLocked){
+            if(triggerPressure<=.18f){
+                if(!st.revReady)st.revReleaseEdge=true;
+                st.revReady=true;
+            }else if(st.revReady&&triggerPressure>=.33f){
+                st.revReady=false;st.revPullEdge=true;st.revStartMs=nowMs;
+                st.revPeakPressure=triggerPressure;
+                ++st.revCount;
+            }
+            if(st.revStartMs&&triggerPressure>st.revPeakPressure
+               &&nowMs-st.revStartMs<=80)
+                st.revPeakPressure=triggerPressure;
+            // Capture the full squeeze as the analog control level. Shallow
+            // pulls give modest bursts, deeper pulls approach maximum 30Hz.
+            st.revStrength=st.revStartMs?std::clamp(
+                (st.revPeakPressure-.30f)/.70f,0.f,1.f):0.f;
+        }
         // Real tracked free-space controller delta, independent of marker.
-        if(st.cutPathLocked&&!st.fastFinishLatched&&!st.oneSwipeCommitted){
+        if(mode!=ChainsawExperimentalMode::TriggerRevPulses
+           &&st.cutPathLocked&&!st.fastFinishLatched&&!st.oneSwipeCommitted){
             const float step=st.lastTracked&&valid&&timely&&elapsed>0
                 ?length3(minus3(hand,st.previous)):0.f;
             const bool genuineStep=triggerHeld&&st.lastTracked&&valid
@@ -345,6 +387,21 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         chainsawModeIsPhysical(mode)?physicalFloorHz:30,idleHz);
     if(chainsawModeIsPhysical(mode)){
         if(mode==ChainsawExperimentalMode::NativeFast)hz=40;
+        if(mode==ChainsawExperimentalMode::TriggerRevPulses){
+            hz=200; // slow cutting between discrete revs
+            if(st.cutPathLocked&&st.revStartMs&&nowMs>=st.revStartMs){
+                const auto age=nowMs-st.revStartMs;
+                const float strength=st.revStrength;
+                // Instant rev, hold 90-220ms depending on squeeze depth,
+                // then decay over 70ms. No auto-renewal from trigger hold.
+                const float burstMs=90.f+130.f*strength;
+                const float envelope=age<=burstMs?1.f
+                    :std::clamp(1.f-(float(age)-burstMs)/70.f,0.f,1.f);
+                const float fastest=110.f-80.f*strength;
+                hz=std::clamp(static_cast<int>(std::lround(
+                    200.f-(200.f-fastest)*envelope)),30,200);
+            }
+        }
         if(mode==ChainsawExperimentalMode::ThreePhase&&st.cutPathLocked
            &&nowMs>=st.entryMs&&nowMs-st.entryMs<220
            &&!st.oneSwipeCommitted)
@@ -355,10 +412,13 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         if(st.fastFinishLatched||st.oneSwipeCommitted)
             hz=chainsawDoubleTriggerFastFinishHz;
         else if(st.resumeEligible&&!triggerHeld
-                &&mode!=ChainsawExperimentalMode::NativeFast)
+                &&mode!=ChainsawExperimentalMode::NativeFast
+                &&mode!=ChainsawExperimentalMode::TriggerRevPulses)
             hz=chainsawTriggerReleaseIdleHz;
     }
     st.phaseId=st.fastFinishLatched||st.oneSwipeCommitted?3u
+        :mode==ChainsawExperimentalMode::TriggerRevPulses
+            ?(st.cutPathLocked?2u:0u)
         :!st.cutPathLocked?0u
         :mode==ChainsawExperimentalMode::ThreePhase
             &&nowMs>=st.entryMs&&nowMs-st.entryMs<220?1u:2u;
@@ -375,7 +435,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         :(mode==ChainsawExperimentalMode::NativeFast
           ||st.fastFinishLatched||st.oneSwipeCommitted
           ||(st.resumeEligible&&!triggerHeld)
-          ||(st.cutPathLocked&&triggerHeld&&valid));
+          ||(st.cutPathLocked&&triggerHeld&&valid)
+          ||(mode==ChainsawExperimentalMode::TriggerRevPulses&&st.cutPathLocked));
     return {hz,st.progress,owningTiming,
         st.finished,started,impact,
         st.fastFinishLatched?"DOUBLE_TRIGGER_FAST_FINISH":

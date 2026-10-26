@@ -654,7 +654,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] =
                 Math.Max(30,Math.Min(480,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] =
-                (customMods.ChainsawExperimentMode==1 || customMods.ChainsawExperimentMode==3 || (customMods.ChainsawExperimentMode>=4 && customMods.ChainsawExperimentMode<=8) ? customMods.ChainsawExperimentMode : 1).ToString(Invariant);
+                (customMods.ChainsawExperimentMode==1 || customMods.ChainsawExperimentMode==3 || (customMods.ChainsawExperimentMode>=4 && customMods.ChainsawExperimentMode<=9) ? customMods.ChainsawExperimentMode : 1).ToString(Invariant);
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] =
                 customMods.ChainsawShowGripZones?"1":"0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";

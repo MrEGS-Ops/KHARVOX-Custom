@@ -249,7 +249,7 @@ internal static class CustomModSettingsStore
     // Keep all five experimental modes stable across Save/Load.
     // Legacy mode 2 remains retired, arbitrary JSON is normalized to 1.
     private static int ValidChainsawMode(int mode) =>
-        mode==1||mode==3||(mode>=4&&mode<=8)?mode:1;
+        mode==1||mode==3||(mode>=4&&mode<=9)?mode:1;
 
     internal static int RunSelfTest()
     {
@@ -266,14 +266,14 @@ internal static class CustomModSettingsStore
                 || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285
                 || Load(path).ChainsawExperimentMode != 3)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
-            foreach(int m in new[]{1,3,4,5,6,7,8}){
+            foreach(int m in new[]{1,3,4,5,6,7,8,9}){
                 var modePath=Path.Combine(root,"chainsaw-ab-"+m+".json");
                 Save(new CustomModSettings{ChainsawExperimentMode=m},modePath);
                 if(Load(modePath).ChainsawExperimentMode!=m)
                     throw new InvalidDataException(
                         "Chainsaw A/B mode did not roundtrip: "+m);
             }
-            foreach(int m in new[]{-100,0,2,9,999}){
+            foreach(int m in new[]{-100,0,2,10,999}){
                 var modePath=Path.Combine(root,"chainsaw-invalid-"+m+".json");
                 Save(new CustomModSettings{ChainsawExperimentMode=m},modePath);
                 if(Load(modePath).ChainsawExperimentMode!=1)
