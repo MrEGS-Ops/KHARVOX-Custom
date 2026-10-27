@@ -32,9 +32,8 @@ public sealed partial class MainForm
         ("Legs & Movement", "➤"),
         ("Weapons & Combat", "✦"),
         ("HUD & Immersion", "▤"),
-        ("Demons & AI", "♜"),
-        ("Haptics & Feedback", "◎"),
-        ("Diagnostics", "⌕")
+        ("Diagnostics", "⌕"),
+        ("Haptics & Feedback", "◎")
     };
 
     private readonly List<ModOrderRow> modOrderRows = new();
@@ -164,9 +163,9 @@ public sealed partial class MainForm
             Define(customActionExitHandoff, "action-exit-handoff", 3),
             Define(customDisableHud, "no-hud", 3),
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
-            Define(customRevengeDemon, "revenge-demon", 6),
-            Define(customHapticOverhaul, "haptic-overhaul", 5),
-            Define(speedActionLogTest, "chainsaw-animation-investigator", 6)
+            Define(customRevengeDemon, "revenge-demon", 4),
+            Define(speedActionLogTest, "chainsaw-animation-investigator", 4),
+            Define(customHapticOverhaul, "haptic-overhaul", 5)
         };
         if (tips.Count != defaults.Length || defaults.Select(row => row.Box).Distinct().Count()
                 != defaults.Length)
