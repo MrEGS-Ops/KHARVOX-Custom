@@ -87,7 +87,7 @@ public sealed partial class MainForm : Form
     private readonly CheckBox customStoryCameraFocus = MakeCheck("Story Camera Focus: Major Scenes Only (Test)", false);
     private readonly CheckBox customUninterruptedStory = MakeCheck("Uninterrupted Story (Experimental)", false);
     private readonly CheckBox customActionExitHandoff = MakeCheck("Action Exit Handoff (Test)", false);
-    private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Physical Chainsaw · Motion / Haptics / Zones", false);
+    private readonly CheckBox customTriggerChainsawThrottle = MakeCheck("Chainsaw Revving", false);
     private readonly CheckBox customMotionChainsawKillSpeed = MakeCheck("Retired Chainsaw Motion (migrated)", false);
     // Temporary, chainsaw-only one-stroke calibration; unrelated action speed
     // sliders remain at 30–240Hz and ledge progression stays DOOM native.
@@ -110,18 +110,11 @@ public sealed partial class MainForm : Form
         chainsawExpNativeFast,chainsawExpRevPulse
     };
     private bool selectingChainsawExperimentMode;
-    private int SelectedChainsawExperimentMode =>
-        chainsawExpSingleSwipe.Checked ? 4 :
-        chainsawExpThrottle.Checked ? 5 :
-        chainsawExpThreePhase.Checked ? 6 :
-        chainsawExpImpact.Checked ? 7 :
-        chainsawExpNativeFast.Checked ? 8 :
-        chainsawExpRevPulse.Checked ? 9 :
-        chainsawPointer.Checked ? 3 : 1;
+    private int SelectedChainsawExperimentMode => 9; // merged into one mod
     // Full-speed native bypass is a Sync Action Speed mode, not two VR mods.
     private bool cinematicFullSpeedMode;
     private bool refreshingSpeedSelector;
-    private static readonly string[] ScopedActionKeys = { "glory", "chainsaw" };
+    private static readonly string[] ScopedActionKeys = { "glory" };
     // Three selectable presets plus a read-only custom-profile indicator.
     private readonly ComboBox cinematicSpeedSelector = new()
     {
@@ -468,7 +461,8 @@ public sealed partial class MainForm : Form
             (customDynamicShoulderHolster, "Quick Holsters are invisible inventory slots, not weapon models. Grip at EMPTY hip to store, or OCCUPIED hip to instantly draw without swapping what you hold. NEW: On supported Quest Touch controllers, lift index and thumb completely off ALL capacitive controls and release Trigger + Grip for 0.45 seconds to virtually unequip the held gun; it stays in DOOM inventory, not thrown into the world. Draw a hip gun or open the weapon wheel to re-equip. No finger sensors = safely disabled. Gauss Cannon, Chaingun and BFG cannot be hip-stowed. Requires Enable Hands."),
             (customPersistentSsgReload, "INCOMPLETE / SAFETY ROLLBACK: the earlier experimental implementation blocked Super Shotgun firing for about 1.6 seconds WITHOUT restarting the visible native reload animation. That invisible input delay and the unverified CVar pulse are now bypassed, even if this preference is checked. DOOM's normal native SSG firing/reload behavior is preserved until an actual native animation start/completion hook is validated. This checkbox currently does NOT provide persistent SSG reload; it remains available only to preserve the saved preference."),
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
-            (customTriggerChainsawThrottle, "Physical Chainsaw: choose ONE Chainsaw A/B TEST mode in Advanced. X6 Trigger Rev Pulses needs a single outside-then-inside circle activation, then each rev requires a NEW Trigger pull after releasing it. Analog depth sets rev burst strength; simply holding does not accelerate indefinitely. Legacy motion experiments remain available."),
+            (customTriggerChainsawThrottle, "Chainsaw Revving: one short rev per fresh trigger pull during a native kill. No activation circle or hand motion. Eased speed transitions and continuous 96–100% jaw vibration throughout the kill."),
+            (speedActionLogTest, "DIAGNOSTICS: read-only chainsaw animation investigator, logs and per-kill CSV; makes no gameplay changes."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -500,416 +494,83 @@ public sealed partial class MainForm : Form
             .ToArray();
         InitializeGroupedCustomMods(customModsGrid, availableCustomMods);
         speedCustomModsGrid = customModsGrid;
-        // One practical, keyboard-accessible selector instead of five
-        // oversized buttons. The sixth choice retains the separate proven
-        // native sync_noAdaptiveTick bypass under this same speed heading.
-        const int speedPresetHeight=64;
-        var speedPresetPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 2, ColumnCount = 1,
-            Margin = new Padding(4, 1, 2, 1), Padding = new Padding(3, 1, 3, 1),
-            BackColor = PanelColor, Height = speedPresetHeight
+        // Standalone Glory Kill speed: no combined presets or Chainsaw slider.
+        const int speedPresetHeight=78;
+        var speedPresetPanel=new TableLayoutPanel {
+            Dock=DockStyle.Fill,RowCount=2,ColumnCount=3,Height=speedPresetHeight,
+            Margin=new Padding(5,2,4,2),Padding=new Padding(4,2,4,2),
+            BackColor=PanelColor
         };
-        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
-        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var speedPresetHeading = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2,
-            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
+        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,28));
+        speedPresetPanel.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        speedPresetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,154));
+        speedPresetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        speedPresetPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,80));
+        var title=new Label {
+            Text="GLORY KILL SPEED",Dock=DockStyle.Fill,
+            ForeColor=Color.WhiteSmoke,TextAlign=ContentAlignment.MiddleLeft,
+            Font=new Font("Segoe UI",9f,FontStyle.Bold)
         };
-        speedPresetHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedPresetHeading.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
-        cinematicKillSpeedTitle.Dock = DockStyle.Fill;
-        cinematicKillSpeedTitle.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
-        cinematicKillSpeedTitle.Text = "SYNC ACTION SPEED";
-        cinematicKillSpeedTitle.TextAlign = ContentAlignment.MiddleLeft;
-        cinematicKillSpeedValue.Dock = DockStyle.Fill;
-        cinematicKillSpeedValue.TextAlign = ContentAlignment.MiddleRight;
-        cinematicKillSpeedValue.Margin = new Padding(0,0,3,0);
-        speedPresetHeading.Controls.Add(cinematicKillSpeedTitle, 0, 0);
-        speedPresetHeading.Controls.Add(cinematicKillSpeedValue, 1, 0);
-        speedPresetPanel.Controls.Add(speedPresetHeading, 0, 0);
-        var presetChoiceRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 3,
-            BackColor = PanelColor, Margin = Padding.Empty, Padding = Padding.Empty
+        speedPresetPanel.Controls.Add(title,0,0);
+        speedPresetPanel.SetColumnSpan(title,3);
+        var check=MakeCheck("Override",false);
+        check.Dock=DockStyle.Fill;
+        check.Margin=new Padding(5,3,1,2);
+        speedActionChecks.Add("glory",check);
+        speedPresetPanel.Controls.Add(check,0,1);
+        var slider=MakeSlider(30,240,200,10,1);
+        slider.Dock=DockStyle.Fill;slider.TickStyle=TickStyle.None;
+        slider.Margin=new Padding(5,4,5,3);
+        speedActionSliders.Add("glory",slider);
+        speedPresetPanel.Controls.Add(slider,1,1);
+        var value=new Label {
+            Text="Native",Dock=DockStyle.Fill,
+            TextAlign=ContentAlignment.MiddleLeft,
+            Font=new Font("Segoe UI",9f,FontStyle.Bold),
+            ForeColor=Color.Gainsboro
         };
-        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 224));
-        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        presetChoiceRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104));
-        presetChoiceRow.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        cinematicSpeedSelector.Dock = DockStyle.Fill;
-        cinematicSpeedSelector.Margin = new Padding(1,2,3,5);
-        cinematicSpeedSelector.Items.AddRange(new object[] {
-            "Native · DOOM defaults",
-            "Fast · 70 / 70 / 70 Hz",
-            "Maximum · 30 / 40 / 50 Hz",
-            "Custom · manual overrides"
-        });
-        cinematicSpeedSelector.DrawItem += (_, e) =>
-        {
-            if(e.Index < 0 || e.Index >= cinematicSpeedSelector.Items.Count)return;
-            var selected = (e.State & DrawItemState.Selected) != 0;
-            using var background = new SolidBrush(selected
-                ? Color.FromArgb(111,85,39) : Color.FromArgb(35,35,39));
-            e.Graphics.FillRectangle(background,e.Bounds);
-            TextRenderer.DrawText(e.Graphics, cinematicSpeedSelector.Items[e.Index]!.ToString(),
-                cinematicSpeedSelector.Font,e.Bounds,Color.WhiteSmoke,
-                TextFormatFlags.VerticalCenter|TextFormatFlags.Left|TextFormatFlags.EndEllipsis);
-            e.DrawFocusRectangle();
-        };
-        cinematicSpeedSelector.SelectedIndex=0;
-        cinematicSpeedSelector.SelectedIndexChanged += (_,_) =>
-        {
-            if(refreshingSpeedSelector||restoringConfiguration||applyingCustomModDependencies)return;
-            var index=cinematicSpeedSelector.SelectedIndex;
-            if(index<0)return;
-            if(index==3) {
-                // Read-only status when any manual slider differs from presets.
-                UpdateCinematicKillSpeedLabel();
-                return;
-            }
-            ApplyActionSpeedPreset(index);
-            ApplyCustomModDependencies(null);
-            SaveCustomModSettings();
-            OptionChanged(cinematicSpeedSelector,EventArgs.Empty);
-        };
-        presetChoiceRow.Controls.Add(cinematicSpeedSelector, 0, 0);
-        var speedHint = new Label
-        {
-            Text="Glory Kill / Chainsaw",
-            Dock=DockStyle.Fill,
-            ForeColor=Color.FromArgb(158,159,166),
-            Font=new Font("Segoe UI",8f),
-            TextAlign=ContentAlignment.MiddleCenter,
-            AutoEllipsis=true, Margin=Padding.Empty
-        };
-        presetChoiceRow.Controls.Add(speedHint,1,0);
-        speedAdvanced.AutoSize=false;
-        speedAdvanced.Dock=DockStyle.Fill;
-        speedAdvanced.Margin=new Padding(4,3,0,3);
-        presetChoiceRow.Controls.Add(speedAdvanced,2,0);
-        speedPresetPanel.Controls.Add(presetChoiceRow,0,1);
-        statusToolTip.SetToolTip(cinematicSpeedSelector,
-            "Three action presets: Native (no override), Fast (70/70 Hz) "
-            +"and Maximum (30/40 Hz for Glory/Chainsaw). "
-            +"Manually editing action sliders shows Custom. "
-            +"Scripted cinematics always use DOOM's native tick settings. Restart DOOM.");
-        statusToolTip.SetToolTip(speedHint,
-            "Overrides apply only to Glory Kill and Chainsaw. "
-            +"Ledge climb timing, including upgrades, stays DOOM-native. "
-            +"Smaller Hz = faster actions in our current tests; "
-            +"this is not the headset render refresh rate.");
-        statusToolTip.SetToolTip(speedAdvanced,
-            "Show/hide two action override sliders and optional debug logging. "
-            +"Collapsing Advanced does not deactivate an applied speed preset.");
-        UpdateCinematicKillSpeedLabel();
-        cinematicKillSpeed.ValueChanged += (_, _) =>
-        {
+        speedActionValues.Add("glory",value);
+        speedPresetPanel.Controls.Add(value,2,1);
+        const string tip="Native Glory Kill speed only. Right is faster (30 Hz); "
+            +"left is slower (240 Hz). Chainsaw Revving is independent. Restart DOOM.";
+        foreach(Control c in new Control[]{title,check,slider,value})
+            statusToolTip.SetToolTip(c,tip);
+        slider.ValueChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
-            UpdateCinematicKillSpeedLabel();
+            UpdateActionSpeedLabels();
+        };
+        void Commit(){
+            if(restoringConfiguration||applyingCustomModDependencies)return;
+            SaveCustomModSettings();OptionChanged(slider,EventArgs.Empty);
+        }
+        slider.MouseUp+=(_,_)=>Commit();
+        slider.KeyUp+=(_,_)=>Commit();
+        slider.MouseWheel+=(_,_)=>Commit();
+        slider.Leave+=(_,_)=>Commit();
+        check.CheckedChanged+=(_,_)=>{
+            if(restoringConfiguration||applyingCustomModDependencies)return;
+            UpdateActionSpeedLabels();
             SaveCustomModSettings();
-            OptionChanged(cinematicKillSpeed,EventArgs.Empty);
+            OptionChanged(check,EventArgs.Empty);
         };
         var speedRowIndex=customModsGrid.RowCount++;
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute,speedPresetHeight));
         customModsGrid.Controls.Add(speedPresetPanel,0,speedRowIndex);
         customModsGrid.SetColumnSpan(speedPresetPanel,2);
         customModsGrid.Height+=speedPresetHeight;
-        // Advanced exposes action-scoped overrides only. A separate global
-        // Target Tick Hz setting is intentionally unavailable.
-        speedAdvancedPanel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 0,
-            Visible = false, Height = 37, BackColor = PanelColor,
-            Margin = new Padding(14, 2, 10, 0), Padding = Padding.Empty
-        };
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 176));
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        speedAdvancedPanel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-        // Two editable actions only; neither ledges nor scripted scenes may
-        // be accelerated by the engine tick override.
-        var actionNames = new Dictionary<string,string> {
-            ["glory"]="Glory Kill",["chainsaw"]="Chainsaw kill"
-        };
-        var actionHints = new Dictionary<string,string> {
-            ["glory"]="Native Glory Kill sync-state; changes whole-engine tick during the action.",
-            ["chainsaw"]="Confirmed chainsaw execution state; changes whole-engine tick during the action."
-        };
-        const int actionHeaderHeight=30;
-        const int actionRowHeight=38;
-        const int actionFooterHeight=38;
-        var actionHeader=new Label {
-            Text="ACTION OVERRIDES     30–240 Hz  ·  right = faster",
-            Dock=DockStyle.Fill, AutoEllipsis=true,
-            ForeColor=Color.FromArgb(171,172,179),
-            Font=new Font("Segoe UI",8.5f,FontStyle.Bold),
-            TextAlign=ContentAlignment.MiddleLeft,
-            Margin=new Padding(4,1,0,0)
-        };
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionHeaderHeight));
-        speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.Controls.Add(actionHeader,0,0);
-        speedAdvancedPanel.SetColumnSpan(actionHeader,3);
-        statusToolTip.SetToolTip(actionHeader,
-            "Presets set checked actions and their tick targets. You can edit "
-            +"each slider to create a Custom profile. Scripted cinematics "
-            +"always keep the original DOOM timing. Lower Hz = faster action, "
-            +"not more rendered FPS.");
-        void AddActionSpeedRow(string key)
-        {
-            int row=speedAdvancedPanel.RowCount++;
-            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionRowHeight));
-            var check=MakeCheck(actionNames[key],false);
-            check.AutoSize=true; check.Dock=DockStyle.Fill;
-            check.Font=new Font("Segoe UI",9f);
-            check.Margin=new Padding(6,5,3,1);
-            speedActionChecks.Add(key,check);
-            speedAdvancedPanel.Controls.Add(check,0,row);
-            var slider=MakeSlider(30,240,240,10,1);
-            slider.AutoSize=false; slider.Dock=DockStyle.Fill;
-            slider.Height=26; slider.TickStyle=TickStyle.None;
-            slider.SmallChange=1; slider.LargeChange=5;
-            slider.Margin=new Padding(5,4,5,3);
-            slider.Enabled=false;
-            speedActionSliders.Add(key,slider);
-            speedAdvancedPanel.Controls.Add(slider,1,row);
-            var value=new Label {
-                Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
-                ForeColor=Color.FromArgb(171,172,179),
-                Font=new Font("Segoe UI",9f,FontStyle.Bold),
-                AutoEllipsis=true,Text="Off",Margin=new Padding(4,0,0,0)
-            };
-            speedActionValues.Add(key,value);
-            speedAdvancedPanel.Controls.Add(value,2,row);
-            string tip=actionHints[key]
-                +" Right = faster action (30 Hz); left = slower (240 Hz). "
-                +"Manual changes show Custom in the preset selector. Restart DOOM.";
-            statusToolTip.SetToolTip(check,tip);
-            statusToolTip.SetToolTip(value,tip);
-            statusToolTip.SetToolTip(slider,tip);
-            slider.AccessibleDescription=tip;
-            slider.ValueChanged+=(_,_)=>{
-                if(restoringConfiguration||applyingCustomModDependencies)return;
-                UpdateCinematicKillSpeedLabel();
-            };
-            void Commit(){
-                if(restoringConfiguration||applyingCustomModDependencies)return;
-                UpdateCinematicKillSpeedLabel();
-                SaveCustomModSettings();
-                OptionChanged(slider,EventArgs.Empty);
-            }
-            slider.MouseUp+=(_,_)=>Commit();
-            slider.KeyUp+=(_,_)=>Commit();
-            slider.MouseWheel+=(_,_)=>Commit();
-            slider.Leave+=(_,_)=>Commit();
-            check.CheckedChanged+=(_,_)=>{
-                if(restoringConfiguration||applyingCustomModDependencies)return;
-                if(key=="chainsaw" && check.Checked)customTriggerChainsawThrottle.Checked=false;
-                UpdateCinematicKillSpeedLabel();
-                SaveCustomModSettings();
-                OptionChanged(check,EventArgs.Empty);
-            };
-        }
-        foreach(string key in ActionSpeedCatalog.Controllable)AddActionSpeedRow(key);
-        // One cutting circle; calibration never changes ledges or GK.
-        void AddChainsawCalibrationRow(string name, TrackBar bar, Label value,
-            string tip)
-        {
-            int row=speedAdvancedPanel.RowCount++;
-            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionRowHeight));
-            var label=new Label {
-                Text=name,Dock=DockStyle.Fill,AutoEllipsis=true,
-                TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.WhiteSmoke,
-                Font=new Font("Segoe UI",8.4f),Margin=new Padding(6,2,1,1)
-            };
-            speedAdvancedPanel.Controls.Add(label,0,row);
-            bar.AutoSize=false;bar.Dock=DockStyle.Fill;
-            bar.TickStyle=TickStyle.None;bar.Margin=new Padding(5,4,5,3);
-            bar.Enabled=false;
-            speedAdvancedPanel.Controls.Add(bar,1,row);
-            value.Dock=DockStyle.Fill;value.TextAlign=ContentAlignment.MiddleLeft;
-            value.AutoEllipsis=true;
-            speedAdvancedPanel.Controls.Add(value,2,row);
-            statusToolTip.SetToolTip(label,tip);
-            statusToolTip.SetToolTip(bar,tip);
-            statusToolTip.SetToolTip(value,tip);
-            bar.AccessibleDescription=tip;
-            bar.ValueChanged+=(_,_)=>{
-                if(restoringConfiguration||applyingCustomModDependencies)return;
-                UpdateActionSpeedLabels();
-            };
-            void Commit(){
-                if(restoringConfiguration||applyingCustomModDependencies)return;
-                SaveCustomModSettings();
-                OptionChanged(bar,EventArgs.Empty);
-            }
-            bar.MouseUp+=(_,_)=>Commit();
-            bar.KeyUp+=(_,_)=>Commit();
-            bar.MouseWheel+=(_,_)=>Commit();
-            bar.Leave+=(_,_)=>Commit();
-        }
-        AddChainsawCalibrationRow("Chainsaw idle Hz",chainsawStrokeIdleHz,
-            chainsawStrokeIdleHzValue,
-            "TEMPORARY CHAINSAW ONLY. LEFT = 480 Hz, SLOWEST cut at rest; "
-            +"RIGHT = 30 Hz at rest. Motion cutting caps at 45 Hz; "
-            +"Trigger release explicitly holds 300 Hz, double press latches 30 Hz. "
-            +"This is engine tick pacing, NOT headset/vibration Hz.");
-        // Only one physical chainsaw mod remains.
-        customTriggerChainsawThrottle.CheckedChanged+=(_,_)=>{
-            if(restoringConfiguration||applyingCustomModDependencies)return;
-            UpdateActionSpeedLabels();
-        };
-        // The old rotating-hand Circular Saw mode remains retired.
-        var modeChoices=new[] {
-            (Box:chainsawGripPull, Number:1,
-                Tip:"ONE smaller START circle ahead of the chainsaw during native execution. "
-                    +"With Trigger held, move OUTSIDE and re-enter once. "
-                    +"Entry PERMANENTLY activates FREE-SPACE cutting; circle "
-                    +"disappears and has no further effect. Cut ANYWHERE, in "
-                    +"ANY direction; actual hand speed sets native pacing "
-                    +"between 300 Hz idle and 45 Hz maximum motion. "
-                    +"A 32cm hand sweep requests 30 Hz completion, without "
-                    +"another ring crossing. BEFORE activation: strong BZZZ "
-                    +"outside, silence inside. AFTER: real cutting haptics. "
-                    +"Releasing Trigger idles; a second Trigger press ANY "
-                    +"TIME fast-finishes at 30 Hz. No native frame seek."),
-            (Box:chainsawPointer, Number:3,
-                Tip:"Legacy pointer experiment: swing the weapon direction to "
-                    +"accelerate the native execution. No ring; compare as control."),
-            (Box:chainsawExpSingleSwipe, Number:4,
-                Tip:"X1 SHORT SINGLE SWIPE: Trigger held; outside→inside small "
-                    +"circle once, then swipe ANYWHERE. 24cm free-space movement "
-                    +"commits 30Hz finish. 180Hz minimum idle after arming; "
-                    +"hand movement accelerates to 45Hz. Strong cut-end haptic."),
-            (Box:chainsawExpThrottle, Number:5,
-                Tip:"X2 CONTINUOUS THROTTLE: Activate using small circle once, "
-                    +"then hand velocity drives 200→45Hz indefinitely, ANYWHERE. "
-                    +"No distance-based auto-finish. DOOM exits normally or "
-                    +"second Trigger press fast finishes. Velocity-textured haptics."),
-            (Box:chainsawExpThreePhase, Number:6,
-                Tip:"X3 THREE-PHASE HYBRID: activate with circle; approximate "
-                    +"220ms engage at 180Hz (not a clip hook), followed by "
-                    +"movement-controlled cutting. 28cm swipe finishes at 30Hz. "
-                    +"No unverified native animation writes."),
-            (Box:chainsawExpImpact, Number:7,
-                Tip:"X4 PHYSICAL IMPACT: circle activates a constant 155Hz "
-                    +"native cutting pace, with forceful staccato hand-movement "
-                    +"haptic impacts. 22cm movement requests 30Hz finish. "
-                    +"No damage/audio scripting changes."),
-            (Box:chainsawExpNativeFast, Number:8,
-                Tip:"X5 NATIVE FAST + MOTION HAPTICS: NO ring activation. "
-                    +"Run confirmed native chainsaw execution at 40Hz from "
-                    +"start to exit. Hand motion affects haptic intensity only. "
-                    +"Second Trigger press overrides to 30Hz. Reliability fallback."),
-            (Box:chainsawExpRevPulse, Number:9,
-                Tip:"X6 TRIGGER REV PULSES: slightly larger 1.42m circle. "
-                    +"Hold normal Trigger while moving OUTSIDE -> INSIDE "
-                    +"ONCE to activate; the circle disappears. RELEASE "
-                    +"Trigger below 18%, then squeeze above 33% to REV. "
-                    +"Every discrete squeeze gives one ~90-220ms acceleration "
-                    +"burst followed by a 70ms decay back to slow 200Hz. "
-                    +"Deeper squeeze produces faster native cutting (up to "
-                    +"30Hz). The FULL vibration impulse is applied on EVERY "
-                    +"new pull. HOLDING the trigger cannot maintain or renew "
-                    +"a burst: RELEASE and PULL AGAIN to rev again! "
-                    +"No hand-movement requirement after activation. "
-                    +"Old second-press fast-finish is DISABLED in this mode.")
-        };
-        int modesHeaderRow=speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,26));
-        var modeHeader=new Label{
-            Text="CHAINSAW A/B TEST  ·  select ONE mode (restart DOOM)",
-            Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,
-            Font=new Font("Segoe UI",8.3f,FontStyle.Bold),
-            ForeColor=Color.FromArgb(179,180,186),Margin=new Padding(5,0,0,0)
-        };
-        speedAdvancedPanel.Controls.Add(modeHeader,0,modesHeaderRow);
-        speedAdvancedPanel.SetColumnSpan(modeHeader,3);
-        foreach(var option in modeChoices){
-            int modeRow=speedAdvancedPanel.RowCount++;
-            speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,29));
-            option.Box.Dock=DockStyle.Fill;
-            option.Box.AutoSize=false;
-            option.Box.Font=new Font("Segoe UI",9f);
-            option.Box.Margin=new Padding(8,0,0,0);
-            speedAdvancedPanel.Controls.Add(option.Box,0,modeRow);
-            speedAdvancedPanel.SetColumnSpan(option.Box,3);
-            statusToolTip.SetToolTip(option.Box,option.Tip);
-            option.Box.AccessibleDescription=option.Tip;
-            option.Box.CheckedChanged+=(_,_)=>{
-                if(restoringConfiguration||applyingCustomModDependencies
-                    ||selectingChainsawExperimentMode)return;
-                // The last checked checkbox wins; unchecking it leaves
-                // Grip & Pull selected so no invalid half-config is saved.
-                selectingChainsawExperimentMode=true;
-                try{
-                    var selected=option.Box.Checked?option.Number:1;
-                    foreach(var selectedBox in ChainsawExperimentBoxes)
-                        selectedBox.Checked=ReferenceEquals(selectedBox,option.Box)
-                            ?selected==option.Number
-                            :ReferenceEquals(selectedBox,chainsawGripPull)
-                                &&selected==1;
-                }finally{selectingChainsawExperimentMode=false;}
-                UpdateActionSpeedLabels();
-                SaveCustomModSettings();
-                OptionChanged(option.Box,EventArgs.Empty);
-            };
-        }
-        int zoneDebugRow=speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,32));
-        chainsawShowGripZones.AutoSize=false;
-        chainsawShowGripZones.Dock=DockStyle.Fill;
-        chainsawShowGripZones.Margin=new Padding(8,0,0,0);
-        speedAdvancedPanel.Controls.Add(chainsawShowGripZones,0,zoneDebugRow);
-        speedAdvancedPanel.SetColumnSpan(chainsawShowGripZones,3);
-        statusToolTip.SetToolTip(chainsawShowGripZones,
-            "DEBUG: Preview ONE ~60cm cutting circle in front of your gaze "
-            +"with chainsaw equipped, even before a kill starts. The circle "
-            +"freezes at native execution entry. This is an enemy-facing "
-            +"approximation, NOT enemy tracking. Restart DOOM.");
-        chainsawShowGripZones.CheckedChanged+=(_,_)=>{
-            if(restoringConfiguration||applyingCustomModDependencies)return;
-            SaveCustomModSettings();
-            OptionChanged(chainsawShowGripZones,EventArgs.Empty);
-        };
-        int logRow=speedAdvancedPanel.RowCount++;
-        speedAdvancedPanel.RowStyles.Add(new RowStyle(SizeType.Absolute,actionFooterHeight));
-        speedActionLogTest.Text="Diagnostic · Chainsaw Animation Investigator (one run)";
-        speedActionLogTest.AutoSize=true;
-        speedActionLogTest.Font=new Font("Segoe UI",8.5f);
-        speedActionLogTest.Margin=new Padding(6,8,0,0);
-        speedAdvancedPanel.Controls.Add(speedActionLogTest,0,logRow);
-        speedAdvancedPanel.SetColumnSpan(speedActionLogTest,3);
-        statusToolTip.SetToolTip(speedActionLogTest,
-            "READ-ONLY ACTIVE EVIDENCE INVESTIGATOR: tracks five candidate "
-            +"native-render signals (render time, presentation pose, prop pose, "
-            +"animated grip joint, cinematic camera), chord/Trigger, clock Hz "
-            +"and XR timing. Bounded 25ms samples + pre-kill baseline, per-kill "
-            +"candidate rankings and a CSV in logs/chainsaw-animation-investigation.csv. "
-            +"Does NOT seek or modify animations; no new memory scanning. "
-            +"Perform 4-6 varied chainsaw kills in ONE session. "
-            +"See docs/CHAINSAW-ANIMATION-INVESTIGATION.md. Restart DOOM.");
+        // Diagnostic features are now under their own grouped mod category.
+        speedAdvancedPanel=null;
+        speedAdvancedRowStyle=new RowStyle(SizeType.Absolute,0);
+        speedAdvancedHeight=0;
+        speedAdvanced.Checked=false;
+        speedActionLogTest.Text="Chainsaw Animation Investigator";
         speedActionLogTest.CheckedChanged+=(_,_)=>{
             if(restoringConfiguration||applyingCustomModDependencies)return;
-            SaveCustomModSettings();OptionChanged(speedActionLogTest,EventArgs.Empty);
-        };
-        speedAdvancedHeight=actionHeaderHeight
-            +(ActionSpeedCatalog.Controllable.Length+1)*actionRowHeight
-            +26+modeChoices.Length*29+32+actionFooterHeight;
-        speedAdvancedPanel.Height=speedAdvancedHeight;
-        speedAdvanced.CheckedChanged += (_, _) =>
-        {
-            if (restoringConfiguration || applyingCustomModDependencies) return;
-            ApplyCustomModDependencies(null);
             SaveCustomModSettings();
-            OptionChanged(speedAdvanced, EventArgs.Empty);
+            OptionChanged(speedActionLogTest,EventArgs.Empty);
         };
-        speedAdvancedRowStyle = new RowStyle(SizeType.Absolute, 0);
-        var advancedRowIndex = customModsGrid.RowCount++;
+        var advancedRowIndex=customModsGrid.RowCount++;
         customModsGrid.RowStyles.Add(speedAdvancedRowStyle);
-        customModsGrid.Controls.Add(speedAdvancedPanel, 0, advancedRowIndex);
-        customModsGrid.SetColumnSpan(speedAdvancedPanel, 2);
         // Reorder ONLY the table presentation: presets first, Advanced directly
         // beneath, all numbered mod slots/groups afterwards. Group indices,
         // drag-and-drop, save/load flags and actual action mechanics are intact.
@@ -918,12 +579,11 @@ public sealed partial class MainForm : Form
             .Take(customModsGrid.RowStyles.Count - 2).ToArray();
         foreach (Control child in customModsGrid.Controls)
         {
-            if (ReferenceEquals(child, speedPresetPanel)
-                || ReferenceEquals(child, speedAdvancedPanel)) continue;
+            if (ReferenceEquals(child, speedPresetPanel)) continue;
             customModsGrid.SetRow(child, customModsGrid.GetRow(child) + 2);
         }
         customModsGrid.SetRow(speedPresetPanel, 0);
-        customModsGrid.SetRow(speedAdvancedPanel, 1);
+        // Former Advanced row is now unused.
         customModsGrid.RowStyles.Clear();
         customModsGrid.RowStyles.Add(new RowStyle(SizeType.Absolute, speedPresetHeight));
         customModsGrid.RowStyles.Add(speedAdvancedRowStyle);
@@ -1979,106 +1639,31 @@ public sealed partial class MainForm : Form
 
     private void UpdateActionSpeedLabels()
     {
-        var strokeControls=speedAdvanced.Checked&&customTriggerChainsawThrottle.Checked;
-        if(speedActionChecks.TryGetValue("chainsaw",out var chainOverride))
-            chainOverride.Enabled=!customTriggerChainsawThrottle.Checked&&speedAdvanced.Checked;
-        chainsawStrokeDistance.Enabled=false; // deprecated config-only
-        // X6 uses a deliberately fixed 200Hz slow baseline. Don't show an
-        // apparently live slider that is intentionally ignored.
-        chainsawStrokeIdleHz.Enabled=strokeControls
-            &&!chainsawExpRevPulse.Checked;
-        foreach(var modeCheck in ChainsawExperimentBoxes)
-            modeCheck.Enabled=strokeControls;
-        chainsawShowGripZones.Enabled=strokeControls
-            &&!chainsawPointer.Checked&&!chainsawExpNativeFast.Checked;
-        chainsawStrokeDistanceValue.Text=chainsawStrokeDistance.Value+" cm";
-        chainsawStrokeIdleHzValue.Text=chainsawExpRevPulse.Checked
-            ?"200 Hz (X6 fixed)":(510-chainsawStrokeIdleHz.Value)+" Hz";
-        foreach (string key in ActionSpeedCatalog.Controllable)
-        {
-            if (!speedActionChecks.TryGetValue(key,out var check)
-                || !speedActionSliders.TryGetValue(key,out var slider)
-                || !speedActionValues.TryGetValue(key,out var label))continue;
-            var enabled=check.Checked&&speedAdvanced.Checked;
-            slider.Enabled=enabled;
-            label.Text=check.Checked?(270-slider.Value)+" Hz":"Off";
-            label.ForeColor=enabled?Color.WhiteSmoke:Color.FromArgb(141,142,149);
-        }
+        if(!speedActionChecks.TryGetValue("glory",out var check)
+            ||!speedActionSliders.TryGetValue("glory",out var slider)
+            ||!speedActionValues.TryGetValue("glory",out var value))return;
+        slider.Enabled=check.Checked;
+        value.Text=check.Checked?(270-slider.Value)+" Hz":"Native";
+        value.ForeColor=check.Checked?Color.WhiteSmoke:Color.Gainsboro;
     }
-
-    private bool HasActiveActionSpeedOverrides() =>
-        ActionSpeedCatalog.Controllable.Any(key =>
-            speedActionChecks.TryGetValue(key,out var check) && check.Checked);
-
+    private bool HasActiveActionSpeedOverrides()=>
+        speedActionChecks.TryGetValue("glory",out var check)&&check.Checked;
     private void ApplyActionSpeedPreset(int index)
     {
         if(index<0||index>2)return;
-        var wasApplying=applyingCustomModDependencies;
+        var previous=applyingCustomModDependencies;
         applyingCustomModDependencies=true;
         try{
-            cinematicFullSpeedMode=false;
-            cinematicKillSpeed.Value=1;
-            if(index>0)customTriggerChainsawThrottle.Checked=false;
-            for(int i=0;i<ScopedActionKeys.Length;i++){
-                var key=ScopedActionKeys[i];
-                speedActionChecks[key].Checked=index!=0;
-                int hz=index switch {
-                    1=>70,2=>i==0?30:40,_=>30
-                };
-                speedActionSliders[key].Value=270-hz;
-            }
-            if(index>0)speedAdvanced.Checked=true;
-        }finally{applyingCustomModDependencies=wasApplying;}
-        UpdateCinematicKillSpeedLabel();
-    }
-
-    // Advanced only controls panel visibility; never whether an active
-    // preset applies. Native (0), Fast (1), Maximum (2), Custom (3).
-    private int SelectedActionSpeedPreset()
-    {
-        if(!HasActiveActionSpeedOverrides())return 0;
-        if(ScopedActionKeys.All(key => speedActionChecks[key].Checked))
-        {
-            var hz=ScopedActionKeys.Select(key=>270-speedActionSliders[key].Value).ToArray();
-            if(hz.SequenceEqual(new[]{70,70}))return 1;
-            if(hz.SequenceEqual(new[]{30,40}))return 2;
-        }
-        return 3;
-    }
-
-    private void UpdateCinematicKillSpeedLabel()
-    {
-        var selectedIndex=SelectedActionSpeedPreset();
-        if(cinematicSpeedSelector.Items.Count==4
-            &&cinematicSpeedSelector.SelectedIndex!=selectedIndex)
-        {
-            refreshingSpeedSelector=true;
-            try{cinematicSpeedSelector.SelectedIndex=selectedIndex;}
-            finally{refreshingSpeedSelector=false;}
-        }
-        RefreshSpeedAdvancedVisibility();
+            speedActionChecks["glory"].Checked=index!=0;
+            speedActionSliders["glory"].Value=270-(index==2?30:70);
+        }finally{applyingCustomModDependencies=previous;}
         UpdateActionSpeedLabels();
-        cinematicSpeedSelector.Enabled=true;
-        cinematicKillSpeed.Enabled=false; // retired shared mode, not rendered
-        cinematicKillSpeedTitle.ForeColor=Color.WhiteSmoke;
-        cinematicKillSpeedValue.ForeColor=Color.WhiteSmoke;
-        cinematicKillSpeedValue.Text=selectedIndex switch {
-            0=>"Game native",1=>"Fast actions",2=>"Maximum actions",
-            _=>"Custom override"
-        };
-        var explanation=selectedIndex switch {
-            0=>"DOOM's original action timings. No engine tick override.",
-            1=>"Fast: Glory Kill 70 Hz, Chainsaw 70 Hz.",
-            2=>"Maximum: Glory Kill 30 Hz, Chainsaw 40 Hz.",
-            _=>"Custom: manually changed action checkbox or slider."
-        };
-        explanation += " Ledge climbing and scripted cinematics always remain DOOM native. "
-            +"Advanced only shows or hides the sliders; it never disables "
-            +"their active settings. Restart DOOM after adjustments.";
-        statusToolTip.SetToolTip(cinematicKillSpeedTitle,explanation);
-        statusToolTip.SetToolTip(cinematicKillSpeedValue,explanation);
-        cinematicKillSpeed.AccessibleDescription=explanation;
     }
+    private int SelectedActionSpeedPreset() =>
+        !HasActiveActionSpeedOverrides()?0
+        :270-speedActionSliders["glory"].Value==70?1
+        :270-speedActionSliders["glory"].Value==30?2:3;
+    private void UpdateCinematicKillSpeedLabel()=>UpdateActionSpeedLabels();
 
     private void UpdateSpeedSliderLabels()
     {
@@ -2304,10 +1889,10 @@ public sealed partial class MainForm : Form
         PhysicalChainsawGestures = false,
         ChainsawTriggerThrottle = customTriggerChainsawThrottle.Checked,
         MotionChainsawKillSpeed = false,
-        ChainsawStrokeDistanceCm = chainsawStrokeDistance.Value,
-        ChainsawStrokeIdleHz = 510-chainsawStrokeIdleHz.Value,
-        ChainsawShowGripZones = chainsawShowGripZones.Checked,
-        ChainsawExperimentMode = SelectedChainsawExperimentMode,
+        ChainsawStrokeDistanceCm = 32,
+        ChainsawStrokeIdleHz = 200,
+        ChainsawShowGripZones = false,
+        ChainsawExperimentMode = 9,
         // Existing native flags remain as the runtime contract, now owned
         // by the single Full speed choice rather than draggable mod checkboxes.
         FastGloryKills = false,
@@ -2318,8 +1903,8 @@ public sealed partial class MainForm : Form
         CinematicSpeedFineTuneHz = 30,
         ActionSpeedProfiles = ActionSpeedCatalog.All.ToDictionary(
             key=>key,key=>new ActionSpeedSetting{
-                Enabled=speedActionChecks[key].Checked,
-                TargetHz=270-speedActionSliders[key].Value
+                Enabled=key=="glory"&&speedActionChecks["glory"].Checked,
+                TargetHz=key=="glory"?270-speedActionSliders["glory"].Value:40
             }),
         ActionSpeedLogTestEnabled = speedActionLogTest.Checked,
         HapticOverhaul = customHapticOverhaul.Checked
@@ -2375,23 +1960,19 @@ public sealed partial class MainForm : Form
             customMotionChainsawKillSpeed.Checked = false;
             chainsawStrokeDistance.Value=Math.Max(18,Math.Min(60,mods.ChainsawStrokeDistanceCm));
             chainsawStrokeIdleHz.Value=510-Math.Max(30,Math.Min(480,mods.ChainsawStrokeIdleHz));
-            chainsawShowGripZones.Checked=mods.ChainsawShowGripZones;
-            var mode=mods.ChainsawExperimentMode;
-            var ids=new[]{1,3,4,5,6,7,8,9};
-            var checks=ChainsawExperimentBoxes;
-            for(int i=0;i<checks.Length;++i)checks[i].Checked=mode==ids[i];
+            chainsawShowGripZones.Checked=false;
+            foreach(var legacy in ChainsawExperimentBoxes)
+                legacy.Checked=ReferenceEquals(legacy,chainsawExpRevPulse);
             // Legacy shared engine-speed presets have been retired. Native
             // between actions is the unambiguous default for the new menu.
             cinematicFullSpeedMode=false;
             cinematicKillSpeed.Value=1;
             // Legacy fine tune files expand Advanced so no active override is hidden.
-            speedAdvanced.Checked = mods.SpeedAdvancedExpanded || mods.CinematicSpeedFineTune;
-            foreach(string key in ActionSpeedCatalog.All){
-                var p=mods.ActionSpeedProfiles.TryGetValue(key,out var configured)
-                    ? configured:new ActionSpeedSetting();
-                speedActionChecks[key].Checked=p.Enabled;
-                speedActionSliders[key].Value=270-Math.Max(30,Math.Min(240,p.TargetHz));
-            }
+            speedAdvanced.Checked = false;
+            var p=mods.ActionSpeedProfiles.TryGetValue("glory",out var configured)
+                ?configured:new ActionSpeedSetting();
+            speedActionChecks["glory"].Checked=p.Enabled;
+            speedActionSliders["glory"].Value=270-Math.Max(30,Math.Min(240,p.TargetHz));
             speedActionLogTest.Checked = mods.ActionSpeedLogTestEnabled;
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
