@@ -25,7 +25,8 @@ inline bool chainsawModeIsPhysical(ChainsawExperimentalMode m) noexcept {
 }
 inline bool chainsawModeUsesCircle(ChainsawExperimentalMode m) noexcept {
     return m!=ChainsawExperimentalMode::PointerFocus
-        &&m!=ChainsawExperimentalMode::NativeFast;
+        &&m!=ChainsawExperimentalMode::NativeFast
+        &&m!=ChainsawExperimentalMode::TriggerRevPulses;
 }
 inline bool chainsawModeValid(int m) noexcept {
     return m==1||m==3||(m>=4&&m<=9);
@@ -183,6 +184,16 @@ struct ChainsawExperimentState {
     float revPeakPressure{},revStrength{};
     void reset() noexcept {*this={};}
 };
+// Near-maximum weapon-hand vibration throughout the X6 native kill.
+// Trigger revs add a 100% accent without muting between pulls.
+struct ChainsawRevHapticTexture {float amplitude{},frequencyHz{};};
+inline ChainsawRevHapticTexture chainsawRevHapticTexture(
+    std::uint64_t nowMs,bool freshRev) noexcept {
+    const unsigned phase=static_cast<unsigned>((nowMs/75ull)%4ull);
+    const float amplitude=phase==0?1.f:phase==1?.98f:phase==2?.96f:.99f;
+    return {freshRev?1.f:amplitude,
+            freshRev?190.f:(phase&1u?166.f:156.f)};
+}
 struct ChainsawExperimentResult {
     int targetHz{300};
     float progress{};
@@ -219,12 +230,19 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     const bool validHead=headTracked&&std::isfinite(worldYaw)
         &&std::isfinite(worldHead.x)&&std::isfinite(worldHead.y)&&std::isfinite(worldHead.z);
     if(!st.active){
-        if(!validHead)return {idleHz};
+        if(!validHead&&mode!=ChainsawExperimentalMode::TriggerRevPulses)
+            return {idleHz};
         st.active=true;st.mode=mode;st.lastUpdateMs=nowMs;
         st.zones[0]=singleZoneCenter(worldHead,headForward,worldYaw);
         st.previous=hand;st.lastTracked=valid;
         st.wasGripHeld=triggerHeld; // initial DOOM trigger press preceded native exec
-        st.seenOutside=false; // Must observe the hand OUTSIDE with Trigger held.
+        st.seenOutside=false; // Other physical modes still use the circle.
+        if(mode==ChainsawExperimentalMode::TriggerRevPulses){
+            // X6 starts with a confirmed native chainsaw execution.
+            // The trigger that started DOOM's kill is NOT an automatic rev.
+            st.cutPathLocked=true;st.latchedGrip=true;st.entryMs=nowMs;
+            st.revReady=triggerPressure<=.18f;
+        }
     }
     if(st.mode!=mode){st.reset();return {idleHz};}
     const bool timely=nowMs>st.lastUpdateMs
@@ -232,7 +250,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
     const auto elapsed=nowMs>=st.lastUpdateMs
         ?nowMs-st.lastUpdateMs:0;
     st.lastUpdateMs=nowMs;
-    bool started=false,entered=false;
+    bool started=mode==ChainsawExperimentalMode::TriggerRevPulses
+        &&st.sampleCount==0,entered=false;
     if(chainsawModeIsPhysical(mode)){
         // Count the physical second press independently of oval entry or
         // tracked-hand status. Initial press started DOOM's native execution
@@ -392,11 +411,17 @@ inline ChainsawExperimentResult updateChainsawExperiment(
             if(st.cutPathLocked&&st.revStartMs&&nowMs>=st.revStartMs){
                 const auto age=nowMs-st.revStartMs;
                 const float strength=st.revStrength;
-                // Instant rev, hold 90-220ms depending on squeeze depth,
-                // then decay over 70ms. No auto-renewal from trigger hold.
-                const float burstMs=90.f+130.f*strength;
-                const float envelope=age<=burstMs?1.f
-                    :std::clamp(1.f-(float(age)-burstMs)/70.f,0.f,1.f);
+                // Smooth 35ms rev-up, a 90-220ms peak, then a 110ms
+                // gentle rev-down. No auto-renewal from trigger hold.
+                const float plateauMs=90.f+130.f*strength;
+                const float attack=std::clamp(float(age)/35.f,0.f,1.f);
+                const float release=std::clamp(
+                    (float(age)-35.f-plateauMs)/110.f,0.f,1.f);
+                const auto smoothstep=[](float t) noexcept {
+                    return t*t*(3.f-2.f*t);
+                };
+                const float envelope=smoothstep(attack)*
+                    (1.f-smoothstep(release));
                 const float fastest=110.f-80.f*strength;
                 hz=std::clamp(static_cast<int>(std::lround(
                     200.f-(200.f-fastest)*envelope)),30,200);
