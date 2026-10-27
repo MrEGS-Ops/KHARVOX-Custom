@@ -651,12 +651,9 @@ internal static class KharvoxRunner
             // down toward 30 Hz. Never forwarded to other action types.
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_DISTANCE_CM"] =
                 Math.Max(18,Math.Min(60,customMods.ChainsawStrokeDistanceCm)).ToString(Invariant);
-            psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] =
-                Math.Max(30,Math.Min(480,customMods.ChainsawStrokeIdleHz)).ToString(Invariant);
-            psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] =
-                (customMods.ChainsawExperimentMode==1 || customMods.ChainsawExperimentMode==3 || (customMods.ChainsawExperimentMode>=4 && customMods.ChainsawExperimentMode<=9) ? customMods.ChainsawExperimentMode : 1).ToString(Invariant);
-            psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] =
-                customMods.ChainsawShowGripZones?"1":"0";
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_STROKE_IDLE_HZ"] = "200";
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] = "9";
+            psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
