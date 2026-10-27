@@ -93,6 +93,16 @@ inline XInputHapticSignal mixChainsawZoneGuidance(
     return guideActive&&weaponHand?guidance:base;
 }
 
+// On confirmed X6 chainsaw kills, the right controller owns the rumble.
+// Native XInput, weapon-click and damage mixing must not mask the pull accent.
+// The caller decides whether the kill is active and the session is focused.
+inline XInputHapticSignal prioritizeRightChainsawRevHaptic(
+    const XInputHapticSignal& mixed,
+    const XInputHapticSignal& chainsaw,
+    bool confirmedX6RightHand) noexcept {
+    return confirmedX6RightHand&&chainsaw.active?chainsaw:mixed;
+}
+
 inline XInputHapticSignal mergeDamageImpactHapticSignal(
     const XInputHapticSignal& existing,
     float damageAmplitude, float damageFrequencyHz, bool damageActive) {
