@@ -1,49 +1,58 @@
-# KHARVOX X6 — Circle-free Trigger Rev Pulses
+# KHARVOX — Chainsaw Revving (X6)
 
-Experimental chainsaw A/B mode ID 9.
-Enable **Physical Chainsaw · Motion / Haptics / Zones**, expand
-**Sync Action Speed → Advanced**, select **X6 · Trigger Rev Pulses**,
-then restart DOOM. The launcher checkbox retains its historical label,
-but X6 ignores zones and does not render an activation circle.
+The launcher exposes **one checkbox**, named **Chainsaw Revving**.
+It enables native chainsaw experiment mode 9 automatically. The former
+Sync Action Speed dropdown, chainsaw idle-Hz slider, ring preview and
+other chainsaw experiments are no longer part of the launcher UI.
 
-## Behaviour
+## Trigger control: THREE pulls total, maximum
 
-1. DOOM begins a chainsaw execution normally. The moment the native
-   execution is confirmed, X6 controls the action's slow baseline at
-   **200 engine tick Hz**. There is NO circle, arm gesture, hand tracking
-   or hand motion requirement.
-2. The trigger that originally began the DOOM kill does not generate a
-   second artificial rev. Release the trigger below 18% analog depth.
-3. Every fresh squeeze above 33% produces exactly one rev. Depth controls
-   strength; a full squeeze reaches **30 engine tick Hz**. A sustained
-   hold does not create any more revs.
-4. Each pulse eases in for **35ms**, holds its pressure-dependent peak
-   for **90–220ms**, and smoothly eases out over **110ms**.
-   A new deliberate pull starts a new burst, enabling trigger mashing.
-5. The weapon-hand controller vibrates at approximately **96–100%
-   amplitude throughout the entire confirmed chainsaw kill**.
-   Small 75ms changes in intensity/frequency create a jaw/grinding texture.
-   Each new rev briefly accents the vibration at 100% and 190Hz, but
-   holding or releasing does not silence the sustained kill vibration.
-6. With the chainsaw only equipped, normal soft idle vibration continues;
-   continuous full-intensity grinding begins only when the native kill is
-   confirmed. The haptics stop normally on native execution exit, focus
-   loss or excluded pause/ledge contexts.
-7. X6 does not alter grenade/trigger input mapping, fuel, collision,
-   native animation playhead, ledge handling, cinematic camera or other
-   experimental chainsaw modes. DOOM determines when the kill ends.
+1. **Pull ONE** starts DOOM's native chainsaw execution normally.
+   Once the native execution is confirmed this very same trigger pull
+   counts as rev **#1**. The effect starts on the confirmed action,
+   without a circle or hand motion requirement.
+2. Release below **18%** analog pressure, then squeeze above **33%**
+   for **pull TWO**. This creates one further bounded rev speed pulse.
+   Holding a trigger does not repeat, retrigger or hold the rev at maximum.
+3. Release below 18% and pull again above 33% for **pull THREE**.
+   This immediately latches the fastest previously tested engine timing,
+   **30 tick Hz**, continuously **until DOOM finishes the native animation**.
+   A fourth pull cannot increase the rev count, restart the sequence, or
+   alter the timing. Native damage, fuel, playhead and exit remain DOOM-owned.
 
-## Diagnostic signatures
+The first and second revs ease in for **35 ms**, hold a pressure-dependent
+peak for **90–220 ms**, and ease out over **110 ms**. Slow baseline is
+**200 engine tick Hz**. Lower tick Hz makes the observed kill run faster.
+The third pull overrides the normal burst tail with the latched 30 Hz finish.
 
-- `[CHAINSAW-REV] READY immediate native kill`: immediately active,
-  no zone or ring crossing required.
-- `[CHAINSAW-REV] RELEASE_READY`: trigger is below 18%.
-- `[CHAINSAW-REV] PULL`: fresh pull crossed 33% and one rev was counted.
-- `[CHAINSAW-AB] SAMPLE`: requested Hz, rev count and haptic samples.
-- `[CHAINSAW-AB] END`: native chainsaw execution completed.
+## Right controller haptics
 
-Test a chainsaw kill by repeatedly releasing fully and pulling, both
-slowly and rapidly, without moving the hand. Verify smoothing, sustained
-near-maximum controller rumble, no circle, and that a held trigger does not
-retrigger boosts. The animation investigation probes remain read-only;
-changes to clock Hz still require in-headset validation.
+During a confirmed X6 chainsaw execution, the **right-hand OpenXR Touch
+controller** has a dedicated high-priority rumble signal. It is continually
+refreshed with **100 ms pulses every 75 ms or when amplitude changes**,
+maintaining around **89–92% amplitude between trigger pulls**. Each actual
+rev is **100% amplitude** for its full rev window, with a 190 Hz accent.
+On the third pull, the finishing tail remains at 100% until native exit.
+
+The X6 right-hand signal intentionally takes priority over native XInput
+rumble and ordinary damage/weapon vibration so that a strong native effect
+cannot mask the rev accent. Left-hand haptics and unrelated mods retain
+their normal mixer. Rumbling ends on native kill exit, loss of XR focus or
+excluded menu contexts. The physical amplitude depends on the headset
+and controller hardware; the OpenXR runtime accepting the signal alone
+does not prove what is felt in the headset.
+
+## Diagnostics
+
+- `[CHAINSAW-REV] READY`: native chainsaw action confirmed; no circle.
+- `[CHAINSAW-REV] RELEASE_READY`: analog release permits the next pull.
+- `[CHAINSAW-REV] PULL`: fresh pull crossing 33%; third emits
+  `THIRD_REV_LATCH_30HZ`.
+- `[CHAINSAW-REV-HAPTIC] RIGHT OpenXR apply accepted`: haptic call
+  succeeded at the runtime layer, **not** guaranteed headset sensation.
+- `[CHAINSAW-AB] SAMPLE`: native clock request, rev count, haptic signal.
+- `[CHAINSAW-AB] END`: confirmed native chainsaw exit.
+
+The optional **Chainsaw Animation Investigator** is in **Diagnostics**.
+Its probes are read-only. Do not alter native animation playheads, ledges,
+story cinematics, or other action-speed overrides for this experiment.
