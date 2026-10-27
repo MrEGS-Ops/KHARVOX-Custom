@@ -572,8 +572,7 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Only Chainsaw Revving may be exposed; diagnostics must have their own category.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
-                || main.modOrderSlots.Any(slot=>slot.DisabledCaption.ForeColor
-                    !=Color.FromArgb(194,194,200))
+                || main.modOrderRows.Any(row=>row.Box.FlatStyle!=FlatStyle.Flat)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
                 || !main.customTriggerChainsawThrottle.Enabled
