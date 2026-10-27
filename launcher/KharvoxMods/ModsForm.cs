@@ -45,7 +45,7 @@ internal sealed class ModsForm : Form
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9F);
         AutoScaleMode = AutoScaleMode.Dpi;
-        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
         _dockTimer.Tick += (_, _) => SyncDock();
