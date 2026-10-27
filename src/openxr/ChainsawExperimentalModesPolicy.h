@@ -179,7 +179,7 @@ struct ChainsawExperimentState {
     // X6: a genuine RELEASE below 0.18 is mandatory before EVERY new rev.
     // Continuous trigger hold can produce exactly ONE bounded speed pulse.
     bool revReady{},revPullEdge{},revReleaseEdge{};
-    unsigned revCount{}; // capped at three actual release->pull events
+    unsigned revCount{}; // initial native-kill pull plus up to two release->pull events
     std::uint64_t revStartMs{};
     float revPeakPressure{},revStrength{};
     void reset() noexcept {*this={};}
@@ -238,10 +238,16 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.wasGripHeld=triggerHeld; // initial DOOM trigger press preceded native exec
         st.seenOutside=false; // Other physical modes still use the circle.
         if(mode==ChainsawExperimentalMode::TriggerRevPulses){
-            // X6 starts with a confirmed native chainsaw execution.
-            // The trigger that started DOOM's kill is NOT an automatic rev.
+            // The trigger that initiated DOOM's confirmed kill counts
+            // as rev ONE (not a free extra press). Releasing and pulling
+            // twice more gives a maximum of THREE total trigger pulls.
             st.cutPathLocked=true;st.latchedGrip=true;st.entryMs=nowMs;
             st.revReady=triggerPressure<=.18f;
+            if(triggerPressure>=.33f){
+                st.revCount=1;
+                st.revStartMs=nowMs;
+                st.revPeakPressure=triggerPressure;
+            }
         }
     }
     if(st.mode!=mode){st.reset();return {idleHz};}
