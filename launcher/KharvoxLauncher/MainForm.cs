@@ -136,7 +136,7 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<string, CheckBox> speedActionChecks = new();
     private readonly Dictionary<string, TrackBar> speedActionSliders = new();
     private readonly Dictionary<string, Label> speedActionValues = new();
-    private readonly CheckBox speedActionLogTest = MakeCheck("Log native actions + melee input", false);
+    private readonly CheckBox speedActionLogTest = MakeCheck("Chainsaw Animation Investigator", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
