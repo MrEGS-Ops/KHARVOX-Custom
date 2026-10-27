@@ -560,19 +560,19 @@ public sealed partial class MainForm
                 .Single(panel => panel.Controls.OfType<TableLayoutPanel>().Any());
             var layout = scroll.Controls.OfType<TableLayoutPanel>().Single();
             var orderedRows = main.modOrderRows.ToArray();
-            // Exactly ONE of seven choices: existing baseline and Pointer,
-            // plus five mutually exclusive A/B variants, all inside Advanced.
-            if(main.ChainsawExperimentBoxes.Count(c=>c.Checked)!=1
-                || !new[]{1,3,4,5,6,7,8,9}.Contains(main.SelectedChainsawExperimentMode)
-                || main.ChainsawExperimentBoxes.Any(c=>c.Parent!=main.speedAdvancedPanel)
-                || main.chainsawShowGripZones.Parent!=main.speedAdvancedPanel)
+            // Old A/B chainsaw controls are entirely absent from the UI.
+            if(main.SelectedChainsawExperimentMode!=9
+                || main.ChainsawExperimentBoxes.Any(c=>c.Parent is not null)
+                || main.chainsawShowGripZones.Parent is not null
+                || main.chainsawStrokeIdleHz.Parent is not null
+                || main.speedActionLogTest.Parent is null)
                 throw new InvalidDataException(
-                    "Chainsaw motion modes must be exclusive and remain under Advanced.");
+                    "Only Chainsaw Revving may be exposed; diagnostics must have their own category.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
                 || !main.customTriggerChainsawThrottle.Enabled
-                || !main.cinematicSpeedSelector.Enabled)
+                || main.cinematicSpeedSelector.Parent is not null)
                 throw new InvalidDataException("Paused features must be grey while active features remain selectable.");
             var checks = orderedRows.Select(row => row.Box).ToArray();
             var expectedChecks = new[]
@@ -588,6 +588,7 @@ public sealed partial class MainForm
                 main.customGaussChargeSlowMovement,
                 main.customPersistentSsgReload,
                 main.customTriggerChainsawThrottle,
+                main.speedActionLogTest,
                 main.customStoryCinematicSkip,
                 main.customStoryFreeWalk,
                 main.customStoryCameraFocus,
@@ -749,11 +750,11 @@ public sealed partial class MainForm
             // The CI desktop can be narrower than launcher + 930px sidecar:
             // docking may shrink it to fit, without changing the preferred size.
             if (window.ClientSize.Width < 520 || window.ClientSize.Width > 950
-                || main.cinematicSpeedSelector.Width < 190)
+                || main.speedActionSliders["glory"].Width < 80)
                 throw new InvalidDataException(
-                    "Rendered Custom Mods panel or Sync Action Speed selector is clipped."
+                    "Rendered Custom Mods panel or Glory Kill slider is clipped."
                     + " clientWidth=" + window.ClientSize.Width
-                    + " selectorWidth=" + main.cinematicSpeedSelector.Width
+                    + " glorySliderWidth=" + main.speedActionSliders["glory"].Width
                     + " desktopWidth=" + Screen.FromControl(window).WorkingArea.Width);
             ratingBar.PerformLayout();
             if (!ratingBar.Visible || ratingBar.Top > 7
@@ -1075,66 +1076,48 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.customActionExitHandoff.Checked || main.customActionExitHandoff.Enabled)
                 throw new InvalidDataException("Paused action exit may not be enabled.");
-            // Three action presets, and a read-only Custom status.
-            if (main.cinematicSpeedSelector.Items.Count!=4
-                || main.cinematicSpeedSelector.Parent?.Parent is not Control presetPanel
-                || main.speedCustomModsGrid is null
-                || main.speedCustomModsGrid.GetRow(presetPanel)!=0
-                || main.speedAdvancedPanel is null
-                || main.speedCustomModsGrid.GetRow(main.speedAdvancedPanel)!=1
-                || main.speedAdvancedPanel.ColumnStyles[1].SizeType!=SizeType.Percent)
-                throw new InvalidDataException("Three action presets must remain directly above Advanced.");
-            if (ActionSpeedCatalog.Controllable.Length!=2
-                || main.speedActionChecks.Count!=2 || main.speedActionSliders.Count!=2
-                || main.speedActionChecks.ContainsKey("ledge") || main.speedActionSliders.ContainsKey("ledge")
-                || main.speedActionChecks.ContainsKey("cinematic")
-                || main.speedActionLogTest.Checked
-                || main.speedActionSliders.Values.Any(slider=>slider.TickStyle!=TickStyle.None))
-                throw new InvalidDataException("Ledges and scripted cinematics must have no user tick override.");
+            // Standalone Glory Kill slider and exactly one chainsaw checkbox.
+            if(main.cinematicSpeedSelector.Parent is not null
+                || main.speedAdvancedPanel is not null
+                || main.speedActionChecks.Count!=1
+                || main.speedActionSliders.Count!=1
+                || !main.speedActionChecks.ContainsKey("glory")
+                || !main.speedActionSliders.ContainsKey("glory")
+                || main.speedActionChecks.ContainsKey("chainsaw")
+                || main.speedActionSliders.ContainsKey("chainsaw")
+                || main.speedActionSliders["glory"].Parent is null
+                || main.speedActionSliders["glory"].TickStyle!=TickStyle.None)
+                throw new InvalidDataException("Only the Glory Kill slider should remain.");
             main.ApplyActionSpeedPreset(0);
             var native=main.ReadCustomModSettingsFromControls();
-            if (main.cinematicSpeedSelector.SelectedIndex!=0
-                || native.ActionSpeedProfiles.ContainsKey("ledge")
-                || ActionSpeedCatalog.HasActiveOverrides(native)
-                || native.FastGloryKills || native.FastChainsawKills
-                || native.CinematicKillSpeedLevel!=1)
-                throw new InvalidDataException("Native preset must use original DOOM action timing.");
+            if(native.ActionSpeedProfiles["glory"].Enabled
+                || native.ActionSpeedProfiles["chainsaw"].Enabled
+                || native.ChainsawExperimentMode!=9
+                || native.ChainsawShowGripZones
+                || native.ChainsawStrokeIdleHz!=200)
+                throw new InvalidDataException("Native UI must never expose legacy chainsaw modes.");
             main.ApplyActionSpeedPreset(1);
             var fast=main.ReadCustomModSettingsFromControls();
-            if (main.cinematicSpeedSelector.SelectedIndex!=1
-                || !fast.ActionSpeedProfiles.Values.All(p=>p.Enabled&&p.TargetHz==70)
-                || !ActionSpeedCatalog.HasActiveOverrides(fast))
-                throw new InvalidDataException("Fast preset must enable both Glory Kill/Chainsaw profiles.");
-            main.speedAdvanced.Checked=false;
-            main.ApplyCustomModDependencies(null);
-            var collapsed=main.ReadCustomModSettingsFromControls();
-            if (main.speedAdvancedVisible || main.speedAdvancedRowStyle!.Height!=0
-                || main.cinematicSpeedSelector.SelectedIndex!=1
-                || !ActionSpeedCatalog.HasActiveOverrides(collapsed)
-                || main.speedActionSliders["glory"].Enabled)
-                throw new InvalidDataException("Collapsing Advanced must not disable selected presets.");
-            main.speedAdvanced.Checked=true;
-            main.ApplyCustomModDependencies(null);
+            if(!fast.ActionSpeedProfiles["glory"].Enabled
+                || fast.ActionSpeedProfiles["glory"].TargetHz!=70
+                || fast.ActionSpeedProfiles["chainsaw"].Enabled)
+                throw new InvalidDataException("Fast Glory Kill must leave Chainsaw independent.");
             main.speedActionSliders["glory"].Value=270-140;
             main.UpdateCinematicKillSpeedLabel();
-            if (main.cinematicSpeedSelector.SelectedIndex!=3
-                || main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].TargetHz!=140)
-                throw new InvalidDataException("Manual slider changes must show Custom.");
+            if(main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].TargetHz!=140)
+                throw new InvalidDataException("Glory Kill slider must persist manual values.");
             main.ApplyActionSpeedPreset(2);
             var maximum=main.ReadCustomModSettingsFromControls();
-            if (main.cinematicSpeedSelector.SelectedIndex!=2
-                || maximum.ActionSpeedProfiles["glory"].TargetHz!=30
-                || maximum.ActionSpeedProfiles["chainsaw"].TargetHz!=40
-                || maximum.ActionSpeedProfiles.ContainsKey("ledge"))
-                throw new InvalidDataException("Maximum preset must use 30/40 Hz and no ledge override.");
+            if(maximum.ActionSpeedProfiles["glory"].TargetHz!=30
+                || maximum.ActionSpeedProfiles["chainsaw"].Enabled)
+                throw new InvalidDataException("Maximum Glory Kill must not change Chainsaw speed.");
             main.speedActionLogTest.Checked=true;
-            if (!main.ReadCustomModSettingsFromControls().ActionSpeedLogTestEnabled)
-                throw new InvalidDataException("Optional action diagnostic selection was lost.");
-            main.ApplyActionSpeedPreset(0);
+            if(!main.ReadCustomModSettingsFromControls().ActionSpeedLogTestEnabled)
+                throw new InvalidDataException("Chainsaw diagnostics checkbox did not persist.");
             main.speedActionLogTest.Checked=false;
-            if (ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls())
-                || main.cinematicSpeedSelector.SelectedIndex!=0)
-                throw new InvalidDataException("Native preset must clear all active action overrides.");
+            main.ApplyActionSpeedPreset(0);
+            if(ActionSpeedCatalog.HasActiveOverrides(main.ReadCustomModSettingsFromControls()))
+                throw new InvalidDataException("Native Glory Kill must have no active speed override.");
 
             if (!main.showHands.Enabled || !main.swapJumpCrouch.Enabled
                 || main.showHands.Checked || !main.swapJumpCrouch.Checked)
