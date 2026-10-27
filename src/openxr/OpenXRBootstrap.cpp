@@ -5829,8 +5829,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
        &&experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses){
         const auto& rev=s.chainsawExperiment;
         if(experiment.started)
-            log("[CHAINSAW-REV] ARMED outside-to-inside; release below 0.18 "
-                "and press above 0.33 to REV; holding never renews boost");
+            log("[CHAINSAW-REV] READY immediate native kill; no activation circle; "
+                "release below 0.18 and pull above 0.33 for each rev");
         if(rev.revReleaseEdge)
             log("[CHAINSAW-REV] RELEASE_READY revCount="+
                 std::to_string(rev.revCount)+" trigger="+
@@ -5884,7 +5884,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         log("[CHAINSAW-EXPERIMENT] armed="+
             std::string(kharvox::chainsawModeName(experimentMode))
             +" idle="+std::to_string(strokeIdleHz)
-            +"Hz gesture=FREE_SPACE_SWEEP_AFTER_CIRCLE_ARM triggerRearms="+
+            +"Hz gesture="+std::string(experimentMode==
+                kharvox::ChainsawExperimentalMode::TriggerRevPulses
+                ?"TRIGGER_REV_NO_CIRCLE":"FREE_SPACE_SWEEP_AFTER_CIRCLE_ARM")
+            +" triggerRearms="+
                 std::to_string(s.chainsawExperiment.triggerRestarts)
             +" fastFinish="+std::to_string(s.chainsawExperiment.fastFinishLatched?1:0)
             +" motionFloorHz="+std::to_string(kharvox::chainsawPhysicalMotionFastHz)
@@ -5946,7 +5949,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
     const bool chainsawHapticEligible=strokeFeatureEnabled
         &&!ledgeAction&&(chainsawEquipped||chainsawAction)
-        &&KharvoxCameraWorldActive()
+        &&(KharvoxCameraWorldActive()||chainsawAction)
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
         &&!KharvoxCameraBossSequenceActive();
@@ -6033,10 +6036,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                         &&rev.revStartMs
                         &&strokeNow>=rev.revStartMs
                         &&strokeNow-rev.revStartMs<90;
-                    // Full amplitude on EACH discrete squeeze; no
-                    // indefinitely sustained vibration from holding Trigger.
-                    textured.hapticAmplitude=newRev?1.f:.045f;
-                    textured.hapticFrequencyHz=newRev?190.f:65.f;
+                    // Keep the chainsaw jaws almost fully vibrating for
+                    // the ENTIRE confirmed kill, even between rev pulls.
+                    // Each fresh squeeze has a maximum-strength accent.
+                    const auto jaws=kharvox::chainsawRevHapticTexture(
+                        strokeNow,newRev);
+                    textured.hapticAmplitude=jaws.amplitude;
+                    textured.hapticFrequencyHz=jaws.frequencyHz;
                     break;
                 }
                 default:break;
@@ -7998,7 +8004,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             "KHARVOX_CHAINSAW_EXPERIMENT_MODE",buf,sizeof(buf));
         if(!n||n>=sizeof(buf))return true;
         const int m=std::atoi(buf);
-        return m!=3&&m!=8;
+        return m!=3&&m!=8&&m!=9;
     }();
     const bool zonePreviewRequested=gripZoneDebugReady
         &&gripZonesDebugRequested()
