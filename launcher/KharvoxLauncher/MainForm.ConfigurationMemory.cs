@@ -161,8 +161,10 @@ public sealed partial class MainForm
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
             customPhysicalGrenadeThrow, customPersistentSsgReload,
             customHapticOverhaul, customTriggerChainsawThrottle,
-            speedActionLogTest, speedActionChecks["glory"], speedActionSliders["glory"]
+            speedActionLogTest
         }) yield return control;
+        if(speedActionChecks.TryGetValue("glory",out var gloryCheck))yield return gloryCheck;
+        if(speedActionSliders.TryGetValue("glory",out var glorySpeed))yield return glorySpeed;
     }
 
     private ConfigurationSnapshot CaptureConfiguration()
