@@ -24,7 +24,6 @@ public sealed partial class MainForm
         internal Label Number = null!;
         internal Label Grip = null!;
         internal LinkLabel Dependency = null!;
-        internal Label DisabledCaption = null!;
     }
 
     private static readonly (string Title, string Symbol)[] ModGroupHeaders =
@@ -319,16 +318,6 @@ public sealed partial class MainForm
                 LinkBehavior = LinkBehavior.HoverUnderline,
                 AutoEllipsis = true
             };
-            // WinForms ignores ForeColor on disabled CheckBox labels; this
-            // accessible overlay stays readable without enabling the checkbox.
-            var disabledCaption=new Label {
-                Visible=false,Enabled=true,Dock=DockStyle.Fill,
-                Margin=Padding.Empty,Padding=new Padding(20,0,0,0),
-                ForeColor=Color.FromArgb(194,194,200),BackColor=PanelColor,
-                Font=new Font("Segoe UI",9f),AutoEllipsis=true,
-                TextAlign=ContentAlignment.MiddleLeft
-            };
-            panel.Controls.Add(disabledCaption,1,0);
             panel.Controls.Add(number, 0, 0);
             panel.Controls.Add(grip, 3, 0);
             panel.Controls.Add(dependency, 2, 0);
@@ -336,8 +325,7 @@ public sealed partial class MainForm
             {
                 Index = i, Group = group, Panel = panel,
                 Number = number, Grip = grip,
-                Dependency = dependency,
-                DisabledCaption = disabledCaption
+                Dependency = dependency
             };
             // Let WinForms own dismissal of the hovered tooltip. Explicit
             // MouseLeave Hide() on overlapping row/child controls was hiding
@@ -420,8 +408,21 @@ public sealed partial class MainForm
                 if (targetIndex >= 0) AcceptDrag(targetIndex, e);
                 else e.Effect = DragDropEffects.None;
             }
-            check.EnabledChanged+=(_,_)=>RefreshDisabledModCaptions();
-            check.CheckedChanged+=(_,_)=>RefreshDisabledModCaptions();
+            // WinForms paints its disabled text with system GrayText even
+            // if ForeColor was set. Flat mode supports an after-paint
+            // replacement in a readable grey while Enabled stays false.
+            check.FlatStyle=FlatStyle.Flat;
+            check.Paint+=(_,e)=>{
+                if(check.Enabled)return;
+                var rect=new Rectangle(20,0,Math.Max(0,check.Width-20),check.Height);
+                using var background=new SolidBrush(PanelColor);
+                e.Graphics.FillRectangle(background,rect);
+                TextRenderer.DrawText(e.Graphics,check.Text,check.Font,rect,
+                    Color.FromArgb(194,194,200),
+                    TextFormatFlags.Left|TextFormatFlags.VerticalCenter|
+                    TextFormatFlags.EndEllipsis|TextFormatFlags.NoPrefix);
+            };
+            check.EnabledChanged+=(_,_)=>check.Invalidate();
             check.DragEnter += AcceptHere;
             check.DragOver += AcceptHere;
             check.DragDrop += (_, e) =>
@@ -475,12 +476,6 @@ public sealed partial class MainForm
                 // while the number label stays attached to the fixed slot.
                 item.Box.Text = item.Caption;
                 slot.Panel.Controls.Add(item.Box, 1, 0);
-                slot.DisabledCaption.Text=(item.Box.Checked?"☑  ":"☐  ")+item.Caption;
-                slot.DisabledCaption.Visible=!item.Box.Enabled;
-                slot.DisabledCaption.BringToFront();
-                detachedModToolTip.SetToolTip(slot.DisabledCaption,
-                    item.Caption+Environment.NewLine+item.Tip+
-                    Environment.NewLine+"Unavailable in this build.");
                 slot.Panel.ColumnStyles[2].Width = 0;
                 if (!slot.Panel.Controls.Contains(slot.Dependency))
                     slot.Panel.Controls.Add(slot.Dependency, 2, 0);
@@ -513,18 +508,6 @@ public sealed partial class MainForm
             }
         }
         finally { grid.ResumeLayout(true); }
-    }
-
-    private void RefreshDisabledModCaptions()
-    {
-        if(modOrderSlots.Count!=modOrderRows.Count)return;
-        for(int i=0;i<modOrderRows.Count;i++){
-            var row=modOrderRows[i];
-            var caption=modOrderSlots[i].DisabledCaption;
-            caption.Text=(row.Box.Checked?"☑  ":"☐  ")+row.Caption;
-            caption.Visible=!row.Box.Enabled;
-            if(caption.Visible)caption.BringToFront();
-        }
     }
 
     internal static bool RunModReorderPolicySelfTest()
