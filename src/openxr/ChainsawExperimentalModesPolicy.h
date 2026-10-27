@@ -155,7 +155,7 @@ struct ChainsawExperimentState {
     bool active{},releasedGrip{},latchedGrip{},finished{},pointerStarted{},wasGripHeld{};
     bool seenOutside{},inside{},lastTracked{},oneSwipeCommitted{};
     bool resumeEligible{}; // after an armed kill's first trigger release
-    bool fastFinishLatched{}; // second Trigger press: 30 Hz until native kill end
+    bool fastFinishLatched{}; // legacy second press; X6 third rev latches 30Hz
     bool cutPathLocked{}; // one straight chord, locked at oval entry
     bool zoneGuideWasOutside{}; // reset pulse phase at actual visible-ring exit
     std::uint64_t zoneGuideOutsideSinceMs{};
@@ -179,18 +179,18 @@ struct ChainsawExperimentState {
     // X6: a genuine RELEASE below 0.18 is mandatory before EVERY new rev.
     // Continuous trigger hold can produce exactly ONE bounded speed pulse.
     bool revReady{},revPullEdge{},revReleaseEdge{};
-    unsigned revCount{};
+    unsigned revCount{}; // capped at three actual release->pull events
     std::uint64_t revStartMs{};
     float revPeakPressure{},revStrength{};
     void reset() noexcept {*this={};}
 };
-// Near-maximum weapon-hand vibration throughout the X6 native kill.
-// Trigger revs add a 100% accent without muting between pulls.
+// Continuous near-max right-hand rumble: full-scale during actual revs.
+constexpr unsigned chainsawRevMaximumPulls=3;
 struct ChainsawRevHapticTexture {float amplitude{},frequencyHz{};};
 inline ChainsawRevHapticTexture chainsawRevHapticTexture(
     std::uint64_t nowMs,bool freshRev) noexcept {
     const unsigned phase=static_cast<unsigned>((nowMs/75ull)%4ull);
-    const float amplitude=phase==0?1.f:phase==1?.98f:phase==2?.96f:.99f;
+    const float amplitude=phase==0?.91f:phase==1?.90f:phase==2?.89f:.92f;
     return {freshRev?1.f:amplitude,
             freshRev?190.f:(phase&1u?166.f:156.f)};
 }
@@ -328,13 +328,18 @@ inline ChainsawExperimentResult updateChainsawExperiment(
         st.revPullEdge=false;st.revReleaseEdge=false;
         if(mode==ChainsawExperimentalMode::TriggerRevPulses
            &&st.cutPathLocked){
-            if(triggerPressure<=.18f){
+            if(!st.fastFinishLatched&&triggerPressure<=.18f){
                 if(!st.revReady)st.revReleaseEdge=true;
                 st.revReady=true;
-            }else if(st.revReady&&triggerPressure>=.33f){
+            }else if(!st.fastFinishLatched&&st.revReady&&triggerPressure>=.33f){
                 st.revReady=false;st.revPullEdge=true;st.revStartMs=nowMs;
                 st.revPeakPressure=triggerPressure;
                 ++st.revCount;
+                if(st.revCount>=chainsawRevMaximumPulls){
+                    st.revCount=chainsawRevMaximumPulls;
+                    st.fastFinishLatched=true;
+                    st.progress=1.f;
+                }
             }
             if(st.revStartMs&&triggerPressure>st.revPeakPressure
                &&nowMs-st.revStartMs<=80)
@@ -464,7 +469,8 @@ inline ChainsawExperimentResult updateChainsawExperiment(
           ||(mode==ChainsawExperimentalMode::TriggerRevPulses&&st.cutPathLocked));
     return {hz,st.progress,owningTiming,
         st.finished,started,impact,
-        st.fastFinishLatched?"DOUBLE_TRIGGER_FAST_FINISH":
+        st.fastFinishLatched?(mode==ChainsawExperimentalMode::TriggerRevPulses
+            ?"THIRD_REV_FAST_FINISH":"DOUBLE_TRIGGER_FAST_FINISH"):
         st.oneSwipeCommitted?"PHYSICAL_SWIPE_FINISH":chainsawModeName(mode),
         st.hovered,st.startZone,st.targetZone,entered};
 }
