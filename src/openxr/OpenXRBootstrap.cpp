@@ -279,7 +279,7 @@ struct State {
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
     bool leftHanded{},leftHandSwapSticks{},swapJumpCrouch{};
     bool weaponHandLeft{}; // Live weapon/grenade owner, independent of fixed controller layout.
-    bool actionsReady{}; bool hapticActionsReady{}; bool hapticBindingsSuggested{}; bool hapticFrequencyUnspecified{}; bool firstControllerHapticAppliedLogged{}; bool firePressed{},primaryFireDown{},jumpPressed{},crouchPressed{};
+    bool actionsReady{}; bool hapticActionsReady{}; bool hapticBindingsSuggested{}; bool hapticFrequencyUnspecified{}; bool firstControllerHapticAppliedLogged{}; bool firstX6RightRumbleAppliedLogged{}; bool firePressed{},primaryFireDown{},jumpPressed{},crouchPressed{};
     unsigned long long psvr2FireStartedTick{}; KharvoxWeaponKind psvr2FireWeapon{KharvoxWeaponKind::Unknown};
     std::array<kharvox::XInputHapticOutputState,2> hapticOutputStates{};
     kharvox::XInputRumbleFrameAccumulator hapticFrameAccumulator{};
@@ -1255,6 +1255,13 @@ void updateXInputHaptics(){
         // weapon hand: prior cutting rumble must not mask the quiet centre.
         // Outside execution, native rumble is unchanged; damage still merges.
         const bool weaponHand=hand==(s.weaponHandLeft?size_t{0}:size_t{1});
+        // X6 owns the RIGHT Touch controller during confirmed native kills.
+        const bool x6RightRumble=focused&&hand==size_t{1}
+            &&s.customMods.chainsawTriggerThrottle
+            &&s.chainsawExperiment.active
+            &&s.chainsawExperiment.mode==
+                kharvox::ChainsawExperimentalMode::TriggerRevPulses
+            &&s.chainsawTriggerHaptic.active;
         const auto regularChainsaw=weaponHand&&s.chainsawTriggerHaptic.active
             &&(!baseDesired.active
                 ||baseDesired.amplitude<s.chainsawTriggerHaptic.amplitude)
@@ -1275,7 +1282,10 @@ void updateXInputHaptics(){
                 s.hapticLabPreview,now);
             desired={test.hapticAmplitude,test.hapticFrequencyHz,true};
         }
-        const bool usingDamage=!previewHand&&focused&&damageImpact.active
+        desired=kharvox::prioritizeRightChainsawRevHaptic(
+            desired,s.chainsawTriggerHaptic,x6RightRumble);
+        const bool usingDamage=!x6RightRumble&&!previewHand&&focused
+            &&damageImpact.active
             &&(!withChainsaw.active || withChainsaw.amplitude < damageImpact.amplitude);
         auto&outputState=s.hapticOutputStates[hand];
         const auto command=kharvox::selectXInputHapticCommand(
@@ -1297,10 +1307,12 @@ void updateXInputHaptics(){
             nativeDesired[hand],s.wheelClicks[hand],now);
         const auto baseDuration=kharvox::controllerZoneCueDurationMilliseconds(
             clickDesired,s.handZoneCues[hand],now,clickDuration);
-        const auto durationMilliseconds=usingDamage
-            ?std::max<std::uint32_t>(1,std::min<std::uint32_t>(
-                100,damageImpact.remainingMilliseconds))
-            :baseDuration;
+        const auto durationMilliseconds=x6RightRumble
+            ?kharvox::xinputHapticPulseDurationMilliseconds
+            :usingDamage
+                ?std::max<std::uint32_t>(1,std::min<std::uint32_t>(
+                    100,damageImpact.remainingMilliseconds))
+                :baseDuration;
         vibration.duration=static_cast<XrDuration>(
             durationMilliseconds)*1000000;
         vibration.frequency=s.hapticFrequencyUnspecified
@@ -1330,6 +1342,13 @@ void updateXInputHaptics(){
             }
             kharvox::noteXInputHapticApplySucceeded(
                 outputState,desired,now,durationMilliseconds);
+            if(x6RightRumble&&!s.firstX6RightRumbleAppliedLogged){
+                s.firstX6RightRumbleAppliedLogged=true;
+                log("[CHAINSAW-REV-HAPTIC] RIGHT OpenXR apply accepted; "
+                    "100ms haptic pulses refreshed at most every 75ms; "
+                    "between pulls ~90%, pulling 100%; "
+                    "physical controller sensation still requires headset test");
+            }
             if(!s.firstControllerHapticAppliedLogged){
                 log("[HAPTICS] first OpenXR controller rumble applied; bHaptics mirror is additive");
                 s.firstControllerHapticAppliedLogged=true;
@@ -5839,7 +5858,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             log("[CHAINSAW-REV] PULL revCount="+
                 std::to_string(rev.revCount)+" trigger="+
                 std::to_string(s.chainsawTriggerPressure)+
-                " baselineHz=200 peakTrackingMs=80");
+                " baselineHz=200 peakTrackingMs=80"
+                +(rev.fastFinishLatched?" THIRD_REV_LATCH_30HZ":""));
     }
     if(experiment.enteredZone&&experimentActive
         &&kharvox::chainsawModeUsesCircle(experimentMode)){
@@ -5947,12 +5967,14 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Vibration is useful with the chainsaw equipped even before contacting
     // an enemy; tick-Hz changes remain strictly scoped to a native execution.
     const bool chainsawEquipped=KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw;
+    const bool confirmedX6Kill=experimentActive
+        &&experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses;
     const bool chainsawHapticEligible=strokeFeatureEnabled
-        &&!ledgeAction&&(chainsawEquipped||chainsawAction)
-        &&(KharvoxCameraWorldActive()||chainsawAction)
+        &&!ledgeAction&&(chainsawEquipped||chainsawAction||confirmedX6Kill)
+        &&(KharvoxCameraWorldActive()||chainsawAction||confirmedX6Kill)
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
-        &&!KharvoxCameraBossSequenceActive();
+        &&(!KharvoxCameraBossSequenceActive()||confirmedX6Kill);
     if(chainsawHapticEligible){
         // Fixed heavy rumble when equipped (no trigger); switch to aggressive
         // serrated cutting once DOOM confirms a native chainsaw execution.
@@ -6033,12 +6055,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 case kharvox::ChainsawExperimentalMode::TriggerRevPulses:{
                     const auto& rev=s.chainsawExperiment;
                     const bool newRev=chainsawAction&&rev.cutPathLocked
-                        &&rev.revStartMs
-                        &&strokeNow>=rev.revStartMs
-                        &&strokeNow-rev.revStartMs<90;
-                    // Keep the chainsaw jaws almost fully vibrating for
-                    // the ENTIRE confirmed kill, even between rev pulls.
-                    // Each fresh squeeze has a maximum-strength accent.
+                        &&rev.revStartMs&&strokeNow>=rev.revStartMs
+                        &&(rev.fastFinishLatched
+                            ||strokeNow-rev.revStartMs<
+                                static_cast<std::uint64_t>(35.f+90.f+
+                                    130.f*rev.revStrength+110.f));
+                    // Drive right controller continuously at ~90% between revs.
+                    // Actual rev envelope and finishing tail run at 100%.
                     const auto jaws=kharvox::chainsawRevHapticTexture(
                         strokeNow,newRev);
                     textured.hapticAmplitude=jaws.amplitude;
