@@ -116,6 +116,9 @@ public sealed partial class MainForm
     {
         "weapon-wheel-remap" => ("✓", "Verified",
             "Previously reported working in-game; retest this build.", Color.LightGreen),
+        "chainsaw-animation-investigator" => ("D", "Diagnostic only",
+            "Read-only chainsaw timing and animation candidate log; no gameplay changes.",
+            Color.FromArgb(194,194,200)),
         "revenge-demon" => ("D", "Diagnostic only",
             "Collects Supervisor traces; does not yet empower a demon.", Color.FromArgb(186, 186, 190)),
         "persistent-ssg-reload" => ("!", "Incomplete",
