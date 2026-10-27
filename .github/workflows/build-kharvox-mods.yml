@@ -1,0 +1,66 @@
+name: KHARVOX Mods Standalone (Experimental)
+
+on:
+  push:
+    branches:
+      - work/mods-sidecar-separation
+    paths:
+      - 'launcher/KharvoxMods/**'
+      - '.github/workflows/build-kharvox-mods.yml'
+      - 'docs/KHARVOX-MODS-STANDALONE.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kharvox-mods-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mods-standalone:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout standalone integration branch
+        uses: actions/checkout@v4
+
+      - name: Restore KHARVOX Mods
+        shell: pwsh
+        run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
+
+      - name: Compile standalone executable (net48 x64)
+        shell: pwsh
+        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
+
+      - name: Verify fresh install and fail-closed attachment consent
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe"
+          if (!(Test-Path $exe)) { throw "Standalone KHARVOX Mods executable missing" }
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Standalone app self-test failed: $($test.ExitCode)" }
+
+      - name: Assemble isolated standalone package
+        shell: pwsh
+        run: |
+          $inputDir = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48"
+          $destination = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
+          New-Item -ItemType Directory -Force -Path $destination | Out-Null
+          Copy-Item (Join-Path $inputDir "KharvoxMods.exe") $destination
+          if (Test-Path (Join-Path $inputDir "KharvoxMods.exe.config")) {
+            Copy-Item (Join-Path $inputDir "KharvoxMods.exe.config") $destination
+          }
+          Copy-Item "docs/KHARVOX-MODS-STANDALONE.md" (Join-Path $destination "README.md")
+          if (Test-Path (Join-Path $destination "KharvoxLauncher.exe")) {
+            throw "Standalone package must not bundle or overwrite the KHARVOX launcher"
+          }
+          if (Test-Path (Join-Path $destination "KharvoxLayer.dll")) {
+            throw "Standalone package must not contain a patched KHARVOX runtime"
+          }
+
+      - name: Upload KHARVOX Mods standalone preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Mods-Standalone-Preview
+          path: dist/KHARVOX-Mods-Standalone
+          retention-days: 14
