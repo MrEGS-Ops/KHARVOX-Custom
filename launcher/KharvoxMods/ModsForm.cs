@@ -11,7 +11,7 @@ namespace KharvoxMods;
 internal sealed class ModsForm : Form
 {
     private readonly AppState _state = AppState.Load();
-    private readonly Timer _dockTimer = new Timer { Interval = 150 };
+    private readonly System.Windows.Forms.Timer _dockTimer = new System.Windows.Forms.Timer { Interval = 150 };
     private readonly Label _status = new Label();
     private readonly Button _attachButton = new Button();
     private readonly Button _startButton = new Button();
