@@ -160,7 +160,8 @@ public sealed partial class MainForm
             customBehindHeadWeaponWheel,
             customPhysicalCrouch, customRevengeDemon, customDynamicShoulderHolster,
             customPhysicalGrenadeThrow, customPersistentSsgReload,
-            customHapticOverhaul, cinematicSpeedSelector
+            customHapticOverhaul, customTriggerChainsawThrottle,
+            speedActionLogTest, speedActionChecks["glory"], speedActionSliders["glory"]
         }) yield return control;
     }
 
@@ -569,6 +570,8 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Only Chainsaw Revving may be exposed; diagnostics must have their own category.");
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
+                || main.modOrderSlots.Any(slot=>slot.DisabledCaption.ForeColor
+                    !=Color.FromArgb(194,194,200))
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
                 || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
                 || !main.customTriggerChainsawThrottle.Enabled
@@ -691,11 +694,12 @@ public sealed partial class MainForm
                 throw new InvalidDataException(
                     "Weapon Wheel Remap tooltip must explain the actual controls and dependencies.");
 
-            if (main.cinematicSpeedSelector.Items.Count != 4
-                || !main.cinematicSpeedSelector.Items[2]!.ToString()!.Contains("Maximum")
+            if (main.cinematicSpeedSelector.Parent is not null
+                || main.speedActionSliders["glory"].Parent is null
                 || !main.customBoxingGuard.Text.Contains("Boxing Guard")
-                || main.modOrderRows.Any(row=>row.Id=="fast-glory-kills"||row.Id=="fast-chainsaw"))
-                throw new InvalidDataException("Fast Kills must live in Sync Action Speed, not draggable VR mods.");
+                || main.modOrderRows.Count(row=>row.Box==main.customTriggerChainsawThrottle)!=1
+                || main.modOrderRows.Count(row=>row.Box==main.speedActionLogTest)!=1)
+                throw new InvalidDataException("Only Chainsaw Revving and a standalone Glory Kill slider must be visible.");
             if (!FirstPartyDoomModGenerator.RunSelfTest())
                 throw new InvalidDataException("First-party DOOM mod generator integration is invalid.");
             if (!SfsProfileRecovery.RunSelfTest())
@@ -1180,7 +1184,7 @@ public sealed partial class MainForm
             main.ApplyCustomModDependencies(null);
             if (main.customBoxingGuard.Checked || main.customBoxingGuard.Enabled
                 || main.gloryKillSlowmo.Value!=10
-                || main.cinematicSpeedSelector.SelectedIndex!=2
+                || !main.ReadCustomModSettingsFromControls().ActionSpeedProfiles["glory"].Enabled
                 || main.ReadCustomModSettingsFromControls().FastGloryKills)
                 throw new InvalidDataException("Scoped action presets must not resurrect the retired shared speed mode.");
             main.customBoxingGuard.Checked=false;
