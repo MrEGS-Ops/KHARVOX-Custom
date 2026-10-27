@@ -94,3 +94,9 @@ add_test(NAME action-exit-handoff-duration COMMAND KharvoxActionExitHandoffPolic
 add_executable(KharvoxChainsawMotionSpeedTests ../chainsaw_motion_speed_policy_tests.cpp)
 target_compile_features(KharvoxChainsawMotionSpeedTests PRIVATE cxx_std_17)
 add_test(NAME chainsaw-motion-live-speed COMMAND KharvoxChainsawMotionSpeedTests)
+
+# X6: no zone activation, one boost per release/pull, smooth speed ramps,
+# and continuous near-maximum jaw/grinding haptic texture.
+add_executable(KharvoxChainsawRevPulseTests ../chainsaw_rev_pulse_tests.cpp)
+target_compile_features(KharvoxChainsawRevPulseTests PRIVATE cxx_std_17)
+add_test(NAME chainsaw-x6-no-zone-trigger-revs COMMAND KharvoxChainsawRevPulseTests)
