@@ -57,6 +57,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Standalone app self-test failed: $($test.ExitCode)" }
 
+      - name: Verify original Custom Mods layout and all 22 rows
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Legacy two-panel layout regression: $($test.ExitCode)" }
+
       - name: Assemble isolated standalone package
         shell: pwsh
         run: |
