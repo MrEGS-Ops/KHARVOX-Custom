@@ -259,11 +259,18 @@ internal static class UpdateService
             if (ParseExpectedHash(new string('a', 64) + " *" + ZipName)
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
-            var sampleRelease = new JavaScriptSerializer().Deserialize<ReleaseInfo>(
-                "{\\"assets\\":[{\\"name\\":\\"" + ZipName +
-                "\\",\\"browser_download_url\\":\\"" + AssetPrefix +
-                "kharvox-mods-standalone-preview/" + ZipName +
-                "\\",\\"size\\":123}]}");
+            var sampleJson = new JavaScriptSerializer().Serialize(new
+            {
+                assets = new[] { new
+                {
+                    name = ZipName,
+                    browser_download_url = AssetPrefix +
+                        "kharvox-mods-standalone-preview/" + ZipName,
+                    size = 123
+                } }
+            });
+            var sampleRelease = new JavaScriptSerializer()
+                .Deserialize<ReleaseInfo>(sampleJson);
             if (sampleRelease == null || GetAssetUrl(sampleRelease, ZipName) !=
                 AssetPrefix + "kharvox-mods-standalone-preview/" + ZipName)
                 throw new Exception("Release metadata parsing or origin validation failed.");
