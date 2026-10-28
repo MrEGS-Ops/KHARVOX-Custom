@@ -413,7 +413,7 @@ internal sealed partial class ModsForm
                 // default browser, reused when the link is clicked again.
                 await NexusModsPopup.OpenTrackedAsync(Bounds);
                 // Keep the local mod folder available beside the browser.
-                OpenLocalModsFolder();
+                ShowOriginalModFolder();
             }
             catch (Exception error)
             {
