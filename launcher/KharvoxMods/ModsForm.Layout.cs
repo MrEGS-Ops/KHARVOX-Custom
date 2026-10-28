@@ -530,6 +530,8 @@ internal sealed partial class ModsForm
         bridgeRow.Controls.Add(_bridgeState, 0, 0);
 
         _bridgeInstallButton.Dock = DockStyle.Fill;
+        _bridgeInstallButton.Tag = "native-bridge-install";
+        _bridgeInstallButton.AccessibleName = "Install or update the Native Bridge";
         _bridgeInstallButton.FlatStyle = FlatStyle.Flat;
         _bridgeInstallButton.ForeColor = Color.Gainsboro;
         _bridgeInstallButton.BackColor = Color.FromArgb(43, 43, 47);
@@ -875,6 +877,15 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal));
             if (dev != DevOverrides.Length)
                 throw new InvalidDataException("Developer overrides missing.");
+            var installButtons = form.Controls.Descendants().OfType<Button>()
+                .Where(button => string.Equals(button.Tag as string,
+                    "native-bridge-install", StringComparison.Ordinal)).ToArray();
+            if (installButtons.Length != 1 || !installButtons[0].Enabled ||
+                installButtons[0].Text != "Install Bridge")
+                throw new InvalidDataException("Inline native bridge installer button missing.");
+            if (NativeDock.RequestClose(IntPtr.Zero, 1) ||
+                NativeDock.RequestClose(form.Handle, -1))
+                throw new InvalidDataException("Unrelated windows must never be closed.");
         }
     }
 }
