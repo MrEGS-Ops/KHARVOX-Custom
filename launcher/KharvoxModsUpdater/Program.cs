@@ -35,7 +35,7 @@ internal sealed class UpdaterWindow : Form
 
     internal UpdaterWindow()
     {
-        Text = "KHARVOX Mods Updater";
+        Text = "KHARVOX Mods Updater — Installed " + UpdateService.InstalledBuild;
         ClientSize = new Size(490, 172);
         MinimumSize = MaximumSize = Size;
         MaximizeBox = false;
@@ -88,9 +88,21 @@ internal sealed class UpdaterWindow : Form
     {
         try
         {
-            var result = await UpdateService.RunAsync(message => _status.Text = message);
+            var result = await UpdateService.RunAsync(
+                message => _status.Text = message,
+                prompt => MessageBox.Show(this, prompt, "KHARVOX Mods — Update Found",
+                    MessageBoxButtons.YesNo, MessageBoxIcon.Information,
+                    MessageBoxDefaultButton.Button1) == DialogResult.Yes);
             _progress.Style = ProgressBarStyle.Continuous;
             _progress.Value = 100;
+            if (result == "Update skipped.")
+            {
+                _status.Text = result;
+                _runApp.Text = "Launch existing";
+                _runApp.Visible = File.Exists(UpdateService.AppExe);
+                return;
+            }
+            Text = "KHARVOX Mods Updater — Installed " + UpdateService.InstalledBuild;
             _status.Text = result + "\nOpening KHARVOX Mods…";
             await Task.Delay(300);
             LaunchMods();
