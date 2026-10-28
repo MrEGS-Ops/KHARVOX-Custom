@@ -13,7 +13,7 @@
 1. Run `KharvoxMods.exe` and select **Yes** to attach the desktop windows; **No** exits.
 2. Click **Install Bridge** beside the **NATIVE BRIDGE NOT INSTALLED** message in VR MODS and approve the separate native-installation prompt. The existing **Connection → Install / Update Native Bridge…** menu remains available.
 3. This downloads the SHA-256-verified native package pinned to known-good native build **#640**, replaces its launcher with the bridge-aware one, and extracts everything into `KHARVOX Mods/NativeBridge/`. **It does not overwrite, change or delete the original KHARVOX installation.**
-4. If the old KHARVOX is running, close either of the two linked windows (both will close) and reopen `KharvoxMods.exe`. It will then start the installed mod-enabled KHARVOX copy.
+4. After successful installation, **KHARVOX Mods automatically closes the old linked windows and reopens itself with the new mod-enabled launcher**. No manual restart is necessary. If the old launcher refuses to close, the app reports the problem rather than starting a duplicate.
 5. Check the five selections in VR MODS. They are passed to the bridge-aware launcher on the next DOOM launch. Testing actual headset behaviour is still required; the Windows build check does not prove mod compatibility in-game.
 
 The bridge-aware KHARVOX launcher reads the separate configuration file using an inherited process environment variable and otherwise preserves normal launch behaviour. The original custom launcher has its own source and the original Cactus executable is not patched.
