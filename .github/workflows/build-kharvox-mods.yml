@@ -64,6 +64,11 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Legacy two-panel layout regression: $($test.ExitCode)" }
 
+      - name: Stamp current successful build identifier
+        shell: pwsh
+        run: |
+          Set-Content -LiteralPath "launcher/KharvoxMods/bin/Release/net48/build-info.txt" -Value "${{ github.run_id }}" -Encoding ASCII
+
       - name: Assemble isolated standalone package
         shell: pwsh
         run: |
@@ -71,6 +76,7 @@ jobs:
           $destination = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item (Join-Path $inputDir "KharvoxMods.exe") $destination
+          Copy-Item (Join-Path $inputDir "build-info.txt") $destination
           $updater = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
           Copy-Item $updater $destination
           if (Test-Path (Join-Path $inputDir "KharvoxMods.exe.config")) {
@@ -89,7 +95,7 @@ jobs:
         run: |
           $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
           $releaseZip = Join-Path $PWD "dist/KHARVOX-Mods-Standalone.zip"
-          $releaseFiles = @("KharvoxMods.exe", "README.md")
+          $releaseFiles = @("KharvoxMods.exe", "README.md", "build-info.txt")
           if (Test-Path (Join-Path $packageDir "KharvoxMods.exe.config")) {
             $releaseFiles += "KharvoxMods.exe.config"
           }
@@ -111,7 +117,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kharvox-mods-standalone-preview
-          name: KHARVOX Mods — Standalone Preview
+          name: KHARVOX Mods — Build #${{ github.run_id }}
           prerelease: true
           make_latest: false
           overwrite_files: true
