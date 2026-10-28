@@ -298,13 +298,14 @@ internal sealed partial class ModsForm
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 34,
-            ColumnCount = 3, RowCount = 1,
+            ColumnCount = 4, RowCount = 1,
             BackColor = DarkPanel, Padding = new Padding(2, 0, 0, 0),
             Margin = Padding.Empty
         };
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
         var check = MakePreviewCheck(GloryModTitle,
             "Override just Glory Kill speed (30–240 Hz). No other animations affected.",
             "glory-kill-speed-preview");
@@ -350,8 +351,21 @@ internal sealed partial class ModsForm
         slider.MouseUp += (_, _) => SaveModSelections();
         slider.KeyUp += (_, _) => SaveModSelections();
         slider.Leave += (_, _) => SaveModSelections();
-        if (active) AttachActiveRow(panel, check, null, GloryModTitle,
-            "Glory Kill speed override has no other VR-mod prerequisites.");
+        Label? grip = null;
+        if (active)
+        {
+            grip = new Label
+            {
+                Text = "⋮⋮", Dock = DockStyle.Fill,
+                ForeColor = Color.FromArgb(178, 178, 185),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Cursor = Cursors.SizeNS,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
+            };
+            panel.Controls.Add(grip, 3, 0);
+            AttachActiveRow(panel, check, grip, GloryModTitle,
+                "Glory Kill speed override has no other VR-mod prerequisites.");
+        }
         _visibleModRows[GloryModTitle] = panel;
         AppendFixedRow(list, panel, 36);
     }
@@ -363,7 +377,7 @@ internal sealed partial class ModsForm
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 30,
-            ColumnCount = 4, RowCount = 1,
+            ColumnCount = 5, RowCount = 1,
             BackColor = DarkPanel, Margin = Padding.Empty,
             Padding = Padding.Empty,
             AllowDrop = active,
@@ -371,6 +385,9 @@ internal sealed partial class ModsForm
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var dependent = DependenciesFor(mod.Title);
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,
+            dependent.Length > 0 ? 195 : 0));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
         var numberLabel = new Label
@@ -420,8 +437,26 @@ internal sealed partial class ModsForm
         };
         row.Controls.Add(numberLabel, 0, 0);
         row.Controls.Add(check, 1, 0);
-        row.Controls.Add(info, 2, 0);
-        row.Controls.Add(grip, 3, 0);
+        if (dependent.Length > 0)
+        {
+            var link = new LinkLabel
+            {
+                Text = dependent[0],
+                Dock = DockStyle.Fill, BackColor = DarkPanel,
+                LinkColor = Color.FromArgb(176,176,184),
+                ActiveLinkColor = Color.White,
+                Font = new Font("Segoe UI", 7.5f),
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
+                Tag = "vr-mod-dependency-link",
+                Margin = Padding.Empty
+            };
+            _tooltips.SetToolTip(link, string.Join(Environment.NewLine, dependent));
+            link.LinkClicked += (_, _) => ShowModDependencies(mod.Title, mod.Help);
+            row.Controls.Add(link, 2, 0);
+        }
+        row.Controls.Add(info, 3, 0);
+        row.Controls.Add(grip, 4, 0);
         _visibleModRows[mod.Title] = row;
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         AppendFixedRow(list, row, 30);
@@ -458,7 +493,8 @@ internal sealed partial class ModsForm
                      Math.Abs(e.Y - startedAt.Y) < 4)) return;
                 var drag = new DataObject();
                 drag.SetData(ActiveDragFormat, title);
-                grip.DoDragDrop(drag, DragDropEffects.Move);
+                try { grip.DoDragDrop(drag, DragDropEffects.Move); }
+                finally { startedAt = Point.Empty; }
             };
             AttachActiveDrop(grip, title);
         }
