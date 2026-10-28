@@ -368,8 +368,11 @@ internal sealed partial class ModsForm
     {
         try
         {
-            Directory.CreateDirectory(AppState.ModsDirectory);
-            var mods = Directory.GetFileSystemEntries(AppState.ModsDirectory)
+            // UI is constructed before first-install consent. Do not create
+            // any folders if the user presses NO and the app exits.
+            var mods = (Directory.Exists(AppState.ModsDirectory)
+                    ? Directory.GetFileSystemEntries(AppState.ModsDirectory)
+                    : Array.Empty<string>())
                 .Where(path => Directory.Exists(path) ||
                     (File.Exists(path) && new[] { ".zip", ".pk3", ".wad" }
                         .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)))
@@ -494,7 +497,7 @@ internal sealed partial class ModsForm
         var speedValue = MakeLabel("Native");
         speedValue.ForeColor = Color.Gainsboro;
         panel.Controls.Add(speedValue, 2, 1);
-        list.Controls.Add(panel);
+        AppendFixedRow(list, panel, 78);
     }
 
     private void AppendSection(TableLayoutPanel list, string caption)
@@ -510,7 +513,7 @@ internal sealed partial class ModsForm
             TextAlign = ContentAlignment.BottomLeft,
             Margin = new Padding(2, 0, 0, 0)
         };
-        list.Controls.Add(label);
+        AppendFixedRow(list, label, 20);
     }
 
     private void AppendNumberedMod(TableLayoutPanel list, int number, PreviewMod mod)
@@ -545,7 +548,7 @@ internal sealed partial class ModsForm
         row.Controls.Add(index, 0, 0);
         row.Controls.Add(check, 1, 0);
         row.Controls.Add(info, 2, 0);
-        list.Controls.Add(row);
+        AppendFixedRow(list, row, 28);
     }
 
     private void AppendDeveloperMod(TableLayoutPanel list, PreviewMod mod)
@@ -564,7 +567,14 @@ internal sealed partial class ModsForm
         check.Margin = new Padding(6, 0, 0, 0);
         row.Controls.Add(check, 0, 0);
         row.Controls.Add(MakeHelpLabel(mod.Help), 1, 0);
-        list.Controls.Add(row);
+        AppendFixedRow(list, row, 28);
+    }
+
+    private static void AppendFixedRow(TableLayoutPanel list, Control control, int height)
+    {
+        var rowIndex = list.RowCount++;
+        list.RowStyles.Add(new RowStyle(SizeType.Absolute, height));
+        list.Controls.Add(control, 0, rowIndex);
     }
 
     private Label MakeHelpLabel(string description)
