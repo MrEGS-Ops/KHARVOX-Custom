@@ -196,7 +196,7 @@ internal sealed partial class ModsForm : Form
         })
         {
             if (dialog.ShowDialog(this) != DialogResult.OK) return false;
-            if (!LauncherDiscovery.IsLauncherFile(dialog.FileName))
+            if (!LauncherDiscovery.IsOriginalLauncherFile(dialog.FileName))
             {
                 MessageBox.Show(this, "Choose the existing KharvoxLauncher.exe.",
                     "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
