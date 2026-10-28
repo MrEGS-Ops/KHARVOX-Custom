@@ -56,6 +56,18 @@ The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the *
 - Windows downloads via browsers can apply a Mark-of-the-Web warning to the **initial downloaded updater**. Further updates are fetched by the updater rather than manually extracted from browser downloads. This does **not** disable SmartScreen, guarantee that unsigned binaries won't be warned about, or bypass Windows security.
 - The updater release is a public preview, not the GitHub Actions artifacts endpoint; no personal GitHub access token is required.
 
+## One-click portable updates
+
+The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the **same writable folder** as `KharvoxMods.exe` to check the latest successful preview published at the project's GitHub Releases page. It downloads a release ZIP, verifies its SHA-256 digest against a separately published manifest, safely extracts only allowlisted application files, and opens KHARVOX Mods.
+
+- **Replaces only:** `KharvoxMods.exe`, the optional `KharvoxMods.exe.config`, and `README.md`.
+- **Preserves:** `settings.json`, `Mods/`, `Logs/`, `Backups/`, and all unrecognised files. Previous executable backup lives in `Backups/Updater/previous/`.
+- Doesn't overwrite the updater while it is running. Downloads are staged under `UpdateCache/` inside the app's folder and the stage directory is removed afterwards.
+- If KHARVOX Mods is running, close **KHARVOX Mods**, not the original KHARVOX launcher, before updating. The updater refuses to replace an in-use executable.
+- A failed download, unexpected archive file or checksum mismatch **does not replace the application**.
+- Windows may mark the **initial browser-downloaded updater** as coming from the Internet. Later updates are fetched by the updater instead of manually extracted browser downloads. This does **not** disable SmartScreen or guarantee unsigned executables will never prompt.
+- The update ZIP is a public preview release asset; no GitHub personal access token is needed.
+
 ## Future separation (not silently installed)
 - Extract the existing Custom Mods UI source into a reusable UI component; replace this preview with the exact existing layout.
 - Design and test a versioned native bridge/plugin interface with explicit user permission.
