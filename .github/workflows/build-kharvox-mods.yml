@@ -37,7 +37,7 @@ jobs:
 
       - name: Compile standalone executable (net48 x64)
         shell: pwsh
-        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
+        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore -p:InformationalVersion=${{ github.run_id }}
 
       - name: Restore native-bridge-aware KHARVOX launcher
         shell: pwsh
@@ -142,7 +142,9 @@ jobs:
         run: |
           $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
           $releaseZip = Join-Path $PWD "dist/KHARVOX-Mods-Standalone.zip"
-          $releaseFiles = @("KharvoxMods.exe", "README.md", "build-info.txt")
+          # Preserve compatibility with the original three-file updater allowlist.
+          # The new EXE embeds the build ID and stamps build-info.txt on launch.
+          $releaseFiles = @("KharvoxMods.exe", "README.md")
           if (Test-Path (Join-Path $packageDir "KharvoxMods.exe.config")) {
             $releaseFiles += "KharvoxMods.exe.config"
           }
