@@ -513,6 +513,9 @@ internal sealed partial class ModsForm : Form
                 if (Bounds != arranged.Mods) Bounds = arranged.Mods;
             }
 
+            // Keep the original Mods Folder's custom viewer docked to the
+            // pair; dragging it can also move both main windows together.
+            SyncOriginalModFolder();
             var actualLauncher = NativeDock.Bounds(handle);
             if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
             _lastModsBounds = Bounds;
