@@ -240,7 +240,7 @@ internal sealed partial class ModsForm : Form
     {
         if (_bridgeInstallInProgress) return;
         var accepted = MessageBox.Show(this,
-            "Install mod-enabled KHARVOX beside this app?\\n\\n" +
+            "Install mod-enabled KHARVOX beside this app?\n\n" +
             "Your original KHARVOX installation will not be changed.",
             "Install KHARVOX Native Bridge", MessageBoxButtons.YesNo,
             MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
@@ -248,39 +248,46 @@ internal sealed partial class ModsForm : Form
 
         _bridgeInstallInProgress = true;
         RefreshBridgeState();
+        var installed = false;
         try
         {
             SetStatus("Installing verified native bridge in local folder…");
-            var message = await NativeBridgeInstaller.InstallAsync(SetStatus);
+            await NativeBridgeInstaller.InstallAsync(SetStatus);
             _state.KharvoxLauncherPath = NativeBridgeInstaller.TargetLauncher;
             _state.Save();
-            RefreshBridgeState();
-            SetStatus("Native bridge installed. Five confirmed mod selections available.");
-            if (_launcher != null && !_launcher.HasExited)
-            {
-                MessageBox.Show(this, message +
-                    "\\n\\nClose the two linked windows and reopen KHARVOX Mods " +
-                    "to start the mod-enabled launcher.",
-                    "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            }
-            else
-            {
-                MessageBox.Show(this, message, "KHARVOX Mods",
-                    MessageBoxButtons.OK, MessageBoxIcon.Information);
-                StartLauncher();
-            }
+            installed = true;
+            SetStatus("Native bridge installed — restarting linked windows…");
         }
         catch (Exception error)
         {
             SetStatus("Bridge installation failed — original KHARVOX untouched.");
             MessageBox.Show(this,
-                "Could not install the optional native bridge:\\n" + error.Message,
+                "Could not install the optional native bridge:\n" + error.Message,
                 "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
             _bridgeInstallInProgress = false;
-            RefreshBridgeState();
+            if (!IsDisposed) RefreshBridgeState();
+        }
+
+        if (!installed) return;
+        try
+        {
+            // Start the handoff BEFORE closing this process. Its helper waits
+            // for both old windows to exit, then opens one clean Mods session.
+            if (!BridgeRestartHandoff.Start(_launcher))
+                throw new InvalidOperationException("Windows could not start the restart helper.");
+            Close(); // sends a normal WM_CLOSE to the linked KHARVOX launcher
+        }
+        catch (Exception error) when (error is InvalidOperationException ||
+            error is System.ComponentModel.Win32Exception || error is IOException)
+        {
+            SetStatus("Bridge installed — automatic restart unavailable.");
+            MessageBox.Show(this,
+                "Bridge installed, but couldn't automatically reopen KHARVOX Mods:\n" +
+                error.Message + "\nYou can close both windows and reopen Mods.",
+                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
