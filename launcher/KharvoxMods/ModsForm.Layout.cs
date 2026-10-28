@@ -330,7 +330,7 @@ internal sealed partial class ModsForm
             BackColor = Color.Black
         };
         _status.Dock = DockStyle.Left;
-        _status.Width = 500;
+        _status.Width = 330;
         _status.Font = new Font("Segoe UI", 8f);
         _status.ForeColor = Color.Gray;
         _status.BackColor = Color.Black;
