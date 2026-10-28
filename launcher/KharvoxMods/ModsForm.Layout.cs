@@ -739,6 +739,8 @@ internal sealed partial class ModsForm
         var connectionMenu = new ContextMenuStrip();
         connectionMenu.Items.Add("Start / Find KHARVOX", null, (_, _) => StartLauncher());
         connectionMenu.Items.Add("Select KHARVOX…", null, (_, _) => SelectLauncher());
+        connectionMenu.Items.Add("Install / Update Native Bridge…", null,
+            async (_, _) => await InstallNativeBridge());
         connectionMenu.Items.Add("Attach / Detach Window", null, (_, _) => ToggleAttachment());
         connection.Click += (_, _) =>
             connectionMenu.Show(connection, new Point(0, connection.Height));
