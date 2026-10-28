@@ -27,6 +27,14 @@ This is an **experimental standalone shell**, not yet the final independent nati
 5. Verify KHARVOX opens without launching DOOM; drag/minimize/restore either window.
 6. Close KHARVOX Mods and verify KHARVOX continues independently.
 
+## Repeat the first-install setup for manual debugging
+- Open **Dev → Integration & Setup → Re-run First Install** to repeat the original Yes/No attachment prompt *without removing saved settings or reselecting KHARVOX*.
+- Select **Yes** and verify that the window docks and moves with KHARVOX. Repeat and select **No** to verify that the windows separate while KHARVOX stays running.
+- **Show Setup State** displays the saved answer, launcher path, process/window detection, and whether any native bridge or gameplay mods have been installed (none in phase 1).
+- **Open Setup Log** opens `%LOCALAPPDATA%\\KHARVOXMods\\logs\\setup-debug.log` in Notepad. The log includes timestamps for consent choices, executable selection, process launch, desktop-window detection, docking and errors.
+- To simulate a truly **fresh install**, close the Mods app, delete only `%LOCALAPPDATA%\\KHARVOXMods\\settings.json`, and reopen it. This removes the saved launcher path and attachment preference; it does not modify KHARVOX.
+- You can also use **Attach Window / Detach Window** at any time. These buttons control desktop docking only, not game mods or a binary patch.
+
 For a command-line smoke test: `KharvoxMods.exe --self-test` returns exit code 0 when state isolation and consent tests pass.
 
 ## Future separation (not silently installed)
