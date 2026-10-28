@@ -101,27 +101,30 @@ jobs:
             "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe",
             "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
           )
-          $basePixels = $null
+          $baseDigest = $null
           foreach ($path in $exePaths) {
             $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $PWD $path))
             if ($null -eq $icon) { throw "Missing application icon: $path" }
             try {
               $bitmap = $icon.ToBitmap()
               try {
-                $pixels = @()
+                $pixels = New-Object byte[] ($bitmap.Width * $bitmap.Height * 4)
                 $red = 0
                 for ($y=0; $y -lt $bitmap.Height; $y++) {
                   for ($x=0; $x -lt $bitmap.Width; $x++) {
                     $color = $bitmap.GetPixel($x,$y)
-                    $pixels += $color.ToArgb()
+                    $offset = 4 * ($y * $bitmap.Width + $x)
+                    [BitConverter]::GetBytes($color.ToArgb()).CopyTo($pixels, $offset)
                     if ($color.R -gt 130 -and $color.R -gt ($color.G * 1.6) -and $color.R -gt ($color.B * 1.4)) { $red++ }
                   }
                 }
                 if ($red -lt 1) { throw "MrEGS logo's red accent missing: $path" }
-                if ($null -eq $basePixels) { $basePixels = $pixels }
-                elseif (-not ($basePixels.Length -eq $pixels.Length -and
-                  ((Compare-Object -ReferenceObject $basePixels -DifferenceObject $pixels -SyncWindow 0).Count -eq 0))) {
-                  throw "Executable icons do not match the same MrEGS artwork: $path"
+                $sha = [System.Security.Cryptography.SHA256]::Create()
+                try { $digest = [Convert]::ToBase64String($sha.ComputeHash($pixels)) }
+                finally { $sha.Dispose() }
+                if ($null -eq $baseDigest) { $baseDigest = $digest }
+                elseif ($baseDigest -ne $digest) {
+                  throw "Executable icon pixels differ from the approved MrEGS source: $path"
                 }
               } finally { $bitmap.Dispose() }
             } finally { $icon.Dispose() }
