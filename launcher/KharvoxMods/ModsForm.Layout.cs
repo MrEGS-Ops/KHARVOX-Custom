@@ -177,11 +177,12 @@ internal sealed partial class ModsForm
             "Keep story sequences at their original timing.")
     };
 
+    // Exact same group-box styling as KHARVOX MainForm.MakeGroup().
     private static GroupBox MakeOriginalGroup(string title) => new GroupBox
     {
         Text = title,
         Dock = DockStyle.Fill,
-        ForeColor = Color.White,
+        ForeColor = Color.Gainsboro,
         BackColor = DarkPanel,
         Padding = new Padding(8),
         Font = new Font("Segoe UI", 9f)
