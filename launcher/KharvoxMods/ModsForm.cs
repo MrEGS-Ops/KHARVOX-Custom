@@ -35,8 +35,21 @@ internal sealed partial class ModsForm : Form
     private static readonly Color Foreground = Color.Gainsboro;
     private const int DesiredModsWidth = 1180;
 
+    private static string EmbeddedBuildId()
+    {
+        var attr = (System.Reflection.AssemblyInformationalVersionAttribute?)
+            Attribute.GetCustomAttribute(typeof(ModsForm).Assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        var raw = attr?.InformationalVersion ?? "";
+        var plus = raw.IndexOf('+');
+        if (plus >= 0) raw = raw.Substring(0, plus);
+        return long.TryParse(raw, out var id) && id > 0 ? id.ToString() : "";
+    }
+
     private static string BuildLabel()
     {
+        var embedded = EmbeddedBuildId();
+        if (embedded.Length > 0) return "Build #" + embedded;
         try
         {
             var path = Path.Combine(AppContext.BaseDirectory, "build-info.txt");
@@ -168,6 +181,17 @@ internal sealed partial class ModsForm : Form
             _state.Save();
         }
         UpdateAttachmentButton();
+        // The release ZIP stays compatible with the oldest updater, which
+        // accepts only the original files. Stamp the build ID locally on the
+        // first successful Mods launch instead of adding a new ZIP entry.
+        try
+        {
+            var id = EmbeddedBuildId();
+            if (id.Length > 0)
+                File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "build-info.txt"), id);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
         // The old updater can only update Mods.exe while it is running.
         // Once this refreshed app opens, replace the updater EXE after its
         // process exits. Never pause launcher/game startup for this step.
