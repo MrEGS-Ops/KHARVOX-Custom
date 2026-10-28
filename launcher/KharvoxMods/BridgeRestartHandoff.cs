@@ -1,7 +1,6 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Threading;
 using System.Windows.Forms;
 
 namespace KharvoxMods;
@@ -100,7 +99,8 @@ internal static class BridgeRestartHandoff
         // Never start a bridge-enabled session unless a complete verified bridge
         // exists and settings point to the new launcher.
         var settings = AppState.Load();
-        if (!string.Equals(Path.GetFullPath(settings.KharvoxLauncherPath),
+        if (string.IsNullOrWhiteSpace(settings.KharvoxLauncherPath) ||
+            !string.Equals(Path.GetFullPath(settings.KharvoxLauncherPath),
                 Path.GetFullPath(NativeBridgeInstaller.TargetLauncher),
                 StringComparison.OrdinalIgnoreCase) ||
             !File.Exists(NativeBridgeInstaller.TargetLauncher) ||
