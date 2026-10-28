@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace KharvoxMods;
@@ -138,5 +139,23 @@ internal sealed partial class ModsForm
         if (dock.Right != mods.Left || dock.Y != launcher.Top ||
             dock.Width != 515)
             throw new InvalidDataException("Original left-side folder positioning regressed.");
+
+        var testFolder = Path.Combine(Path.GetTempPath(), "kharvox-folder-ui-" +
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(testFolder);
+            using (var viewer = new ModDropWindow(testFolder,
+                new Rectangle(0, 0, 515, 720)))
+            {
+                if (viewer.Text != "KHARVOX // MODS FOLDER" ||
+                    !viewer.Controls.Descendants().OfType<ListView>().Any())
+                    throw new InvalidDataException("Original ZIP file explorer controls missing.");
+            }
+        }
+        finally
+        {
+            if (Directory.Exists(testFolder)) Directory.Delete(testFolder, true);
+        }
     }
 }
