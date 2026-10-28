@@ -448,6 +448,13 @@ internal sealed partial class ModsForm
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
             if (groups.Length != 1 || groups[0].Text != "VR MODS")
                 throw new InvalidDataException("VR-only build contains a non-VR groupbox.");
+            // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
+            // light-gray captions. Native DWM frame is matched separately.
+            if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
+                groups[0].BackColor.ToArgb() != Color.FromArgb(30, 30, 33).ToArgb() ||
+                groups[0].ForeColor.ToArgb() != Color.Gainsboro.ToArgb() ||
+                groups[0].Padding != new Padding(8))
+                throw new InvalidDataException("KHARVOX desktop window palette/group-box mismatch.");
             if (form.Controls.Descendants().OfType<TabControl>().Any())
                 throw new InvalidDataException("Tabbed placeholder UI must not return.");
             var vr = form.Controls.Descendants().OfType<CheckBox>()
