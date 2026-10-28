@@ -25,6 +25,13 @@ internal static class Program
             Guid.NewGuid().ToString("N"));
         try
         {
+            if (!string.Equals(AppState.DataDirectory,
+                    Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(AppState.DefaultPath,
+                    Path.Combine(AppState.DataDirectory, "settings.json"),
+                    StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("Portable storage must be beside KharvoxMods.exe.");
+
             Directory.CreateDirectory(root);
             var path = Path.Combine(root, "settings.json");
             var clean = AppState.Load(path);
@@ -32,6 +39,11 @@ internal static class Program
                 throw new InvalidDataException("First run must not assume attachment consent.");
             clean.KharvoxLauncherPath = Path.Combine(root, "KharvoxLauncher.exe");
             clean.Save(path);
+            if (!File.Exists(path) ||
+                !Directory.Exists(Path.Combine(root, "Mods")) ||
+                !Directory.Exists(Path.Combine(root, "Logs")) ||
+                !Directory.Exists(Path.Combine(root, "Backups")))
+                throw new InvalidDataException("All portable folders must be beside settings.json.");
             var reloaded = AppState.Load(path);
             if (reloaded.WindowAttachmentApproved || reloaded.ConsentRecorded)
                 throw new InvalidDataException("Saving a path must never enable bridge attachment.");
@@ -45,7 +57,7 @@ internal static class Program
                 throw new InvalidDataException("Malformed state must fail closed.");
             if (LauncherDiscovery.IsLauncherFile(Path.Combine(root, "KharvoxMods.exe")))
                 throw new InvalidDataException("Non-KHARVOX executables must be rejected.");
-            Console.WriteLine("KHARVOX Mods standalone tests passed: consent, isolation and fail-closed settings.");
+            Console.WriteLine("KHARVOX Mods standalone tests passed: portable local storage, consent and fail-closed settings.");
             return 0;
         }
         catch (Exception error)
