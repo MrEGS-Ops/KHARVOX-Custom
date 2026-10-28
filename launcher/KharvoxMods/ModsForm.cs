@@ -30,6 +30,7 @@ internal sealed partial class ModsForm : Form
     private bool _bootstrapped;
     private IntPtr _lastDockForeground;
     private IntPtr _ownerLauncher;
+    private bool _closingDockPair;
 
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
@@ -82,6 +83,7 @@ internal sealed partial class ModsForm : Form
             _bootstrapped = true;
             BeginInvoke(new Action(StartUp));
         };
+        FormClosing += (_, _) => CloseDockCompanion();
         FormClosed += (_, _) =>
         {
             if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
@@ -93,6 +95,32 @@ internal sealed partial class ModsForm : Form
         SizeChanged += (_, _) => SyncMinimizeFromMods();
         Activated += (_, _) => SyncCompanionFocus();
         UpdateAttachmentButton();
+    }
+
+    private void CloseDockCompanion()
+    {
+        if (_closingDockPair) return;
+        _closingDockPair = true;
+        _dockTimer.Stop();
+
+        // Only close the KHARVOX window we paired with. Don't touch DOOM or
+        // any unrelated KHARVOX process, and never use Process.Kill().
+        if (!_state.WindowAttachmentApproved || _launcher == null) return;
+        try
+        {
+            if (_launcher.HasExited) return;
+            _launcher.Refresh();
+            var handle = _launcher.MainWindowHandle;
+            if (handle == IntPtr.Zero || !NativeDock.IsWindow(handle))
+                handle = _launcherWindow;
+            if (handle != IntPtr.Zero)
+                NativeDock.RequestClose(handle, _launcher.Id);
+        }
+        catch (Exception error) when (error is InvalidOperationException ||
+            error is System.ComponentModel.Win32Exception)
+        {
+            // The original window may have already closed. Nothing to kill.
+        }
     }
 
     private static Label MakeLabel(string text, int fontSize = 9)
@@ -228,8 +256,8 @@ internal sealed partial class ModsForm : Form
             if (_launcher != null && !_launcher.HasExited)
             {
                 MessageBox.Show(this, message +
-                    "\\n\\nClose the currently running KHARVOX launcher, then use " +
-                    "Connection → Start / Find KHARVOX to switch to the new mod-enabled copy.",
+                    "\\n\\nClose the two linked windows and reopen KHARVOX Mods " +
+                    "to start the mod-enabled launcher.",
                     "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             else
@@ -364,7 +392,16 @@ internal sealed partial class ModsForm : Form
                 _dockTimer.Stop();
                 _launcherWindow = IntPtr.Zero;
                 _lastDockForeground = IntPtr.Zero;
-                SetStatus("KHARVOX closed. Use Start KHARVOX to reopen it.");
+                if (_state.WindowAttachmentApproved && !_closingDockPair)
+                {
+                    // The linked KHARVOX window exited (for example its X).
+                    // Close this sidecar too, but don't terminate DOOM.
+                    Close();
+                }
+                else
+                {
+                    SetStatus("KHARVOX closed. Use Start KHARVOX to reopen it.");
+                }
                 return;
             }
             _launcher.Refresh();
