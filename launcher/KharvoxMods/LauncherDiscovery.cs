@@ -63,11 +63,17 @@ internal static class LauncherDiscovery
             throw new FileNotFoundException("Select the original KharvoxLauncher.exe.", launcherPath);
         var existing = FindRunning(launcherPath);
         if (existing != null) return existing;
-        return Process.Start(new ProcessStartInfo
+        var info = new ProcessStartInfo
         {
             FileName = launcherPath,
             WorkingDirectory = Path.GetDirectoryName(Path.GetFullPath(launcherPath))!,
-            UseShellExecute = true
-        }) ?? throw new InvalidOperationException("Windows did not start KHARVOX.");
+            UseShellExecute = false
+        };
+        // Only a custom KHARVOX launcher containing StandaloneModsBridge.cs
+        // consumes this variable; stock KHARVOX ignores it harmlessly.
+        info.EnvironmentVariables["KHARVOX_MODS_BRIDGE_FILE"] =
+            StandaloneModPreferences.DefaultPath;
+        return Process.Start(info)
+            ?? throw new InvalidOperationException("Windows did not start KHARVOX.");
     }
 }
