@@ -41,6 +41,7 @@ internal static class Program
             Guid.NewGuid().ToString("N"));
         try
         {
+            StandaloneModPreferences.SelfTest();
             if (!string.Equals(AppState.DataDirectory,
                     Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(AppState.DefaultPath,
