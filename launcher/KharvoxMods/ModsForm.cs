@@ -48,6 +48,8 @@ internal sealed class ModsForm : Form
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
+        SetupDiagnostics.Write("KHARVOX Mods opened; saved consent=" + _state.ConsentRecorded +
+            " attach=" + _state.WindowAttachmentApproved);
         _dockTimer.Tick += (_, _) => SyncDock();
         Shown += (_, _) =>
         {
@@ -252,6 +254,25 @@ internal sealed class ModsForm : Form
             FlowDirection = FlowDirection.TopDown, WrapContents = false,
             Padding = new Padding(10), BackColor = DarkPanel
         };
+        AddSection(devList, "INTEGRATION & SETUP");
+        var setupButtons = new FlowLayoutPanel
+        {
+            Width = 455, Height = 40, WrapContents = false,
+            BackColor = DarkPanel, Margin = new Padding(3, 2, 3, 8)
+        };
+        var rerunSetup = MakeButton("Re-run First Install", 156);
+        rerunSetup.Click += (_, _) => ShowSetupPrompt(manual: true);
+        _tooltips.SetToolTip(rerunSetup,
+            "Open the original Yes/No attachment prompt again without deleting " +
+            "saved settings or installing any gameplay mods.");
+        setupButtons.Controls.Add(rerunSetup);
+        var showState = MakeButton("Show Setup State", 139);
+        showState.Click += (_, _) => ShowSetupState();
+        setupButtons.Controls.Add(showState);
+        var openLog = MakeButton("Open Setup Log", 125);
+        openLog.Click += (_, _) => OpenSetupLog();
+        setupButtons.Controls.Add(openLog);
+        devList.Controls.Add(setupButtons);
         AddSection(devList, "GAMEPLAY OVERRIDES — NOT YET CONNECTED");
         AddEntry(devList, "Disable Glory Kill Highlighting",
             "Removes the blue/orange enemy outline so staggered enemies look more natural in VR.");
@@ -325,6 +346,7 @@ internal sealed class ModsForm : Form
             }
             _state.KharvoxLauncherPath = Path.GetFullPath(dialog.FileName);
             _state.Save();
+            SetupDiagnostics.Write("KHARVOX launcher manually selected: " + _state.KharvoxLauncherPath);
             _dockTimer.Stop();
             _launcher?.Dispose();
             _launcher = null;
@@ -336,26 +358,64 @@ internal sealed class ModsForm : Form
         }
     }
 
+    private void ShowSetupPrompt(bool manual)
+    {
+        SetupDiagnostics.Write("First-install attachment prompt opened; manual=" + manual);
+        var choice = MessageBox.Show(this,
+            "Attach KHARVOX Mods to the KHARVOX launcher window?\n\n" +
+            "YES: connect the two desktop windows and keep them docked together.\n" +
+            "NO: open both applications without docking.\n\n" +
+            "This first-stage attachment does NOT patch KHARVOX, install gameplay mods, " +
+            "inject a DLL, or change any DOOM settings.",
+            "KHARVOX Mods — First install", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
+        _state.ConsentRecorded = true;
+        _state.WindowAttachmentApproved = choice == DialogResult.Yes;
+        _state.Save();
+        _lastLauncherBounds = Rectangle.Empty;
+        _lastModsBounds = Rectangle.Empty;
+        UpdateAttachmentButton();
+        SetupDiagnostics.Write("First-install result=" +
+            (choice == DialogResult.Yes ? "YES / desktop docking enabled" :
+            "NO / windows independent") + "; no files patched.");
+        SetStatus(choice == DialogResult.Yes
+            ? "Desktop attachment approved; no native patch installed."
+            : "Desktop attachment declined; KHARVOX remains independent.");
+        if (manual && _launcher != null) SyncDock();
+    }
+
+    private void ShowSetupState()
+    {
+        var running = _launcher != null && !_launcher.HasExited;
+        var found = _launcherWindow != IntPtr.Zero && NativeDock.IsWindow(_launcherWindow);
+        var summary = SetupDiagnostics.Summary(_state, running, found);
+        SetupDiagnostics.Write("Manual debug state viewed; running=" + running +
+            " windowFound=" + found + " attach=" + _state.WindowAttachmentApproved);
+        MessageBox.Show(this, summary, "KHARVOX Mods — Setup Debug State",
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
+    }
+
+    private void OpenSetupLog()
+    {
+        SetupDiagnostics.Write("Manual debug log opened.");
+        try { Process.Start("notepad.exe", SetupDiagnostics.LogPath); }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception ||
+            error is InvalidOperationException)
+        {
+            MessageBox.Show(this, "Cannot open the setup log: " + error.Message +
+                Environment.NewLine + SetupDiagnostics.LogPath,
+                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private void StartUp()
     {
-        if (!_state.ConsentRecorded)
-        {
-            var choice = MessageBox.Show(this,
-                "Attach KHARVOX Mods to the KHARVOX launcher window?\n\n" +
-                "YES: connect the two desktop windows and keep them docked together.\n" +
-                "NO: open both applications without docking.\n\n" +
-                "This first-stage attachment does NOT patch KHARVOX, install gameplay mods, " +
-                "inject a DLL, or change any DOOM settings.",
-                "KHARVOX Mods — First install", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
-            _state.ConsentRecorded = true;
-            _state.WindowAttachmentApproved = choice == DialogResult.Yes;
-            _state.Save();
-        }
+        if (!_state.ConsentRecorded) ShowSetupPrompt(manual: false);
         UpdateAttachmentButton();
         var discovered = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
         if (discovered == null)
         {
+            SetupDiagnostics.Write("KHARVOX launcher was not auto-detected; requesting EXE selection.");
             SetStatus("Choose the original KHARVOX launcher to continue.");
             SelectLauncher();
             return;
@@ -383,6 +443,8 @@ internal sealed class ModsForm : Form
             }
             _launcher?.Dispose();
             _launcher = LauncherDiscovery.StartOrFind(launcherPath);
+            SetupDiagnostics.Write("KHARVOX StartOrFind succeeded; process=" + _launcher.Id +
+                " launcher=" + launcherPath);
             _state.KharvoxLauncherPath = launcherPath;
             _state.Save();
             _launcherWindow = IntPtr.Zero;
@@ -394,6 +456,7 @@ internal sealed class ModsForm : Form
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception || error is IOException)
         {
+            SetupDiagnostics.Write("KHARVOX launch failed: " + error.Message);
             SetStatus("Cannot start KHARVOX.");
             MessageBox.Show(this, error.Message, "KHARVOX Mods",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
@@ -422,6 +485,8 @@ internal sealed class ModsForm : Form
         _lastLauncherBounds = Rectangle.Empty;
         _lastModsBounds = Rectangle.Empty;
         UpdateAttachmentButton();
+        SetupDiagnostics.Write("Manual attachment toggle; dock=" + _state.WindowAttachmentApproved);
+        if (_launcher != null) SyncDock();
     }
 
     private void UpdateAttachmentButton()
@@ -450,6 +515,7 @@ internal sealed class ModsForm : Form
             {
                 _dockTimer.Stop();
                 _launcherWindow = IntPtr.Zero;
+                SetupDiagnostics.Write("KHARVOX process closed; detached desktop window.");
                 SetStatus("KHARVOX closed. Use Start KHARVOX to reopen it.");
                 return;
             }
@@ -462,6 +528,7 @@ internal sealed class ModsForm : Form
             }
             if (_launcherWindow != handle)
             {
+                SetupDiagnostics.Write("KHARVOX desktop window found, HWND=" + handle);
                 _launcherWindow = handle;
                 _lastLauncherBounds = Rectangle.Empty;
                 _lastModsBounds = Rectangle.Empty;
@@ -508,6 +575,8 @@ internal sealed class ModsForm : Form
             }
             else if (launcherMoved || _lastLauncherBounds == Rectangle.Empty)
             {
+                if (_lastLauncherBounds == Rectangle.Empty)
+                    SetupDiagnostics.Write("Docking approved; positioning independent Mods window alongside KHARVOX.");
                 var arranged = NativeDock.Calculate(launcherRect.Value, workArea,
                     Math.Min(DesiredModsWidth, Math.Max(Width, 540)));
                 if (launcherRect.Value != arranged.Launcher)
@@ -523,6 +592,7 @@ internal sealed class ModsForm : Form
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
         {
+            SetupDiagnostics.Write("Window attachment error: " + error.Message);
             SetStatus("KHARVOX window unavailable; no patches were made.");
         }
     }
