@@ -174,7 +174,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kharvox-mods-standalone-preview
-          name: KHARVOX Mods — Build #${{ github.run_id }}
+          name: "KHARVOX Mods — Build #${{ github.run_id }}"
           prerelease: true
           make_latest: false
           overwrite_files: true
