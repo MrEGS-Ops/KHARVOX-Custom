@@ -20,7 +20,7 @@ This is an **experimental standalone shell**, not yet the final independent nati
 - No updates to KHARVOX, DOOM, their settings, registry, controller bindings, or the active working project branch.
 
 ## Installation test
-1. Download the `KHARVOX-Mods-Standalone-Preview` artifact from the **KHARVOX Mods Standalone (Experimental)** GitHub workflow.
+1. Download the `KHARVOX-Mods-Standalone-Preview` artifact from the **KHARVOX Mods Standalone (Experimental)** GitHub workflow **once**. It includes `KharvoxModsUpdater.exe` for subsequent updates.
 2. Extract it to a **writable** folder **beside**, not inside, the KHARVOX folder (for example, under Documents or Games). Do not put the portable app in a protected `Program Files` folder.
 3. Start `KharvoxMods.exe`. Choose **Yes** to attach desktop windows or **No** to exit the Mods application.
 4. Select the existing `KharvoxLauncher.exe` if it is not found automatically.
@@ -33,13 +33,28 @@ For a command-line smoke test: `KharvoxMods.exe --self-test` returns exit code 0
 ```text
 KHARVOX Mods/
 ├── KharvoxMods.exe
+├── KharvoxModsUpdater.exe
 ├── settings.json
+├── updater-state.txt (created after successful update)
+├── UpdateCache/ (temporary downloads)
 ├── Mods/
 ├── Logs/
 └── Backups/
 ```
 
 All files created and owned by this standalone application must stay in its installation folder. To uninstall, close `KharvoxMods.exe` and delete **only** the `KHARVOX Mods` folder. The separate original KHARVOX and DOOM installations are untouched. An earlier experimental preview wrote a settings file to `%LOCALAPPDATA%\\KHARVOXMods`; this portable version does not read, migrate, or create that legacy path. If you used the older preview, you can manually remove its old folder once you no longer need it.
+
+## One-click portable updates
+
+The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the **same writable folder** as `KharvoxMods.exe` to check the latest successful preview published at the project's GitHub Releases page. It downloads a release ZIP, verifies its SHA-256 digest against a separately published manifest, safely extracts only allowlisted application files, and opens KHARVOX Mods.
+
+- **Replaces only:** `KharvoxMods.exe`, the optional `KharvoxMods.exe.config`, and `README.md`.
+- **Preserves:** `settings.json`, all mod files, `Mods/`, `Logs/`, `Backups/`, and all unrecognised files. A copy of the previous executable is saved under `Backups/Updater/previous/`.
+- Doesn't overwrite the updater while it is running. Updates are downloaded into `UpdateCache/` inside the application's folder, then the staged update directory is deleted.
+- If KHARVOX Mods is running, close **KHARVOX Mods**, not the separate original KHARVOX launcher, before applying an update. The updater will refuse to replace an in-use executable.
+- A failed download, unexpected archive entry or checksum mismatch **does not replace the application**.
+- Windows downloads via browsers can apply a Mark-of-the-Web warning to the **initial downloaded updater**. Further updates are fetched by the updater rather than manually extracted from browser downloads. This does **not** disable SmartScreen, guarantee that unsigned binaries won't be warned about, or bypass Windows security.
+- The updater release is a public preview, not the GitHub Actions artifacts endpoint; no personal GitHub access token is required.
 
 ## Future separation (not silently installed)
 - Extract the existing Custom Mods UI source into a reusable UI component; replace this preview with the exact existing layout.
