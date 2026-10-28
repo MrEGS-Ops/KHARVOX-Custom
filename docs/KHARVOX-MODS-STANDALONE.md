@@ -8,17 +8,17 @@
 - The original **DOOM resource mods, USER MODS panel, Nexus browser, ZIP explorer and folder-ordering code are not compiled into this Mods EXE**. Their source is preserved on the development branch: the archived original layout is in `ArchivedDoomMods.Parked.cs`, and the separate Nexus/folder sources are explicitly excluded by `KharvoxMods.csproj`. They can be restored later without reimplementing them.
 - The **newly uploaded original MrEGS rEGS gothic-ring artwork** (scaled for Windows icon formats) replaces the previous logo resource. Its shared source provides the icon for **KharvoxMods.exe**, **KharvoxModsUpdater.exe** and the optional **NativeBridge/KharvoxLauncher.exe**, plus the Mods footer watermark. The original separately installed KHARVOX icon and binaries are not touched.
 - The two desktop windows now share the same native **Windows dark caption bar** and Windows 11 **matching 0x0038383B DWM border-colour settings**, and identical **RGB 30,30,33** WinForms group-box background with Gainsboro border captions and 8px inner padding. The updater uses the same window and button palette. The two applications retain their distinct functions and control arrangements. The GitHub build number appears in the title.
-- The two linked desktop windows move, minimize, raise, and close together without making either always-on-top. The VR-only window docks on the left; the group is centered at launch.
+- The two linked desktop windows move, minimize, raise, and close together without making either always-on-top. The VR-only window automatically docks on the left of **our custom launcher**; the pair is centered at launch.
 
 ## VR native bridge
-- The VR mod selections are stored locally in `kharvox-mods-bridge.json`. The optional bridge-aware KHARVOX launcher reads them on the next DOOM launch. Stock KHARVOX does not consume the bridge settings.
-- Click **Install Bridge** beside the status warning, approve the optional installation, and the application will automatically close the old linked pair and reopen using the new bridge-aware launcher. It extracts to `NativeBridge/` under the standalone folder, leaving the original KHARVOX installation untouched.
-- **The separate NativeBridge package still contains the existing full KHARVOX game runtime.** VR-only refers to **KharvoxMods.exe** and its UI/compiled code; it does not mean the underlying KHARVOX runtime has been stripped of all its existing DOOM game integration.
+- The VR mod selections are stored locally in `kharvox-mods-bridge.json`. Our bundled bridge-aware KHARVOX launcher reads them on the next DOOM launch. Stock KHARVOX is never started by VRMods.
+- **First launch:** open `KharvoxMods.exe`, select the original `KharvoxLauncher.exe` location if asked, and the already-bundled custom launcher starts automatically. No docking the original, no Install Bridge, no restart. The original KHARVOX folder remains untouched.
+- **The bundled `NativeBridge/` folder still contains the existing full KHARVOX game runtime.** VR-only refers to **KharvoxMods.exe** and its UI/compiled code; it does not mean the underlying KHARVOX runtime has been stripped of all its existing DOOM game integration.
 - Actual headset behavior still needs verification after build tests pass.
 
 ## Updating
-- Close the app and run `KharvoxModsUpdater.exe`. It reports when it finds a newer build and asks for confirmation. The new Mods EXE refreshes the updater EXE from its separately verified release asset after startup.
-- Settings, NativeBridge, Logs, Backups and **pre-existing** `Mods/` directories are preserved by updates. The VR-only build does not create or use a new `Mods/` folder.
+- Download `KHARVOX-Mods-ReadyToRun.zip` for a fresh installation (includes our custom launcher). For future updates, close the app and run `KharvoxModsUpdater.exe`. Older installations with no `NativeBridge/` automatically retrieve and verify the runtime on startup without any extra install/restart window.
+- Settings, NativeBridge, Logs, Backups and **pre-existing** `Mods/` directories are preserved by lightweight updates. The VR-only build does not create or use a new `Mods/` folder.
 - Unsigned builds can still trigger Windows SmartScreen.
 
 ## Portable folder
@@ -29,7 +29,7 @@ KHARVOX Mods/
 ├── build-info.txt
 ├── settings.json
 ├── kharvox-mods-bridge.json
-├── NativeBridge/                 # optional separate KHARVOX copy
+├── NativeBridge/                 # bundled verified custom KHARVOX runtime
 ├── Logs/
 ├── Backups/
 └── UpdateCache/

@@ -12,8 +12,8 @@ using System.Web.Script.Serialization;
 
 namespace KharvoxMods;
 
-// Opt-in LOCAL native runtime. Installs only inside the Mods EXE's folder.
-// Stock KHARVOX is never replaced, modified, or deleted.
+// Bundled LOCAL custom runtime; older installations can prepare it in-place.
+// Stock KHARVOX is never run, replaced, modified, or deleted.
 internal static class NativeBridgeInstaller
 {
     private const string ReleaseApi =
@@ -40,6 +40,21 @@ internal static class NativeBridgeInstaller
         Path.Combine(AppContext.BaseDirectory, "NativeBridge");
     internal static string TargetLauncher =>
         Path.Combine(TargetDirectory, "KharvoxLauncher.exe");
+
+    internal static bool IsReady()
+    {
+        try
+        {
+            var manifest = Path.Combine(TargetDirectory, "KharvoxModsBridge.v1");
+            return File.Exists(TargetLauncher) &&
+                File.Exists(Path.Combine(TargetDirectory, "KharvoxLayer.dll")) &&
+                File.Exists(manifest) &&
+                File.ReadAllText(manifest).Contains(
+                    "baseNativeCommit=" + PinnedNativeCommit);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
+    }
 
     private static string AssetUrl(ReleaseInfo info, string name)
     {

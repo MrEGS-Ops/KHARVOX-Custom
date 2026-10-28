@@ -172,12 +172,30 @@ jobs:
             Copy-Item (Join-Path $inputDir "KharvoxMods.exe.config") $destination
           }
           Copy-Item "docs/KHARVOX-MODS-STANDALONE.md" (Join-Path $destination "README.md")
+          # The verified custom KHARVOX is ready to run on first launch.
+          $bundledRuntime = Join-Path $destination "NativeBridge"
+          Copy-Item -LiteralPath (Join-Path $PWD "dist/native-base") -Destination $bundledRuntime -Recurse -Force
+          foreach ($required in @("KharvoxLauncher.exe", "KharvoxLayer.dll", "KharvoxModsBridge.v1")) {
+            if (!(Test-Path (Join-Path $bundledRuntime $required))) {
+              throw "Ready-to-run custom KHARVOX payload missing: $required"
+            }
+          }
           if (Test-Path (Join-Path $destination "KharvoxLauncher.exe")) {
             throw "Standalone package must not bundle or overwrite the KHARVOX launcher"
           }
           if (Test-Path (Join-Path $destination "KharvoxLayer.dll")) {
             throw "Standalone package must not contain a patched KHARVOX runtime"
           }
+
+      - name: Package ready-to-run standalone with bundled custom KHARVOX
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
+          $readyZip = Join-Path $PWD "dist/KHARVOX-Mods-ReadyToRun.zip"
+          Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $readyZip -CompressionLevel Optimal -Force
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $readyZip).Hash.ToLowerInvariant()
+          "$digest *KHARVOX-Mods-ReadyToRun.zip" |
+            Set-Content -LiteralPath ($readyZip + ".sha256") -Encoding ascii
 
       - name: Build verified public updater release ZIP and checksum
         shell: pwsh
@@ -223,10 +241,13 @@ jobs:
           make_latest: false
           overwrite_files: true
           body: |
-            Experimental standalone KHARVOX Mods application.
-            The updater can download the latest successful preview directly from this release.
-            This does NOT patch the original KHARVOX or install native gameplay mods.
+            Ready-to-run KHARVOX Mods: download KHARVOX-Mods-ReadyToRun.zip for a new installation.
+            Opening KharvoxMods.exe directly starts the bundled custom KHARVOX launcher.
+            Select the location of original KHARVOX only once; the original is not run or patched.
+            The small Standalone.zip is for existing updater installations.
           files: |
+            dist/KHARVOX-Mods-ReadyToRun.zip
+            dist/KHARVOX-Mods-ReadyToRun.zip.sha256
             dist/KHARVOX-Mods-Standalone.zip
             dist/KHARVOX-Mods-Standalone.zip.sha256
             dist/KHARVOX-Mods-NativeBridge.zip

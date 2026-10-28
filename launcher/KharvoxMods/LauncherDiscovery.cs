@@ -21,9 +21,18 @@ internal static class LauncherDiscovery
             exception is NotSupportedException || exception is PathTooLongException) { return false; }
     }
 
+    // The custom runtime is never a valid original KHARVOX selection.
+    internal static bool IsOriginalLauncherFile(string? path)
+    {
+        if (!IsLauncherFile(path)) return false;
+        return !string.Equals(Path.GetFullPath(path!),
+            Path.GetFullPath(NativeBridgeInstaller.TargetLauncher),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
     internal static string? Locate(string? preferredPath)
     {
-        if (IsLauncherFile(preferredPath)) return Path.GetFullPath(preferredPath!);
+        if (IsOriginalLauncherFile(preferredPath)) return Path.GetFullPath(preferredPath!);
         var baseDir = AppContext.BaseDirectory;
         // A sibling KHARVOX installation is recommended. No writes or directory scans.
         var candidates = new[]
@@ -34,7 +43,7 @@ internal static class LauncherDiscovery
             Path.Combine(baseDir, "..", "..", "KHARVOX", Executable),
             Path.Combine(baseDir, "..", "KharvoxLauncher", Executable)
         };
-        return candidates.Select(Path.GetFullPath).FirstOrDefault(IsLauncherFile);
+        return candidates.Select(Path.GetFullPath).FirstOrDefault(IsOriginalLauncherFile);
     }
 
     internal static Process? FindRunning(string launcherPath)

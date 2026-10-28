@@ -79,11 +79,11 @@ internal sealed partial class ModsForm : Form
 
         BuildLayout();
         _dockTimer.Tick += (_, _) => SyncDock();
-        Shown += (_, _) =>
+        Shown += async (_, _) =>
         {
             if (_bootstrapped) return;
             _bootstrapped = true;
-            BeginInvoke(new Action(StartUp));
+            await StartUpAsync();
         };
         FormClosing += (_, _) => CloseDockCompanion();
         FormClosed += (_, _) =>
@@ -215,34 +215,17 @@ internal sealed partial class ModsForm : Form
             _lastLauncherBounds = Rectangle.Empty;
             _lastModsBounds = Rectangle.Empty;
             _centerPairOnNextAttach = true;
-            StartLauncher();
             return true;
         }
     }
 
-    private void StartUp()
+    private async System.Threading.Tasks.Task StartUpAsync()
     {
-        // A first-run refusal is an exit, not a saved "run undocked" choice.
-        // Previously declined installs also get this gate on their next launch.
-        if (!_state.ConsentRecorded || !_state.WindowAttachmentApproved)
-        {
-            var choice = MessageBox.Show(this,
-                "Attach KHARVOX Mods to KHARVOX?\n\nYes: Attach   No: Exit",
-                "KHARVOX Mods — First install", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
-            if (choice != DialogResult.Yes)
-            {
-                Close();
-                return;
-            }
-            _state.ConsentRecorded = true;
-            _state.WindowAttachmentApproved = true;
-            _state.Save();
-        }
+        // Docking is automatic; no attach prompt, bridge install or restart.
+        _state.ConsentRecorded = true;
+        _state.WindowAttachmentApproved = true;
         UpdateAttachmentButton();
-        // The release ZIP stays compatible with the oldest updater, which
-        // accepts only the original files. Stamp the build ID locally on the
-        // first successful Mods launch instead of adding a new ZIP entry.
+
         try
         {
             var id = EmbeddedBuildId();
@@ -251,111 +234,75 @@ internal sealed partial class ModsForm : Form
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-        // The old updater can only update Mods.exe while it is running.
-        // Once this refreshed app opens, replace the updater EXE after its
-        // process exits. Never pause launcher/game startup for this step.
         BeginInvoke(new Action(async () => await UpdaterBootstrap.TryRefreshAsync()));
-        var discovered = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
-        if (discovered == null)
+
+        // Only use the selected original executable as an installation reference.
+        // Never run or modify it. Old settings pointing to NativeBridge are
+        // migrated by asking for the original location once.
+        var original = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
+        if (original == null)
         {
-            SetStatus("Choose the original KHARVOX launcher to continue.");
-            SelectLauncher();
-            return;
+            SetStatus("Select your original KHARVOX EXE once to continue.");
+            if (!SelectLauncher())
+            {
+                Close();
+                return;
+            }
         }
-        _state.KharvoxLauncherPath = discovered;
+        else _state.KharvoxLauncherPath = original;
+
         _state.Save();
-        StartLauncher();
+        await StartLauncherAsync();
     }
 
-    private async System.Threading.Tasks.Task InstallNativeBridge()
+    private async System.Threading.Tasks.Task StartLauncherAsync()
     {
-        if (_bridgeInstallInProgress) return;
-        var accepted = MessageBox.Show(this,
-            "Install mod-enabled KHARVOX beside this app?\n\n" +
-            "Your original KHARVOX installation will not be changed.",
-            "Install KHARVOX Native Bridge", MessageBoxButtons.YesNo,
-            MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
-        if (accepted != DialogResult.Yes) return;
-
-        _bridgeInstallInProgress = true;
-        RefreshBridgeState();
-        var installed = false;
-        try
+        if (_runtimePreparing) return;
+        if (LauncherDiscovery.Locate(_state.KharvoxLauncherPath) == null)
         {
-            SetStatus("Installing verified native bridge in local folder…");
-            await NativeBridgeInstaller.InstallAsync(SetStatus);
-            _state.KharvoxLauncherPath = NativeBridgeInstaller.TargetLauncher;
-            _state.Save();
-            installed = true;
-            SetStatus("Native bridge installed — restarting linked windows…");
-        }
-        catch (Exception error)
-        {
-            SetStatus("Bridge installation failed — original KHARVOX untouched.");
-            MessageBox.Show(this,
-                "Could not install the optional native bridge:\n" + error.Message,
-                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-        finally
-        {
-            _bridgeInstallInProgress = false;
-            if (!IsDisposed) RefreshBridgeState();
-        }
-
-        if (!installed) return;
-        try
-        {
-            // Start the handoff BEFORE closing this process. Its helper waits
-            // for both old windows to exit, then opens one clean Mods session.
-            if (!BridgeRestartHandoff.Start(_launcher))
-                throw new InvalidOperationException("Windows could not start the restart helper.");
-            Close(); // sends a normal WM_CLOSE to the linked KHARVOX launcher
-        }
-        catch (Exception error) when (error is InvalidOperationException ||
-            error is System.ComponentModel.Win32Exception || error is IOException)
-        {
-            SetStatus("Bridge installed — automatic restart unavailable.");
-            MessageBox.Show(this,
-                "Bridge installed, but couldn't automatically reopen KHARVOX Mods:\n" +
-                error.Message + "\nYou can close both windows and reopen Mods.",
-                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        }
-    }
-
-    private void StartLauncher()
-    {
-        var launcherPath = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
-        if (launcherPath == null)
-        {
-            SetStatus("KHARVOX not found — select its EXE.");
-            return;
+            SetStatus("Select the original KHARVOX executable first.");
+            if (!SelectLauncher()) return;
         }
         try
         {
+            _runtimePreparing = true;
+            RefreshBridgeState();
+            // Ready-to-run releases bundle this already. An existing older
+            // install downloads the verified copy once without a restart.
+            if (!NativeBridgeInstaller.IsReady())
+                await NativeBridgeInstaller.InstallAsync(SetStatus);
+            if (!NativeBridgeInstaller.IsReady())
+                throw new InvalidDataException("Custom KHARVOX runtime did not pass verification.");
+
             if (_launcher != null && !_launcher.HasExited)
             {
-                SetStatus("KHARVOX already running; attaching window only.");
+                SetStatus("Custom KHARVOX already running.");
                 _dockTimer.Start();
                 return;
             }
             _launcher?.Dispose();
-            _launcher = LauncherDiscovery.StartOrFind(launcherPath);
-            _state.KharvoxLauncherPath = launcherPath;
-            _state.Save();
+            // Always run OUR bridge-enabled launcher, not the selected original.
+            _launcher = LauncherDiscovery.StartOrFind(NativeBridgeInstaller.TargetLauncher);
             _launcherWindow = IntPtr.Zero;
             _lastDockForeground = IntPtr.Zero;
             _lastLauncherBounds = Rectangle.Empty;
             _lastModsBounds = Rectangle.Empty;
             _centerPairOnNextAttach = true;
-            SetStatus("KHARVOX started — waiting for launcher window…");
+            SetStatus("Custom KHARVOX started — linking windows…");
             _dockTimer.Start();
         }
-        catch (Exception error) when (error is InvalidOperationException ||
-            error is System.ComponentModel.Win32Exception || error is IOException)
+        catch (Exception error)
         {
-            SetStatus("Cannot start KHARVOX.");
-            MessageBox.Show(this, error.Message, "KHARVOX Mods",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            SetStatus("Custom KHARVOX couldn't start — original installation untouched.");
+            MessageBox.Show(this,
+                "Couldn't prepare or start the custom KHARVOX launcher:\n" +
+                error.Message + "\n\nCheck the connection or use Connection > Open Custom KHARVOX to retry.",
+                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _runtimePreparing = false;
+            if (!IsDisposed) RefreshBridgeState();
         }
     }
 
@@ -509,8 +456,8 @@ internal sealed partial class ModsForm : Form
             var seam = NativeDock.VisibleSeamOverlap(Handle, handle);
 
             // Start a fresh two-window pair in the center of the screen.
-            // BridgeRestartHandoff relaunches this EXE, so it uses this same
-            // one-time path. Never recenter the windows during normal dragging.
+            // Initial direct custom-launcher startup only. Never recenter the
+            // windows during normal dragging.
             if (_centerPairOnNextAttach)
             {
                 var target = NativeDock.CalculateCentered(launcherRect.Value,
@@ -524,7 +471,7 @@ internal sealed partial class ModsForm : Form
                 if (Bounds != target.Mods) Bounds = target.Mods;
                 _centerPairOnNextAttach = false;
             }
-            // Dragging our sidecar moves the original launcher, as before.
+            // Dragging VRMods moves our custom KHARVOX launcher.
             else if (modsMoved && !launcherMoved)
             {
                 var desired = new Rectangle(Right - seam, Top,
@@ -548,9 +495,7 @@ internal sealed partial class ModsForm : Form
             if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
             _lastModsBounds = Bounds;
             SyncCompanionFocus();
-            SetStatus(File.Exists(NativeBridgeInstaller.TargetLauncher)
-                ? "Windows linked — native bridge installed; mod selections apply on next DOOM launch."
-                : "Windows linked — install Native Bridge from Connection to activate five mod selections.");
+            SetStatus("Windows linked — custom KHARVOX active; mods apply on next DOOM launch.");
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)

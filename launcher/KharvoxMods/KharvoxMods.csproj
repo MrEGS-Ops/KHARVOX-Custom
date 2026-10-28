@@ -29,6 +29,7 @@
        retained in the repository for future work, but no source from those
        modules is compiled or embedded in this VR-only executable. -->
   <ItemGroup>
+    <Compile Remove="BridgeRestartHandoff.cs" />
     <Compile Remove="ArchivedDoomMods.Parked.cs" />
     <Compile Remove="ModsForm.ModFolder.cs" />
     <Compile Remove="ModDropWindow.cs" />

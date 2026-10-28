@@ -10,13 +10,6 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
-        // Short-lived copy of this EXE, launched only after a successful
-        // native bridge install. Waits for the old pair to fully exit.
-        if (args.Length > 0 &&
-            string.Equals(args[0], BridgeRestartHandoff.Switch,
-                StringComparison.OrdinalIgnoreCase))
-            return BridgeRestartHandoff.Complete(args);
-
         if (args.Any(a => string.Equals(a, "--self-test-ui", StringComparison.OrdinalIgnoreCase)))
         {
             Application.EnableVisualStyles();
@@ -49,7 +42,6 @@ internal static class Program
         try
         {
             StandaloneModPreferences.SelfTest();
-            BridgeRestartHandoff.SelfTest();
             if (!string.Equals(AppState.DataDirectory,
                     Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(AppState.DefaultPath,
@@ -82,6 +74,8 @@ internal static class Program
                 throw new InvalidDataException("Malformed state must fail closed.");
             if (LauncherDiscovery.IsLauncherFile(Path.Combine(root, "KharvoxMods.exe")))
                 throw new InvalidDataException("Non-KHARVOX executables must be rejected.");
+            if (LauncherDiscovery.IsOriginalLauncherFile(NativeBridgeInstaller.TargetLauncher))
+                throw new InvalidDataException("The custom runtime must never be selected as original.");
             Console.WriteLine("KHARVOX VR Mods standalone tests passed: no DOOM user-folder creation, portable storage, consent and fail-closed settings.");
             return 0;
         }

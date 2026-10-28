@@ -166,35 +166,15 @@ internal sealed partial class ModsForm
         content.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
-        var bridgeRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
-            BackColor = DarkPanel, Margin = Padding.Empty
-        };
-        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 137));
         _bridgeState.Dock = DockStyle.Fill;
         _bridgeState.BackColor = DarkPanel;
         _bridgeState.Font = new Font("Segoe UI", 8f);
         _bridgeState.TextAlign = ContentAlignment.MiddleLeft;
         _bridgeState.AutoEllipsis = true;
         _tooltips.SetToolTip(_bridgeState,
-            "Optional verified native VR bridge. Original KHARVOX is not overwritten.");
-        bridgeRow.Controls.Add(_bridgeState, 0, 0);
-        _bridgeInstallButton.Tag = "native-bridge-install";
-        _bridgeInstallButton.AccessibleName = "Install or update the Native Bridge";
-        _bridgeInstallButton.Dock = DockStyle.Fill;
-        _bridgeInstallButton.FlatStyle = FlatStyle.Flat;
-        _bridgeInstallButton.ForeColor = Color.Gainsboro;
-        _bridgeInstallButton.BackColor = Color.FromArgb(43, 43, 47);
-        _bridgeInstallButton.Margin = new Padding(2, 1, 2, 1);
-        _bridgeInstallButton.FlatAppearance.BorderColor = Color.DimGray;
-        _bridgeInstallButton.Click += async (_, _) => await InstallNativeBridge();
-        _tooltips.SetToolTip(_bridgeInstallButton,
-            "Install/Update the separate verified KHARVOX VR bridge.");
-        bridgeRow.Controls.Add(_bridgeInstallButton, 1, 0);
+            "Our verified custom KHARVOX starts automatically; your original installation is untouched.");
         RefreshBridgeState();
-        content.Controls.Add(bridgeRow, 0, 0);
+        content.Controls.Add(_bridgeState, 0, 0);
 
         _vrModList.Dock = DockStyle.Top;
         _vrModList.AutoSize = true;

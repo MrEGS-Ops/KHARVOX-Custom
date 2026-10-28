@@ -16,23 +16,16 @@ internal sealed partial class ModsForm
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private readonly Label _bridgeState = new Label();
-    private readonly Button _bridgeInstallButton = new Button();
-    private bool _bridgeInstallInProgress;
+    private bool _runtimePreparing;
 
     private void RefreshBridgeState()
     {
-        var installed = File.Exists(NativeBridgeInstaller.TargetLauncher) &&
-            File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
-                "KharvoxModsBridge.v1")) &&
-            File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
-                "KharvoxLayer.dll"));
-        _bridgeState.Text = installed
-            ? "NATIVE BRIDGE INSTALLED — restart DOOM for selected mods"
-            : "NATIVE BRIDGE NOT INSTALLED — selections saved only";
-        _bridgeState.ForeColor = installed ? Color.LightGreen : Color.DarkOrange;
-        _bridgeInstallButton.Text = _bridgeInstallInProgress ? "Installing…" :
-            (installed ? "Update Bridge" : "Install Bridge");
-        _bridgeInstallButton.Enabled = !_bridgeInstallInProgress;
+        var ready = NativeBridgeInstaller.IsReady();
+        _bridgeState.Text = _runtimePreparing
+            ? "PREPARING CUSTOM KHARVOX…"
+            : ready ? "CUSTOM KHARVOX READY — mods apply on next DOOM launch"
+                    : "CUSTOM KHARVOX NOT READY — will prepare automatically";
+        _bridgeState.ForeColor = ready ? Color.LightGreen : Color.DarkOrange;
     }
 
     private static bool IsConfirmedMod(string title) =>
@@ -69,7 +62,7 @@ internal sealed partial class ModsForm
         try
         {
             _modPrefs.Save();
-            SetStatus("Selections saved locally — requires bridge-compatible KHARVOX native runtime.");
+            SetStatus("Selections saved — custom KHARVOX applies them at the next DOOM launch.");
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
@@ -337,7 +330,7 @@ internal sealed partial class ModsForm
         _status.BackColor = Color.Black;
         _status.TextAlign = ContentAlignment.MiddleLeft;
         _status.AutoEllipsis = true;
-        _status.Text = "Standalone UI — native bridge not connected.";
+        _status.Text = "Starting custom KHARVOX…";
         footer.Controls.Add(_status);
 
         var right = new FlowLayoutPanel
@@ -365,15 +358,17 @@ internal sealed partial class ModsForm
         var connection = MakeButton("Connection ▾", 138);
         connection.Margin = new Padding(3, 0, 3, 0);
         var connectionMenu = new ContextMenuStrip();
-        connectionMenu.Items.Add("Start / Find KHARVOX", null, (_, _) => StartLauncher());
-        connectionMenu.Items.Add("Select KHARVOX…", null, (_, _) => SelectLauncher());
-        connectionMenu.Items.Add("Install / Update Native Bridge…", null,
-            async (_, _) => await InstallNativeBridge());
-        connectionMenu.Items.Add("Attach / Detach Window", null, (_, _) => ToggleAttachment());
+        connectionMenu.Items.Add("Open Custom KHARVOX", null,
+            async (_, _) => await StartLauncherAsync());
+        connectionMenu.Items.Add("Change Original KHARVOX Location…", null,
+            async (_, _) =>
+            {
+                if (SelectLauncher()) await StartLauncherAsync();
+            });
         connection.Click += (_, _) =>
             connectionMenu.Show(connection, new Point(0, connection.Height));
         _tooltips.SetToolTip(connection,
-            "Original launcher connection, window attachment and KHARVOX selection.");
+            "Opens our custom launcher. The original KHARVOX path can be changed here.");
         right.Controls.Add(connection);
         footer.Controls.Add(right);
 
@@ -474,12 +469,10 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal));
             if (dev != DevOverrides.Length)
                 throw new InvalidDataException("Developer overrides missing.");
-            var installButtons = form.Controls.Descendants().OfType<Button>()
-                .Where(button => string.Equals(button.Tag as string,
-                    "native-bridge-install", StringComparison.Ordinal)).ToArray();
-            if (installButtons.Length != 1 || !installButtons[0].Enabled ||
-                installButtons[0].Text != "Install Bridge")
-                throw new InvalidDataException("Inline native bridge installer button missing.");
+            if (form.Controls.Descendants().OfType<Button>()
+                .Any(button => string.Equals(button.Tag as string,
+                    "native-bridge-install", StringComparison.Ordinal)))
+                throw new InvalidDataException("Legacy Install Bridge button must not appear.");
             if (NativeDock.RequestClose(IntPtr.Zero, 1) ||
                 NativeDock.RequestClose(form.Handle, -1))
                 throw new InvalidDataException("Unrelated windows must never be closed.");
