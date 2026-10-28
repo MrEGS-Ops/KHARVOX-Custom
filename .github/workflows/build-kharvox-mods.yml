@@ -6,12 +6,13 @@ on:
       - work/mods-sidecar-separation
     paths:
       - 'launcher/KharvoxMods/**'
+      - 'launcher/KharvoxModsUpdater/**'
       - '.github/workflows/build-kharvox-mods.yml'
       - 'docs/KHARVOX-MODS-STANDALONE.md'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: kharvox-mods-${{ github.ref }}
@@ -32,6 +33,22 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
 
+      - name: Restore portable updater
+        shell: pwsh
+        run: dotnet restore launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj
+
+      - name: Build portable updater EXE
+        shell: pwsh
+        run: dotnet build launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj --configuration Release --no-restore
+
+      - name: Test portable updater without network or live installation
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          if (!(Test-Path $exe)) { throw "Updater executable missing" }
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Portable updater self-test failed: $($test.ExitCode)" }
+
       - name: Verify fresh install and fail-closed attachment consent
         shell: pwsh
         run: |
@@ -47,6 +64,8 @@ jobs:
           $destination = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
           Copy-Item (Join-Path $inputDir "KharvoxMods.exe") $destination
+          $updater = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          Copy-Item $updater $destination
           if (Test-Path (Join-Path $inputDir "KharvoxMods.exe.config")) {
             Copy-Item (Join-Path $inputDir "KharvoxMods.exe.config") $destination
           }
@@ -58,9 +77,41 @@ jobs:
             throw "Standalone package must not contain a patched KHARVOX runtime"
           }
 
+      - name: Build verified public updater release ZIP and checksum
+        shell: pwsh
+        run: |
+          $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
+          $releaseZip = Join-Path $PWD "dist/KHARVOX-Mods-Standalone.zip"
+          $releaseFiles = @("KharvoxMods.exe", "README.md")
+          if (Test-Path (Join-Path $packageDir "KharvoxMods.exe.config")) {
+            $releaseFiles += "KharvoxMods.exe.config"
+          }
+          # Updater EXE is not self-updated while running.
+          $paths = @($releaseFiles | ForEach-Object { Join-Path $packageDir $_ })
+          Compress-Archive -LiteralPath $paths -DestinationPath $releaseZip -CompressionLevel Optimal -Force
+          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseZip).Hash.ToLowerInvariant()
+          "$digest *KHARVOX-Mods-Standalone.zip" |
+            Set-Content -LiteralPath ($releaseZip + ".sha256") -Encoding ascii
+
       - name: Upload KHARVOX Mods standalone preview
         uses: actions/upload-artifact@v4
         with:
           name: KHARVOX-Mods-Standalone-Preview
           path: dist/KHARVOX-Mods-Standalone
           retention-days: 14
+
+      - name: Publish verified ZIP for automatic download
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: kharvox-mods-standalone-preview
+          name: KHARVOX Mods — Standalone Preview
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          body: |
+            Experimental standalone KHARVOX Mods application.
+            The updater can download the latest successful preview directly from this release.
+            This does NOT patch the original KHARVOX or install native gameplay mods.
+          files: |
+            dist/KHARVOX-Mods-Standalone.zip
+            dist/KHARVOX-Mods-Standalone.zip.sha256
