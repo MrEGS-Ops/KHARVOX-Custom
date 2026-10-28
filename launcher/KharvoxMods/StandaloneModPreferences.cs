@@ -15,6 +15,9 @@ internal sealed class StandaloneModPreferences
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
     public int GloryKillHz { get; set; } = 200;
+    // Presentation order only: the bridge ignores this metadata. Enables
+    // original click/drag reorder without changing mod dependencies or timing.
+    public string[] ActiveOrder { get; set; } = Array.Empty<string>();
 
     internal static string DefaultPath =>
         Path.Combine(AppContext.BaseDirectory, "kharvox-mods-bridge.json");
@@ -30,6 +33,7 @@ internal sealed class StandaloneModPreferences
             if (value == null || value.Schema != 1)
                 throw new InvalidDataException("Unknown KHARVOX Mods bridge schema.");
             value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
+            value.ActiveOrder ??= Array.Empty<string>();
             return value;
         }
         catch (Exception ex) when (ex is IOException || ex is InvalidOperationException ||
@@ -44,6 +48,7 @@ internal sealed class StandaloneModPreferences
     {
         path ??= DefaultPath;
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
+        ActiveOrder ??= Array.Empty<string>();
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         Directory.CreateDirectory(directory);
         var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -72,10 +77,14 @@ internal sealed class StandaloneModPreferences
             x.PainsawRipshiftOverdrive = true;
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
+            x.ActiveOrder = new[] { "Hand Focus", "PAINSAW: RIPSHIFT OVERDRIVE" };
             x.Save(path);
             var y = Load(path);
             if (!y.HandFocus || !y.PainsawRipshiftOverdrive ||
-                !y.GloryKillSpeedOverride || y.GloryKillHz != 35)
+                !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
+                y.ActiveOrder.Length != 2 ||
+                y.ActiveOrder[0] != "Hand Focus" ||
+                y.ActiveOrder[1] != "PAINSAW: RIPSHIFT OVERDRIVE")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
