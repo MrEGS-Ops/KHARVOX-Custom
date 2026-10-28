@@ -10,12 +10,12 @@ This is an **experimental standalone shell**, not yet the final independent nati
 - Shows KHARVOX Mods to the **left** of the main KHARVOX window, matching the current two-window orientation and vertical alignment.
 - Synchronizes movement and minimize/restore (best effort; hardware Windows desktop test pending).
 - Saves `settings.json`, `Mods/`, `Logs/`, and `Backups/` **beside `KharvoxMods.exe`**. No AppData data store or scattered settings files.
-- Provides a read-only catalogue using **PAINSAW: RIPSHIFT OVERDRIVE** plus a Dev page with explanations of our own custom overrides.
+- Restores the original **DOOM MODS / VR MODS** bordered two-column layout (44% / 56%), grouped numbered list of all **22 original VR mods**, Glory Kill speed section, and Dev overrides. Native gameplay controls remain inactive until the bridge is implemented.
 
 ## Not yet implemented
-- The original full Custom Mods WinForms control tree has **not been extracted** from the intertwined KHARVOX MainForm. This UI is a standalone preview, not pixel-identical.
+- The exact original KHARVOX Custom Mods WinForms control tree has **not been extracted** from the intertwined `MainForm`; this is a layout-matched independent rebuild. Original complex features such as configuration ratings, resource generation and save management still require separate integration.
 - **No native bridge** or stable ABI yet. The first-run "Attach" prompt only means attach desktop windows.
-- Preview controls are intentionally **not clickable**: no setting is misrepresented as functional.
+- The restored VR/Dev checkbox rows and Glory Kill speed slider are intentionally **disabled** until they control a real native bridge; local Mods-folder browsing and rescan remain usable.
 - No gameplay mod DLLs, DOOM resource mods, automatic installs, or DOOM launch changes are made.
 - No updates to KHARVOX, DOOM, their settings, registry, controller bindings, or the active working project branch.
 
@@ -69,7 +69,7 @@ The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the *
 - The update ZIP is a public preview release asset; no GitHub personal access token is needed.
 
 ## Future separation (not silently installed)
-- Extract the existing Custom Mods UI source into a reusable UI component; replace this preview with the exact existing layout.
+- Gradually reuse or extract original KHARVOX Custom Mods components where maintainable, while retaining the matching standalone two-panel structure.
 - Design and test a versioned native bridge/plugin interface with explicit user permission.
 - Extract independently buildable gameplay DLLs, beginning with PAINSAW: RIPSHIFT OVERDRIVE.
 - Add the Dev gameplay overrides as actual opt-in launch/native configuration switches.
