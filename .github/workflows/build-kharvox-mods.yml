@@ -153,6 +153,16 @@ jobs:
           "$digest *KHARVOX-Mods-Standalone.zip" |
             Set-Content -LiteralPath ($releaseZip + ".sha256") -Encoding ascii
 
+      - name: Create separately verified updater self-refresh package
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          $zip = Join-Path $PWD "dist/KHARVOX-Mods-Updater.zip"
+          Compress-Archive -LiteralPath $exe -DestinationPath $zip -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *KHARVOX-Mods-Updater.zip" |
+            Set-Content -LiteralPath ($zip + ".sha256") -Encoding ascii
+
       - name: Upload KHARVOX Mods standalone preview
         uses: actions/upload-artifact@v4
         with:
@@ -177,3 +187,5 @@ jobs:
             dist/KHARVOX-Mods-Standalone.zip.sha256
             dist/KHARVOX-Mods-NativeBridge.zip
             dist/KHARVOX-Mods-NativeBridge.zip.sha256
+            dist/KHARVOX-Mods-Updater.zip
+            dist/KHARVOX-Mods-Updater.zip.sha256
