@@ -9,7 +9,7 @@ This is an **experimental standalone shell**, not yet the final independent nati
 - Launches the existing KHARVOX launcher automatically, or reuses its already-running process.
 - Shows KHARVOX Mods to the **left** of the main KHARVOX window, matching the current two-window orientation and vertical alignment.
 - Synchronizes movement and minimize/restore (best effort; hardware Windows desktop test pending).
-- Saves its own state under `%LOCALAPPDATA%\KHARVOXMods\settings.json`.
+- Saves `settings.json`, `Mods/`, `Logs/`, and `Backups/` **beside `KharvoxMods.exe`**. No AppData data store or scattered settings files.
 - Provides a read-only catalogue using **PAINSAW: RIPSHIFT OVERDRIVE** plus a Dev page with explanations of our own custom overrides.
 
 ## Not yet implemented
@@ -21,13 +21,25 @@ This is an **experimental standalone shell**, not yet the final independent nati
 
 ## Installation test
 1. Download the `KHARVOX-Mods-Standalone-Preview` artifact from the **KHARVOX Mods Standalone (Experimental)** GitHub workflow.
-2. Extract it to a folder **beside**, not inside, the KHARVOX folder.
+2. Extract it to a **writable** folder **beside**, not inside, the KHARVOX folder (for example, under Documents or Games). Do not put the portable app in a protected `Program Files` folder.
 3. Start `KharvoxMods.exe`. Choose **Yes** to attach desktop windows or **No** to exit the Mods application.
 4. Select the existing `KharvoxLauncher.exe` if it is not found automatically.
 5. Verify KHARVOX opens without launching DOOM; drag/minimize/restore either window.
 6. Close KHARVOX Mods and verify KHARVOX continues independently.
 
 For a command-line smoke test: `KharvoxMods.exe --self-test` returns exit code 0 when state isolation and consent tests pass.
+
+## Portable files and uninstall
+```text
+KHARVOX Mods/
+├── KharvoxMods.exe
+├── settings.json
+├── Mods/
+├── Logs/
+└── Backups/
+```
+
+All files created and owned by this standalone application must stay in its installation folder. To uninstall, close `KharvoxMods.exe` and delete **only** the `KHARVOX Mods` folder. The separate original KHARVOX and DOOM installations are untouched. An earlier experimental preview wrote a settings file to `%LOCALAPPDATA%\\KHARVOXMods`; this portable version does not read, migrate, or create that legacy path. If you used the older preview, you can manually remove its old folder once you no longer need it.
 
 ## Future separation (not silently installed)
 - Extract the existing Custom Mods UI source into a reusable UI component; replace this preview with the exact existing layout.
