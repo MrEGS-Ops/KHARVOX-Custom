@@ -124,8 +124,8 @@ internal sealed partial class ModsForm
     internal static void VerifyOriginalFolderPositioning()
     {
         var launcher = new Rectangle(2200, 70, 515, 900);
-        var mods = new Rectangle(1300, 70, 900, 900);
-        var area = new Rectangle(0, 0, 3200, 1080);
+        var mods = new Rectangle(1450, 70, 750, 900);
+        var area = new Rectangle(1400, 0, 1800, 1080);
         var dock = CalculateOriginalFolderDock(launcher, mods, area);
         if (dock.X != launcher.Right || dock.Y != launcher.Top ||
             dock.Width != 485 || dock.Height != launcher.Height)
