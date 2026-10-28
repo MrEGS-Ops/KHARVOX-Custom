@@ -338,16 +338,21 @@ internal sealed class ModsForm : Form
 
     private void StartUp()
     {
-        if (!_state.ConsentRecorded)
+        // A first-run refusal is an exit, not a saved "run undocked" choice.
+        // Previously declined installs also get this gate on their next launch.
+        if (!_state.ConsentRecorded || !_state.WindowAttachmentApproved)
         {
             var choice = MessageBox.Show(this,
-                "Attach KHARVOX Mods to KHARVOX?\n\n" +
-                "Yes: Dock the windows together.\n" +
-                "No: Keep them separate.",
+                "Attach KHARVOX Mods to KHARVOX?\n\nYes: Attach   No: Exit",
                 "KHARVOX Mods — First install", MessageBoxButtons.YesNo,
                 MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
+            if (choice != DialogResult.Yes)
+            {
+                Close();
+                return;
+            }
             _state.ConsentRecorded = true;
-            _state.WindowAttachmentApproved = choice == DialogResult.Yes;
+            _state.WindowAttachmentApproved = true;
             _state.Save();
         }
         UpdateAttachmentButton();
