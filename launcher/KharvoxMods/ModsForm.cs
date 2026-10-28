@@ -168,6 +168,10 @@ internal sealed partial class ModsForm : Form
             _state.Save();
         }
         UpdateAttachmentButton();
+        // The old updater can only update Mods.exe while it is running.
+        // Once this refreshed app opens, replace the updater EXE after its
+        // process exits. Never pause launcher/game startup for this step.
+        BeginInvoke(new Action(async () => await UpdaterBootstrap.TryRefreshAsync()));
         var discovered = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
         if (discovered == null)
         {
