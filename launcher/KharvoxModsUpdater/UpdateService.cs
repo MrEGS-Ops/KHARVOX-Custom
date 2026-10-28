@@ -125,8 +125,10 @@ internal static class UpdateService
             foreach (var name in names)
             {
                 var dest = Path.Combine(root, name);
-                File.Copy(Path.Combine(stagedDirectory, name), dest, true);
+                // Track before copying so even a partially written file gets
+                // restored if File.Copy throws partway through.
                 replaced.Add(name);
+                File.Copy(Path.Combine(stagedDirectory, name), dest, true);
             }
         }
         catch
@@ -257,6 +259,14 @@ internal static class UpdateService
             if (ParseExpectedHash(new string('a', 64) + " *" + ZipName)
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
+            var sampleRelease = new JavaScriptSerializer().Deserialize<ReleaseInfo>(
+                "{\\"assets\\":[{\\"name\\":\\"" + ZipName +
+                "\\",\\"browser_download_url\\":\\"" + AssetPrefix +
+                "kharvox-mods-standalone-preview/" + ZipName +
+                "\\",\\"size\\":123}]}");
+            if (sampleRelease == null || GetAssetUrl(sampleRelease, ZipName) !=
+                AssetPrefix + "kharvox-mods-standalone-preview/" + ZipName)
+                throw new Exception("Release metadata parsing or origin validation failed.");
             var settingsPath = Path.Combine(root, "settings.json");
             File.WriteAllText(settingsPath, "test-settings-should-stay");
             foreach (var folder in new[] { "Mods", "Logs", "Backups" })
