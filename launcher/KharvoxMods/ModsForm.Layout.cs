@@ -677,6 +677,42 @@ internal sealed partial class ModsForm
             "Original launcher connection, window attachment and KHARVOX selection.");
         right.Controls.Add(connection);
         footer.Controls.Add(right);
+
+        // Original MrEGS emblem from the uploaded Twitch screenshot.
+        // Embedding the cropped original keeps branding portable and avoids
+        // an external file dependency or Windows' blocked-download prompts.
+        try
+        {
+            using (var stream = typeof(ModsForm).Assembly.GetManifestResourceStream(
+                "KharvoxMods.OriginalMrEGSLogo"))
+            {
+                if (stream != null)
+                {
+                    var logo = new PictureBox
+                    {
+                        Size = new Size(34, 34),
+                        BackColor = Color.Black,
+                        SizeMode = PictureBoxSizeMode.Zoom,
+                        Image = new Bitmap(stream),
+                        AccessibleName = "Original MrEGS Twitch watermark",
+                        Cursor = Cursors.Default
+                    };
+                    void CenterLogo() =>
+                        logo.Location = new Point(
+                            Math.Max(0, (footer.ClientSize.Width - logo.Width) / 2),
+                            Math.Max(0, (footer.ClientSize.Height - logo.Height) / 2));
+                    footer.Controls.Add(logo);
+                    footer.SizeChanged += (_, _) => CenterLogo();
+                    CenterLogo();
+                    logo.BringToFront();
+                }
+            }
+        }
+        catch (Exception e) when (e is ArgumentException || e is IOException)
+        {
+            // Branding must never prevent the launcher from opening.
+        }
+
         return footer;
     }
 
