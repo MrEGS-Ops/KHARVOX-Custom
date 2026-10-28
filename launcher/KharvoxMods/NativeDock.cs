@@ -146,6 +146,31 @@ internal static class NativeDock
                 bounds.Width, bounds.Height, NoZOrder | NoActivate);
     }
 
+    // On each fresh Mods launch (including the bridge restart), center the
+    // COMBINED pair as one rectangle in the current monitor's working area.
+    // Do this once; following ticks honour user-initiated dragging instead.
+    internal static (Rectangle Launcher, Rectangle Mods) CalculateCentered(
+        Rectangle launcherBounds, Rectangle workArea, int desiredModsWidth,
+        int visibleSeamOverlap = 8)
+    {
+        if (launcherBounds.Width <= 0 || launcherBounds.Height <= 0 ||
+            workArea.Width <= 0 || workArea.Height <= 0 || desiredModsWidth <= 0)
+            throw new ArgumentOutOfRangeException(nameof(launcherBounds));
+
+        var seam = Math.Max(0, Math.Min(48, visibleSeamOverlap));
+        var launcherWidth = Math.Min(launcherBounds.Width, workArea.Width);
+        var launcherHeight = Math.Min(launcherBounds.Height, workArea.Height);
+        var modsWidth = Math.Min(desiredModsWidth,
+            Math.Max(1, workArea.Width - launcherWidth + seam));
+        var combinedWidth = launcherWidth + modsWidth - seam;
+        var x = workArea.Left + (workArea.Width - combinedWidth) / 2;
+        var y = workArea.Top + (workArea.Height - launcherHeight) / 2;
+        return (
+            new Rectangle(x + modsWidth - seam, y, launcherWidth, launcherHeight),
+            new Rectangle(x, y, modsWidth, launcherHeight)
+        );
+    }
+
     // Existing KHARVOX Custom Mods docks to the LEFT, with matching top/bottom.
     // Keep launcher width intact and shrink the companion to fit smaller screens.
     internal static (Rectangle Launcher, Rectangle Mods) Calculate(
