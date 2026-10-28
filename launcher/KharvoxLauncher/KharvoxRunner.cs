@@ -275,6 +275,12 @@ internal static class KharvoxRunner
         var loaderLogPath = RuntimeStorage.LogPath("KHARVOX-vulkan-loader-v1.0.log");
         var gameExe = Path.Combine(options.GameDirectory ?? string.Empty, "DOOMx64vk.exe");
         var customMods = CustomModSettingsStore.Load();
+        // Custom native mod controls come from the portable sidecar only
+        // when KHARVOX was started by a bridge-aware Mods application.
+        // No local bridge file = original KHARVOX selections unchanged.
+        var standaloneMods = StandaloneModsBridge.LoadFromEnvironment();
+        standaloneMods?.ApplyTo(customMods);
+
         if (!File.Exists(gameExe)) throw new FileNotFoundException(
             "Select the DOOM (2016) installation folder containing DOOMx64vk.exe.", gameExe);
 
@@ -564,8 +570,9 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_LEFT_HAND_SWAP"] = options.LeftHandSwapMode;
             psi.EnvironmentVariables["KHARVOX_SWAP_JUMP_CROUCH"] = options.SwapJumpCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
-            psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = options.WeaponWheelRemapEnabled ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = options.WeaponWheelRemapEnabled ? "1" : "0";
+            var wheelRemap = standaloneMods?.WeaponWheelRemap ?? options.WeaponWheelRemapEnabled;
+            psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = wheelRemap ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] =
                 "10"; // Three presets own speed; disable legacy shared sync speed
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
@@ -691,7 +698,7 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
-                " weaponWheelRemap=" + (options.WeaponWheelRemapEnabled ? "enabled" : "native") +
+                " weaponWheelRemap=" + ((standaloneMods?.WeaponWheelRemap ?? options.WeaponWheelRemapEnabled) ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (options.VirtualGunstock ? "enabled" : "disabled") +
