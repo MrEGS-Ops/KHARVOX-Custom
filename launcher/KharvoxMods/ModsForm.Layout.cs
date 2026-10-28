@@ -18,6 +18,50 @@ internal sealed partial class ModsForm
     private readonly FlowLayoutPanel _detectedModRows = new FlowLayoutPanel();
     private readonly Label _localModsMessage = new Label();
     private const int LegacyVrModCount = 22;
+    private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
+
+    private static bool IsConfirmedMod(string title) =>
+        title == "Weapon Wheel Button Remap" ||
+        title == "Hand Focus" ||
+        title == "Physical Crouch" ||
+        title == "PAINSAW: RIPSHIFT OVERDRIVE";
+
+    private bool CurrentSelection(string name) => name switch
+    {
+        "Weapon Wheel Button Remap" => _modPrefs.WeaponWheelRemap,
+        "Hand Focus" => _modPrefs.HandFocus,
+        "Physical Crouch" => _modPrefs.PhysicalCrouch,
+        "PAINSAW: RIPSHIFT OVERDRIVE" => _modPrefs.PainsawRipshiftOverdrive,
+        _ => false
+    };
+
+    private void ApplySelection(string name, bool value)
+    {
+        switch (name)
+        {
+            case "Weapon Wheel Button Remap": _modPrefs.WeaponWheelRemap = value; break;
+            case "Hand Focus": _modPrefs.HandFocus = value; break;
+            case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
+            case "PAINSAW: RIPSHIFT OVERDRIVE":
+                _modPrefs.PainsawRipshiftOverdrive = value; break;
+            default: return;
+        }
+        SaveModSelections();
+    }
+
+    private void SaveModSelections()
+    {
+        try
+        {
+            _modPrefs.Save();
+            SetStatus("Selections saved locally — requires bridge-compatible KHARVOX native runtime.");
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        {
+            MessageBox.Show(this, "Cannot save portable mod settings: " + ex.Message,
+                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
 
     private sealed class PreviewMod
     {
@@ -482,13 +526,16 @@ internal sealed partial class ModsForm
             "Standalone 30–240 Hz Glory Kill speed control. Not connected to the native bridge.",
             "glory-kill-speed-preview");
         check.Dock = DockStyle.Fill;
+        check.Enabled = true;
+        check.Checked = _modPrefs.GloryKillSpeedOverride;
         panel.Controls.Add(check, 0, 1);
         var slider = new TrackBar
         {
-            Minimum = 30, Maximum = 240, Value = 200,
+            Minimum = 30, Maximum = 240,
+            Value = 270 - Math.Max(30, Math.Min(240, _modPrefs.GloryKillHz)),
             Dock = DockStyle.Fill,
             TickStyle = TickStyle.None,
-            Enabled = false,
+            Enabled = check.Checked,
             Margin = new Padding(5, 3, 5, 3)
         };
         _tooltips.SetToolTip(slider,
@@ -496,7 +543,23 @@ internal sealed partial class ModsForm
         panel.Controls.Add(slider, 1, 1);
         var speedValue = MakeLabel("Native");
         speedValue.ForeColor = Color.Gainsboro;
+        speedValue.Text = check.Checked ? (270 - slider.Value) + " Hz" : "Native";
         panel.Controls.Add(speedValue, 2, 1);
+        check.CheckedChanged += (_, _) =>
+        {
+            _modPrefs.GloryKillSpeedOverride = check.Checked;
+            slider.Enabled = check.Checked;
+            speedValue.Text = check.Checked ? (270 - slider.Value) + " Hz" : "Native";
+            SaveModSelections();
+        };
+        slider.ValueChanged += (_, _) =>
+        {
+            _modPrefs.GloryKillHz = 270 - slider.Value;
+            speedValue.Text = check.Checked ? _modPrefs.GloryKillHz + " Hz" : "Native";
+        };
+        slider.MouseUp += (_, _) => SaveModSelections();
+        slider.KeyUp += (_, _) => SaveModSelections();
+        slider.Leave += (_, _) => SaveModSelections();
         AppendFixedRow(list, panel, 78);
     }
 
@@ -538,10 +601,16 @@ internal sealed partial class ModsForm
         };
         var check = MakePreviewCheck(mod.Title,
             mod.Help + Environment.NewLine +
-            (mod.WasAvailable ? "Previously available in the original launcher."
-                              : "Previously paused in the original launcher.") +
-            Environment.NewLine + "Native bridge not connected; not enabled.",
+            (IsConfirmedMod(mod.Title)
+                ? "Confirmed gameplay feature. Local selection is saved; requires the bridge-aware custom KHARVOX launcher and native layer. Restart DOOM."
+                : "Paused until independently verified and integrated."),
             "original-vr-mod");
+        if (IsConfirmedMod(mod.Title))
+        {
+            check.Enabled = true;
+            check.Checked = CurrentSelection(mod.Title);
+            check.CheckedChanged += (_, _) => ApplySelection(mod.Title, check.Checked);
+        }
         check.Dock = DockStyle.Fill;
         check.Margin = new Padding(2, 0, 0, 0);
         var info = MakeHelpLabel(mod.Help);
@@ -742,8 +811,10 @@ internal sealed partial class ModsForm
             var vr = form.Controls.Descendants().OfType<CheckBox>()
                 .Where(check => string.Equals(check.Tag as string, "original-vr-mod",
                     StringComparison.Ordinal)).ToArray();
-            if (vr.Length != LegacyVrModCount || vr.Any(check => check.Enabled))
-                throw new InvalidDataException("Legacy mod row count or safe disabled state mismatch.");
+            if (vr.Length != LegacyVrModCount ||
+                vr.Count(check => check.Enabled) != 4 ||
+                vr.Any(check => check.Enabled && !IsConfirmedMod(check.Text)))
+                throw new InvalidDataException("Only four confirmed numbered mod rows may be selectable.");
             var dev = form.Controls.Descendants().OfType<CheckBox>()
                 .Count(check => string.Equals(check.Tag as string, "dev-override",
                     StringComparison.Ordinal));
