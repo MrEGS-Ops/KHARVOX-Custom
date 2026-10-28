@@ -428,6 +428,20 @@ internal sealed partial class ModsForm
     {
         if (!VerifyOriginalLayoutMetadata())
             throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 22 mod rows.");
+        ValidateActiveVrPolicies();
+        // The DOOM resource-mod panel and its standalone companion sources
+        // must not occur in the compiled application, even as hidden UI.
+        var assembly = typeof(ModsForm).Assembly;
+        var forbidden = new[] { "NexusModsPopup", "ModDropWindow",
+            "PortableDoomUserMods" };
+        if (assembly.GetTypes().Any(type => forbidden.Contains(type.Name)) ||
+            typeof(ModsForm).GetMethod("BuildOriginalDoomPanel",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance) != null ||
+            typeof(ModsForm).GetMethod("ScanLocalMods",
+                System.Reflection.BindingFlags.NonPublic |
+                System.Reflection.BindingFlags.Instance) != null)
+            throw new InvalidDataException("DOOM resource-mod code is present in VR-only executable.");
         using (var form = new ModsForm())
         {
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
