@@ -1,76 +1,53 @@
-# KHARVOX Mods — Standalone Application / Separation Phase 1
+# KHARVOX Mods — Portable Standalone Preview
 
-This is an **experimental standalone shell**, not yet the final independent native gameplay mod system.
+## What this build does
+- Runs **KharvoxMods.exe** independently, launches the normal KHARVOX launcher, and docks both Windows desktop windows at their **visible** borders. Attempts a native owned-window relationship so focusing either restores both to the foreground as a group, without pinning them TopMost.
+- Uses the original two-panel **DOOM MODS / VR MODS** layout, with all 22 numbered legacy mod entries. Only the four verified numbered mods plus the separate **Glory Kill Speed Override** are selectable.
+- Those five configurable mods are: **Weapon Wheel Button Remap, Hand Focus, Physical Crouch, PAINSAW: RIPSHIFT OVERDRIVE**, and **Glory Kill Speed Override** (30–240 Hz; right is faster).
+- Stores selections as `kharvox-mods-bridge.json` **beside the Mods EXE**, not in AppData. Only a KHARVOX launcher built with the optional portable native bridge understands this file. **Stock Cactus v1.1.1 cannot apply these custom native features**, so selections alone do not enable gameplay mods.
+- Restores Nexus Mods to the original Windows-default-browser **new-window** behaviour, with the local Mod Folder available separately.
+- Uses the user-supplied original circular **MrEGS** image (cropped and embedded) as the app icon and bottom-centre watermark.
+- Displays the GitHub Actions **build ID in the application title bar**.
 
-## What phase 1 implements
-- Builds a separate `KharvoxMods.exe` (Windows .NET Framework 4.8 x64) without recompiling KHARVOX native Vulkan/OpenXR.
-- On first start, asks whether to attach KHARVOX Mods to KHARVOX. **Yes** attaches; **No** closes KHARVOX Mods without starting KHARVOX or saving a refusal. The prompt reappears next time.
-- Locates `KharvoxLauncher.exe` in typical sibling folders or lets the user pick it.
-- Launches the existing KHARVOX launcher automatically, or reuses its already-running process.
-- Shows KHARVOX Mods to the **left** of the main KHARVOX window, matching the current two-window orientation and vertical alignment.
-- Synchronizes movement and minimize/restore (best effort; hardware Windows desktop test pending).
-- Saves `settings.json`, `Mods/`, `Logs/`, and `Backups/` **beside `KharvoxMods.exe`**. No AppData data store or scattered settings files.
-- Restores the original **DOOM MODS / VR MODS** bordered two-column layout (44% / 56%), grouped numbered list of all **22 original VR mods**, Glory Kill speed section, and Dev overrides. Native gameplay controls remain inactive until the bridge is implemented.
+## Install the game-enabled native bridge (optional)
+1. Run `KharvoxMods.exe` and select **Yes** to attach the desktop windows; **No** exits.
+2. Open **Connection → Install / Update Native Bridge…** and approve the separate native-installation prompt.
+3. This downloads the SHA-256-verified native package pinned to known-good native build **#640**, replaces its launcher with the bridge-aware one, and extracts everything into `KHARVOX Mods/NativeBridge/`. **It does not overwrite, change or delete the original KHARVOX installation.**
+4. If the old KHARVOX is running, close that launcher. Then use **Connection → Start / Find KHARVOX** to start the installed bridge-aware copy.
+5. Check the five selections in VR MODS. They are passed to the bridge-aware launcher on the next DOOM launch. Testing actual headset behaviour is still required; the Windows build check does not prove mod compatibility in-game.
 
-## Not yet implemented
-- The exact original KHARVOX Custom Mods WinForms control tree has **not been extracted** from the intertwined `MainForm`; this is a layout-matched independent rebuild. Original complex features such as configuration ratings, resource generation and save management still require separate integration.
-- **No native bridge** or stable ABI yet. The first-run "Attach" prompt only means attach desktop windows.
-- The restored VR/Dev checkbox rows and Glory Kill speed slider are intentionally **disabled** until they control a real native bridge; local Mods-folder browsing and rescan remain usable.
-- No gameplay mod DLLs, DOOM resource mods, automatic installs, or DOOM launch changes are made.
-- No updates to KHARVOX, DOOM, their settings, registry, controller bindings, or the active working project branch.
+The bridge-aware KHARVOX launcher reads the separate configuration file using an inherited process environment variable and otherwise preserves normal launch behaviour. The original custom launcher has its own source and the original Cactus executable is not patched.
 
-## Installation test
-1. Download the `KHARVOX-Mods-Standalone-Preview` artifact from the **KHARVOX Mods Standalone (Experimental)** GitHub workflow **once**. It includes `KharvoxModsUpdater.exe` for subsequent updates.
-2. Extract it to a **writable** folder **beside**, not inside, the KHARVOX folder (for example, under Documents or Games). Do not put the portable app in a protected `Program Files` folder.
-3. Start `KharvoxMods.exe`. Choose **Yes** to attach desktop windows or **No** to exit the Mods application.
-4. Select the existing `KharvoxLauncher.exe` if it is not found automatically.
-5. Verify KHARVOX opens without launching DOOM; drag/minimize/restore either window.
-6. Close KHARVOX Mods and verify KHARVOX continues independently.
+## One-click updates and build confirmation
+- Run `KharvoxModsUpdater.exe` beside `KharvoxMods.exe`.
+- It checks the current public preview Release asset and SHA-256 checksum, compares to the installed update state, and displays **New update found — Build #…** with a **Yes/No confirmation** before downloading.
+- If already current, it says so rather than silently reinstalling. New builds show their **build ID in the title bar**.
+- The newer Mods EXE **automatically refreshes the updater EXE** from a separately verified release asset after the old updater process has exited; no manual replacement should be necessary after this initial build.
+- It never deletes `settings.json`, `kharvox-mods-bridge.json`, `Mods/`, `Logs/`, `Backups/`, or `NativeBridge/`.
+- NativeBridge updates are opt-in through **Connection**, not silently installed through the ordinary app updater.
+- Browser-downloaded initial unsigned binaries may still trigger Windows SmartScreen; this feature does not disable security checks.
 
-For a command-line smoke test: `KharvoxMods.exe --self-test` returns exit code 0 when state isolation and consent tests pass.
-
-## Portable files and uninstall
+## Portable folder layout
 ```text
 KHARVOX Mods/
 ├── KharvoxMods.exe
 ├── KharvoxModsUpdater.exe
+├── build-info.txt
 ├── settings.json
-├── updater-state.txt (created after successful update)
-├── UpdateCache/ (temporary downloads)
+├── kharvox-mods-bridge.json
+├── NativeBridge/                 # optional, verified local KHARVOX copy
 ├── Mods/
 ├── Logs/
-└── Backups/
+├── Backups/
+└── UpdateCache/
 ```
 
-All files created and owned by this standalone application must stay in its installation folder. To uninstall, close `KharvoxMods.exe` and delete **only** the `KHARVOX Mods` folder. The separate original KHARVOX and DOOM installations are untouched. An earlier experimental preview wrote a settings file to `%LOCALAPPDATA%\\KHARVOXMods`; this portable version does not read, migrate, or create that legacy path. If you used the older preview, you can manually remove its old folder once you no longer need it.
+Put the folder somewhere writable outside Program Files. To remove this installation, close the application and delete the **KHARVOX Mods** folder. Files created by the separate original Cactus launcher are not managed or deleted by this utility.
 
-## One-click portable updates
+## Still pending
+- Real headset verification of the integrated native bridge, controls and shared window foreground behaviour.
+- Full re-use of the old Custom Mods internals (configuration ratings, DOOM resource generation and save-management controls).
+- A stable plugin ABI that would allow each gameplay DLL to be replaced independently without updating the core native KHARVOX runtime.
+- Live Dev override checkboxes and validation of retired experimental mods.
 
-The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the **same writable folder** as `KharvoxMods.exe` to check the latest successful preview published at the project's GitHub Releases page. It downloads a release ZIP, verifies its SHA-256 digest against a separately published manifest, safely extracts only allowlisted application files, and opens KHARVOX Mods.
-
-- **Replaces only:** `KharvoxMods.exe`, the optional `KharvoxMods.exe.config`, and `README.md`.
-- **Preserves:** `settings.json`, all mod files, `Mods/`, `Logs/`, `Backups/`, and all unrecognised files. A copy of the previous executable is saved under `Backups/Updater/previous/`.
-- Doesn't overwrite the updater while it is running. Updates are downloaded into `UpdateCache/` inside the application's folder, then the staged update directory is deleted.
-- If KHARVOX Mods is running, close **KHARVOX Mods**, not the separate original KHARVOX launcher, before applying an update. The updater will refuse to replace an in-use executable.
-- A failed download, unexpected archive entry or checksum mismatch **does not replace the application**.
-- Windows downloads via browsers can apply a Mark-of-the-Web warning to the **initial downloaded updater**. Further updates are fetched by the updater rather than manually extracted from browser downloads. This does **not** disable SmartScreen, guarantee that unsigned binaries won't be warned about, or bypass Windows security.
-- The updater release is a public preview, not the GitHub Actions artifacts endpoint; no personal GitHub access token is required.
-
-## One-click portable updates
-
-The standalone package also includes `KharvoxModsUpdater.exe`. Run it from the **same writable folder** as `KharvoxMods.exe` to check the latest successful preview published at the project's GitHub Releases page. It downloads a release ZIP, verifies its SHA-256 digest against a separately published manifest, safely extracts only allowlisted application files, and opens KHARVOX Mods.
-
-- **Replaces only:** `KharvoxMods.exe`, the optional `KharvoxMods.exe.config`, and `README.md`.
-- **Preserves:** `settings.json`, `Mods/`, `Logs/`, `Backups/`, and all unrecognised files. Previous executable backup lives in `Backups/Updater/previous/`.
-- Doesn't overwrite the updater while it is running. Downloads are staged under `UpdateCache/` inside the app's folder and the stage directory is removed afterwards.
-- If KHARVOX Mods is running, close **KHARVOX Mods**, not the original KHARVOX launcher, before updating. The updater refuses to replace an in-use executable.
-- A failed download, unexpected archive file or checksum mismatch **does not replace the application**.
-- Windows may mark the **initial browser-downloaded updater** as coming from the Internet. Later updates are fetched by the updater instead of manually extracted browser downloads. This does **not** disable SmartScreen or guarantee unsigned executables will never prompt.
-- The update ZIP is a public preview release asset; no GitHub personal access token is needed.
-
-## Future separation (not silently installed)
-- Gradually reuse or extract original KHARVOX Custom Mods components where maintainable, while retaining the matching standalone two-panel structure.
-- Design and test a versioned native bridge/plugin interface with explicit user permission.
-- Extract independently buildable gameplay DLLs, beginning with PAINSAW: RIPSHIFT OVERDRIVE.
-- Add the Dev gameplay overrides as actual opt-in launch/native configuration switches.
-- Preserve compatibility by checking the exact KHARVOX version and providing clean removal.
+The original functioning custom native source branch remains untouched. The native bundle is a **separate, explicit local install**, not a stealth patch.
