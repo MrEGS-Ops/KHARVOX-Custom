@@ -195,6 +195,7 @@ internal sealed partial class ModsForm : Form
             var message = await NativeBridgeInstaller.InstallAsync(SetStatus);
             _state.KharvoxLauncherPath = NativeBridgeInstaller.TargetLauncher;
             _state.Save();
+            RefreshBridgeState();
             SetStatus("Native bridge installed. Five confirmed mod selections available.");
             if (_launcher != null && !_launcher.HasExited)
             {
