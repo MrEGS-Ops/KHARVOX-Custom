@@ -41,6 +41,25 @@ internal static class NativeDock
         int attribute, out Rect rectangle, int size);
 
     private const uint GaRoot = 2;
+    // Use Windows' real popup owner relationship to keep the two independent
+    // processes in the same Z-order group. No injection or executable patch.
+    private const int GwlHwndParent = -8;
+    [DllImport("user32.dll", EntryPoint = "SetWindowLongPtr", SetLastError = true)]
+    private static extern IntPtr SetWindowLongPtr(IntPtr window, int index, IntPtr newValue);
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr", SetLastError = true)]
+    private static extern IntPtr GetWindowLongPtr(IntPtr window, int index);
+    internal static bool SetOwner(IntPtr mods, IntPtr launcher)
+    {
+        if (mods == IntPtr.Zero || !IsWindow(mods) ||
+            (launcher != IntPtr.Zero && !IsWindow(launcher))) return false;
+        try
+        {
+            SetWindowLongPtr(mods, GwlHwndParent, launcher);
+            return GetWindowLongPtr(mods, GwlHwndParent) == launcher;
+        }
+        catch (EntryPointNotFoundException) { return false; }
+    }
+
     private const int DwmwaExtendedFrameBounds = 9;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
