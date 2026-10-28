@@ -19,7 +19,7 @@
     <Version>1.1.1</Version>
     <FileVersion>1.1.1.1114</FileVersion>
     <InformationalVersion>1.1.1</InformationalVersion>
-    <ApplicationIcon>..\..\assets\branding\kharvox.ico</ApplicationIcon>
+    <ApplicationIcon>..\KharvoxMods\mregs.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
