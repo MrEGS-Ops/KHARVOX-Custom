@@ -88,6 +88,45 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj --configuration Release --no-restore
 
+      - name: Verify original MrEGS icon is identical in all three EXEs
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $sourceSha = (git hash-object launcher/KharvoxMods/mregs-logo.png).Trim()
+          if ($sourceSha -ne "e0a99d5bbed67f1d836017cae953950e9fb5604a") {
+            throw "MrEGS icon source no longer matches the user's approved image"
+          }
+          $exePaths = @(
+            "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe",
+            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe",
+            "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          )
+          $basePixels = $null
+          foreach ($path in $exePaths) {
+            $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $PWD $path))
+            if ($null -eq $icon) { throw "Missing application icon: $path" }
+            try {
+              $bitmap = $icon.ToBitmap()
+              try {
+                $pixels = @()
+                $red = 0
+                for ($y=0; $y -lt $bitmap.Height; $y++) {
+                  for ($x=0; $x -lt $bitmap.Width; $x++) {
+                    $color = $bitmap.GetPixel($x,$y)
+                    $pixels += $color.ToArgb()
+                    if ($color.R -gt 130 -and $color.R -gt ($color.G * 1.6) -and $color.R -gt ($color.B * 1.4)) { $red++ }
+                  }
+                }
+                if ($red -lt 1) { throw "MrEGS logo's red accent missing: $path" }
+                if ($null -eq $basePixels) { $basePixels = $pixels }
+                elseif (-not ($basePixels.Length -eq $pixels.Length -and
+                  ((Compare-Object -ReferenceObject $basePixels -DifferenceObject $pixels -SyncWindow 0).Count -eq 0))) {
+                  throw "Executable icons do not match the same MrEGS artwork: $path"
+                }
+              } finally { $bitmap.Dispose() }
+            } finally { $icon.Dispose() }
+          }
+
       - name: Test portable updater without network or live installation
         shell: pwsh
         run: |
