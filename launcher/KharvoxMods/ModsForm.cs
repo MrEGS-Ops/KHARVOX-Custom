@@ -35,7 +35,7 @@ internal sealed partial class ModsForm : Form
 
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
-    private const int DesiredModsWidth = 1180;
+    private const int DesiredModsWidth = 850; // VR-only single-column window
 
     private static string EmbeddedBuildId()
     {
@@ -66,7 +66,7 @@ internal sealed partial class ModsForm : Form
     {
         Text = "KHARVOX Custom Mods — " + BuildLabel();
         ClientSize = new Size(DesiredModsWidth, 600);
-        MinimumSize = new Size(890, 530);
+        MinimumSize = new Size(735, 530);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
