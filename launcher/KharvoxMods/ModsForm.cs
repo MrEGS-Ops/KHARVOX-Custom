@@ -29,6 +29,7 @@ internal sealed partial class ModsForm : Form
     private bool _lastLauncherMinimized;
     private bool _bootstrapped;
     private IntPtr _lastDockForeground;
+    private IntPtr _ownerLauncher;
 
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
@@ -58,6 +59,8 @@ internal sealed partial class ModsForm : Form
         };
         FormClosed += (_, _) =>
         {
+            if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
+                NativeDock.SetOwner(Handle, IntPtr.Zero);
             _dockTimer.Stop();
             _dockTimer.Dispose();
             _launcher?.Dispose(); // Never terminate the independent KHARVOX process.
@@ -121,6 +124,9 @@ internal sealed partial class ModsForm : Form
             _dockTimer.Stop();
             _launcher?.Dispose();
             _launcher = null;
+            if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
+                NativeDock.SetOwner(Handle, IntPtr.Zero);
+            _ownerLauncher = IntPtr.Zero;
             _launcherWindow = IntPtr.Zero;
             _lastDockForeground = IntPtr.Zero;
             _lastLauncherBounds = Rectangle.Empty;
@@ -215,6 +221,11 @@ internal sealed partial class ModsForm : Form
         }
         _state.ConsentRecorded = true;
         _state.Save();
+        if (!_state.WindowAttachmentApproved && _ownerLauncher != IntPtr.Zero)
+        {
+            NativeDock.SetOwner(Handle, IntPtr.Zero);
+            _ownerLauncher = IntPtr.Zero;
+        }
         _lastLauncherBounds = Rectangle.Empty;
         _lastModsBounds = Rectangle.Empty;
         _lastDockForeground = IntPtr.Zero;
@@ -292,9 +303,19 @@ internal sealed partial class ModsForm : Form
             }
             if (!_state.WindowAttachmentApproved)
             {
+                if (_ownerLauncher != IntPtr.Zero)
+                {
+                    NativeDock.SetOwner(Handle, IntPtr.Zero);
+                    _ownerLauncher = IntPtr.Zero;
+                }
                 _lastDockForeground = IntPtr.Zero;
                 SetStatus("KHARVOX running independently — docking disabled.");
                 return;
+            }
+            if (_ownerLauncher != handle)
+            {
+                if (NativeDock.SetOwner(Handle, handle))
+                    _ownerLauncher = handle;
             }
             if (NativeDock.IsIconic(handle))
             {
