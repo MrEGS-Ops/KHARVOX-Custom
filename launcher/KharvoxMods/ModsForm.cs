@@ -35,9 +35,21 @@ internal sealed partial class ModsForm : Form
     private static readonly Color Foreground = Color.Gainsboro;
     private const int DesiredModsWidth = 1180;
 
+    private static string BuildLabel()
+    {
+        try
+        {
+            var path = Path.Combine(AppContext.BaseDirectory, "build-info.txt");
+            if (File.Exists(path) && long.TryParse(File.ReadAllText(path).Trim(), out var id)
+                && id > 0) return "Build #" + id;
+        }
+        catch (IOException) { }
+        return "Development";
+    }
+
     internal ModsForm()
     {
-        Text = "KHARVOX Custom Mods";
+        Text = "KHARVOX Custom Mods — " + BuildLabel();
         ClientSize = new Size(DesiredModsWidth, 600);
         MinimumSize = new Size(890, 530);
         FormBorderStyle = FormBorderStyle.FixedSingle;
