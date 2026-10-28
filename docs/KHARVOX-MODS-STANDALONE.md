@@ -6,7 +6,9 @@
 - Those five configurable mods are: **Weapon Wheel Button Remap, Hand Focus, Physical Crouch, PAINSAW: RIPSHIFT OVERDRIVE**, and **Glory Kill Speed Override** (30–240 Hz; right is faster).
 - Stores selections as `kharvox-mods-bridge.json` **beside the Mods EXE**, not in AppData. Only a KHARVOX launcher built with the optional portable native bridge understands this file. **Stock Cactus v1.1.1 cannot apply these custom native features**, so selections alone do not enable gameplay mods.
 - Restores Nexus Mods to the original Windows-default-browser **new-window** behaviour, with the local Mod Folder available separately.
-- Uses the user-supplied original circular **MrEGS** image (cropped and embedded) as the app icon and bottom-centre watermark.
+- Uses the user-supplied original circular **MrEGS** image (cropped and embedded) as the icon for **both KharvoxMods.exe and KharvoxModsUpdater.exe**, and as the bottom-centre watermark.
+- On every fresh Mods launch, including automatic bridge-install restart, places the **combined two-window group at screen centre**, then retains the original linked drag/focus/minimise behaviour.
+- Restores the original custom **KHARVOX // MODS FOLDER** explorer: dark title bar, ZIP drag/drop import, clipboard copy/paste, delete, reorder, Refresh and Close. It docks to the side of the linked pair using the original left/right available-space policy and follows the pair when dragged. It browses the portable app's local `Mods/` directory, not AppData or an unrelated Windows Explorer instance.
 - Displays the GitHub Actions **build ID in the application title bar**.
 
 ## Install the game-enabled native bridge (optional)
