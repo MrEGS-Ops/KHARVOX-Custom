@@ -159,9 +159,7 @@ internal static class UpdaterBootstrap
                 finally { try { Directory.Delete(staging, true); } catch { } }
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException || ex is IOException ||
-            ex is UnauthorizedAccessException || ex is InvalidDataException ||
-            ex is InvalidOperationException || ex is ArgumentException)
+        catch (Exception ex)
         {
             // A failed updater refresh must never interrupt KHARVOX startup.
             try
