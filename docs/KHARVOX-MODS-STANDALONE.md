@@ -1,35 +1,26 @@
-# KHARVOX Mods — Portable Standalone Preview
+# KHARVOX Mods — VR-only portable standalone preview
 
-## What this build does
-- Runs **KharvoxMods.exe** independently, launches the normal KHARVOX launcher, and docks both Windows desktop windows at their **visible** borders. Uses a native owned-window relationship so focusing either raises both without pinning them TopMost. **Clicking X on either attached window closes the linked pair** (the game process is not terminated).
-- Uses the original two-panel **DOOM MODS / VR MODS** layout, with all 22 numbered legacy mod entries. Only the four verified numbered mods plus the separate **Glory Kill Speed Override** are selectable.
-- Those five configurable mods are: **Weapon Wheel Button Remap, Hand Focus, Physical Crouch, PAINSAW: RIPSHIFT OVERDRIVE**, and **Glory Kill Speed Override** (30–240 Hz; right is faster).
-- Stores selections as `kharvox-mods-bridge.json` **beside the Mods EXE**, not in AppData. Only a KHARVOX launcher built with the optional portable native bridge understands this file. **Stock Cactus v1.1.1 cannot apply these custom native features**, so selections alone do not enable gameplay mods.
-- Restores Nexus Mods to the original Windows-default-browser **new-window** behaviour, with the local Mod Folder available separately.
-- Uses the user-supplied original circular **MrEGS** image (cropped and embedded) as the icon for **both KharvoxMods.exe and KharvoxModsUpdater.exe**, and as the bottom-centre watermark.
-- On every fresh Mods launch, including automatic bridge-install restart, places the **combined two-window group at screen centre**, then retains the original linked drag/focus/minimise behaviour.
-- Restores the original custom **KHARVOX // MODS FOLDER** explorer: dark title bar, ZIP drag/drop import, clipboard copy/paste, delete, reorder, Refresh and Close. It docks to the side of the linked pair using the original left/right available-space policy and follows the pair when dragged. It browses the portable app's local `Mods/` directory, not AppData or an unrelated Windows Explorer instance.
-- Displays the GitHub Actions **build ID in the application title bar**.
+## In this build
+- The compiled standalone **KharvoxMods.exe** is **VR MODS ONLY**. It has one VR panel with all 22 original VR mod entries, four verified selectable checkboxes, plus a separate Glory Kill speed override. The window is a narrower 850 px, centered alongside the launcher on every fresh start or automatic restart.
+- **ACTIVE MODS** is pinned at the top. Checking one of the five supported VR mod controls moves it there immediately; unchecking moves it back to its original category. Active mods support a drag grip, drop targets, right-click Move Up/Down/Top/Bottom, Undo/Reset display order, and clickable dependency information. Order is saved to the local bridge-settings JSON; it controls **presentation**, not runtime execution order.
+- The five selectable VR mods are **Weapon Wheel Button Remap**, **Hand Focus**, **Physical Crouch**, **PAINSAW: RIPSHIFT OVERDRIVE**, and **Glory Kill Speed Override**. All other original entries remain visible but disabled until confirmed. Original dependencies for postponed features are displayed without enabling those features.
+- The Glory Kill slider is **165 px wide**, appears **only when its checkbox is checked**, and ranges from 240 Hz (slower) to 30 Hz (faster). It affects Glory Kills only.
+- The original **DOOM resource mods, USER MODS panel, Nexus browser, ZIP explorer and folder-ordering code are not compiled into this Mods EXE**. Their source is preserved on the development branch: the archived original layout is in `ArchivedDoomMods.Parked.cs`, and the separate Nexus/folder sources are explicitly excluded by `KharvoxMods.csproj`. They can be restored later without reimplementing them.
+- The original MrEGS logo is the icon on both standalone EXEs and the centered footer watermark. The GitHub build number appears in the title.
+- The two linked desktop windows move, minimize, raise, and close together without making either always-on-top. The VR-only window docks on the left; the group is centered at launch.
 
-## Install the game-enabled native bridge (optional)
-1. Run `KharvoxMods.exe` and select **Yes** to attach the desktop windows; **No** exits.
-2. Click **Install Bridge** beside the **NATIVE BRIDGE NOT INSTALLED** message in VR MODS and approve the separate native-installation prompt. The existing **Connection → Install / Update Native Bridge…** menu remains available.
-3. This downloads the SHA-256-verified native package pinned to known-good native build **#640**, replaces its launcher with the bridge-aware one, and extracts everything into `KHARVOX Mods/NativeBridge/`. **It does not overwrite, change or delete the original KHARVOX installation.**
-4. After successful installation, **KHARVOX Mods automatically closes the old linked windows and reopens itself with the new mod-enabled launcher**. No manual restart is necessary. If the old launcher refuses to close, the app reports the problem rather than starting a duplicate.
-5. Check the five selections in VR MODS. They are passed to the bridge-aware launcher on the next DOOM launch. Testing actual headset behaviour is still required; the Windows build check does not prove mod compatibility in-game.
+## VR native bridge
+- The VR mod selections are stored locally in `kharvox-mods-bridge.json`. The optional bridge-aware KHARVOX launcher reads them on the next DOOM launch. Stock KHARVOX does not consume the bridge settings.
+- Click **Install Bridge** beside the status warning, approve the optional installation, and the application will automatically close the old linked pair and reopen using the new bridge-aware launcher. It extracts to `NativeBridge/` under the standalone folder, leaving the original KHARVOX installation untouched.
+- **The separate NativeBridge package still contains the existing full KHARVOX game runtime.** VR-only refers to **KharvoxMods.exe** and its UI/compiled code; it does not mean the underlying KHARVOX runtime has been stripped of all its existing DOOM game integration.
+- Actual headset behavior still needs verification after build tests pass.
 
-The bridge-aware KHARVOX launcher reads the separate configuration file using an inherited process environment variable and otherwise preserves normal launch behaviour. The original custom launcher has its own source and the original Cactus executable is not patched.
+## Updating
+- Close the app and run `KharvoxModsUpdater.exe`. It reports when it finds a newer build and asks for confirmation. The new Mods EXE refreshes the updater EXE from its separately verified release asset after startup.
+- Settings, NativeBridge, Logs, Backups and **pre-existing** `Mods/` directories are preserved by updates. The VR-only build does not create or use a new `Mods/` folder.
+- Unsigned builds can still trigger Windows SmartScreen.
 
-## One-click updates and build confirmation
-- Run `KharvoxModsUpdater.exe` beside `KharvoxMods.exe`.
-- It checks the current public preview Release asset and SHA-256 checksum, compares to the installed update state, and displays **New update found — Build #…** with a **Yes/No confirmation** before downloading.
-- If already current, it says so rather than silently reinstalling. New builds show their **build ID in the title bar**.
-- The newer Mods EXE **automatically refreshes the updater EXE** from a separately verified release asset after the old updater process has exited; no manual replacement should be necessary after this initial build.
-- It never deletes `settings.json`, `kharvox-mods-bridge.json`, `Mods/`, `Logs/`, `Backups/`, or `NativeBridge/`.
-- NativeBridge updates are opt-in through **Connection**, not silently installed through the ordinary app updater.
-- Browser-downloaded initial unsigned binaries may still trigger Windows SmartScreen; this feature does not disable security checks.
-
-## Portable folder layout
+## Portable folder
 ```text
 KHARVOX Mods/
 ├── KharvoxMods.exe
@@ -37,19 +28,10 @@ KHARVOX Mods/
 ├── build-info.txt
 ├── settings.json
 ├── kharvox-mods-bridge.json
-├── NativeBridge/                 # optional, verified local KHARVOX copy
-├── Mods/
+├── NativeBridge/                 # optional separate KHARVOX copy
 ├── Logs/
 ├── Backups/
 └── UpdateCache/
 ```
 
-Put the folder somewhere writable outside Program Files. To remove this installation, close the application and delete the **KHARVOX Mods** folder. Files created by the separate original Cactus launcher are not managed or deleted by this utility.
-
-## Still pending
-- Real headset verification of the integrated native bridge, controls and shared window foreground behaviour.
-- Full re-use of the old Custom Mods internals (configuration ratings, DOOM resource generation and save-management controls).
-- A stable plugin ABI that would allow each gameplay DLL to be replaced independently without updating the core native KHARVOX runtime.
-- Live Dev override checkboxes and validation of retired experimental mods.
-
-The original functioning custom native source branch remains untouched. The native bundle is a **separate, explicit local install**, not a stealth patch.
+The original KHARVOX source and native gameplay branch have not been changed by this standalone work. Do not delete an existing `Mods/` directory without checking its saved user files first.
