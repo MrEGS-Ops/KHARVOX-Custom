@@ -11,10 +11,21 @@ internal sealed class AppState
     public bool WindowAttachmentApproved { get; set; }
     public string KharvoxLauncherPath { get; set; } = "";
 
-    internal static string DataDirectory =>
-        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "KHARVOXMods");
-
+    // Portable-only storage: resolve relative to the executable, never the
+    // current working directory or %LOCALAPPDATA%. No hidden user data.
+    internal static string DataDirectory => Path.GetFullPath(AppContext.BaseDirectory);
     internal static string DefaultPath => Path.Combine(DataDirectory, "settings.json");
+    internal static string ModsDirectory => Path.Combine(DataDirectory, "Mods");
+    internal static string LogsDirectory => Path.Combine(DataDirectory, "Logs");
+    internal static string BackupsDirectory => Path.Combine(DataDirectory, "Backups");
+
+    private static void EnsurePortableFolders(string root)
+    {
+        Directory.CreateDirectory(root);
+        Directory.CreateDirectory(Path.Combine(root, "Mods"));
+        Directory.CreateDirectory(Path.Combine(root, "Logs"));
+        Directory.CreateDirectory(Path.Combine(root, "Backups"));
+    }
 
     internal static AppState Load(string? path = null)
     {
@@ -36,7 +47,7 @@ internal sealed class AppState
     internal void Save(string? path = null)
     {
         var target = path ?? DefaultPath;
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(target))!);
+        EnsurePortableFolders(Path.GetDirectoryName(Path.GetFullPath(target))!);
         var temp = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
