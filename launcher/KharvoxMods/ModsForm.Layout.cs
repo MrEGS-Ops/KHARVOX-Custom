@@ -345,7 +345,7 @@ internal sealed partial class ModsForm
         userHeader.Controls.Add(refresh, 2, 0);
         var openFolder = MakeOriginalButton("Mod Folder", 105);
         openFolder.Dock = DockStyle.Fill;
-        openFolder.Click += (_, _) => OpenLocalModsFolder();
+        openFolder.Click += (_, _) => ShowOriginalModFolder();
         userHeader.Controls.Add(openFolder, 3, 0);
         grid.Controls.Add(userHeader, 0, 2);
 
@@ -467,26 +467,6 @@ internal sealed partial class ModsForm
         {
             _detectedModCount.Text = "unavailable";
             _localModsMessage.Text = "Cannot read Mods folder: " + error.Message;
-        }
-    }
-
-    private void OpenLocalModsFolder()
-    {
-        try
-        {
-            Directory.CreateDirectory(AppState.ModsDirectory);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = AppState.ModsDirectory,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception error) when (error is IOException ||
-            error is UnauthorizedAccessException ||
-            error is System.ComponentModel.Win32Exception)
-        {
-            MessageBox.Show(this, error.Message, "KHARVOX Mods",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
     }
 
@@ -856,6 +836,7 @@ internal sealed partial class ModsForm
     {
         if (!VerifyOriginalLayoutMetadata())
             throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 22 mod rows.");
+        VerifyOriginalFolderPositioning();
         using (var form = new ModsForm())
         {
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
