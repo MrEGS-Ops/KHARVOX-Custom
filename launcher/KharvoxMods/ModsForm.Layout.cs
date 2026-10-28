@@ -19,6 +19,20 @@ internal sealed partial class ModsForm
     private readonly Label _localModsMessage = new Label();
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
+    private readonly Label _bridgeState = new Label();
+
+    private void RefreshBridgeState()
+    {
+        var installed = File.Exists(NativeBridgeInstaller.TargetLauncher) &&
+            File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
+                "KharvoxModsBridge.v1")) &&
+            File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
+                "KharvoxLayer.dll"));
+        _bridgeState.Text = installed
+            ? "NATIVE BRIDGE INSTALLED — restart DOOM for selected mods"
+            : "NATIVE BRIDGE NOT INSTALLED — selections saved only";
+        _bridgeState.ForeColor = installed ? Color.LightGreen : Color.DarkOrange;
+    }
 
     private static bool IsConfirmedMod(string title) =>
         title == "Weapon Wheel Button Remap" ||
@@ -489,6 +503,13 @@ internal sealed partial class ModsForm
             ColumnCount = 1
         };
         list.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        _bridgeState.Height = 24;
+        _bridgeState.Dock = DockStyle.Fill;
+        _bridgeState.BackColor = DarkPanel;
+        _bridgeState.Font = new Font("Segoe UI", 8f);
+        _bridgeState.TextAlign = ContentAlignment.MiddleLeft;
+        RefreshBridgeState();
+        AppendFixedRow(list, _bridgeState, 24);
         AddGlorySpeedHeader(list);
         var number = 1;
         foreach (var groupRow in OriginalModGroups)
