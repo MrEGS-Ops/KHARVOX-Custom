@@ -422,7 +422,9 @@ internal sealed partial class ModsForm : Form
             if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
             _lastModsBounds = Bounds;
             SyncCompanionFocus();
-            SetStatus("Window attached — no patches or gameplay mods installed.");
+            SetStatus(File.Exists(NativeBridgeInstaller.TargetLauncher)
+                ? "Windows linked — native bridge installed; mod selections apply on next DOOM launch."
+                : "Windows linked — install Native Bridge from Connection to activate five mod selections.");
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
