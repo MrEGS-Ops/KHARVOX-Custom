@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 concurrency:
   group: kharvox-mods-${{ github.ref }}
@@ -44,6 +45,39 @@ jobs:
       - name: Build native-bridge-aware KHARVOX launcher
         shell: pwsh
         run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Assemble optional verified KHARVOX native bridge copy
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $base = Join-Path $PWD "dist/native-base"
+          New-Item -ItemType Directory -Force -Path $base | Out-Null
+          # Pin the native runtime to the last verified working native build.
+          gh run download 40463514160 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
+          if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
+          $manifest = Join-Path $base "PATCH-BUILD.txt"
+          if (!(Test-Path $manifest) -or
+              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=9e30175531524c308d38d61c43b0fe2b1f16c6e4")) {
+            throw "Downloaded native build does not match the approved working commit"
+          }
+          if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
+            throw "Verified native layer missing"
+          }
+          Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe" -Destination $base -Force
+          if (Test-Path "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config") {
+            Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config" -Destination $base -Force
+          }
+          @(
+            "KHARVOX_MODS_BRIDGE_V1"
+            "baseNativeCommit=9e30175531524c308d38d61c43b0fe2b1f16c6e4"
+            "bridgeLauncherCommit=${{ github.sha }}"
+          ) | Set-Content -LiteralPath (Join-Path $base "KharvoxModsBridge.v1") -Encoding ascii
+          $zip = Join-Path $PWD "dist/KHARVOX-Mods-NativeBridge.zip"
+          Compress-Archive -Path (Join-Path $base "*") -DestinationPath $zip -CompressionLevel Optimal -Force
+          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash *KHARVOX-Mods-NativeBridge.zip" |
+            Set-Content -LiteralPath ($zip + ".sha256") -Encoding ascii
 
       - name: Restore portable updater
         shell: pwsh
@@ -140,3 +174,5 @@ jobs:
           files: |
             dist/KHARVOX-Mods-Standalone.zip
             dist/KHARVOX-Mods-Standalone.zip.sha256
+            dist/KHARVOX-Mods-NativeBridge.zip
+            dist/KHARVOX-Mods-NativeBridge.zip.sha256
