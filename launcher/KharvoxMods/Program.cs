@@ -10,6 +10,22 @@ internal static class Program
     [STAThread]
     private static int Main(string[] args)
     {
+        if (args.Any(a => string.Equals(a, "--self-test-ui", StringComparison.OrdinalIgnoreCase)))
+        {
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            try
+            {
+                ModsForm.RunUiSelfTest();
+                Console.WriteLine("Original two-column UI and 22 mod rows verified.");
+                return 0;
+            }
+            catch (Exception error)
+            {
+                Console.Error.WriteLine(error);
+                return 1;
+            }
+        }
         if (args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest();
 
