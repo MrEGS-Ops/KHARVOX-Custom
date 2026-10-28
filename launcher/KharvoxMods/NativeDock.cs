@@ -29,6 +29,26 @@ internal static class NativeDock
 
     [DllImport("user32.dll")]
     internal static extern bool ShowWindow(IntPtr hwnd, int command);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessage(IntPtr hwnd, uint message,
+        IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+
+    private const uint WmClose = 0x0010;
+
+    // Request a normal window close (equivalent to its X button), never kill
+    // a process or close a window belonging to a different KHARVOX instance.
+    internal static bool RequestClose(IntPtr hwnd, int expectedProcessId)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd) || expectedProcessId <= 0)
+            return false;
+        GetWindowThreadProcessId(hwnd, out var ownerPid);
+        return ownerPid == (uint)expectedProcessId &&
+            PostMessage(hwnd, WmClose, IntPtr.Zero, IntPtr.Zero);
+    }
+
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
