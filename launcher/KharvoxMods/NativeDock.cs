@@ -30,6 +30,64 @@ internal static class NativeDock
     [DllImport("user32.dll")]
     internal static extern bool ShowWindow(IntPtr hwnd, int command);
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd,
+        int attribute, out Rect rectangle, int size);
+
+    private const uint GaRoot = 2;
+    private const int DwmwaExtendedFrameBounds = 9;
+    private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoSize = 0x0001;
+
+    // One desktop window can own keyboard focus, but both can sit directly
+    // above unrelated windows. Maintain that pair without stealing focus.
+    internal static IntPtr ForegroundRoot()
+    {
+        var focused = GetForegroundWindow();
+        if (focused == IntPtr.Zero) return IntPtr.Zero;
+        var root = GetAncestor(focused, GaRoot);
+        return root == IntPtr.Zero ? focused : root;
+    }
+
+    internal static bool RaiseDockPair(IntPtr active, IntPtr companion)
+    {
+        if (active == IntPtr.Zero || active == companion ||
+            !IsWindow(active) || !IsWindow(companion)) return false;
+        const uint flags = SwpNoMove | SwpNoSize | NoActivate;
+        // Bring partner and then the clicked window to the front in order.
+        // HWND_TOP is not HWND_TOPMOST; neither process is pinned on top.
+        var raisedPartner = SetWindowPos(companion, IntPtr.Zero,
+            0, 0, 0, 0, flags);
+        var raisedActive = SetWindowPos(active, IntPtr.Zero,
+            0, 0, 0, 0, flags);
+        return raisedPartner && raisedActive;
+    }
+
+    private static int VisibleInset(IntPtr hwnd, bool right)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd) ||
+            !GetWindowRect(hwnd, out var outer)) return 0;
+        try
+        {
+            if (DwmGetWindowAttribute(hwnd, DwmwaExtendedFrameBounds,
+                out var visible, Marshal.SizeOf<Rect>()) != 0) return 0;
+            return Math.Max(0, Math.Min(24, right
+                ? outer.Right - visible.Right
+                : visible.Left - outer.Left));
+        }
+        catch (DllNotFoundException) { return 0; }
+        catch (EntryPointNotFoundException) { return 0; }
+    }
+
+    internal static int VisibleSeamOverlap(IntPtr mods, IntPtr launcher) =>
+        Math.Min(48, VisibleInset(mods, true) + VisibleInset(launcher, false));
+
     internal const int Minimize = 6;
     internal const int Restore = 9;
     private const uint NoZOrder = 0x0004;
@@ -52,13 +110,13 @@ internal static class NativeDock
     // Existing KHARVOX Custom Mods docks to the LEFT, with matching top/bottom.
     // Keep launcher width intact and shrink the companion to fit smaller screens.
     internal static (Rectangle Launcher, Rectangle Mods) Calculate(
-        Rectangle originalLauncher, Rectangle workArea, int desiredModsWidth)
+        Rectangle originalLauncher, Rectangle workArea, int desiredModsWidth, int visibleSeamOverlap = 8)
     {
         if (originalLauncher.Width <= 0 || originalLauncher.Height <= 0 ||
             workArea.Width <= 0 || workArea.Height <= 0 || desiredModsWidth <= 0)
             throw new ArgumentOutOfRangeException(nameof(originalLauncher));
 
-        const int seamOverlap = 8; // Windows invisible frame edges
+        var seamOverlap = Math.Max(0, Math.Min(48, visibleSeamOverlap)); // actual DWM invisible frame edges
         var launcherWidth = Math.Min(workArea.Width, originalLauncher.Width);
         var launcherHeight = Math.Min(workArea.Height, originalLauncher.Height);
         var modsWidth = Math.Min(desiredModsWidth,
