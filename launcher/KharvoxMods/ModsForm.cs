@@ -238,6 +238,7 @@ internal sealed partial class ModsForm : Form
 
     private async System.Threading.Tasks.Task InstallNativeBridge()
     {
+        if (_bridgeInstallInProgress) return;
         var accepted = MessageBox.Show(this,
             "Install mod-enabled KHARVOX beside this app?\\n\\n" +
             "Your original KHARVOX installation will not be changed.",
@@ -245,6 +246,8 @@ internal sealed partial class ModsForm : Form
             MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
         if (accepted != DialogResult.Yes) return;
 
+        _bridgeInstallInProgress = true;
+        RefreshBridgeState();
         try
         {
             SetStatus("Installing verified native bridge in local folder…");
@@ -273,6 +276,11 @@ internal sealed partial class ModsForm : Form
             MessageBox.Show(this,
                 "Could not install the optional native bridge:\\n" + error.Message,
                 "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+        finally
+        {
+            _bridgeInstallInProgress = false;
+            RefreshBridgeState();
         }
     }
 
