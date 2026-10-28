@@ -180,6 +180,45 @@ internal sealed partial class ModsForm : Form
         StartLauncher();
     }
 
+    private async System.Threading.Tasks.Task InstallNativeBridge()
+    {
+        var accepted = MessageBox.Show(this,
+            "Install mod-enabled KHARVOX beside this app?\\n\\n" +
+            "Your original KHARVOX installation will not be changed.",
+            "Install KHARVOX Native Bridge", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+        if (accepted != DialogResult.Yes) return;
+
+        try
+        {
+            SetStatus("Installing verified native bridge in local folder…");
+            var message = await NativeBridgeInstaller.InstallAsync(SetStatus);
+            _state.KharvoxLauncherPath = NativeBridgeInstaller.TargetLauncher;
+            _state.Save();
+            SetStatus("Native bridge installed. Five confirmed mod selections available.");
+            if (_launcher != null && !_launcher.HasExited)
+            {
+                MessageBox.Show(this, message +
+                    "\\n\\nClose the currently running KHARVOX launcher, then use " +
+                    "Connection → Start / Find KHARVOX to switch to the new mod-enabled copy.",
+                    "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show(this, message, "KHARVOX Mods",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                StartLauncher();
+            }
+        }
+        catch (Exception error)
+        {
+            SetStatus("Bridge installation failed — original KHARVOX untouched.");
+            MessageBox.Show(this,
+                "Could not install the optional native bridge:\\n" + error.Message,
+                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+    }
+
     private void StartLauncher()
     {
         var launcherPath = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
