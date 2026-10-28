@@ -33,6 +33,7 @@ internal sealed partial class ModsForm : Form
     private bool _closingDockPair;
     private bool _centerPairOnNextAttach = true;
 
+    // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
     private const int DesiredModsWidth = 850; // VR-only single-column window
@@ -122,6 +123,34 @@ internal sealed partial class ModsForm : Form
         {
             // The original window may have already closed. Nothing to kill.
         }
+    }
+
+    // KHARVOX MainForm.CustomModsDocking.cs uses these SAME DWM
+    // caption and border settings. Without this, the title bars contrast
+    // even though the WinForms panels share the same RGB background.
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window,
+        int attribute, ref int value, int size);
+
+    private void MatchKharvoxWindowFrame()
+    {
+        if (!IsHandleCreated) return;
+        try
+        {
+            var dark = 1;
+            if (DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref dark, sizeof(int));
+            var border = 0x0038383B;
+            DwmSetWindowAttribute(Handle, 34, ref border, sizeof(int));
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        MatchKharvoxWindowFrame();
     }
 
     private static Label MakeLabel(string text, int fontSize = 9)
