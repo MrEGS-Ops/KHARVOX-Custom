@@ -26,13 +26,14 @@ internal static class UpdateService
     private const long MaxZipBytes = 128L * 1024 * 1024;
     private const long MaxFileBytes = 64L * 1024 * 1024;
     private static readonly string[] ManagedFiles =
-        { "KharvoxMods.exe", "KharvoxMods.exe.config", "README.md" };
+        { "KharvoxMods.exe", "KharvoxMods.exe.config", "README.md", "build-info.txt" };
 
     internal static string InstallFolder => Path.GetFullPath(AppContext.BaseDirectory);
     internal static string AppExe => Path.Combine(InstallFolder, "KharvoxMods.exe");
 
     private sealed class ReleaseInfo
     {
+        public string name { get; set; } = "";
         public ReleaseAsset[] assets { get; set; } = Array.Empty<ReleaseAsset>();
     }
 
@@ -163,7 +164,21 @@ internal static class UpdateService
         return false;
     }
 
-    internal static async Task<string> RunAsync(Action<string> status)
+    internal static string InstalledBuild
+    {
+        get
+        {
+            try
+            {
+                var file = Path.Combine(InstallFolder, "build-info.txt");
+                var value = File.Exists(file) ? File.ReadAllText(file).Trim() : "";
+                return Regex.IsMatch(value, @"^\\d{5,20}$") ? "#" + value : "unknown";
+            }
+            catch (IOException) { return "unknown"; }
+        }
+    }
+
+    internal static async Task<string> RunAsync(Action<string> status, Func<string, bool> confirmUpdate)
     {
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         using (var handler = new HttpClientHandler
@@ -189,6 +204,14 @@ internal static class UpdateService
                 string.Equals(File.ReadAllText(marker).Trim(), expected,
                     StringComparison.OrdinalIgnoreCase))
                 return "Already up to date.";
+            var latestBuild = release.name;
+            if (string.IsNullOrWhiteSpace(latestBuild))
+                latestBuild = "New KHARVOX Mods preview";
+            status("New update found: " + latestBuild);
+            if (!confirmUpdate("New update available!\\n\\n" + latestBuild +
+                "\\nCurrently installed: " + InstalledBuild +
+                "\\n\\nDownload and install now?"))
+                return "Update skipped.";
 
             if (AppIsRunning())
                 throw new InvalidOperationException(
