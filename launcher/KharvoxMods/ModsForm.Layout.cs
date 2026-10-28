@@ -342,15 +342,15 @@ internal sealed partial class ModsForm
             Font = new Font(Font.FontFamily, 8.5f),
             Margin = new Padding(3, 1, 3, 2)
         };
-        nexus.LinkClicked += (_, _) =>
+        nexus.LinkClicked += async (_, _) =>
         {
             try
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "https://www.nexusmods.com/doom2016",
-                    UseShellExecute = true
-                });
+                // Original KHARVOX behaviour: new window in the user's
+                // default browser, reused when the link is clicked again.
+                await NexusModsPopup.OpenTrackedAsync(Bounds);
+                // Keep the local mod folder available beside the browser.
+                OpenLocalModsFolder();
             }
             catch (Exception error)
             {
