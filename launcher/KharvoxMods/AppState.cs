@@ -15,14 +15,12 @@ internal sealed class AppState
     // current working directory or %LOCALAPPDATA%. No hidden user data.
     internal static string DataDirectory => Path.GetFullPath(AppContext.BaseDirectory);
     internal static string DefaultPath => Path.Combine(DataDirectory, "settings.json");
-    internal static string ModsDirectory => Path.Combine(DataDirectory, "Mods");
     internal static string LogsDirectory => Path.Combine(DataDirectory, "Logs");
     internal static string BackupsDirectory => Path.Combine(DataDirectory, "Backups");
 
     private static void EnsurePortableFolders(string root)
     {
         Directory.CreateDirectory(root);
-        Directory.CreateDirectory(Path.Combine(root, "Mods"));
         Directory.CreateDirectory(Path.Combine(root, "Logs"));
         Directory.CreateDirectory(Path.Combine(root, "Backups"));
     }
