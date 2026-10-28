@@ -93,7 +93,7 @@ jobs:
         run: |
           Add-Type -AssemblyName System.Drawing
           $sourceSha = (git hash-object launcher/KharvoxMods/mregs-logo.png).Trim()
-          if ($sourceSha -ne "e0a99d5bbed67f1d836017cae953950e9fb5604a") {
+          if ($sourceSha -ne "777d9f9b1de07b470df01235c2b90705afcf0bec") {
             throw "MrEGS icon source no longer matches the user's approved image"
           }
           $exePaths = @(
