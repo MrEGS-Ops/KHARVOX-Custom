@@ -8,15 +8,11 @@ using System.Windows.Forms;
 
 namespace KharvoxMods;
 
-// Mirrors the original KHARVOX Custom Mods form's groupboxes, 44/56 split,
-// fixed 28px numbered rows, 6 categories, Glory Kill speed header and footer.
-// Unlike the original controls, gameplay settings are read-only until the
-// native bridge can actually apply them. Do not create fake saved selections.
+// VR-only standalone layout. The former DOOM Mods panel and its full source
+// are parked outside this build. Four verified VR mod checkboxes plus a
+// scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private readonly Label _detectedModCount = new Label();
-    private readonly FlowLayoutPanel _detectedModRows = new FlowLayoutPanel();
-    private readonly Label _localModsMessage = new Label();
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private readonly Label _bridgeState = new Label();
@@ -65,7 +61,7 @@ internal sealed partial class ModsForm
                 _modPrefs.PainsawRipshiftOverdrive = value; break;
             default: return;
         }
-        SaveModSelections();
+        OnVrSelectionChanged(name, value);
     }
 
     private void SaveModSelections()
@@ -216,8 +212,8 @@ internal sealed partial class ModsForm
 
     private void BuildLayout()
     {
-        // Use the original two rows: two GroupBoxes and a slim 38px footer.
-        // No launcher-shaped header and no tabs in the VR column.
+        // VR-only standalone build. DOOM resource-mod UI is retained in
+        // ArchivedDoomMods.Parked.cs but excluded from compilation.
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
@@ -230,372 +226,9 @@ internal sealed partial class ModsForm
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
-        var columns = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2,
-            BackColor = Color.Black, Margin = Padding.Empty, Padding = Padding.Empty
-        };
-        columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
-        columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 56));
-        columns.Controls.Add(BuildOriginalDoomPanel(), 0, 0);
-        columns.Controls.Add(BuildOriginalVrPanel(), 1, 0);
-        root.Controls.Add(columns, 0, 0);
+        root.Controls.Add(BuildOriginalVrPanel(), 0, 0);
         root.Controls.Add(BuildOriginalFooter(), 0, 1);
         Controls.Add(root);
-    }
-
-    private GroupBox BuildOriginalDoomPanel()
-    {
-        var group = MakeOriginalGroup("DOOM MODS");
-        var grid = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 6, ColumnCount = 1,
-            Padding = new Padding(12, 2, 12, 2),
-            Margin = Padding.Empty, BackColor = DarkPanel
-        };
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 102));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
-
-        var loaderRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
-            Padding = Padding.Empty, Margin = Padding.Empty, BackColor = DarkPanel
-        };
-        loaderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        loaderRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
-        var loaderStatus = MakeLabel("DOOMModLoader — managed by KHARVOX");
-        loaderStatus.Font = new Font(Font.FontFamily, 8.5f);
-        loaderStatus.ForeColor = Color.Gainsboro;
-        loaderRow.Controls.Add(loaderStatus, 0, 0);
-        var loaderButton = MakeOriginalButton("Install…", 105);
-        loaderButton.Dock = DockStyle.Fill;
-        loaderButton.Enabled = false;
-        _tooltips.SetToolTip(loaderButton,
-            "The original KHARVOX launcher owns the DOOMModLoader installer. Not connected here yet.");
-        loaderRow.Controls.Add(loaderButton, 1, 0);
-        grid.Controls.Add(loaderRow, 0, 0);
-
-        var packaged = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1,
-            Padding = Padding.Empty, Margin = Padding.Empty,
-            BackColor = DarkPanel
-        };
-        packaged.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
-        packaged.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
-        packaged.RowStyles.Add(new RowStyle(SizeType.Absolute, 27));
-        var packagedHeader = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
-            Margin = Padding.Empty, Padding = Padding.Empty,
-            BackColor = DarkPanel
-        };
-        packagedHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        packagedHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
-        var packagedTitle = MakeHeading("KHARVOX MODS");
-        packagedTitle.Dock = DockStyle.Fill;
-        packagedHeader.Controls.Add(packagedTitle, 0, 0);
-        var generate = MakeOriginalButton("Generate", 105);
-        generate.Dock = DockStyle.Fill;
-        generate.Enabled = false;
-        _tooltips.SetToolTip(generate,
-            "Native resource generation is still managed by the original KHARVOX launcher.");
-        packagedHeader.Controls.Add(generate, 1, 0);
-        packaged.Controls.Add(packagedHeader, 0, 0);
-        for (var index = 0; index < 2; index++)
-        {
-            var placeholder = MakePreviewCheck(
-                index == 0 ? "Aggressive Demons — generate to enable"
-                           : "Enhanced Gibs — generate to enable",
-                "Original KHARVOX resource-mod generator is not connected to this application yet.",
-                "resource-preview");
-            placeholder.Dock = DockStyle.Fill;
-            placeholder.Margin = new Padding(3, 0, 3, 0);
-            packaged.Controls.Add(placeholder, 0, index + 1);
-        }
-        grid.Controls.Add(packaged, 0, 1);
-
-        var userHeader = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 4, RowCount = 1,
-            Margin = Padding.Empty, BackColor = DarkPanel
-        };
-        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 94));
-        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
-        userHeader.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 105));
-        var userTitle = MakeHeading("USER MODS", 94);
-        userTitle.Dock = DockStyle.Fill;
-        userHeader.Controls.Add(userTitle, 0, 0);
-        _detectedModCount.Text = "0 detected";
-        _detectedModCount.Dock = DockStyle.Fill;
-        _detectedModCount.ForeColor = Color.Silver;
-        _detectedModCount.BackColor = DarkPanel;
-        _detectedModCount.TextAlign = ContentAlignment.MiddleCenter;
-        userHeader.Controls.Add(_detectedModCount, 1, 0);
-        var refresh = MakeOriginalButton("↻", 34);
-        refresh.AccessibleName = "Rescan mods";
-        refresh.Dock = DockStyle.Fill;
-        refresh.Click += (_, _) => ScanLocalMods();
-        _tooltips.SetToolTip(refresh, "Rescan the standalone Mods folder. Detection only.");
-        userHeader.Controls.Add(refresh, 2, 0);
-        var openFolder = MakeOriginalButton("Mod Folder", 105);
-        openFolder.Dock = DockStyle.Fill;
-        openFolder.Click += (_, _) => ShowOriginalModFolder();
-        userHeader.Controls.Add(openFolder, 3, 0);
-        grid.Controls.Add(userHeader, 0, 2);
-
-        var modScroll = new Panel
-        {
-            Dock = DockStyle.Fill, AutoScroll = true, BackColor = DarkPanel,
-            Padding = new Padding(2, 8, 2, 0)
-        };
-        _detectedModRows.AutoSize = true;
-        _detectedModRows.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        _detectedModRows.Dock = DockStyle.Top;
-        _detectedModRows.FlowDirection = FlowDirection.TopDown;
-        _detectedModRows.WrapContents = false;
-        _detectedModRows.BackColor = DarkPanel;
-        _detectedModRows.Margin = Padding.Empty;
-        _detectedModRows.Padding = Padding.Empty;
-        _localModsMessage.Text = "Drop ZIPs or unpacked mod folders here.";
-        _localModsMessage.ForeColor = Color.Silver;
-        _localModsMessage.AutoSize = true;
-        _localModsMessage.MaximumSize = new Size(400, 80);
-        _localModsMessage.Margin = new Padding(3, 1, 3, 3);
-        _detectedModRows.Controls.Add(_localModsMessage);
-        modScroll.Controls.Add(_detectedModRows);
-        grid.Controls.Add(modScroll, 0, 3);
-
-        var saveButtons = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
-            BackColor = DarkPanel, Margin = Padding.Empty
-        };
-        saveButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        saveButtons.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        var backup = MakeOriginalButton("Backup saves", 120);
-        backup.Dock = DockStyle.Fill;
-        backup.Enabled = false;
-        _tooltips.SetToolTip(backup,
-            "DOOM save backups are not connected to the standalone app yet.");
-        var manage = MakeOriginalButton("Manage / Restore saves…", 180);
-        manage.Dock = DockStyle.Fill;
-        manage.Enabled = false;
-        _tooltips.SetToolTip(manage,
-            "Use the original KHARVOX launcher for save management.");
-        saveButtons.Controls.Add(backup, 0, 0);
-        saveButtons.Controls.Add(manage, 1, 0);
-        grid.Controls.Add(saveButtons, 0, 4);
-
-        var nexus = new LinkLabel
-        {
-            Text = "Browse DOOM mods on Nexus Mods",
-            Dock = DockStyle.Fill,
-            ForeColor = Color.Gray,
-            LinkColor = Color.Gray,
-            ActiveLinkColor = Color.Gainsboro,
-            VisitedLinkColor = Color.Gray,
-            BackColor = DarkPanel,
-            TextAlign = ContentAlignment.MiddleLeft,
-            Font = new Font(Font.FontFamily, 8.5f),
-            Margin = new Padding(3, 1, 3, 2)
-        };
-        nexus.LinkClicked += async (_, _) =>
-        {
-            try
-            {
-                // Original KHARVOX behaviour: new window in the user's
-                // default browser, reused when the link is clicked again.
-                await NexusModsPopup.OpenTrackedAsync(Bounds);
-                // Keep the local mod folder available beside the browser.
-                ShowOriginalModFolder();
-            }
-            catch (Exception error)
-            {
-                MessageBox.Show(this, error.Message, "KHARVOX Mods",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            }
-        };
-        grid.Controls.Add(nexus, 0, 5);
-        group.Controls.Add(grid);
-        ScanLocalMods();
-        return group;
-    }
-
-    private void ScanLocalMods()
-    {
-        try
-        {
-            // UI is constructed before first-install consent. Do not create
-            // any folders if the user presses NO and the app exits.
-            var mods = (Directory.Exists(AppState.ModsDirectory)
-                    ? Directory.GetFileSystemEntries(AppState.ModsDirectory)
-                    : Array.Empty<string>())
-                .Where(path => Directory.Exists(path) ||
-                    (File.Exists(path) && new[] { ".zip", ".pk3", ".wad" }
-                        .Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase)))
-                .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-            _detectedModCount.Text = mods.Length + " detected";
-            _detectedModRows.SuspendLayout();
-            try
-            {
-                _detectedModRows.Controls.Clear();
-                _localModsMessage.Text = mods.Length == 0
-                    ? "Drop ZIPs or unpacked mod folders here."
-                    : "Local files detected (not installed):";
-                _detectedModRows.Controls.Add(_localModsMessage);
-                foreach (var mod in mods)
-                {
-                    var check = MakePreviewCheck(Path.GetFileName(mod),
-                        "Detected in the standalone Mods folder. Not installed or enabled.",
-                        "detected-local-mod");
-                    check.Width = 365;
-                    check.Margin = new Padding(3, 1, 3, 1);
-                    _detectedModRows.Controls.Add(check);
-                }
-            }
-            finally { _detectedModRows.ResumeLayout(); }
-        }
-        catch (Exception error) when (error is IOException ||
-            error is UnauthorizedAccessException)
-        {
-            _detectedModCount.Text = "unavailable";
-            _localModsMessage.Text = "Cannot read Mods folder: " + error.Message;
-        }
-    }
-
-    private GroupBox BuildOriginalVrPanel()
-    {
-        var group = MakeOriginalGroup("VR MODS");
-        var scroll = new Panel
-        {
-            Dock = DockStyle.Fill, AutoScroll = true,
-            BackColor = DarkPanel, Margin = Padding.Empty
-        };
-        var list = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top, AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = DarkPanel, ForeColor = Color.White,
-            Padding = new Padding(12, 8, 10, 6),
-            Margin = Padding.Empty,
-            ColumnCount = 1
-        };
-        list.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        // Put the existing verified installer directly beside the bridge
-        // status; no need to dig through the Connection menu.
-        var bridgeRow = new TableLayoutPanel
-        {
-            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2,
-            BackColor = DarkPanel, Margin = Padding.Empty,
-            Padding = new Padding(1, 2, 1, 2)
-        };
-        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 137));
-        _bridgeState.Height = 28;
-        _bridgeState.Dock = DockStyle.Fill;
-        _bridgeState.BackColor = DarkPanel;
-        _bridgeState.Font = new Font("Segoe UI", 8f);
-        _bridgeState.TextAlign = ContentAlignment.MiddleLeft;
-        _bridgeState.AutoEllipsis = true;
-        _tooltips.SetToolTip(_bridgeState,
-            "The bridge is stored in this portable application's NativeBridge folder. " +
-            "It does not overwrite the original KHARVOX installation.");
-        bridgeRow.Controls.Add(_bridgeState, 0, 0);
-
-        _bridgeInstallButton.Dock = DockStyle.Fill;
-        _bridgeInstallButton.Tag = "native-bridge-install";
-        _bridgeInstallButton.AccessibleName = "Install or update the Native Bridge";
-        _bridgeInstallButton.FlatStyle = FlatStyle.Flat;
-        _bridgeInstallButton.ForeColor = Color.Gainsboro;
-        _bridgeInstallButton.BackColor = Color.FromArgb(43, 43, 47);
-        _bridgeInstallButton.Margin = new Padding(2, 1, 2, 1);
-        _bridgeInstallButton.FlatAppearance.BorderColor = Color.DimGray;
-        _bridgeInstallButton.Click += async (_, _) => await InstallNativeBridge();
-        _tooltips.SetToolTip(_bridgeInstallButton,
-            "Download, verify and install the mod-enabled KHARVOX runtime " +
-            "into the local NativeBridge folder.");
-        bridgeRow.Controls.Add(_bridgeInstallButton, 1, 0);
-        RefreshBridgeState();
-        AppendFixedRow(list, bridgeRow, 36);
-        AddGlorySpeedHeader(list);
-        var number = 1;
-        foreach (var groupRow in OriginalModGroups)
-        {
-            AppendSection(list, groupRow.Title);
-            foreach (var mod in groupRow.Mods)
-                AppendNumberedMod(list, number++, mod);
-        }
-        AppendSection(list, "⚙  Dev — Gameplay Overrides");
-        foreach (var item in DevOverrides)
-            AppendDeveloperMod(list, item);
-        scroll.Controls.Add(list);
-        group.Controls.Add(scroll);
-        return group;
-    }
-
-    private void AddGlorySpeedHeader(TableLayoutPanel list)
-    {
-        var panel = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 78, RowCount = 2, ColumnCount = 3,
-            BackColor = DarkPanel, Margin = new Padding(4, 0, 4, 0),
-            Padding = new Padding(4, 2, 4, 2)
-        };
-        panel.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
-        panel.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 154));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-        var title = MakeHeading("GLORY KILL SPEED");
-        title.Dock = DockStyle.Fill;
-        panel.Controls.Add(title, 0, 0);
-        panel.SetColumnSpan(title, 3);
-        var check = MakePreviewCheck("Override",
-            "Standalone 30–240 Hz Glory Kill speed control. Not connected to the native bridge.",
-            "glory-kill-speed-preview");
-        check.Dock = DockStyle.Fill;
-        check.Enabled = true;
-        check.Checked = _modPrefs.GloryKillSpeedOverride;
-        panel.Controls.Add(check, 0, 1);
-        var slider = new TrackBar
-        {
-            Minimum = 30, Maximum = 240,
-            Value = 270 - Math.Max(30, Math.Min(240, _modPrefs.GloryKillHz)),
-            Dock = DockStyle.Fill,
-            TickStyle = TickStyle.None,
-            Enabled = check.Checked,
-            Margin = new Padding(5, 3, 5, 3)
-        };
-        _tooltips.SetToolTip(slider,
-            "In original KHARVOX, right is faster (30 Hz) and left is slower (240 Hz). Not connected here yet.");
-        panel.Controls.Add(slider, 1, 1);
-        var speedValue = MakeLabel("Native");
-        speedValue.ForeColor = Color.Gainsboro;
-        speedValue.Text = check.Checked ? (270 - slider.Value) + " Hz" : "Native";
-        panel.Controls.Add(speedValue, 2, 1);
-        check.CheckedChanged += (_, _) =>
-        {
-            _modPrefs.GloryKillSpeedOverride = check.Checked;
-            slider.Enabled = check.Checked;
-            speedValue.Text = check.Checked ? (270 - slider.Value) + " Hz" : "Native";
-            SaveModSelections();
-        };
-        slider.ValueChanged += (_, _) =>
-        {
-            _modPrefs.GloryKillHz = 270 - slider.Value;
-            speedValue.Text = check.Checked ? _modPrefs.GloryKillHz + " Hz" : "Native";
-        };
-        slider.MouseUp += (_, _) => SaveModSelections();
-        slider.KeyUp += (_, _) => SaveModSelections();
-        slider.Leave += (_, _) => SaveModSelections();
-        AppendFixedRow(list, panel, 78);
     }
 
     private void AppendSection(TableLayoutPanel list, string caption)
@@ -612,47 +245,6 @@ internal sealed partial class ModsForm
             Margin = new Padding(2, 0, 0, 0)
         };
         AppendFixedRow(list, label, 20);
-    }
-
-    private void AppendNumberedMod(TableLayoutPanel list, int number, PreviewMod mod)
-    {
-        var row = new TableLayoutPanel
-        {
-            Dock = DockStyle.Top, Height = 28, ColumnCount = 3, RowCount = 1,
-            Margin = Padding.Empty, Padding = Padding.Empty, BackColor = DarkPanel
-        };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 32));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 20));
-        var index = new Label
-        {
-            Text = number.ToString("00") + ".",
-            ForeColor = Color.White,
-            BackColor = DarkPanel,
-            Dock = DockStyle.Fill,
-            Font = new Font("Segoe UI", 9f),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Margin = new Padding(2, 0, 0, 0)
-        };
-        var check = MakePreviewCheck(mod.Title,
-            mod.Help + Environment.NewLine +
-            (IsConfirmedMod(mod.Title)
-                ? "Confirmed gameplay feature. Local selection is saved; requires the bridge-aware custom KHARVOX launcher and native layer. Restart DOOM."
-                : "Paused until independently verified and integrated."),
-            "original-vr-mod");
-        if (IsConfirmedMod(mod.Title))
-        {
-            check.Enabled = true;
-            check.Checked = CurrentSelection(mod.Title);
-            check.CheckedChanged += (_, _) => ApplySelection(mod.Title, check.Checked);
-        }
-        check.Dock = DockStyle.Fill;
-        check.Margin = new Padding(2, 0, 0, 0);
-        var info = MakeHelpLabel(mod.Help);
-        row.Controls.Add(index, 0, 0);
-        row.Controls.Add(check, 1, 0);
-        row.Controls.Add(info, 2, 0);
-        AppendFixedRow(list, row, 28);
     }
 
     private void AppendDeveloperMod(TableLayoutPanel list, PreviewMod mod)
@@ -836,14 +428,11 @@ internal sealed partial class ModsForm
     {
         if (!VerifyOriginalLayoutMetadata())
             throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 22 mod rows.");
-        VerifyOriginalFolderPositioning();
         using (var form = new ModsForm())
         {
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
-            if (groups.Length != 2 ||
-                !groups.Any(group => group.Text == "DOOM MODS") ||
-                !groups.Any(group => group.Text == "VR MODS"))
-                throw new InvalidDataException("Original two-column DOOM/VR groupboxes missing.");
+            if (groups.Length != 1 || groups[0].Text != "VR MODS")
+                throw new InvalidDataException("VR-only build contains a non-VR groupbox.");
             if (form.Controls.Descendants().OfType<TabControl>().Any())
                 throw new InvalidDataException("Tabbed placeholder UI must not return.");
             var vr = form.Controls.Descendants().OfType<CheckBox>()
@@ -853,6 +442,11 @@ internal sealed partial class ModsForm
                 vr.Count(check => check.Enabled) != 4 ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.Text)))
                 throw new InvalidDataException("Only four confirmed numbered mod rows may be selectable.");
+            if (!form.Controls.Descendants().OfType<Label>()
+                .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
+                throw new InvalidDataException("Active Mods heading is missing.");
+            if (!form.Controls.Descendants().OfType<TrackBar>().All(slider => !slider.Visible))
+                throw new InvalidDataException("Glory Kill slider is visible while override disabled.");
             var dev = form.Controls.Descendants().OfType<CheckBox>()
                 .Count(check => string.Equals(check.Tag as string, "dev-override",
                     StringComparison.Ordinal));
