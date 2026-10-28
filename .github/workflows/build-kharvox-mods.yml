@@ -37,6 +37,14 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
 
+      - name: Restore native-bridge-aware KHARVOX launcher
+        shell: pwsh
+        run: dotnet restore launcher/KharvoxLauncher/KharvoxLauncher.csproj
+
+      - name: Build native-bridge-aware KHARVOX launcher
+        shell: pwsh
+        run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
+
       - name: Restore portable updater
         shell: pwsh
         run: dotnet restore launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj
