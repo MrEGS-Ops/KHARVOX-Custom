@@ -31,6 +31,7 @@ internal sealed partial class ModsForm : Form
     private IntPtr _lastDockForeground;
     private IntPtr _ownerLauncher;
     private bool _closingDockPair;
+    private bool _centerPairOnNextAttach = true;
 
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
@@ -184,6 +185,7 @@ internal sealed partial class ModsForm : Form
             _lastDockForeground = IntPtr.Zero;
             _lastLauncherBounds = Rectangle.Empty;
             _lastModsBounds = Rectangle.Empty;
+            _centerPairOnNextAttach = true;
             StartLauncher();
             return true;
         }
@@ -315,6 +317,7 @@ internal sealed partial class ModsForm : Form
             _lastDockForeground = IntPtr.Zero;
             _lastLauncherBounds = Rectangle.Empty;
             _lastModsBounds = Rectangle.Empty;
+            _centerPairOnNextAttach = true;
             SetStatus("KHARVOX started — waiting for launcher window…");
             _dockTimer.Start();
         }
@@ -476,8 +479,24 @@ internal sealed partial class ModsForm : Form
             var workArea = Screen.FromRectangle(launcherRect.Value).WorkingArea;
             var seam = NativeDock.VisibleSeamOverlap(Handle, handle);
 
+            // Start a fresh two-window pair in the center of the screen.
+            // BridgeRestartHandoff relaunches this EXE, so it uses this same
+            // one-time path. Never recenter the windows during normal dragging.
+            if (_centerPairOnNextAttach)
+            {
+                var target = NativeDock.CalculateCentered(launcherRect.Value,
+                    Screen.FromControl(this).WorkingArea, DesiredModsWidth, seam);
+                if (launcherRect.Value != target.Launcher &&
+                    !NativeDock.Move(handle, target.Launcher))
+                {
+                    SetStatus("Couldn't center KHARVOX launcher; retrying…");
+                    return;
+                }
+                if (Bounds != target.Mods) Bounds = target.Mods;
+                _centerPairOnNextAttach = false;
+            }
             // Dragging our sidecar moves the original launcher, as before.
-            if (modsMoved && !launcherMoved)
+            else if (modsMoved && !launcherMoved)
             {
                 var desired = new Rectangle(Right - seam, Top,
                     launcherRect.Value.Width, Height);
