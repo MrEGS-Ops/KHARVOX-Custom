@@ -1,7 +1,7 @@
 # KHARVOX Mods — Portable Standalone Preview
 
 ## What this build does
-- Runs **KharvoxMods.exe** independently, launches the normal KHARVOX launcher, and docks both Windows desktop windows at their **visible** borders. Attempts a native owned-window relationship so focusing either restores both to the foreground as a group, without pinning them TopMost.
+- Runs **KharvoxMods.exe** independently, launches the normal KHARVOX launcher, and docks both Windows desktop windows at their **visible** borders. Uses a native owned-window relationship so focusing either raises both without pinning them TopMost. **Clicking X on either attached window closes the linked pair** (the game process is not terminated).
 - Uses the original two-panel **DOOM MODS / VR MODS** layout, with all 22 numbered legacy mod entries. Only the four verified numbered mods plus the separate **Glory Kill Speed Override** are selectable.
 - Those five configurable mods are: **Weapon Wheel Button Remap, Hand Focus, Physical Crouch, PAINSAW: RIPSHIFT OVERDRIVE**, and **Glory Kill Speed Override** (30–240 Hz; right is faster).
 - Stores selections as `kharvox-mods-bridge.json` **beside the Mods EXE**, not in AppData. Only a KHARVOX launcher built with the optional portable native bridge understands this file. **Stock Cactus v1.1.1 cannot apply these custom native features**, so selections alone do not enable gameplay mods.
@@ -11,9 +11,9 @@
 
 ## Install the game-enabled native bridge (optional)
 1. Run `KharvoxMods.exe` and select **Yes** to attach the desktop windows; **No** exits.
-2. Open **Connection → Install / Update Native Bridge…** and approve the separate native-installation prompt.
+2. Click **Install Bridge** beside the **NATIVE BRIDGE NOT INSTALLED** message in VR MODS and approve the separate native-installation prompt. The existing **Connection → Install / Update Native Bridge…** menu remains available.
 3. This downloads the SHA-256-verified native package pinned to known-good native build **#640**, replaces its launcher with the bridge-aware one, and extracts everything into `KHARVOX Mods/NativeBridge/`. **It does not overwrite, change or delete the original KHARVOX installation.**
-4. If the old KHARVOX is running, close that launcher. Then use **Connection → Start / Find KHARVOX** to start the installed bridge-aware copy.
+4. If the old KHARVOX is running, close either of the two linked windows (both will close) and reopen `KharvoxMods.exe`. It will then start the installed mod-enabled KHARVOX copy.
 5. Check the five selections in VR MODS. They are passed to the bridge-aware launcher on the next DOOM launch. Testing actual headset behaviour is still required; the Windows build check does not prove mod compatibility in-game.
 
 The bridge-aware KHARVOX launcher reads the separate configuration file using an inherited process environment variable and otherwise preserves normal launch behaviour. The original custom launcher has its own source and the original Cactus executable is not patched.
