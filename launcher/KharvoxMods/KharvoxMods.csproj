@@ -13,7 +13,7 @@
     <Product>KHARVOX Mods</Product>
     <Title>KHARVOX Mods</Title>
     <Version>0.1.0</Version>
-    <ApplicationIcon>..\..\assets\branding\kharvox.ico</ApplicationIcon>
+    <ApplicationIcon>mregs.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
@@ -21,5 +21,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="System.Web.Extensions"/>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="mregs-logo.png" LogicalName="KharvoxMods.OriginalMrEGSLogo" />
   </ItemGroup>
 </Project>
