@@ -25,6 +25,16 @@
     <Reference Include="System.IO.Compression"/>
     <Reference Include="System.IO.Compression.FileSystem"/>
   </ItemGroup>
+  <!-- DOOM resource mods, Nexus and the custom user-folder explorer are
+       retained in the repository for future work, but no source from those
+       modules is compiled or embedded in this VR-only executable. -->
+  <ItemGroup>
+    <Compile Remove="ArchivedDoomMods.Parked.cs" />
+    <Compile Remove="ModsForm.ModFolder.cs" />
+    <Compile Remove="ModDropWindow.cs" />
+    <Compile Remove="PortableDoomUserMods.cs" />
+    <Compile Remove="NexusModsPopup.cs" />
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="mregs-logo.png" LogicalName="KharvoxMods.OriginalMrEGSLogo" />
   </ItemGroup>
