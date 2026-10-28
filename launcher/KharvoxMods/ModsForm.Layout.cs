@@ -20,6 +20,8 @@ internal sealed partial class ModsForm
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private readonly Label _bridgeState = new Label();
+    private readonly Button _bridgeInstallButton = new Button();
+    private bool _bridgeInstallInProgress;
 
     private void RefreshBridgeState()
     {
@@ -32,6 +34,9 @@ internal sealed partial class ModsForm
             ? "NATIVE BRIDGE INSTALLED — restart DOOM for selected mods"
             : "NATIVE BRIDGE NOT INSTALLED — selections saved only";
         _bridgeState.ForeColor = installed ? Color.LightGreen : Color.DarkOrange;
+        _bridgeInstallButton.Text = _bridgeInstallInProgress ? "Installing…" :
+            (installed ? "Update Bridge" : "Install Bridge");
+        _bridgeInstallButton.Enabled = !_bridgeInstallInProgress;
     }
 
     private static bool IsConfirmedMod(string title) =>
@@ -503,13 +508,40 @@ internal sealed partial class ModsForm
             ColumnCount = 1
         };
         list.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        _bridgeState.Height = 24;
+        // Put the existing verified installer directly beside the bridge
+        // status; no need to dig through the Connection menu.
+        var bridgeRow = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, RowCount = 1, ColumnCount = 2,
+            BackColor = DarkPanel, Margin = Padding.Empty,
+            Padding = new Padding(1, 2, 1, 2)
+        };
+        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        bridgeRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 137));
+        _bridgeState.Height = 28;
         _bridgeState.Dock = DockStyle.Fill;
         _bridgeState.BackColor = DarkPanel;
         _bridgeState.Font = new Font("Segoe UI", 8f);
         _bridgeState.TextAlign = ContentAlignment.MiddleLeft;
+        _bridgeState.AutoEllipsis = true;
+        _tooltips.SetToolTip(_bridgeState,
+            "The bridge is stored in this portable application's NativeBridge folder. " +
+            "It does not overwrite the original KHARVOX installation.");
+        bridgeRow.Controls.Add(_bridgeState, 0, 0);
+
+        _bridgeInstallButton.Dock = DockStyle.Fill;
+        _bridgeInstallButton.FlatStyle = FlatStyle.Flat;
+        _bridgeInstallButton.ForeColor = Color.Gainsboro;
+        _bridgeInstallButton.BackColor = Color.FromArgb(43, 43, 47);
+        _bridgeInstallButton.Margin = new Padding(2, 1, 2, 1);
+        _bridgeInstallButton.FlatAppearance.BorderColor = Color.DimGray;
+        _bridgeInstallButton.Click += async (_, _) => await InstallNativeBridge();
+        _tooltips.SetToolTip(_bridgeInstallButton,
+            "Download, verify and install the mod-enabled KHARVOX runtime " +
+            "into the local NativeBridge folder.");
+        bridgeRow.Controls.Add(_bridgeInstallButton, 1, 0);
         RefreshBridgeState();
-        AppendFixedRow(list, _bridgeState, 24);
+        AppendFixedRow(list, bridgeRow, 36);
         AddGlorySpeedHeader(list);
         var number = 1;
         foreach (var groupRow in OriginalModGroups)
