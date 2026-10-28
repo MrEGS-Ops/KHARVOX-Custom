@@ -29,6 +29,10 @@ jobs:
         shell: pwsh
         run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
 
+      - name: Build original MrEGS application icon from embedded PNG
+        shell: pwsh
+        run: ./launcher/KharvoxMods/Generate-MrEGSIcon.ps1
+
       - name: Compile standalone executable (net48 x64)
         shell: pwsh
         run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
