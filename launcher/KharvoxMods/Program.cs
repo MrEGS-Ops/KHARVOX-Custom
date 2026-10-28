@@ -65,9 +65,9 @@ internal static class Program
             clean.KharvoxLauncherPath = Path.Combine(root, "KharvoxLauncher.exe");
             clean.Save(path);
             if (!File.Exists(path) ||
-                !Directory.Exists(Path.Combine(root, "Mods")) ||
                 !Directory.Exists(Path.Combine(root, "Logs")) ||
-                !Directory.Exists(Path.Combine(root, "Backups")))
+                !Directory.Exists(Path.Combine(root, "Backups")) ||
+                Directory.Exists(Path.Combine(root, "Mods")))
                 throw new InvalidDataException("All portable folders must be beside settings.json.");
             var reloaded = AppState.Load(path);
             if (reloaded.WindowAttachmentApproved || reloaded.ConsentRecorded)
@@ -82,7 +82,7 @@ internal static class Program
                 throw new InvalidDataException("Malformed state must fail closed.");
             if (LauncherDiscovery.IsLauncherFile(Path.Combine(root, "KharvoxMods.exe")))
                 throw new InvalidDataException("Non-KHARVOX executables must be rejected.");
-            Console.WriteLine("KHARVOX Mods standalone tests passed: portable local storage, consent and fail-closed settings.");
+            Console.WriteLine("KHARVOX VR Mods standalone tests passed: no DOOM user-folder creation, portable storage, consent and fail-closed settings.");
             return 0;
         }
         catch (Exception error)
