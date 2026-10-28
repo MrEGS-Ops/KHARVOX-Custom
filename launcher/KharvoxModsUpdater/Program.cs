@@ -41,7 +41,9 @@ internal sealed class UpdaterWindow : Form
         MaximizeBox = false;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         StartPosition = FormStartPosition.CenterScreen;
-        BackColor = Color.FromArgb(24, 24, 27);
+        // Use the same KHARVOX desktop palette instead of a slightly
+        // different charcoal updater frame.
+        BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9f);
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -68,6 +70,8 @@ internal sealed class UpdaterWindow : Form
         _close.Location = new Point(377, 125);
         _close.Size = new Size(93, 30);
         _close.FlatStyle = FlatStyle.Flat;
+        _close.BackColor = Color.FromArgb(43, 43, 47);
+        _close.FlatAppearance.BorderColor = Color.DimGray;
         _close.ForeColor = Color.Gainsboro;
         _close.Click += (_, _) => Close();
         Controls.Add(_close);
@@ -76,12 +80,33 @@ internal sealed class UpdaterWindow : Form
         _runApp.Location = new Point(215, 125);
         _runApp.Size = new Size(150, 30);
         _runApp.FlatStyle = FlatStyle.Flat;
+        _runApp.BackColor = Color.FromArgb(43, 43, 47);
+        _runApp.FlatAppearance.BorderColor = Color.DimGray;
         _runApp.ForeColor = Color.Gainsboro;
         _runApp.Visible = false;
         _runApp.Click += (_, _) => LaunchMods();
         Controls.Add(_runApp);
 
         Shown += async (_, _) => await RunUpdate();
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
+    private static extern int DwmSetWindowAttribute(IntPtr window,
+        int attribute, ref int value, int size);
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        try
+        {
+            var dark = 1;
+            if (DwmSetWindowAttribute(Handle, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(Handle, 19, ref dark, sizeof(int));
+            var border = 0x0038383B;
+            DwmSetWindowAttribute(Handle, 34, ref border, sizeof(int));
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
     }
 
     private async Task RunUpdate()
