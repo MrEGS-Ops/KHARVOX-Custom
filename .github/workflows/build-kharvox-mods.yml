@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - work/mods-sidecar-separation
+      - work/cactus-original-launcher-mods-button
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxModsUpdater/**'
@@ -47,6 +48,24 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
 
+      - name: Verify Cactus original 1.1.1 launcher UI and independent Mods button
+        shell: pwsh
+        run: |
+          $code = Get-Content -LiteralPath "launcher/KharvoxLauncher/MainForm.cs" -Raw
+          $project = Get-Content -LiteralPath "launcher/KharvoxLauncher/KharvoxLauncher.csproj" -Raw
+          if ($code -notmatch "OpenStandaloneVrMods" -or $code -notmatch "Made by Cactus") {
+            throw "Cactus original launcher and external VR Mods button were not assembled"
+          }
+          if ($code -match "ShowCustomOptions|MakeGroup\(\x22DOOM MODS\x22\)") {
+            throw "Retired embedded Mods window has returned to launcher"
+          }
+          if ($project -notmatch 'Compile Remove="MainForm\.\*\.cs"') {
+            throw "Legacy Mods UI partial files may be compiled into launcher"
+          }
+          $launcherExe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          $result = Start-Process -FilePath $launcherExe -ArgumentList "--self-test-cactus-launcher" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Original launcher Mods isolation failed" }
+
       - name: Assemble optional verified KHARVOX native bridge copy
         shell: pwsh
         env:
@@ -73,6 +92,7 @@ jobs:
             "KHARVOX_MODS_BRIDGE_V1"
             "baseNativeCommit=9e30175531524c308d38d61c43b0fe2b1f16c6e4"
             "bridgeLauncherCommit=${{ github.sha }}"
+            "launcherUi=cactus-original-v1.1.1-mods-shortcut-v1"
           ) | Set-Content -LiteralPath (Join-Path $base "KharvoxModsBridge.v1") -Encoding ascii
           $zip = Join-Path $PWD "dist/KHARVOX-Mods-NativeBridge.zip"
           Compress-Archive -Path (Join-Path $base "*") -DestinationPath $zip -CompressionLevel Optimal -Force
@@ -88,7 +108,7 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj --configuration Release --no-restore
 
-      - name: Verify original MrEGS icon is identical in all three EXEs
+      - name: Verify original MrEGS icon is identical in Mods and Updater EXEs
         shell: pwsh
         run: |
           Add-Type -AssemblyName System.Drawing
@@ -98,8 +118,7 @@ jobs:
           }
           $exePaths = @(
             "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe",
-            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe",
-            "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
           )
           $baseDigest = $null
           foreach ($path in $exePaths) {
@@ -242,8 +261,8 @@ jobs:
           overwrite_files: true
           body: |
             Ready-to-run KHARVOX Mods: download KHARVOX-Mods-ReadyToRun.zip for a new installation.
-            Opening KharvoxMods.exe directly starts the bundled custom KHARVOX launcher.
-            Select the location of original KHARVOX only once; the original is not run or patched.
+            Opening KharvoxMods.exe starts the bundled launcher rebuilt from Cactus's original v1.1.1 UI with only an external Mods button added.
+            Custom mod runtime support is separate; the original selected KHARVOX install is not overwritten.
             The small Standalone.zip is for existing updater installations.
           files: |
             dist/KHARVOX-Mods-ReadyToRun.zip

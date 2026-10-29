@@ -19,13 +19,15 @@
     <Version>1.1.1</Version>
     <FileVersion>1.1.1.1114</FileVersion>
     <InformationalVersion>1.1.1</InformationalVersion>
-    <ApplicationIcon>..\KharvoxMods\mregs.ico</ApplicationIcon>
+    <ApplicationIcon>..\..\assets\branding\kharvox.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Retired launcher Mods panel lives in archived partial files; never compile it. -->
+    <Compile Remove="MainForm.*.cs" />
     <EmbeddedResource Include="..\..\assets\ui\fluent-refresh.png"><LogicalName>Kharvox.Icons.Refresh</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\ui\fluent-refresh-hover.png"><LogicalName>Kharvox.Icons.RefreshHover</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\ui\fluent-question.png"><LogicalName>Kharvox.Icons.Question</LogicalName></EmbeddedResource>

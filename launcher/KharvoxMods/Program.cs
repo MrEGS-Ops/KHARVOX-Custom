@@ -1,5 +1,8 @@
 using System;
 using System.IO;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Linq;
 using System.Windows.Forms;
 
@@ -7,6 +10,28 @@ namespace KharvoxMods;
 
 internal static class Program
 {
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private static void FocusExistingModsWindow()
+    {
+        using (var self = Process.GetCurrentProcess())
+        {
+            foreach (var process in Process.GetProcessesByName("KharvoxMods"))
+            {
+                using (process)
+                {
+                    if (process.Id == self.Id) continue;
+                    var window = process.MainWindowHandle;
+                    if (window == IntPtr.Zero) continue;
+                    ShowWindow(window, 9); // SW_RESTORE
+                    SetForegroundWindow(window);
+                    return;
+                }
+            }
+        }
+    }
+
     [STAThread]
     private static int Main(string[] args)
     {
@@ -29,10 +54,18 @@ internal static class Program
         if (args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest();
 
-        Application.EnableVisualStyles();
-        Application.SetCompatibleTextRenderingDefault(false);
-        Application.Run(new ModsForm());
-        return 0;
+        using (var singleInstance = new Mutex(true, @"Local\KHARVOXMods-Standalone-OnlyOneWindow", out var newInstance))
+        {
+            if (!newInstance)
+            {
+                FocusExistingModsWindow();
+                return 0;
+            }
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new ModsForm());
+            return 0;
+        }
     }
 
     private static int SelfTest()

@@ -56,9 +56,11 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        if (args.Any(argument => string.Equals(argument, "--self-test-custom-mods-ui",
+        if (args.Any(argument => string.Equals(argument, "--self-test-cactus-launcher",
                 StringComparison.OrdinalIgnoreCase)))
-            return MainForm.RunCustomModsUiSelfTest();
+            return typeof(MainForm).GetMethod("ShowCustomOptions",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                is null ? 0 : 1;
 
         if (args.Any(argument => string.Equals(argument, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest.Run();

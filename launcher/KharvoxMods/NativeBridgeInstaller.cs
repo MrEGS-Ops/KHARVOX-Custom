@@ -21,6 +21,7 @@ internal static class NativeBridgeInstaller
     private const string PinnedNativeCommit =
         "9e30175531524c308d38d61c43b0fe2b1f16c6e4";
     private const string ZipName = "KHARVOX-Mods-NativeBridge.zip";
+    private const string RequiredLauncherUi = "cactus-original-v1.1.1-mods-shortcut-v1";
     private const long MaxArchiveBytes = 250L * 1024 * 1024;
     private const long MaxExtractBytes = 1200L * 1024 * 1024;
 
@@ -50,7 +51,9 @@ internal static class NativeBridgeInstaller
                 File.Exists(Path.Combine(TargetDirectory, "KharvoxLayer.dll")) &&
                 File.Exists(manifest) &&
                 File.ReadAllText(manifest).Contains(
-                    "baseNativeCommit=" + PinnedNativeCommit);
+                    "baseNativeCommit=" + PinnedNativeCommit) &&
+                File.ReadAllText(manifest).Contains(
+                    "launcherUi=" + RequiredLauncherUi);
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
@@ -127,7 +130,9 @@ internal static class NativeBridgeInstaller
         var manifest = Path.Combine(destination, "KharvoxModsBridge.v1");
         if (!File.Exists(manifest) ||
             !File.ReadAllText(manifest).Contains(
-                "baseNativeCommit=" + PinnedNativeCommit))
+                "baseNativeCommit=" + PinnedNativeCommit) ||
+            !File.ReadAllText(manifest).Contains(
+                "launcherUi=" + RequiredLauncherUi))
             throw new InvalidDataException("Native bridge build identity does not match our verified core.");
     }
 

@@ -208,9 +208,9 @@ internal static class UpdateService
             if (string.IsNullOrWhiteSpace(latestBuild))
                 latestBuild = "New KHARVOX Mods preview";
             status("New update found: " + latestBuild);
-            if (!confirmUpdate("New update available!\\n\\n" + latestBuild +
-                "\\nCurrently installed: " + InstalledBuild +
-                "\\n\\nDownload and install now?"))
+            if (!confirmUpdate("New update available!\n\n" + latestBuild +
+                "\nCurrently installed: " + InstalledBuild +
+                "\n\nDownload and install now?"))
                 return "Update skipped.";
 
             if (AppIsRunning())
