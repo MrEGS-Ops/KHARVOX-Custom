@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -23,6 +24,27 @@ internal static class UpdaterBootstrap
     private const string ArchiveName = "KHARVOX-Mods-Updater.zip";
     private const string UpdaterName = "KharvoxModsUpdater.exe";
     private const long MaxSize = 20L * 1024 * 1024;
+
+    // Explorer caches executable icons by path. Replacing the updater binary
+    // without informing the shell can leave the old KHARVOX icon visible.
+    [DllImport("shell32.dll", EntryPoint = "SHChangeNotify",
+        CharSet = CharSet.Unicode)]
+    private static extern void SHChangeNotify(uint eventId, uint flags,
+        [MarshalAs(UnmanagedType.LPWStr)] string filePath, IntPtr unused);
+
+    private static void NotifyExplorerUpdaterChanged(string updaterExe)
+    {
+        const uint shcneUpdateItem = 0x00002000;
+        const uint shcnfPathW = 0x0005;
+        const uint shcnfFlush = 0x1000;
+        try
+        {
+            SHChangeNotify(shcneUpdateItem, shcnfPathW | shcnfFlush,
+                updaterExe, IntPtr.Zero);
+        }
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
+    }
 
     private sealed class Release
     {
@@ -130,7 +152,11 @@ internal static class UpdaterBootstrap
                     }
 
                     var current = Path.Combine(root, UpdaterName);
-                    if (File.Exists(current) && Digest(next) == Digest(current)) return;
+                    if (File.Exists(current) && Digest(next) == Digest(current))
+                    {
+                        NotifyExplorerUpdaterChanged(current);
+                        return;
+                    }
 
                     var backups = Path.Combine(root, "Backups", "Updater");
                     Directory.CreateDirectory(backups);
@@ -148,6 +174,7 @@ internal static class UpdaterBootstrap
                                 File.Replace(next, current, backup, true);
                             else
                                 File.Move(next, current);
+                            NotifyExplorerUpdaterChanged(current);
                             return;
                         }
                         catch (IOException)

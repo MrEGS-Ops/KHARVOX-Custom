@@ -12,7 +12,8 @@
     <RootNamespace>KharvoxModsUpdater</RootNamespace>
     <Product>KHARVOX Mods Portable Updater</Product>
     <Title>KHARVOX Mods Updater</Title>
-    <Version>0.1.0</Version>
+    <Version>0.2.0</Version>
+    <FileVersion>0.2.0.0</FileVersion>
     <ApplicationIcon>..\KharvoxMods\mregs.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
