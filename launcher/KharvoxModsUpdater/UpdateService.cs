@@ -164,6 +164,32 @@ internal static class UpdateService
         return false;
     }
 
+    internal static string FormatBuildNumber(string? input)
+    {
+        var value = (input ?? "").Trim();
+        return Regex.IsMatch(value, @"^\d{5,20}$") ? "#" + value : "Unknown";
+    }
+
+    internal static string ReleaseBuildNumber(string? releaseName)
+    {
+        var match = Regex.Match(releaseName ?? "",
+            @"\bBuild\s*#\s*(\d{5,20})\b", RegexOptions.IgnoreCase);
+        if (!match.Success)
+            throw new InvalidDataException("Release has no valid build number.");
+        return "#" + match.Groups[1].Value;
+    }
+
+    private static void SaveInstalledBuild(string build)
+    {
+        try
+        {
+            File.WriteAllText(Path.Combine(InstallFolder, "build-info.txt"),
+                build.TrimStart('#'));
+        }
+        catch (IOException) { /* The application update can still be valid. */ }
+        catch (UnauthorizedAccessException) { }
+    }
+
     internal static string InstalledBuild
     {
         get
@@ -171,14 +197,29 @@ internal static class UpdateService
             try
             {
                 var file = Path.Combine(InstallFolder, "build-info.txt");
-                var value = File.Exists(file) ? File.ReadAllText(file).Trim() : "";
-                return Regex.IsMatch(value, @"^\\d{5,20}$") ? "#" + value : "unknown";
+                if (File.Exists(file))
+                {
+                    var stored = FormatBuildNumber(File.ReadAllText(file));
+                    if (stored != "Unknown") return stored;
+                }
+                // Older portable installs may lack build-info.txt. Read the
+                // build embedded into their existing Mods executable instead.
+                if (File.Exists(AppExe))
+                {
+                    var version = FileVersionInfo.GetVersionInfo(AppExe).ProductVersion ?? "";
+                    var match = Regex.Match(version, @"(?<!\d)\d{5,20}(?!\d)");
+                    if (match.Success) return "#" + match.Value;
+                }
             }
-            catch (IOException) { return "unknown"; }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            catch (System.ComponentModel.Win32Exception) { }
+            return "Unknown";
         }
     }
 
-    internal static async Task<string> RunAsync(Action<string> status, Func<string, bool> confirmUpdate)
+    internal static async Task<string> RunAsync(Action<string> status,
+        Action<string> setAvailableBuild, Func<Task<bool>> confirmUpdate)
     {
         ServicePointManager.SecurityProtocol |= SecurityProtocolType.Tls12;
         using (var handler = new HttpClientHandler
@@ -194,23 +235,28 @@ internal static class UpdateService
             var release = new JavaScriptSerializer().Deserialize<ReleaseInfo>(json);
             if (release == null)
                 throw new InvalidDataException("GitHub release response was empty.");
+            var latestBuild = ReleaseBuildNumber(release.name);
+            setAvailableBuild(latestBuild);
             var zipUrl = GetAssetUrl(release, ZipName);
             var hashUrl = GetAssetUrl(release, HashName);
 
             status("Verifying published update checksum…");
             var expected = ParseExpectedHash(await client.GetStringAsync(hashUrl));
             var marker = Path.Combine(InstallFolder, "updater-state.txt");
-            if (File.Exists(AppExe) && File.Exists(marker) &&
-                string.Equals(File.ReadAllText(marker).Trim(), expected,
-                    StringComparison.OrdinalIgnoreCase))
-                return "Already up to date.";
-            var latestBuild = release.name;
-            if (string.IsNullOrWhiteSpace(latestBuild))
-                latestBuild = "New KHARVOX Mods preview";
-            status("New update found: " + latestBuild);
-            if (!confirmUpdate("New update available!\n\n" + latestBuild +
-                "\nCurrently installed: " + InstalledBuild +
-                "\n\nDownload and install now?"))
+            if (File.Exists(AppExe))
+            {
+                if (string.Equals(InstalledBuild, latestBuild, StringComparison.Ordinal))
+                    return "Already up to date.";
+                if (File.Exists(marker) &&
+                    string.Equals(File.ReadAllText(marker).Trim(), expected,
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    SaveInstalledBuild(latestBuild);
+                    return "Already up to date.";
+                }
+            }
+            status("New build is available.");
+            if (!await confirmUpdate())
                 return "Update skipped.";
 
             if (AppIsRunning())
@@ -260,6 +306,7 @@ internal static class UpdateService
 
                 status("Replacing application files; keeping settings and Mods folder…");
                 ReplaceManagedFiles(InstallFolder, extracted);
+                SaveInstalledBuild(latestBuild);
                 // Marker is only a download optimization; failure to write this
                 // should not cause damage to already-committed application files.
                 try { File.WriteAllText(marker, expected); } catch (IOException) { }
@@ -279,6 +326,10 @@ internal static class UpdateService
         Directory.CreateDirectory(root);
         try
         {
+            if (FormatBuildNumber("40836481378") != "#40836481378" ||
+                FormatBuildNumber("") != "Unknown" ||
+                ReleaseBuildNumber("KHARVOX Mods — Build #40836481378") != "#40836481378")
+                throw new Exception("Installed/available build display parsing failed.");
             if (ParseExpectedHash(new string('a', 64) + " *" + ZipName)
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
