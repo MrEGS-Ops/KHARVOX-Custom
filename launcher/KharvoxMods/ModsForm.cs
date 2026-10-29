@@ -36,7 +36,7 @@ internal sealed partial class ModsForm : Form
     // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
-    private const int DesiredModsWidth = 850; // VR-only single-column window
+    private const int DesiredModsWidth = 706; // Compact VR-only single-column window
 
     private static string EmbeddedBuildId()
     {
@@ -67,7 +67,7 @@ internal sealed partial class ModsForm : Form
     {
         Text = "KHARVOX Custom Mods — " + BuildLabel();
         ClientSize = new Size(DesiredModsWidth, 600);
-        MinimumSize = new Size(735, 530);
+        MinimumSize = new Size(650, 530);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -95,7 +95,8 @@ internal sealed partial class ModsForm : Form
             _launcher?.Dispose(); // Never terminate the independent KHARVOX process.
         };
         SizeChanged += (_, _) => SyncMinimizeFromMods();
-        Activated += (_, _) => SyncCompanionFocus();
+        // Do not raise the companion on activation: owned popups and
+        // cross-process z-order changes caused floating-over-launcher bugs.
         UpdateAttachmentButton();
     }
 
@@ -355,29 +356,19 @@ internal sealed partial class ModsForm : Form
             NativeDock.ShowWindow(_launcherWindow, NativeDock.Restore);
     }
 
-    private void SyncCompanionFocus()
+    private void MatchLauncherWindowFrame(IntPtr launcher)
     {
-        if (!_state.WindowAttachmentApproved || !IsHandleCreated ||
-            WindowState == FormWindowState.Minimized ||
-            _launcherWindow == IntPtr.Zero || !NativeDock.IsWindow(_launcherWindow) ||
-            NativeDock.IsIconic(_launcherWindow))
+        if (launcher == IntPtr.Zero || !NativeDock.IsWindow(launcher)) return;
+        try
         {
-            _lastDockForeground = IntPtr.Zero;
-            return;
+            var dark = 1;
+            if (DwmSetWindowAttribute(launcher, 20, ref dark, sizeof(int)) != 0)
+                DwmSetWindowAttribute(launcher, 19, ref dark, sizeof(int));
+            var border = 0x0038383B;
+            DwmSetWindowAttribute(launcher, 34, ref border, sizeof(int));
         }
-
-        var focused = NativeDock.ForegroundRoot();
-        if (focused != Handle && focused != _launcherWindow)
-        {
-            // Don't steal foreground when another application is selected.
-            _lastDockForeground = IntPtr.Zero;
-            return;
-        }
-
-        if (_lastDockForeground == focused) return;
-        var other = focused == Handle ? _launcherWindow : Handle;
-        if (NativeDock.RaiseDockPair(focused, other))
-            _lastDockForeground = focused;
+        catch (DllNotFoundException) { }
+        catch (EntryPointNotFoundException) { }
     }
 
     private void SyncDock()
@@ -415,6 +406,7 @@ internal sealed partial class ModsForm : Form
                 _lastDockForeground = IntPtr.Zero;
                 _lastLauncherBounds = Rectangle.Empty;
                 _lastModsBounds = Rectangle.Empty;
+                MatchLauncherWindowFrame(handle);
             }
             if (!_state.WindowAttachmentApproved)
             {
@@ -427,11 +419,8 @@ internal sealed partial class ModsForm : Form
                 SetStatus("KHARVOX running independently — docking disabled.");
                 return;
             }
-            if (_ownerLauncher != handle)
-            {
-                if (NativeDock.SetOwner(Handle, handle))
-                    _ownerLauncher = handle;
-            }
+            // Never assign a Win32 popup owner across processes. That made
+            // the Mods window float above launcher controls on mouse hover.
             if (NativeDock.IsIconic(handle))
             {
                 _lastLauncherMinimized = true;
@@ -487,7 +476,7 @@ internal sealed partial class ModsForm : Form
             else if (launcherMoved || _lastLauncherBounds == Rectangle.Empty)
             {
                 var arranged = NativeDock.Calculate(launcherRect.Value, workArea,
-                    Math.Min(DesiredModsWidth, Math.Max(Width, 540)), seam);
+                    DesiredModsWidth, seam);
                 if (launcherRect.Value != arranged.Launcher)
                     NativeDock.Move(handle, arranged.Launcher);
                 if (Bounds != arranged.Mods) Bounds = arranged.Mods;
@@ -498,8 +487,7 @@ internal sealed partial class ModsForm : Form
             var actualLauncher = NativeDock.Bounds(handle);
             if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
             _lastModsBounds = Bounds;
-            SyncCompanionFocus();
-            SetStatus("Windows linked — custom KHARVOX active; mods apply on next DOOM launch.");
+            SetStatus("Connected · Mods apply on next DOOM launch.");
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
