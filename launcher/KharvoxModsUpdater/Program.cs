@@ -27,67 +27,116 @@ internal static class Program
 
 internal sealed class UpdaterWindow : Form
 {
+    private static readonly Color PanelColor = Color.FromArgb(30, 30, 33);
+    private static readonly Color ButtonColor = Color.FromArgb(43, 43, 47);
+    private static readonly Color MutedColor = Color.FromArgb(170, 170, 176);
+
+    private readonly Label _installedBuild = new Label();
+    private readonly Label _availableBuild = new Label();
     private readonly Label _status = new Label();
     private readonly ProgressBar _progress = new ProgressBar();
-    private readonly Button _runApp = new Button();
+    private readonly Button _update = new Button();
+    private readonly Button _notNow = new Button();
+    private readonly Button _launch = new Button();
     private readonly Button _close = new Button();
-    private bool _finished;
+    private TaskCompletionSource<bool>? _decision;
 
     internal UpdaterWindow()
     {
-        Text = "KHARVOX Mods Updater — Installed " + UpdateService.InstalledBuild;
-        ClientSize = new Size(490, 172);
-        MinimumSize = MaximumSize = Size;
-        MaximizeBox = false;
+        Text = "KHARVOX Mods Updater";
+        ClientSize = new Size(520, 282);
         FormBorderStyle = FormBorderStyle.FixedDialog;
+        MaximizeBox = false;
+        MinimizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
-        // Use the same KHARVOX desktop palette instead of a slightly
-        // different charcoal updater frame.
         BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9f);
-        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
+        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        catch { /* The updater is usable without an icon. */ }
 
-        var heading = new Label
+        Controls.Add(new Label
         {
-            Text = "KHARVOX MODS — PORTABLE UPDATER",
-            Location = new Point(18, 12), Size = new Size(450, 25),
-            Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-            ForeColor = Color.WhiteSmoke
-        };
-        Controls.Add(heading);
+            Text = "KHARVOX MODS",
+            Location = new Point(18, 13), Size = new Size(484, 19),
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+        });
+        Controls.Add(new Label
+        {
+            Text = "Update manager",
+            Location = new Point(18, 36), Size = new Size(484, 26),
+            Font = new Font("Segoe UI", 12f, FontStyle.Bold)
+        });
+        Controls.Add(BuildCard("INSTALLED BUILD", UpdateService.InstalledBuild,
+            _installedBuild, 18));
+        Controls.Add(new Label
+        {
+            Text = "→", Location = new Point(246, 99), Size = new Size(28, 30),
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = MutedColor, Font = new Font("Segoe UI", 13f)
+        });
+        Controls.Add(BuildCard("AVAILABLE BUILD", "Checking…", _availableBuild, 274));
+
         _status.Text = "Checking for updates…";
-        _status.Location = new Point(18, 48);
-        _status.Size = new Size(450, 43);
+        _status.SetBounds(18, 158, 484, 45);
         _status.ForeColor = Color.Gainsboro;
         Controls.Add(_status);
-        _progress.Location = new Point(18, 94);
-        _progress.Size = new Size(452, 17);
+
+        _progress.SetBounds(18, 206, 484, 13);
         _progress.Style = ProgressBarStyle.Marquee;
+        _progress.MarqueeAnimationSpeed = 22;
         Controls.Add(_progress);
 
-        _close.Text = "Close";
-        _close.Location = new Point(377, 125);
-        _close.Size = new Size(93, 30);
-        _close.FlatStyle = FlatStyle.Flat;
-        _close.BackColor = Color.FromArgb(43, 43, 47);
-        _close.FlatAppearance.BorderColor = Color.DimGray;
-        _close.ForeColor = Color.Gainsboro;
+        StyleButton(_update, "Update now", 340, 231, 162, true);
+        _update.Visible = false;
+        _update.Click += (_, _) => Decide(true);
+
+        StyleButton(_notNow, "Not now", 220, 231, 110, false);
+        _notNow.Visible = false;
+        _notNow.Click += (_, _) => Decide(false);
+
+        StyleButton(_launch, "Launch Mods", 340, 231, 162, true);
+        _launch.Visible = false;
+        _launch.Click += (_, _) => LaunchMods();
+
+        StyleButton(_close, "Close", 399, 231, 103, false);
         _close.Click += (_, _) => Close();
-        Controls.Add(_close);
 
-        _runApp.Text = "Launch existing";
-        _runApp.Location = new Point(215, 125);
-        _runApp.Size = new Size(150, 30);
-        _runApp.FlatStyle = FlatStyle.Flat;
-        _runApp.BackColor = Color.FromArgb(43, 43, 47);
-        _runApp.FlatAppearance.BorderColor = Color.DimGray;
-        _runApp.ForeColor = Color.Gainsboro;
-        _runApp.Visible = false;
-        _runApp.Click += (_, _) => LaunchMods();
-        Controls.Add(_runApp);
+        FormClosing += (_, _) => _decision?.TrySetResult(false);
+        Shown += async (_, _) => await RunUpdateAsync();
+    }
 
-        Shown += async (_, _) => await RunUpdate();
+    private static Panel BuildCard(string caption, string value, Label output, int left)
+    {
+        var panel = new Panel
+        {
+            Location = new Point(left, 72), Size = new Size(226, 76),
+            BackColor = PanelColor
+        };
+        panel.Controls.Add(new Label
+        {
+            Text = caption, Location = new Point(12, 9), Size = new Size(202, 18),
+            ForeColor = MutedColor, Font = new Font("Segoe UI", 8f, FontStyle.Bold)
+        });
+        output.Text = value;
+        output.Location = new Point(12, 32);
+        output.Size = new Size(202, 35);
+        output.Font = new Font("Segoe UI", 15f, FontStyle.Bold);
+        output.ForeColor = Color.WhiteSmoke;
+        output.AutoEllipsis = true;
+        panel.Controls.Add(output);
+        return panel;
+    }
+
+    private void StyleButton(Button button, string label, int x, int y, int width, bool primary)
+    {
+        button.Text = label;
+        button.SetBounds(x, y, width, 33);
+        button.FlatStyle = FlatStyle.Flat;
+        button.BackColor = primary ? Color.FromArgb(71, 71, 77) : ButtonColor;
+        button.ForeColor = Color.WhiteSmoke;
+        button.FlatAppearance.BorderColor = Color.DimGray;
+        Controls.Add(button);
     }
 
     [System.Runtime.InteropServices.DllImport("dwmapi.dll")]
@@ -109,37 +158,60 @@ internal sealed class UpdaterWindow : Form
         catch (EntryPointNotFoundException) { }
     }
 
-    private async Task RunUpdate()
+    private Task<bool> AskForUpdateAsync()
+    {
+        _status.Text = "New build available. Install it?";
+        _progress.Visible = false;
+        _close.Visible = false;
+        _launch.Visible = false;
+        _update.Visible = true;
+        _notNow.Visible = true;
+        _decision = new TaskCompletionSource<bool>();
+        return _decision.Task;
+    }
+
+    private void Decide(bool install)
+    {
+        var decision = _decision;
+        _decision = null;
+        _update.Visible = false;
+        _notNow.Visible = false;
+        _close.Visible = true;
+        if (install)
+        {
+            _status.Text = "Preparing update…";
+            _progress.Visible = true;
+            _progress.Style = ProgressBarStyle.Marquee;
+        }
+        decision?.TrySetResult(install);
+    }
+
+    private async Task RunUpdateAsync()
     {
         try
         {
             var result = await UpdateService.RunAsync(
-                message => _status.Text = message,
-                prompt => MessageBox.Show(this, prompt, "KHARVOX Mods — Update Found",
-                    MessageBoxButtons.YesNo, MessageBoxIcon.Information,
-                    MessageBoxDefaultButton.Button1) == DialogResult.Yes);
-            _progress.Style = ProgressBarStyle.Continuous;
-            _progress.Value = 100;
-            if (result == "Update skipped.")
-            {
-                _status.Text = result;
-                _runApp.Text = "Launch existing";
-                _runApp.Visible = File.Exists(UpdateService.AppExe);
-                return;
-            }
-            Text = "KHARVOX Mods Updater — Installed " + UpdateService.InstalledBuild;
-            _status.Text = result + "\nOpening KHARVOX Mods…";
-            await Task.Delay(300);
-            LaunchMods();
+                message => { if (!IsDisposed) _status.Text = message; },
+                build => { if (!IsDisposed) _availableBuild.Text = build; },
+                AskForUpdateAsync);
+            if (IsDisposed) return;
+            _installedBuild.Text = UpdateService.InstalledBuild;
+            _progress.Visible = false;
+            _status.Text = result;
+            _update.Visible = false;
+            _notNow.Visible = false;
+            _close.Visible = true;
+            _launch.Visible = File.Exists(UpdateService.AppExe);
         }
         catch (Exception error)
         {
-            _progress.Style = ProgressBarStyle.Continuous;
-            _progress.Value = 0;
-            _finished = true;
+            if (IsDisposed) return;
+            _progress.Visible = false;
             _status.Text = "Update not completed: " + error.Message;
-            _runApp.Visible = File.Exists(UpdateService.AppExe);
-            _runApp.Text = "Launch existing";
+            _update.Visible = false;
+            _notNow.Visible = false;
+            _close.Visible = true;
+            _launch.Visible = File.Exists(UpdateService.AppExe);
         }
     }
 
@@ -147,8 +219,7 @@ internal sealed class UpdaterWindow : Form
     {
         if (!File.Exists(UpdateService.AppExe))
         {
-            MessageBox.Show(this, "KHARVOX Mods is not installed. Check for updates again.",
-                "KHARVOX Mods Updater", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            _status.Text = "KHARVOX Mods is not installed.";
             return;
         }
         try
@@ -158,16 +229,13 @@ internal sealed class UpdaterWindow : Form
                 FileName = UpdateService.AppExe,
                 WorkingDirectory = UpdateService.InstallFolder,
                 UseShellExecute = true
-            });
-            _finished = true;
+            })?.Dispose();
             Close();
         }
         catch (Exception error) when (error is System.ComponentModel.Win32Exception ||
             error is InvalidOperationException)
         {
-            _finished = true;
-            _status.Text = "Update finished, but couldn't start KHARVOX Mods: " + error.Message;
-            _runApp.Visible = true;
+            _status.Text = "Could not launch KHARVOX Mods: " + error.Message;
         }
     }
 }
