@@ -83,6 +83,15 @@ internal static class NativeDock
     private const int DwmwaExtendedFrameBounds = 9;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
+    private static readonly IntPtr HwndTopmost = new IntPtr(-1);
+    private static readonly IntPtr HwndNotTopmost = new IntPtr(-2);
+
+    internal static bool SetPairedTopmost(IntPtr hwnd, bool paired)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd)) return false;
+        return SetWindowPos(hwnd, paired ? HwndTopmost : HwndNotTopmost,
+            0, 0, 0, 0, SwpNoMove | SwpNoSize | 0x0010);
+    }
 
     // One desktop window can own keyboard focus, but both can sit directly
     // above unrelated windows. Maintain that pair without stealing focus.

@@ -34,6 +34,7 @@ internal sealed partial class ModsForm : Form
     private bool _centerPairOnNextAttach = true;
     private bool _draggingModsCaption;
     private bool _draggingLauncherCaption;
+    private bool _pairedTopmost;
 
     // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
@@ -96,6 +97,8 @@ internal sealed partial class ModsForm : Form
         {
             if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
                 NativeDock.SetOwner(Handle, IntPtr.Zero);
+            if (_launcherWindow != IntPtr.Zero)
+                NativeDock.SetPairedTopmost(_launcherWindow, false);
             _dockTimer.Stop();
             _dockTimer.Dispose();
             _launcher?.Dispose(); // Never terminate the independent KHARVOX process.
@@ -271,6 +274,7 @@ internal sealed partial class ModsForm : Form
             _lastDockForeground = IntPtr.Zero;
             _lastLauncherBounds = Rectangle.Empty;
             _lastModsBounds = Rectangle.Empty;
+            _pairedTopmost = false;
             _centerPairOnNextAttach = true;
             return true;
         }
@@ -458,6 +462,7 @@ internal sealed partial class ModsForm : Form
                 _lastDockForeground = IntPtr.Zero;
                 _lastLauncherBounds = Rectangle.Empty;
                 _lastModsBounds = Rectangle.Empty;
+                _pairedTopmost = false;
                 MatchLauncherWindowFrame(handle);
             }
             if (!_state.WindowAttachmentApproved)
@@ -468,11 +473,22 @@ internal sealed partial class ModsForm : Form
                     _ownerLauncher = IntPtr.Zero;
                 }
                 _lastDockForeground = IntPtr.Zero;
+                if (_pairedTopmost)
+                {
+                    NativeDock.SetPairedTopmost(handle, false);
+                    TopMost = false;
+                    _pairedTopmost = false;
+                }
                 SetStatus("KHARVOX running independently — docking disabled.");
                 return;
             }
-            // Never assign a Win32 popup owner across processes. That made
-            // the Mods window float above launcher controls on mouse hover.
+            // Keep the linked windows on top without cross-process HWND
+            // ownership, forced focus, or hover-driven window raising.
+            if (!_pairedTopmost && IsHandleCreated)
+            {
+                TopMost = true;
+                _pairedTopmost = NativeDock.SetPairedTopmost(handle, true);
+            }
             if (NativeDock.IsIconic(handle))
             {
                 _lastLauncherMinimized = true;
