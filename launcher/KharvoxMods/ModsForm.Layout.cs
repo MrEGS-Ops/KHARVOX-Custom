@@ -300,6 +300,53 @@ internal sealed partial class ModsForm
         return check;
     }
 
+    // Original four-note cue (not sampled from DOOM or another soundtrack).
+    // Construct a tiny PCM WAV in memory, play it asynchronously once.
+    private static void PlayTwitchSuccessCue()
+    {
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                const int sampleRate = 44100;
+                const int noteSamples = 11025;
+                var melody = new[] { 392.0, 493.88, 587.33, 783.99 };
+                var count = noteSamples * melody.Length;
+                using (var pcm = new MemoryStream())
+                using (var w = new BinaryWriter(pcm))
+                {
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                    w.Write(36 + count * 2);
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+                    w.Write(16); w.Write((short)1); w.Write((short)1);
+                    w.Write(sampleRate); w.Write(sampleRate * 2);
+                    w.Write((short)2); w.Write((short)16);
+                    w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                    w.Write(count * 2);
+                    for (var note = 0; note < melody.Length; note++)
+                    {
+                        for (var i = 0; i < noteSamples; i++)
+                        {
+                            var t = (double)i / sampleRate;
+                            var attack = Math.Min(1.0, i / 800.0);
+                            var decay = Math.Pow(1.0 - (double)i / noteSamples, 1.8);
+                            var f = melody[note];
+                            var tone = Math.Sin(2 * Math.PI * f * t) +
+                                0.23 * Math.Sin(2 * Math.PI * 2 * f * t) +
+                                0.09 * Math.Sin(2 * Math.PI * 3 * f * t);
+                            w.Write((short)(tone * attack * decay * 6100));
+                        }
+                    }
+                    w.Flush();
+                    pcm.Position = 0;
+                    using (var player = new System.Media.SoundPlayer(pcm))
+                        player.PlaySync();
+                }
+            }
+            catch (Exception) { /* Sound failure must not block Twitch. */ }
+        });
+    }
+
     private Control BuildOriginalFooter()
     {
         var footer = new Panel
@@ -319,17 +366,13 @@ internal sealed partial class ModsForm
 
         var right = new FlowLayoutPanel
         {
-            Dock = DockStyle.Right, Width = 240,
+            Dock = DockStyle.Right, Width = 146,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             Padding = new Padding(0, 5, 0, 0),
             BackColor = Color.Black
         };
-        var close = MakeButton("Close", 80);
-        close.Margin = new Padding(3, 0, 3, 0);
-        close.Click += (_, _) => Close();
-        right.Controls.Add(close);
-        var connection = MakeButton("Connection ▾", 130);
+        var connection = MakeButton("Connection ▾", 132);
         connection.Margin = new Padding(3, 0, 3, 0);
         var connectionMenu = new ContextMenuStrip();
         connectionMenu.Items.Add("Open Custom KHARVOX", null,
@@ -399,7 +442,7 @@ internal sealed partial class ModsForm
                                     FileName = "https://www.twitch.tv/MrEGS_",
                                     UseShellExecute = true
                                 })?.Dispose();
-                                // No substitute sound: the original DOOM cue is copyrighted.
+                                PlayTwitchSuccessCue();
                             }
                             catch (System.ComponentModel.Win32Exception) { }
                         }
