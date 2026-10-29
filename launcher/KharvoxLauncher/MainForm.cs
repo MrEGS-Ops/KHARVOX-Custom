@@ -450,11 +450,10 @@ public sealed class MainForm : Form
         footerLabel.MouseEnter += (_, _) => footerLabel.ForeColor = Color.Gainsboro;
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
         var footer = new TableLayoutPanel {
-            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 128));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
@@ -465,23 +464,7 @@ public sealed class MainForm : Form
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.Gray
         }, 0, 0);
-        // Patch to Cactus's original 1.1.1 launcher: open the separate VR-only app.
-        // Never instantiate a second in-process Mods form or old DOOM mods UI.
-        var standaloneModsButton = new Button
-        {
-            Text = "Custom Mods...",
-            Dock = DockStyle.Fill,
-            Margin = new Padding(3, 0, 3, 0),
-            FlatStyle = FlatStyle.Flat,
-            BackColor = Color.FromArgb(24, 24, 27),
-            ForeColor = Color.Gainsboro,
-            Font = new Font(Font.FontFamily, 8F),
-            TabStop = false
-        };
-        standaloneModsButton.FlatAppearance.BorderColor = Color.DimGray;
-        standaloneModsButton.Click += (_, _) => OpenStandaloneVrMods();
-        footer.Controls.Add(standaloneModsButton, 1, 0);
-        footer.Controls.Add(footerLabel, 2, 0);
+        footer.Controls.Add(footerLabel, 1, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
@@ -994,37 +977,6 @@ public sealed class MainForm : Form
         {
             launchButton.Enabled = true;
             status.Text = running ? "Game running" : "DOOM ended.";
-        }
-    }
-
-    private void OpenStandaloneVrMods()
-    {
-        // The bundled Cactus-based launcher lives in NativeBridge/, beside the
-        // parent KharvoxMods.exe. A user-built launcher can also sit beside it.
-        var parent = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "KharvoxMods.exe"));
-        var sibling = Path.Combine(AppContext.BaseDirectory, "KharvoxMods.exe");
-        var executable = File.Exists(parent) ? parent : sibling;
-        if (!File.Exists(executable))
-        {
-            MessageBox.Show(this,
-                "KharvoxMods.exe was not found beside this launcher or in its parent folder.",
-                "KHARVOX Custom Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            return;
-        }
-
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = executable,
-                WorkingDirectory = Path.GetDirectoryName(executable)!,
-                UseShellExecute = true
-            });
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "KHARVOX Custom Mods",
-                MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

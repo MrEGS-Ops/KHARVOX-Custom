@@ -21,7 +21,7 @@ internal static class NativeBridgeInstaller
     private const string PinnedNativeCommit =
         "9e30175531524c308d38d61c43b0fe2b1f16c6e4";
     private const string ZipName = "KHARVOX-Mods-NativeBridge.zip";
-    private const string RequiredLauncherUi = "cactus-original-v1.1.1-mods-shortcut-v1";
+    private const string RequiredLauncherUi = "cactus-original-v1.1.1-unmodified-ui-v2";
     private const long MaxArchiveBytes = 250L * 1024 * 1024;
     private const long MaxExtractBytes = 1200L * 1024 * 1024;
 
