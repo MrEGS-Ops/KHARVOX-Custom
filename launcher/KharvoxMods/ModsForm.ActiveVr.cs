@@ -278,17 +278,19 @@ internal sealed partial class ModsForm
         var grip = EnumerateRowControls(row).OfType<Label>()
             .FirstOrDefault(label => string.Equals(label.Tag as string,
                 "vr-drag-grip", StringComparison.Ordinal));
-        if (grip != null) grip.Visible = false;
+        if (grip != null) grip.Text = "";
         void Reveal(object? sender, EventArgs e)
         {
-            if (grip != null) grip.Visible = true;
+            // The drag target must remain Visible for the mouse enter and
+            // mouse move events to fire correctly. Only toggle its glyph.
+            if (grip != null) grip.Text = "⋮⋮";
             Enter(sender, e);
         }
         void Conceal(object? sender, EventArgs e)
         {
             if (grip != null && !row.RectangleToScreen(row.ClientRectangle)
                     .Contains(Cursor.Position))
-                grip.Visible = false;
+                grip.Text = "";
             Leave(sender, e);
         }
         foreach (var control in EnumerateRowControls(row).ToArray())
@@ -487,74 +489,64 @@ internal sealed partial class ModsForm
         finally { _vrModList.ResumeLayout(true); }
     }
 
+    // Every row is a grid: number | name | optional speed | Hz | info | grip.
+    // The information and drag columns are anchored to the right edge,
+    // not appended immediately after the checkbox caption.
     private void AddGlorySpeedRow(TableLayoutPanel list, bool active)
     {
         var row = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Height = 32, RowCount = 1, ColumnCount = 3,
-            AllowDrop = true, Margin = Padding.Empty, Padding = Padding.Empty,
+            Dock = DockStyle.Fill, Height = 30,
+            ColumnCount = 6, RowCount = 1,
+            Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
+            AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
 
         var number = new Label
         {
             Text = ModNumber(GloryModTitle).ToString("00") + ".",
             Dock = DockStyle.Fill, Margin = new Padding(2, 0, 0, 0),
-            ForeColor = Color.WhiteSmoke, BackColor = row.BackColor,
+            BackColor = row.BackColor, ForeColor = Color.WhiteSmoke,
             TextAlign = ContentAlignment.MiddleLeft
         };
-        var inline = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false,
-            FlowDirection = FlowDirection.LeftToRight,
-            BackColor = row.BackColor, Margin = Padding.Empty,
-            Padding = Padding.Empty
-        };
         var check = MakePreviewCheck(GloryModTitle,
-            "Control only Glory Kill speed, from 30 to 240 Hz.",
+            "Control only Glory Kill speed (30–240 Hz).",
             "glory-kill-speed-preview");
         check.Enabled = true;
         check.Checked = active;
-        check.AutoSize = true;
-        check.AutoEllipsis = false;
-        check.Margin = new Padding(0, 0, 2, 0);
-        inline.Controls.Add(check);
-
-        var info = new LinkLabel
-        {
-            Text = "ⓘ", Width = 24, Height = 28,
-            ForeColor = Color.Silver, LinkColor = Color.Silver,
-            ActiveLinkColor = Color.White,
-            BackColor = row.BackColor, TextAlign = ContentAlignment.MiddleCenter,
-            Margin = new Padding(0, 0, 3, 0),
-            Tag = "vr-mod-info"
-        };
-        _tooltips.SetToolTip(info, "Instructions and Glory Kill speed controls");
-        info.LinkClicked += (_, _) => ShowModDependencies(GloryModTitle,
-            "Only Glory Kill animations are affected; other animations retain their native speed.");
-        inline.Controls.Add(info);
+        check.Dock = DockStyle.Fill;
+        check.AutoSize = false;
+        check.AutoEllipsis = true;
+        check.TextAlign = ContentAlignment.MiddleLeft;
+        check.CheckAlign = ContentAlignment.MiddleLeft;
+        check.Margin = Padding.Empty;
+        check.BackColor = row.BackColor;
 
         var slider = new TrackBar
         {
-            AutoSize = false, Minimum = 30, Maximum = 240,
+            Minimum = 30, Maximum = 240,
             Value = 270 - Math.Max(30, Math.Min(240, _modPrefs.GloryKillHz)),
-            Width = 112, Height = 27, TickStyle = TickStyle.None,
+            AutoSize = false, TickStyle = TickStyle.None,
+            Dock = DockStyle.Fill, Height = 26,
             Visible = active, Enabled = active,
-            Margin = new Padding(0, 0, 4, 0), Tag = "glory-speed-slider"
+            Margin = new Padding(0, 3, 2, 3),
+            Tag = "glory-speed-slider"
         };
-        inline.Controls.Add(slider);
         var speed = new Label
         {
             Text = _modPrefs.GloryKillHz + " Hz",
-            Width = 49, Height = 28, BackColor = row.BackColor,
-            ForeColor = Color.Gainsboro, Visible = active,
-            TextAlign = ContentAlignment.MiddleLeft, Margin = Padding.Empty
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = Padding.Empty, BackColor = row.BackColor,
+            ForeColor = Color.Gainsboro, Visible = active
         };
-        inline.Controls.Add(speed);
         _tooltips.SetToolTip(slider,
             "Right is faster (30 Hz); left is slower (240 Hz).");
         check.CheckedChanged += (_, _) =>
@@ -573,34 +565,64 @@ internal sealed partial class ModsForm
         slider.KeyUp += (_, _) => SaveModSelections();
         slider.Leave += (_, _) => SaveModSelections();
 
-        var grip = new Label
-        {
-            Text = "⋮⋮", Tag = "vr-drag-grip",
-            Dock = DockStyle.Fill, BackColor = row.BackColor,
-            ForeColor = Color.FromArgb(178, 178, 185),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Cursor = Cursors.SizeNS,
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
-        };
+        var info = MakeRowInfo("Glory Kill speed: 30–240 Hz. Click for usage instructions.",
+            GloryModTitle, "Only Glory Kill animations are affected.");
+        info.BackColor = row.BackColor;
+        var grip = MakeRowGrip(row.BackColor);
+
         row.Controls.Add(number, 0, 0);
-        row.Controls.Add(inline, 1, 0);
-        row.Controls.Add(grip, 2, 0);
+        row.Controls.Add(check, 1, 0);
+        row.Controls.Add(slider, 2, 0);
+        row.Controls.Add(speed, 3, 0);
+        row.Controls.Add(info, 4, 0);
+        row.Controls.Add(grip, 5, 0);
         if (active)
-            AttachActiveRow(row, check, grip, GloryModTitle,
-                "Glory Kill speed override");
+            AttachActiveRow(row, check, grip, GloryModTitle, "Glory Kill speed override");
         else
             AttachAvailableRow(row, grip, GloryModTitle);
         AttachDependencyHover(row, GloryModTitle);
         _visibleModRows[GloryModTitle] = row;
-        AppendFixedRow(list, row, 32);
+        AppendFixedRow(list, row, 30);
     }
+
+    private LinkLabel MakeRowInfo(string help, string mod, string description)
+    {
+        var info = new LinkLabel
+        {
+            Text = "ⓘ",
+            Dock = DockStyle.Fill,
+            Margin = Padding.Empty, Padding = Padding.Empty,
+            ForeColor = Color.Silver, LinkColor = Color.Silver,
+            ActiveLinkColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter,
+            Font = new Font("Segoe UI", 9f),
+            Tag = "vr-mod-info"
+        };
+        _tooltips.SetToolTip(info, help);
+        info.LinkClicked += (_, _) => ShowModDependencies(mod, description);
+        return info;
+    }
+
+    private static Label MakeRowGrip(Color backColor) => new Label
+    {
+        // Leave the control visible for WinForms hit testing. Change text,
+        // not Visible, on hover so the drag handle cannot disappear.
+        Text = "",
+        Tag = "vr-drag-grip",
+        Dock = DockStyle.Fill, Margin = Padding.Empty,
+        BackColor = backColor,
+        ForeColor = Color.FromArgb(178, 178, 185),
+        TextAlign = ContentAlignment.MiddleCenter,
+        Cursor = Cursors.SizeNS,
+        Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
+    };
 
     private void AppendVrMod(TableLayoutPanel list, PreviewMod mod, bool active, bool isDev = false)
     {
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 29,
-            ColumnCount = 3, RowCount = 1,
+            ColumnCount = 4, RowCount = 1,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             Margin = Padding.Empty, Padding = Padding.Empty,
             AllowDrop = true,
@@ -608,6 +630,7 @@ internal sealed partial class ModsForm
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
 
         var number = new Label
@@ -617,58 +640,37 @@ internal sealed partial class ModsForm
             ForeColor = Color.WhiteSmoke, TextAlign = ContentAlignment.MiddleLeft,
             Margin = new Padding(2, 0, 0, 0)
         };
-        var inline = new FlowLayoutPanel
-        {
-            Dock = DockStyle.Fill, WrapContents = false, AutoScroll = false,
-            FlowDirection = FlowDirection.LeftToRight,
-            BackColor = row.BackColor, Margin = Padding.Empty,
-            Padding = Padding.Empty
-        };
         var description = mod.Help;
         var dependencies = DependenciesFor(mod.Title);
         if (dependencies.Length > 0)
-            description += Environment.NewLine +
-                string.Join(Environment.NewLine, dependencies);
-
+            description += Environment.NewLine + string.Join(Environment.NewLine, dependencies);
         var check = MakePreviewCheck(mod.Title,
             description + Environment.NewLine +
             (IsConfirmedMod(mod.Title)
-                ? "Verified core feature. Changes take effect on next DOOM launch."
+                ? "Verified core feature. Changes apply on next DOOM launch."
                 : "Paused; not available in this build."),
             isDev ? "dev-override" : "original-vr-mod");
         check.Enabled = IsConfirmedMod(mod.Title);
         check.Checked = active;
-        check.AutoSize = true;
-        check.AutoEllipsis = false;
-        check.Margin = new Padding(0, 0, 2, 0);
+        check.Dock = DockStyle.Fill;
+        check.AutoSize = false;
+        check.AutoEllipsis = true;
+        check.TextAlign = ContentAlignment.MiddleLeft;
+        check.CheckAlign = ContentAlignment.MiddleLeft;
+        check.Margin = Padding.Empty;
+        check.BackColor = row.BackColor;
         if (check.Enabled)
-            check.CheckedChanged += (_, _) =>
-                ApplySelection(mod.Title, check.Checked);
-        inline.Controls.Add(check);
+            check.CheckedChanged += (_, _) => ApplySelection(mod.Title, check.Checked);
 
-        var info = new LinkLabel
-        {
-            Text = "ⓘ", Width = 24, Height = 27,
-            BackColor = row.BackColor, ForeColor = Color.Silver,
-            LinkColor = Color.Silver, ActiveLinkColor = Color.White,
-            TextAlign = ContentAlignment.MiddleCenter,
-            Margin = Padding.Empty, Tag = "vr-mod-info"
-        };
-        _tooltips.SetToolTip(info, "How to use this mod and its dependencies");
-        info.LinkClicked += (_, _) => ShowModDependencies(mod.Title, mod.Help);
-        inline.Controls.Add(info);
-        var grip = new Label
-        {
-            Text = "⋮⋮", Tag = "vr-drag-grip",
-            Dock = DockStyle.Fill, BackColor = row.BackColor,
-            ForeColor = Color.FromArgb(178, 178, 185),
-            TextAlign = ContentAlignment.MiddleCenter,
-            Cursor = Cursors.SizeNS,
-            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
-        };
+        var info = MakeRowInfo("How to use this mod and its dependencies",
+            mod.Title, mod.Help);
+        info.BackColor = row.BackColor;
+        var grip = MakeRowGrip(row.BackColor);
+
         row.Controls.Add(number, 0, 0);
-        row.Controls.Add(inline, 1, 0);
-        row.Controls.Add(grip, 2, 0);
+        row.Controls.Add(check, 1, 0);
+        row.Controls.Add(info, 2, 0);
+        row.Controls.Add(grip, 3, 0);
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
         AttachDependencyHover(row, mod.Title);
@@ -808,13 +810,33 @@ internal sealed partial class ModsForm
             if (form.ActiveVrOrder().Count(name => name == GloryModTitle) > 1)
                 throw new InvalidDataException("Glory speed appears twice.");
             var glory = form._visibleModRows[GloryModTitle];
-            if (EnumerateRowControls(glory).OfType<LinkLabel>()
-                    .Count(x => (x.Tag as string) == "vr-mod-info") != 1 ||
-                EnumerateRowControls(glory).OfType<Label>()
-                    .Count(x => (x.Tag as string) == "vr-drag-grip") != 1 ||
-                EnumerateRowControls(glory).OfType<TrackBar>().Count() != 1)
+            var controls = EnumerateRowControls(glory).ToArray();
+            var info = controls.OfType<LinkLabel>()
+                .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
+            var grip = controls.OfType<Label>()
+                .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
+            var slider = controls.OfType<TrackBar>().SingleOrDefault();
+            if (info == null || grip == null || slider == null ||
+                !grip.Visible || grip.Text != "" ||
+                glory is not TableLayoutPanel grid ||
+                grid.GetColumn(info) != 4 ||
+                grid.GetColumn(grip) != 5 ||
+                grid.GetColumn(slider) != 2)
                 throw new InvalidDataException(
-                    "Glory Kill row must have exactly one inline info, grip and slider.");
+                    "Glory row must center slider, info and hover grip in fixed columns.");
+
+            // Standard rows must keep their info/drag columns anchored right.
+            var other = form._visibleModRows["Hand Focus"];
+            var normal = other as TableLayoutPanel;
+            var normalInfo = EnumerateRowControls(other).OfType<LinkLabel>()
+                .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
+            var normalGrip = EnumerateRowControls(other).OfType<Label>()
+                .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
+            if (normal == null || normalInfo == null || normalGrip == null ||
+                normal.GetColumn(normalInfo) != 2 ||
+                normal.GetColumn(normalGrip) != 3 ||
+                !normalGrip.Visible || normalGrip.Text != "")
+                throw new InvalidDataException("Standard row info or drag handle regression.");
         }
     }
 }
