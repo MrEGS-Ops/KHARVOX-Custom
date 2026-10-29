@@ -32,7 +32,7 @@ try {
                 $x = [int][Math]::Round($size * 0.720)
                 for ($i = 0; $i -lt [Math]::Max(2, [int]($size * 0.095)); $i++) {
                     $px = $x + $i
-                    if ($px -lt $size) $bitmap.SetPixel($px, $y, $red)
+                    if ($px -lt $size) { $bitmap.SetPixel($px, $y, $red) }
                 }
             }
             $memory = New-Object System.IO.MemoryStream
