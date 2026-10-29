@@ -69,7 +69,7 @@ internal sealed class UpdaterWindow : Form
         BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9f);
-        try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch { /* Unavailable icons should never block installation. */ }
 
         Controls.Add(new Label
