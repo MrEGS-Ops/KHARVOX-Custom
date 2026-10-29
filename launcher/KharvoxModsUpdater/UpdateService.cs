@@ -170,6 +170,15 @@ internal static class UpdateService
         return Regex.IsMatch(value, @"^\d{5,20}$") ? "#" + value : "Unknown";
     }
 
+    internal static string ShortBuildLabel(string? build)
+    {
+        var text = (build ?? "").Trim();
+        var match = Regex.Match(text, @"^#?(\d{5,20})$");
+        if (!match.Success) return "Unknown";
+        var digits = match.Groups[1].Value;
+        return "#" + digits.Substring(digits.Length - 4);
+    }
+
     internal static string ReleaseBuildNumber(string? releaseName)
     {
         var match = Regex.Match(releaseName ?? "",
@@ -328,7 +337,9 @@ internal static class UpdateService
         {
             if (FormatBuildNumber("40836481378") != "#40836481378" ||
                 FormatBuildNumber("") != "Unknown" ||
-                ReleaseBuildNumber("KHARVOX Mods — Build #40836481378") != "#40836481378")
+                ReleaseBuildNumber("KHARVOX Mods — Build #40836481378") != "#40836481378" ||
+                ShortBuildLabel("#40836481378") != "#1378" ||
+                ShortBuildLabel("bad") != "Unknown")
                 throw new Exception("Installed/available build display parsing failed.");
             if (ParseExpectedHash(new string('a', 64) + " *" + ZipName)
                 != new string('a', 64))

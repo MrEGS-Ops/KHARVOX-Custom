@@ -54,12 +54,16 @@ internal sealed partial class ModsForm : Form
     private static string BuildLabel()
     {
         var embedded = EmbeddedBuildId();
-        if (embedded.Length > 0) return "Build #" + embedded;
+        if (embedded.Length > 0) return "Build #" + embedded.Substring(Math.Max(0, embedded.Length - 4));
         try
         {
             var path = Path.Combine(AppContext.BaseDirectory, "build-info.txt");
             if (File.Exists(path) && long.TryParse(File.ReadAllText(path).Trim(), out var id)
-                && id > 0) return "Build #" + id;
+                && id > 0)
+            {
+                var text = id.ToString();
+                return "Build #" + text.Substring(Math.Max(0, text.Length - 4));
+            }
         }
         catch (IOException) { }
         return "Development";

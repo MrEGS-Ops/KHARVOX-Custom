@@ -135,7 +135,7 @@ internal static class UpdaterBootstrap
                     var backups = Path.Combine(root, "Backups", "Updater");
                     Directory.CreateDirectory(backups);
                     var backup = Path.Combine(backups, "previous-updater.exe");
-                    for (var attempt = 0; attempt < 20; attempt++)
+                    for (var attempt = 0; attempt < 120; attempt++)
                     {
                         if (IsUpdaterRunning())
                         {
@@ -154,7 +154,13 @@ internal static class UpdaterBootstrap
                         {
                             await Task.Delay(400);
                         }
+                        catch (UnauthorizedAccessException)
+                        {
+                            await Task.Delay(400);
+                        }
                     }
+                    throw new IOException("Updater refresh could not replace the old executable. " +
+                        "Close KharvoxModsUpdater.exe and reopen KHARVOX Mods to retry.");
                 }
                 finally { try { Directory.Delete(staging, true); } catch { } }
             }
