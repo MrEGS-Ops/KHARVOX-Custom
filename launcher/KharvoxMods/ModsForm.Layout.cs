@@ -15,17 +15,12 @@ internal sealed partial class ModsForm
 {
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
-    private readonly Label _bridgeState = new Label();
     private bool _runtimePreparing;
 
+    // Readiness is still verified internally; no banner in the mod list.
     private void RefreshBridgeState()
     {
-        var ready = NativeBridgeInstaller.IsReady();
-        _bridgeState.Text = _runtimePreparing
-            ? "PREPARING CUSTOM KHARVOX…"
-            : ready ? "CUSTOM KHARVOX READY — mods apply on next DOOM launch"
-                    : "CUSTOM KHARVOX NOT READY — will prepare automatically";
-        _bridgeState.ForeColor = ready ? Color.LightGreen : Color.DarkOrange;
+        if (_runtimePreparing) SetStatus("Preparing KHARVOX…");
     }
 
     private static bool IsConfirmedMod(string title) =>
@@ -324,38 +319,28 @@ internal sealed partial class ModsForm
             BackColor = Color.Black
         };
         _status.Dock = DockStyle.Left;
-        _status.Width = 330;
+        _status.Width = 194;
         _status.Font = new Font("Segoe UI", 8f);
         _status.ForeColor = Color.Gray;
         _status.BackColor = Color.Black;
         _status.TextAlign = ContentAlignment.MiddleLeft;
         _status.AutoEllipsis = true;
-        _status.Text = "Starting custom KHARVOX…";
+        _status.Text = "Connecting…";
         footer.Controls.Add(_status);
 
         var right = new FlowLayoutPanel
         {
-            Dock = DockStyle.Right, Width = 374,
+            Dock = DockStyle.Right, Width = 240,
             FlowDirection = FlowDirection.RightToLeft,
             WrapContents = false,
             Padding = new Padding(0, 5, 0, 0),
             BackColor = Color.Black
         };
-        var close = MakeButton("Close", 92);
+        var close = MakeButton("Close", 80);
         close.Margin = new Padding(3, 0, 3, 0);
         close.Click += (_, _) => Close();
         right.Controls.Add(close);
-        var credit = new Label
-        {
-            Text = "Made by MrEGS", Size = new Size(108, 28),
-            ForeColor = Color.Gray, BackColor = Color.Black,
-            Font = new Font("Segoe UI", 8.5f),
-            TextAlign = ContentAlignment.MiddleRight,
-            Margin = new Padding(0, 0, 12, 0)
-        };
-        right.Controls.Add(credit);
-
-        var connection = MakeButton("Connection ▾", 138);
+        var connection = MakeButton("Connection ▾", 130);
         connection.Margin = new Padding(3, 0, 3, 0);
         var connectionMenu = new ContextMenuStrip();
         connectionMenu.Items.Add("Open Custom KHARVOX", null,
@@ -389,12 +374,55 @@ internal sealed partial class ModsForm
                         SizeMode = PictureBoxSizeMode.Zoom,
                         Image = new Bitmap(stream),
                         AccessibleName = "Original MrEGS Twitch watermark",
-                        Cursor = Cursors.Default
+                        Cursor = Cursors.Hand
                     };
                     void CenterLogo() =>
                         logo.Location = new Point(
                             Math.Max(0, (footer.ClientSize.Width - logo.Width) / 2),
                             Math.Max(0, (footer.ClientSize.Height - logo.Height) / 2));
+                    var normal = logo.Image;
+                    var inverted = new Bitmap(normal.Width, normal.Height);
+                    for (var y = 0; y < normal.Height; y++)
+                        for (var x = 0; x < normal.Width; x++)
+                        {
+                            var pixel = ((Bitmap)normal).GetPixel(x, y);
+                            inverted.SetPixel(x, y, Color.FromArgb(pixel.A,
+                                255 - pixel.R, 255 - pixel.G, 255 - pixel.B));
+                        }
+                    var flash = new System.Windows.Forms.Timer { Interval = 190 };
+                    flash.Tick += (_, _) =>
+                    {
+                        flash.Stop();
+                        if (!logo.IsDisposed) logo.Image = normal;
+                    };
+                    int logoClicks = 0;
+                    logo.Click += (_, _) =>
+                    {
+                        logo.Image = inverted;
+                        flash.Stop();
+                        flash.Start();
+                        if (++logoClicks == 3)
+                        {
+                            try
+                            {
+                                Process.Start(new ProcessStartInfo
+                                {
+                                    FileName = "https://www.twitch.tv/MrEGS_",
+                                    UseShellExecute = true
+                                })?.Dispose();
+                            }
+                            catch (System.ComponentModel.Win32Exception) { }
+                        }
+                    };
+                    _tooltips.SetToolTip(logo, "MrEGS");
+                    footer.Disposed += (_, _) =>
+                    {
+                        flash.Stop();
+                        flash.Dispose();
+                        logo.Image = null;
+                        normal.Dispose();
+                        inverted.Dispose();
+                    };
                     footer.Controls.Add(logo);
                     footer.SizeChanged += (_, _) => CenterLogo();
                     CenterLogo();
@@ -422,7 +450,7 @@ internal sealed partial class ModsForm
 
     internal static void RunUiSelfTest()
     {
-        if (!VerifyOriginalLayoutMetadata())
+        if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != 23)
             throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 22 mod rows.");
         ValidateActiveVrPolicies();
         // The DOOM resource-mod panel and its standalone companion sources
