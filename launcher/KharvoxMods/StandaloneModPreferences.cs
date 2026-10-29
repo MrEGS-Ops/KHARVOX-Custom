@@ -18,6 +18,8 @@ internal sealed class StandaloneModPreferences
     // Presentation order only: the bridge ignores this metadata. Enables
     // original click/drag reorder without changing mod dependencies or timing.
     public string[] ActiveOrder { get; set; } = Array.Empty<string>();
+    // UI-only order for inactive and paused mods; does not enable anything.
+    public string[] AvailableOrder { get; set; } = Array.Empty<string>();
 
     internal static string DefaultPath =>
         Path.Combine(AppContext.BaseDirectory, "kharvox-mods-bridge.json");
@@ -34,6 +36,7 @@ internal sealed class StandaloneModPreferences
                 throw new InvalidDataException("Unknown KHARVOX Mods bridge schema.");
             value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
             value.ActiveOrder ??= Array.Empty<string>();
+            value.AvailableOrder ??= Array.Empty<string>();
             return value;
         }
         catch (Exception ex) when (ex is IOException || ex is InvalidOperationException ||
@@ -49,6 +52,7 @@ internal sealed class StandaloneModPreferences
         path ??= DefaultPath;
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
         ActiveOrder ??= Array.Empty<string>();
+        AvailableOrder ??= Array.Empty<string>();
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         Directory.CreateDirectory(directory);
         var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -78,13 +82,16 @@ internal sealed class StandaloneModPreferences
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
             x.ActiveOrder = new[] { "Hand Focus", "PAINSAW: RIPSHIFT OVERDRIVE" };
+            x.AvailableOrder = new[] { "Directional Dash", "Boxing Guard Mode" };
             x.Save(path);
             var y = Load(path);
             if (!y.HandFocus || !y.PainsawRipshiftOverdrive ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
                 y.ActiveOrder.Length != 2 ||
                 y.ActiveOrder[0] != "Hand Focus" ||
-                y.ActiveOrder[1] != "PAINSAW: RIPSHIFT OVERDRIVE")
+                y.ActiveOrder[1] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
+                y.AvailableOrder.Length != 2 ||
+                y.AvailableOrder[0] != "Directional Dash")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
