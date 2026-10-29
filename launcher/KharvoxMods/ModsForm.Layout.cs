@@ -300,50 +300,22 @@ internal sealed partial class ModsForm
         return check;
     }
 
-    // Original four-note cue (not sampled from DOOM or another soundtrack).
-    // Construct a tiny PCM WAV in memory, play it asynchronously once.
+    // CC0 "treasure.wav" by Beatscribe. Verified and embedded at build time.
     private static void PlayTwitchSuccessCue()
     {
         System.Threading.Tasks.Task.Run(() =>
         {
             try
             {
-                const int sampleRate = 44100;
-                const int noteSamples = 11025;
-                var melody = new[] { 392.0, 493.88, 587.33, 783.99 };
-                var count = noteSamples * melody.Length;
-                using (var pcm = new MemoryStream())
-                using (var w = new BinaryWriter(pcm))
+                using (var source = typeof(ModsForm).Assembly.GetManifestResourceStream(
+                    "KharvoxMods.TwitchUnlockCue"))
                 {
-                    w.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
-                    w.Write(36 + count * 2);
-                    w.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
-                    w.Write(16); w.Write((short)1); w.Write((short)1);
-                    w.Write(sampleRate); w.Write(sampleRate * 2);
-                    w.Write((short)2); w.Write((short)16);
-                    w.Write(System.Text.Encoding.ASCII.GetBytes("data"));
-                    w.Write(count * 2);
-                    for (var note = 0; note < melody.Length; note++)
-                    {
-                        for (var i = 0; i < noteSamples; i++)
-                        {
-                            var t = (double)i / sampleRate;
-                            var attack = Math.Min(1.0, i / 800.0);
-                            var decay = Math.Pow(1.0 - (double)i / noteSamples, 1.8);
-                            var f = melody[note];
-                            var tone = Math.Sin(2 * Math.PI * f * t) +
-                                0.23 * Math.Sin(2 * Math.PI * 2 * f * t) +
-                                0.09 * Math.Sin(2 * Math.PI * 3 * f * t);
-                            w.Write((short)(tone * attack * decay * 6100));
-                        }
-                    }
-                    w.Flush();
-                    pcm.Position = 0;
-                    using (var player = new System.Media.SoundPlayer(pcm))
+                    if (source == null) return;
+                    using (var player = new System.Media.SoundPlayer(source))
                         player.PlaySync();
                 }
             }
-            catch (Exception) { /* Sound failure must not block Twitch. */ }
+            catch (Exception) { /* Audio must never block Twitch. */ }
         });
     }
 

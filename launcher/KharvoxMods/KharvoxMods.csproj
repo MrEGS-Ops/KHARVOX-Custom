@@ -38,5 +38,6 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="mregs-logo.png" LogicalName="KharvoxMods.OriginalMrEGSLogo" />
+    <EmbeddedResource Include="twitch-unlock.wav" LogicalName="KharvoxMods.TwitchUnlockCue" Condition="Exists('twitch-unlock.wav')" />
   </ItemGroup>
 </Project>

@@ -36,6 +36,21 @@ jobs:
         shell: pwsh
         run: ./launcher/KharvoxMods/Generate-MrEGSIcon.ps1
 
+      - name: Fetch and verify CC0 Twitch unlock jingle
+        shell: pwsh
+        run: |
+          $file = "launcher/KharvoxMods/twitch-unlock.wav"
+          $source = "https://raw.githubusercontent.com/Beatscribe/homebrew_vgm/5a82f88b87bb442499685c494b7a96278121b4c7/GB/fanfares/wav/treasure.wav"
+          Invoke-WebRequest -Uri $source -OutFile $file -MaximumRedirection 2
+          if ((git hash-object $file).Trim() -ne "a579e15ab70e4e0b8884e7c4504bb6d7cb4fdb64") {
+            throw "Twitch cue fails pinned CC0 audio integrity check"
+          }
+          $bytes = [System.IO.File]::ReadAllBytes((Join-Path $PWD $file))
+          if ($bytes.Length -lt 44 -or [Text.Encoding]::ASCII.GetString($bytes, 0, 4) -ne "RIFF" -or
+              [Text.Encoding]::ASCII.GetString($bytes, 8, 4) -ne "WAVE") {
+            throw "Twitch cue is not WAV audio"
+          }
+
       - name: Compile standalone executable (net48 x64)
         shell: pwsh
         run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore -p:InformationalVersion=${{ github.run_id }}
