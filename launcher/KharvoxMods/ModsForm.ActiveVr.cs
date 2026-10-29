@@ -121,6 +121,7 @@ internal sealed partial class ModsForm
         else if (operation == "down") to = Math.Min(items.Count, from + 1);
         else to = target == null ? items.Count : items.IndexOf(target);
         if (to < 0) to = items.Count;
+        else if (operation == "after") to++;
         items.Insert(Math.Min(to, items.Count), source);
         StoreActiveOrder(items.ToArray());
     }
@@ -334,7 +335,7 @@ internal sealed partial class ModsForm
             {
                 var dropEnd = new Label
                 {
-                    Text = "⋮⋮  Drag active mods to reorder  •  Right-click for Undo / Reset",
+                    Text = "⋮⋮  Drag to reorder  •  Right-click for Undo / Reset",
                     ForeColor = Color.FromArgb(145, 145, 150),
                     BackColor = DarkPanel, Dock = DockStyle.Fill,
                     AllowDrop = true, TextAlign = ContentAlignment.MiddleLeft,
@@ -375,6 +376,8 @@ internal sealed partial class ModsForm
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 34,
+            AllowDrop = true,
+            Tag = active ? "active-vr-mod" : "available-vr-mod",
             ColumnCount = 5, RowCount = 1,
             BackColor = DarkPanel, Padding = new Padding(2, 0, 0, 0),
             Margin = Padding.Empty
@@ -566,48 +569,98 @@ internal sealed partial class ModsForm
         if (grip != null)
         {
             grip.ContextMenuStrip = menu;
-            var startedAt = Point.Empty;
-            grip.MouseDown += (_, e) =>
-            {
-                if (e.Button == MouseButtons.Left) startedAt = e.Location;
-            };
-            grip.MouseMove += (_, e) =>
-            {
-                if (e.Button != MouseButtons.Left ||
-                    (Math.Abs(e.X - startedAt.X) < 4 &&
-                     Math.Abs(e.Y - startedAt.Y) < 4)) return;
-                var drag = new DataObject();
-                drag.SetData(ActiveDragFormat, title);
-                try { grip.DoDragDrop(drag, DragDropEffects.Move); }
-                finally { startedAt = Point.Empty; }
-            };
+            StartGripDrag(grip, title);
             AttachActiveDrop(grip, title);
         }
         AttachActiveDrop(row, title);
         AttachActiveDrop(check, title);
     }
 
-    private void AttachActiveDrop(Control target, string? targetTitle)
+    private static void StartGripDrag(Label grip, string title)
+    {
+        var starting = Point.Empty;
+        grip.MouseDown += (_, e) =>
+        {
+            if (e.Button == MouseButtons.Left) starting = e.Location;
+        };
+        grip.MouseMove += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left ||
+                Math.Abs(e.X - starting.X) < 4 &&
+                Math.Abs(e.Y - starting.Y) < 4) return;
+            var payload = new DataObject();
+            payload.SetData(ActiveDragFormat, title);
+            try { grip.DoDragDrop(payload, DragDropEffects.Move); }
+            finally { starting = Point.Empty; }
+        };
+    }
+
+    private void AttachAvailableRow(Control row, Label grip, string title)
+    {
+        var menu = new ContextMenuStrip();
+        menu.Items.Add("Move to Top", null, (_, _) =>
+            MoveAvailable(title, AvailableVrOrder().FirstOrDefault(), false));
+        menu.Items.Add("Move to Bottom", null, (_, _) => MoveAvailable(title, null, false));
+        menu.Items.Add("Dependencies…", null, (_, _) =>
+            ShowModDependencies(title, "Mod settings and ordering information."));
+        row.ContextMenuStrip = menu;
+        grip.ContextMenuStrip = menu;
+        StartGripDrag(grip, title);
+        AttachAvailableDrop(row, title);
+        AttachAvailableDrop(grip, title);
+        foreach (Control child in row.Controls)
+            if (child != grip && child.Enabled) AttachAvailableDrop(child, title);
+    }
+
+    private Control DropHighlightSurface(Control target)
+    {
+        return target.Parent is TableLayoutPanel parent && parent.Tag is string tag &&
+            (tag == "active-vr-mod" || tag == "available-vr-mod")
+            ? parent : target;
+    }
+
+    private void AttachDrop(Control target, string? targetTitle, bool activeSection)
     {
         target.AllowDrop = true;
+        var surface = DropHighlightSurface(target);
         void Check(DragEventArgs e)
         {
             var source = e.Data?.GetDataPresent(ActiveDragFormat) == true
                 ? e.Data.GetData(ActiveDragFormat) as string : null;
-            e.Effect = source != null && ActiveVrOrder().Contains(source) &&
-                source != targetTitle
-                ? DragDropEffects.Move : DragDropEffects.None;
+            var valid = source != null && source != targetTitle &&
+                (activeSection ? ActiveVrOrder().Contains(source) :
+                    AvailableVrOrder().Contains(source));
+            e.Effect = valid ? DragDropEffects.Move : DragDropEffects.None;
+            if (valid)
+            {
+                var point = surface.PointToClient(new Point(e.X, e.Y));
+                MarkDropLine(surface, targetTitle != null &&
+                    point.Y > surface.Height / 2);
+            }
+            else MarkDropLine(null);
         }
         target.DragEnter += (_, e) => Check(e);
         target.DragOver += (_, e) => Check(e);
+        target.DragLeave += (_, _) => MarkDropLine(null);
         target.DragDrop += (_, e) =>
         {
             Check(e);
-            if (e.Effect == DragDropEffects.Move &&
-                e.Data?.GetData(ActiveDragFormat) is string source)
-                MoveActive(source, targetTitle, "before");
+            var after = _dropLineAfter;
+            MarkDropLine(null);
+            if (e.Effect != DragDropEffects.Move ||
+                e.Data?.GetData(ActiveDragFormat) is not string source) return;
+            if (activeSection)
+                MoveActive(source, targetTitle, after ? "after" : "before");
+            else
+                MoveAvailable(source, targetTitle, after);
         };
     }
+
+    private void AttachActiveDrop(Control target, string? targetTitle) =>
+        AttachDrop(target, targetTitle, true);
+
+    private void AttachAvailableDrop(Control target, string? targetTitle) =>
+        AttachDrop(target, targetTitle, false);
 
     internal static void ValidateActiveVrPolicies()
     {
