@@ -19,7 +19,10 @@ internal sealed partial class ModsForm
     private readonly Stack<string[]> _activeUndo = new Stack<string[]>();
     private readonly Dictionary<string, Control> _visibleModRows =
         new Dictionary<string, Control>(StringComparer.Ordinal);
-    private Control? _selectedDependencyRow;
+    private readonly Dictionary<string, Color> _dependencyHighlights =
+        new Dictionary<string, Color>(StringComparer.Ordinal);
+    private Control? _dropLineRow;
+    private bool _dropLineAfter;
 
     private static string[] VerifiedVrMods() => OriginalModGroups
         .SelectMany(group => group.Mods)
@@ -55,12 +58,45 @@ internal sealed partial class ModsForm
         QueueVrRebuild();
     }
 
+    private static string[] AllDisplayMods() => OriginalModGroups
+        .SelectMany(group => group.Mods).Select(mod => mod.Title)
+        .Concat(new[] { GloryModTitle })
+        .Concat(DevOverrides.Select(dev => dev.Title)).ToArray();
+
+    private static int ModNumber(string title) =>
+        Array.IndexOf(AllDisplayMods(), title) + 1;
+
+    private string[] AvailableVrOrder()
+    {
+        var inactive = AllDisplayMods().Where(mod => !IsVrActive(mod)).ToArray();
+        return (_modPrefs.AvailableOrder ?? Array.Empty<string>())
+            .Where(inactive.Contains).Distinct(StringComparer.Ordinal)
+            .Concat(inactive.Where(name => !(_modPrefs.AvailableOrder ??
+                Array.Empty<string>()).Contains(name)))
+            .Distinct(StringComparer.Ordinal).ToArray();
+    }
+
+    private void MoveAvailable(string source, string? target, bool after)
+    {
+        var items = AvailableVrOrder().ToList();
+        if (!items.Remove(source) || items.Count == 0) return;
+        var index = target == null ? items.Count : items.IndexOf(target);
+        if (index < 0) index = items.Count;
+        else if (after) index++;
+        items.Insert(Math.Min(index, items.Count), source);
+        _modPrefs.AvailableOrder = items.ToArray();
+        SaveModSelections();
+        QueueVrRebuild();
+    }
+
     private void OnVrSelectionChanged(string title, bool enabled)
     {
         var current = (_modPrefs.ActiveOrder ?? Array.Empty<string>())
             .Where(name => name != title).ToList();
         if (enabled && VerifiedVrMods().Contains(title)) current.Add(title);
         _modPrefs.ActiveOrder = current.ToArray();
+        // Keep inactive row order even when a mod is toggled on and off.
+        _modPrefs.AvailableOrder = AvailableVrOrder();
         SaveModSelections();
         QueueVrRebuild();
     }
@@ -103,49 +139,102 @@ internal sealed partial class ModsForm
     // These are the dependencies recorded by the original KHARVOX ordering
     // panel. All currently unverified dependent mods remain DISABLED; never
     // silently enable an unsupported gameplay feature.
-    private static string[] DependenciesFor(string mod) => mod switch
+    private static (string Name, bool Required)[] DependencyLinks(string mod) => mod switch
     {
         "Directional Dash" => new[] {
-            "Requires: Weapon Wheel Button Remap, Behind-the-Head Weapon Wheel",
-            "Conflicts with: No Weapon Wheel" },
-        "Behind-the-Head Weapon Wheel" => new[] { "Conflicts with: No Weapon Wheel" },
+            ("Weapon Wheel Button Remap", true),
+            ("Behind-the-Head Weapon Wheel", true),
+            ("No Weapon Wheel", false)
+        },
+        "Behind-the-Head Weapon Wheel" => new[] { ("No Weapon Wheel", false) },
         "No Weapon Wheel" => new[] {
-            "Conflicts with: Behind-the-Head Weapon Wheel, Directional Dash" },
-        "Dynamic Quick Holsters" => new[] { "Requires: Hands enabled in main KHARVOX launcher" },
-        _ => Array.Empty<string>()
+            ("Behind-the-Head Weapon Wheel", false),
+            ("Directional Dash", false)
+        },
+        _ => Array.Empty<(string, bool)>()
     };
+
+    private static string[] DependenciesFor(string mod)
+    {
+        var links = DependencyLinks(mod);
+        var lines = links.Select(x =>
+            (x.Required ? "Requires: " : "Conflicts with: ") +
+            "#" + ModNumber(x.Name).ToString("00") + " " + x.Name).ToList();
+        if (mod == "Dynamic Quick Holsters")
+            lines.Add("Requires: Hands enabled in the original KHARVOX launcher");
+        return lines.ToArray();
+    }
+
+    private void SetDependencyHover(string name)
+    {
+        _dependencyHighlights.Clear();
+        foreach (var link in DependencyLinks(name))
+            _dependencyHighlights[link.Name] = link.Required
+                ? Color.FromArgb(65, 212, 123) : Color.FromArgb(240, 84, 80);
+        foreach (var row in _visibleModRows.Values) row.Invalidate();
+    }
+
+    private void ClearDependencyHover()
+    {
+        if (_dependencyHighlights.Count == 0) return;
+        _dependencyHighlights.Clear();
+        foreach (var row in _visibleModRows.Values) row.Invalidate();
+    }
+
+    private void AttachDependencyHover(Control row, string title)
+    {
+        row.Paint += (_, e) =>
+        {
+            if (_dependencyHighlights.TryGetValue(title, out var color))
+            {
+                using (var pen = new Pen(color, 2))
+                    e.Graphics.DrawRectangle(pen, 1, 1,
+                        Math.Max(0, row.Width - 3), Math.Max(0, row.Height - 3));
+            }
+            if (_dropLineRow == row)
+            {
+                using (var pen = new Pen(Color.FromArgb(70, 180, 255), 3))
+                {
+                    var y = _dropLineAfter ? row.Height - 2 : 1;
+                    e.Graphics.DrawLine(pen, 1, y, Math.Max(1, row.Width - 2), y);
+                }
+            }
+        };
+        void Enter(object? sender, EventArgs e) => SetDependencyHover(title);
+        void Leave(object? sender, EventArgs e)
+        {
+            if (!row.RectangleToScreen(row.ClientRectangle).Contains(Cursor.Position))
+                ClearDependencyHover();
+        }
+        foreach (var control in new[] { row }.Concat(row.Controls.Cast<Control>()))
+        {
+            control.MouseEnter += Enter;
+            control.MouseLeave += Leave;
+        }
+    }
+
+    private void MarkDropLine(Control? row, bool after = false)
+    {
+        if (_dropLineRow == row && _dropLineAfter == after) return;
+        var previous = _dropLineRow;
+        _dropLineRow = row;
+        _dropLineAfter = after;
+        previous?.Invalidate();
+        row?.Invalidate();
+    }
 
     private void ShowModDependencies(string name, string description)
     {
         var dependencies = DependenciesFor(name);
-        if (dependencies.Length == 0)
-        {
-            MessageBox.Show(this,
-                description + "\n\nNo verified inter-mod dependencies for this feature.",
-                name, MessageBoxButtons.OK, MessageBoxIcon.Information);
-            return;
-        }
-
-        var info = description + "\n\n" + string.Join("\n", dependencies);
-        MessageBox.Show(this, info + "\n\nUnsupported dependent mods remain disabled.",
-            name + " — Dependencies", MessageBoxButtons.OK,
-            MessageBoxIcon.Information);
-        var firstDependency = name switch
-        {
-            "Directional Dash" => "Weapon Wheel Button Remap",
-            "Behind-the-Head Weapon Wheel" => "No Weapon Wheel",
-            "No Weapon Wheel" => "Behind-the-Head Weapon Wheel",
-            _ => ""
-        };
-        if (_visibleModRows.TryGetValue(firstDependency, out var row) &&
-            !row.IsDisposed)
-        {
-            if (_selectedDependencyRow != null && !_selectedDependencyRow.IsDisposed)
-                _selectedDependencyRow.BackColor = DarkPanel;
-            _selectedDependencyRow = row;
-            row.BackColor = Color.FromArgb(65, 58, 35);
-            _vrModScroll.ScrollControlIntoView(row);
-        }
+        var number = ModNumber(name);
+        var heading = number > 0 ? "#" + number.ToString("00") + " " + name : name;
+        var details = dependencies.Length == 0
+            ? "No recorded mod dependencies."
+            : string.Join(Environment.NewLine, dependencies);
+        MessageBox.Show(this, description + Environment.NewLine + Environment.NewLine +
+            details + Environment.NewLine + Environment.NewLine +
+            "Green = required. Red = conflicting. Paused mods remain disabled.",
+            heading + " — Dependencies", MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private GroupBox BuildOriginalVrPanel()
@@ -198,7 +287,8 @@ internal sealed partial class ModsForm
         try
         {
             _visibleModRows.Clear();
-            _selectedDependencyRow = null;
+            _dependencyHighlights.Clear();
+            _dropLineRow = null;
             var previous = _vrModList.Controls.Cast<Control>().ToArray();
             _vrModList.Controls.Clear();
             foreach (var control in previous) control.Dispose();
@@ -255,20 +345,27 @@ internal sealed partial class ModsForm
                 AppendFixedRow(_vrModList, dropEnd, 24);
             }
 
-            AppendSection(_vrModList, "AVAILABLE VR MODS");
-            if (!IsVrActive(GloryModTitle))
-                AddGlorySpeedRow(_vrModList, false);
-            foreach (var group in OriginalModGroups)
+            AppendSection(_vrModList, "AVAILABLE VR MODS  ·  DRAG TO REORDER");
+            string lastGroup = "";
+            foreach (var name in AvailableVrOrder())
             {
-                var remaining = group.Mods.Where(mod => !IsVrActive(mod.Title)).ToArray();
-                if (remaining.Length == 0) continue;
-                AppendSection(_vrModList, group.Title);
-                foreach (var mod in remaining)
-                    AppendVrMod(_vrModList, mod, false);
+                var category = name == GloryModTitle ? "✦  Weapons & Combat" :
+                    DevOverrides.Any(d => d.Title == name) ? "⚙  Dev — Gameplay Overrides" :
+                    OriginalModGroups.First(g => g.Mods.Any(m => m.Title == name)).Title;
+                if (category != lastGroup)
+                {
+                    AppendSection(_vrModList, category);
+                    lastGroup = category;
+                }
+                if (name == GloryModTitle) AddGlorySpeedRow(_vrModList, false);
+                else
+                {
+                    var mod = OriginalModGroups.SelectMany(g => g.Mods)
+                        .Concat(DevOverrides).First(m => m.Title == name);
+                    AppendVrMod(_vrModList, mod, false,
+                        DevOverrides.Any(d => d.Title == name));
+                }
             }
-            AppendSection(_vrModList, "⚙  Dev — Gameplay Overrides");
-            foreach (var dev in DevOverrides)
-                AppendDeveloperMod(_vrModList, dev);
         }
         finally { _vrModList.ResumeLayout(true); }
     }
@@ -278,21 +375,30 @@ internal sealed partial class ModsForm
         var panel = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 34,
-            ColumnCount = 4, RowCount = 1,
+            ColumnCount = 5, RowCount = 1,
             BackColor = DarkPanel, Padding = new Padding(2, 0, 0, 0),
             Margin = Padding.Empty
         };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 174));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
+        var numberLabel = new Label
+        {
+            Text = ModNumber(GloryModTitle).ToString("00") + ".",
+            Dock = DockStyle.Fill, ForeColor = Color.WhiteSmoke,
+            BackColor = DarkPanel, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(2, 0, 0, 0)
+        };
+        panel.Controls.Add(numberLabel, 0, 0);
         var check = MakePreviewCheck(GloryModTitle,
             "Override just Glory Kill speed (30–240 Hz). No other animations affected.",
             "glory-kill-speed-preview");
         check.Enabled = true;
         check.Checked = active;
         check.Dock = DockStyle.Fill;
-        panel.Controls.Add(check, 0, 0);
+        panel.Controls.Add(check, 1, 0);
 
         var slider = new TrackBar
         {
@@ -305,7 +411,7 @@ internal sealed partial class ModsForm
             Tag = "glory-speed-slider"
         };
         // Intentionally short and completely hidden while unchecked.
-        panel.Controls.Add(slider, 1, 0);
+        panel.Controls.Add(slider, 2, 0);
         var speedLabel = new Label
         {
             Text = _modPrefs.GloryKillHz + " Hz",
@@ -313,7 +419,7 @@ internal sealed partial class ModsForm
             Visible = check.Checked, Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft
         };
-        panel.Controls.Add(speedLabel, 2, 0);
+        panel.Controls.Add(speedLabel, 3, 0);
         _tooltips.SetToolTip(slider,
             "Right is faster (30 Hz); left is slower (240 Hz).");
         check.CheckedChanged += (_, _) =>
@@ -331,36 +437,33 @@ internal sealed partial class ModsForm
         slider.MouseUp += (_, _) => SaveModSelections();
         slider.KeyUp += (_, _) => SaveModSelections();
         slider.Leave += (_, _) => SaveModSelections();
-        Label? grip = null;
-        if (active)
+        var grip = new Label
         {
-            grip = new Label
-            {
-                Text = "⋮⋮", Dock = DockStyle.Fill,
-                ForeColor = Color.FromArgb(178, 178, 185),
-                TextAlign = ContentAlignment.MiddleCenter,
-                Cursor = Cursors.SizeNS,
-                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
-            };
-            panel.Controls.Add(grip, 3, 0);
-            AttachActiveRow(panel, check, grip, GloryModTitle,
-                "Glory Kill speed override has no other VR-mod prerequisites.");
-        }
+            Text = "⋮⋮", Dock = DockStyle.Fill,
+            ForeColor = Color.FromArgb(178, 178, 185),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Cursor = Cursors.SizeNS,
+            Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
+        };
+        panel.Controls.Add(grip, 4, 0);
+        if (active) AttachActiveRow(panel, check, grip, GloryModTitle,
+            "Override Glory Kill speed (30–240 Hz).");
+        else AttachAvailableRow(panel, grip, GloryModTitle);
+        AttachDependencyHover(panel, GloryModTitle);
         _visibleModRows[GloryModTitle] = panel;
         AppendFixedRow(list, panel, 36);
     }
 
-    private void AppendVrMod(TableLayoutPanel list, PreviewMod mod, bool active)
+    private void AppendVrMod(TableLayoutPanel list, PreviewMod mod, bool active, bool isDev = false)
     {
-        var number = Array.FindIndex(OriginalModGroups.SelectMany(x => x.Mods)
-            .ToArray(), x => x.Title == mod.Title) + 1;
+        var number = ModNumber(mod.Title);
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 30,
             ColumnCount = 5, RowCount = 1,
             BackColor = DarkPanel, Margin = Padding.Empty,
             Padding = Padding.Empty,
-            AllowDrop = active,
+            AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
@@ -386,7 +489,7 @@ internal sealed partial class ModsForm
             (IsConfirmedMod(mod.Title)
                 ? "Verified core feature. Uses installed Native Bridge on next DOOM launch."
                 : "Paused; not available in this build."),
-            "original-vr-mod");
+            isDev ? "dev-override" : "original-vr-mod");
         check.Enabled = IsConfirmedMod(mod.Title);
         check.Checked = active;
         check.Dock = DockStyle.Fill;
@@ -408,12 +511,12 @@ internal sealed partial class ModsForm
         info.LinkClicked += (_, _) => ShowModDependencies(mod.Title, mod.Help);
         var grip = new Label
         {
-            Text = active ? "⋮⋮" : "", Dock = DockStyle.Fill,
+            Text = "⋮⋮", Dock = DockStyle.Fill,
             ForeColor = Color.FromArgb(178,178,185),
             TextAlign = ContentAlignment.MiddleCenter,
-            Cursor = active ? Cursors.SizeNS : Cursors.Default,
+            Cursor = Cursors.SizeNS,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
-            AllowDrop = active
+            AllowDrop = true
         };
         row.Controls.Add(numberLabel, 0, 0);
         row.Controls.Add(check, 1, 0);
@@ -439,6 +542,8 @@ internal sealed partial class ModsForm
         row.Controls.Add(grip, 4, 0);
         _visibleModRows[mod.Title] = row;
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
+        else AttachAvailableRow(row, grip, mod.Title);
+        AttachDependencyHover(row, mod.Title);
         AppendFixedRow(list, row, 30);
     }
 
