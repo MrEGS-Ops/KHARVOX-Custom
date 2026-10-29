@@ -13,7 +13,7 @@
     <Product>KHARVOX Mods Portable Updater</Product>
     <Title>KHARVOX Mods Updater</Title>
     <Version>0.1.0</Version>
-    <ApplicationIcon>..\KharvoxMods\mregs.ico</ApplicationIcon>
+    <ApplicationIcon>..\KharvoxMods\mregs-updater.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>none</DebugType>
