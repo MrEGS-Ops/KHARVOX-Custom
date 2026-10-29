@@ -159,6 +159,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Portable updater self-test failed: $($test.ExitCode)" }
 
+      - name: Verify four-digit updater window layout
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Compact updater window regression: $($test.ExitCode)" }
+
       - name: Verify fresh install and fail-closed attachment consent
         shell: pwsh
         run: |
