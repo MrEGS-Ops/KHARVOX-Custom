@@ -247,24 +247,13 @@ internal sealed partial class ModsForm
 
         var content = new TableLayoutPanel
         {
-            Dock = DockStyle.Top, ColumnCount = 1, RowCount = 2,
+            Dock = DockStyle.Top, ColumnCount = 1, RowCount = 1,
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = DarkPanel, Padding = new Padding(12, 8, 10, 6),
+            BackColor = DarkPanel, Padding = new Padding(9, 2, 8, 6),
             Margin = Padding.Empty
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        content.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-
-        _bridgeState.Dock = DockStyle.Fill;
-        _bridgeState.BackColor = DarkPanel;
-        _bridgeState.Font = new Font("Segoe UI", 8f);
-        _bridgeState.TextAlign = ContentAlignment.MiddleLeft;
-        _bridgeState.AutoEllipsis = true;
-        _tooltips.SetToolTip(_bridgeState,
-            "Our verified custom KHARVOX starts automatically; your original installation is untouched.");
-        RefreshBridgeState();
-        content.Controls.Add(_bridgeState, 0, 0);
 
         _vrModList.Dock = DockStyle.Top;
         _vrModList.AutoSize = true;
@@ -274,7 +263,7 @@ internal sealed partial class ModsForm
         _vrModList.Margin = Padding.Empty;
         _vrModList.ColumnCount = 1;
         _vrModList.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        content.Controls.Add(_vrModList, 0, 1);
+        content.Controls.Add(_vrModList, 0, 0);
         _vrModScroll.Controls.Add(content);
         group.Controls.Add(_vrModScroll);
         RenderVrRows();
