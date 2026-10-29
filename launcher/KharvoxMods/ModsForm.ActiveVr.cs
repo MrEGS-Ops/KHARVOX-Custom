@@ -36,11 +36,13 @@ internal sealed partial class ModsForm
     private string[] ActiveVrOrder()
     {
         var selected = VerifiedVrMods().Where(IsVrActive).ToArray();
-        return (_modPrefs.ActiveOrder ?? Array.Empty<string>())
-            .Where(selected.Contains).Distinct(StringComparer.Ordinal)
-            .Concat(selected.Where(item => !(_modPrefs.ActiveOrder ??
-                Array.Empty<string>()).Contains(item)))
-            .Distinct(StringComparer.Ordinal).ToArray();
+        var saved = _modPrefs.ActiveOrder ?? Array.Empty<string>();
+        var ordered = saved.Where(selected.Contains)
+            .Distinct(StringComparer.Ordinal)
+            .Concat(selected.Where(name => !saved.Contains(name))).ToArray();
+        // Categories are atomic blocks in Active Mods. Preserve block order
+        // based on each category's first appearance in saved preferences.
+        return ordered.GroupBy(CategoryFor).SelectMany(group => group).ToArray();
     }
 
     private void StoreActiveOrder(string[] next, bool saveUndo = true)
@@ -50,7 +52,7 @@ internal sealed partial class ModsForm
         var normalized = next.Where(selected.Contains)
             .Distinct(StringComparer.Ordinal)
             .Concat(selected.Where(item => !next.Contains(item)))
-            .ToArray();
+            .GroupBy(CategoryFor).SelectMany(group => group).ToArray();
         if (current.SequenceEqual(normalized)) return;
         if (saveUndo) _activeUndo.Push(current);
         _modPrefs.ActiveOrder = normalized;
@@ -131,19 +133,40 @@ internal sealed partial class ModsForm
     private void MoveActive(string source, string? target, string operation)
     {
         var items = ActiveVrOrder().ToList();
-        var from = items.IndexOf(source);
-        if (from < 0 || items.Count < 2) return;
-        items.RemoveAt(from);
+        if (!items.Contains(source) || items.Count < 2) return;
+        var category = CategoryFor(source);
+        if (target != null && CategoryFor(target) != category)
+        {
+            // A cross-category drag moves ALL active mods in this category
+            // together, without mixing them into the destination category.
+            var groups = items.Select(CategoryFor).Distinct().ToList();
+            groups.Remove(category);
+            var other = CategoryFor(target);
+            var index = groups.IndexOf(other);
+            if (index < 0) return;
+            if (operation == "after") index++;
+            groups.Insert(Math.Min(index, groups.Count), category);
+            StoreActiveOrder(groups.SelectMany(group =>
+                items.Where(name => CategoryFor(name) == group)).ToArray());
+            return;
+        }
+        var own = items.Where(name => CategoryFor(name) == category).ToList();
+        var from = own.IndexOf(source);
+        if (from < 0 || own.Count < 2) return;
+        own.RemoveAt(from);
         int to;
         if (operation == "top") to = 0;
-        else if (operation == "bottom") to = items.Count;
+        else if (operation == "bottom") to = own.Count;
         else if (operation == "up") to = Math.Max(0, from - 1);
-        else if (operation == "down") to = Math.Min(items.Count, from + 1);
-        else to = target == null ? items.Count : items.IndexOf(target);
-        if (to < 0) to = items.Count;
+        else if (operation == "down") to = Math.Min(own.Count, from + 1);
+        else to = target == null ? own.Count : own.IndexOf(target);
+        if (to < 0) to = own.Count;
         else if (operation == "after") to++;
-        items.Insert(Math.Min(to, items.Count), source);
-        StoreActiveOrder(items.ToArray());
+        own.Insert(Math.Min(to, own.Count), source);
+        var result = items.SelectMany(name => new[] { CategoryFor(name) })
+            .Distinct().SelectMany(group => group == category
+                ? own : items.Where(name => CategoryFor(name) == group));
+        StoreActiveOrder(result.ToArray());
     }
 
     private void UndoActiveOrder()
@@ -194,7 +217,8 @@ internal sealed partial class ModsForm
                 ? (indicator.G > indicator.R
                     ? Color.FromArgb(37, 100, 65)
                     : Color.FromArgb(112, 42, 45))
-                : DarkPanel;
+                : (pair.Value.Tag as string == "active-vr-mod"
+                    ? Color.FromArgb(37, 38, 42) : DarkPanel);
             pair.Value.BackColor = tint;
             foreach (Control child in pair.Value.Controls)
                 if (!(child is TrackBar)) child.BackColor = tint;
@@ -243,10 +267,26 @@ internal sealed partial class ModsForm
             if (!row.RectangleToScreen(row.ClientRectangle).Contains(Cursor.Position))
                 ClearDependencyHover();
         }
+        var grip = row.Controls.OfType<Label>()
+            .FirstOrDefault(label => string.Equals(label.Tag as string,
+                "vr-drag-grip", StringComparison.Ordinal));
+        if (grip != null) grip.Visible = false;
+        void Reveal(object? sender, EventArgs e)
+        {
+            if (grip != null) grip.Visible = true;
+            Enter(sender, e);
+        }
+        void Conceal(object? sender, EventArgs e)
+        {
+            if (grip != null && !row.RectangleToScreen(row.ClientRectangle)
+                    .Contains(Cursor.Position))
+                grip.Visible = false;
+            Leave(sender, e);
+        }
         foreach (var control in new[] { row }.Concat(row.Controls.Cast<Control>()))
         {
-            control.MouseEnter += Enter;
-            control.MouseLeave += Leave;
+            control.MouseEnter += Reveal;
+            control.MouseLeave += Conceal;
             if (control != row)
                 control.Paint += (_, e) =>
                 {
@@ -276,14 +316,26 @@ internal sealed partial class ModsForm
         var dependencies = DependenciesFor(name);
         var number = ModNumber(name);
         var heading = number > 0 ? "#" + number.ToString("00") + " " + name : name;
-        var details = dependencies.Length == 0
-            ? "No recorded mod dependencies."
-            : string.Join(Environment.NewLine, dependencies);
-        MessageBox.Show(this, description + Environment.NewLine + Environment.NewLine +
-            "Category: " + CategoryFor(name).Trim() + Environment.NewLine +
-            details + Environment.NewLine + Environment.NewLine +
-            "Green = required. Red = conflicting. Paused mods remain disabled.",
-            heading + " — Dependencies", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        var howToUse = name switch
+        {
+            "Weapon Wheel Button Remap" =>
+                "In DOOM: tap A to quick-switch; hold A for the wheel and use the left stick.",
+            "Hand Focus" =>
+                "In DOOM: activate with right-stick click, then aim or select with your hand.",
+            "Physical Crouch" =>
+                "In DOOM: physically lower your headset to crouch; stand to rise.",
+            "PAINSAW: RIPSHIFT OVERDRIVE" =>
+                "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
+            "Glory Kill Speed Override" =>
+                "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
+            _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."
+        };
+        var info = "How to use:\n" + howToUse + "\n\n" +
+            "Category: " + CategoryFor(name).Trim();
+        if (dependencies.Length > 0)
+            info += "\n\nDependencies:\n" + string.Join("\n", dependencies);
+        MessageBox.Show(this, info, heading + " — Mod Info",
+            MessageBoxButtons.OK, MessageBoxIcon.Information);
     }
 
     private GroupBox BuildOriginalVrPanel()
@@ -297,7 +349,7 @@ internal sealed partial class ModsForm
         {
             Dock = DockStyle.Top, ColumnCount = 1, RowCount = 1,
             AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            BackColor = DarkPanel, Padding = new Padding(9, 2, 8, 6),
+            BackColor = DarkPanel, Padding = new Padding(6, 2, 5, 6),
             Margin = Padding.Empty
         };
         content.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
@@ -333,6 +385,15 @@ internal sealed partial class ModsForm
             _vrModList.RowStyles.Clear();
             _vrModList.RowCount = 0;
 
+            var activeList = new TableLayoutPanel
+            {
+                Dock = DockStyle.Top, AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                ColumnCount = 1, RowCount = 0,
+                BackColor = Color.FromArgb(37, 38, 42),
+                Margin = Padding.Empty, Padding = new Padding(5, 3, 5, 6)
+            };
+            activeList.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             var active = ActiveVrOrder();
             var header = new Label
             {
@@ -343,10 +404,10 @@ internal sealed partial class ModsForm
                 TextAlign = ContentAlignment.MiddleLeft,
                 Dock = DockStyle.Fill, Margin = new Padding(2, 2, 0, 2)
             };
-            AppendFixedRow(_vrModList, header, 30);
+            AppendFixedRow(activeList, header, 30);
             if (active.Length == 0)
             {
-                AppendFixedRow(_vrModList, new Label
+                AppendFixedRow(activeList, new Label
                 {
                     Text = "Check a VR mod below to add it here.",
                     ForeColor = Color.Silver, BackColor = DarkPanel,
@@ -361,25 +422,40 @@ internal sealed partial class ModsForm
                     var category = CategoryFor(name);
                     if (category != activeCategory)
                     {
-                        AppendSection(_vrModList, category);
+                        AppendSection(activeList, category);
                         activeCategory = category;
                     }
-                    if (name == GloryModTitle) AddGlorySpeedRow(_vrModList, true);
+                    if (name == GloryModTitle) AddGlorySpeedRow(activeList, true);
                     else
                     {
                         var mod = OriginalModGroups.SelectMany(g => g.Mods)
                             .First(m => m.Title == name);
-                        AppendVrMod(_vrModList, mod, true);
+                        AppendVrMod(activeList, mod, true);
                     }
                 }
             }
 
-            // Deliberate breathing space between active and available mods.
+
+            var activeCard = new Panel
+            {
+                Dock = DockStyle.Top, AutoSize = true,
+                AutoSizeMode = AutoSizeMode.GrowAndShrink,
+                BorderStyle = BorderStyle.FixedSingle,
+                BackColor = Color.FromArgb(37, 38, 42),
+                Margin = new Padding(0, 1, 3, 0),
+                Padding = new Padding(4)
+            };
+            activeCard.Controls.Add(activeList);
+            var cardRow = _vrModList.RowCount++;
+            _vrModList.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            _vrModList.Controls.Add(activeCard, 0, cardRow);
+
+            // The inactive list remains separate from the active card.
             AppendFixedRow(_vrModList, new Panel
             {
                 Dock = DockStyle.Fill, BackColor = DarkPanel,
                 Margin = Padding.Empty
-            }, 20);
+            }, 15);
             AppendSection(_vrModList, "AVAILABLE VR MODS");
             string lastGroup = "";
             foreach (var name in AvailableVrOrder())
@@ -410,15 +486,17 @@ internal sealed partial class ModsForm
             Dock = DockStyle.Fill, Height = 34,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod",
-            ColumnCount = 5, RowCount = 1,
-            BackColor = DarkPanel, Padding = new Padding(2, 0, 0, 0),
+            ColumnCount = 6, RowCount = 1,
+            BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
+            Padding = new Padding(2, 0, 0, 0),
             Margin = Padding.Empty
         };
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
         panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 146));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
-        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 51));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
         var numberLabel = new Label
         {
             Text = ModNumber(GloryModTitle).ToString("00") + ".",
@@ -439,7 +517,7 @@ internal sealed partial class ModsForm
         {
             Minimum = 30, Maximum = 240,
             Value = 270 - Math.Max(30, Math.Min(240, _modPrefs.GloryKillHz)),
-            Width = 165, Height = 31,
+            Width = 106, Height = 31,
             TickStyle = TickStyle.None,
             Visible = check.Checked, Enabled = check.Checked,
             Margin = new Padding(2, 0, 1, 0),
@@ -475,15 +553,30 @@ internal sealed partial class ModsForm
         var grip = new Label
         {
             Text = "⋮⋮", Dock = DockStyle.Fill,
+            Tag = "vr-drag-grip",
             ForeColor = Color.FromArgb(178, 178, 185),
             TextAlign = ContentAlignment.MiddleCenter,
             Cursor = Cursors.SizeNS,
             Font = new Font("Segoe UI", 9.5f, FontStyle.Bold)
         };
-        panel.Controls.Add(grip, 4, 0);
+        var info = new LinkLabel
+        {
+            Text = "ⓘ", Dock = DockStyle.Fill,
+            ForeColor = Color.Silver, LinkColor = Color.Silver,
+            ActiveLinkColor = Color.White,
+            TextAlign = ContentAlignment.MiddleCenter
+        };
+        _tooltips.SetToolTip(info, "Glory Kill speed: 30–240 Hz, right is faster. Click for instructions.");
+        info.LinkClicked += (_, _) => ShowModDependencies(GloryModTitle,
+            "Glory Kill Speed Override");
+        panel.Controls.Add(info, 4, 0);
+        panel.Controls.Add(grip, 5, 0);
         if (active) AttachActiveRow(panel, check, grip, GloryModTitle,
             "Override Glory Kill speed (30–240 Hz).");
         else AttachAvailableRow(panel, grip, GloryModTitle);
+        if (active)
+            foreach (Control child in panel.Controls)
+                if (child is not TrackBar) child.BackColor = panel.BackColor;
         AttachDependencyHover(panel, GloryModTitle);
         _visibleModRows[GloryModTitle] = panel;
         AppendFixedRow(list, panel, 36);
@@ -496,15 +589,15 @@ internal sealed partial class ModsForm
         {
             Dock = DockStyle.Fill, Height = 30,
             ColumnCount = 4, RowCount = 1,
-            BackColor = DarkPanel, Margin = Padding.Empty,
-            Padding = Padding.Empty,
+            BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
+            Margin = Padding.Empty, Padding = Padding.Empty,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
         var numberLabel = new Label
         {
             Text = number.ToString("00") + ".",
@@ -538,12 +631,12 @@ internal sealed partial class ModsForm
             TextAlign = ContentAlignment.MiddleCenter,
             Font = new Font("Segoe UI", 9f)
         };
-        _tooltips.SetToolTip(info, description +
-            Environment.NewLine + "Click for original dependency information.");
+        _tooltips.SetToolTip(info, "Open how-to instructions and numbered dependencies.");
         info.LinkClicked += (_, _) => ShowModDependencies(mod.Title, mod.Help);
         var grip = new Label
         {
             Text = "⋮⋮", Dock = DockStyle.Fill,
+            Tag = "vr-drag-grip",
             ForeColor = Color.FromArgb(178,178,185),
             TextAlign = ContentAlignment.MiddleCenter,
             Cursor = Cursors.SizeNS,
@@ -557,6 +650,8 @@ internal sealed partial class ModsForm
         _visibleModRows[mod.Title] = row;
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
+        if (active)
+            foreach (Control child in row.Controls) child.BackColor = row.BackColor;
         AttachDependencyHover(row, mod.Title);
         AppendFixedRow(list, row, 30);
     }

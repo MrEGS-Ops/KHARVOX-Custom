@@ -206,7 +206,7 @@ internal sealed partial class ModsForm
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
-            Padding = new Padding(12),
+            Padding = new Padding(7),
             BackColor = Color.Black,
             RowCount = 2,
             ColumnCount = 1,
@@ -228,7 +228,7 @@ internal sealed partial class ModsForm
             Dock = DockStyle.Top,
             Height = 20,
             ForeColor = Color.FromArgb(157, 157, 162),
-            BackColor = DarkPanel,
+            BackColor = list.BackColor,
             Font = new Font("Segoe UI", 9f, FontStyle.Bold),
             TextAlign = ContentAlignment.BottomLeft,
             Margin = new Padding(2, 0, 0, 0)
@@ -298,47 +298,6 @@ internal sealed partial class ModsForm
         };
         _tooltips.SetToolTip(check, description);
         return check;
-    }
-
-    private static void PlayOriginalTwitchChime()
-    {
-        // A short original rising triad, not DOOM copyrighted game audio.
-        System.Threading.Tasks.Task.Run(() =>
-        {
-            try
-            {
-                const int sampleRate = 22050;
-                const int samplesPerTone = 3308;
-                var pitches = new[] { 523.25, 659.25, 880.0 };
-                var total = samplesPerTone * pitches.Length;
-                using (var stream = new MemoryStream())
-                using (var writer = new BinaryWriter(stream))
-                {
-                    writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
-                    writer.Write(36 + total * 2);
-                    writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
-                    writer.Write(16); writer.Write((short)1); writer.Write((short)1);
-                    writer.Write(sampleRate); writer.Write(sampleRate * 2);
-                    writer.Write((short)2); writer.Write((short)16);
-                    writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
-                    writer.Write(total * 2);
-                    for (int n = 0; n < pitches.Length; n++)
-                        for (int i = 0; i < samplesPerTone; i++)
-                        {
-                            var t = (double)i / sampleRate;
-                            var envelope = Math.Min(1, i / 250.0) *
-                                Math.Max(0, 1 - (double)i / samplesPerTone);
-                            writer.Write((short)(Math.Sin(2 * Math.PI * pitches[n] * t) *
-                                envelope * 5500));
-                        }
-                    writer.Flush();
-                    stream.Position = 0;
-                    using (var player = new System.Media.SoundPlayer(stream))
-                        player.PlaySync();
-                }
-            }
-            catch (Exception) { /* Audio must never interfere with Twitch. */ }
-        });
     }
 
     private Control BuildOriginalFooter()
@@ -440,7 +399,7 @@ internal sealed partial class ModsForm
                                     FileName = "https://www.twitch.tv/MrEGS_",
                                     UseShellExecute = true
                                 })?.Dispose();
-                                PlayOriginalTwitchChime();
+                                // No substitute sound: the original DOOM cue is copyrighted.
                             }
                             catch (System.ComponentModel.Win32Exception) { }
                         }

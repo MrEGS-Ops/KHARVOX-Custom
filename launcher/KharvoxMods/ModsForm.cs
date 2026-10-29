@@ -38,7 +38,7 @@ internal sealed partial class ModsForm : Form
     // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
-    private const int DesiredModsWidth = 706; // Compact VR-only single-column window
+    private const int DesiredModsWidth = 594; // Narrow VR-only companion window
 
     private static string EmbeddedBuildId()
     {
@@ -73,7 +73,7 @@ internal sealed partial class ModsForm : Form
     {
         Text = "KHARVOX Custom Mods — " + BuildLabel();
         ClientSize = new Size(DesiredModsWidth, 600);
-        MinimumSize = new Size(650, 530);
+        MinimumSize = new Size(565, 530);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
