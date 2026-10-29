@@ -32,6 +32,8 @@ internal sealed partial class ModsForm : Form
     private IntPtr _ownerLauncher;
     private bool _closingDockPair;
     private bool _centerPairOnNextAttach = true;
+    private bool _draggingModsCaption;
+    private bool _draggingLauncherCaption;
 
     // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
@@ -186,6 +188,56 @@ internal sealed partial class ModsForm : Form
         if (_status.Text != message) _status.Text = message;
     }
 
+    private bool PromptForOriginalLauncher()
+    {
+        // A one-action setup instruction, not a Yes/No question.
+        using (var prompt = new Form
+        {
+            Text = "KHARVOX Mods Setup",
+            ClientSize = new Size(444, 148),
+            FormBorderStyle = FormBorderStyle.FixedDialog,
+            StartPosition = FormStartPosition.CenterParent,
+            MinimizeBox = false, MaximizeBox = false, ShowInTaskbar = false,
+            BackColor = Color.FromArgb(30, 30, 33), ForeColor = Color.WhiteSmoke,
+            Font = new Font("Segoe UI", 9f)
+        })
+        {
+            prompt.Controls.Add(new Label
+            {
+                Text = "Select your original KHARVOX installation.",
+                Location = new Point(18, 18), Size = new Size(407, 28),
+                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                ForeColor = Color.Gainsboro
+            });
+            var link = new LinkLabel
+            {
+                Text = "Don't have Kharvox? click here",
+                Location = new Point(18, 66), Size = new Size(300, 23),
+                LinkColor = Color.LightSkyBlue, ActiveLinkColor = Color.White,
+                BackColor = prompt.BackColor
+            };
+            link.LinkClicked += (_, _) =>
+            {
+                try
+                {
+                    Process.Start(new ProcessStartInfo
+                    {
+                        FileName = "https://github.com/CactusVRStudios/KHARVOX",
+                        UseShellExecute = true
+                    })?.Dispose();
+                }
+                catch (System.ComponentModel.Win32Exception) { }
+            };
+            prompt.Controls.Add(link);
+            var ok = MakeButton("OK", 94);
+            ok.Location = new Point(326, 103);
+            ok.DialogResult = DialogResult.OK;
+            prompt.AcceptButton = ok;
+            prompt.Controls.Add(ok);
+            return prompt.ShowDialog(this) == DialogResult.OK;
+        }
+    }
+
     private bool SelectLauncher()
     {
         using (var dialog = new OpenFileDialog
@@ -244,11 +296,7 @@ internal sealed partial class ModsForm : Form
         if (original == null)
         {
             SetStatus("Original KHARVOX installation not selected.");
-            var answer = MessageBox.Show(this,
-                "Locate your original KHARVOX installation?",
-                "KHARVOX Mods Setup", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
-            if (answer != DialogResult.Yes || !SelectLauncher())
+            if (!PromptForOriginalLauncher() || !SelectLauncher())
             {
                 Close();
                 return;
@@ -443,8 +491,23 @@ internal sealed partial class ModsForm : Form
 
             var launcherRect = NativeDock.Bounds(handle);
             if (!launcherRect.HasValue) return;
-            var modsMoved = _lastModsBounds != Rectangle.Empty && Bounds.Location != _lastModsBounds.Location;
-            var launcherMoved = _lastLauncherBounds != launcherRect.Value;
+            // Caption-drag intent is latched only while the mouse button is
+            // down. Hovering, focusing a field, or opening a dropdown must
+            // never move either desktop window.
+            if (!NativeDock.LeftMousePressed())
+            {
+                _draggingModsCaption = false;
+                _draggingLauncherCaption = false;
+            }
+            else
+            {
+                if (NativeDock.MouseOnCaption(Handle)) _draggingModsCaption = true;
+                if (NativeDock.MouseOnCaption(handle)) _draggingLauncherCaption = true;
+            }
+            var modsMoved = _lastModsBounds != Rectangle.Empty &&
+                Bounds.Location != _lastModsBounds.Location;
+            var launcherMoved = _lastLauncherBounds != Rectangle.Empty &&
+                launcherRect.Value.Location != _lastLauncherBounds.Location;
             var workArea = Screen.FromRectangle(launcherRect.Value).WorkingArea;
             var seam = NativeDock.VisibleSeamOverlap(Handle, handle);
 
@@ -465,7 +528,7 @@ internal sealed partial class ModsForm : Form
                 _centerPairOnNextAttach = false;
             }
             // Dragging VRMods moves our custom KHARVOX launcher.
-            else if (modsMoved && !launcherMoved)
+            else if (_draggingModsCaption && modsMoved && !launcherMoved)
             {
                 var desired = new Rectangle(Right - seam, Top,
                     launcherRect.Value.Width, Height);
@@ -473,7 +536,7 @@ internal sealed partial class ModsForm : Form
                 NativeDock.Move(handle, arranged.Launcher);
                 if (Bounds != arranged.Mods) Bounds = arranged.Mods;
             }
-            else if (launcherMoved || _lastLauncherBounds == Rectangle.Empty)
+            else if (_draggingLauncherCaption && launcherMoved)
             {
                 var arranged = NativeDock.Calculate(launcherRect.Value, workArea,
                     DesiredModsWidth, seam);

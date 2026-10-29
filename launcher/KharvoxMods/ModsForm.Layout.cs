@@ -281,34 +281,64 @@ internal sealed partial class ModsForm
 
     private CheckBox MakePreviewCheck(string title, string description, string key)
     {
+        // Standard Windows themed CheckBox, like Cactus's native launcher.
+        // Never overlay a disabled checkbox using Paint: it leaves ghost
+        // glyphs at the start of text on some Windows scaling settings.
         var check = new CheckBox
         {
             Text = title, Checked = false, Enabled = false,
-            FlatStyle = FlatStyle.Flat,
-            ForeColor = Color.FromArgb(194, 194, 200),
-            BackColor = DarkPanel,
-            Height = 27, Width = 405,
+            FlatStyle = FlatStyle.Standard,
+            UseVisualStyleBackColor = false,
+            ForeColor = Color.Gainsboro, BackColor = DarkPanel,
+            Height = 27, Width = 360,
             AutoSize = false, AutoEllipsis = true,
             Margin = Padding.Empty,
-            Tag = key,
-            AccessibleName = title,
+            Tag = key, AccessibleName = title,
             AccessibleDescription = description
-        };
-        // The original KHARVOX disabled-checkbox paint fix keeps the text
-        // readable while the checkbox itself remains inoperable.
-        check.Paint += (_, e) =>
-        {
-            if (check.Enabled) return;
-            var region = new Rectangle(20, 0, Math.Max(0, check.Width - 20), check.Height);
-            using (var background = new SolidBrush(DarkPanel))
-                e.Graphics.FillRectangle(background, region);
-            TextRenderer.DrawText(e.Graphics, title, check.Font, region,
-                Color.FromArgb(194, 194, 200),
-                TextFormatFlags.Left | TextFormatFlags.VerticalCenter |
-                TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
         };
         _tooltips.SetToolTip(check, description);
         return check;
+    }
+
+    private static void PlayOriginalTwitchChime()
+    {
+        // A short original rising triad, not DOOM copyrighted game audio.
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                const int sampleRate = 22050;
+                const int samplesPerTone = 3308;
+                var pitches = new[] { 523.25, 659.25, 880.0 };
+                var total = samplesPerTone * pitches.Length;
+                using (var stream = new MemoryStream())
+                using (var writer = new BinaryWriter(stream))
+                {
+                    writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+                    writer.Write(36 + total * 2);
+                    writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+                    writer.Write(16); writer.Write((short)1); writer.Write((short)1);
+                    writer.Write(sampleRate); writer.Write(sampleRate * 2);
+                    writer.Write((short)2); writer.Write((short)16);
+                    writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+                    writer.Write(total * 2);
+                    for (int n = 0; n < pitches.Length; n++)
+                        for (int i = 0; i < samplesPerTone; i++)
+                        {
+                            var t = (double)i / sampleRate;
+                            var envelope = Math.Min(1, i / 250.0) *
+                                Math.Max(0, 1 - (double)i / samplesPerTone);
+                            writer.Write((short)(Math.Sin(2 * Math.PI * pitches[n] * t) *
+                                envelope * 5500));
+                        }
+                    writer.Flush();
+                    stream.Position = 0;
+                    using (var player = new System.Media.SoundPlayer(stream))
+                        player.PlaySync();
+                }
+            }
+            catch (Exception) { /* Audio must never interfere with Twitch. */ }
+        });
     }
 
     private Control BuildOriginalFooter()
@@ -410,6 +440,7 @@ internal sealed partial class ModsForm
                                     FileName = "https://www.twitch.tv/MrEGS_",
                                     UseShellExecute = true
                                 })?.Dispose();
+                                PlayOriginalTwitchChime();
                             }
                             catch (System.ComponentModel.Win32Exception) { }
                         }

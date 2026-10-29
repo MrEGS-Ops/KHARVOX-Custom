@@ -63,26 +63,46 @@ internal sealed partial class ModsForm
         .Concat(new[] { GloryModTitle })
         .Concat(DevOverrides.Select(dev => dev.Title)).ToArray();
 
+    private static string CategoryFor(string title)
+    {
+        if (title == GloryModTitle) return "✦  Weapons & Combat";
+        if (DevOverrides.Any(dev => dev.Title == title))
+            return "⚙  Dev — Gameplay Overrides";
+        return OriginalModGroups.First(group =>
+            group.Mods.Any(mod => mod.Title == title)).Title;
+    }
+
     private static int ModNumber(string title) =>
         Array.IndexOf(AllDisplayMods(), title) + 1;
 
     private string[] AvailableVrOrder()
     {
-        var inactive = AllDisplayMods().Where(mod => !IsVrActive(mod)).ToArray();
-        return (_modPrefs.AvailableOrder ?? Array.Empty<string>())
-            .Where(inactive.Contains).Distinct(StringComparer.Ordinal)
-            .Concat(inactive.Where(name => !(_modPrefs.AvailableOrder ??
-                Array.Empty<string>()).Contains(name)))
-            .Distinct(StringComparer.Ordinal).ToArray();
+        var inactive = AllDisplayMods().Where(title => !IsVrActive(title)).ToArray();
+        var saved = _modPrefs.AvailableOrder ?? Array.Empty<string>();
+        // Independently preserve the order WITHIN each category. Never allow
+        // a disabled or unverified mod to drift into another category.
+        return inactive.GroupBy(CategoryFor).SelectMany(category =>
+            saved.Where(name => category.Contains(name))
+                .Distinct(StringComparer.Ordinal)
+                .Concat(category.Where(name => !saved.Contains(name))))
+            .ToArray();
     }
 
     private void MoveAvailable(string source, string? target, bool after)
     {
+        if (target != null && CategoryFor(source) != CategoryFor(target)) return;
         var items = AvailableVrOrder().ToList();
         if (!items.Remove(source) || items.Count == 0) return;
-        var index = target == null ? items.Count : items.IndexOf(target);
-        if (index < 0) index = items.Count;
-        else if (after) index++;
+        int index;
+        if (target == null)
+            index = items.FindLastIndex(name => CategoryFor(name) ==
+                CategoryFor(source)) + 1;
+        else
+        {
+            index = items.IndexOf(target);
+            if (index < 0) return;
+            if (after) index++;
+        }
         items.Insert(Math.Min(index, items.Count), source);
         _modPrefs.AvailableOrder = items.ToArray();
         SaveModSelections();
@@ -166,20 +186,36 @@ internal sealed partial class ModsForm
         return lines.ToArray();
     }
 
+    private void RepaintDependencyRows()
+    {
+        foreach (var pair in _visibleModRows)
+        {
+            var tint = _dependencyHighlights.TryGetValue(pair.Key, out var indicator)
+                ? (indicator.G > indicator.R
+                    ? Color.FromArgb(37, 100, 65)
+                    : Color.FromArgb(112, 42, 45))
+                : DarkPanel;
+            pair.Value.BackColor = tint;
+            foreach (Control child in pair.Value.Controls)
+                if (!(child is TrackBar)) child.BackColor = tint;
+            pair.Value.Invalidate(true);
+        }
+    }
+
     private void SetDependencyHover(string name)
     {
         _dependencyHighlights.Clear();
         foreach (var link in DependencyLinks(name))
             _dependencyHighlights[link.Name] = link.Required
                 ? Color.FromArgb(65, 212, 123) : Color.FromArgb(240, 84, 80);
-        foreach (var row in _visibleModRows.Values) row.Invalidate();
+        RepaintDependencyRows();
     }
 
     private void ClearDependencyHover()
     {
         if (_dependencyHighlights.Count == 0) return;
         _dependencyHighlights.Clear();
-        foreach (var row in _visibleModRows.Values) row.Invalidate();
+        RepaintDependencyRows();
     }
 
     private void AttachDependencyHover(Control row, string title)
@@ -211,6 +247,17 @@ internal sealed partial class ModsForm
         {
             control.MouseEnter += Enter;
             control.MouseLeave += Leave;
+            if (control != row)
+                control.Paint += (_, e) =>
+                {
+                    if (_dropLineRow != row) return;
+                    using (var pen = new Pen(Color.FromArgb(70, 180, 255), 3))
+                    {
+                        var y = _dropLineAfter ? control.Height - 2 : 1;
+                        e.Graphics.DrawLine(pen, 0, y,
+                            Math.Max(1, control.Width), y);
+                    }
+                };
         }
     }
 
@@ -220,8 +267,8 @@ internal sealed partial class ModsForm
         var previous = _dropLineRow;
         _dropLineRow = row;
         _dropLineAfter = after;
-        previous?.Invalidate();
-        row?.Invalidate();
+        previous?.Invalidate(true);
+        row?.Invalidate(true);
     }
 
     private void ShowModDependencies(string name, string description)
@@ -233,6 +280,7 @@ internal sealed partial class ModsForm
             ? "No recorded mod dependencies."
             : string.Join(Environment.NewLine, dependencies);
         MessageBox.Show(this, description + Environment.NewLine + Environment.NewLine +
+            "Category: " + CategoryFor(name).Trim() + Environment.NewLine +
             details + Environment.NewLine + Environment.NewLine +
             "Green = required. Red = conflicting. Paused mods remain disabled.",
             heading + " — Dependencies", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -307,8 +355,15 @@ internal sealed partial class ModsForm
             }
             else
             {
+                string activeCategory = "";
                 foreach (var name in active)
                 {
+                    var category = CategoryFor(name);
+                    if (category != activeCategory)
+                    {
+                        AppendSection(_vrModList, category);
+                        activeCategory = category;
+                    }
                     if (name == GloryModTitle) AddGlorySpeedRow(_vrModList, true);
                     else
                     {
@@ -319,29 +374,17 @@ internal sealed partial class ModsForm
                 }
             }
 
-            // A drop target at the end allows a drag to append the item.
-            if (active.Length > 1)
+            // Deliberate breathing space between active and available mods.
+            AppendFixedRow(_vrModList, new Panel
             {
-                var dropEnd = new Label
-                {
-                    Text = "⋮⋮  Drag to reorder  •  Right-click for Undo / Reset",
-                    ForeColor = Color.FromArgb(145, 145, 150),
-                    BackColor = DarkPanel, Dock = DockStyle.Fill,
-                    AllowDrop = true, TextAlign = ContentAlignment.MiddleLeft,
-                    Font = new Font("Segoe UI", 8f),
-                    Margin = new Padding(2, 0, 0, 2)
-                };
-                AttachActiveDrop(dropEnd, null);
-                AppendFixedRow(_vrModList, dropEnd, 24);
-            }
-
-            AppendSection(_vrModList, "AVAILABLE VR MODS  ·  DRAG TO REORDER");
+                Dock = DockStyle.Fill, BackColor = DarkPanel,
+                Margin = Padding.Empty
+            }, 20);
+            AppendSection(_vrModList, "AVAILABLE VR MODS");
             string lastGroup = "";
             foreach (var name in AvailableVrOrder())
             {
-                var category = name == GloryModTitle ? "✦  Weapons & Combat" :
-                    DevOverrides.Any(d => d.Title == name) ? "⚙  Dev — Gameplay Overrides" :
-                    OriginalModGroups.First(g => g.Mods.Any(m => m.Title == name)).Title;
+                var category = CategoryFor(name);
                 if (category != lastGroup)
                 {
                     AppendSection(_vrModList, category);
@@ -452,7 +495,7 @@ internal sealed partial class ModsForm
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 30,
-            ColumnCount = 5, RowCount = 1,
+            ColumnCount = 4, RowCount = 1,
             BackColor = DarkPanel, Margin = Padding.Empty,
             Padding = Padding.Empty,
             AllowDrop = true,
@@ -460,9 +503,6 @@ internal sealed partial class ModsForm
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 34));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        var dependent = DependenciesFor(mod.Title);
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,
-            dependent.Length > 0 ? 195 : 0));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 26));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 24));
         var numberLabel = new Label
@@ -512,26 +552,8 @@ internal sealed partial class ModsForm
         };
         row.Controls.Add(numberLabel, 0, 0);
         row.Controls.Add(check, 1, 0);
-        if (dependent.Length > 0)
-        {
-            var link = new LinkLabel
-            {
-                Text = dependent[0],
-                Dock = DockStyle.Fill, BackColor = DarkPanel,
-                LinkColor = Color.FromArgb(176,176,184),
-                ActiveLinkColor = Color.White,
-                Font = new Font("Segoe UI", 7.5f),
-                TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true,
-                Tag = "vr-mod-dependency-link",
-                Margin = Padding.Empty
-            };
-            _tooltips.SetToolTip(link, string.Join(Environment.NewLine, dependent));
-            link.LinkClicked += (_, _) => ShowModDependencies(mod.Title, mod.Help);
-            row.Controls.Add(link, 2, 0);
-        }
-        row.Controls.Add(info, 3, 0);
-        row.Controls.Add(grip, 4, 0);
+        row.Controls.Add(info, 2, 0);
+        row.Controls.Add(grip, 3, 0);
         _visibleModRows[mod.Title] = row;
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
@@ -588,7 +610,8 @@ internal sealed partial class ModsForm
     {
         var menu = new ContextMenuStrip();
         menu.Items.Add("Move to Top", null, (_, _) =>
-            MoveAvailable(title, AvailableVrOrder().FirstOrDefault(), false));
+            MoveAvailable(title, AvailableVrOrder()
+                .FirstOrDefault(name => CategoryFor(name) == CategoryFor(title)), false));
         menu.Items.Add("Move to Bottom", null, (_, _) => MoveAvailable(title, null, false));
         menu.Items.Add("Dependencies…", null, (_, _) =>
             ShowModDependencies(title, "Mod settings and ordering information."));
@@ -618,7 +641,8 @@ internal sealed partial class ModsForm
                 ? e.Data.GetData(ActiveDragFormat) as string : null;
             var valid = source != null && source != targetTitle &&
                 (activeSection ? ActiveVrOrder().Contains(source) :
-                    AvailableVrOrder().Contains(source));
+                    AvailableVrOrder().Contains(source) &&
+                    (targetTitle == null || CategoryFor(source) == CategoryFor(targetTitle)));
             e.Effect = valid ? DragDropEffects.Move : DragDropEffects.None;
             if (valid)
             {

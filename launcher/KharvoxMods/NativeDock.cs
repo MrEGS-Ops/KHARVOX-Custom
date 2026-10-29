@@ -127,6 +127,23 @@ internal static class NativeDock
     internal static int VisibleSeamOverlap(IntPtr mods, IntPtr launcher) =>
         Math.Min(48, VisibleInset(mods, true) + VisibleInset(launcher, false));
 
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int virtualKey);
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Point point);
+
+    internal static bool LeftMousePressed() => (GetAsyncKeyState(0x01) & 0x8000) != 0;
+
+    internal static bool MouseOnCaption(IntPtr hwnd)
+    {
+        if (!LeftMousePressed() || !GetCursorPos(out var cursor)) return false;
+        var bounds = Bounds(hwnd);
+        // Caption excludes client-side controls and the resize area.
+        return bounds.HasValue && cursor.X >= bounds.Value.Left + 12 &&
+            cursor.X < bounds.Value.Right - 12 &&
+            cursor.Y >= bounds.Value.Top && cursor.Y < bounds.Value.Top + 34;
+    }
+
     internal const int Minimize = 6;
     internal const int Restore = 9;
     private const uint NoZOrder = 0x0004;
