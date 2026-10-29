@@ -520,7 +520,8 @@ internal sealed partial class ModsForm : Form
             var actualLauncher = NativeDock.Bounds(handle);
             if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
             _lastModsBounds = Bounds;
-            SetStatus("Connected · Mods apply on next DOOM launch.");
+            SetStatus("Connected · settings saved locally.");
+            RefreshPendingIndicator();
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)

@@ -119,7 +119,7 @@ internal sealed partial class ModsForm
         _modPrefs.ActiveOrder = current.ToArray();
         // Keep inactive row order even when a mod is toggled on and off.
         _modPrefs.AvailableOrder = AvailableVrOrder();
-        SaveModSelections();
+        SaveModSelections(true);
         QueueVrRebuild();
     }
 
@@ -197,6 +197,34 @@ internal sealed partial class ModsForm
         },
         _ => Array.Empty<(string, bool)>()
     };
+
+    private bool CanEnableMod(string title, out string reason)
+    {
+        reason = "";
+        if (!VerifiedVrMods().Contains(title))
+        {
+            reason = "#" + ModNumber(title).ToString("00") +
+                " is paused and cannot be enabled in this build.";
+            return false;
+        }
+        foreach (var link in DependencyLinks(title))
+        {
+            if (link.Required && (!VerifiedVrMods().Contains(link.Name) ||
+                !IsVrActive(link.Name)))
+            {
+                reason = "Requires #" + ModNumber(link.Name).ToString("00") +
+                    " " + link.Name + ". Enable that feature first.";
+                return false;
+            }
+            if (!link.Required && IsVrActive(link.Name))
+            {
+                reason = "Conflicts with #" + ModNumber(link.Name).ToString("00") +
+                    " " + link.Name + ". Disable it first.";
+                return false;
+            }
+        }
+        return true;
+    }
 
     private static string[] DependenciesFor(string mod)
     {
@@ -380,6 +408,37 @@ internal sealed partial class ModsForm
         return group;
     }
 
+    private bool AppendCollapsibleCategory(TableLayoutPanel list,
+        string category, bool active, int count)
+    {
+        var key = (active ? "A:" : "V:") + category;
+        var collapsed = (_modPrefs.CollapsedCategories ?? Array.Empty<string>())
+            .Contains(key, StringComparer.Ordinal);
+        var heading = new Label
+        {
+            Text = (collapsed ? "▸  " : "▾  ") + category + "  (" + count + ")",
+            Height = 22, Dock = DockStyle.Fill,
+            ForeColor = Color.FromArgb(172, 177, 191),
+            BackColor = list.BackColor,
+            Font = new Font("Segoe UI", 9f, FontStyle.Bold),
+            Cursor = Cursors.Hand, TextAlign = ContentAlignment.MiddleLeft,
+            Margin = new Padding(2, 0, 0, 0),
+            AccessibleName = (collapsed ? "Expand " : "Collapse ") + category
+        };
+        heading.Click += (_, _) =>
+        {
+            var collapsedKeys = (_modPrefs.CollapsedCategories ??
+                Array.Empty<string>()).ToList();
+            if (collapsedKeys.Contains(key)) collapsedKeys.Remove(key);
+            else collapsedKeys.Add(key);
+            _modPrefs.CollapsedCategories = collapsedKeys.Distinct().ToArray();
+            SaveModSelections(); // Presentation only, no DOOM pending change.
+            QueueVrRebuild();
+        };
+        AppendFixedRow(list, heading, 22);
+        return !collapsed;
+    }
+
     private void RenderVrRows()
     {
         if (_vrModList.IsDisposed) return;
@@ -426,21 +485,19 @@ internal sealed partial class ModsForm
             }
             else
             {
-                string activeCategory = "";
-                foreach (var name in active)
+                foreach (var group in active.GroupBy(CategoryFor))
                 {
-                    var category = CategoryFor(name);
-                    if (category != activeCategory)
+                    if (!AppendCollapsibleCategory(activeList, group.Key, true, group.Count()))
+                        continue;
+                    foreach (var name in group)
                     {
-                        AppendSection(activeList, category);
-                        activeCategory = category;
-                    }
-                    if (name == GloryModTitle) AddGlorySpeedRow(activeList, true);
-                    else
-                    {
-                        var mod = OriginalModGroups.SelectMany(g => g.Mods)
-                            .First(m => m.Title == name);
-                        AppendVrMod(activeList, mod, true);
+                        if (name == GloryModTitle) AddGlorySpeedRow(activeList, true);
+                        else
+                        {
+                            var mod = OriginalModGroups.SelectMany(g => g.Mods)
+                                .First(m => m.Title == name);
+                            AppendVrMod(activeList, mod, true);
+                        }
                     }
                 }
             }
@@ -467,22 +524,20 @@ internal sealed partial class ModsForm
                 Margin = Padding.Empty
             }, 15);
             AppendSection(_vrModList, "AVAILABLE VR MODS");
-            string lastGroup = "";
-            foreach (var name in AvailableVrOrder())
+            foreach (var group in AvailableVrOrder().GroupBy(CategoryFor))
             {
-                var category = CategoryFor(name);
-                if (category != lastGroup)
+                if (!AppendCollapsibleCategory(_vrModList, group.Key, false, group.Count()))
+                    continue;
+                foreach (var name in group)
                 {
-                    AppendSection(_vrModList, category);
-                    lastGroup = category;
-                }
-                if (name == GloryModTitle) AddGlorySpeedRow(_vrModList, false);
-                else
-                {
-                    var mod = OriginalModGroups.SelectMany(g => g.Mods)
-                        .Concat(DevOverrides).First(m => m.Title == name);
-                    AppendVrMod(_vrModList, mod, false,
-                        DevOverrides.Any(d => d.Title == name));
+                    if (name == GloryModTitle) AddGlorySpeedRow(_vrModList, false);
+                    else
+                    {
+                        var mod = OriginalModGroups.SelectMany(g => g.Mods)
+                            .Concat(DevOverrides).First(m => m.Title == name);
+                        AppendVrMod(_vrModList, mod, false,
+                            DevOverrides.Any(d => d.Title == name));
+                    }
                 }
             }
         }
@@ -561,9 +616,9 @@ internal sealed partial class ModsForm
             _modPrefs.GloryKillHz = 270 - slider.Value;
             speed.Text = _modPrefs.GloryKillHz + " Hz";
         };
-        slider.MouseUp += (_, _) => SaveModSelections();
-        slider.KeyUp += (_, _) => SaveModSelections();
-        slider.Leave += (_, _) => SaveModSelections();
+        slider.MouseUp += (_, _) => SaveModSelections(true);
+        slider.KeyUp += (_, _) => SaveModSelections(true);
+        slider.Leave += (_, _) => SaveModSelections(true);
 
         var info = MakeRowInfo("Glory Kill speed: 30–240 Hz. Click for usage instructions.",
             GloryModTitle, "Only Glory Kill animations are affected.");
@@ -802,6 +857,14 @@ internal sealed partial class ModsForm
             DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
             throw new InvalidDataException("VR active-mod inventory/dependency policy changed.");
 
+        // Activation validation must fail closed for paused or missing dependencies.
+        using (var dependencyTest = new ModsForm())
+        {
+            if (dependencyTest.CanEnableMod("Directional Dash", out _) ||
+                dependencyTest.CanEnableMod("No Weapon Wheel", out _) ||
+                !dependencyTest.CanEnableMod("Hand Focus", out _))
+                throw new InvalidDataException("Dependency gate allows unsupported mods.");
+        }
         // Only enabled confirmed mods can appear in the Active Mods area.
         using (var form = new ModsForm())
         {

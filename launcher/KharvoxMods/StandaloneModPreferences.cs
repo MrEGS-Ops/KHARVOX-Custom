@@ -20,6 +20,13 @@ internal sealed class StandaloneModPreferences
     public string[] ActiveOrder { get; set; } = Array.Empty<string>();
     // UI-only order for inactive and paused mods; does not enable anything.
     public string[] AvailableOrder { get; set; } = Array.Empty<string>();
+    // UI-only; keys are A:category or V:category. No native dependency impact.
+    public string[] CollapsedCategories { get; set; } = Array.Empty<string>();
+    // A fresh revision identifies saved runtime changes until a verified DOOM
+    // start writes a corresponding receipt. Never infer applied from a Save.
+    public string RuntimeRevision { get; set; } = "";
+    internal static string AppliedReceiptPath =>
+        Path.Combine(AppContext.BaseDirectory, "kharvox-mods-applied.txt");
 
     internal static string DefaultPath =>
         Path.Combine(AppContext.BaseDirectory, "kharvox-mods-bridge.json");
@@ -37,6 +44,8 @@ internal sealed class StandaloneModPreferences
             value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
             value.ActiveOrder ??= Array.Empty<string>();
             value.AvailableOrder ??= Array.Empty<string>();
+            value.CollapsedCategories ??= Array.Empty<string>();
+            value.RuntimeRevision ??= "";
             return value;
         }
         catch (Exception ex) when (ex is IOException || ex is InvalidOperationException ||
@@ -53,6 +62,8 @@ internal sealed class StandaloneModPreferences
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
         ActiveOrder ??= Array.Empty<string>();
         AvailableOrder ??= Array.Empty<string>();
+        CollapsedCategories ??= Array.Empty<string>();
+        RuntimeRevision ??= "";
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
         Directory.CreateDirectory(directory);
         var tmp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
@@ -83,6 +94,8 @@ internal sealed class StandaloneModPreferences
             x.GloryKillHz = 35;
             x.ActiveOrder = new[] { "Hand Focus", "PAINSAW: RIPSHIFT OVERDRIVE" };
             x.AvailableOrder = new[] { "Directional Dash", "Boxing Guard Mode" };
+            x.CollapsedCategories = new[] { "A:✥  Hands Arms" };
+            x.RuntimeRevision = "00000000000000000000000000000001";
             x.Save(path);
             var y = Load(path);
             if (!y.HandFocus || !y.PainsawRipshiftOverdrive ||
@@ -91,7 +104,9 @@ internal sealed class StandaloneModPreferences
                 y.ActiveOrder[0] != "Hand Focus" ||
                 y.ActiveOrder[1] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
                 y.AvailableOrder.Length != 2 ||
-                y.AvailableOrder[0] != "Directional Dash")
+                y.AvailableOrder[0] != "Directional Dash" ||
+                y.CollapsedCategories.Length != 1 ||
+                y.RuntimeRevision != "00000000000000000000000000000001")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }

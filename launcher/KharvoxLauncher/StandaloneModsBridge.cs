@@ -16,6 +16,8 @@ internal sealed class StandaloneModsBridge
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
     public int GloryKillHz { get; set; } = 200;
+    public string RuntimeRevision { get; set; } = "";
+    private string _selectedBridgePath = "";
 
     internal static StandaloneModsBridge? LoadFromEnvironment()
     {
@@ -31,7 +33,24 @@ internal sealed class StandaloneModsBridge
         if (value == null || value.Schema != 1)
             throw new InvalidDataException("Unknown standalone KHARVOX Mods bridge schema.");
         value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
+        value._selectedBridgePath = file;
         return value;
+    }
+
+    internal void MarkDoomLaunched()
+    {
+        // Only the bridge-aware custom launcher writes this receipt, and only
+        // after DOOM has started. This is strictly within the portable sidecar.
+        if (string.IsNullOrWhiteSpace(_selectedBridgePath) ||
+            string.IsNullOrWhiteSpace(RuntimeRevision)) return;
+        try
+        {
+            var receipt = Path.Combine(Path.GetDirectoryName(_selectedBridgePath)!,
+                "kharvox-mods-applied.txt");
+            File.WriteAllText(receipt, RuntimeRevision);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
     }
 
     internal void ApplyTo(CustomModSettings mods)

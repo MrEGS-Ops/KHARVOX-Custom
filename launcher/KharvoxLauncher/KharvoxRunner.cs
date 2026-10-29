@@ -823,6 +823,7 @@ internal static class KharvoxRunner
             currentGame?.Dispose();
             currentGame = game;
             await FocusDoomOnceWhenWindowReadyAsync(game, logPath);
+            standaloneMods?.MarkDoomLaunched();
             statusUpdate?.Invoke("DOOM started. Verifying the VR image …");
 
             var startup = await Task.Run(() =>

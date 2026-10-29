@@ -16,6 +16,8 @@ internal sealed partial class ModsForm
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
+    private readonly Label _pendingIndicator = new Label();
+    private bool _savingSettings;
 
     // Readiness is still verified internally; no banner in the mod list.
     private void RefreshBridgeState()
@@ -40,6 +42,13 @@ internal sealed partial class ModsForm
 
     private void ApplySelection(string name, bool value)
     {
+        if (value && !CanEnableMod(name, out var reason))
+        {
+            MessageBox.Show(this, reason, "KHARVOX Mods — Dependency check",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            QueueVrRebuild(); // Revert the unapproved checkbox visually.
+            return;
+        }
         switch (name)
         {
             case "Weapon Wheel Button Remap": _modPrefs.WeaponWheelRemap = value; break;
@@ -52,12 +61,18 @@ internal sealed partial class ModsForm
         OnVrSelectionChanged(name, value);
     }
 
-    private void SaveModSelections()
+    private void SaveModSelections(bool runtimeChanged = false)
     {
         try
         {
+            if (runtimeChanged)
+                _modPrefs.RuntimeRevision = Guid.NewGuid().ToString("N");
             _modPrefs.Save();
-            SetStatus("Selections saved — custom KHARVOX applies them at the next DOOM launch.");
+            RefreshPendingIndicator();
+            if (runtimeChanged)
+                SetStatus("Saved · applies on next DOOM launch");
+            else
+                SetStatus("Layout saved locally");
         }
         catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
         {
@@ -319,6 +334,33 @@ internal sealed partial class ModsForm
         });
     }
 
+    private void RefreshPendingIndicator()
+    {
+        if (_pendingIndicator.IsDisposed) return;
+        var revision = _modPrefs.RuntimeRevision ?? "";
+        var applied = "";
+        if (revision.Length > 0)
+        {
+            try
+            {
+                if (File.Exists(StandaloneModPreferences.AppliedReceiptPath))
+                    applied = File.ReadAllText(
+                        StandaloneModPreferences.AppliedReceiptPath).Trim();
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+        var pending = revision.Length > 0 &&
+            !string.Equals(revision, applied, StringComparison.Ordinal);
+        _pendingIndicator.Text = pending ? "● Next DOOM launch" : "✓ Settings applied";
+        _pendingIndicator.ForeColor = pending
+            ? Color.FromArgb(225, 178, 87)
+            : Color.FromArgb(132, 181, 146);
+        _tooltips.SetToolTip(_pendingIndicator, pending
+            ? "Changes are saved locally. The modified launcher reads them when DOOM starts."
+            : "No new runtime changes awaiting a launch.");
+    }
+
     private Control BuildOriginalFooter()
     {
         var footer = new Panel
@@ -335,6 +377,14 @@ internal sealed partial class ModsForm
         _status.AutoEllipsis = true;
         _status.Text = "Connecting…";
         footer.Controls.Add(_status);
+
+        _pendingIndicator.Dock = DockStyle.Left;
+        _pendingIndicator.Width = 161;
+        _pendingIndicator.BackColor = Color.Black;
+        _pendingIndicator.Font = new Font("Segoe UI", 8f);
+        _pendingIndicator.TextAlign = ContentAlignment.MiddleLeft;
+        footer.Controls.Add(_pendingIndicator);
+        RefreshPendingIndicator();
 
         var right = new FlowLayoutPanel
         {
