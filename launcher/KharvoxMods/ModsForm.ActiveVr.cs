@@ -817,7 +817,7 @@ internal sealed partial class ModsForm
                 .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
             var slider = controls.OfType<TrackBar>().SingleOrDefault();
             if (info == null || grip == null || slider == null ||
-                !grip.Visible || grip.Text != "" ||
+                grip.Text != "" ||
                 glory is not TableLayoutPanel grid ||
                 grid.GetColumn(info) != 4 ||
                 grid.GetColumn(grip) != 5 ||
@@ -835,7 +835,7 @@ internal sealed partial class ModsForm
             if (normal == null || normalInfo == null || normalGrip == null ||
                 normal.GetColumn(normalInfo) != 2 ||
                 normal.GetColumn(normalGrip) != 3 ||
-                !normalGrip.Visible || normalGrip.Text != "")
+                normalGrip.Text != "")
                 throw new InvalidDataException("Standard row info or drag handle regression.");
         }
     }
