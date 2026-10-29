@@ -54,6 +54,7 @@ internal sealed class UpdaterWindow : Form
     private readonly Button _update = new Button();
     private readonly Button _skip = new Button();
     private readonly Button _launch = new Button();
+    private readonly Button _rollback = new Button();
     private readonly Button _close = new Button();
     private readonly ToolTip _tips = new ToolTip();
     private TaskCompletionSource<bool>? _decision;
@@ -126,6 +127,11 @@ internal sealed class UpdaterWindow : Form
         _launch.Click += (_, _) => LaunchMods();
         _launch.Visible = false;
 
+        SetupButton(_rollback, "Restore previous", 20, false);
+        _rollback.Width = 154;
+        _rollback.Visible = false;
+        _rollback.Click += async (_, _) => await RestorePreviousAsync();
+
         SetupButton(_close, "Close", 358, false);
         _close.Width = 98;
         _close.Click += (_, _) => Close();
@@ -196,6 +202,7 @@ internal sealed class UpdaterWindow : Form
         _update.Visible = true;
         _skip.Visible = true;
         _launch.Visible = false;
+        _rollback.Visible = false;
         _decision = new TaskCompletionSource<bool>();
         return _decision.Task;
     }
@@ -209,6 +216,7 @@ internal sealed class UpdaterWindow : Form
         _close.Visible = true;
         if (install)
         {
+            _rollback.Visible = false;
             _status.Text = "Preparing files…";
             _progress.Visible = true;
             _progress.Style = ProgressBarStyle.Marquee;
@@ -239,6 +247,7 @@ internal sealed class UpdaterWindow : Form
                 : "You can launch your installed Mods application.";
             _close.Visible = true;
             _launch.Visible = File.Exists(UpdateService.AppExe);
+            _rollback.Visible = UpdateService.HasPreviousBuild;
             _update.Visible = false;
             _skip.Visible = false;
         }
@@ -250,8 +259,54 @@ internal sealed class UpdaterWindow : Form
             _subheading.Text = "No user settings or Mods folders were removed.";
             _close.Visible = true;
             _launch.Visible = File.Exists(UpdateService.AppExe);
+            _rollback.Visible = UpdateService.HasPreviousBuild;
             _update.Visible = false;
             _skip.Visible = false;
+        }
+    }
+
+    private async Task RestorePreviousAsync()
+    {
+        if (!UpdateService.HasPreviousBuild)
+        {
+            _status.Text = "No previous build is available.";
+            return;
+        }
+        if (MessageBox.Show(this,
+            "Restore the last backed-up KHARVOX Mods build?\n\n" +
+            "Your mod settings, original KHARVOX installation and personal folders will not change.",
+            "Restore previous Mods build", MessageBoxButtons.YesNo,
+            MessageBoxIcon.Question, MessageBoxDefaultButton.Button2)
+            != DialogResult.Yes) return;
+        _rollback.Enabled = false;
+        _launch.Visible = false;
+        _progress.Visible = true;
+        _progress.Style = ProgressBarStyle.Marquee;
+        _status.Text = "Restoring previous Mods build…";
+        try
+        {
+            await Task.Run(() =>
+                UpdateService.RestorePreviousBuild(UpdateService.InstallFolder));
+            if (IsDisposed) return;
+            _installed.Text = UpdateService.ShortBuildLabel(UpdateService.InstalledBuild);
+            _status.Text = "Previous build restored.";
+            _subheading.Text = "Settings preserved. Launch Mods when ready.";
+            _rollback.Visible = false;
+        }
+        catch (Exception error) when (error is IOException ||
+            error is UnauthorizedAccessException ||
+            error is InvalidOperationException)
+        {
+            if (!IsDisposed) _status.Text = "Restore failed: " + error.Message;
+        }
+        finally
+        {
+            if (!IsDisposed)
+            {
+                _progress.Visible = false;
+                _rollback.Enabled = true;
+                _launch.Visible = File.Exists(UpdateService.AppExe);
+            }
         }
     }
 

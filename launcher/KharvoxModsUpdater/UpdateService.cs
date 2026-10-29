@@ -150,6 +150,63 @@ internal static class UpdateService
         }
     }
 
+    internal static bool HasPreviousBuild =>
+        File.Exists(Path.Combine(InstallFolder, "Backups", "Updater",
+            "previous", "KharvoxMods.exe"));
+
+    // Offline rollback restores only managed app files from our previous
+    // build snapshot. Settings, original KHARVOX and user folders are untouched.
+    internal static void RestorePreviousBuild(string root)
+    {
+        if (AppIsRunning())
+            throw new InvalidOperationException(
+                "Close KHARVOX Mods before restoring a previous build.");
+        var backup = Path.Combine(root, "Backups", "Updater", "previous");
+        if (!File.Exists(Path.Combine(backup, "KharvoxMods.exe")))
+            throw new InvalidOperationException(
+                "No backed-up Mods executable is available to restore.");
+        var names = ManagedFiles.Where(name =>
+            File.Exists(Path.Combine(backup, name))).ToArray();
+        var recovery = Path.Combine(root, "Backups", "Updater",
+            "pre-rollback-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(recovery);
+        var originallyPresent = new Dictionary<string, bool>(StringComparer.Ordinal);
+        // Snapshot all installed files before copying any previous-build file.
+        foreach (var name in names)
+        {
+            var current = Path.Combine(root, name);
+            originallyPresent[name] = File.Exists(current);
+            if (originallyPresent[name])
+                File.Copy(current, Path.Combine(recovery, name));
+        }
+        var touched = new List<string>();
+        try
+        {
+            foreach (var name in names)
+            {
+                touched.Add(name);
+                File.Copy(Path.Combine(backup, name), Path.Combine(root, name), true);
+            }
+            var marker = Path.Combine(root, "updater-state.txt");
+            if (File.Exists(marker)) File.Delete(marker);
+        }
+        catch
+        {
+            foreach (var name in touched.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    var dest = Path.Combine(root, name);
+                    if (originallyPresent[name])
+                        File.Copy(Path.Combine(recovery, name), dest, true);
+                    else if (File.Exists(dest)) File.Delete(dest);
+                }
+                catch { /* Recovery copy remains on disk. */ }
+            }
+            throw;
+        }
+    }
+
     private static bool AppIsRunning()
     {
         foreach (var process in Process.GetProcessesByName("KharvoxMods"))
@@ -365,9 +422,11 @@ internal static class UpdateService
                 Directory.CreateDirectory(Path.Combine(root, folder));
             File.WriteAllText(Path.Combine(root, "Mods", "my-mod.txt"), "keep");
             File.WriteAllText(Path.Combine(root, "KharvoxMods.exe"), "old-exe");
+            File.WriteAllText(Path.Combine(root, "build-info.txt"), "40811111111");
             var staged = Path.Combine(root, "staged");
             Directory.CreateDirectory(staged);
             File.WriteAllText(Path.Combine(staged, "KharvoxMods.exe"), "new-exe");
+            File.WriteAllText(Path.Combine(staged, "build-info.txt"), "40822222222");
             ReplaceManagedFiles(root, staged);
             if (File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "new-exe" ||
                 File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
@@ -375,6 +434,17 @@ internal static class UpdateService
                 File.ReadAllText(Path.Combine(root, "Backups", "Updater",
                     "previous", "KharvoxMods.exe")) != "old-exe")
                 throw new Exception("Portable update overwrote application settings or mod data.");
+
+            File.WriteAllText(Path.Combine(root, "updater-state.txt"), "new-release-hash");
+            RestorePreviousBuild(root);
+            if (File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "old-exe" ||
+                File.ReadAllText(Path.Combine(root, "build-info.txt")) != "40811111111" ||
+                File.Exists(Path.Combine(root, "updater-state.txt")) ||
+                !Directory.GetDirectories(Path.Combine(root, "Backups", "Updater"),
+                    "pre-rollback-*").Any() ||
+                File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
+                File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep")
+                throw new Exception("Rollback did not preserve user files or restore build.");
 
             var archive = Path.Combine(root, "test.zip");
             using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))

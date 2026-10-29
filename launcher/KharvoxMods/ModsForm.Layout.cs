@@ -369,7 +369,7 @@ internal sealed partial class ModsForm
             BackColor = Color.Black
         };
         _status.Dock = DockStyle.Left;
-        _status.Width = 194;
+        _status.Width = 166;
         _status.Font = new Font("Segoe UI", 8f);
         _status.ForeColor = Color.Gray;
         _status.BackColor = Color.Black;
@@ -378,8 +378,8 @@ internal sealed partial class ModsForm
         _status.Text = "Connecting…";
         footer.Controls.Add(_status);
 
-        _pendingIndicator.Dock = DockStyle.Left;
-        _pendingIndicator.Width = 161;
+        _pendingIndicator.Dock = DockStyle.Right;
+        _pendingIndicator.Width = 128;
         _pendingIndicator.BackColor = Color.Black;
         _pendingIndicator.Font = new Font("Segoe UI", 8f);
         _pendingIndicator.TextAlign = ContentAlignment.MiddleLeft;
