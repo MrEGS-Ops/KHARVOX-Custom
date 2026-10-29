@@ -72,7 +72,7 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
-        Text = "KHARVOX Custom Mods — " + BuildLabel();
+        Text = "KHARVOX Mods — Modified VR Launcher · " + BuildLabel();
         ClientSize = new Size(DesiredModsWidth, 600);
         MinimumSize = new Size(565, 530);
         FormBorderStyle = FormBorderStyle.FixedSingle;
@@ -195,56 +195,6 @@ internal sealed partial class ModsForm : Form
         if (_status.Text != message) _status.Text = message;
     }
 
-    private bool PromptForOriginalLauncher()
-    {
-        // A one-action setup instruction, not a Yes/No question.
-        using (var prompt = new Form
-        {
-            Text = "KHARVOX Mods Setup",
-            ClientSize = new Size(444, 148),
-            FormBorderStyle = FormBorderStyle.FixedDialog,
-            StartPosition = FormStartPosition.CenterParent,
-            MinimizeBox = false, MaximizeBox = false, ShowInTaskbar = false,
-            BackColor = Color.FromArgb(30, 30, 33), ForeColor = Color.WhiteSmoke,
-            Font = new Font("Segoe UI", 9f)
-        })
-        {
-            prompt.Controls.Add(new Label
-            {
-                Text = "Select your original KHARVOX installation.",
-                Location = new Point(18, 18), Size = new Size(407, 28),
-                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
-                ForeColor = Color.Gainsboro
-            });
-            var link = new LinkLabel
-            {
-                Text = "Don't have Kharvox? click here",
-                Location = new Point(18, 66), Size = new Size(300, 23),
-                LinkColor = Color.LightSkyBlue, ActiveLinkColor = Color.White,
-                BackColor = prompt.BackColor
-            };
-            link.LinkClicked += (_, _) =>
-            {
-                try
-                {
-                    Process.Start(new ProcessStartInfo
-                    {
-                        FileName = "https://github.com/CactusVRStudios/KHARVOX",
-                        UseShellExecute = true
-                    })?.Dispose();
-                }
-                catch (System.ComponentModel.Win32Exception) { }
-            };
-            prompt.Controls.Add(link);
-            var ok = MakeButton("OK", 94);
-            ok.Location = new Point(326, 103);
-            ok.DialogResult = DialogResult.OK;
-            prompt.AcceptButton = ok;
-            prompt.Controls.Add(ok);
-            return prompt.ShowDialog(this) == DialogResult.OK;
-        }
-    }
-
     private bool SelectLauncher()
     {
         using (var dialog = new OpenFileDialog
@@ -304,11 +254,11 @@ internal sealed partial class ModsForm : Form
         if (original == null)
         {
             SetStatus("Original KHARVOX installation not selected.");
-            if (!PromptForOriginalLauncher() || !SelectLauncher())
-            {
-                Close();
-                return;
-            }
+            // Program.Main handles first-run setup before constructing or
+            // showing this Mods form. A missing path here means it changed
+            // after setup (e.g. the original was moved), so fail closed.
+            Close();
+            return;
         }
         else _state.KharvoxLauncherPath = original;
 

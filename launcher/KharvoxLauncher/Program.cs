@@ -81,7 +81,14 @@ internal static class Program
 
         try
         {
-            Application.Run(new MainForm());
+            // This executable is the separately packaged, bridge-enabled
+            // derivative. Keep CactusVRStudios' MainForm.cs byte-for-byte
+            // unchanged; identify this modified build at runtime instead.
+            using (var window = new MainForm())
+            {
+                window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
+                Application.Run(window);
+            }
             return 0;
         }
         catch (InvalidDataException ex)

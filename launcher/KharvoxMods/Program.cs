@@ -63,6 +63,9 @@ internal static class Program
             }
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
+            // The first-run path picker must finish before ModsForm exists,
+            // so users never see a blank or inaccessible Mods window behind it.
+            if (!OriginalLauncherSetup.EnsureSelected()) return 0;
             Application.Run(new ModsForm());
             return 0;
         }
