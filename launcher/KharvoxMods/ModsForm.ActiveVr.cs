@@ -656,7 +656,7 @@ internal sealed partial class ModsForm
         var verified = VerifiedVrMods();
         if (verified.Length != 5 || verified.Distinct().Count() != 5 ||
             DependenciesFor("Directional Dash").Length != 3 ||
-            DependenciesFor("No Weapon Wheel").Length != 1 ||
+            DependenciesFor("No Weapon Wheel").Length != 2 ||
             DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
             throw new InvalidDataException("VR active-mod inventory/dependency policy changed.");
 
