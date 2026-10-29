@@ -242,8 +242,12 @@ internal sealed partial class ModsForm : Form
         var original = LauncherDiscovery.Locate(_state.KharvoxLauncherPath);
         if (original == null)
         {
-            SetStatus("Select your original KHARVOX EXE once to continue.");
-            if (!SelectLauncher())
+            SetStatus("Original KHARVOX installation not selected.");
+            var answer = MessageBox.Show(this,
+                "Locate your original KHARVOX installation?",
+                "KHARVOX Mods Setup", MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question, MessageBoxDefaultButton.Button1);
+            if (answer != DialogResult.Yes || !SelectLauncher())
             {
                 Close();
                 return;
