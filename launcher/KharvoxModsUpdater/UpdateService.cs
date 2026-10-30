@@ -42,6 +42,7 @@ internal static class UpdateService
         public string name { get; set; } = "";
         public string browser_download_url { get; set; } = "";
         public long size { get; set; }
+        public string digest { get; set; } = "";
     }
 
     private static string GetAssetUrl(ReleaseInfo release, string name)
@@ -57,6 +58,38 @@ internal static class UpdateService
                 "/MrEGS-Ops/KHARVOX-Custom/releases/download/", StringComparison.Ordinal))
             throw new InvalidDataException("Update download URL is not from the KHARVOX project.");
         return uri.AbsoluteUri;
+    }
+
+    // A stable release tag is reused, but the new ZIP asset is immutable for
+    // each workflow run. Legacy releases still support the static filename.
+    private static string VersionedZipName(string build)
+    {
+        var match = Regex.Match(build, @"^#(\d{5,20})$");
+        if (!match.Success) throw new InvalidDataException("Build number is invalid.");
+        return "KHARVOX-Mods-Standalone-" + match.Groups[1].Value + ".zip";
+    }
+
+    private static string AssetDigest(ReleaseInfo release, string name)
+    {
+        var asset = release.assets?.SingleOrDefault(x =>
+            string.Equals(x.name, name, StringComparison.Ordinal));
+        if (asset == null) throw new InvalidDataException("Missing release asset: " + name);
+        if (string.IsNullOrWhiteSpace(asset.digest)) return "";
+        var match = Regex.Match(asset.digest, @"\Asha256:([a-fA-F0-9]{64})\z");
+        if (!match.Success)
+            throw new InvalidDataException("Invalid SHA-256 in GitHub release metadata.");
+        return match.Groups[1].Value.ToLowerInvariant();
+    }
+
+    private static string FreshDownloadUrl(string trustedAssetUrl, string build, int attempt)
+    {
+        // Input is an already-validated, HTTPS github.com release asset URL.
+        var uri = new UriBuilder(trustedAssetUrl)
+        {
+            Query = "build=" + Uri.EscapeDataString(build.TrimStart('#')) +
+                "&attempt=" + attempt.ToString()
+        };
+        return uri.Uri.AbsoluteUri;
     }
 
     private static string ParseExpectedHash(string text)
@@ -303,11 +336,23 @@ internal static class UpdateService
                 throw new InvalidDataException("GitHub release response was empty.");
             var latestBuild = ReleaseBuildNumber(release.name);
             setAvailableBuild(latestBuild);
-            var zipUrl = GetAssetUrl(release, ZipName);
-            var hashUrl = GetAssetUrl(release, HashName);
-
-            status("Verifying published update checksum…");
-            var expected = ParseExpectedHash(await client.GetStringAsync(hashUrl));
+            var immutableName = VersionedZipName(latestBuild);
+            var hasImmutable = release.assets?.Any(a =>
+                string.Equals(a.name, immutableName, StringComparison.Ordinal)) == true;
+            var packageName = hasImmutable ? immutableName : ZipName;
+            var zipUrl = GetAssetUrl(release, packageName);
+            // GitHub computes this digest from the exact published asset, so
+            // we cannot mix a new manifest with a stale cached ZIP.
+            var expected = AssetDigest(release, packageName);
+            if (expected.Length == 0)
+            {
+                // Pre-digest GitHub releases: keep the original .sha256 check.
+                var hashUrl = GetAssetUrl(release, HashName);
+                status("Reading release SHA-256 manifest…");
+                expected = ParseExpectedHash(await client.GetStringAsync(
+                    FreshDownloadUrl(hashUrl, latestBuild, 0)));
+            }
+            else status("Verifying GitHub's published SHA-256 digest…");
             var marker = Path.Combine(InstallFolder, "updater-state.txt");
             if (File.Exists(AppExe))
             {
@@ -401,6 +446,34 @@ internal static class UpdateService
             if (ParseExpectedHash(new string('a', 64) + " *" + ZipName)
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
+            if (VersionedZipName("#41007843137") !=
+                "KHARVOX-Mods-Standalone-41007843137.zip")
+                throw new Exception("Versioned updater filename regression.");
+            var versionedRelease = new ReleaseInfo
+            {
+                assets = new[]
+                {
+                    new ReleaseAsset
+                    {
+                        name = "KHARVOX-Mods-Standalone-41007843137.zip",
+                        size = 123,
+                        digest = "sha256:" + new string('a', 64),
+                        browser_download_url = AssetPrefix +
+                            "tag/KHARVOX-Mods-Standalone-41007843137.zip"
+                    }
+                }
+            };
+            if (AssetDigest(versionedRelease, versionedRelease.assets[0].name) !=
+                new string('a', 64) ||
+                !FreshDownloadUrl(versionedRelease.assets[0].browser_download_url,
+                    "#41007843137", 2).Contains("attempt=2"))
+                throw new Exception("GitHub asset digest or CDN refresh regression.");
+            versionedRelease.assets[0].digest = "sha256:incorrect";
+            var badDigestRejected = false;
+            try { AssetDigest(versionedRelease, versionedRelease.assets[0].name); }
+            catch (InvalidDataException) { badDigestRejected = true; }
+            if (!badDigestRejected)
+                throw new Exception("Malformed GitHub digest was not rejected.");
             var sampleJson = new JavaScriptSerializer().Serialize(new
             {
                 assets = new[] { new
