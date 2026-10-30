@@ -606,10 +606,13 @@ internal sealed partial class ModsForm
         };
         var speed = new Label
         {
-            Text = _modPrefs.GloryKillHz + " Hz",
+            // The inactive Glory Kill row also indicates runtime support.
+            // Reuse its Hz column rather than adding another widget.
+            Text = active ? _modPrefs.GloryKillHz + " Hz" : "ACTIVE",
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
             Margin = Padding.Empty, BackColor = row.BackColor,
-            ForeColor = Color.Gainsboro, Visible = active
+            ForeColor = active ? Color.Gainsboro : Color.FromArgb(103, 198, 157),
+            Visible = true, Tag = active ? "glory-speed-hz" : "vr-mod-status"
         };
         _tooltips.SetToolTip(slider,
             "Right is faster (30 Hz); left is slower (240 Hz).");
@@ -617,7 +620,10 @@ internal sealed partial class ModsForm
         {
             _modPrefs.GloryKillSpeedOverride = check.Checked;
             slider.Visible = check.Checked;
-            speed.Visible = check.Checked;
+            speed.Visible = true;
+            speed.Text = check.Checked ? _modPrefs.GloryKillHz + " Hz" : "ACTIVE";
+            speed.ForeColor = check.Checked ? Color.Gainsboro :
+                Color.FromArgb(103, 198, 157);
             OnVrSelectionChanged(GloryModTitle, check.Checked);
         };
         slider.ValueChanged += (_, _) =>
@@ -745,11 +751,12 @@ internal sealed partial class ModsForm
             (check.Enabled ? "" : Environment.NewLine +
                 "Paused; unavailable in this build."));
 
-        // Readable, explicit availability indication: disabled mod names
-        // are subdued and each row shows its verified/runtime state.
+        // ACTIVE here means this mod is verified/working in this build.
+        // Only show the indicator in Available VR Mods, never the selected
+        // Active Mods section. Paused rows remain subdued without a label.
         var status = new Label
         {
-            Text = check.Enabled && active ? "ACTIVE" : "",
+            Text = !active && check.Enabled ? "ACTIVE" : "",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.FromArgb(103, 198, 157),
@@ -759,8 +766,7 @@ internal sealed partial class ModsForm
             Tag = "vr-mod-status"
         };
         _tooltips.SetToolTip(status, check.Enabled
-            ? (active ? "Enabled and verified." :
-                "Verified and available to enable.")
+            ? "Verified and working; click the checkbox to enable."
             : "Paused: the runtime feature is not verified in this build.");
 
         var info = MakeRowInfo("How to use this mod and its dependencies",
@@ -973,7 +979,8 @@ internal sealed partial class ModsForm
                 normalInfo.Text != "")
                 throw new InvalidDataException(
                     "Standard row must hide info and drag glyphs until hover.");
-            // Only checked, verified mods display the ACTIVE indicator.
+            // ACTIVE indicates a supported mod in the lower available list,
+            // NOT a selected mod displayed in the upper Active Mods section.
             foreach (var entry in form._visibleModRows)
             {
                 var modTitle = entry.Key;
@@ -982,9 +989,22 @@ internal sealed partial class ModsForm
                     modTitle == GloryModTitle) continue;
                 var indicator = ordinaryRow.Controls.OfType<Label>()
                     .Single(label => (label.Tag as string) == "vr-mod-status");
-                if (indicator.Text != (form.IsVrActive(modTitle) ? "ACTIVE" : ""))
+                var available = (ordinaryRow.Tag as string) == "available-vr-mod";
+                var expected = available && IsConfirmedMod(modTitle)
+                    ? "ACTIVE" : "";
+                if (indicator.Text != expected)
                     throw new InvalidDataException(
-                        "Only enabled mods should display ACTIVE.");
+                        "Availability status must appear only on supported lower-section mods.");
+            }
+            if (glory is TableLayoutPanel gloryRow)
+            {
+                var lower = (gloryRow.Tag as string) == "available-vr-mod";
+                var gloryStatus = gloryRow.GetControlFromPosition(3, 0) as Label;
+                if (gloryStatus == null ||
+                    (lower && gloryStatus.Text != "ACTIVE") ||
+                    (!lower && gloryStatus.Text == "ACTIVE"))
+                    throw new InvalidDataException(
+                        "Glory Kill speed status must appear only in the lower section.");
             }
         }
     }
