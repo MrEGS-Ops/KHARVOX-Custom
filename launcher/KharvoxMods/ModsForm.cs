@@ -77,8 +77,11 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
+        // Em spaces spread the two identifiers across the native Windows
+        // caption, without adding duplicate heading bars below it.
         Text = "KHARVOX Mods  ·  " + BuildLabel() +
-            "            MODIFIED KHARVOX LAUNCHER  ·  CactusVRStudios / MrEGS";
+            new string('\u2003', 22) +
+            "MODIFIED KHARVOX LAUNCHER  ·  CactusVRStudios / MrEGS";
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
