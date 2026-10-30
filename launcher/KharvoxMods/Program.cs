@@ -54,9 +54,6 @@ internal static class Program
         if (args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest();
 
-        // Old updater installs the new binary under its original EXE name.
-        // Transfer to the renamed executable before acquiring the mutex.
-        if (LegacyExecutableMigration.HandoffIfLegacyName()) return 0;
         using (var singleInstance = new Mutex(true, @"Local\KHARVOXMods-Standalone-OnlyOneWindow", out var newInstance))
         {
             if (!newInstance)
@@ -69,7 +66,6 @@ internal static class Program
             // The first-run path picker must finish before ModsForm exists,
             // so users never see a blank or inaccessible Mods window behind it.
             if (!OriginalLauncherSetup.EnsureSelected()) return 0;
-            LegacyExecutableMigration.CleanupLegacyAsync();
             Application.Run(new ModsForm());
             return 0;
         }
