@@ -677,7 +677,7 @@ internal sealed partial class ModsForm
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 29,
-            ColumnCount = 5, RowCount = 1,
+            ColumnCount = 6, RowCount = 1,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             Margin = Padding.Empty, Padding = Padding.Empty,
             AllowDrop = true,
@@ -686,6 +686,7 @@ internal sealed partial class ModsForm
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
         row.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
@@ -722,8 +723,8 @@ internal sealed partial class ModsForm
         {
             Text = mod.Title, Dock = DockStyle.Fill,
             BackColor = row.BackColor,
-            ForeColor = check.Enabled ? Color.Gainsboro :
-                Color.FromArgb(171, 176, 187),
+            ForeColor = check.Enabled ? Color.FromArgb(239, 240, 244) :
+                Color.FromArgb(123, 130, 142),
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true, Margin = Padding.Empty,
             Tag = "vr-mod-name"
@@ -735,6 +736,26 @@ internal sealed partial class ModsForm
             (check.Enabled ? "" : Environment.NewLine +
                 "Paused; unavailable in this build."));
 
+        // Readable, explicit availability indication: disabled mod names
+        // are subdued and each row shows its verified/runtime state.
+        var status = new Label
+        {
+            Text = !check.Enabled ? "PAUSED" : active ? "ACTIVE" : "READY",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleCenter,
+            ForeColor = !check.Enabled ? Color.FromArgb(139, 145, 156)
+                : active ? Color.FromArgb(103, 198, 157)
+                : Color.FromArgb(129, 207, 179),
+            BackColor = row.BackColor,
+            Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
+            Margin = Padding.Empty,
+            Tag = "vr-mod-status"
+        };
+        _tooltips.SetToolTip(status, check.Enabled
+            ? (active ? "Enabled and verified." :
+                "Verified and available to enable.")
+            : "Paused: the runtime feature is not verified in this build.");
+
         var info = MakeRowInfo("How to use this mod and its dependencies",
             mod.Title, mod.Help);
         info.BackColor = row.BackColor;
@@ -743,8 +764,9 @@ internal sealed partial class ModsForm
         row.Controls.Add(number, 0, 0);
         row.Controls.Add(check, 1, 0);
         row.Controls.Add(titleLabel, 2, 0);
-        row.Controls.Add(info, 3, 0);
-        row.Controls.Add(grip, 4, 0);
+        row.Controls.Add(status, 3, 0);
+        row.Controls.Add(info, 4, 0);
+        row.Controls.Add(grip, 5, 0);
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
         AttachDependencyHover(row, mod.Title);
@@ -912,7 +934,7 @@ internal sealed partial class ModsForm
             foreach (var pair in form._visibleModRows)
             {
                 var row = pair.Value as TableLayoutPanel;
-                if (row?.ColumnCount != 5) continue;
+                if (row?.ColumnCount != 6) continue;
                 var captions = row.Controls.OfType<Label>()
                     .Where(label => (label.Tag as string) == "vr-mod-name").ToArray();
                 if (captions.Length != 1 || captions[0].Text != pair.Key ||
@@ -920,6 +942,13 @@ internal sealed partial class ModsForm
                     throw new InvalidDataException(
                         "Paused or active mod row has unreadable text.");
             }
+
+            if (form._visibleModRows.Values.OfType<TableLayoutPanel>()
+                    .Where(row => row.ColumnCount == 6)
+                    .Any(row => !row.Controls.OfType<Label>()
+                        .Any(label => (label.Tag as string) == "vr-mod-status" &&
+                            new[] { "PAUSED", "READY", "ACTIVE" }.Contains(label.Text))))
+                throw new InvalidDataException("Every mod must show an explicit availability status.");
 
             // Standard rows must keep their info/drag columns anchored right.
             var other = form._visibleModRows["Hand Focus"];
@@ -929,8 +958,8 @@ internal sealed partial class ModsForm
             var normalGrip = EnumerateRowControls(other).OfType<Label>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
             if (normal == null || normalInfo == null || normalGrip == null ||
-                normal.GetColumn(normalInfo) != 3 ||
-                normal.GetColumn(normalGrip) != 4 ||
+                normal.GetColumn(normalInfo) != 4 ||
+                normal.GetColumn(normalGrip) != 5 ||
                 normalGrip.Text != "")
                 throw new InvalidDataException("Standard row info or drag handle regression.");
         }
