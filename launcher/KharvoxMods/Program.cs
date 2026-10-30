@@ -17,7 +17,7 @@ internal static class Program
     {
         using (var self = Process.GetCurrentProcess())
         {
-            foreach (var process in Process.GetProcessesByName("KharvoxMods"))
+            foreach (var process in Process.GetProcessesByName("KharvoxVRModManager"))
             {
                 using (process)
                 {
@@ -54,6 +54,9 @@ internal static class Program
         if (args.Any(a => string.Equals(a, "--self-test", StringComparison.OrdinalIgnoreCase)))
             return SelfTest();
 
+        // Old updater installs the new binary under its original EXE name.
+        // Transfer to the renamed executable before acquiring the mutex.
+        if (LegacyExecutableMigration.HandoffIfLegacyName()) return 0;
         using (var singleInstance = new Mutex(true, @"Local\KHARVOXMods-Standalone-OnlyOneWindow", out var newInstance))
         {
             if (!newInstance)
@@ -66,6 +69,7 @@ internal static class Program
             // The first-run path picker must finish before ModsForm exists,
             // so users never see a blank or inaccessible Mods window behind it.
             if (!OriginalLauncherSetup.EnsureSelected()) return 0;
+            LegacyExecutableMigration.CleanupLegacyAsync();
             Application.Run(new ModsForm());
             return 0;
         }
@@ -83,7 +87,7 @@ internal static class Program
                 !string.Equals(AppState.DefaultPath,
                     Path.Combine(AppState.DataDirectory, "settings.json"),
                     StringComparison.OrdinalIgnoreCase))
-                throw new InvalidDataException("Portable storage must be beside KharvoxMods.exe.");
+                throw new InvalidDataException("Portable storage must be beside KharvoxVRModManager.exe.");
 
             Directory.CreateDirectory(root);
             var path = Path.Combine(root, "settings.json");
@@ -108,7 +112,7 @@ internal static class Program
             File.WriteAllText(path, "invalid JSON {");
             if (AppState.Load(path).WindowAttachmentApproved)
                 throw new InvalidDataException("Malformed state must fail closed.");
-            if (LauncherDiscovery.IsLauncherFile(Path.Combine(root, "KharvoxMods.exe")))
+            if (LauncherDiscovery.IsLauncherFile(Path.Combine(root, "KharvoxVRModManager.exe")))
                 throw new InvalidDataException("Non-KHARVOX executables must be rejected.");
             if (LauncherDiscovery.IsOriginalLauncherFile(NativeBridgeInstaller.TargetLauncher))
                 throw new InvalidDataException("The custom runtime must never be selected as original.");

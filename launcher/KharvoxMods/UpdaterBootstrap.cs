@@ -21,8 +21,8 @@ internal static class UpdaterBootstrap
 {
     private const string ReleaseUrl =
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
-    private const string ArchiveName = "KHARVOX-Mods-Updater.zip";
-    private const string UpdaterName = "KharvoxModsUpdater.exe";
+    private const string ArchiveName = "KHARVOX-VR-Mod-Manager-Updater.zip";
+    private const string UpdaterName = "KharvoxVRModManagerUpdater.exe";
     private const long MaxSize = 20L * 1024 * 1024;
 
     // Explorer caches executable icons by path. Replacing the updater binary
@@ -82,7 +82,8 @@ internal static class UpdaterBootstrap
 
     private static bool IsUpdaterRunning()
     {
-        foreach (var p in Process.GetProcessesByName("KharvoxModsUpdater"))
+        foreach (var p in Process.GetProcessesByName("KharvoxVRModManagerUpdater").Concat(
+                     Process.GetProcessesByName("KharvoxModsUpdater")))
         {
             try { if (!p.HasExited) return true; }
             catch (InvalidOperationException) { }
@@ -107,7 +108,7 @@ internal static class UpdaterBootstrap
                 var shaUrl = FindUrl(release, ArchiveName + ".sha256");
                 var manifest = (await client.GetStringAsync(shaUrl)).Trim();
                 var match = Regex.Match(manifest,
-                    @"\A([a-fA-F0-9]{64})(?:\s+\*?KHARVOX-Mods-Updater\.zip)?\s*\z");
+                    @"\A([a-fA-F0-9]{64})(?:\s+\*?KHARVOX-VR-Mod-Manager-Updater\.zip)?\s*\z");
                 if (!match.Success) return;
 
                 var root = AppContext.BaseDirectory;
@@ -187,7 +188,7 @@ internal static class UpdaterBootstrap
                         }
                     }
                     throw new IOException("Updater refresh could not replace the old executable. " +
-                        "Close KharvoxModsUpdater.exe and reopen KHARVOX Mods to retry.");
+                        "Close the updater and reopen KHARVOX VR Mod Manager to retry.");
                 }
                 finally { try { Directory.Delete(staging, true); } catch { } }
             }

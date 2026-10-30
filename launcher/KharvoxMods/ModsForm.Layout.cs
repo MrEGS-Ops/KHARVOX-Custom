@@ -43,7 +43,7 @@ internal sealed partial class ModsForm
     {
         if (value && !CanEnableMod(name, out var reason))
         {
-            MessageBox.Show(this, reason, "KHARVOX Mods — Dependency check",
+            MessageBox.Show(this, reason, "KHARVOX VR Mod Manager — Dependency check",
                 MessageBoxButtons.OK, MessageBoxIcon.Warning);
             QueueVrRebuild(); // Revert the unapproved checkbox visually.
             return;
@@ -379,11 +379,11 @@ internal sealed partial class ModsForm
         };
         credit.MouseEnter += (_, _) => credit.ForeColor = Color.Gainsboro;
         credit.MouseLeave += (_, _) => credit.ForeColor = Color.Gray;
-        // Offset the credit left of the panel's right edge, with room
-        // between it and the centered MrEGS logo at the default width.
+        // Align the credit 12px inside the Mods pane's right edge,
+        // matching Cactus's right-edge footer credit on the launcher.
         void PositionCredit() =>
             credit.Location = new Point(
-                Math.Max(0, footer.ClientSize.Width - credit.Width - 65),
+                Math.Max(0, footer.ClientSize.Width - credit.Width - 12),
                 Math.Max(0, (footer.ClientSize.Height - credit.Height) / 2));
         footer.Controls.Add(credit);
         footer.SizeChanged += (_, _) => PositionCredit();
@@ -530,6 +530,7 @@ internal sealed partial class ModsForm
                 form.Controls.Descendants().OfType<Label>()
                     .Any(label => (label.Tag as string) == "mods-title" ||
                         (label.Tag as string) == "launcher-title") ||
+                form.Text.IndexOf("KHARVOX VR Mod Manager", StringComparison.Ordinal) < 0 ||
                 form.Text.IndexOf("Modified KHARVOX Launcher", StringComparison.OrdinalIgnoreCase) < 0 ||
                 form.MinimumSize.Width <= 0 ||
                 form.MaximumSize.Width < form.MinimumSize.Width ||
@@ -552,7 +553,8 @@ internal sealed partial class ModsForm
                 !credits[0].AutoSize || credits[0].Dock != DockStyle.None ||
                 credits[0].Cursor != Cursors.Default ||
                 credits[0].ContextMenuStrip != null ||
-                credits[0].Right > credits[0].Parent.ClientSize.Width - 45 ||
+                credits[0].Right > credits[0].Parent.ClientSize.Width - 4 ||
+                credits[0].Right < credits[0].Parent.ClientSize.Width - 24 ||
                 form.Controls.Descendants().OfType<Button>()
                     .Any(button => button.Text.StartsWith("Connection",
                         StringComparison.OrdinalIgnoreCase)))

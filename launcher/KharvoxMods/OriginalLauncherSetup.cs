@@ -33,7 +33,7 @@ internal static class OriginalLauncherSetup
 
         using (var setup = new Form
         {
-            Text = "KHARVOX Mods — First-time Setup",
+            Text = "KHARVOX VR Mod Manager — Setup",
             ClientSize = new Size(478, 207),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
@@ -53,13 +53,13 @@ internal static class OriginalLauncherSetup
             });
             setup.Controls.Add(new Label
             {
-                Text = "This app runs a modified VR launcher based on CactusVRStudios' KHARVOX.",
+                Text = "An Unofficial VR Mod Manager for KHARVOX.",
                 Location = new Point(18, 52), Size = new Size(440, 19),
                 ForeColor = Color.Gainsboro
             });
             setup.Controls.Add(new Label
             {
-                Text = "Your original KHARVOX files are not changed.",
+                Text = "Original by CactusVRStudios; existing files remain unchanged.",
                 Location = new Point(18, 73), Size = new Size(440, 19),
                 ForeColor = Color.FromArgb(174, 174, 180)
             });
@@ -111,7 +111,7 @@ internal static class OriginalLauncherSetup
                     {
                         MessageBox.Show(setup,
                             "Select the original KharvoxLauncher.exe, not the modified VR launcher.",
-                            "KHARVOX Mods Setup",
+                            "KHARVOX VR Mod Manager Setup",
                             MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
@@ -128,7 +128,7 @@ internal static class OriginalLauncherSetup
                     {
                         MessageBox.Show(setup,
                             "Could not save the KHARVOX location: " + ex.Message,
-                            "KHARVOX Mods Setup",
+                            "KHARVOX VR Mod Manager Setup",
                             MessageBoxButtons.OK, MessageBoxIcon.Error);
                     }
                 }

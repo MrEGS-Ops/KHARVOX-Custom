@@ -80,9 +80,10 @@ internal sealed partial class ModsForm : Form
         // Deliberate play on CactusVRStudios' "unofficial VR mod for DOOM"
         // tagline. Separate credits: Mods by MrEGS; original launcher by
         // CactusVRStudios. No collaboration is claimed.
-        Text = "KHARVOX Mods · MrEGS · " + BuildLabel() +
-            " — Unofficial KHARVOX mod manager" +
-            new string('\u2003', 6) +
+        // An Unofficial VR Mod Manager for KHARVOX, with the native
+        // launcher separately attributed to its original creator Cactus.
+        Text = "KHARVOX VR Mod Manager · " + BuildLabel() +
+            new string('\u2003', 22) +
             "Modified KHARVOX Launcher · Original: CactusVRStudios";
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
@@ -246,7 +247,7 @@ internal sealed partial class ModsForm : Form
             if (!LauncherDiscovery.IsOriginalLauncherFile(dialog.FileName))
             {
                 MessageBox.Show(this, "Choose the existing KharvoxLauncher.exe.",
-                    "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    "KHARVOX VR Mod Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
             }
             _state.KharvoxLauncherPath = Path.GetFullPath(dialog.FileName);
@@ -331,7 +332,7 @@ internal sealed partial class ModsForm : Form
             MessageBox.Show(this,
                 "Couldn't prepare or start the custom KHARVOX launcher:\n" +
                 error.Message + "\n\nDouble-click the footer status to retry, or right-click to change the original location.",
-                "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                "KHARVOX VR Mod Manager", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
         {
