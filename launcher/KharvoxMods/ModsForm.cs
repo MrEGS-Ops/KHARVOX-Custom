@@ -43,7 +43,7 @@ internal sealed partial class ModsForm : Form
     private const int DesiredModsWidth = 500; // Slimmer mod column in unified window
     // Original Cactus form is 548 × 904 client pixels. Allow room for its
     // scrollable viewport and DPI/frame rounding without showing scrollbars.
-    private const int EmbeddedLauncherWidth = 606;
+    private const int EmbeddedLauncherWidth = 574;
     private const int EmbeddedLauncherHeight = 946;
 
     private static string EmbeddedBuildId()
@@ -77,11 +77,12 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
-        // Em spaces spread the two identifiers across the native Windows
-        // caption, without adding duplicate heading bars below it.
-        Text = "KHARVOX Mods  ·  " + BuildLabel() +
-            new string('\u2003', 22) +
-            "MODIFIED KHARVOX LAUNCHER  ·  CactusVRStudios / MrEGS";
+        // Separate attribution: MrEGS made the Mods UI; CactusVRStudios
+        // authored the original launcher. Do not imply collaboration.
+        // Only one Windows caption; do not restore redundant heading bars.
+        Text = "KHARVOX Mods · MrEGS · " + BuildLabel() +
+            new string('\u2003', 32) +
+            "Modified KHARVOX Launcher · Original: CactusVRStudios";
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;

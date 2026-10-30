@@ -307,18 +307,27 @@ internal sealed partial class ModsForm
             .FirstOrDefault(label => string.Equals(label.Tag as string,
                 "vr-drag-grip", StringComparison.Ordinal));
         if (grip != null) grip.Text = "";
+        var info = EnumerateRowControls(row).OfType<LinkLabel>()
+            .FirstOrDefault(link => (link.Tag as string) == "vr-mod-info");
+        // The info control remains visible/hit-testable, only its glyph
+        // appears on hover. No disappearing control or broken click target.
+        if (info != null) info.Text = "";
         void Reveal(object? sender, EventArgs e)
         {
             // The drag target must remain Visible for the mouse enter and
             // mouse move events to fire correctly. Only toggle its glyph.
             if (grip != null) grip.Text = "⋮⋮";
+            if (info != null) info.Text = "ⓘ";
             Enter(sender, e);
         }
         void Conceal(object? sender, EventArgs e)
         {
-            if (grip != null && !row.RectangleToScreen(row.ClientRectangle)
+            if (!row.RectangleToScreen(row.ClientRectangle)
                     .Contains(Cursor.Position))
-                grip.Text = "";
+            {
+                if (grip != null) grip.Text = "";
+                if (info != null) info.Text = "";
+            }
             Leave(sender, e);
         }
         foreach (var control in EnumerateRowControls(row).ToArray())
@@ -740,12 +749,10 @@ internal sealed partial class ModsForm
         // are subdued and each row shows its verified/runtime state.
         var status = new Label
         {
-            Text = !check.Enabled ? "PAUSED" : active ? "ACTIVE" : "READY",
+            Text = check.Enabled && active ? "ACTIVE" : "",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = !check.Enabled ? Color.FromArgb(139, 145, 156)
-                : active ? Color.FromArgb(103, 198, 157)
-                : Color.FromArgb(129, 207, 179),
+            ForeColor = Color.FromArgb(103, 198, 157),
             BackColor = row.BackColor,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             Margin = Padding.Empty,
@@ -949,7 +956,7 @@ internal sealed partial class ModsForm
                             (label.Tag as string) == "vr-mod-name"))
                     .Any(row => !row.Controls.OfType<Label>()
                         .Any(label => (label.Tag as string) == "vr-mod-status" &&
-                            new[] { "PAUSED", "READY", "ACTIVE" }.Contains(label.Text))))
+                            (label.Text == "" || label.Text == "ACTIVE"))))
                 throw new InvalidDataException("Every mod must show an explicit availability status.");
 
             // Standard rows must keep their info/drag columns anchored right.
@@ -962,8 +969,22 @@ internal sealed partial class ModsForm
             if (normal == null || normalInfo == null || normalGrip == null ||
                 normal.GetColumn(normalInfo) != 4 ||
                 normal.GetColumn(normalGrip) != 5 ||
-                normalGrip.Text != "")
-                throw new InvalidDataException("Standard row info or drag handle regression.");
+                normalGrip.Text != "" ||
+                normalInfo.Text != "")
+                throw new InvalidDataException(
+                    "Standard row must hide info and drag glyphs until hover.");
+            // Only checked, verified mods display the ACTIVE indicator.
+            foreach (var (modTitle, modRow) in form._visibleModRows)
+            {
+                var ordinaryRow = modRow as TableLayoutPanel;
+                if (ordinaryRow?.ColumnCount != 6 ||
+                    modTitle == GloryModTitle) continue;
+                var indicator = ordinaryRow.Controls.OfType<Label>()
+                    .Single(label => (label.Tag as string) == "vr-mod-status");
+                if (indicator.Text != (form.IsVrActive(modTitle) ? "ACTIVE" : ""))
+                    throw new InvalidDataException(
+                        "Only enabled mods should display ACTIVE.");
+            }
         }
     }
 }
