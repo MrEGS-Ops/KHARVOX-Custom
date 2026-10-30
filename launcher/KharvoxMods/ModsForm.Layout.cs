@@ -538,7 +538,16 @@ internal sealed partial class ModsForm
                 form.MaximumSize.Width != form.Width ||
                 form.MinimumSize.Height != form.Height)
                 throw new InvalidDataException(
-                    "Unified host must be fixed-width, minimum-height and use two captions.");
+                    "Unified host constraints mismatch. topMost=" + form.TopMost +
+                    " grids=" + form.Controls.OfType<TableLayoutPanel>()
+                        .Count(panel => panel.ColumnCount == 2) +
+                    " host=" + (form._launcherHost.Parent is TableLayoutPanel) +
+                    " modsTitle=" + form.Controls.Descendants().OfType<Label>()
+                        .Any(label => (label.Tag as string) == "mods-title") +
+                    " launcherTitle=" + form.Controls.Descendants().OfType<Label>()
+                        .Any(label => (label.Tag as string) == "launcher-title") +
+                    " min=" + form.MinimumSize + " max=" + form.MaximumSize +
+                    " current=" + form.Size);
             // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
             // light-gray captions. Native DWM frame is matched separately.
             if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
