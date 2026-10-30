@@ -77,11 +77,12 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
-        // Separate attribution: MrEGS made the Mods UI; CactusVRStudios
-        // authored the original launcher. Do not imply collaboration.
-        // Only one Windows caption; do not restore redundant heading bars.
+        // Deliberate play on CactusVRStudios' "unofficial VR mod for DOOM"
+        // tagline. Separate credits: Mods by MrEGS; original launcher by
+        // CactusVRStudios. No collaboration is claimed.
         Text = "KHARVOX Mods · MrEGS · " + BuildLabel() +
-            new string('\u2003', 32) +
+            " — Unofficial KHARVOX mod manager" +
+            new string('\u2003', 6) +
             "Modified KHARVOX Launcher · Original: CactusVRStudios";
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
@@ -329,7 +330,7 @@ internal sealed partial class ModsForm : Form
             SetStatus("Custom KHARVOX couldn't start — original installation untouched.");
             MessageBox.Show(this,
                 "Couldn't prepare or start the custom KHARVOX launcher:\n" +
-                error.Message + "\n\nCheck the connection or use Connection > Open Custom KHARVOX to retry.",
+                error.Message + "\n\nDouble-click the footer status to retry, or right-click to change the original location.",
                 "KHARVOX Mods", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         finally
@@ -358,7 +359,7 @@ internal sealed partial class ModsForm : Form
                 _launcherWindow = IntPtr.Zero;
                 _launcherEmbedded = false;
                 _dockTimer.Stop();
-                SetStatus("Launcher closed · reopen from Connection menu.");
+                SetStatus("Launcher closed · double-click this status to reopen.");
                 return;
             }
             // A child HWND disappears from Process.MainWindowHandle enumeration.
@@ -381,7 +382,7 @@ internal sealed partial class ModsForm : Form
                 SetStatus("Modified KHARVOX could not be embedded.");
                 MessageBox.Show(this,
                     "Windows could not embed the modified KHARVOX launcher. " +
-                    "Check DPI compatibility or retry from Connection.",
+                    "Check DPI compatibility or double-click the footer status to retry.",
                     "KHARVOX combined launcher", MessageBoxButtons.OK,
                     MessageBoxIcon.Warning);
                 return;

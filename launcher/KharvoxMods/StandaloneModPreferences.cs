@@ -8,6 +8,12 @@ namespace KharvoxMods;
 // whenever DOOM starts, but the Mods EXE NEVER edits the original installation.
 internal sealed class StandaloneModPreferences
 {
+    private const string PreviousGloryTitle = "Glory Kill Speed Override";
+    private const string KilltimeTitle = "RIP & TEAR: KILLTIME";
+    private static string UpgradeModTitle(string title) =>
+        string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal)
+            ? KilltimeTitle : title;
+
     public int Schema { get; set; } = 1;
     public bool WeaponWheelRemap { get; set; } = true;
     public bool HandFocus { get; set; }
@@ -42,8 +48,10 @@ internal sealed class StandaloneModPreferences
             if (value == null || value.Schema != 1)
                 throw new InvalidDataException("Unknown KHARVOX Mods bridge schema.");
             value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
-            value.ActiveOrder ??= Array.Empty<string>();
-            value.AvailableOrder ??= Array.Empty<string>();
+            value.ActiveOrder = Array.ConvertAll(value.ActiveOrder ??
+                Array.Empty<string>(), UpgradeModTitle);
+            value.AvailableOrder = Array.ConvertAll(value.AvailableOrder ??
+                Array.Empty<string>(), UpgradeModTitle);
             value.CollapsedCategories ??= Array.Empty<string>();
             value.RuntimeRevision ??= "";
             return value;
@@ -92,19 +100,24 @@ internal sealed class StandaloneModPreferences
             x.PainsawRipshiftOverdrive = true;
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
-            x.ActiveOrder = new[] { "Hand Focus", "PAINSAW: RIPSHIFT OVERDRIVE" };
-            x.AvailableOrder = new[] { "Directional Dash", "Boxing Guard Mode" };
+            // Legacy mod names should retain their saved positions.
+            x.ActiveOrder = new[] { "Hand Focus", PreviousGloryTitle,
+                "PAINSAW: RIPSHIFT OVERDRIVE" };
+            x.AvailableOrder = new[] { "Directional Dash", PreviousGloryTitle,
+                "Boxing Guard Mode" };
             x.CollapsedCategories = new[] { "A:✥  Hands Arms" };
             x.RuntimeRevision = "00000000000000000000000000000001";
             x.Save(path);
             var y = Load(path);
             if (!y.HandFocus || !y.PainsawRipshiftOverdrive ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
-                y.ActiveOrder.Length != 2 ||
+                y.ActiveOrder.Length != 3 ||
                 y.ActiveOrder[0] != "Hand Focus" ||
-                y.ActiveOrder[1] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
-                y.AvailableOrder.Length != 2 ||
+                y.ActiveOrder[1] != KilltimeTitle ||
+                y.ActiveOrder[2] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
+                y.AvailableOrder.Length != 3 ||
                 y.AvailableOrder[0] != "Directional Dash" ||
+                y.AvailableOrder[1] != KilltimeTitle ||
                 y.CollapsedCategories.Length != 1 ||
                 y.RuntimeRevision != "00000000000000000000000000000001")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");

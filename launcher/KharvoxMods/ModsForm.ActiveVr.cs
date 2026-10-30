@@ -12,7 +12,7 @@ namespace KharvoxMods;
 // controls presentation only; it cannot change hook execution/dependencies.
 internal sealed partial class ModsForm
 {
-    private const string GloryModTitle = "Glory Kill Speed Override";
+    private const string GloryModTitle = "RIP & TEAR: KILLTIME";
     private const string ActiveDragFormat = "KHARVOX.ActiveVRMod";
     private readonly TableLayoutPanel _vrModList = new TableLayoutPanel();
     private readonly Panel _vrModScroll = new Panel();
@@ -373,7 +373,7 @@ internal sealed partial class ModsForm
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
                 "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
-            "Glory Kill Speed Override" =>
+            "RIP & TEAR: KILLTIME" =>
                 "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
             _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."
         };
@@ -924,6 +924,9 @@ internal sealed partial class ModsForm
         {
             if (form.ActiveVrOrder().Any(name => !verified.Contains(name)))
                 throw new InvalidDataException("Unsupported mod in Active Mods.");
+            if (GloryModTitle != "RIP & TEAR: KILLTIME" ||
+                AllDisplayMods().Contains("Glory Kill Speed Override"))
+                throw new InvalidDataException("KILLTIME display rename regression.");
             if (form.ActiveVrOrder().Count(name => name == GloryModTitle) > 1)
                 throw new InvalidDataException("Glory speed appears twice.");
             var glory = form._visibleModRows[GloryModTitle];

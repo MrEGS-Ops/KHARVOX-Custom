@@ -362,30 +362,52 @@ internal sealed partial class ModsForm
         _status.Text = "Connecting…";
         footer.Controls.Add(_status);
 
-        var right = new FlowLayoutPanel
+        // Mirror the original launcher's "Made by Cactus" footer style:
+        // inherited Segoe UI, right aligned, grey until mouse hover.
+        var credit = new Label
         {
+            Text = "Made by MrEGS",
+            Tag = "mregs-footer-credit",
             Dock = DockStyle.Right, Width = 146,
-            FlowDirection = FlowDirection.RightToLeft,
-            WrapContents = false,
-            Padding = new Padding(0, 5, 0, 0),
-            BackColor = Color.Black
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.Gray,
+            BackColor = Color.Black,
+            Cursor = Cursors.Hand,
+            Margin = Padding.Empty
         };
-        var connection = MakeButton("Connection ▾", 132);
-        connection.Margin = new Padding(3, 0, 3, 0);
+        credit.MouseEnter += (_, _) => credit.ForeColor = Color.Gainsboro;
+        credit.MouseLeave += (_, _) => credit.ForeColor = Color.Gray;
+        credit.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            try
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = "https://www.twitch.tv/MrEGS_",
+                    UseShellExecute = true
+                })?.Dispose();
+            }
+            catch (System.ComponentModel.Win32Exception) { }
+        };
+        _tooltips.SetToolTip(credit, "Made by MrEGS · Twitch");
+        footer.Controls.Add(credit);
+
+        // Retain recovery controls without a permanent Connection button.
         var connectionMenu = new ContextMenuStrip();
-        connectionMenu.Items.Add("Open Custom KHARVOX", null,
+        connectionMenu.Items.Add("Reopen Modified KHARVOX Launcher", null,
             async (_, _) => await StartLauncherAsync());
         connectionMenu.Items.Add("Change Original KHARVOX Location…", null,
             async (_, _) =>
             {
                 if (SelectLauncher()) await StartLauncherAsync();
             });
-        connection.Click += (_, _) =>
-            connectionMenu.Show(connection, new Point(0, connection.Height));
-        _tooltips.SetToolTip(connection,
-            "Opens our custom launcher. The original KHARVOX path can be changed here.");
-        right.Controls.Add(connection);
-        footer.Controls.Add(right);
+        _status.ContextMenuStrip = connectionMenu;
+        _status.Cursor = Cursors.Hand;
+        _status.DoubleClick += async (_, _) => await StartLauncherAsync();
+        _tooltips.SetToolTip(_status,
+            "Double-click to reconnect · right-click for connection options");
+        footer.Disposed += (_, _) => connectionMenu.Dispose();
 
         // Original MrEGS emblem from the uploaded Twitch screenshot.
         // Embedding the cropped original keeps branding portable and avoids
@@ -526,6 +548,16 @@ internal sealed partial class ModsForm
                 groups[0].ForeColor.ToArgb() != Color.Gainsboro.ToArgb() ||
                 groups[0].Padding != new Padding(8))
                 throw new InvalidDataException("KHARVOX desktop window palette/group-box mismatch.");
+            var credits = form.Controls.Descendants().OfType<Label>()
+                .Where(label => (label.Tag as string) == "mregs-footer-credit").ToArray();
+            if (credits.Length != 1 || credits[0].Text != "Made by MrEGS" ||
+                credits[0].TextAlign != ContentAlignment.MiddleRight ||
+                credits[0].ForeColor != Color.Gray ||
+                form.Controls.Descendants().OfType<Button>()
+                    .Any(button => button.Text.StartsWith("Connection",
+                        StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidDataException(
+                    "MrEGS footer credit or removed Connection button regression.");
             if (form.Controls.Descendants().OfType<TabControl>().Any())
                 throw new InvalidDataException("Tabbed placeholder UI must not return.");
             var vr = form.Controls.Descendants().OfType<CheckBox>()
