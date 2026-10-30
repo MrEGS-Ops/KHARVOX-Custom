@@ -586,6 +586,9 @@ internal sealed partial class ModsForm
             "glory-kill-speed-preview");
         check.Enabled = true;
         check.Checked = active;
+        // '&' is literal branding in RIP & TEAR, not a WinForms
+        // keyboard-access mnemonic. Preserve it in the visible checkbox.
+        check.UseMnemonic = false;
         check.Dock = DockStyle.Fill;
         check.AutoSize = false;
         check.AutoEllipsis = true;
@@ -931,6 +934,11 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException("Glory speed appears twice.");
             var glory = form._visibleModRows[GloryModTitle];
             var controls = EnumerateRowControls(glory).ToArray();
+            var gloryCheckbox = controls.OfType<CheckBox>().SingleOrDefault();
+            if (gloryCheckbox == null || gloryCheckbox.Text != "RIP & TEAR: KILLTIME" ||
+                gloryCheckbox.UseMnemonic)
+                throw new InvalidDataException(
+                    "KILLTIME must display a literal ampersand, not a keyboard mnemonic.");
             var info = controls.OfType<LinkLabel>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
             var grip = controls.OfType<Label>()

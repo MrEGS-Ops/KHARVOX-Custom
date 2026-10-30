@@ -362,36 +362,32 @@ internal sealed partial class ModsForm
         _status.Text = "Connecting…";
         footer.Controls.Add(_status);
 
-        // Mirror the original launcher's "Made by Cactus" footer style:
-        // inherited Segoe UI, right aligned, grey until mouse hover.
+        // Match the Cactus credit's understated gray->Gainsboro treatment,
+        // but keep this one non-clickable. AutoSize means only the actual
+        // words (not a 146px invisible panel) can trigger MouseEnter.
         var credit = new Label
         {
             Text = "Made by MrEGS",
             Tag = "mregs-footer-credit",
-            Dock = DockStyle.Right, Width = 146,
+            AutoSize = true,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
             BackColor = Color.Black,
-            Cursor = Cursors.Hand,
+            Font = new Font("Segoe UI", 9f),
+            Cursor = Cursors.Default,
             Margin = Padding.Empty
         };
         credit.MouseEnter += (_, _) => credit.ForeColor = Color.Gainsboro;
         credit.MouseLeave += (_, _) => credit.ForeColor = Color.Gray;
-        credit.MouseClick += (_, e) =>
-        {
-            if (e.Button != MouseButtons.Left) return;
-            try
-            {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = "https://www.twitch.tv/MrEGS_",
-                    UseShellExecute = true
-                })?.Dispose();
-            }
-            catch (System.ComponentModel.Win32Exception) { }
-        };
-        _tooltips.SetToolTip(credit, "Made by MrEGS · Twitch");
+        // Offset the credit left of the panel's right edge, with room
+        // between it and the centered MrEGS logo at the default width.
+        void PositionCredit() =>
+            credit.Location = new Point(
+                Math.Max(0, footer.ClientSize.Width - credit.Width - 65),
+                Math.Max(0, (footer.ClientSize.Height - credit.Height) / 2));
         footer.Controls.Add(credit);
+        footer.SizeChanged += (_, _) => PositionCredit();
+        PositionCredit();
 
         // Retain recovery controls without a permanent Connection button.
         var connectionMenu = new ContextMenuStrip();
@@ -553,6 +549,10 @@ internal sealed partial class ModsForm
             if (credits.Length != 1 || credits[0].Text != "Made by MrEGS" ||
                 credits[0].TextAlign != ContentAlignment.MiddleRight ||
                 credits[0].ForeColor != Color.Gray ||
+                !credits[0].AutoSize || credits[0].Dock != DockStyle.None ||
+                credits[0].Cursor != Cursors.Default ||
+                credits[0].ContextMenuStrip != null ||
+                credits[0].Right > credits[0].Parent.ClientSize.Width - 45 ||
                 form.Controls.Descendants().OfType<Button>()
                     .Any(button => button.Text.StartsWith("Connection",
                         StringComparison.OrdinalIgnoreCase)))
