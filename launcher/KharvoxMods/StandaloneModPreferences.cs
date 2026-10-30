@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Web.Script.Serialization;
 
 namespace KharvoxMods;
@@ -9,9 +10,11 @@ namespace KharvoxMods;
 internal sealed class StandaloneModPreferences
 {
     private const string PreviousGloryTitle = "Glory Kill Speed Override";
-    private const string KilltimeTitle = "RIP & TEAR: KILLTIME";
+    private const string PreviousRipTearTitle = "RIP & TEAR: KILLTIME";
+    private const string KilltimeTitle = "KILLTIME: RIP & TEAR";
     private static string UpgradeModTitle(string title) =>
-        string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal)
+        string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal) ||
+        string.Equals(title, PreviousRipTearTitle, StringComparison.Ordinal)
             ? KilltimeTitle : title;
 
     public int Schema { get; set; } = 1;
@@ -27,7 +30,10 @@ internal sealed class StandaloneModPreferences
     // UI-only order for inactive and paused mods; does not enable anything.
     public string[] AvailableOrder { get; set; } = Array.Empty<string>();
     // UI-only; keys are A:category or V:category. No native dependency impact.
-    public string[] CollapsedCategories { get; set; } = Array.Empty<string>();
+    // First run: available categories collapsed; selected Active Mods stays open.
+    // A saved preference array (even empty) always overrides this default.
+    public string[] CollapsedCategories { get; set; } =
+        ModsForm.DefaultCollapsedAvailableCategories();
     // A fresh revision identifies saved runtime changes until a verified DOOM
     // start writes a corresponding receipt. Never infer applied from a Save.
     public string RuntimeRevision { get; set; } = "";
@@ -94,7 +100,10 @@ internal sealed class StandaloneModPreferences
             var x = Load(path);
             if (!x.WeaponWheelRemap || x.HandFocus ||
                 x.PhysicalCrouch || x.PainsawRipshiftOverdrive ||
-                x.GloryKillSpeedOverride)
+                x.GloryKillSpeedOverride ||
+                x.CollapsedCategories.Length !=
+                    ModsForm.DefaultCollapsedAvailableCategories().Length ||
+                x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )
                 throw new InvalidDataException("Unsafe default mod choices.");
             x.HandFocus = true;
             x.PainsawRipshiftOverdrive = true;
@@ -103,9 +112,9 @@ internal sealed class StandaloneModPreferences
             // Legacy mod names should retain their saved positions.
             x.ActiveOrder = new[] { "Hand Focus", PreviousGloryTitle,
                 "PAINSAW: RIPSHIFT OVERDRIVE" };
-            x.AvailableOrder = new[] { "Directional Dash", PreviousGloryTitle,
+            x.AvailableOrder = new[] { "Directional Dash", PreviousRipTearTitle,
                 "Boxing Guard Mode" };
-            x.CollapsedCategories = new[] { "A:✥  Hands Arms" };
+            x.CollapsedCategories = new[] { "A:✥  Hands & Arms" };
             x.RuntimeRevision = "00000000000000000000000000000001";
             x.Save(path);
             var y = Load(path);
