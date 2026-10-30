@@ -517,6 +517,10 @@ internal sealed partial class ModsForm
             throw new InvalidDataException("DOOM resource-mod code is present in VR-only executable.");
         using (var form = new ModsForm())
         {
+            // Full-inventory UI regression test uses expanded categories.
+            // Fresh user installs start collapsed, but nothing is removed.
+            form._modPrefs.CollapsedCategories = Array.Empty<string>();
+            form.RenderVrRows();
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
             if (groups.Length != 1 || groups[0].Text != "VR MODS")
                 throw new InvalidDataException("VR-only build contains a non-VR groupbox.");
