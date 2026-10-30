@@ -63,6 +63,13 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
 
+      - name: Verify embedded launcher scales to avoid scrollbars
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-embedded-layout" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Embedded viewport fit regression" }
+
       - name: Verify Cactus v1.1.1 original launcher UI is completely unmodified
         shell: pwsh
         run: |

@@ -56,6 +56,10 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        if (args.Any(argument => string.Equals(argument, "--self-test-embedded-layout",
+                StringComparison.OrdinalIgnoreCase)))
+            return EmbeddedLauncherLayout.SelfTest() ? 0 : 1;
+
         if (args.Any(argument => string.Equals(argument, "--self-test-cactus-launcher",
                 StringComparison.OrdinalIgnoreCase)))
             return typeof(MainForm).GetMethod("ShowCustomOptions",
@@ -87,6 +91,7 @@ internal static class Program
             using (var window = new MainForm())
             {
                 window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
+                EmbeddedLauncherLayout.Watch(window);
                 Application.Run(window);
             }
             return 0;
