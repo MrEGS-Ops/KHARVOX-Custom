@@ -38,7 +38,11 @@ internal sealed partial class ModsForm : Form
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
     private const int DesiredModsWidth = 500; // Slimmer mod column in unified window
-    private const int EmbeddedLauncherWidth = 548;
+    // Original Cactus form is 548 × 904 client pixels. Allow room for its
+    // scrollable viewport and DPI/frame rounding without showing scrollbars.
+    private const int EmbeddedLauncherWidth = 574;
+    private const int EmbeddedLauncherHeight = 932;
+    private const int PaneHeadingHeight = 23;
 
     private static string EmbeddedBuildId()
     {
@@ -71,11 +75,11 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
-        Text = "KHARVOX Mods + Modified VR Launcher (CactusVRStudios / MrEGS) · " + BuildLabel();
-        ClientSize = new Size(DesiredModsWidth + EmbeddedLauncherWidth, 904);
-        MinimumSize = new Size(940, 670);
+        Text = "KHARVOX  ·  " + BuildLabel();
+        ClientSize = new Size(DesiredModsWidth + EmbeddedLauncherWidth,
+            PaneHeadingHeight + EmbeddedLauncherHeight);
         FormBorderStyle = FormBorderStyle.Sizable;
-        MaximizeBox = true;
+        MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
@@ -84,6 +88,10 @@ internal sealed partial class ModsForm : Form
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
+        // Lock horizontal size completely, and never let the window become
+        // shorter than the native Cactus UI. Vertical growth is unrestricted.
+        MinimumSize = Size;
+        MaximumSize = new Size(Width, 0);
         TopMost = false;
         _dockTimer.Tick += (_, _) => SyncEmbeddedLauncher();
         _launcherHost.SizeChanged += (_, _) => ResizeEmbeddedLauncher();
@@ -91,6 +99,9 @@ internal sealed partial class ModsForm : Form
         {
             if (_bootstrapped) return;
             _bootstrapped = true;
+            // Reapply constraints after DPI and native scaling finish.
+            MinimumSize = Size;
+            MaximumSize = new Size(Width, 0);
             await StartUpAsync();
         };
         FormClosing += (_, _) => CloseEmbeddedLauncher();
@@ -312,7 +323,6 @@ internal sealed partial class ModsForm : Form
             // Keep the handle we captured while KHARVOX was still top-level.
             if (_launcherEmbedded && NativeDock.IsWindow(_launcherWindow))
             {
-                RefreshPendingIndicator();
                 return;
             }
             _launcher.Refresh();
@@ -338,7 +348,6 @@ internal sealed partial class ModsForm : Form
             _launcherEmbedded = true;
             TopMost = false;
             SetStatus("Connected · KHARVOX embedded.");
-            RefreshPendingIndicator();
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
