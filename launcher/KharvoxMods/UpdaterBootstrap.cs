@@ -82,8 +82,7 @@ internal static class UpdaterBootstrap
 
     private static bool IsUpdaterRunning()
     {
-        foreach (var p in Process.GetProcessesByName("KharvoxVRModManagerUpdater").Concat(
-                     Process.GetProcessesByName("KharvoxModsUpdater")))
+        foreach (var p in Process.GetProcessesByName("KharvoxVRModManagerUpdater"))
         {
             try { if (!p.HasExited) return true; }
             catch (InvalidOperationException) { }
