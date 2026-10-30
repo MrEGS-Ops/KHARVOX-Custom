@@ -214,6 +214,8 @@ internal sealed partial class ModsForm
 
     private void BuildLayout()
     {
+        // A single ordinary title bar identifies both parts of the combined
+        // program. No additional title strips consuming launcher height.
         var mods = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Padding = new Padding(7),
@@ -225,48 +227,22 @@ internal sealed partial class ModsForm
         mods.Controls.Add(BuildOriginalVrPanel(), 0, 0);
         mods.Controls.Add(BuildOriginalFooter(), 0, 1);
 
-        // Two independent captions inside ONE normal Windows frame.
-        // Do not draw over the native OS title bar or Cactus's own controls.
         var unified = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             BackColor = Color.Black, Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         unified.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, DesiredModsWidth));
         unified.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        unified.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
-        unified.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        var modsTitle = new Label
-        {
-            Text = "KHARVOX MODS  ·  " + BuildLabel(),
-            Dock = DockStyle.Fill, BackColor = Color.FromArgb(26, 26, 29),
-            ForeColor = Color.Gainsboro,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(9, 0, 0, 0),
-            Margin = Padding.Empty, Tag = "mods-title"
-        };
-        var launcherTitle = new Label
-        {
-            Text = "MODIFIED KHARVOX LAUNCHER  ·  CactusVRStudios / MrEGS",
-            Dock = DockStyle.Fill, BackColor = Color.FromArgb(26, 26, 29),
-            ForeColor = Color.Gainsboro,
-            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft,
-            Padding = new Padding(9, 0, 0, 0),
-            Margin = Padding.Empty, Tag = "launcher-title"
-        };
         var modsColumn = new Panel
         {
             Dock = DockStyle.Fill, BackColor = Color.Black,
             Margin = Padding.Empty
         };
         modsColumn.Controls.Add(mods);
-        unified.Controls.Add(modsTitle, 0, 0);
-        unified.Controls.Add(launcherTitle, 1, 0);
-        unified.Controls.Add(modsColumn, 0, 1);
-        unified.Controls.Add(_launcherHost, 1, 1);
+        unified.Controls.Add(modsColumn, 0, 0);
+        unified.Controls.Add(_launcherHost, 1, 0);
         Controls.Add(unified);
     }
 
@@ -533,17 +509,16 @@ internal sealed partial class ModsForm
                 form.Controls.OfType<TableLayoutPanel>()
                     .Count(panel => panel.ColumnCount == 2) != 1 ||
                 form._launcherHost.Parent is not TableLayoutPanel ||
-                !form.Controls.Descendants().OfType<Label>()
-                    .Any(label => (label.Tag as string) == "mods-title") ||
-                !form.Controls.Descendants().OfType<Label>()
-                    .Any(label => (label.Tag as string) == "launcher-title") ||
+                form.Controls.Descendants().OfType<Label>()
+                    .Any(label => (label.Tag as string) == "mods-title" ||
+                        (label.Tag as string) == "launcher-title") ||
+                !form.Text.Contains("MODIFIED KHARVOX LAUNCHER") ||
                 form.MinimumSize.Width <= 0 ||
                 form.MaximumSize.Width < form.MinimumSize.Width ||
                 form.MinimumSize.Height <= 0 ||
-                form.MaximumSize.Height < form.MinimumSize.Height ||
-                form.ClientSize.Width < 800)
+                form.MaximumSize.Height < form.MinimumSize.Height)
                 throw new InvalidDataException(
-                    "Unified host has invalid labels or vertical-only resize constraints.");
+                    "Unified window has invalid title bar or vertical-only resize constraints.");
             // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
             // light-gray captions. Native DWM frame is matched separately.
             if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
