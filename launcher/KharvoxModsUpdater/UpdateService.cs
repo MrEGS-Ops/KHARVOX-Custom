@@ -242,8 +242,7 @@ internal static class UpdateService
 
     private static bool AppIsRunning()
     {
-        foreach (var process in Process.GetProcessesByName("KharvoxVRModManager").Concat(
-                     Process.GetProcessesByName("KharvoxMods")))
+        foreach (var process in Process.GetProcessesByName("KharvoxVRModManager"))
         {
             try
             {
@@ -530,7 +529,6 @@ internal static class UpdateService
                 Directory.CreateDirectory(Path.Combine(root, folder));
             File.WriteAllText(Path.Combine(root, "Mods", "my-mod.txt"), "keep");
             File.WriteAllText(Path.Combine(root, "KharvoxVRModManager.exe"), "old-exe");
-            File.WriteAllText(Path.Combine(root, "KharvoxMods.exe"), "legacy-exe");
             File.WriteAllText(Path.Combine(root, "build-info.txt"), "40811111111");
             var staged = Path.Combine(root, "staged");
             Directory.CreateDirectory(staged);
@@ -540,7 +538,6 @@ internal static class UpdateService
             if (File.ReadAllText(Path.Combine(root, "KharvoxVRModManager.exe")) != "new-exe" ||
                 File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
                 File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep" ||
-                File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "legacy-exe" ||
                 File.ReadAllText(Path.Combine(root, "Backups", "Updater",
                     "previous", "KharvoxVRModManager.exe")) != "old-exe")
                 throw new Exception("Portable update overwrote application settings or mod data.");
@@ -553,8 +550,7 @@ internal static class UpdateService
                 !Directory.GetDirectories(Path.Combine(root, "Backups", "Updater"),
                     "pre-rollback-*").Any() ||
                 File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
-                File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep" ||
-                File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "legacy-exe")
+                File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep")
                 throw new Exception("Rollback did not preserve user files or restore build.");
 
             var archive = Path.Combine(root, "test.zip");
