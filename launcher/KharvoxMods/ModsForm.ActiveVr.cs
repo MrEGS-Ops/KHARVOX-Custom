@@ -677,16 +677,18 @@ internal sealed partial class ModsForm
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 29,
-            ColumnCount = 4, RowCount = 1,
+            ColumnCount = 5, RowCount = 1,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             Margin = Padding.Empty, Padding = Padding.Empty,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
+        row.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
 
         var number = new Label
         {
@@ -707,15 +709,31 @@ internal sealed partial class ModsForm
             isDev ? "dev-override" : "original-vr-mod");
         check.Enabled = IsConfirmedMod(mod.Title);
         check.Checked = active;
+        check.Text = ""; // Only the checkbox glyph; label renders the name.
         check.Dock = DockStyle.Fill;
         check.AutoSize = false;
-        check.AutoEllipsis = true;
-        check.TextAlign = ContentAlignment.MiddleLeft;
+        check.AutoEllipsis = false;
         check.CheckAlign = ContentAlignment.MiddleLeft;
         check.Margin = Padding.Empty;
         check.BackColor = row.BackColor;
         if (check.Enabled)
             check.CheckedChanged += (_, _) => ApplySelection(mod.Title, check.Checked);
+        var titleLabel = new Label
+        {
+            Text = mod.Title, Dock = DockStyle.Fill,
+            BackColor = row.BackColor,
+            ForeColor = check.Enabled ? Color.Gainsboro :
+                Color.FromArgb(171, 176, 187),
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true, Margin = Padding.Empty,
+            Tag = "vr-mod-name"
+        };
+        titleLabel.Cursor = check.Enabled ? Cursors.Hand : Cursors.Default;
+        if (check.Enabled)
+            titleLabel.Click += (_, _) => check.Checked = !check.Checked;
+        _tooltips.SetToolTip(titleLabel, description +
+            (check.Enabled ? "" : Environment.NewLine +
+                "Paused; unavailable in this build."));
 
         var info = MakeRowInfo("How to use this mod and its dependencies",
             mod.Title, mod.Help);
@@ -723,41 +741,10 @@ internal sealed partial class ModsForm
         var grip = MakeRowGrip(row.BackColor);
 
         row.Controls.Add(number, 0, 0);
-        if (check.Enabled)
-            row.Controls.Add(check, 1, 0);
-        else
-        {
-            // The native WinForms disabled checkbox caption is nearly BLACK
-            // on the dark theme. Keep the checkbox disabled but paint its
-            // readable name in a separate enabled Label, without overlays.
-            var caption = new TableLayoutPanel
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2, RowCount = 1,
-                BackColor = row.BackColor,
-                Margin = Padding.Empty, Padding = Padding.Empty
-            };
-            caption.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
-            caption.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            check.Text = "";
-            check.Dock = DockStyle.Fill;
-            caption.Controls.Add(check, 0, 0);
-            var readable = new Label
-            {
-                Text = mod.Title, Dock = DockStyle.Fill,
-                ForeColor = Color.FromArgb(172, 176, 184),
-                BackColor = row.BackColor,
-                TextAlign = ContentAlignment.MiddleLeft,
-                AutoEllipsis = true,
-                Margin = Padding.Empty
-            };
-            _tooltips.SetToolTip(readable, description + Environment.NewLine +
-                "Paused; not activatable in this build.");
-            caption.Controls.Add(readable, 1, 0);
-            row.Controls.Add(caption, 1, 0);
-        }
-        row.Controls.Add(info, 2, 0);
-        row.Controls.Add(grip, 3, 0);
+        row.Controls.Add(check, 1, 0);
+        row.Controls.Add(titleLabel, 2, 0);
+        row.Controls.Add(info, 3, 0);
+        row.Controls.Add(grip, 4, 0);
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
         AttachDependencyHover(row, mod.Title);
@@ -920,6 +907,20 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException(
                     "Glory row must center slider, info and hover grip in fixed columns.");
 
+            // Paused rows have a readable, independent label rather than
+            // Windows' near-black disabled checkbox caption.
+            foreach (var pair in form._visibleModRows)
+            {
+                var row = pair.Value as TableLayoutPanel;
+                if (row?.ColumnCount != 5) continue;
+                var captions = row.Controls.OfType<Label>()
+                    .Where(label => (label.Tag as string) == "vr-mod-name").ToArray();
+                if (captions.Length != 1 || captions[0].Text != pair.Key ||
+                    captions[0].ForeColor.GetBrightness() < 0.36f)
+                    throw new InvalidDataException(
+                        "Paused or active mod row has unreadable text.");
+            }
+
             // Standard rows must keep their info/drag columns anchored right.
             var other = form._visibleModRows["Hand Focus"];
             var normal = other as TableLayoutPanel;
@@ -928,8 +929,8 @@ internal sealed partial class ModsForm
             var normalGrip = EnumerateRowControls(other).OfType<Label>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
             if (normal == null || normalInfo == null || normalGrip == null ||
-                normal.GetColumn(normalInfo) != 2 ||
-                normal.GetColumn(normalGrip) != 3 ||
+                normal.GetColumn(normalInfo) != 3 ||
+                normal.GetColumn(normalGrip) != 4 ||
                 normalGrip.Text != "")
                 throw new InvalidDataException("Standard row info or drag handle regression.");
         }
