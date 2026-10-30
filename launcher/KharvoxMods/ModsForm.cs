@@ -76,11 +76,11 @@ internal sealed partial class ModsForm : Form
     internal ModsForm()
     {
         Text = "KHARVOX  ·  " + BuildLabel();
-        ClientSize = new Size(DesiredModsWidth + EmbeddedLauncherWidth,
-            PaneHeadingHeight + EmbeddedLauncherHeight);
         FormBorderStyle = FormBorderStyle.Sizable;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
+        ClientSize = new Size(DesiredModsWidth + EmbeddedLauncherWidth,
+            PaneHeadingHeight + EmbeddedLauncherHeight);
         BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
         Font = new Font("Segoe UI", 9F);
@@ -88,10 +88,9 @@ internal sealed partial class ModsForm : Form
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
-        // Lock horizontal size completely, and never let the window become
-        // shorter than the native Cactus UI. Vertical growth is unrestricted.
-        MinimumSize = Size;
-        MaximumSize = new Size(Width, 0);
+        // Lock width completely while allowing users to expand the height.
+        // A MaximumSize height of 0 collapses WinForms to the caption!
+        LockHorizontalSize();
         TopMost = false;
         _dockTimer.Tick += (_, _) => SyncEmbeddedLauncher();
         _launcherHost.SizeChanged += (_, _) => ResizeEmbeddedLauncher();
@@ -99,9 +98,8 @@ internal sealed partial class ModsForm : Form
         {
             if (_bootstrapped) return;
             _bootstrapped = true;
-            // Reapply constraints after DPI and native scaling finish.
-            MinimumSize = Size;
-            MaximumSize = new Size(Width, 0);
+            // Reapply exact constraints after DPI and native scaling finish.
+            LockHorizontalSize();
             await StartUpAsync();
         };
         FormClosing += (_, _) => CloseEmbeddedLauncher();
@@ -111,6 +109,17 @@ internal sealed partial class ModsForm : Form
             _dockTimer.Dispose();
             _launcher?.Dispose();
         };
+    }
+
+    private void LockHorizontalSize()
+    {
+        var baseline = Size;
+        var maximumHeight = Math.Max(baseline.Height,
+            SystemInformation.MaxWindowTrackSize.Height);
+        // Apply maximum first. Otherwise WinForms may reduce the minimum
+        // when it sees the old maximum from a previous DPI configuration.
+        MaximumSize = new Size(baseline.Width, maximumHeight);
+        MinimumSize = baseline;
     }
 
     private void CloseEmbeddedLauncher()
