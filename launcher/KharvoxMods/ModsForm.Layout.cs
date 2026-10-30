@@ -223,16 +223,48 @@ internal sealed partial class ModsForm
             Dock = DockStyle.Fill,
             Padding = new Padding(7),
             BackColor = Color.Black,
-            RowCount = 2,
+            RowCount = 3,
             ColumnCount = 1,
             Margin = Padding.Empty
         };
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
 
         root.Controls.Add(BuildOriginalVrPanel(), 0, 0);
-        root.Controls.Add(BuildOriginalFooter(), 0, 1);
-        Controls.Add(root);
+        // Status is on its OWN line so the centered MrEGS logo never covers it.
+        var pendingStrip = new Panel
+        {
+            Dock = DockStyle.Fill, BackColor = Color.Black,
+            Margin = Padding.Empty
+        };
+        _pendingIndicator.Dock = DockStyle.Fill;
+        _pendingIndicator.Padding = new Padding(5, 0, 0, 0);
+        _pendingIndicator.BackColor = Color.Black;
+        _pendingIndicator.Font = new Font("Segoe UI", 8f);
+        _pendingIndicator.TextAlign = ContentAlignment.MiddleLeft;
+        pendingStrip.Controls.Add(_pendingIndicator);
+        root.Controls.Add(pendingStrip, 0, 1);
+        RefreshPendingIndicator();
+        root.Controls.Add(BuildOriginalFooter(), 0, 2);
+
+        var unified = new TableLayoutPanel
+        {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            BackColor = Color.Black, Margin = Padding.Empty,
+            Padding = Padding.Empty
+        };
+        unified.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, DesiredModsWidth));
+        unified.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        var modsColumn = new Panel
+        {
+            Dock = DockStyle.Fill, BackColor = Color.Black,
+            Margin = Padding.Empty
+        };
+        modsColumn.Controls.Add(root);
+        unified.Controls.Add(modsColumn, 0, 0);
+        unified.Controls.Add(_launcherHost, 1, 0);
+        Controls.Add(unified);
     }
 
     private void AppendSection(TableLayoutPanel list, string caption)
@@ -378,14 +410,6 @@ internal sealed partial class ModsForm
         _status.Text = "Connecting…";
         footer.Controls.Add(_status);
 
-        _pendingIndicator.Dock = DockStyle.Right;
-        _pendingIndicator.Width = 128;
-        _pendingIndicator.BackColor = Color.Black;
-        _pendingIndicator.Font = new Font("Segoe UI", 8f);
-        _pendingIndicator.TextAlign = ContentAlignment.MiddleLeft;
-        footer.Controls.Add(_pendingIndicator);
-        RefreshPendingIndicator();
-
         var right = new FlowLayoutPanel
         {
             Dock = DockStyle.Right, Width = 146,
@@ -526,6 +550,12 @@ internal sealed partial class ModsForm
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
             if (groups.Length != 1 || groups[0].Text != "VR MODS")
                 throw new InvalidDataException("VR-only build contains a non-VR groupbox.");
+            if (form.TopMost ||
+                form.Controls.OfType<TableLayoutPanel>()
+                    .Count(panel => panel.ColumnCount == 2) != 1 ||
+                form._launcherHost.Parent is not TableLayoutPanel)
+                throw new InvalidDataException(
+                    "KHARVOX must have one normal two-column window host.");
             // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
             // light-gray captions. Native DWM frame is matched separately.
             if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
