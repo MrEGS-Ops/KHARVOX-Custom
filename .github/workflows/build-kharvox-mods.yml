@@ -1,4 +1,4 @@
-name: KHARVOX Mods Standalone (Experimental)
+name: KHARVOX VR Mod Manager (Experimental)
 
 on:
   push:
@@ -28,7 +28,7 @@ jobs:
       - name: Checkout standalone integration branch
         uses: actions/checkout@v4
 
-      - name: Restore KHARVOX Mods
+      - name: Restore KHARVOX VR Mod Manager
         shell: pwsh
         run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
 
@@ -137,8 +137,8 @@ jobs:
             throw "MrEGS logo asset changed unexpectedly"
           }
           $paths = @(
-            "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe",
-            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+            "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe",
+            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
           )
           $digests = @()
           foreach ($path in $paths) {
@@ -169,7 +169,7 @@ jobs:
       - name: Test portable updater without network or live installation
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
           if (!(Test-Path $exe)) { throw "Updater executable missing" }
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Portable updater self-test failed: $($test.ExitCode)" }
@@ -177,14 +177,14 @@ jobs:
       - name: Verify four-digit updater window layout
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Compact updater window regression: $($test.ExitCode)" }
 
       - name: Verify fresh install and fail-closed attachment consent
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe"
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
           if (!(Test-Path $exe)) { throw "Standalone KHARVOX Mods executable missing" }
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Standalone app self-test failed: $($test.ExitCode)" }
@@ -192,7 +192,7 @@ jobs:
       - name: Verify original Custom Mods layout and all 22 rows
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxMods.exe"
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Legacy two-panel layout regression: $($test.ExitCode)" }
 
@@ -205,14 +205,14 @@ jobs:
         shell: pwsh
         run: |
           $inputDir = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48"
-          $destination = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
+          $destination = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
           New-Item -ItemType Directory -Force -Path $destination | Out-Null
-          Copy-Item (Join-Path $inputDir "KharvoxMods.exe") $destination
+          Copy-Item (Join-Path $inputDir "KharvoxVRModManager.exe") $destination
           Copy-Item (Join-Path $inputDir "build-info.txt") $destination
-          $updater = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
+          $updater = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
           Copy-Item $updater $destination
-          if (Test-Path (Join-Path $inputDir "KharvoxMods.exe.config")) {
-            Copy-Item (Join-Path $inputDir "KharvoxMods.exe.config") $destination
+          if (Test-Path (Join-Path $inputDir "KharvoxVRModManager.exe.config")) {
+            Copy-Item (Join-Path $inputDir "KharvoxVRModManager.exe.config") $destination
           }
           Copy-Item "docs/KHARVOX-MODS-STANDALONE.md" (Join-Path $destination "README.md")
           # The verified custom KHARVOX is ready to run on first launch.
@@ -233,33 +233,33 @@ jobs:
       - name: Package ready-to-run standalone with bundled custom KHARVOX
         shell: pwsh
         run: |
-          $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
-          $readyZip = Join-Path $PWD "dist/KHARVOX-Mods-ReadyToRun.zip"
+          $packageDir = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
+          $readyZip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip"
           Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $readyZip -CompressionLevel Optimal -Force
           $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $readyZip).Hash.ToLowerInvariant()
-          "$digest *KHARVOX-Mods-ReadyToRun.zip" |
+          "$digest *KHARVOX-VR-Mod-Manager-ReadyToRun.zip" |
             Set-Content -LiteralPath ($readyZip + ".sha256") -Encoding ascii
 
       - name: Build verified public updater release ZIP and checksum
         shell: pwsh
         run: |
-          $packageDir = Join-Path $PWD "dist/KHARVOX-Mods-Standalone"
-          $releaseZip = Join-Path $PWD "dist/KHARVOX-Mods-Standalone.zip"
-          # Preserve compatibility with the original three-file updater allowlist.
+          $packageDir = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
+          $releaseZip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone.zip"
+          # Include only managed application files and preserve portable settings.
           # The new EXE embeds the build ID and stamps build-info.txt on launch.
-          $releaseFiles = @("KharvoxMods.exe", "README.md")
-          if (Test-Path (Join-Path $packageDir "KharvoxMods.exe.config")) {
-            $releaseFiles += "KharvoxMods.exe.config"
+          $releaseFiles = @("KharvoxVRModManager.exe", "README.md")
+          if (Test-Path (Join-Path $packageDir "KharvoxVRModManager.exe.config")) {
+            $releaseFiles += "KharvoxVRModManager.exe.config"
           }
           # Updater EXE is not self-updated while running.
           $paths = @($releaseFiles | ForEach-Object { Join-Path $packageDir $_ })
           Compress-Archive -LiteralPath $paths -DestinationPath $releaseZip -CompressionLevel Optimal -Force
           $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseZip).Hash.ToLowerInvariant()
-          "$digest *KHARVOX-Mods-Standalone.zip" |
+          "$digest *KHARVOX-VR-Mod-Manager-Standalone.zip" |
             Set-Content -LiteralPath ($releaseZip + ".sha256") -Encoding ascii
           # Permanent versioned asset filenames avoid old ZIP vs new checksum
           # being served by GitHub's CDN at the same mutable download URL.
-          $versionedName = "KHARVOX-Mods-Standalone-${{ github.run_id }}.zip"
+          $versionedName = "KHARVOX-VR-Mod-Manager-Standalone-${{ github.run_id }}.zip"
           $versionedZip = Join-Path $PWD ("dist/" + $versionedName)
           Copy-Item -LiteralPath $releaseZip -Destination $versionedZip
           "$digest *$versionedName" |
@@ -271,41 +271,42 @@ jobs:
       - name: Create separately verified updater self-refresh package
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxModsUpdater.exe"
-          $zip = Join-Path $PWD "dist/KHARVOX-Mods-Updater.zip"
+          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
+          $zip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Updater.zip"
           Compress-Archive -LiteralPath $exe -DestinationPath $zip -CompressionLevel Optimal -Force
           $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash *KHARVOX-Mods-Updater.zip" |
+          "$hash *KHARVOX-VR-Mod-Manager-Updater.zip" |
             Set-Content -LiteralPath ($zip + ".sha256") -Encoding ascii
 
-      - name: Upload KHARVOX Mods standalone preview
+      - name: Upload KHARVOX VR Mod Manager preview
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-Mods-Standalone-Preview
-          path: dist/KHARVOX-Mods-Standalone
+          name: KHARVOX-VR-Mod-Manager-Preview
+          path: dist/KHARVOX-VR-Mod-Manager-Standalone
           retention-days: 14
 
       - name: Publish verified ZIP for automatic download
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kharvox-mods-standalone-preview
-          name: "KHARVOX Mods — Build #${{ github.run_id }}"
+          name: "KHARVOX VR Mod Manager — Build #${{ github.run_id }}"
           prerelease: true
           make_latest: false
           overwrite_files: true
           body: |
-            Ready-to-run KHARVOX Mods: download KHARVOX-Mods-ReadyToRun.zip for a new installation.
-            Opening KharvoxMods.exe starts a launcher with Cactus's unmodified original v1.1.1 MainForm UI. All mod controls stay in the separate KharvoxMods.exe.
-            Custom mod runtime support is separate; the original selected KHARVOX install is not overwritten.
-            The small Standalone.zip is for existing updater installations.
+            KHARVOX VR Mod Manager — An Unofficial VR Mod Manager for KHARVOX.
+            Independent mod manager by MrEGS; original KHARVOX launcher by CactusVRStudios.
+            Download KHARVOX-VR-Mod-Manager-ReadyToRun.zip, extract and run KharvoxVRModManager.exe.
+            Updates: run KharvoxVRModManagerUpdater.exe with the manager closed.
+            This release uses only the new executable names. Original KHARVOX files are not overwritten.
           files: |
-            dist/KHARVOX-Mods-ReadyToRun.zip
-            dist/KHARVOX-Mods-ReadyToRun.zip.sha256
-            dist/KHARVOX-Mods-Standalone.zip
-            dist/KHARVOX-Mods-Standalone.zip.sha256
-            dist/KHARVOX-Mods-Standalone-*.zip
-            dist/KHARVOX-Mods-Standalone-*.zip.sha256
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256
+            dist/KHARVOX-VR-Mod-Manager-Standalone.zip
+            dist/KHARVOX-VR-Mod-Manager-Standalone.zip.sha256
+            dist/KHARVOX-VR-Mod-Manager-Standalone-*.zip
+            dist/KHARVOX-VR-Mod-Manager-Standalone-*.zip.sha256
             dist/KHARVOX-Mods-NativeBridge.zip
             dist/KHARVOX-Mods-NativeBridge.zip.sha256
-            dist/KHARVOX-Mods-Updater.zip
-            dist/KHARVOX-Mods-Updater.zip.sha256
+            dist/KHARVOX-VR-Mod-Manager-Updater.zip
+            dist/KHARVOX-VR-Mod-Manager-Updater.zip.sha256
