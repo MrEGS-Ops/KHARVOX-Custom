@@ -34,7 +34,7 @@ internal static class OriginalLauncherSetup
         using (var setup = new Form
         {
             Text = "KHARVOX VR Mod Manager — Setup",
-            ClientSize = new Size(478, 207),
+            ClientSize = new Size(478, 161),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
             StartPosition = FormStartPosition.CenterScreen,
@@ -47,29 +47,31 @@ internal static class OriginalLauncherSetup
             setup.Controls.Add(new Label
             {
                 Text = "Select your original KHARVOX installation.",
-                Location = new Point(18, 17), Size = new Size(440, 26),
+                Location = new Point(18, 65), Size = new Size(440, 24),
                 Font = new Font("Segoe UI", 10f, FontStyle.Bold),
                 ForeColor = Color.WhiteSmoke
             });
             setup.Controls.Add(new Label
             {
                 Text = "An Unofficial VR Mod Manager for KHARVOX.",
-                Location = new Point(18, 52), Size = new Size(440, 19),
-                ForeColor = Color.Gainsboro
+                Location = new Point(18, 16), Size = new Size(440, 24),
+                Font = new Font("Segoe UI", 10f, FontStyle.Bold),
+                ForeColor = Color.WhiteSmoke
             });
             setup.Controls.Add(new Label
             {
                 Text = "Original by CactusVRStudios; existing files remain unchanged.",
-                Location = new Point(18, 73), Size = new Size(440, 19),
+                Location = new Point(18, 40), Size = new Size(440, 18),
                 ForeColor = Color.FromArgb(174, 174, 180)
             });
             var link = new LinkLabel
             {
                 Text = "Don't have KHARVOX? Click here",
-                Location = new Point(18, 110), Size = new Size(285, 24),
+                Location = new Point(18, 119), Size = new Size(285, 30),
                 BackColor = setup.BackColor,
                 LinkColor = Color.LightSkyBlue,
-                ActiveLinkColor = Color.White
+                ActiveLinkColor = Color.White,
+                TextAlign = ContentAlignment.MiddleLeft
             };
             link.LinkClicked += (_, _) =>
             {
@@ -88,7 +90,7 @@ internal static class OriginalLauncherSetup
             var ok = new Button
             {
                 Text = "OK", Size = new Size(100, 30),
-                Location = new Point(358, 158),
+                Location = new Point(358, 116),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(43, 43, 47),
                 ForeColor = Color.WhiteSmoke
@@ -133,6 +135,10 @@ internal static class OriginalLauncherSetup
                     }
                 }
             };
+            if (setup.ClientSize.Height > 170 || link.Top != ok.Top + 3 ||
+                link.Bottom > setup.ClientSize.Height ||
+                ok.Bottom > setup.ClientSize.Height)
+                throw new InvalidDataException("Compact first-run setup layout regressed.");
             setup.AcceptButton = ok;
             setup.Controls.Add(ok);
             // X exits the program. Do not create the main Mods window.
