@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace KharvoxMods;
@@ -34,7 +35,7 @@ internal static class OriginalLauncherSetup
         using (var setup = new Form
         {
             Text = "KHARVOX VR Mod Manager — Setup",
-            ClientSize = new Size(478, 161),
+            ClientSize = new Size(478, 188),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
             StartPosition = FormStartPosition.CenterScreen,
@@ -47,7 +48,7 @@ internal static class OriginalLauncherSetup
             setup.Controls.Add(new Label
             {
                 Text = "Select your original KHARVOX installation.",
-                Location = new Point(18, 65), Size = new Size(440, 24),
+                Location = new Point(18, 101), Size = new Size(440, 24),
                 Font = new Font("Segoe UI", 10f, FontStyle.Bold),
                 ForeColor = Color.WhiteSmoke
             });
@@ -60,14 +61,20 @@ internal static class OriginalLauncherSetup
             });
             setup.Controls.Add(new Label
             {
-                Text = "Original by CactusVRStudios; existing files remain unchanged.",
-                Location = new Point(18, 40), Size = new Size(440, 18),
+                Text = "Uses a modified launcher based on CactusVRStudios\' KHARVOX.",
+                Location = new Point(18, 42), Size = new Size(440, 19),
+                ForeColor = Color.Gainsboro
+            });
+            setup.Controls.Add(new Label
+            {
+                Text = "Your original KHARVOX installation remains unchanged.",
+                Location = new Point(18, 65), Size = new Size(440, 19),
                 ForeColor = Color.FromArgb(174, 174, 180)
             });
             var link = new LinkLabel
             {
                 Text = "Don't have KHARVOX? Click here",
-                Location = new Point(18, 119), Size = new Size(285, 30),
+                Location = new Point(18, 148), Size = new Size(285, 30),
                 BackColor = setup.BackColor,
                 LinkColor = Color.LightSkyBlue,
                 ActiveLinkColor = Color.White,
@@ -90,7 +97,7 @@ internal static class OriginalLauncherSetup
             var ok = new Button
             {
                 Text = "OK", Size = new Size(100, 30),
-                Location = new Point(358, 116),
+                Location = new Point(358, 145),
                 FlatStyle = FlatStyle.Flat,
                 BackColor = Color.FromArgb(43, 43, 47),
                 ForeColor = Color.WhiteSmoke
@@ -135,7 +142,12 @@ internal static class OriginalLauncherSetup
                     }
                 }
             };
-            if (setup.ClientSize.Height > 170 || link.Top != ok.Top + 3 ||
+            if (setup.ClientSize.Height > 190 || link.Top != ok.Top + 3 ||
+                !setup.Controls.OfType<Label>().Any(label =>
+                    label.Text.Contains("modified launcher")) ||
+                !setup.Controls.OfType<Label>().Any(label =>
+                    label.Text.StartsWith("Select your original KHARVOX") &&
+                    label.Top >= 101) ||
                 link.Bottom > setup.ClientSize.Height ||
                 ok.Bottom > setup.ClientSize.Height)
                 throw new InvalidDataException("Compact first-run setup layout regressed.");
