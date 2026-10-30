@@ -512,7 +512,7 @@ internal sealed partial class ModsForm
                 form.Controls.Descendants().OfType<Label>()
                     .Any(label => (label.Tag as string) == "mods-title" ||
                         (label.Tag as string) == "launcher-title") ||
-                !form.Text.Contains("MODIFIED KHARVOX LAUNCHER") ||
+                form.Text.IndexOf("Modified KHARVOX Launcher", StringComparison.OrdinalIgnoreCase) < 0 ||
                 form.MinimumSize.Width <= 0 ||
                 form.MaximumSize.Width < form.MinimumSize.Width ||
                 form.MinimumSize.Height <= 0 ||
