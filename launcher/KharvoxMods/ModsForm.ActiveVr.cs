@@ -12,7 +12,7 @@ namespace KharvoxMods;
 // controls presentation only; it cannot change hook execution/dependencies.
 internal sealed partial class ModsForm
 {
-    private const string GloryModTitle = "RIP & TEAR: KILLTIME";
+    private const string GloryModTitle = "KILLTIME: RIP & TEAR";
     private const string ActiveDragFormat = "KHARVOX.ActiveVRMod";
     private readonly TableLayoutPanel _vrModList = new TableLayoutPanel();
     private readonly Panel _vrModScroll = new Panel();
@@ -59,6 +59,13 @@ internal sealed partial class ModsForm
         SaveModSelections();
         QueueVrRebuild();
     }
+
+    // Defaults for a brand-new install. Existing saved category choices,
+    // including a fully expanded view, are never overridden.
+    internal static string[] DefaultCollapsedAvailableCategories() =>
+        OriginalModGroups.Select(group => "V:" + group.Title)
+            .Concat(new[] { "V:⚙  Dev — Gameplay Overrides" })
+            .ToArray();
 
     private static string[] AllDisplayMods() => OriginalModGroups
         .SelectMany(group => group.Mods).Select(mod => mod.Title)
@@ -373,7 +380,7 @@ internal sealed partial class ModsForm
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
                 "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
-            "RIP & TEAR: KILLTIME" =>
+            "KILLTIME: RIP & TEAR" =>
                 "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
             _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."
         };
@@ -558,21 +565,32 @@ internal sealed partial class ModsForm
     // not appended immediately after the checkbox caption.
     private void AddGlorySpeedRow(TableLayoutPanel list, bool active)
     {
+        // Match ordinary mod rows: number, 23px checkbox, independent title
+        // label and right-aligned icons. The active row alone also contains
+        // the inline slider and Hz. This avoids the old checkbox-caption
+        // offset that caused KILLTIME to sit differently to all other mods.
         var row = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, Height = 30,
-            ColumnCount = 6, RowCount = 1,
+            Dock = DockStyle.Fill, Height = 29,
+            ColumnCount = active ? 7 : 6, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
+        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+        if (active)
+        {
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 112));
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 50));
+        }
+        else
+            row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
+        row.RowStyles.Add(new RowStyle(SizeType.Absolute, 29));
 
         var number = new Label
         {
@@ -582,20 +600,30 @@ internal sealed partial class ModsForm
             TextAlign = ContentAlignment.MiddleLeft
         };
         var check = MakePreviewCheck(GloryModTitle,
-            "Control only Glory Kill speed (30–240 Hz).",
+            "Only Glory Kill animation speed is affected (30–240 Hz).",
             "glory-kill-speed-preview");
         check.Enabled = true;
         check.Checked = active;
-        // '&' is literal branding in RIP & TEAR, not a WinForms
-        // keyboard-access mnemonic. Preserve it in the visible checkbox.
+        check.Text = "";
         check.UseMnemonic = false;
         check.Dock = DockStyle.Fill;
         check.AutoSize = false;
-        check.AutoEllipsis = true;
-        check.TextAlign = ContentAlignment.MiddleLeft;
-        check.CheckAlign = ContentAlignment.MiddleLeft;
         check.Margin = Padding.Empty;
+        check.CheckAlign = ContentAlignment.MiddleLeft;
         check.BackColor = row.BackColor;
+
+        var title = new Label
+        {
+            Text = GloryModTitle, Tag = "vr-mod-name",
+            Dock = DockStyle.Fill, Margin = Padding.Empty,
+            BackColor = row.BackColor,
+            ForeColor = Color.FromArgb(239, 240, 244),
+            TextAlign = ContentAlignment.MiddleLeft,
+            AutoEllipsis = true, Cursor = Cursors.Hand
+        };
+        title.Click += (_, _) => check.Checked = !check.Checked;
+        _tooltips.SetToolTip(title,
+            "Adjust the speed of Glory Kill animations. Other actions are unaffected.");
 
         var slider = new TrackBar
         {
@@ -609,13 +637,15 @@ internal sealed partial class ModsForm
         };
         var speed = new Label
         {
-            // The inactive Glory Kill row also indicates runtime support.
-            // Reuse its Hz column rather than adding another widget.
             Text = active ? _modPrefs.GloryKillHz + " Hz" : "ACTIVE",
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
-            Margin = Padding.Empty, BackColor = row.BackColor,
+            Dock = DockStyle.Fill,
+            TextAlign = active ? ContentAlignment.MiddleLeft
+                               : ContentAlignment.MiddleCenter,
+            Margin = Padding.Empty,
+            BackColor = row.BackColor,
             ForeColor = active ? Color.Gainsboro : Color.FromArgb(103, 198, 157),
-            Visible = true, Tag = active ? "glory-speed-hz" : "vr-mod-status"
+            Visible = true,
+            Tag = active ? "glory-speed-hz" : "vr-mod-status"
         };
         _tooltips.SetToolTip(slider,
             "Right is faster (30 Hz); left is slower (240 Hz).");
@@ -623,10 +653,7 @@ internal sealed partial class ModsForm
         {
             _modPrefs.GloryKillSpeedOverride = check.Checked;
             slider.Visible = check.Checked;
-            speed.Visible = true;
             speed.Text = check.Checked ? _modPrefs.GloryKillHz + " Hz" : "ACTIVE";
-            speed.ForeColor = check.Checked ? Color.Gainsboro :
-                Color.FromArgb(103, 198, 157);
             OnVrSelectionChanged(GloryModTitle, check.Checked);
         };
         slider.ValueChanged += (_, _) =>
@@ -645,17 +672,25 @@ internal sealed partial class ModsForm
 
         row.Controls.Add(number, 0, 0);
         row.Controls.Add(check, 1, 0);
-        row.Controls.Add(slider, 2, 0);
-        row.Controls.Add(speed, 3, 0);
-        row.Controls.Add(info, 4, 0);
-        row.Controls.Add(grip, 5, 0);
+        row.Controls.Add(title, 2, 0);
         if (active)
+        {
+            row.Controls.Add(slider, 3, 0);
+            row.Controls.Add(speed, 4, 0);
+            row.Controls.Add(info, 5, 0);
+            row.Controls.Add(grip, 6, 0);
             AttachActiveRow(row, check, grip, GloryModTitle, "Glory Kill speed override");
+        }
         else
+        {
+            row.Controls.Add(speed, 3, 0);
+            row.Controls.Add(info, 4, 0);
+            row.Controls.Add(grip, 5, 0);
             AttachAvailableRow(row, grip, GloryModTitle);
+        }
         AttachDependencyHover(row, GloryModTitle);
         _visibleModRows[GloryModTitle] = row;
-        AppendFixedRow(list, row, 30);
+        AppendFixedRow(list, row, 29);
     }
 
     private LinkLabel MakeRowInfo(string help, string mod, string description)
@@ -925,40 +960,51 @@ internal sealed partial class ModsForm
         // Only enabled confirmed mods can appear in the Active Mods area.
         using (var form = new ModsForm())
         {
+            // Unit-test the full rows even though fresh installs start with
+            // available categories collapsed by default.
+            form._modPrefs.CollapsedCategories = Array.Empty<string>();
+            form.RenderVrRows();
             if (form.ActiveVrOrder().Any(name => !verified.Contains(name)))
                 throw new InvalidDataException("Unsupported mod in Active Mods.");
-            if (GloryModTitle != "RIP & TEAR: KILLTIME" ||
+            if (GloryModTitle != "KILLTIME: RIP & TEAR" ||
+                AllDisplayMods().Contains("RIP & TEAR: KILLTIME") ||
                 AllDisplayMods().Contains("Glory Kill Speed Override"))
                 throw new InvalidDataException("KILLTIME display rename regression.");
             if (form.ActiveVrOrder().Count(name => name == GloryModTitle) > 1)
                 throw new InvalidDataException("Glory speed appears twice.");
             var glory = form._visibleModRows[GloryModTitle];
+            if (glory is not TableLayoutPanel grid)
+                throw new InvalidDataException("KILLTIME row missing.");
             var controls = EnumerateRowControls(glory).ToArray();
             var gloryCheckbox = controls.OfType<CheckBox>().SingleOrDefault();
-            if (gloryCheckbox == null || gloryCheckbox.Text != "RIP & TEAR: KILLTIME" ||
-                gloryCheckbox.UseMnemonic)
+            var gloryTitle = controls.OfType<Label>()
+                .SingleOrDefault(label => (label.Tag as string) == "vr-mod-name");
+            if (gloryCheckbox == null || gloryCheckbox.Text != "" ||
+                gloryTitle == null || gloryTitle.Text != "KILLTIME: RIP & TEAR" ||
+                gloryCheckbox.UseMnemonic ||
+                grid.GetColumn(gloryCheckbox) != 1 || grid.GetColumn(gloryTitle) != 2)
                 throw new InvalidDataException(
-                    "KILLTIME must display a literal ampersand, not a keyboard mnemonic.");
+                    "KILLTIME must use the exact ordinary-row checkbox and text columns.");
             var info = controls.OfType<LinkLabel>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
             var grip = controls.OfType<Label>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-drag-grip");
             var slider = controls.OfType<TrackBar>().SingleOrDefault();
-            if (info == null || grip == null || slider == null ||
-                grip.Text != "" ||
-                glory is not TableLayoutPanel grid ||
-                grid.GetColumn(info) != 4 ||
-                grid.GetColumn(grip) != 5 ||
-                grid.GetColumn(slider) != 2)
+            var activeRow = (grid.Tag as string) == "active-vr-mod";
+            if (info == null || grip == null || grip.Text != "" ||
+                grid.GetColumn(info) != (activeRow ? 5 : 4) ||
+                grid.GetColumn(grip) != (activeRow ? 6 : 5) ||
+                (activeRow && (slider == null || grid.GetColumn(slider) != 3)) ||
+                (!activeRow && slider != null))
                 throw new InvalidDataException(
-                    "Glory row must center slider, info and hover grip in fixed columns.");
+                    "KILLTIME slider/info columns do not line up with ordinary rows.");
 
             // Paused rows have a readable, independent label rather than
             // Windows' near-black disabled checkbox caption.
             foreach (var pair in form._visibleModRows)
             {
                 var row = pair.Value as TableLayoutPanel;
-                if (row?.ColumnCount != 6 || pair.Key == GloryModTitle) continue;
+                if (row == null || pair.Key == GloryModTitle) continue;
                 var captions = row.Controls.OfType<Label>()
                     .Where(label => (label.Tag as string) == "vr-mod-name").ToArray();
                 if (captions.Length != 1 || captions[0].Text != pair.Key ||
@@ -1007,16 +1053,13 @@ internal sealed partial class ModsForm
                     throw new InvalidDataException(
                         "Availability status must appear only on supported lower-section mods.");
             }
-            if (glory is TableLayoutPanel gloryRow)
-            {
-                var lower = (gloryRow.Tag as string) == "available-vr-mod";
-                var gloryStatus = gloryRow.GetControlFromPosition(3, 0) as Label;
-                if (gloryStatus == null ||
-                    (lower && gloryStatus.Text != "ACTIVE") ||
-                    (!lower && gloryStatus.Text == "ACTIVE"))
-                    throw new InvalidDataException(
-                        "Glory Kill speed status must appear only in the lower section.");
-            }
+            var lower = (grid.Tag as string) == "available-vr-mod";
+            var gloryStatus = grid.GetControlFromPosition(lower ? 3 : 4, 0) as Label;
+            if (gloryStatus == null ||
+                (lower && gloryStatus.Text != "ACTIVE") ||
+                (!lower && gloryStatus.Text == "ACTIVE"))
+                throw new InvalidDataException(
+                    "KILLTIME availability indicator must appear in lower section only.");
         }
     }
 }
