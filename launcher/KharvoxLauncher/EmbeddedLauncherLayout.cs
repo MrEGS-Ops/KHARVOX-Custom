@@ -43,7 +43,7 @@ internal static class EmbeddedLauncherLayout
 
     internal static void Watch(MainForm launcher)
     {
-        var poll = new Timer { Interval = 200 };
+        var poll = new System.Windows.Forms.Timer { Interval = 200 };
         poll.Tick += (_, _) =>
         {
             if (launcher.IsDisposed || !launcher.IsHandleCreated) return;

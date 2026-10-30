@@ -934,7 +934,7 @@ internal sealed partial class ModsForm
             foreach (var pair in form._visibleModRows)
             {
                 var row = pair.Value as TableLayoutPanel;
-                if (row?.ColumnCount != 6) continue;
+                if (row?.ColumnCount != 6 || pair.Key == GloryModTitle) continue;
                 var captions = row.Controls.OfType<Label>()
                     .Where(label => (label.Tag as string) == "vr-mod-name").ToArray();
                 if (captions.Length != 1 || captions[0].Text != pair.Key ||
@@ -944,7 +944,9 @@ internal sealed partial class ModsForm
             }
 
             if (form._visibleModRows.Values.OfType<TableLayoutPanel>()
-                    .Where(row => row.ColumnCount == 6)
+                    .Where(row => row.ColumnCount == 6 &&
+                        row.Controls.OfType<Label>().Any(label =>
+                            (label.Tag as string) == "vr-mod-name"))
                     .Any(row => !row.Controls.OfType<Label>()
                         .Any(label => (label.Tag as string) == "vr-mod-status" &&
                             new[] { "PAUSED", "READY", "ACTIVE" }.Contains(label.Text))))
