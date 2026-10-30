@@ -250,6 +250,16 @@ jobs:
           $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseZip).Hash.ToLowerInvariant()
           "$digest *KHARVOX-Mods-Standalone.zip" |
             Set-Content -LiteralPath ($releaseZip + ".sha256") -Encoding ascii
+          # Permanent versioned asset filenames avoid old ZIP vs new checksum
+          # being served by GitHub's CDN at the same mutable download URL.
+          $versionedName = "KHARVOX-Mods-Standalone-${{ github.run_id }}.zip"
+          $versionedZip = Join-Path $PWD ("dist/" + $versionedName)
+          Copy-Item -LiteralPath $releaseZip -Destination $versionedZip
+          "$digest *$versionedName" |
+            Set-Content -LiteralPath ($versionedZip + ".sha256") -Encoding ascii
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $versionedZip).Hash.ToLowerInvariant() -ne $digest) {
+            throw "Immutable updater ZIP checksum changed before publishing"
+          }
 
       - name: Create separately verified updater self-refresh package
         shell: pwsh
@@ -286,6 +296,8 @@ jobs:
             dist/KHARVOX-Mods-ReadyToRun.zip.sha256
             dist/KHARVOX-Mods-Standalone.zip
             dist/KHARVOX-Mods-Standalone.zip.sha256
+            dist/KHARVOX-Mods-Standalone-*.zip
+            dist/KHARVOX-Mods-Standalone-*.zip.sha256
             dist/KHARVOX-Mods-NativeBridge.zip
             dist/KHARVOX-Mods-NativeBridge.zip.sha256
             dist/KHARVOX-Mods-Updater.zip
