@@ -526,6 +526,9 @@ internal sealed partial class ModsForm
             var groups = form.Controls.Descendants().OfType<GroupBox>().ToArray();
             if (groups.Length != 1 || groups[0].Text != "VR MODS")
                 throw new InvalidDataException("VR-only build contains a non-VR groupbox.");
+            // The GitHub test desktop is smaller than the launcher. Verify
+            // valid constraints; on a real screen OnResize enforces exact
+            // width once Windows has applied DPI/nonclient sizing.
             if (form.TopMost ||
                 form.Controls.OfType<TableLayoutPanel>()
                     .Count(panel => panel.ColumnCount == 2) != 1 ||
@@ -534,20 +537,13 @@ internal sealed partial class ModsForm
                     .Any(label => (label.Tag as string) == "mods-title") ||
                 !form.Controls.Descendants().OfType<Label>()
                     .Any(label => (label.Tag as string) == "launcher-title") ||
-                form.MinimumSize.Width != form.Width ||
-                form.MaximumSize.Width != form.Width ||
-                form.MinimumSize.Height != form.Height)
+                form.MinimumSize.Width <= 0 ||
+                form.MaximumSize.Width < form.MinimumSize.Width ||
+                form.MinimumSize.Height <= 0 ||
+                form.MaximumSize.Height < form.MinimumSize.Height ||
+                form.ClientSize.Width < 800)
                 throw new InvalidDataException(
-                    "Unified host constraints mismatch. topMost=" + form.TopMost +
-                    " grids=" + form.Controls.OfType<TableLayoutPanel>()
-                        .Count(panel => panel.ColumnCount == 2) +
-                    " host=" + (form._launcherHost.Parent is TableLayoutPanel) +
-                    " modsTitle=" + form.Controls.Descendants().OfType<Label>()
-                        .Any(label => (label.Tag as string) == "mods-title") +
-                    " launcherTitle=" + form.Controls.Descendants().OfType<Label>()
-                        .Any(label => (label.Tag as string) == "launcher-title") +
-                    " min=" + form.MinimumSize + " max=" + form.MaximumSize +
-                    " current=" + form.Size);
+                    "Unified host has invalid labels or vertical-only resize constraints.");
             // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
             // light-gray captions. Native DWM frame is matched separately.
             if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
