@@ -16,7 +16,6 @@ internal sealed partial class ModsForm
     private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
-    private readonly Label _pendingIndicator = new Label();
     private bool _savingSettings;
 
     // Readiness is still verified internally; no banner in the mod list.
@@ -68,9 +67,8 @@ internal sealed partial class ModsForm
             if (runtimeChanged)
                 _modPrefs.RuntimeRevision = Guid.NewGuid().ToString("N");
             _modPrefs.Save();
-            RefreshPendingIndicator();
             if (runtimeChanged)
-                SetStatus("Saved · applies on next DOOM launch");
+                SetStatus("Saved locally");
             else
                 SetStatus("Layout saved locally");
         }
@@ -216,54 +214,59 @@ internal sealed partial class ModsForm
 
     private void BuildLayout()
     {
-        // VR-only standalone build. DOOM resource-mod UI is retained in
-        // ArchivedDoomMods.Parked.cs but excluded from compilation.
-        var root = new TableLayoutPanel
+        var mods = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill,
-            Padding = new Padding(7),
-            BackColor = Color.Black,
-            RowCount = 3,
-            ColumnCount = 1,
+            Dock = DockStyle.Fill, Padding = new Padding(7),
+            BackColor = Color.Black, RowCount = 2, ColumnCount = 1,
             Margin = Padding.Empty
         };
-        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        mods.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        mods.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        mods.Controls.Add(BuildOriginalVrPanel(), 0, 0);
+        mods.Controls.Add(BuildOriginalFooter(), 0, 1);
 
-        root.Controls.Add(BuildOriginalVrPanel(), 0, 0);
-        // Status is on its OWN line so the centered MrEGS logo never covers it.
-        var pendingStrip = new Panel
-        {
-            Dock = DockStyle.Fill, BackColor = Color.Black,
-            Margin = Padding.Empty
-        };
-        _pendingIndicator.Dock = DockStyle.Fill;
-        _pendingIndicator.Padding = new Padding(5, 0, 0, 0);
-        _pendingIndicator.BackColor = Color.Black;
-        _pendingIndicator.Font = new Font("Segoe UI", 8f);
-        _pendingIndicator.TextAlign = ContentAlignment.MiddleLeft;
-        pendingStrip.Controls.Add(_pendingIndicator);
-        root.Controls.Add(pendingStrip, 0, 1);
-        RefreshPendingIndicator();
-        root.Controls.Add(BuildOriginalFooter(), 0, 2);
-
+        // Two independent captions inside ONE normal Windows frame.
+        // Do not draw over the native OS title bar or Cactus's own controls.
         var unified = new TableLayoutPanel
         {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2,
             BackColor = Color.Black, Margin = Padding.Empty,
             Padding = Padding.Empty
         };
         unified.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, DesiredModsWidth));
         unified.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        unified.RowStyles.Add(new RowStyle(SizeType.Absolute, 23));
+        unified.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        var modsTitle = new Label
+        {
+            Text = "KHARVOX MODS  ·  " + BuildLabel(),
+            Dock = DockStyle.Fill, BackColor = Color.FromArgb(26, 26, 29),
+            ForeColor = Color.Gainsboro,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(9, 0, 0, 0),
+            Margin = Padding.Empty, Tag = "mods-title"
+        };
+        var launcherTitle = new Label
+        {
+            Text = "MODIFIED KHARVOX LAUNCHER  ·  CactusVRStudios / MrEGS",
+            Dock = DockStyle.Fill, BackColor = Color.FromArgb(26, 26, 29),
+            ForeColor = Color.Gainsboro,
+            Font = new Font("Segoe UI", 8.5f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft,
+            Padding = new Padding(9, 0, 0, 0),
+            Margin = Padding.Empty, Tag = "launcher-title"
+        };
         var modsColumn = new Panel
         {
             Dock = DockStyle.Fill, BackColor = Color.Black,
             Margin = Padding.Empty
         };
-        modsColumn.Controls.Add(root);
-        unified.Controls.Add(modsColumn, 0, 0);
-        unified.Controls.Add(_launcherHost, 1, 0);
+        modsColumn.Controls.Add(mods);
+        unified.Controls.Add(modsTitle, 0, 0);
+        unified.Controls.Add(launcherTitle, 1, 0);
+        unified.Controls.Add(modsColumn, 0, 1);
+        unified.Controls.Add(_launcherHost, 1, 1);
         Controls.Add(unified);
     }
 
@@ -364,33 +367,6 @@ internal sealed partial class ModsForm
             }
             catch (Exception) { /* Audio must never block Twitch. */ }
         });
-    }
-
-    private void RefreshPendingIndicator()
-    {
-        if (_pendingIndicator.IsDisposed) return;
-        var revision = _modPrefs.RuntimeRevision ?? "";
-        var applied = "";
-        if (revision.Length > 0)
-        {
-            try
-            {
-                if (File.Exists(StandaloneModPreferences.AppliedReceiptPath))
-                    applied = File.ReadAllText(
-                        StandaloneModPreferences.AppliedReceiptPath).Trim();
-            }
-            catch (IOException) { }
-            catch (UnauthorizedAccessException) { }
-        }
-        var pending = revision.Length > 0 &&
-            !string.Equals(revision, applied, StringComparison.Ordinal);
-        _pendingIndicator.Text = pending ? "● Next DOOM launch" : "✓ Settings applied";
-        _pendingIndicator.ForeColor = pending
-            ? Color.FromArgb(225, 178, 87)
-            : Color.FromArgb(132, 181, 146);
-        _tooltips.SetToolTip(_pendingIndicator, pending
-            ? "Changes are saved locally. The modified launcher reads them when DOOM starts."
-            : "No new runtime changes awaiting a launch.");
     }
 
     private Control BuildOriginalFooter()
@@ -553,9 +529,16 @@ internal sealed partial class ModsForm
             if (form.TopMost ||
                 form.Controls.OfType<TableLayoutPanel>()
                     .Count(panel => panel.ColumnCount == 2) != 1 ||
-                form._launcherHost.Parent is not TableLayoutPanel)
+                form._launcherHost.Parent is not TableLayoutPanel ||
+                !form.Controls.Descendants().OfType<Label>()
+                    .Any(label => (label.Tag as string) == "mods-title") ||
+                !form.Controls.Descendants().OfType<Label>()
+                    .Any(label => (label.Tag as string) == "launcher-title") ||
+                form.MinimumSize.Width != form.Width ||
+                form.MaximumSize.Width != form.Width ||
+                form.MinimumSize.Height != form.Height)
                 throw new InvalidDataException(
-                    "KHARVOX must have one normal two-column window host.");
+                    "Unified host must be fixed-width, minimum-height and use two captions.");
             // Same KHARVOX MainForm palette: outer black, panels 30/30/33,
             // light-gray captions. Native DWM frame is matched separately.
             if (form.BackColor.ToArgb() != Color.Black.ToArgb() ||
@@ -570,7 +553,7 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
                 vr.Count(check => check.Enabled) != 4 ||
-                vr.Any(check => check.Enabled && !IsConfirmedMod(check.Text)))
+                vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
                 throw new InvalidDataException("Only four confirmed numbered mod rows may be selectable.");
             if (!form.Controls.Descendants().OfType<Label>()
                 .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
