@@ -61,7 +61,7 @@ internal sealed class UpdaterWindow : Form
 
     internal UpdaterWindow()
     {
-        Text = "KHARVOX Mods — Updater";
+        Text = "KHARVOX VR Mod Manager — Updater";
         ClientSize = new Size(476, 270);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
@@ -75,8 +75,8 @@ internal sealed class UpdaterWindow : Form
 
         Controls.Add(new Label
         {
-            Text = "KHARVOX MODS", Location = new Point(20, 14),
-            Size = new Size(225, 19), Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+            Text = "KHARVOX VR MOD MANAGER", Location = new Point(20, 14),
+            Size = new Size(330, 19), Font = new Font("Segoe UI", 9f, FontStyle.Bold)
         });
         Controls.Add(new Label
         {
@@ -105,7 +105,7 @@ internal sealed class UpdaterWindow : Form
         _status.AutoEllipsis = true;
         Controls.Add(_status);
 
-        _subheading.Text = "Only KHARVOX Mods files are updated. Your settings are kept.";
+        _subheading.Text = "Only KHARVOX VR Mod Manager files are updated. Your settings are kept.";
         _subheading.SetBounds(20, 192, 436, 19);
         _subheading.ForeColor = Muted;
         _subheading.Font = new Font("Segoe UI", 8f);
@@ -123,7 +123,7 @@ internal sealed class UpdaterWindow : Form
         _skip.Click += (_, _) => ChooseUpdate(false);
         _skip.Visible = false;
 
-        SetupButton(_launch, "Launch Mods", 318, true);
+        SetupButton(_launch, "Launch Manager", 318, true);
         _launch.Click += (_, _) => LaunchMods();
         _launch.Visible = false;
 
@@ -242,9 +242,9 @@ internal sealed class UpdaterWindow : Form
                 UpdateService.InstalledBuild);
             _progress.Visible = false;
             _status.Text = result;
-            _subheading.Text = result == "KHARVOX Mods updated successfully."
-                ? "Launch Mods to refresh the updater executable as well."
-                : "You can launch your installed Mods application.";
+            _subheading.Text = result == "KHARVOX VR Mod Manager updated successfully."
+                ? "Launch manager to refresh its updater executable."
+                : "You can launch your installed VR Mod Manager.";
             _close.Visible = true;
             _launch.Visible = File.Exists(UpdateService.AppExe);
             _rollback.Visible = UpdateService.HasPreviousBuild;
@@ -273,7 +273,7 @@ internal sealed class UpdaterWindow : Form
             return;
         }
         if (MessageBox.Show(this,
-            "Restore the last backed-up KHARVOX Mods build?\n\n" +
+            "Restore the last backed-up KHARVOX VR Mod Manager build?\n\n" +
             "Your mod settings, original KHARVOX installation and personal folders will not change.",
             "Restore previous Mods build", MessageBoxButtons.YesNo,
             MessageBoxIcon.Question, MessageBoxDefaultButton.Button2)
@@ -290,7 +290,7 @@ internal sealed class UpdaterWindow : Form
             if (IsDisposed) return;
             _installed.Text = UpdateService.ShortBuildLabel(UpdateService.InstalledBuild);
             _status.Text = "Previous build restored.";
-            _subheading.Text = "Settings preserved. Launch Mods when ready.";
+            _subheading.Text = "Settings preserved. Launch manager when ready.";
             _rollback.Visible = false;
         }
         catch (Exception error) when (error is IOException ||
@@ -314,7 +314,7 @@ internal sealed class UpdaterWindow : Form
     {
         if (!File.Exists(UpdateService.AppExe))
         {
-            _status.Text = "KHARVOX Mods isn't installed.";
+            _status.Text = "KHARVOX VR Mod Manager isn't installed.";
             return;
         }
         try

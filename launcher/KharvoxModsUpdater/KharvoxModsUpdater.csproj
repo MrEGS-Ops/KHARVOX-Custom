@@ -8,10 +8,10 @@
     <LangVersion>latest</LangVersion>
     <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>false</Prefer32Bit>
-    <AssemblyName>KharvoxModsUpdater</AssemblyName>
+    <AssemblyName>KharvoxVRModManagerUpdater</AssemblyName>
     <RootNamespace>KharvoxModsUpdater</RootNamespace>
-    <Product>KHARVOX Mods Portable Updater</Product>
-    <Title>KHARVOX Mods Updater</Title>
+    <Product>KHARVOX VR Mod Manager Updater</Product>
+    <Title>KHARVOX VR Mod Manager — Updater</Title>
     <Version>0.2.0</Version>
     <FileVersion>0.2.0.0</FileVersion>
     <ApplicationIcon>..\KharvoxMods\mregs.ico</ApplicationIcon>

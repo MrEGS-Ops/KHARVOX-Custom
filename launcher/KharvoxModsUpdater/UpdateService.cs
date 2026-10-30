@@ -21,15 +21,15 @@ internal static class UpdateService
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
     private const string AssetPrefix =
         "https://github.com/MrEGS-Ops/KHARVOX-Custom/releases/download/";
-    private const string ZipName = "KHARVOX-Mods-Standalone.zip";
-    private const string HashName = "KHARVOX-Mods-Standalone.zip.sha256";
+    private const string ZipName = "KHARVOX-VR-Mod-Manager-Standalone.zip";
+    private const string HashName = "KHARVOX-VR-Mod-Manager-Standalone.zip.sha256";
     private const long MaxZipBytes = 128L * 1024 * 1024;
     private const long MaxFileBytes = 64L * 1024 * 1024;
     private static readonly string[] ManagedFiles =
-        { "KharvoxMods.exe", "KharvoxMods.exe.config", "README.md", "build-info.txt" };
+        { "KharvoxVRModManager.exe", "KharvoxVRModManager.exe.config", "README.md", "build-info.txt" };
 
     internal static string InstallFolder => Path.GetFullPath(AppContext.BaseDirectory);
-    internal static string AppExe => Path.Combine(InstallFolder, "KharvoxMods.exe");
+    internal static string AppExe => Path.Combine(InstallFolder, "KharvoxVRModManager.exe");
 
     private sealed class ReleaseInfo
     {
@@ -66,7 +66,7 @@ internal static class UpdateService
     {
         var match = Regex.Match(build, @"^#(\d{5,20})$");
         if (!match.Success) throw new InvalidDataException("Build number is invalid.");
-        return "KHARVOX-Mods-Standalone-" + match.Groups[1].Value + ".zip";
+        return "KHARVOX-VR-Mod-Manager-Standalone-" + match.Groups[1].Value + ".zip";
     }
 
     private static string AssetDigest(ReleaseInfo release, string name)
@@ -95,7 +95,7 @@ internal static class UpdateService
     private static string ParseExpectedHash(string text)
     {
         var match = Regex.Match(text.Trim(),
-            @"\A([A-Fa-f0-9]{64})(?:\s+\*?KHARVOX-Mods-Standalone\.zip)?\s*\z");
+            @"\A([A-Fa-f0-9]{64})(?:\s+\*?KHARVOX-VR-Mod-Manager-Standalone\.zip)?\s*\z");
         if (!match.Success)
             throw new InvalidDataException("Release SHA-256 manifest is invalid.");
         return match.Groups[1].Value.ToLowerInvariant();
@@ -130,7 +130,7 @@ internal static class UpdateService
                     source.CopyTo(dest);
             }
         }
-        if (!found.Contains("KharvoxMods.exe"))
+        if (!found.Contains("KharvoxVRModManager.exe"))
             throw new InvalidDataException("Update archive does not contain the application executable.");
     }
 
@@ -138,7 +138,7 @@ internal static class UpdateService
     {
         var names = ManagedFiles.Where(name =>
             File.Exists(Path.Combine(stagedDirectory, name))).ToArray();
-        if (!names.Contains("KharvoxMods.exe"))
+        if (!names.Contains("KharvoxVRModManager.exe"))
             throw new InvalidDataException("New application executable missing.");
 
         var backup = Path.Combine(root, "Backups", "Updater", "previous");
@@ -185,7 +185,7 @@ internal static class UpdateService
 
     internal static bool HasPreviousBuild =>
         File.Exists(Path.Combine(InstallFolder, "Backups", "Updater",
-            "previous", "KharvoxMods.exe"));
+            "previous", "KharvoxVRModManager.exe"));
 
     // Offline rollback restores only managed app files from our previous
     // build snapshot. Settings, original KHARVOX and user folders are untouched.
@@ -193,9 +193,9 @@ internal static class UpdateService
     {
         if (AppIsRunning())
             throw new InvalidOperationException(
-                "Close KHARVOX Mods before restoring a previous build.");
+                "Close KHARVOX VR Mod Manager before restoring a previous build.");
         var backup = Path.Combine(root, "Backups", "Updater", "previous");
-        if (!File.Exists(Path.Combine(backup, "KharvoxMods.exe")))
+        if (!File.Exists(Path.Combine(backup, "KharvoxVRModManager.exe")))
             throw new InvalidOperationException(
                 "No backed-up Mods executable is available to restore.");
         var names = ManagedFiles.Where(name =>
@@ -242,7 +242,8 @@ internal static class UpdateService
 
     private static bool AppIsRunning()
     {
-        foreach (var process in Process.GetProcessesByName("KharvoxMods"))
+        foreach (var process in Process.GetProcessesByName("KharvoxVRModManager").Concat(
+                     Process.GetProcessesByName("KharvoxMods")))
         {
             try
             {
@@ -329,7 +330,7 @@ internal static class UpdateService
         {
             client.DefaultRequestHeaders.UserAgent.ParseAdd("KharvoxModsPortableUpdater/0.1");
             client.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
-            status("Checking latest successful KHARVOX Mods release…");
+            status("Checking latest successful KHARVOX VR Mod Manager release…");
             var json = await client.GetStringAsync(ReleaseApi);
             var release = new JavaScriptSerializer().Deserialize<ReleaseInfo>(json);
             if (release == null)
@@ -372,7 +373,7 @@ internal static class UpdateService
 
             if (AppIsRunning())
                 throw new InvalidOperationException(
-                    "Close KHARVOX Mods first, then run the updater again. The KHARVOX launcher may remain open.");
+                    "Close KHARVOX VR Mod Manager first, then run the updater again. The KHARVOX launcher may remain open.");
 
             // All working directories live beside the updater, not AppData or TEMP.
             var cache = Path.Combine(InstallFolder, "UpdateCache");
@@ -447,7 +448,7 @@ internal static class UpdateService
 
                 if (AppIsRunning())
                     throw new InvalidOperationException(
-                        "KHARVOX Mods was started during the download. Close it before updating.");
+                        "KHARVOX VR Mod Manager was started during the download. Close it before updating.");
 
                 status("Replacing application files; keeping settings and Mods folder…");
                 ReplaceManagedFiles(InstallFolder, extracted);
@@ -455,7 +456,7 @@ internal static class UpdateService
                 // Marker is only a download optimization; failure to write this
                 // should not cause damage to already-committed application files.
                 try { File.WriteAllText(marker, expected); } catch (IOException) { }
-                return "KHARVOX Mods updated successfully.";
+                return "KHARVOX VR Mod Manager updated successfully.";
             }
             finally
             {
@@ -473,7 +474,7 @@ internal static class UpdateService
         {
             if (FormatBuildNumber("40836481378") != "#40836481378" ||
                 FormatBuildNumber("") != "Unknown" ||
-                ReleaseBuildNumber("KHARVOX Mods — Build #40836481378") != "#40836481378" ||
+                ReleaseBuildNumber("KHARVOX VR Mod Manager — Build #40836481378") != "#40836481378" ||
                 ShortBuildLabel("#40836481378") != "#1378" ||
                 ShortBuildLabel("bad") != "Unknown")
                 throw new Exception("Installed/available build display parsing failed.");
@@ -481,7 +482,7 @@ internal static class UpdateService
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
             if (VersionedZipName("#41007843137") !=
-                "KHARVOX-Mods-Standalone-41007843137.zip")
+                "KHARVOX-VR-Mod-Manager-Standalone-41007843137.zip")
                 throw new Exception("Versioned updater filename regression.");
             var versionedRelease = new ReleaseInfo
             {
@@ -489,11 +490,11 @@ internal static class UpdateService
                 {
                     new ReleaseAsset
                     {
-                        name = "KHARVOX-Mods-Standalone-41007843137.zip",
+                        name = "KHARVOX-VR-Mod-Manager-Standalone-41007843137.zip",
                         size = 123,
                         digest = "sha256:" + new string('a', 64),
                         browser_download_url = AssetPrefix +
-                            "tag/KHARVOX-Mods-Standalone-41007843137.zip"
+                            "tag/KHARVOX-VR-Mod-Manager-Standalone-41007843137.zip"
                     }
                 }
             };
@@ -528,40 +529,43 @@ internal static class UpdateService
             foreach (var folder in new[] { "Mods", "Logs", "Backups" })
                 Directory.CreateDirectory(Path.Combine(root, folder));
             File.WriteAllText(Path.Combine(root, "Mods", "my-mod.txt"), "keep");
-            File.WriteAllText(Path.Combine(root, "KharvoxMods.exe"), "old-exe");
+            File.WriteAllText(Path.Combine(root, "KharvoxVRModManager.exe"), "old-exe");
+            File.WriteAllText(Path.Combine(root, "KharvoxMods.exe"), "legacy-exe");
             File.WriteAllText(Path.Combine(root, "build-info.txt"), "40811111111");
             var staged = Path.Combine(root, "staged");
             Directory.CreateDirectory(staged);
-            File.WriteAllText(Path.Combine(staged, "KharvoxMods.exe"), "new-exe");
+            File.WriteAllText(Path.Combine(staged, "KharvoxVRModManager.exe"), "new-exe");
             File.WriteAllText(Path.Combine(staged, "build-info.txt"), "40822222222");
             ReplaceManagedFiles(root, staged);
-            if (File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "new-exe" ||
+            if (File.ReadAllText(Path.Combine(root, "KharvoxVRModManager.exe")) != "new-exe" ||
                 File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
                 File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep" ||
+                File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "legacy-exe" ||
                 File.ReadAllText(Path.Combine(root, "Backups", "Updater",
-                    "previous", "KharvoxMods.exe")) != "old-exe")
+                    "previous", "KharvoxVRModManager.exe")) != "old-exe")
                 throw new Exception("Portable update overwrote application settings or mod data.");
 
             File.WriteAllText(Path.Combine(root, "updater-state.txt"), "new-release-hash");
             RestorePreviousBuild(root);
-            if (File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "old-exe" ||
+            if (File.ReadAllText(Path.Combine(root, "KharvoxVRModManager.exe")) != "old-exe" ||
                 File.ReadAllText(Path.Combine(root, "build-info.txt")) != "40811111111" ||
                 File.Exists(Path.Combine(root, "updater-state.txt")) ||
                 !Directory.GetDirectories(Path.Combine(root, "Backups", "Updater"),
                     "pre-rollback-*").Any() ||
                 File.ReadAllText(settingsPath) != "test-settings-should-stay" ||
-                File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep")
+                File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep" ||
+                File.ReadAllText(Path.Combine(root, "KharvoxMods.exe")) != "legacy-exe")
                 throw new Exception("Rollback did not preserve user files or restore build.");
 
             var archive = Path.Combine(root, "test.zip");
             using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
             {
-                var entry = zip.CreateEntry("KharvoxMods.exe");
+                var entry = zip.CreateEntry("KharvoxVRModManager.exe");
                 using (var writer = new StreamWriter(entry.Open()))
                     writer.Write("new");
             }
             ValidateAndExtract(archive, Path.Combine(root, "extracted"));
-            if (!File.Exists(Path.Combine(root, "extracted", "KharvoxMods.exe")))
+            if (!File.Exists(Path.Combine(root, "extracted", "KharvoxVRModManager.exe")))
                 throw new Exception("Verified update extraction did not work.");
             var traversal = Path.Combine(root, "traversal.zip");
             using (var zip = ZipFile.Open(traversal, ZipArchiveMode.Create))
