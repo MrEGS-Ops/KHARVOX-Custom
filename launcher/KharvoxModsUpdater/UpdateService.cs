@@ -381,33 +381,67 @@ internal static class UpdateService
             try
             {
                 var archivePath = Path.Combine(stage, ZipName);
-                status("Downloading latest application…");
-                using (var response = await client.GetAsync(zipUrl,
-                    HttpCompletionOption.ResponseHeadersRead))
+                var verified = false;
+                var actual = "";
+                for (var attempt = 0; attempt < 3; attempt++)
                 {
-                    response.EnsureSuccessStatusCode();
-                    if (response.Content.Headers.ContentLength > MaxZipBytes)
-                        throw new InvalidDataException("Release ZIP exceeds the updater safety limit.");
-                    using (var stream = await response.Content.ReadAsStreamAsync())
-                    using (var dest = new FileStream(archivePath, FileMode.CreateNew, FileAccess.Write))
+                    status(attempt == 0 ? "Downloading latest application…" :
+                        "Retrying GitHub download after SHA-256 mismatch (" +
+                        attempt.ToString() + "/2)…");
+                    if (File.Exists(archivePath)) File.Delete(archivePath);
+                    // Cache-control and changing query avoid old GitHub CDN
+                    // redirects when stable preview release assets are replaced.
+                    using (var request = new HttpRequestMessage(HttpMethod.Get,
+                        FreshDownloadUrl(zipUrl, latestBuild, attempt)))
                     {
-                        var buffer = new byte[81920];
-                        long total = 0;
-                        int count;
-                        while ((count = await stream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                        request.Headers.CacheControl =
+                            new System.Net.Http.Headers.CacheControlHeaderValue
+                            {
+                                NoCache = true, NoStore = true,
+                                MaxAge = TimeSpan.Zero
+                            };
+                        using (var response = await client.SendAsync(request,
+                            HttpCompletionOption.ResponseHeadersRead))
                         {
-                            total += count;
-                            if (total > MaxZipBytes)
-                                throw new InvalidDataException("Update ZIP exceeds the safety limit.");
-                            await dest.WriteAsync(buffer, 0, count);
+                            response.EnsureSuccessStatusCode();
+                            if (response.Content.Headers.ContentLength > MaxZipBytes)
+                                throw new InvalidDataException(
+                                    "Release ZIP exceeds the updater safety limit.");
+                            using (var stream = await response.Content.ReadAsStreamAsync())
+                            using (var dest = new FileStream(archivePath,
+                                FileMode.CreateNew, FileAccess.Write))
+                            {
+                                var buffer = new byte[81920];
+                                long total = 0;
+                                int count;
+                                while ((count = await stream.ReadAsync(
+                                    buffer, 0, buffer.Length)) > 0)
+                                {
+                                    total += count;
+                                    if (total > MaxZipBytes)
+                                        throw new InvalidDataException(
+                                            "Update ZIP exceeds the updater safety limit.");
+                                    await dest.WriteAsync(buffer, 0, count);
+                                }
+                            }
                         }
                     }
-                }
-
-                status("Checking SHA-256 and extracting files…");
-                if (!string.Equals(HashFile(archivePath), expected,
+                    actual = HashFile(archivePath);
+                    if (string.Equals(actual, expected,
                         StringComparison.OrdinalIgnoreCase))
-                    throw new InvalidDataException("Update checksum mismatch; nothing was installed.");
+                    {
+                        verified = true;
+                        break;
+                    }
+                }
+                if (!verified)
+                    throw new InvalidDataException(
+                        "Update checksum mismatch after 3 downloads; nothing " +
+                        "was installed. Expected SHA-256 " +
+                        expected.Substring(0, 12) + "…, received " +
+                        actual.Substring(0, 12) + "…. " +
+                        "The GitHub release may still be propagating.");
+                status("SHA-256 verified. Extracting application…");
                 var extracted = Path.Combine(stage, "extracted");
                 ValidateAndExtract(archivePath, extracted);
 
