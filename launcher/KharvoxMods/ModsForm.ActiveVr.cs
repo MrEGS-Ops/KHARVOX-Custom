@@ -723,7 +723,39 @@ internal sealed partial class ModsForm
         var grip = MakeRowGrip(row.BackColor);
 
         row.Controls.Add(number, 0, 0);
-        row.Controls.Add(check, 1, 0);
+        if (check.Enabled)
+            row.Controls.Add(check, 1, 0);
+        else
+        {
+            // The native WinForms disabled checkbox caption is nearly BLACK
+            // on the dark theme. Keep the checkbox disabled but paint its
+            // readable name in a separate enabled Label, without overlays.
+            var caption = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 2, RowCount = 1,
+                BackColor = row.BackColor,
+                Margin = Padding.Empty, Padding = Padding.Empty
+            };
+            caption.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 22));
+            caption.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            check.Text = "";
+            check.Dock = DockStyle.Fill;
+            caption.Controls.Add(check, 0, 0);
+            var readable = new Label
+            {
+                Text = mod.Title, Dock = DockStyle.Fill,
+                ForeColor = Color.FromArgb(172, 176, 184),
+                BackColor = row.BackColor,
+                TextAlign = ContentAlignment.MiddleLeft,
+                AutoEllipsis = true,
+                Margin = Padding.Empty
+            };
+            _tooltips.SetToolTip(readable, description + Environment.NewLine +
+                "Paused; not activatable in this build.");
+            caption.Controls.Add(readable, 1, 0);
+            row.Controls.Add(caption, 1, 0);
+        }
         row.Controls.Add(info, 2, 0);
         row.Controls.Add(grip, 3, 0);
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
