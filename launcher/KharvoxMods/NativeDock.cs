@@ -80,6 +80,52 @@ internal static class NativeDock
         catch (EntryPointNotFoundException) { return false; }
     }
 
+    // One visible top-level window. KHARVOX retains its own process/runtime
+    // while Windows hosts the modified launcher's HWND as our child panel.
+    private const int GwlStyle = -16;
+    private const long WsChild = 0x40000000L;
+    private const long WsVisible = 0x10000000L;
+    private const long WsPopup = 0x80000000L;
+    private const long WsCaption = 0x00C00000L;
+    private const long WsThickFrame = 0x00040000L;
+    private const long WsSysMenu = 0x00080000L;
+    private const long WsMinBox = 0x00020000L;
+    private const long WsMaxBox = 0x00010000L;
+    private const uint SwpFrameChanged = 0x0020;
+
+    [DllImport("user32.dll", EntryPoint = "SetParent", SetLastError = true)]
+    private static extern IntPtr SetParent(IntPtr child, IntPtr host);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetParent(IntPtr child);
+
+    internal static bool EmbedWindow(IntPtr launcher, IntPtr host, int width, int height)
+    {
+        if (launcher == IntPtr.Zero || host == IntPtr.Zero ||
+            !IsWindow(launcher) || !IsWindow(host)) return false;
+        var originalStyle = GetWindowLongPtr(launcher, GwlStyle);
+        var style = (originalStyle.ToInt64() | WsChild | WsVisible) &
+            ~(WsPopup | WsCaption | WsThickFrame | WsSysMenu |
+              WsMinBox | WsMaxBox);
+        SetWindowLongPtr(launcher, GwlStyle, new IntPtr(style));
+        SetParent(launcher, host);
+        if (GetParent(launcher) != host)
+        {
+            // Do not leave an unparented child-style launcher on the desktop.
+            SetWindowLongPtr(launcher, GwlStyle, originalStyle);
+            return false;
+        }
+        return ResizeEmbedded(launcher, width, height);
+    }
+
+    internal static bool ResizeEmbedded(IntPtr hwnd, int width, int height)
+    {
+        return hwnd != IntPtr.Zero && IsWindow(hwnd) &&
+            SetWindowPos(hwnd, IntPtr.Zero, 0, 0,
+                Math.Max(1, width), Math.Max(1, height),
+                NoZOrder | NoActivate | SwpFrameChanged);
+    }
+
     private const int DwmwaExtendedFrameBounds = 9;
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoSize = 0x0001;
