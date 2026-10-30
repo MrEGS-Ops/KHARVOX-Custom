@@ -23,23 +23,22 @@ internal sealed partial class ModsForm : Form
 
     private Process? _launcher;
     private IntPtr _launcherWindow;
-    private Rectangle _lastLauncherBounds;
-    private Rectangle _lastModsBounds;
-    private bool _syncingWindowState;
-    private bool _lastLauncherMinimized;
+    private bool _launcherEmbedded;
     private bool _bootstrapped;
-    private IntPtr _lastDockForeground;
-    private IntPtr _ownerLauncher;
-    private bool _closingDockPair;
-    private bool _centerPairOnNextAttach = true;
-    private bool _draggingModsCaption;
-    private bool _draggingLauncherCaption;
-    private bool _pairedTopmost;
+    private bool _closingHost;
+    // Keep KHARVOX running from NativeBridge but display its HWND as a
+    // real child of our single, normal desktop window.
+    private readonly Panel _launcherHost = new Panel
+    {
+        Dock = DockStyle.Fill, BackColor = Color.Black,
+        Margin = Padding.Empty
+    };
 
     // Exact frame and panel palette used by KHARVOX MainForm.
     private static readonly Color DarkPanel = Color.FromArgb(30, 30, 33);
     private static readonly Color Foreground = Color.Gainsboro;
-    private const int DesiredModsWidth = 594; // Narrow VR-only companion window
+    private const int DesiredModsWidth = 500; // Slimmer mod column in unified window
+    private const int EmbeddedLauncherWidth = 548;
 
     private static string EmbeddedBuildId()
     {
@@ -72,11 +71,11 @@ internal sealed partial class ModsForm : Form
 
     internal ModsForm()
     {
-        Text = "KHARVOX Mods — Modified VR Launcher · " + BuildLabel();
-        ClientSize = new Size(DesiredModsWidth, 600);
-        MinimumSize = new Size(565, 530);
-        FormBorderStyle = FormBorderStyle.FixedSingle;
-        MaximizeBox = false;
+        Text = "KHARVOX Mods + Modified VR Launcher (CactusVRStudios / MrEGS) · " + BuildLabel();
+        ClientSize = new Size(DesiredModsWidth + EmbeddedLauncherWidth, 904);
+        MinimumSize = new Size(940, 670);
+        FormBorderStyle = FormBorderStyle.Sizable;
+        MaximizeBox = true;
         StartPosition = FormStartPosition.CenterScreen;
         BackColor = Color.Black;
         ForeColor = Color.WhiteSmoke;
@@ -85,54 +84,38 @@ internal sealed partial class ModsForm : Form
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
-        _dockTimer.Tick += (_, _) => SyncDock();
+        TopMost = false;
+        _dockTimer.Tick += (_, _) => SyncEmbeddedLauncher();
+        _launcherHost.SizeChanged += (_, _) => ResizeEmbeddedLauncher();
         Shown += async (_, _) =>
         {
             if (_bootstrapped) return;
             _bootstrapped = true;
             await StartUpAsync();
         };
-        FormClosing += (_, _) => CloseDockCompanion();
+        FormClosing += (_, _) => CloseEmbeddedLauncher();
         FormClosed += (_, _) =>
         {
-            if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
-                NativeDock.SetOwner(Handle, IntPtr.Zero);
-            if (_launcherWindow != IntPtr.Zero)
-                NativeDock.SetPairedTopmost(_launcherWindow, false);
             _dockTimer.Stop();
             _dockTimer.Dispose();
-            _launcher?.Dispose(); // Never terminate the independent KHARVOX process.
+            _launcher?.Dispose();
         };
-        SizeChanged += (_, _) => SyncMinimizeFromMods();
-        // Do not raise the companion on activation: owned popups and
-        // cross-process z-order changes caused floating-over-launcher bugs.
-        UpdateAttachmentButton();
     }
 
-    private void CloseDockCompanion()
+    private void CloseEmbeddedLauncher()
     {
-        if (_closingDockPair) return;
-        _closingDockPair = true;
+        if (_closingHost) return;
+        _closingHost = true;
         _dockTimer.Stop();
-
-        // Only close the KHARVOX window we paired with. Don't touch DOOM or
-        // any unrelated KHARVOX process, and never use Process.Kill().
-        if (!_state.WindowAttachmentApproved || _launcher == null) return;
+        // Close only our modified launcher. DOOM and stock KHARVOX stay alone.
         try
         {
-            if (_launcher.HasExited) return;
-            _launcher.Refresh();
-            var handle = _launcher.MainWindowHandle;
-            if (handle == IntPtr.Zero || !NativeDock.IsWindow(handle))
-                handle = _launcherWindow;
-            if (handle != IntPtr.Zero)
-                NativeDock.RequestClose(handle, _launcher.Id);
+            if (_launcher != null && !_launcher.HasExited &&
+                NativeDock.IsWindow(_launcherWindow))
+                NativeDock.RequestClose(_launcherWindow, _launcher.Id);
         }
-        catch (Exception error) when (error is InvalidOperationException ||
-            error is System.ComponentModel.Win32Exception)
-        {
-            // The original window may have already closed. Nothing to kill.
-        }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
     }
 
     // KHARVOX MainForm.CustomModsDocking.cs uses these SAME DWM
@@ -214,28 +197,17 @@ internal sealed partial class ModsForm : Form
             }
             _state.KharvoxLauncherPath = Path.GetFullPath(dialog.FileName);
             _state.Save();
-            _dockTimer.Stop();
-            _launcher?.Dispose();
-            _launcher = null;
-            if (_ownerLauncher != IntPtr.Zero && IsHandleCreated)
-                NativeDock.SetOwner(Handle, IntPtr.Zero);
-            _ownerLauncher = IntPtr.Zero;
-            _launcherWindow = IntPtr.Zero;
-            _lastDockForeground = IntPtr.Zero;
-            _lastLauncherBounds = Rectangle.Empty;
-            _lastModsBounds = Rectangle.Empty;
-            _pairedTopmost = false;
-            _centerPairOnNextAttach = true;
+            // Original installation location is a reference only.
             return true;
         }
     }
 
     private async System.Threading.Tasks.Task StartUpAsync()
     {
-        // Docking is automatic; no attach prompt, bridge install or restart.
+        // First-run selection finished before the combined window was created.
         _state.ConsentRecorded = true;
         _state.WindowAttachmentApproved = true;
-        UpdateAttachmentButton();
+        // No docking or attachment controls in the unified window.
 
         try
         {
@@ -295,11 +267,8 @@ internal sealed partial class ModsForm : Form
             // Always run OUR bridge-enabled launcher, not the selected original.
             _launcher = LauncherDiscovery.StartOrFind(NativeBridgeInstaller.TargetLauncher);
             _launcherWindow = IntPtr.Zero;
-            _lastDockForeground = IntPtr.Zero;
-            _lastLauncherBounds = Rectangle.Empty;
-            _lastModsBounds = Rectangle.Empty;
-            _centerPairOnNextAttach = true;
-            SetStatus("Custom KHARVOX started — linking windows…");
+            _launcherEmbedded = false;
+            SetStatus("Modified KHARVOX started — loading launcher panel…");
             _dockTimer.Start();
         }
         catch (Exception error)
@@ -317,216 +286,64 @@ internal sealed partial class ModsForm : Form
         }
     }
 
-    private void ToggleAttachment()
+    private void ResizeEmbeddedLauncher()
     {
-        if (_state.WindowAttachmentApproved)
-        {
-            _state.WindowAttachmentApproved = false;
-        }
-        else
-        {
-            var confirmed = MessageBox.Show(this,
-                "Dock KHARVOX Mods beside KHARVOX?",
-                "Attach to KHARVOX", MessageBoxButtons.YesNo,
-                MessageBoxIcon.Question) == DialogResult.Yes;
-            if (!confirmed) return;
-            _state.WindowAttachmentApproved = true;
-        }
-        _state.ConsentRecorded = true;
-        _state.Save();
-        if (!_state.WindowAttachmentApproved && _ownerLauncher != IntPtr.Zero)
-        {
-            NativeDock.SetOwner(Handle, IntPtr.Zero);
-            _ownerLauncher = IntPtr.Zero;
-        }
-        _lastLauncherBounds = Rectangle.Empty;
-        _lastModsBounds = Rectangle.Empty;
-        _lastDockForeground = IntPtr.Zero;
-        UpdateAttachmentButton();
-    }
-
-    private void UpdateAttachmentButton()
-    {
-        _attachButton.Text = _state.WindowAttachmentApproved ? "Detach Window" : "Attach Window";
-    }
-
-    private void SyncMinimizeFromMods()
-    {
-        if (_syncingWindowState || !_state.WindowAttachmentApproved ||
-            _launcherWindow == IntPtr.Zero || !NativeDock.IsWindow(_launcherWindow)) return;
-        if (WindowState != FormWindowState.Minimized && WindowState != FormWindowState.Normal)
+        if (!_launcherEmbedded || _launcherWindow == IntPtr.Zero ||
+            !NativeDock.IsWindow(_launcherWindow) || !_launcherHost.IsHandleCreated)
             return;
-        if (WindowState == FormWindowState.Minimized && !NativeDock.IsIconic(_launcherWindow))
-            NativeDock.ShowWindow(_launcherWindow, NativeDock.Minimize);
-        if (WindowState == FormWindowState.Normal && NativeDock.IsIconic(_launcherWindow))
-            NativeDock.ShowWindow(_launcherWindow, NativeDock.Restore);
+        NativeDock.ResizeEmbedded(_launcherWindow,
+            _launcherHost.ClientSize.Width, _launcherHost.ClientSize.Height);
     }
 
-    private void MatchLauncherWindowFrame(IntPtr launcher)
+    private void SyncEmbeddedLauncher()
     {
-        if (launcher == IntPtr.Zero || !NativeDock.IsWindow(launcher)) return;
-        try
-        {
-            var dark = 1;
-            if (DwmSetWindowAttribute(launcher, 20, ref dark, sizeof(int)) != 0)
-                DwmSetWindowAttribute(launcher, 19, ref dark, sizeof(int));
-            var border = 0x0038383B;
-            DwmSetWindowAttribute(launcher, 34, ref border, sizeof(int));
-        }
-        catch (DllNotFoundException) { }
-        catch (EntryPointNotFoundException) { }
-    }
-
-    private void SyncDock()
-    {
-        if (_launcher == null) return;
+        if (_launcher == null || _closingHost) return;
         try
         {
             if (_launcher.HasExited)
             {
-                _dockTimer.Stop();
                 _launcherWindow = IntPtr.Zero;
-                _lastDockForeground = IntPtr.Zero;
-                if (_state.WindowAttachmentApproved && !_closingDockPair)
-                {
-                    // The linked KHARVOX window exited (for example its X).
-                    // Close this sidecar too, but don't terminate DOOM.
-                    Close();
-                }
-                else
-                {
-                    SetStatus("KHARVOX closed. Use Start KHARVOX to reopen it.");
-                }
+                _launcherEmbedded = false;
+                _dockTimer.Stop();
+                SetStatus("Launcher closed · reopen from Connection menu.");
+                return;
+            }
+            // A child HWND disappears from Process.MainWindowHandle enumeration.
+            // Keep the handle we captured while KHARVOX was still top-level.
+            if (_launcherEmbedded && NativeDock.IsWindow(_launcherWindow))
+            {
+                RefreshPendingIndicator();
                 return;
             }
             _launcher.Refresh();
-            var handle = _launcher.MainWindowHandle;
-            if (handle == IntPtr.Zero || !NativeDock.IsWindow(handle))
+            var hwnd = _launcher.MainWindowHandle;
+            if (hwnd == IntPtr.Zero || !NativeDock.IsWindow(hwnd))
             {
-                SetStatus("Waiting for KHARVOX desktop launcher…");
+                SetStatus("Waiting for modified KHARVOX launcher…");
                 return;
             }
-            if (_launcherWindow != handle)
+            if (!NativeDock.EmbedWindow(hwnd, _launcherHost.Handle,
+                _launcherHost.ClientSize.Width, _launcherHost.ClientSize.Height))
             {
-                _launcherWindow = handle;
-                _lastDockForeground = IntPtr.Zero;
-                _lastLauncherBounds = Rectangle.Empty;
-                _lastModsBounds = Rectangle.Empty;
-                _pairedTopmost = false;
-                MatchLauncherWindowFrame(handle);
-            }
-            if (!_state.WindowAttachmentApproved)
-            {
-                if (_ownerLauncher != IntPtr.Zero)
-                {
-                    NativeDock.SetOwner(Handle, IntPtr.Zero);
-                    _ownerLauncher = IntPtr.Zero;
-                }
-                _lastDockForeground = IntPtr.Zero;
-                if (_pairedTopmost)
-                {
-                    NativeDock.SetPairedTopmost(handle, false);
-                    TopMost = false;
-                    _pairedTopmost = false;
-                }
-                SetStatus("KHARVOX running independently — docking disabled.");
+                _dockTimer.Stop();
+                SetStatus("Modified KHARVOX could not be embedded.");
+                MessageBox.Show(this,
+                    "Windows could not embed the modified KHARVOX launcher. " +
+                    "Check DPI compatibility or retry from Connection.",
+                    "KHARVOX combined launcher", MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
                 return;
             }
-            // Keep the linked windows on top without cross-process HWND
-            // ownership, forced focus, or hover-driven window raising.
-            if (!_pairedTopmost && IsHandleCreated)
-            {
-                TopMost = true;
-                _pairedTopmost = NativeDock.SetPairedTopmost(handle, true);
-            }
-            if (NativeDock.IsIconic(handle))
-            {
-                _lastLauncherMinimized = true;
-                if (WindowState != FormWindowState.Minimized)
-                {
-                    _syncingWindowState = true;
-                    try { WindowState = FormWindowState.Minimized; }
-                    finally { _syncingWindowState = false; }
-                }
-                return;
-            }
-            if (_lastLauncherMinimized && WindowState == FormWindowState.Minimized)
-            {
-                _syncingWindowState = true;
-                try { WindowState = FormWindowState.Normal; }
-                finally { _syncingWindowState = false; }
-            }
-            _lastLauncherMinimized = false;
-            if (WindowState == FormWindowState.Minimized) return;
-
-            var launcherRect = NativeDock.Bounds(handle);
-            if (!launcherRect.HasValue) return;
-            // Caption-drag intent is latched only while the mouse button is
-            // down. Hovering, focusing a field, or opening a dropdown must
-            // never move either desktop window.
-            if (!NativeDock.LeftMousePressed())
-            {
-                _draggingModsCaption = false;
-                _draggingLauncherCaption = false;
-            }
-            else
-            {
-                if (NativeDock.MouseOnCaption(Handle)) _draggingModsCaption = true;
-                if (NativeDock.MouseOnCaption(handle)) _draggingLauncherCaption = true;
-            }
-            var modsMoved = _lastModsBounds != Rectangle.Empty &&
-                Bounds.Location != _lastModsBounds.Location;
-            var launcherMoved = _lastLauncherBounds != Rectangle.Empty &&
-                launcherRect.Value.Location != _lastLauncherBounds.Location;
-            var workArea = Screen.FromRectangle(launcherRect.Value).WorkingArea;
-            var seam = NativeDock.VisibleSeamOverlap(Handle, handle);
-
-            // Start a fresh two-window pair in the center of the screen.
-            // Initial direct custom-launcher startup only. Never recenter the
-            // windows during normal dragging.
-            if (_centerPairOnNextAttach)
-            {
-                var target = NativeDock.CalculateCentered(launcherRect.Value,
-                    Screen.FromControl(this).WorkingArea, DesiredModsWidth, seam);
-                if (launcherRect.Value != target.Launcher &&
-                    !NativeDock.Move(handle, target.Launcher))
-                {
-                    SetStatus("Couldn't center KHARVOX launcher; retrying…");
-                    return;
-                }
-                if (Bounds != target.Mods) Bounds = target.Mods;
-                _centerPairOnNextAttach = false;
-            }
-            // Dragging VRMods moves our custom KHARVOX launcher.
-            else if (_draggingModsCaption && modsMoved && !launcherMoved)
-            {
-                var desired = new Rectangle(Right - seam, Top,
-                    launcherRect.Value.Width, Height);
-                var arranged = NativeDock.Calculate(desired, workArea, Width, seam);
-                NativeDock.Move(handle, arranged.Launcher);
-                if (Bounds != arranged.Mods) Bounds = arranged.Mods;
-            }
-            else if (_draggingLauncherCaption && launcherMoved)
-            {
-                var arranged = NativeDock.Calculate(launcherRect.Value, workArea,
-                    DesiredModsWidth, seam);
-                if (launcherRect.Value != arranged.Launcher)
-                    NativeDock.Move(handle, arranged.Launcher);
-                if (Bounds != arranged.Mods) Bounds = arranged.Mods;
-            }
-
-            // Keep the original Mods Folder's custom viewer docked to the
-            // pair; dragging it can also move both main windows together.
-            var actualLauncher = NativeDock.Bounds(handle);
-            if (actualLauncher.HasValue) _lastLauncherBounds = actualLauncher.Value;
-            _lastModsBounds = Bounds;
-            SetStatus("Connected · settings saved locally.");
+            _launcherWindow = hwnd;
+            _launcherEmbedded = true;
+            TopMost = false;
+            SetStatus("Connected · KHARVOX embedded.");
             RefreshPendingIndicator();
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
         {
-            SetStatus("KHARVOX window unavailable; no patches were made.");
+            SetStatus("Modified KHARVOX unavailable.");
         }
     }
 }
