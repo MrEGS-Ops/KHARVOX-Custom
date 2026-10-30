@@ -26,6 +26,9 @@ internal sealed partial class ModsForm : Form
     private bool _launcherEmbedded;
     private bool _bootstrapped;
     private bool _closingHost;
+    private int _fixedDesktopWidth;
+    private int _minimumDesktopHeight;
+    private bool _resizingToLimits;
     // Keep KHARVOX running from NativeBridge but display its HWND as a
     // real child of our single, normal desktop window.
     private readonly Panel _launcherHost = new Panel
@@ -113,13 +116,39 @@ internal sealed partial class ModsForm : Form
 
     private void LockHorizontalSize()
     {
-        var baseline = Size;
-        var maximumHeight = Math.Max(baseline.Height,
-            SystemInformation.MaxWindowTrackSize.Height);
-        // Apply maximum first. Otherwise WinForms may reduce the minimum
-        // when it sees the old maximum from a previous DPI configuration.
-        MaximumSize = new Size(baseline.Width, maximumHeight);
-        MinimumSize = baseline;
+        if (_resizingToLimits) return;
+        _resizingToLimits = true;
+        try
+        {
+            var baseline = Size;
+            _fixedDesktopWidth = baseline.Width;
+            _minimumDesktopHeight = baseline.Height;
+            // A zero MaximumSize height collapses a WinForms window. Use
+            // Windows' actual maximum tracking height instead.
+            var allowedHeight = Math.Max(baseline.Height,
+                SystemInformation.MaxWindowTrackSize.Height);
+            MaximumSize = new Size(_fixedDesktopWidth, allowedHeight);
+            MinimumSize = new Size(_fixedDesktopWidth, _minimumDesktopHeight);
+        }
+        finally { _resizingToLimits = false; }
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (_resizingToLimits || _fixedDesktopWidth <= 0 ||
+            !Visible || WindowState != FormWindowState.Normal ||
+            (Width == _fixedDesktopWidth && Height >= _minimumDesktopHeight))
+            return;
+        _resizingToLimits = true;
+        try
+        {
+            // On-screen resize can move by a Windows nonclient/DPI offset.
+            // Always restore the desired width, never limit upward height.
+            Size = new Size(_fixedDesktopWidth,
+                Math.Max(_minimumDesktopHeight, Height));
+        }
+        finally { _resizingToLimits = false; }
     }
 
     private void CloseEmbeddedLauncher()
