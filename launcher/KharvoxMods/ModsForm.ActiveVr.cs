@@ -974,9 +974,10 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException(
                     "Standard row must hide info and drag glyphs until hover.");
             // Only checked, verified mods display the ACTIVE indicator.
-            foreach (var (modTitle, modRow) in form._visibleModRows)
+            foreach (var entry in form._visibleModRows)
             {
-                var ordinaryRow = modRow as TableLayoutPanel;
+                var modTitle = entry.Key;
+                var ordinaryRow = entry.Value as TableLayoutPanel;
                 if (ordinaryRow?.ColumnCount != 6 ||
                     modTitle == GloryModTitle) continue;
                 var indicator = ordinaryRow.Controls.OfType<Label>()
