@@ -574,7 +574,8 @@ public sealed partial class MainForm
             if (main.PausedCustomModControls().Any(mod => mod.Enabled || mod.Checked)
                 || main.modOrderRows.Any(row=>row.Box.FlatStyle!=FlatStyle.Flat)
                 || !main.weaponWheelRemap.Enabled || !main.customHandFocusedRs.Enabled
-                || !main.customBehindHeadWeaponWheel.Enabled || !main.customPhysicalCrouch.Enabled
+                || !main.customBehindHeadWeaponWheel.Enabled || !main.customDynamicShoulderHolster.Enabled
+                || !main.customPhysicalCrouch.Enabled
                 || !main.customTriggerChainsawThrottle.Enabled
                 || main.cinematicSpeedSelector.Parent is not null)
                 throw new InvalidDataException("Paused features must be grey while active features remain selectable.");
@@ -1146,10 +1147,11 @@ public sealed partial class MainForm
             main.customDynamicShoulderHolster.Checked = true;
             main.applyingCustomModDependencies = false;
             main.ApplyCustomModDependencies(null);
-            if (!main.showHands.Enabled || main.showHands.Checked
-                || main.customDynamicShoulderHolster.Checked || main.customDynamicShoulderHolster.Enabled)
+            if (main.showHands.Enabled || !main.showHands.Checked
+                || !main.customDynamicShoulderHolster.Checked || !main.customDynamicShoulderHolster.Enabled
+                || !main.ReadCustomModSettingsFromControls().DynamicShoulderHolster)
                 throw new InvalidDataException(
-                    "Paused Quick Holsters must not force Enable Hands.");
+                    "Restored Quick Holsters must be selectable, saved, and lock Enable Hands ON.");
             main.applyingCustomModDependencies = true;
             main.customDynamicShoulderHolster.Checked = false;
             main.calibrateHands.Checked = true;
