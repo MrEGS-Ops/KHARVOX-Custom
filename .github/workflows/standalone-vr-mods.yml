@@ -1,0 +1,41 @@
+name: Standalone VR Mods (external, no launcher rebuild)
+on:
+  push:
+    branches:
+      - work/standalone-gesture-wheel-quick-holsters
+    paths:
+      - 'standalone-mods/**'
+      - '.github/workflows/standalone-vr-mods.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  modules:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+      - name: Configure standalone mod DLLs only
+        run: cmake -S standalone-mods -B standalone-mods/build -A x64
+      - name: Build DLLs separately from KHARVOX
+        run: cmake --build standalone-mods/build --config Release --parallel
+      - name: Run independent DLL load and gameplay-policy tests
+        run: ctest --test-dir standalone-mods/build -C Release --output-on-failure
+      - name: Collect only standalone mod modules
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $folder = "standalone-mods/build/mods/vr/Release"
+          if (!(Test-Path $folder)) { $folder = "standalone-mods/build/mods/vr" }
+          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_behind_head_wheel.dll") -Destination dist
+          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_quick_holsters.dll") -Destination dist
+          Copy-Item -LiteralPath "standalone-mods/README.md" -Destination dist
+      - name: Publish experimental independent mod DLLs
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-EXTERNAL-VR-MODS-EXPERIMENTAL
+          path: dist/*
+          if-no-files-found: error
