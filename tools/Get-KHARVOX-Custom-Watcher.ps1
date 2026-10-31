@@ -1,6 +1,6 @@
 param(
     [string]$Repository = "MrEGS-Ops/KHARVOX-Custom",
-    [string]$Branch = "clean/custom-core",
+    [string]$Branch = "work/oct18-live-motion-chainsaw-hz",
     [string]$InstallRoot = "",
     [int]$PollSeconds = 300,
     [switch]$NoLaunch,
