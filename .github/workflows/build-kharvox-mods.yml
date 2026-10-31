@@ -102,11 +102,11 @@ jobs:
           $base = Join-Path $PWD "dist/native-base"
           New-Item -ItemType Directory -Force -Path $base | Out-Null
           # Pin the native runtime to the last verified working native build.
-          gh run download 41180127457 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
+          gh run download 41182124741 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
           if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
           $manifest = Join-Path $base "PATCH-BUILD.txt"
           if (!(Test-Path $manifest) -or
-              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=939293c8d727eb38fd6f39f887635b10e171f937")) {
+              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=1b3a512096d6e36040ef47cd927867752f541cab")) {
             throw "Downloaded native build does not match the approved working commit"
           }
           if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
@@ -118,7 +118,7 @@ jobs:
           }
           @(
             "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=939293c8d727eb38fd6f39f887635b10e171f937"
+            "baseNativeCommit=1b3a512096d6e36040ef47cd927867752f541cab"
             "bridgeLauncherCommit=${{ github.sha }}"
             "managerBuild=${{ github.run_id }}"
             "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"

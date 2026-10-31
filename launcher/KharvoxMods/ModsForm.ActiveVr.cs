@@ -377,7 +377,7 @@ internal sealed partial class ModsForm
             "Hand Focus" =>
                 "In DOOM: activate with right-stick click, then aim or select with your hand.",
             "Behind-the-Head Weapon Wheel" =>
-                "In DOOM: open the wheel by reaching behind your head. Move your weapon hand to highlight, regardless of Weapon Wheel Remap. Leave while holding Grip to confirm; leave open-handed to cancel and retain your previous weapon.",
+                "In DOOM: reach behind the LEFT side to open the left wheel and select with the left controller; reach behind the RIGHT to open the right wheel and select with the right controller. Leave with Grip held to equip. Without Grip, the wheel points back to the previously equipped weapon before closing, avoiding the post-close switch-back.",
             "Dynamic Quick Holsters" =>
                 "In DOOM: in an EMPTY hip zone, press Grip and release Grip inside to assign the equipped gun. In an ASSIGNED hip zone, pressing Grip immediately equips that gun; no exit required. To REPLACE an assigned gun, enter holding Grip then release inside. Each side retains its hotkey. No weapon hiding or relocation.",
             "Physical Crouch" =>
