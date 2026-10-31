@@ -1000,6 +1000,37 @@ internal sealed partial class ModsForm
             if (dependencyTest.CanEnableMod("Weapon Wheel Button Remap", out _))
                 throw new InvalidDataException("Standalone remap can override Gunslinger.");
         }
+        // Exercise the conflict state on a separate form, so the ordinary
+        // row-layout checks below never refer to disposed/rebuilt controls.
+        using (var conflictForm = new ModsForm())
+        {
+            conflictForm._modPrefs.CollapsedCategories = Array.Empty<string>();
+            // Gunslinger greys out the standalone remap without switching
+            // to it. The row remains present with its conflict explanation.
+            conflictForm._modPrefs.Gunslinger = true;
+            conflictForm._modPrefs.WeaponWheelRemap = false;
+            conflictForm.RenderVrRows();
+            var remapRow = conflictForm._visibleModRows["Weapon Wheel Button Remap"];
+            var remapCheckbox = EnumerateRowControls(remapRow)
+                .OfType<CheckBox>().Single();
+            var remapStatus = EnumerateRowControls(remapRow)
+                .OfType<Label>().Single(x =>
+                    (x.Tag as string) == "vr-mod-status");
+            if (remapCheckbox.Enabled || remapCheckbox.Checked ||
+                remapStatus.Text != "CONFLICT" ||
+                !DependenciesFor("Weapon Wheel Button Remap").Any(x =>
+                    x.StartsWith("Conflicts with:")))
+                throw new InvalidDataException(
+                    "Gunslinger did not grey out the conflicting standalone remap.");
+            conflictForm._modPrefs.Gunslinger = false;
+            conflictForm.RenderVrRows();
+            remapCheckbox = EnumerateRowControls(
+                conflictForm._visibleModRows["Weapon Wheel Button Remap"])
+                .OfType<CheckBox>().Single();
+            if (!remapCheckbox.Enabled)
+                throw new InvalidDataException(
+                    "Standalone remap did not unlock when Gunslinger was disabled.");
+        }
         // Only enabled confirmed mods can appear in the Active Mods area.
         using (var form = new ModsForm())
         {
@@ -1042,31 +1073,6 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException(
                     "KILLTIME slider/info columns do not line up with ordinary rows.");
 
-            // Gunslinger greys out the standalone remap without switching
-            // to it. The row remains present with its conflict explanation.
-            form._modPrefs.Gunslinger = true;
-            form._modPrefs.WeaponWheelRemap = false;
-            form.RenderVrRows();
-            var remapRow = form._visibleModRows["Weapon Wheel Button Remap"];
-            var remapCheckbox = EnumerateRowControls(remapRow)
-                .OfType<CheckBox>().Single();
-            var remapStatus = EnumerateRowControls(remapRow)
-                .OfType<Label>().Single(x =>
-                    (x.Tag as string) == "vr-mod-status");
-            if (remapCheckbox.Enabled || remapCheckbox.Checked ||
-                remapStatus.Text != "CONFLICT" ||
-                !DependenciesFor("Weapon Wheel Button Remap").Any(x =>
-                    x.StartsWith("Conflicts with:")))
-                throw new InvalidDataException(
-                    "Gunslinger did not grey out the conflicting standalone remap.");
-            form._modPrefs.Gunslinger = false;
-            form.RenderVrRows();
-            remapCheckbox = EnumerateRowControls(
-                form._visibleModRows["Weapon Wheel Button Remap"])
-                .OfType<CheckBox>().Single();
-            if (!remapCheckbox.Enabled)
-                throw new InvalidDataException(
-                    "Standalone remap did not unlock when Gunslinger was disabled.");
             // Paused rows have a readable, independent label rather than
             // Windows' near-black disabled checkbox caption.
             foreach (var pair in form._visibleModRows)
