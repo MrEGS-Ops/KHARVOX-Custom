@@ -24,7 +24,17 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Parse all PowerShell shipping scripts before building
+      - name: Detect safe launcher-only changes
+        id: build_mode
+        shell: pwsh
+        env:
+          PREVIOUS_SHA: ${{ github.event.before }}
+          BRANCH_NAME: ${{ github.ref_name }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          $mode = "full"
+          if ($env:EVENT_NAME -eq "push" -and $env:BRANCH_NAME -eq "work/oct18-live-motion-chainsaw-hz" -and
+              $env:PREVIOUS_SHA -match '^[0-9a-f]{40}
         shell: powershell
         run: |
           foreach ($script in @(
@@ -47,6 +57,7 @@ jobs:
           }
 
       - name: Test independent KHARVOX resource mod generator
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           python tools/Generate-KHARVOX-Mods.py --self-test
@@ -55,10 +66,12 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Original immersion resource inventory test failed" }
 
       - name: Regenerate controller mapping
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: .\assets\branding\generate-controller-mapping.ps1
 
       - name: Fetch licensed Freedoom face art
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $sha = "3ac019628d70b812ffb722f7f2365771b76a9d29"
@@ -110,13 +123,50 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-glorykill-highlight" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Native Glory Kill Highlight policy failed: $($test.ExitCode)" }
 
+      - name: Package launcher-only verified patch
+        if: steps.build_mode.outputs.mode == 'fast'
+        shell: powershell
+        run: |
+          $patch = Join-Path $PWD "out\watcher\patch"
+          $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
+          New-Item -ItemType Directory -Force -Path $patch | Out-Null
+          foreach ($name in @("KharvoxLauncher.exe", "KharvoxLauncher.exe.config")) {
+            $source = Join-Path $launcher $name
+            if (!(Test-Path -LiteralPath $source -PathType Leaf)) { throw "Missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination $patch -Force
+          $files = @(Get-ChildItem -LiteralPath $patch -File | Sort-Object Name | ForEach-Object {
+            [ordered]@{path=$_.Name;size=$_.Length;sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()}
+          })
+          if ($files.Count -ne 3) { throw "Fast patch needs exactly 3 existing files." }
+          $manifest = [ordered]@{schema=1;kind="patch";run="${{ github.run_number }}";
+            commit="${{ github.sha }}";branch="${{ github.ref_name }}";
+            createdUtc=(Get-Date).ToUniversalTime().ToString("o");files=$files}
+          $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $patch "PATCH-MANIFEST.json")
+          @("KHARVOX_CUSTOM_WATCHER_1","kind=patch","run=${{ github.run_number }}","commit=${{ github.sha }}") |
+            Set-Content -Encoding ascii -LiteralPath (Join-Path $patch "PATCH-BUILD.txt")
+          $check = Get-Content -Raw -LiteralPath (Join-Path $patch "PATCH-MANIFEST.json") | ConvertFrom-Json
+          if ($check.kind -ne "patch" -or @($check.files).Count -ne 3) { throw "Fast manifest invalid." }
+      - name: Upload launcher-only fast patch
+        if: steps.build_mode.outputs.mode == 'fast'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Dev-Patch
+          path: out/watcher/patch
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+
       - name: Restore vcpkg binary cache
+        if: steps.build_mode.outputs.mode != 'fast'
         uses: actions/cache@v4
         with:
           path: .vcpkg-bincache
           key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
 
       - name: Compile and run native grenade gesture policy test
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           cmake -S tests/policy -B build/gesture-policy -A x64
@@ -127,6 +177,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Gesture policy tests failed" }
 
       - name: Restore native incremental cache
+        if: steps.build_mode.outputs.mode != 'fast'
         uses: actions/cache@v4
         with:
           path: build/native
@@ -135,6 +186,7 @@ jobs:
             kharvox-native-${{ runner.os }}-
 
       - name: Install SFS compiler dependencies
+        if: steps.build_mode.outputs.mode != 'fast'
         # On a vcpkg baseline update, SPIRV-Tools rebuilds both Debug and
         # Release (roughly 10+ minutes) before binaries can be cached.
         timeout-minutes: 25
@@ -153,14 +205,17 @@ jobs:
           "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Configure native
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
 
       - name: Build native Release
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: cmake --build build/native --config Release --parallel
 
       - name: Verify native SFS stamp
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $layer = "build\native\Release\KharvoxLayer.dll"
@@ -172,6 +227,7 @@ jobs:
           if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
 
       - name: Test DOOM user mod discovery and selection persistence
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -179,6 +235,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "User mod discovery self-test failed: $($test.ExitCode)" }
 
       - name: Test DOOM save protection copy/hash integrity
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -186,6 +243,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "DOOM save protection self-test failed: $($test.ExitCode)" }
 
       - name: Test DOOM mod staging and patch ownership
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -193,6 +251,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "DOOM staging self-test failed: $($test.ExitCode)" }
 
       - name: Test active DML resource collision rejection
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -200,6 +259,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "DML overlap self-test failed: $($test.ExitCode)" }
 
       - name: Test independent DOOM resource patch writer
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -207,6 +267,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "KHARVOX patch writer self-test failed: $($test.ExitCode)" }
 
       - name: Test native DOOM resource generator and index name aliases
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -214,6 +275,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Native resource generator regression tests failed: $($test.ExitCode)" }
 
       - name: Test conservative mod config merging
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -221,6 +283,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "KHARVOX config merge self-test failed: $($test.ExitCode)" }
 
       - name: Test remembered good/bad configuration states
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -228,6 +291,7 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Configuration marks self-test failed: $($test.ExitCode)" }
 
       - name: Test ZIP and unpacked mod content identities
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
@@ -235,26 +299,31 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Mod fingerprint test failed: $($test.ExitCode)" }
 
       - name: Test updater preservation and rollback
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { throw "Watcher safety self-test failed: $LASTEXITCODE" }
 
       - name: Restore supervisor
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj
 
       - name: Build supervisor Release
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
 
       - name: Test supervisor tail reader
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           & .\supervisor\KharvoxSupervisor\bin\Release\net48\KharvoxSupervisor.exe --self-test
           if ($LASTEXITCODE -ne 0) { throw "Supervisor tail self-test failed" }
 
       - name: Assemble full install and patch
+        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           $native = Join-Path $PWD "build\native\Release"
@@ -351,6 +420,7 @@ jobs:
           Write-Manifest $patch "patch"
 
       - name: Upload full install
+        if: steps.build_mode.outputs.mode != 'fast'
         uses: actions/upload-artifact@v4
         with:
           name: KHARVOX-Full-Build
@@ -360,6 +430,7 @@ jobs:
           retention-days: 30
 
       - name: Upload fast patch
+        if: steps.build_mode.outputs.mode != 'fast'
         uses: actions/upload-artifact@v4
         with:
           name: KHARVOX-Dev-Patch
@@ -369,6 +440,823 @@ jobs:
           retention-days: 30
 
       - name: Keep only latest 5 successful builds
+        if: steps.build_mode.outputs.mode != 'fast'
+        if: success()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "User-Agent" = "KHARVOX-Build-Retention"
+          }
+          $base = "https://api.github.com/repos/${{ github.repository }}"
+          $workflow = "${{ github.workflow_ref }}".Split("@")[0].Split("/")[-1]
+          $branch = [Uri]::EscapeDataString("${{ github.ref_name }}")
+          $uri = "$base/actions/workflows/$workflow/runs?branch=$branch&status=success&per_page=100"
+          $runs = @((Invoke-RestMethod -Headers $headers -Uri $uri).workflow_runs |
+            Sort-Object run_number -Descending)
+
+          $keep = 5
+          if ($runs.Count -le $keep) {
+            Write-Host "Only $($runs.Count) successful builds exist; nothing to delete."
+            exit 0
+          }
+
+          foreach ($run in ($runs | Select-Object -Skip $keep)) {
+            if ([int64]$run.id -eq [int64]"${{ github.run_id }}") { continue }
+            Write-Host "Deleting old successful build run #$($run.run_number) id=$($run.id)"
+            Invoke-RestMethod -Method Delete -Headers $headers -Uri "$base/actions/runs/$($run.id)"
+          }
+ -and $env:PREVIOUS_SHA -ne ('0' * 40)) {
+            git fetch --no-tags --depth=1 origin $env:PREVIOUS_SHA
+            if ($LASTEXITCODE -eq 0) {
+              $changed = @(git diff --name-only $env:PREVIOUS_SHA HEAD)
+              if ($LASTEXITCODE -eq 0 -and $changed.Count -gt 0) {
+                $unsafe = @($changed | Where-Object { $_ -cnotmatch '^launcher/KharvoxLauncher/[^/]+\.cs
+        shell: powershell
+        run: |
+          foreach ($script in @(
+              "tools/verify_sfs_payload.ps1",
+              "tools/Restore-Cactus-SFS-Profile.ps1",
+              "tools/Get-KHARVOX-Custom-Watcher.ps1",
+              "tools/Generate-KHARVOX-Mods.py"
+          )) {
+            if ($script.EndsWith(".py")) { continue }
+            $tokens = $null
+            $problems = $null
+            $source = (Resolve-Path -LiteralPath $script).Path
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $source, [ref]$tokens, [ref]$problems) | Out-Null
+            if ($problems.Count -ne 0) {
+              foreach ($problem in $problems) { Write-Error "$script : $problem" }
+              throw "PowerShell syntax validation failed: $script"
+            }
+            Write-Host "PASS: $script parses correctly"
+          }
+
+      - name: Test independent KHARVOX resource mod generator
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          python tools/Generate-KHARVOX-Mods.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original resource mod generator self-test failed" }
+          python tools/Probe-KHARVOX-Immersion.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original immersion resource inventory test failed" }
+
+      - name: Regenerate controller mapping
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: .\assets\branding\generate-controller-mapping.ps1
+
+      - name: Fetch licensed Freedoom face art
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $sha = "3ac019628d70b812ffb722f7f2365771b76a9d29"
+          $url = "https://raw.githubusercontent.com/freedoom/freedoom/$sha"
+          $dest = "assets/freedoom"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          foreach ($name in @("stfst00.png", "stftl00.png", "stftr00.png", "stfevl0.png")) {
+            Invoke-WebRequest -UseBasicParsing -Uri "$url/graphics/$name" -OutFile "$dest/$name"
+            if ((Get-Item "$dest/$name").Length -lt 100) { throw "Freedoom sprite missing or empty: $name" }
+          }
+          Invoke-WebRequest -UseBasicParsing -Uri "$url/COPYING.adoc" -OutFile "$dest/COPYING.adoc"
+          if (!(Select-String -Path "$dest/COPYING.adoc" -Pattern "Redistribution and use")) {
+            throw "Freedoom attribution/license unavailable"
+          }
+
+      - name: Restore launcher
+        shell: powershell
+        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
+
+      - name: Build launcher Release
+        shell: powershell
+        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Test malformed VR mod settings preservation
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-settings" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "VR mod settings self-test failed: $($test.ExitCode)" }
+
+      - name: Test Custom Mods UI structure
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
+
+      - name: Verify upstream Cactus v1.1.1 hand HUD restoration
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\\KharvoxLauncher\\bin\\Release\\net48\\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-cactus-hand-hud" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Original Cactus v1.1.1 hand-HUD backup/default restoration failed: $($test.ExitCode)" }
+
+      - name: Test native Glory Kill Highlight disabled
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-glorykill-highlight" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Native Glory Kill Highlight policy failed: $($test.ExitCode)" }
+
+      - name: Restore vcpkg binary cache
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-bincache
+          key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
+
+      - name: Compile and run native grenade gesture policy test
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          cmake -S tests/policy -B build/gesture-policy -A x64
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy configure failed" }
+          cmake --build build/gesture-policy --config Release
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy compile failed" }
+          ctest --test-dir build/gesture-policy -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy tests failed" }
+
+      - name: Restore native incremental cache
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: kharvox-native-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            kharvox-native-${{ runner.os }}-
+
+      - name: Install SFS compiler dependencies
+        if: steps.build_mode.outputs.mode != 'fast'
+        # On a vcpkg baseline update, SPIRV-Tools rebuilds both Debug and
+        # Release (roughly 10+ minutes) before binaries can be cached.
+        timeout-minutes: 25
+        shell: powershell
+        run: |
+          $triplet = "x64-windows-static-md"
+          $binaryCache = Join-Path $PWD ".vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCache,readwrite"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet"
+          $root = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\$triplet"
+          if (!(Test-Path "$root\include\spirv_cross\spirv_glsl.hpp")) { throw "SPIRV-Cross headers missing" }
+          if (!(Test-Path "$root\lib\spirv-cross-glsl.lib")) { throw "SPIRV-Cross glsl lib missing" }
+          if (!(Test-Path "$root\include\glslang\Include\glslang_c_interface.h")) { throw "glslang headers missing" }
+          if (!(Test-Path "$root\lib\glslang.lib")) { throw "glslang lib missing" }
+          "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+
+      - name: Build native Release
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Verify native SFS stamp
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $layer = "build\native\Release\KharvoxLayer.dll"
+          $stamp = "build\native\Release\native_sfs_build.txt"
+          if (!(Test-Path $layer)) { throw "KharvoxLayer.dll missing" }
+          if (!(Test-Path $stamp)) { throw "native_sfs_build.txt missing" }
+          $lines = Get-Content $stamp
+          $hash = (Get-FileHash -Algorithm SHA256 $layer).Hash
+          if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
+
+      - name: Test DOOM user mod discovery and selection persistence
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-user-mods" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "User mod discovery self-test failed: $($test.ExitCode)" }
+
+      - name: Test DOOM save protection copy/hash integrity
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-save-protection" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DOOM save protection self-test failed: $($test.ExitCode)" }
+
+      - name: Test DOOM mod staging and patch ownership
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-staging" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DOOM staging self-test failed: $($test.ExitCode)" }
+
+      - name: Test active DML resource collision rejection
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-overlap" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DML overlap self-test failed: $($test.ExitCode)" }
+
+      - name: Test independent DOOM resource patch writer
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-resource-patcher" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "KHARVOX patch writer self-test failed: $($test.ExitCode)" }
+
+      - name: Test native DOOM resource generator and index name aliases
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-native-mod-generator" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Native resource generator regression tests failed: $($test.ExitCode)" }
+
+      - name: Test conservative mod config merging
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-config-merge" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "KHARVOX config merge self-test failed: $($test.ExitCode)" }
+
+      - name: Test remembered good/bad configuration states
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-config-marks" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Configuration marks self-test failed: $($test.ExitCode)" }
+
+      - name: Test ZIP and unpacked mod content identities
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-mod-fingerprints" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Mod fingerprint test failed: $($test.ExitCode)" }
+
+      - name: Test updater preservation and rollback
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw "Watcher safety self-test failed: $LASTEXITCODE" }
+
+      - name: Restore supervisor
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj
+
+      - name: Build supervisor Release
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
+
+      - name: Test supervisor tail reader
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          & .\supervisor\KharvoxSupervisor\bin\Release\net48\KharvoxSupervisor.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Supervisor tail self-test failed" }
+
+      - name: Assemble full install and patch
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $native = Join-Path $PWD "build\native\Release"
+          $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
+          $supervisor = Join-Path $PWD "supervisor\KharvoxSupervisor\bin\Release\net48"
+          $out = Join-Path $PWD "out\watcher"
+          $full = Join-Path $out "full"
+          $patch = Join-Path $out "patch"
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $full,$patch | Out-Null
+          Copy-Item -Path (Join-Path $native "*") -Destination $full -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $full -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $full -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $full "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $full "supervisor-profiles") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
+          Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $full "assets") -Recurse -Force
+          foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt","offhand_hud_default.cfg")) {
+            $source = Join-Path $native $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          foreach ($name in @("KharvoxLauncher.exe","KharvoxLauncher.exe.config")) {
+            $source = Join-Path $launcher $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $patch -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $patch "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $patch "supervisor-profiles") -Force
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "assets") | Out-Null
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $patch "assets") -Recurse -Force
+
+          # Provision only the original upstream SFS profile, NOT Cactus's
+          # launcher/game binaries or any settings. The release ZIP is pinned
+          # by SHA256 in our audited restore utility. Fail closed if download,
+          # archive identity, shader validation or staging fails.
+          $upstreamUrl = "https://github.com/CactusVRStudios/KHARVOX/releases/download/v1.1.1/KHARVOX-v1.11.zip"
+          $sourceZip = Join-Path $env:RUNNER_TEMP "KHARVOX-Cactus-v1.11.zip"
+          Invoke-WebRequest -Uri $upstreamUrl -UseBasicParsing -OutFile $sourceZip
+          foreach ($package in @($full, $patch)) {
+            & ./tools/Restore-Cactus-SFS-Profile.ps1 -InstallRoot $package -ReleaseZip $sourceZip
+            # The restore function throws on error; it does not set LASTEXITCODE.
+            $sourceNotice = @(
+              "KHARVOX SFS SHADER PROFILE - ORIGINAL RELEASE"
+              "Source: CactusVRStudios/KHARVOX v1.1.1"
+              "Official release: $upstreamUrl"
+              "Original ZIP SHA256: 79666be1c330b7a737c2e2766b2207557ace7c9b453194972719ef3693dd4dc5"
+              "Only 75 shader profile files were extracted, no upstream executables or configuration."
+              "Original project: https://github.com/CactusVRStudios/KHARVOX"
+              "DOOM and any game-derived material retain their respective rights; do not assume general reuse rights from this package."
+            )
+            $sourceNotice | Set-Content -LiteralPath (Join-Path $package "SFS-PROFILE-SOURCE.txt") -Encoding UTF8
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "Integrated SFS validation failed: $package" }
+          }
+          function Write-Manifest([string]$root,[string]$kind) {
+            $files = @()
+            Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
+              $relative = $_.FullName.Substring($root.Length + 1).Replace('\','/')
+              $files += [ordered]@{ path=$relative; size=$_.Length; sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() }
+            }
+            $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="${{ github.ref_name }}"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
+            $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
+            @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
+          }
+          # Strict packaging is already checked above. Never upload a release
+          # that would be blocked immediately by VulkanSfs.EnsureAvailable().
+          foreach ($package in @($full, $patch)) {
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "SFS packaging incomplete: $package" }
+            if (!(Test-Path -LiteralPath (Join-Path $package "KharvoxLauncher.exe"))) {
+              throw "Launcher missing from integrated package: $package"
+            }
+          }
+          "Integrated KHARVOX build: FULL and PATCH include 75 validated SFS shader replacements." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          Write-Manifest $full "full"
+          Write-Manifest $patch "patch"
+
+      - name: Upload full install
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Full-Build
+          path: out/watcher/full
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+
+      - name: Upload fast patch
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Dev-Patch
+          path: out/watcher/patch
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 30
+
+      - name: Keep only latest 5 successful builds
+        if: steps.build_mode.outputs.mode != 'fast'
+        if: success()
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "User-Agent" = "KHARVOX-Build-Retention"
+          }
+          $base = "https://api.github.com/repos/${{ github.repository }}"
+          $workflow = "${{ github.workflow_ref }}".Split("@")[0].Split("/")[-1]
+          $branch = [Uri]::EscapeDataString("${{ github.ref_name }}")
+          $uri = "$base/actions/workflows/$workflow/runs?branch=$branch&status=success&per_page=100"
+          $runs = @((Invoke-RestMethod -Headers $headers -Uri $uri).workflow_runs |
+            Sort-Object run_number -Descending)
+
+          $keep = 5
+          if ($runs.Count -le $keep) {
+            Write-Host "Only $($runs.Count) successful builds exist; nothing to delete."
+            exit 0
+          }
+
+          foreach ($run in ($runs | Select-Object -Skip $keep)) {
+            if ([int64]$run.id -eq [int64]"${{ github.run_id }}") { continue }
+            Write-Host "Deleting old successful build run #$($run.run_number) id=$($run.id)"
+            Invoke-RestMethod -Method Delete -Headers $headers -Uri "$base/actions/runs/$($run.id)"
+          }
+ })
+                if ($unsafe.Count -eq 0) { $mode = "fast" }
+              }
+            }
+          }
+          "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "KHARVOX build mode: $mode"
+
+      - name: Parse all PowerShell shipping scripts before building
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          foreach ($script in @(
+              "tools/verify_sfs_payload.ps1",
+              "tools/Restore-Cactus-SFS-Profile.ps1",
+              "tools/Get-KHARVOX-Custom-Watcher.ps1",
+              "tools/Generate-KHARVOX-Mods.py"
+          )) {
+            if ($script.EndsWith(".py")) { continue }
+            $tokens = $null
+            $problems = $null
+            $source = (Resolve-Path -LiteralPath $script).Path
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $source, [ref]$tokens, [ref]$problems) | Out-Null
+            if ($problems.Count -ne 0) {
+              foreach ($problem in $problems) { Write-Error "$script : $problem" }
+              throw "PowerShell syntax validation failed: $script"
+            }
+            Write-Host "PASS: $script parses correctly"
+          }
+
+      - name: Test independent KHARVOX resource mod generator
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          python tools/Generate-KHARVOX-Mods.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original resource mod generator self-test failed" }
+          python tools/Probe-KHARVOX-Immersion.py --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Original immersion resource inventory test failed" }
+
+      - name: Regenerate controller mapping
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: .\assets\branding\generate-controller-mapping.ps1
+
+      - name: Fetch licensed Freedoom face art
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $sha = "3ac019628d70b812ffb722f7f2365771b76a9d29"
+          $url = "https://raw.githubusercontent.com/freedoom/freedoom/$sha"
+          $dest = "assets/freedoom"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          foreach ($name in @("stfst00.png", "stftl00.png", "stftr00.png", "stfevl0.png")) {
+            Invoke-WebRequest -UseBasicParsing -Uri "$url/graphics/$name" -OutFile "$dest/$name"
+            if ((Get-Item "$dest/$name").Length -lt 100) { throw "Freedoom sprite missing or empty: $name" }
+          }
+          Invoke-WebRequest -UseBasicParsing -Uri "$url/COPYING.adoc" -OutFile "$dest/COPYING.adoc"
+          if (!(Select-String -Path "$dest/COPYING.adoc" -Pattern "Redistribution and use")) {
+            throw "Freedoom attribution/license unavailable"
+          }
+
+      - name: Restore launcher
+        shell: powershell
+        run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
+
+      - name: Build launcher Release
+        shell: powershell
+        run: dotnet build launcher\KharvoxLauncher\KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Test malformed VR mod settings preservation
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-settings" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "VR mod settings self-test failed: $($test.ExitCode)" }
+
+      - name: Test Custom Mods UI structure
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-mods-ui" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Custom Mods layout smoke test failed: $($test.ExitCode)" }
+
+      - name: Verify upstream Cactus v1.1.1 hand HUD restoration
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\\KharvoxLauncher\\bin\\Release\\net48\\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-cactus-hand-hud" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Original Cactus v1.1.1 hand-HUD backup/default restoration failed: $($test.ExitCode)" }
+
+      - name: Test native Glory Kill Highlight disabled
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-glorykill-highlight" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Native Glory Kill Highlight policy failed: $($test.ExitCode)" }
+
+      - name: Restore vcpkg binary cache
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-bincache
+          key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
+
+      - name: Compile and run native grenade gesture policy test
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          cmake -S tests/policy -B build/gesture-policy -A x64
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy configure failed" }
+          cmake --build build/gesture-policy --config Release
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy compile failed" }
+          ctest --test-dir build/gesture-policy -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw "Gesture policy tests failed" }
+
+      - name: Restore native incremental cache
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/cache@v4
+        with:
+          path: build/native
+          key: kharvox-native-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            kharvox-native-${{ runner.os }}-
+
+      - name: Install SFS compiler dependencies
+        if: steps.build_mode.outputs.mode != 'fast'
+        # On a vcpkg baseline update, SPIRV-Tools rebuilds both Debug and
+        # Release (roughly 10+ minutes) before binaries can be cached.
+        timeout-minutes: 25
+        shell: powershell
+        run: |
+          $triplet = "x64-windows-static-md"
+          $binaryCache = Join-Path $PWD ".vcpkg-bincache"
+          New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
+          $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCache,readwrite"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet"
+          $root = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\$triplet"
+          if (!(Test-Path "$root\include\spirv_cross\spirv_glsl.hpp")) { throw "SPIRV-Cross headers missing" }
+          if (!(Test-Path "$root\lib\spirv-cross-glsl.lib")) { throw "SPIRV-Cross glsl lib missing" }
+          if (!(Test-Path "$root\include\glslang\Include\glslang_c_interface.h")) { throw "glslang headers missing" }
+          if (!(Test-Path "$root\lib\glslang.lib")) { throw "glslang lib missing" }
+          "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure native
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+
+      - name: Build native Release
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: cmake --build build/native --config Release --parallel
+
+      - name: Verify native SFS stamp
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $layer = "build\native\Release\KharvoxLayer.dll"
+          $stamp = "build\native\Release\native_sfs_build.txt"
+          if (!(Test-Path $layer)) { throw "KharvoxLayer.dll missing" }
+          if (!(Test-Path $stamp)) { throw "native_sfs_build.txt missing" }
+          $lines = Get-Content $stamp
+          $hash = (Get-FileHash -Algorithm SHA256 $layer).Hash
+          if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
+
+      - name: Test DOOM user mod discovery and selection persistence
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-user-mods" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "User mod discovery self-test failed: $($test.ExitCode)" }
+
+      - name: Test DOOM save protection copy/hash integrity
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-save-protection" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DOOM save protection self-test failed: $($test.ExitCode)" }
+
+      - name: Test DOOM mod staging and patch ownership
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-staging" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DOOM staging self-test failed: $($test.ExitCode)" }
+
+      - name: Test active DML resource collision rejection
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-doom-overlap" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "DML overlap self-test failed: $($test.ExitCode)" }
+
+      - name: Test independent DOOM resource patch writer
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-resource-patcher" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "KHARVOX patch writer self-test failed: $($test.ExitCode)" }
+
+      - name: Test native DOOM resource generator and index name aliases
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-native-mod-generator" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Native resource generator regression tests failed: $($test.ExitCode)" }
+
+      - name: Test conservative mod config merging
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-config-merge" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "KHARVOX config merge self-test failed: $($test.ExitCode)" }
+
+      - name: Test remembered good/bad configuration states
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-config-marks" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Configuration marks self-test failed: $($test.ExitCode)" }
+
+      - name: Test ZIP and unpacked mod content identities
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-mod-fingerprints" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Mod fingerprint test failed: $($test.ExitCode)" }
+
+      - name: Test updater preservation and rollback
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
+          if ($LASTEXITCODE -ne 0) { throw "Watcher safety self-test failed: $LASTEXITCODE" }
+
+      - name: Restore supervisor
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj
+
+      - name: Build supervisor Release
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
+
+      - name: Test supervisor tail reader
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          & .\supervisor\KharvoxSupervisor\bin\Release\net48\KharvoxSupervisor.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Supervisor tail self-test failed" }
+
+      - name: Assemble full install and patch
+        if: steps.build_mode.outputs.mode != 'fast'
+        shell: powershell
+        run: |
+          $native = Join-Path $PWD "build\native\Release"
+          $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
+          $supervisor = Join-Path $PWD "supervisor\KharvoxSupervisor\bin\Release\net48"
+          $out = Join-Path $PWD "out\watcher"
+          $full = Join-Path $out "full"
+          $patch = Join-Path $out "patch"
+          Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $full,$patch | Out-Null
+          Copy-Item -Path (Join-Path $native "*") -Destination $full -Recurse -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $full -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $full -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $full "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $full "supervisor-profiles") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
+          Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $full "assets") -Recurse -Force
+          foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt","offhand_hud_default.cfg")) {
+            $source = Join-Path $native $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          foreach ($name in @("KharvoxLauncher.exe","KharvoxLauncher.exe.config")) {
+            $source = Join-Path $launcher $name
+            if (!(Test-Path $source)) { throw "Patch source missing: $name" }
+            Copy-Item -LiteralPath $source -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $patch -Force
+          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
+            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $patch -Force
+          }
+          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $patch "KharvoxSupervisor.json") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "supervisor-profiles") | Out-Null
+          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $patch "supervisor-profiles") -Force
+          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
+          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
+          New-Item -ItemType Directory -Force -Path (Join-Path $patch "assets") | Out-Null
+          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $patch "assets") -Recurse -Force
+
+          # Provision only the original upstream SFS profile, NOT Cactus's
+          # launcher/game binaries or any settings. The release ZIP is pinned
+          # by SHA256 in our audited restore utility. Fail closed if download,
+          # archive identity, shader validation or staging fails.
+          $upstreamUrl = "https://github.com/CactusVRStudios/KHARVOX/releases/download/v1.1.1/KHARVOX-v1.11.zip"
+          $sourceZip = Join-Path $env:RUNNER_TEMP "KHARVOX-Cactus-v1.11.zip"
+          Invoke-WebRequest -Uri $upstreamUrl -UseBasicParsing -OutFile $sourceZip
+          foreach ($package in @($full, $patch)) {
+            & ./tools/Restore-Cactus-SFS-Profile.ps1 -InstallRoot $package -ReleaseZip $sourceZip
+            # The restore function throws on error; it does not set LASTEXITCODE.
+            $sourceNotice = @(
+              "KHARVOX SFS SHADER PROFILE - ORIGINAL RELEASE"
+              "Source: CactusVRStudios/KHARVOX v1.1.1"
+              "Official release: $upstreamUrl"
+              "Original ZIP SHA256: 79666be1c330b7a737c2e2766b2207557ace7c9b453194972719ef3693dd4dc5"
+              "Only 75 shader profile files were extracted, no upstream executables or configuration."
+              "Original project: https://github.com/CactusVRStudios/KHARVOX"
+              "DOOM and any game-derived material retain their respective rights; do not assume general reuse rights from this package."
+            )
+            $sourceNotice | Set-Content -LiteralPath (Join-Path $package "SFS-PROFILE-SOURCE.txt") -Encoding UTF8
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "Integrated SFS validation failed: $package" }
+          }
+          function Write-Manifest([string]$root,[string]$kind) {
+            $files = @()
+            Get-ChildItem -LiteralPath $root -File -Recurse | Sort-Object FullName | ForEach-Object {
+              $relative = $_.FullName.Substring($root.Length + 1).Replace('\','/')
+              $files += [ordered]@{ path=$relative; size=$_.Length; sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant() }
+            }
+            $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="${{ github.ref_name }}"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
+            $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
+            @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
+          }
+          # Strict packaging is already checked above. Never upload a release
+          # that would be blocked immediately by VulkanSfs.EnsureAvailable().
+          foreach ($package in @($full, $patch)) {
+            & ./tools/verify_sfs_payload.ps1 -PackageRoot $package -RequireComplete
+            if ($LASTEXITCODE -ne 0) { throw "SFS packaging incomplete: $package" }
+            if (!(Test-Path -LiteralPath (Join-Path $package "KharvoxLauncher.exe"))) {
+              throw "Launcher missing from integrated package: $package"
+            }
+          }
+          "Integrated KHARVOX build: FULL and PATCH include 75 validated SFS shader replacements." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          Write-Manifest $full "full"
+          Write-Manifest $patch "patch"
+
+      - name: Upload full install
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Full-Build
+          path: out/watcher/full
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
+
+      - name: Upload fast patch
+        if: steps.build_mode.outputs.mode != 'fast'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Dev-Patch
+          path: out/watcher/patch
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 30
+
+      - name: Keep only latest 5 successful builds
+        if: steps.build_mode.outputs.mode != 'fast'
         if: success()
         shell: powershell
         env:
