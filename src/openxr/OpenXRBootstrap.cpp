@@ -5766,6 +5766,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         static bool firstAudioFailureLogged=false;
         if(kharvox::PainsawRevAudio::Play(pull)){
             log("[CHAINSAW-REV-AUDIO] cue="+std::to_string(pull)
+                +(kharvox::PainsawRevAudio::UsingOriginalSamples()
+                    ?" DOOM2016-rev-surge-original"
+                    :" synthetic-fallback")
                 +" (XAudio2, clock-independent, peak-limited)");
         }else if(!firstAudioFailureLogged){
             firstAudioFailureLogged=true;

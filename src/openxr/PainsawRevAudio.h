@@ -10,5 +10,7 @@ public:
     // 1..3: initial native kill + the two confirmed release/re-pull edges.
     static bool Play(unsigned revCount) noexcept;
     static void Stop() noexcept;
+    // True only if all 3 owner-provided DOOM PCM files loaded successfully.
+    static bool UsingOriginalSamples() noexcept;
 };
 } // namespace kharvox

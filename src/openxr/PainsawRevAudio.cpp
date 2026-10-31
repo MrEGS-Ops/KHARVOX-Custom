@@ -1,4 +1,8 @@
 #include "PainsawRevAudio.h"
+#include "../common/RuntimePaths.h"
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <windows.h>
 #include <xaudio2.h>
 #include <algorithm>
@@ -12,13 +16,74 @@ namespace kharvox {
 namespace {
 constexpr unsigned kRate=48000;
 constexpr float kPi=3.14159265358979323846f;
+// Local, user-extracted DOOM 2016 files. Never commit or ship these audio
+// samples; only the owner of the game supplies the files alongside their DLL.
+// A complete all-or-nothing pack avoids accidental mixed fake/real revs.
+std::uint16_t read16(const std::uint8_t* p) noexcept {
+    return static_cast<std::uint16_t>(p[0]|(static_cast<unsigned>(p[1])<<8));
+}
+std::uint32_t read32(const std::uint8_t* p) noexcept {
+    return static_cast<std::uint32_t>(p[0])
+        |(static_cast<std::uint32_t>(p[1])<<8)
+        |(static_cast<std::uint32_t>(p[2])<<16)
+        |(static_cast<std::uint32_t>(p[3])<<24);
+}
+bool loadDoomPcmWave(const wchar_t* relativePath,
+    std::vector<std::uint8_t>& pcm) {
+    // The extracted samples are 44.1kHz stereo PCM16. Reject other formats
+    // instead of sending incompatible data to the XAudio2 source voice.
+    std::ifstream file(std::filesystem::path(kharvox::runtimePath(relativePath)),
+        std::ios::binary|std::ios::ate);
+    if(!file)return false;
+    const auto size=file.tellg();
+    if(size<44||size>8*1024*1024)return false;
+    std::vector<std::uint8_t> raw(static_cast<std::size_t>(size));
+    file.seekg(0);
+    file.read(reinterpret_cast<char*>(raw.data()),
+        static_cast<std::streamsize>(raw.size()));
+    if(!file||std::memcmp(raw.data(),"RIFF",4)!=0
+       ||std::memcmp(raw.data()+8,"WAVE",4)!=0)return false;
+    bool formatValid=false,hasData=false;
+    std::size_t cursor=12;
+    while(cursor+8<=raw.size()){
+        const auto chunkSize=read32(raw.data()+cursor+4);
+        const auto payload=cursor+8;
+        if(chunkSize>raw.size()-payload)return false;
+        const auto* chunk=raw.data()+payload;
+        if(std::memcmp(raw.data()+cursor,"fmt ",4)==0){
+            formatValid=chunkSize>=16&&read16(chunk)==1
+                &&read16(chunk+2)==2&&read32(chunk+4)==44100
+                &&read32(chunk+8)==176400&&read16(chunk+12)==4
+                &&read16(chunk+14)==16;
+        }else if(std::memcmp(raw.data()+cursor,"data",4)==0){
+            if(chunkSize==0||chunkSize>4*44100*15||chunkSize%4!=0)
+                return false;
+            pcm.assign(chunk,chunk+chunkSize);
+            hasData=true;
+        }
+        cursor=payload+chunkSize+(chunkSize&1u);
+    }
+    return formatValid&&hasData;
+}
+bool loadDoomOriginalRevs(
+    std::array<std::vector<std::uint8_t>,3>& samples) {
+    const std::array<const wchar_t*,3> names{
+        L"audio\\painsaw\\rev_1.wav",
+        L"audio\\painsaw\\rev_2.wav",
+        L"audio\\painsaw\\rev_3.wav"};
+    std::array<std::vector<std::uint8_t>,3> local;
+    for(std::size_t i=0;i<local.size();++i)
+        if(!loadDoomPcmWave(names[i],local[i]))return false;
+    samples=std::move(local);
+    return true;
+}
 struct AudioEngine {
     std::mutex gate;
     IXAudio2* mixer{};
     IXAudio2MasteringVoice* master{};
     IXAudio2SourceVoice* source{};
     std::array<std::vector<std::uint8_t>,3> samples{};
-    bool attempted{},ready{};
+    bool attempted{},ready{},originalDoomAudio{};
 
     // Original procedurally synthesized two-stroke engine/buzz. Loud but
     // peak-limited in PCM to avoid clipping and sudden unsafe audio spikes.
@@ -68,16 +133,19 @@ struct AudioEngine {
         attempted=true;
         if(FAILED(XAudio2Create(&mixer,0,XAUDIO2_DEFAULT_PROCESSOR)))return;
         if(FAILED(mixer->CreateMasteringVoice(&master)))return;
+        originalDoomAudio=loadDoomOriginalRevs(samples);
         WAVEFORMATEX format{};
         format.wFormatTag=WAVE_FORMAT_PCM;
-        format.nChannels=1;
-        format.nSamplesPerSec=kRate;
-        format.nAvgBytesPerSec=kRate*sizeof(std::int16_t);
-        format.nBlockAlign=sizeof(std::int16_t);
+        format.nChannels=originalDoomAudio?2:1;
+        format.nSamplesPerSec=originalDoomAudio?44100:kRate;
+        format.nBlockAlign=static_cast<WORD>(format.nChannels*sizeof(std::int16_t));
+        format.nAvgBytesPerSec=format.nSamplesPerSec*format.nBlockAlign;
         format.wBitsPerSample=16;
         if(FAILED(mixer->CreateSourceVoice(&source,&format)))return;
-        for(unsigned stage=1;stage<=3;++stage)
-            samples[stage-1]=Build(stage);
+        if(!originalDoomAudio){
+            for(unsigned stage=1;stage<=3;++stage)
+                samples[stage-1]=Build(stage);
+        }
         ready=true;
     }
 
@@ -104,6 +172,11 @@ struct AudioEngine {
         source->Stop(0);
         source->FlushSourceBuffers();
     }
+    bool UsingOriginalSamples() noexcept {
+        std::lock_guard<std::mutex> guard(gate);
+        Initialize();
+        return ready&&originalDoomAudio;
+    }
 };
 // Deliberately not destroyed inside a DLL loader-lock detach path. The OS
 // releases this game-process-owned XAudio2 engine when DOOM exits.
@@ -117,5 +190,8 @@ bool PainsawRevAudio::Play(unsigned stage) noexcept {
 }
 void PainsawRevAudio::Stop() noexcept {
     engine().Stop();
+}
+bool PainsawRevAudio::UsingOriginalSamples() noexcept {
+    return engine().UsingOriginalSamples();
 }
 } // namespace kharvox
