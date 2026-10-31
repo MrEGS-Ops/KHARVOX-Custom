@@ -619,6 +619,7 @@ internal sealed partial class ModsForm
         var title = new Label
         {
             Text = GloryModTitle, Tag = "vr-mod-name",
+            UseMnemonic = false, // Preserve the literal & in RIP & TEAR.
             Dock = DockStyle.Fill, Margin = Padding.Empty,
             BackColor = row.BackColor,
             ForeColor = Color.FromArgb(239, 240, 244),
@@ -779,6 +780,7 @@ internal sealed partial class ModsForm
         var titleLabel = new Label
         {
             Text = mod.Title, Dock = DockStyle.Fill,
+            UseMnemonic = false, // Mod names are literal, not keyboard shortcuts.
             BackColor = row.BackColor,
             ForeColor = check.Enabled ? Color.FromArgb(239, 240, 244) :
                 Color.FromArgb(123, 130, 142),
@@ -987,7 +989,7 @@ internal sealed partial class ModsForm
                 .SingleOrDefault(label => (label.Tag as string) == "vr-mod-name");
             if (gloryCheckbox == null || gloryCheckbox.Text != "" ||
                 gloryTitle == null || gloryTitle.Text != "KILLTIME: RIP & TEAR" ||
-                gloryCheckbox.UseMnemonic ||
+                gloryCheckbox.UseMnemonic || gloryTitle.UseMnemonic ||
                 grid.GetColumn(gloryCheckbox) != 1 || grid.GetColumn(gloryTitle) != 2)
                 throw new InvalidDataException(
                     "KILLTIME must use the exact ordinary-row checkbox and text columns.");
@@ -1014,6 +1016,7 @@ internal sealed partial class ModsForm
                 var captions = row.Controls.OfType<Label>()
                     .Where(label => (label.Tag as string) == "vr-mod-name").ToArray();
                 if (captions.Length != 1 || captions[0].Text != pair.Key ||
+                    captions[0].UseMnemonic ||
                     captions[0].ForeColor.GetBrightness() < 0.36f)
                     throw new InvalidDataException(
                         "Paused or active mod row has unreadable text.");
