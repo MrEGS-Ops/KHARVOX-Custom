@@ -19,7 +19,7 @@ internal static class NativeBridgeInstaller
     private const string ReleaseApi =
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
     private const string PinnedNativeCommit =
-        "32b9953ef4c776de738b7b7d08e4f975ae49f034";
+        "82e9086576347ec6010bfc109a7ffe14c9d6d0a2";
     private const string ZipName = "KHARVOX-Mods-NativeBridge.zip";
     private const string RequiredLauncherUi = "cactus-original-v1.1.1-unmodified-ui-v2";
     private const long MaxArchiveBytes = 250L * 1024 * 1024;
@@ -167,6 +167,27 @@ internal static class NativeBridgeInstaller
             throw new InvalidDataException("Native bridge build identity does not match our verified core.");
     }
 
+    // The retail DOOM chainsaw samples are user-owned files, NOT part of
+    // any GitHub release. Retain these three local WAVs when replacing the
+    // NativeBridge directory so that a manager update never discards them.
+    private static void PreserveLocalPainsawAudio(string extracted)
+    {
+        var oldAudio = Path.Combine(TargetDirectory, "audio", "painsaw");
+        if (!Directory.Exists(oldAudio)) return;
+        var newAudio = Path.Combine(extracted, "audio", "painsaw");
+        Directory.CreateDirectory(newAudio);
+        foreach (var name in new[] { "rev_1.wav", "rev_2.wav", "rev_3.wav" })
+        {
+            var source = Path.Combine(oldAudio, name);
+            if (!File.Exists(source)) continue;
+            var bytes = new FileInfo(source).Length;
+            if (bytes < 44 || bytes > 8L * 1024 * 1024)
+                throw new InvalidDataException(
+                    "Owner-provided PAINSAW WAV has an invalid size: " + name);
+            File.Copy(source, Path.Combine(newAudio, name), false);
+        }
+    }
+
     private static bool BridgeLauncherRunning()
     {
         foreach (var p in Process.GetProcessesByName("KharvoxLauncher"))
@@ -241,6 +262,10 @@ internal static class NativeBridgeInstaller
                 ExtractVerified(archive, extracted);
                 if (BridgeLauncherRunning())
                     throw new InvalidOperationException("Close the active NativeBridge launcher.");
+
+                // Do this BEFORE moving the previous bridge to backups.
+                // On a copy error, the old runtime and user audio stay intact.
+                PreserveLocalPainsawAudio(extracted);
 
                 var backup = "";
                 if (Directory.Exists(TargetDirectory))
