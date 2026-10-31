@@ -24,18 +24,27 @@ jobs:
         run: cmake --build standalone-mods/build --config Release --parallel
       - name: Run independent DLL load and gameplay-policy tests
         run: ctest --test-dir standalone-mods/build -C Release --output-on-failure
-      - name: Collect only standalone mod modules
+      - name: Stage separately installable packages
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
           $folder = "standalone-mods/build/mods/vr/Release"
           if (!(Test-Path $folder)) { $folder = "standalone-mods/build/mods/vr" }
-          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_behind_head_wheel.dll") -Destination dist
-          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_quick_holsters.dll") -Destination dist
-          Copy-Item -LiteralPath "standalone-mods/README.md" -Destination dist
-      - name: Publish experimental independent mod DLLs
+          New-Item -ItemType Directory -Force -Path "dist/behind-head-weapon-wheel", "dist/dynamic-quick-holsters" | Out-Null
+          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_behind_head_wheel.dll") -Destination "dist/behind-head-weapon-wheel/"
+          Copy-Item -LiteralPath (Join-Path $folder "kharvox_mod_quick_holsters.dll") -Destination "dist/dynamic-quick-holsters/"
+          Copy-Item -LiteralPath "standalone-mods/behind-head-wheel/mod.json" -Destination "dist/behind-head-weapon-wheel/"
+          Copy-Item -LiteralPath "standalone-mods/dynamic-quick-holsters/mod.json" -Destination "dist/dynamic-quick-holsters/"
+          Copy-Item -LiteralPath "standalone-mods/README.md" -Destination "dist/behind-head-weapon-wheel/"
+          Copy-Item -LiteralPath "standalone-mods/README.md" -Destination "dist/dynamic-quick-holsters/"
+      - name: Publish Behind-the-Head Weapon Wheel module
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-EXTERNAL-VR-MODS-EXPERIMENTAL
-          path: dist/*
+          name: KHARVOX-MOD-Behind-the-Head-Weapon-Wheel
+          path: dist/behind-head-weapon-wheel/*
+          if-no-files-found: error
+      - name: Publish Dynamic Quick Holsters module
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-MOD-Dynamic-Quick-Holsters
+          path: dist/dynamic-quick-holsters/*
           if-no-files-found: error
