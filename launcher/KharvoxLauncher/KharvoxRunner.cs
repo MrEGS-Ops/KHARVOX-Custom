@@ -570,7 +570,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_LEFT_HAND_SWAP"] = options.LeftHandSwapMode;
             psi.EnvironmentVariables["KHARVOX_SWAP_JUMP_CROUCH"] = options.SwapJumpCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
-            var wheelRemap = standaloneMods?.WeaponWheelRemap ?? options.WeaponWheelRemapEnabled;
+            var wheelRemap = standaloneMods?.EffectiveWheelRemap ?? options.WeaponWheelRemapEnabled;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] =
                 (wheelRemap || customMods.BehindHeadWeaponWheel) ? "1" : "0";
@@ -700,7 +700,7 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
-                " weaponWheelRemap=" + ((standaloneMods?.WeaponWheelRemap ?? options.WeaponWheelRemapEnabled) ? "enabled" : "native") +
+                " weaponWheelRemap=" + ((standaloneMods?.EffectiveWheelRemap ?? options.WeaponWheelRemapEnabled) ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (options.VirtualGunstock ? "enabled" : "disabled") +

@@ -121,7 +121,7 @@ internal sealed partial class ModsForm
     private void OnVrSelectionChanged(string title, bool enabled)
     {
         var current = (_modPrefs.ActiveOrder ?? Array.Empty<string>())
-            .Where(name => name != title).ToList();
+            .Where(name => name != title && IsVrActive(name)).ToList();
         if (enabled && VerifiedVrMods().Contains(title)) current.Add(title);
         _modPrefs.ActiveOrder = current.ToArray();
         // Keep inactive row order even when a mod is toggled on and off.
@@ -193,13 +193,12 @@ internal sealed partial class ModsForm
     private static (string Name, bool Required)[] DependencyLinks(string mod) => mod switch
     {
         "Directional Dash" => new[] {
-            ("Weapon Wheel Button Remap", true),
-            ("Behind-the-Head Weapon Wheel", true),
+            ("Gunslinger", true),
             ("No Weapon Wheel", false)
         },
-        "Behind-the-Head Weapon Wheel" => new[] { ("No Weapon Wheel", false) },
+        "Gunslinger" => new[] { ("No Weapon Wheel", false) },
         "No Weapon Wheel" => new[] {
-            ("Behind-the-Head Weapon Wheel", false),
+            ("Gunslinger", false),
             ("Directional Dash", false)
         },
         _ => Array.Empty<(string, bool)>()
@@ -239,8 +238,13 @@ internal sealed partial class ModsForm
         var lines = links.Select(x =>
             (x.Required ? "Requires: " : "Conflicts with: ") +
             "#" + ModNumber(x.Name).ToString("00") + " " + x.Name).ToList();
-        if (mod == "Dynamic Quick Holsters")
+        if (mod == "Gunslinger")
+        {
+            lines.Add("Automatically disables: Weapon Wheel Button Remap (standalone)");
             lines.Add("Requires: Hands enabled in the original KHARVOX launcher");
+        }
+        if (mod == "Weapon Wheel Button Remap")
+            lines.Add("Automatically disables: Gunslinger");
         return lines.ToArray();
     }
 
@@ -373,13 +377,11 @@ internal sealed partial class ModsForm
         var howToUse = name switch
         {
             "Weapon Wheel Button Remap" =>
-                "In DOOM: tap A to quick-switch; hold A for the wheel and use the left stick.",
+                "Standalone mode: tap A to quick-switch; hold A for the native weapon wheel. Enabling it disables Gunslinger.",
             "Hand Focus" =>
                 "In DOOM: activate with right-stick click, then aim or select with your hand.",
-            "Behind-the-Head Weapon Wheel" =>
-                "In DOOM: reach behind the LEFT side to open the left wheel and select with the left controller; reach behind the RIGHT to open the right wheel and select with the right controller. Leave with Grip held to equip. Without Grip, the wheel points back to the previously equipped weapon before closing, avoiding the post-close switch-back.",
-            "Dynamic Quick Holsters" =>
-                "In DOOM: in an EMPTY hip zone, press Grip and release Grip inside to assign the equipped gun. In an ASSIGNED hip zone, pressing Grip immediately equips that gun; no exit required. To REPLACE an assigned gun, enter holding Grip then release inside. Each side retains its hotkey. LEFT hip equips into the LEFT hand; RIGHT hip into the RIGHT hand. No weapon hiding or relocation.",
+            "Gunslinger" =>
+                "Reach behind the LEFT or RIGHT side of your head to open that side's weapon wheel and aim with the SAME hand. Leave with Grip held to equip; without Grip the previous weapon stays selected without a visible switch-back. Hip hotkeys: in an EMPTY zone, press then release Grip to assign; in an ASSIGNED zone, press Grip to equip immediately. Enter holding Grip and release to replace a slot. LEFT hip equips in LEFT hand, RIGHT hip in RIGHT hand. Compatible remapped jump/crouch controls apply, but holding A does NOT open a duplicate wheel. Hands must be enabled in KHARVOX.",
             "Physical Crouch" =>
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
@@ -949,8 +951,8 @@ internal sealed partial class ModsForm
     internal static void ValidateActiveVrPolicies()
     {
         var verified = VerifiedVrMods();
-        if (verified.Length != 7 || verified.Distinct().Count() != 7 ||
-            DependenciesFor("Directional Dash").Length != 3 ||
+        if (verified.Length != 6 || verified.Distinct().Count() != 6 ||
+            DependenciesFor("Directional Dash").Length != 2 ||
             DependenciesFor("No Weapon Wheel").Length != 2 ||
             DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
             throw new InvalidDataException("VR active-mod inventory/dependency policy changed.");
@@ -961,8 +963,7 @@ internal sealed partial class ModsForm
             if (dependencyTest.CanEnableMod("Directional Dash", out _) ||
                 dependencyTest.CanEnableMod("No Weapon Wheel", out _) ||
                 !dependencyTest.CanEnableMod("Hand Focus", out _) ||
-                !dependencyTest.CanEnableMod("Behind-the-Head Weapon Wheel", out _) ||
-                !dependencyTest.CanEnableMod("Dynamic Quick Holsters", out _))
+                !dependencyTest.CanEnableMod("Gunslinger", out _))
                 throw new InvalidDataException("Dependency gate allows unsupported mods.");
         }
         // Only enabled confirmed mods can appear in the Active Mods area.

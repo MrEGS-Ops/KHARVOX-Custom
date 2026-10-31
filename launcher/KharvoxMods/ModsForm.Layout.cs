@@ -13,7 +13,7 @@ namespace KharvoxMods;
 // scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private const int LegacyVrModCount = 22;
+    private const int LegacyVrModCount = 21;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
     private bool _savingSettings;
@@ -27,8 +27,7 @@ internal sealed partial class ModsForm
     private static bool IsConfirmedMod(string title) =>
         title == "Weapon Wheel Button Remap" ||
         title == "Hand Focus" ||
-        title == "Behind-the-Head Weapon Wheel" ||
-        title == "Dynamic Quick Holsters" ||
+        title == "Gunslinger" ||
         title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE";
 
@@ -36,8 +35,7 @@ internal sealed partial class ModsForm
     {
         "Weapon Wheel Button Remap" => _modPrefs.WeaponWheelRemap,
         "Hand Focus" => _modPrefs.HandFocus,
-        "Behind-the-Head Weapon Wheel" => _modPrefs.BehindHeadWeaponWheel,
-        "Dynamic Quick Holsters" => _modPrefs.DynamicQuickHolsters,
+        "Gunslinger" => _modPrefs.Gunslinger,
         "Physical Crouch" => _modPrefs.PhysicalCrouch,
         "PAINSAW: RIPSHIFT OVERDRIVE" => _modPrefs.PainsawRipshiftOverdrive,
         _ => false
@@ -54,10 +52,15 @@ internal sealed partial class ModsForm
         }
         switch (name)
         {
-            case "Weapon Wheel Button Remap": _modPrefs.WeaponWheelRemap = value; break;
+            case "Weapon Wheel Button Remap":
+                _modPrefs.WeaponWheelRemap = value;
+                if (value) _modPrefs.Gunslinger = false;
+                break;
             case "Hand Focus": _modPrefs.HandFocus = value; break;
-            case "Behind-the-Head Weapon Wheel": _modPrefs.BehindHeadWeaponWheel = value; break;
-            case "Dynamic Quick Holsters": _modPrefs.DynamicQuickHolsters = value; break;
+            case "Gunslinger":
+                _modPrefs.Gunslinger = value;
+                if (value) _modPrefs.WeaponWheelRemap = false;
+                break;
             case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
             case "PAINSAW: RIPSHIFT OVERDRIVE":
                 _modPrefs.PainsawRipshiftOverdrive = value; break;
@@ -105,15 +108,13 @@ internal sealed partial class ModsForm
         ("✥  Hands & Arms", new[]
         {
             new PreviewMod("Weapon Wheel Button Remap",
-                "Tap A to quick-switch. Hold A for the weapon wheel; select with the left stick.", true),
+                "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Enabling this turns Gunslinger off.", true),
             new PreviewMod("Hand Focus",
                 "Controller-directed focus with RS activation.", true),
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
-            new PreviewMod("Behind-the-Head Weapon Wheel",
-                "Behind-head wheel: RIGHT side uses right-hand motion; LEFT side uses left-hand motion. Exit with Grip to equip, or release Grip before exit to cancel without switching.", true),
-            new PreviewMod("Dynamic Quick Holsters",
-                "Hip weapon hotkeys: retrieve LEFT hip into LEFT hand, RIGHT hip into RIGHT hand. Press Grip inside a saved slot to equip; enter gripping then release to reassign.")
+            new PreviewMod("Gunslinger",
+                "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back. Automatically disables standalone Weapon Wheel Button Remap.", true)
         }),
         ("➤  Legs & Movement", new[]
         {
@@ -505,8 +506,8 @@ internal sealed partial class ModsForm
 
     internal static void RunUiSelfTest()
     {
-        if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != 23)
-            throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 22 mod rows.");
+        if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != 22)
+            throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 21 mod rows.");
         ValidateActiveVrPolicies();
         // The DOOM resource-mod panel and its standalone companion sources
         // must not occur in the compiled application, even as hidden UI.
@@ -576,9 +577,9 @@ internal sealed partial class ModsForm
                 .Where(check => string.Equals(check.Tag as string, "original-vr-mod",
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
-                vr.Count(check => check.Enabled) != 6 ||
+                vr.Count(check => check.Enabled) != 5 ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
-                throw new InvalidDataException("Only four confirmed numbered mod rows may be selectable.");
+                throw new InvalidDataException("Only five confirmed numbered mod rows may be selectable.");
             if (!form.Controls.Descendants().OfType<Label>()
                 .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
                 throw new InvalidDataException("Active Mods heading is missing.");

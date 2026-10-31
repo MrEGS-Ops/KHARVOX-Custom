@@ -12,14 +12,23 @@ internal sealed class StandaloneModPreferences
     private const string PreviousGloryTitle = "Glory Kill Speed Override";
     private const string PreviousRipTearTitle = "RIP & TEAR: KILLTIME";
     private const string KilltimeTitle = "KILLTIME: RIP & TEAR";
-    private static string UpgradeModTitle(string title) =>
-        string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal) ||
-        string.Equals(title, PreviousRipTearTitle, StringComparison.Ordinal)
-            ? KilltimeTitle : title;
+    private const string GunslingerTitle = "Gunslinger";
+    private static string UpgradeModTitle(string title)
+    {
+        if (string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal) ||
+            string.Equals(title, PreviousRipTearTitle, StringComparison.Ordinal))
+            return KilltimeTitle;
+        if (title == "Behind-the-Head Weapon Wheel" ||
+            title == "Dynamic Quick Holsters")
+            return GunslingerTitle;
+        return title;
+    }
 
     public int Schema { get; set; } = 1;
     public bool WeaponWheelRemap { get; set; } = true;
     public bool HandFocus { get; set; }
+    public bool Gunslinger { get; set; }
+    // Read old bridge files; these flags are never written as active mods again.
     public bool BehindHeadWeaponWheel { get; set; }
     public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; }
@@ -56,10 +65,18 @@ internal sealed class StandaloneModPreferences
             if (value == null || value.Schema != 1)
                 throw new InvalidDataException("Unknown KHARVOX Mods bridge schema.");
             value.GloryKillHz = Math.Max(30, Math.Min(240, value.GloryKillHz));
+            // Migrate either old physical mod to the new all-in-one switch.
+            if (value.BehindHeadWeaponWheel || value.DynamicQuickHolsters)
+                value.Gunslinger = true;
+            value.BehindHeadWeaponWheel = false;
+            value.DynamicQuickHolsters = false;
+            if (value.Gunslinger) value.WeaponWheelRemap = false;
             value.ActiveOrder = Array.ConvertAll(value.ActiveOrder ??
-                Array.Empty<string>(), UpgradeModTitle);
+                Array.Empty<string>(), UpgradeModTitle)
+                .Distinct(StringComparer.Ordinal).ToArray();
             value.AvailableOrder = Array.ConvertAll(value.AvailableOrder ??
-                Array.Empty<string>(), UpgradeModTitle);
+                Array.Empty<string>(), UpgradeModTitle)
+                .Distinct(StringComparer.Ordinal).ToArray();
             value.CollapsedCategories ??= Array.Empty<string>();
             value.RuntimeRevision ??= "";
             return value;
@@ -76,8 +93,16 @@ internal sealed class StandaloneModPreferences
     {
         path ??= DefaultPath;
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
-        ActiveOrder ??= Array.Empty<string>();
-        AvailableOrder ??= Array.Empty<string>();
+        // Never leave two separate input owners enabled after a save.
+        if (Gunslinger) WeaponWheelRemap = false;
+        BehindHeadWeaponWheel = false;
+        DynamicQuickHolsters = false;
+        ActiveOrder = Array.ConvertAll(ActiveOrder ??
+            Array.Empty<string>(), UpgradeModTitle)
+            .Distinct(StringComparer.Ordinal).ToArray();
+        AvailableOrder = Array.ConvertAll(AvailableOrder ??
+            Array.Empty<string>(), UpgradeModTitle)
+            .Distinct(StringComparer.Ordinal).ToArray();
         CollapsedCategories ??= Array.Empty<string>();
         RuntimeRevision ??= "";
         var directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
@@ -101,7 +126,7 @@ internal sealed class StandaloneModPreferences
             var path = Path.Combine(dir, "mods.json");
             var x = Load(path);
             if (!x.WeaponWheelRemap || x.HandFocus ||
-                x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
+                x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
                 x.PhysicalCrouch || x.PainsawRipshiftOverdrive ||
                 x.GloryKillSpeedOverride ||
                 x.CollapsedCategories.Length !=
@@ -109,8 +134,8 @@ internal sealed class StandaloneModPreferences
                 x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )
                 throw new InvalidDataException("Unsafe default mod choices.");
             x.HandFocus = true;
-            x.BehindHeadWeaponWheel = true;
-            x.DynamicQuickHolsters = true;
+            x.Gunslinger = true;
+            x.WeaponWheelRemap = false;
             x.PainsawRipshiftOverdrive = true;
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
@@ -123,8 +148,9 @@ internal sealed class StandaloneModPreferences
             x.RuntimeRevision = "00000000000000000000000000000001";
             x.Save(path);
             var y = Load(path);
-            if (!y.HandFocus || !y.BehindHeadWeaponWheel ||
-                !y.DynamicQuickHolsters || !y.PainsawRipshiftOverdrive ||
+            if (!y.HandFocus || !y.Gunslinger || y.WeaponWheelRemap ||
+                y.BehindHeadWeaponWheel || y.DynamicQuickHolsters ||
+                !y.PainsawRipshiftOverdrive ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
                 y.ActiveOrder.Length != 3 ||
                 y.ActiveOrder[0] != "Hand Focus" ||
@@ -136,12 +162,28 @@ internal sealed class StandaloneModPreferences
                 y.CollapsedCategories.Length != 1 ||
                 y.RuntimeRevision != "00000000000000000000000000000001")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
-            y.BehindHeadWeaponWheel = false;
-            y.DynamicQuickHolsters = false;
+            y.Gunslinger = false;
             y.Save(path);
             var disabled = Load(path);
-            if (disabled.BehindHeadWeaponWheel || disabled.DynamicQuickHolsters)
-                throw new InvalidDataException("Physical mods must remain off when unchecked.");
+            if (disabled.Gunslinger || disabled.BehindHeadWeaponWheel ||
+                disabled.DynamicQuickHolsters)
+                throw new InvalidDataException("Gunslinger must remain off when unchecked.");
+            // Old sidecar state merges both legacy rows into one, disabling
+            // standalone remap without disturbing the stored ordering.
+            File.WriteAllText(path, new JavaScriptSerializer().Serialize(new
+            {
+                Schema = 1, WeaponWheelRemap = true,
+                BehindHeadWeaponWheel = true, DynamicQuickHolsters = true,
+                ActiveOrder = new[] { "Behind-the-Head Weapon Wheel",
+                    "Dynamic Quick Holsters" },
+                AvailableOrder = new[] { "Weapon Wheel Button Remap" }
+            }));
+            var legacy = Load(path);
+            if (!legacy.Gunslinger || legacy.WeaponWheelRemap ||
+                legacy.BehindHeadWeaponWheel || legacy.DynamicQuickHolsters ||
+                legacy.ActiveOrder.Length != 1 ||
+                legacy.ActiveOrder[0] != GunslingerTitle)
+                throw new InvalidDataException("Legacy physical-mod migration failed.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

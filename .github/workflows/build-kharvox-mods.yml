@@ -64,7 +64,7 @@ jobs:
         shell: pwsh
         run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
 
-      - name: Verify exactly two opt-in bridge mod flags
+      - name: Verify Gunslinger bundled native wheel and hip flags
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
