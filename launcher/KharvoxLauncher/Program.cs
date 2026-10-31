@@ -79,11 +79,18 @@ internal static class Program
             return 0;
         }
 
+        // The normal GUI is measured separately from the headless -run path.
+        var headlessRun = args.Any(argument => string.Equals(argument, "-run",
+            StringComparison.OrdinalIgnoreCase));
+        if (!headlessRun)
+            LauncherStartupTrace.Begin();
         KharvoxRunner.DisableLayerRegistrationsOnExit();
+        if (!headlessRun)
+            LauncherStartupTrace.Mark("Layer registration cleanup complete");
         AppDomain.CurrentDomain.ProcessExit += (_, _) => KharvoxRunner.DisableLayerRegistrationsOnExit();
         Application.ApplicationExit += (_, _) => KharvoxRunner.DisableLayerRegistrationsOnExit();
 
-        if (args.Any(argument => string.Equals(argument, "-run", StringComparison.OrdinalIgnoreCase)))
+        if (headlessRun)
             return RunSavedSettings();
 
         try
@@ -91,10 +98,19 @@ internal static class Program
             // This executable is the separately packaged, bridge-enabled
             // derivative. Keep CactusVRStudios' MainForm.cs byte-for-byte
             // unchanged; identify this modified build at runtime instead.
+            LauncherStartupTrace.Mark("MainForm construction begins");
             using (var window = new MainForm())
             {
+                LauncherStartupTrace.Mark("MainForm constructor complete");
+                window.HandleCreated += (_, _) =>
+                    LauncherStartupTrace.Mark("MainForm HWND created");
+                window.Load += (_, _) =>
+                    LauncherStartupTrace.Mark("MainForm Load event complete");
+                window.Shown += (_, _) =>
+                    LauncherStartupTrace.Mark("MainForm Shown (first display)");
                 window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
                 EmbeddedLauncherLayout.Watch(window);
+                LauncherStartupTrace.Mark("Embedding layout watcher installed");
                 Application.Run(window);
             }
             return 0;

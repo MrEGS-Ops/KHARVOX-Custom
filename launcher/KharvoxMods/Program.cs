@@ -61,12 +61,19 @@ internal static class Program
                 FocusExistingModsWindow();
                 return 0;
             }
+            StartupTrace.Begin();
+            StartupTrace.Mark("Manager process ready; initialize Windows Forms");
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
             // The first-run path picker must finish before ModsForm exists,
             // so users never see a blank or inaccessible Mods window behind it.
             if (!OriginalLauncherSetup.EnsureSelected()) return 0;
-            Application.Run(new ModsForm());
+            StartupTrace.Mark("Original launcher reference accepted");
+            using (var form = new ModsForm())
+            {
+                StartupTrace.Mark("Mods window constructed");
+                Application.Run(form);
+            }
             return 0;
         }
     }

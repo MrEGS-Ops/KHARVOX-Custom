@@ -25,6 +25,7 @@ internal sealed partial class ModsForm : Form
     private IntPtr _launcherWindow;
     private bool _launcherEmbedded;
     private bool _bootstrapped;
+    private bool _updaterRefreshScheduled;
     private bool _closingHost;
     private int _fixedDesktopWidth;
     private int _minimumDesktopHeight;
@@ -97,6 +98,7 @@ internal sealed partial class ModsForm : Form
         try { Icon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
 
         BuildLayout();
+        StartupTrace.Mark("Mods layout complete");
         // Lock width completely while allowing users to expand the height.
         // A MaximumSize height of 0 collapses WinForms to the caption!
         LockHorizontalSize();
@@ -107,6 +109,7 @@ internal sealed partial class ModsForm : Form
         {
             if (_bootstrapped) return;
             _bootstrapped = true;
+            StartupTrace.Mark("Mods window shown");
             // Reapply exact constraints after DPI and native scaling finish.
             LockHorizontalSize();
             await StartUpAsync();
@@ -259,6 +262,7 @@ internal sealed partial class ModsForm : Form
 
     private async System.Threading.Tasks.Task StartUpAsync()
     {
+        StartupTrace.Mark("Manager startup checks begin");
         // First-run selection finished before the combined window was created.
         _state.ConsentRecorded = true;
         _state.WindowAttachmentApproved = true;
@@ -272,7 +276,9 @@ internal sealed partial class ModsForm : Form
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-        BeginInvoke(new Action(async () => await UpdaterBootstrap.TryRefreshAsync()));
+        // Updater self-refresh is intentionally scheduled only AFTER the
+        // modified launcher has appeared and been docked. A network response
+        // or ZIP replacement must not compete with first-window startup.
 
         // Only use the selected original executable as an installation reference.
         // Never run or modify it. Old settings pointing to NativeBridge are
@@ -288,6 +294,7 @@ internal sealed partial class ModsForm : Form
             return;
         }
         else _state.KharvoxLauncherPath = original;
+        StartupTrace.Mark("Original launcher path resolved");
 
         _state.Save();
         await StartLauncherAsync();
@@ -304,11 +311,19 @@ internal sealed partial class ModsForm : Form
         try
         {
             _runtimePreparing = true;
+            StartupTrace.Mark("Native bridge readiness check begin");
             RefreshBridgeState();
             // Ready-to-run releases bundle this already. An existing older
             // install downloads the verified copy once without a restart.
-            if (!NativeBridgeInstaller.IsReady())
+            var bridgeReady = NativeBridgeInstaller.IsReady();
+            StartupTrace.Mark(bridgeReady
+                ? "Native bridge ready (bundled)"
+                : "Native bridge missing; verified install begins");
+            if (!bridgeReady)
+            {
                 await NativeBridgeInstaller.InstallAsync(SetStatus);
+                StartupTrace.Mark("Native bridge install finished");
+            }
             if (!NativeBridgeInstaller.IsReady())
                 throw new InvalidDataException("Custom KHARVOX runtime did not pass verification.");
 
@@ -320,7 +335,9 @@ internal sealed partial class ModsForm : Form
             }
             _launcher?.Dispose();
             // Always run OUR bridge-enabled launcher, not the selected original.
+            StartupTrace.Mark("Launching or finding modified KHARVOX process");
             _launcher = LauncherDiscovery.StartOrFind(NativeBridgeInstaller.TargetLauncher);
+            StartupTrace.Mark("Modified KHARVOX process acquired (PID " + _launcher.Id + ")");
             _launcherWindow = IntPtr.Zero;
             _launcherEmbedded = false;
             SetStatus("Modified KHARVOX started — loading launcher panel…");
@@ -328,6 +345,8 @@ internal sealed partial class ModsForm : Form
         }
         catch (Exception error)
         {
+            StartupTrace.Mark("Modified KHARVOX process startup failed: " + error.GetType().Name);
+            ScheduleUpdaterRefresh();
             SetStatus("Custom KHARVOX couldn't start — original installation untouched.");
             MessageBox.Show(this,
                 "Couldn't prepare or start the custom KHARVOX launcher:\n" +
@@ -350,6 +369,16 @@ internal sealed partial class ModsForm : Form
             _launcherHost.ClientSize.Width, _launcherHost.ClientSize.Height);
     }
 
+    // Do network and updater disk operations only after the right panel is
+    // ready, or after a terminal launcher startup error. Run once per manager.
+    private void ScheduleUpdaterRefresh()
+    {
+        if (_updaterRefreshScheduled || IsDisposed || Disposing || !IsHandleCreated)
+            return;
+        _updaterRefreshScheduled = true;
+        BeginInvoke(new Action(async () => await UpdaterBootstrap.TryRefreshAsync()));
+    }
+
     private void SyncEmbeddedLauncher()
     {
         if (_launcher == null || _closingHost) return;
@@ -360,6 +389,8 @@ internal sealed partial class ModsForm : Form
                 _launcherWindow = IntPtr.Zero;
                 _launcherEmbedded = false;
                 _dockTimer.Stop();
+                StartupTrace.Mark("Modified KHARVOX exited before attachment");
+                ScheduleUpdaterRefresh();
                 SetStatus("Launcher closed · double-click this status to reopen.");
                 return;
             }
@@ -376,10 +407,13 @@ internal sealed partial class ModsForm : Form
                 SetStatus("Waiting for modified KHARVOX launcher…");
                 return;
             }
+            StartupTrace.Mark("Modified KHARVOX top-level window detected");
             if (!NativeDock.EmbedWindow(hwnd, _launcherHost.Handle,
                 _launcherHost.ClientSize.Width, _launcherHost.ClientSize.Height))
             {
                 _dockTimer.Stop();
+                StartupTrace.Mark("Modified KHARVOX HWND embedding failed");
+                ScheduleUpdaterRefresh();
                 SetStatus("Modified KHARVOX could not be embedded.");
                 MessageBox.Show(this,
                     "Windows could not embed the modified KHARVOX launcher. " +
@@ -391,11 +425,15 @@ internal sealed partial class ModsForm : Form
             _launcherWindow = hwnd;
             _launcherEmbedded = true;
             TopMost = false;
+            StartupTrace.Mark("Modified KHARVOX panel embedded; launcher ready");
             SetStatus("Connected · KHARVOX embedded.");
+            ScheduleUpdaterRefresh();
         }
         catch (Exception error) when (error is InvalidOperationException ||
             error is System.ComponentModel.Win32Exception)
         {
+            StartupTrace.Mark("Modified KHARVOX attachment exception: " + error.GetType().Name);
+            ScheduleUpdaterRefresh();
             SetStatus("Modified KHARVOX unavailable.");
         }
     }

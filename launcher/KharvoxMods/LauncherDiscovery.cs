@@ -82,6 +82,10 @@ internal static class LauncherDiscovery
         // consumes this variable; stock KHARVOX ignores it harmlessly.
         info.EnvironmentVariables["KHARVOX_MODS_BRIDGE_FILE"] =
             StandaloneModPreferences.DefaultPath;
+        // Keep child-process startup timings alongside the manager's logs.
+        info.EnvironmentVariables["KHARVOX_MODS_STARTUP_LOG"] =
+            Path.Combine(AppContext.BaseDirectory, "Logs",
+                "KHARVOX-launcher-startup.log");
         return Process.Start(info)
             ?? throw new InvalidOperationException("Windows did not start KHARVOX.");
     }
