@@ -335,12 +335,15 @@ internal static class CustomModSettingsStore
             }, path);
             var first = Load(path);
             if (first.BackOfHandHud || first.CinematicExitHandoff
+                || !first.BehindHeadWeaponWheel || !first.DynamicShoulderHolster
                 || first.CinematicExitHandoffDelayMs != 150
                 || first.CinematicSpeedFineTune || first.SpeedAdvancedExpanded
                 || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("Action exit must default to game timing on first launch.");
             first.BackOfHandHud = false;
+            first.BehindHeadWeaponWheel = false;
+            first.DynamicShoulderHolster = false;
             first.CinematicExitHandoff = true; // paused diagnostic should not persist active
             first.CinematicExitHandoffDelayMs = 160; // retired override ignored
             first.SpeedAdvancedExpanded = true;
@@ -348,6 +351,7 @@ internal static class CustomModSettingsStore
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
             if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
+                || Load(path).BehindHeadWeaponWheel || Load(path).DynamicShoulderHolster
                 || Load(path).CinematicExitHandoffDelayMs != 150
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
@@ -362,14 +366,22 @@ internal static class CustomModSettingsStore
             }, oldActionExitPath);
             var migratedExit = Load(oldActionExitPath);
             if (migratedExit.CinematicExitHandoff
-                || migratedExit.DevelopmentTestDefaultsRevision != 4)
+                || migratedExit.DevelopmentTestDefaultsRevision != 5
+                || !migratedExit.BehindHeadWeaponWheel || !migratedExit.DynamicShoulderHolster)
                 throw new InvalidDataException("Old forced early handoff must migrate OFF.");
             migratedExit.CinematicExitHandoff = true;
             Save(migratedExit, oldActionExitPath);
+            migratedExit.BehindHeadWeaponWheel = false;
+            migratedExit.DynamicShoulderHolster = false;
+            Save(migratedExit, oldActionExitPath);
+            var persistedModChoice = Load(oldActionExitPath);
+            if (persistedModChoice.BehindHeadWeaponWheel || persistedModChoice.DynamicShoulderHolster)
+                throw new InvalidDataException("Manual OFF for restored physical weapon mods must survive restart.");
             if (Load(oldActionExitPath).CinematicExitHandoff)
                 throw new InvalidDataException("Paused action-exit must remain OFF.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
+                || !fresh.BehindHeadWeaponWheel || !fresh.DynamicShoulderHolster
                 || fresh.CinematicExitHandoffDelayMs != 150
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install must retain game-default action exit.");
