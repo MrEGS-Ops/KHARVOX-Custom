@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 
 namespace kharvox {
 
@@ -16,6 +17,24 @@ inline GestureWheelExit classifyGestureWheelExit(
 // a neutral selection stick before releasing the button. This ensures native
 // input observes a neutral wheel update prior to its button-release handler.
 // Does not claim to override DOOM's retained slot if it ignores centering.
+// Native wheel can commit hovered weapon AFTER its release. Keep observing
+// post-release even if native state still shows the original early.
+struct GestureWheelCancelGuard {
+ bool active{};
+ std::uint64_t firstCheckAt{},expiresAt{},nextPulseAt{};
+ void arm(std::uint64_t now) {
+  active=true;firstCheckAt=now+200000000ULL;
+  expiresAt=now+1250000000ULL;nextPulseAt=firstCheckAt;
+ }
+ void reset(){*this={};}
+ bool shouldRestore(std::uint64_t now,bool wheelOpen,bool originalEquipped){
+  if(!active)return false;
+  if(wheelOpen||now>=expiresAt){reset();return false;}
+  if(now<firstCheckAt||now<nextPulseAt||originalEquipped)return false;
+  nextPulseAt=now+180000000ULL;
+  return true;
+ }
+};
 struct GestureWheelCancelDrain {
     int neutralFramesRemaining{};
     void cancel() { neutralFramesRemaining = 3; }
