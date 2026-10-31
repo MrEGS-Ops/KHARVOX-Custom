@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "id": "dynamic-quick-holsters",
+  "title": "Dynamic Quick Holsters",
+  "version": "0.1.0-experimental",
+  "type": "external-vr-module",
+  "library": "kharvox_mod_quick_holsters.dll",
+  "abi": 1,
+  "enabledByDefault": false,
+  "requires": [
+    "vr-controller-pose",
+    "controller-grip",
+    "weapon-identity",
+    "weapon-visibility-control",
+    "weapon-selection",
+    "rendered-hands"
+  ],
+  "status": "bridge-pending"
+}
