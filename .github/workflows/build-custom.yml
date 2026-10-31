@@ -457,8 +457,7 @@ jobs:
           retention-days: 30
 
       - name: Keep only latest 5 successful builds
-        if: steps.build_mode.outputs.mode != 'fast'
-        if: success()
+        if: ${{ success() && steps.build_mode.outputs.mode != 'fast' }}
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
