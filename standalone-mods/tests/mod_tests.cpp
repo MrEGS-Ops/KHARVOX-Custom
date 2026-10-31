@@ -1,4 +1,7 @@
 #include "KharvoxModV1.h"
+#ifdef NDEBUG
+#undef NDEBUG // keep behavioural asserts active in CI Release tests
+#endif
 #include <cassert>
 #include <string>
 #ifdef _WIN32
