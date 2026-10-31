@@ -53,8 +53,14 @@ internal sealed partial class ModsForm
         switch (name)
         {
             case "Weapon Wheel Button Remap":
+                // Gunslinger owns the compatible remapped controls. The
+                // independent remap stays locked until Gunslinger is OFF.
+                if (_modPrefs.Gunslinger)
+                {
+                    QueueVrRebuild();
+                    return;
+                }
                 _modPrefs.WeaponWheelRemap = value;
-                if (value) _modPrefs.Gunslinger = false;
                 break;
             case "Hand Focus": _modPrefs.HandFocus = value; break;
             case "Gunslinger":
@@ -108,7 +114,7 @@ internal sealed partial class ModsForm
         ("✥  Hands & Arms", new[]
         {
             new PreviewMod("Weapon Wheel Button Remap",
-                "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Enabling this turns Gunslinger off.", true),
+                "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Greyed out while Gunslinger is enabled; disable Gunslinger first.", true),
             new PreviewMod("Hand Focus",
                 "Controller-directed focus with RS activation.", true),
             new PreviewMod("Boxing Guard Mode",
@@ -577,9 +583,10 @@ internal sealed partial class ModsForm
                 .Where(check => string.Equals(check.Tag as string, "original-vr-mod",
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
-                vr.Count(check => check.Enabled) != 5 ||
+                vr.Count(check => check.Enabled) !=
+                    5 - (form._modPrefs.Gunslinger ? 1 : 0) ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
-                throw new InvalidDataException("Only five confirmed numbered mod rows may be selectable.");
+                throw new InvalidDataException("Verified mod rows or Gunslinger conflict gating changed.");
             if (!form.Controls.Descendants().OfType<Label>()
                 .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
                 throw new InvalidDataException("Active Mods heading is missing.");

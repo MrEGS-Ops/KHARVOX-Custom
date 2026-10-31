@@ -196,7 +196,13 @@ internal sealed partial class ModsForm
             ("Gunslinger", true),
             ("No Weapon Wheel", false)
         },
-        "Gunslinger" => new[] { ("No Weapon Wheel", false) },
+        // The standalone remap is superseded by Gunslinger, not a switch
+        // that can replace Gunslinger while the combo is selected.
+        "Gunslinger" => new[] {
+            ("Weapon Wheel Button Remap", false),
+            ("No Weapon Wheel", false)
+        },
+        "Weapon Wheel Button Remap" => new[] { ("Gunslinger", false) },
         "No Weapon Wheel" => new[] {
             ("Gunslinger", false),
             ("Directional Dash", false)
@@ -224,6 +230,12 @@ internal sealed partial class ModsForm
             }
             if (!link.Required && IsVrActive(link.Name))
             {
+                // On initial enable only, Gunslinger takes ownership of the
+                // already selected standalone remap and clears that checkbox.
+                // Once active, the standalone remap must remain disabled.
+                if (title == "Gunslinger" &&
+                    link.Name == "Weapon Wheel Button Remap")
+                    continue;
                 reason = "Conflicts with #" + ModNumber(link.Name).ToString("00") +
                     " " + link.Name + ". Disable it first.";
                 return false;
@@ -240,11 +252,11 @@ internal sealed partial class ModsForm
             "#" + ModNumber(x.Name).ToString("00") + " " + x.Name).ToList();
         if (mod == "Gunslinger")
         {
-            lines.Add("Automatically disables: Weapon Wheel Button Remap (standalone)");
+            lines.Add("Disables and greys out: Weapon Wheel Button Remap (standalone)");
             lines.Add("Requires: Hands enabled in the original KHARVOX launcher");
         }
         if (mod == "Weapon Wheel Button Remap")
-            lines.Add("Automatically disables: Gunslinger");
+            lines.Add("Unavailable while Gunslinger is enabled; disable Gunslinger first");
         return lines.ToArray();
     }
 
@@ -377,7 +389,7 @@ internal sealed partial class ModsForm
         var howToUse = name switch
         {
             "Weapon Wheel Button Remap" =>
-                "Standalone mode: tap A to quick-switch; hold A for the native weapon wheel. Enabling it disables Gunslinger.",
+                "Standalone mode: tap A to quick-switch; hold A for the native weapon wheel. This checkbox is greyed out while Gunslinger is enabled. Disable Gunslinger first to make it selectable; no automatic mode switching.",
             "Hand Focus" =>
                 "In DOOM: activate with right-stick click, then aim or select with your hand.",
             "Gunslinger" =>
@@ -762,13 +774,19 @@ internal sealed partial class ModsForm
         var dependencies = DependenciesFor(mod.Title);
         if (dependencies.Length > 0)
             description += Environment.NewLine + string.Join(Environment.NewLine, dependencies);
-        var check = MakePreviewCheck(mod.Title,
-            description + Environment.NewLine +
-            (IsConfirmedMod(mod.Title)
+        var gunslingerConflict = mod.Title == "Weapon Wheel Button Remap" &&
+            _modPrefs.Gunslinger;
+        var verified = IsConfirmedMod(mod.Title);
+        var available = verified && !gunslingerConflict;
+        var statusReason = gunslingerConflict
+            ? "Conflicts with Gunslinger. Disable Gunslinger to unlock the standalone remap."
+            : verified
                 ? "Verified core feature. Changes apply on next DOOM launch."
-                : "Paused; not available in this build."),
+                : "Paused; not available in this build.";
+        var check = MakePreviewCheck(mod.Title,
+            description + Environment.NewLine + statusReason,
             isDev ? "dev-override" : "original-vr-mod");
-        check.Enabled = IsConfirmedMod(mod.Title);
+        check.Enabled = available;
         check.Checked = active;
         check.Text = ""; // Only the checkbox glyph; label renders the name.
         check.Dock = DockStyle.Fill;
@@ -794,26 +812,30 @@ internal sealed partial class ModsForm
         if (check.Enabled)
             titleLabel.Click += (_, _) => check.Checked = !check.Checked;
         _tooltips.SetToolTip(titleLabel, description +
-            (check.Enabled ? "" : Environment.NewLine +
-                "Paused; unavailable in this build."));
+            Environment.NewLine + statusReason);
 
         // ACTIVE here means this mod is verified/working in this build.
         // Only show the indicator in Available VR Mods, never the selected
         // Active Mods section. Paused rows remain subdued without a label.
         var status = new Label
         {
-            Text = !active && check.Enabled ? "ACTIVE" : "",
+            Text = gunslingerConflict ? "CONFLICT" :
+                !active && check.Enabled ? "ACTIVE" : "",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = Color.FromArgb(103, 198, 157),
+            ForeColor = gunslingerConflict
+                ? Color.FromArgb(141, 145, 154)
+                : Color.FromArgb(103, 198, 157),
             BackColor = row.BackColor,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             Margin = Padding.Empty,
             Tag = "vr-mod-status"
         };
-        _tooltips.SetToolTip(status, check.Enabled
-            ? "Verified and working; click the checkbox to enable."
-            : "Paused: the runtime feature is not verified in this build.");
+        _tooltips.SetToolTip(status, gunslingerConflict
+            ? statusReason
+            : check.Enabled
+                ? "Verified and working; click the checkbox to enable."
+                : "Paused: the runtime feature is not verified in this build.");
 
         var info = MakeRowInfo("How to use this mod and its dependencies",
             mod.Title, mod.Help);
@@ -953,6 +975,8 @@ internal sealed partial class ModsForm
         var verified = VerifiedVrMods();
         if (verified.Length != 6 || verified.Distinct().Count() != 6 ||
             DependenciesFor("Directional Dash").Length != 2 ||
+            DependencyLinks("Gunslinger").Length != 2 ||
+            DependencyLinks("Weapon Wheel Button Remap").Length != 1 ||
             DependenciesFor("No Weapon Wheel").Length != 2 ||
             DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
             throw new InvalidDataException("VR active-mod inventory/dependency policy changed.");
@@ -965,6 +989,16 @@ internal sealed partial class ModsForm
                 !dependencyTest.CanEnableMod("Hand Focus", out _) ||
                 !dependencyTest.CanEnableMod("Gunslinger", out _))
                 throw new InvalidDataException("Dependency gate allows unsupported mods.");
+            // Gunslinger may be selected while the old standalone remap is
+            // active; enabling it clears the remap instead of blocking.
+            dependencyTest._modPrefs.Gunslinger = false;
+            dependencyTest._modPrefs.WeaponWheelRemap = true;
+            if (!dependencyTest.CanEnableMod("Gunslinger", out _))
+                throw new InvalidDataException("Gunslinger cannot take ownership of remap.");
+            dependencyTest._modPrefs.Gunslinger = true;
+            dependencyTest._modPrefs.WeaponWheelRemap = false;
+            if (dependencyTest.CanEnableMod("Weapon Wheel Button Remap", out _))
+                throw new InvalidDataException("Standalone remap can override Gunslinger.");
         }
         // Only enabled confirmed mods can appear in the Active Mods area.
         using (var form = new ModsForm())
@@ -1008,6 +1042,31 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException(
                     "KILLTIME slider/info columns do not line up with ordinary rows.");
 
+            // Gunslinger greys out the standalone remap without switching
+            // to it. The row remains present with its conflict explanation.
+            form._modPrefs.Gunslinger = true;
+            form._modPrefs.WeaponWheelRemap = false;
+            form.RenderVrRows();
+            var remapRow = form._visibleModRows["Weapon Wheel Button Remap"];
+            var remapCheckbox = EnumerateRowControls(remapRow)
+                .OfType<CheckBox>().Single();
+            var remapStatus = EnumerateRowControls(remapRow)
+                .OfType<Label>().Single(x =>
+                    (x.Tag as string) == "vr-mod-status");
+            if (remapCheckbox.Enabled || remapCheckbox.Checked ||
+                remapStatus.Text != "CONFLICT" ||
+                !DependenciesFor("Weapon Wheel Button Remap").Any(x =>
+                    x.StartsWith("Conflicts with:")))
+                throw new InvalidDataException(
+                    "Gunslinger did not grey out the conflicting standalone remap.");
+            form._modPrefs.Gunslinger = false;
+            form.RenderVrRows();
+            remapCheckbox = EnumerateRowControls(
+                form._visibleModRows["Weapon Wheel Button Remap"])
+                .OfType<CheckBox>().Single();
+            if (!remapCheckbox.Enabled)
+                throw new InvalidDataException(
+                    "Standalone remap did not unlock when Gunslinger was disabled.");
             // Paused rows have a readable, independent label rather than
             // Windows' near-black disabled checkbox caption.
             foreach (var pair in form._visibleModRows)
@@ -1029,7 +1088,8 @@ internal sealed partial class ModsForm
                             (label.Tag as string) == "vr-mod-name"))
                     .Any(row => !row.Controls.OfType<Label>()
                         .Any(label => (label.Tag as string) == "vr-mod-status" &&
-                            (label.Text == "" || label.Text == "ACTIVE"))))
+                            (label.Text == "" || label.Text == "ACTIVE" ||
+                                label.Text == "CONFLICT"))))
                 throw new InvalidDataException("Every mod must show an explicit availability status.");
 
             // Standard rows must keep their info/drag columns anchored right.
