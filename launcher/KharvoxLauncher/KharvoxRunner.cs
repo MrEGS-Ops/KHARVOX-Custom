@@ -572,7 +572,8 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
             var wheelRemap = standaloneMods?.WeaponWheelRemap ?? options.WeaponWheelRemapEnabled;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] = wheelRemap ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] =
+                (wheelRemap || customMods.BehindHeadWeaponWheel) ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GLORY_KILL_SLOWMO_LEVEL"] =
                 "10"; // Three presets own speed; disable legacy shared sync speed
             psi.EnvironmentVariables["KHARVOX_MOD_DISABLE_HUD"] = customMods.DisableHud ? "1" : "0";
