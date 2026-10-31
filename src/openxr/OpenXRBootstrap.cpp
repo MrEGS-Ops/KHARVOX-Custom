@@ -321,6 +321,10 @@ struct State {
     int behindHeadWheelSide{-1}; // 0 right, 1 left
     bool wheelGripLatched{};
     bool wheelSelectionFrozen{};
+    kharvox::BackWeaponKind gestureWheelOriginalWeapon{kharvox::BackWeaponKind::Unknown};
+    kharvox::BackWeaponKind gestureWheelCancelTarget{kharvox::BackWeaponKind::Unknown};
+    int gestureWheelRestoreAttempts{};
+    XrTime gestureWheelRestoreNextAt{};
     kharvox::GestureWheelCancelDrain wheelCancelDrain{};
     bool wheelWeaponGripSuppressedUntilRelease{};
     bool wheelSupportGripSuppressedUntilRelease{};
@@ -2518,6 +2522,7 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraResetCombatTimeDilation();
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
+        kharvox::resetQuickHipGestures(s.quickHolsters);
         s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
@@ -2530,10 +2535,12 @@ void updateGameplayActions(XrTime displayTime){
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
         s.wheelCancelDrain.reset();
+        s.gestureWheelCancelTarget=kharvox::BackWeaponKind::Unknown;
+        s.gestureWheelRestoreAttempts=0;
         s.wheelWeaponGripSuppressedUntilRelease=false;
         s.wheelSupportGripSuppressedUntilRelease=false;
         s.dashButtonPressed=false;s.dashCooldownUntil=0;
-        s.dynamicShoulderHolstered=false;s.quickHolsters.activeStowedSide=-1;
+        s.dynamicShoulderHolstered=false;
         s.openHandUnequipped=false;
         s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
         s.openHandRelease={};
@@ -2670,6 +2677,9 @@ void updateGameplayActions(XrTime displayTime){
             s.wheelClicks={};
             s.wheelSelectionFrozen=false;
             s.wheelCancelDrain.reset();
+            s.gestureWheelOriginalWeapon=backWeaponKindFromActive(KharvoxWeaponCurrentKind());
+            s.gestureWheelCancelTarget=kharvox::BackWeaponKind::Unknown;
+            s.gestureWheelRestoreAttempts=0;
             log(std::string("[WEAPON-WHEEL] ")
                 +(selectedSide==0?"RIGHT":"LEFT")+" zone ENTER -> open, anchor reset");
         }
@@ -2680,8 +2690,13 @@ void updateGameplayActions(XrTime displayTime){
             // Neutralize selection while the native wheel remains pressed,
             // then release only after the neutral frames were submitted.
             s.wheelCancelDrain.cancel();
-            log("[WEAPON-WHEEL] zone EXIT without Grip -> neutral selection then close (no restore pulse)");
+            s.gestureWheelCancelTarget=s.gestureWheelOriginalWeapon;
+            s.gestureWheelRestoreAttempts=3;
+            s.gestureWheelRestoreNextAt=displayTime+100000000;
+            log("[WEAPON-WHEEL] zone EXIT without Grip -> CANCEL, preserve pre-wheel weapon");
         }else if(exitAction==kharvox::GestureWheelExit::Confirm){
+            s.gestureWheelCancelTarget=kharvox::BackWeaponKind::Unknown;
+            s.gestureWheelRestoreAttempts=0;
             log("[WEAPON-WHEEL] zone EXIT with Grip -> CONFIRM");
         }
         if(!behindHeadWheelRequested&&s.behindHeadWheelActive
@@ -2915,6 +2930,33 @@ void updateGameplayActions(XrTime displayTime){
             kharvox::backWeaponNormalizeShoulderSide(grip.x-head.x,s.weaponHandLeft),
             grip.y-head.y,grip.z-head.z};
     }
+    // An ungripped wheel exit must NOT leave a different weapon equipped.
+    // DOOM can retain its last highlighted wheel sector despite neutral
+    // selection frames, so correct that edge case. Grip-confirm skips this.
+    if(gameplay&&!weaponWheelActive&&!s.wheelCancelDrain.active()
+        &&s.gestureWheelRestoreAttempts>0
+        &&displayTime>=s.gestureWheelRestoreNextAt) {
+        const auto wanted=s.gestureWheelCancelTarget;
+        const auto current=backWeaponKindFromActive(KharvoxWeaponCurrentKind());
+        if(wanted==kharvox::BackWeaponKind::Unknown||wanted==current) {
+            s.gestureWheelRestoreAttempts=0;
+            s.gestureWheelCancelTarget=kharvox::BackWeaponKind::Unknown;
+        }else {
+            const WORD key=kharvox::backWeaponKeyboardVirtualKey(wanted);
+            if(key)startBackWeaponKeyboardPulse(key,displayTime);
+            else if(wanted==kharvox::BackWeaponKind::Bfg) {
+                s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
+                s.backWeaponPulseUntil=displayTime+100000000;
+            }else if(wanted==kharvox::BackWeaponKind::Chainsaw) {
+                s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
+                s.backWeaponPulseUntil=displayTime+100000000;
+            }
+            log(std::string("[WEAPON-WHEEL] CANCEL guard restore pre-wheel weapon=")
+                +backWeaponKindKey(wanted));
+            --s.gestureWheelRestoreAttempts;
+            s.gestureWheelRestoreNextAt=displayTime+180000000;
+        }
+    }
     const bool previousBackZone=s.backWeaponState.zoneActive;
     std::uint16_t backWeaponAmmoKnownMask{};
     std::uint16_t backWeaponAmmoUsableMask{};
@@ -2944,200 +2986,81 @@ void updateGameplayActions(XrTime displayTime){
             GetTickCount64(),35,.32f,155.f);
     s.shoulderZoneEntered=shoulderZone;
 
-    // Physical hip slots are independent; only Grip IN the rear hip zone
-    // stores/draws. These are NOT the native last-weapon quick-swap buttons.
-    std::array<bool,2> physicalHipGripEdges{};
-    for(int side=0;side<2;++side){
-        const bool held=readFloatAction(side==0
-            ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
-        physicalHipGripEdges[side]=held&&!s.quickHolsterPhysicalGripHeld[side];
-        s.quickHolsterPhysicalGripHeld[side]=held;
-    }
-    // Zone proximity is independent of Grip: entry cues must be detectable
-    // before the player chooses whether to draw/stow anything.
+    // Physical hip hotkeys, not stowable weapon props. The gun never
+    // disappears or moves and the assignment remains after every draw.
+    bool quickHolsterGripConsumed=false;
     if(s.customMods.dynamicShoulderHolster&&gameplay
-        &&s.trackingHeadPositionValid&&s.headZeroValid){
+       &&!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
+       &&s.trackingHeadPositionValid&&s.headZeroValid){
         const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
         for(int side=0;side<2;++side){
             const auto& hand=side==0?s.rightGripController:s.leftGripController;
-            bool inHip=false;
+            bool inside=false;
             if(hand.valid&&hand.positionTracked){
-                const auto grip=controllerRelativeToBodyTrackingOrigin(hand).position;
+                const auto p=controllerRelativeToBodyTrackingOrigin(hand).position;
                 const kharvox::BackWeaponVec3 relative{
-                    side==0?grip.x-head.x:head.x-grip.x,
-                    grip.y-head.y,grip.z-head.z};
-                inHip=kharvox::quickHipInside(relative,s.hipZoneEntered[side]);
+                    side==0?p.x-head.x:head.x-p.x,p.y-head.y,p.z-head.z};
+                inside=kharvox::quickHipInside(relative,
+                    s.quickHolsters.gestures[side].inside);
             }
-            if(inHip&&!s.hipZoneEntered[side])
+            const bool held=readFloatAction(side==0
+                ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
+            const auto action=kharvox::updateQuickHip(
+                s.quickHolsters,side,inside,held,activeBackWeapon);
+            s.hipZoneEntered[side]=inside;
+            if(inside&&held||action==kharvox::QuickHipAction::Draw){
+                quickHolsterGripConsumed=true;
+                s.bfgGripSuppressedUntilRelease=true;
+                if(side==(s.weaponHandLeft?1:0))
+                    s.wheelWeaponGripSuppressedUntilRelease=true;
+                else s.wheelSupportGripSuppressedUntilRelease=true;
+            }
+            if(action==kharvox::QuickHipAction::Enter){
                 kharvox::queueControllerZoneCue(
-                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64(),35,.32f,155.f);
-            s.hipZoneEntered[side]=inHip;
-        }
-    }else s.hipZoneEntered={};
-    bool quickHolsterGripConsumed=false;
-    if(!s.customMods.dynamicShoulderHolster||!gameplay){
-        // Menus, cutscenes and mod-disable must never carry a hidden-gun
-        // gesture latch back into gameplay after native rendering resumes.
-        s.openHandUnequipped=false;
-        s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
-        s.openHandRelease.openSinceNanoseconds=0;
-        if(s.dynamicShoulderHolstered){
-            s.dynamicShoulderHolstered=false;
-            s.quickHolsters.activeStowedSide=-1;
-            KharvoxWeaponSetHolstered(false);
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
+                    GetTickCount64(),85,.85f,175.f);
+                log(std::string("[QUICK-HOTKEY] ")
+                    +(side==0?"RIGHT":"LEFT")+" zone ENTER");
+            }else if(action==kharvox::QuickHipAction::Assign){
+                kharvox::queueControllerTriplePulse(
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
+                    GetTickCount64());
+                log(std::string("[QUICK-HOTKEY] ")
+                    +(side==0?"RIGHT":"LEFT")+" ASSIGN="
+                    +backWeaponKindKey(s.quickHolsters.slots[side])
+                    +" (3 strong pulses, slot persists)");
+            }else if(action==kharvox::QuickHipAction::Draw){
+                const auto stored=s.quickHolsters.slots[side];
+                // Do not change which hand is primary; only the DOOM weapon.
+                if(stored!=activeBackWeapon){
+                    const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
+                    if(key)startBackWeaponKeyboardPulse(key,displayTime);
+                    else if(stored==kharvox::BackWeaponKind::Bfg){
+                        s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
+                        s.backWeaponPulseUntil=displayTime+100000000;
+                    }else if(stored==kharvox::BackWeaponKind::Chainsaw){
+                        s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
+                        s.backWeaponPulseUntil=displayTime+100000000;
+                    }
+                }
+                s.wheelWeaponGripSuppressedUntilRelease=true;
+                s.wheelSupportGripSuppressedUntilRelease=true;
+                s.bfgGripSuppressedUntilRelease=true;
+                log(std::string("[QUICK-HOTKEY] ")
+                    +(side==0?"RIGHT":"LEFT")
+                    +" exit Grip CLOSED -> equip saved gun="
+                    +backWeaponKindKey(stored));
+            }
         }
     }else{
-        const int stowed=s.quickHolsters.activeStowedSide;
-        if(s.openHandUnequipped &&
-            (weaponWheelActive||s.behindHeadWheelActive||
-             (s.openHandUnequippedKind!=KharvoxWeaponKind::Unknown
-                 &&activeWeaponKind!=s.openHandUnequippedKind))){
-            // Weapon wheel or new weapon selection explicitly re-equips the
-            // native inventory gun. Open palm never removes it from DOOM.
-            s.openHandUnequipped=false;
-            s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
-            s.dynamicShoulderHolstered=false;
-            KharvoxWeaponSetHolstered(false);
-            kharvox::delayOpenHandRelease(s.openHandRelease,
-                static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
-            log("[OPEN-HAND] wheel/new selection -> re-equip");
-        }
-        if(stowed>=0
-            &&activeBackWeapon!=kharvox::BackWeaponKind::Unknown
-            &&activeBackWeapon!=s.quickHolsters.slots[stowed]){
-            // A new wheel/keyboard weapon selection must not remain invisible.
-            s.dynamicShoulderHolstered=false;
-            s.quickHolsters.activeStowedSide=-1;
-            KharvoxWeaponSetHolstered(false);
-        }
-        if(!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
-            &&s.trackingHeadPositionValid&&s.headZeroValid){
-            const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-            for(int side=0;side<2;++side){
-                const bool gripEdge=physicalHipGripEdges[side]
-                    &&!s.wheelWeaponGripSuppressedUntilRelease
-                    &&!s.wheelSupportGripSuppressedUntilRelease;
-                if(!gripEdge)continue;
-                const auto& hand=side==0?s.rightGripController:s.leftGripController;
-                if(!hand.valid||!hand.positionTracked)continue;
-                const auto grip=controllerRelativeToBodyTrackingOrigin(hand).position;
-                const kharvox::BackWeaponVec3 relative{
-                    side==0?grip.x-head.x:head.x-grip.x,
-                    grip.y-head.y,grip.z-head.z};
-                if(!kharvox::quickHipInside(relative,false))continue;
-                quickHolsterGripConsumed=true;
-                // Never let a quick-holster grip become the old left-support
-                // hold-for-BFG shortcut while the controller stays down.
-                s.bfgGripSuppressedUntilRelease=true;
-                auto& slot=s.quickHolsters.slots[side];
-                const auto hipAction=kharvox::quickHipAction(
-                    s.quickHolsters,side,activeBackWeapon,s.dynamicShoulderHolstered);
-                // OCCUPIED always draws, even when this same physical hand
-                // is holding another gun. No implicit stow/swap is possible.
-                if(hipAction==kharvox::QuickHipAction::Draw){
-                    const auto stored=slot;
-                    if(stored==kharvox::BackWeaponKind::Unknown)continue;
-                    // The player GRABS the gun from this slot. Never invoke
-                    // DOOM's last-weapon/quick-swap control.
-                    s.quickHolsters.activeStowedSide=-1;
-                    s.dynamicShoulderHolstered=false;
-                    s.openHandUnequipped=false;
-                    s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
-                    KharvoxWeaponSetHolstered(false);
-                    kharvox::delayOpenHandRelease(s.openHandRelease,
-                        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
-                    selectPhysicalWeaponHand(side==1,"physical hip DRAW");
-                    s.weaponCalibrated=false;
-                    s.weaponPoseSubmitted=false;
-                    s.twoHandLatched=false;
-                    s.wheelWeaponGripSuppressedUntilRelease=true;
-                    s.wheelSupportGripSuppressedUntilRelease=true;
-                    slot=kharvox::BackWeaponKind::Unknown; // draw empties just this inventory slot
-                    if(stored!=activeBackWeapon){
-                        const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
-                        if(key)startBackWeaponKeyboardPulse(key,displayTime);
-                        else if(stored==kharvox::BackWeaponKind::Bfg){
-                            s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
-                            s.backWeaponPulseUntil=displayTime+100000000;
-                        }else if(stored==kharvox::BackWeaponKind::Chainsaw){
-                            s.backWeaponPulse=kharvox::BackWeaponPulse::Chainsaw;
-                            s.backWeaponPulseUntil=displayTime+100000000;
-                        }
-                    }
-                    log(std::string("[QUICK-HOLSTERS] GRAB ")
-                        +(side==0?"RIGHT":"LEFT")+" hip weapon="
-                        +backWeaponKindKey(stored)+" -> corresponding weapon hand");
-                }else if(hipAction==kharvox::QuickHipAction::Stow){
-                    // Stow ONLY the weapon identity. DOOM keeps the actual
-                    // inventory item; no separate holster model or pose exists.
-                    slot=activeBackWeapon;
-                    s.quickHolsters.activeStowedSide=side;
-                    s.dynamicShoulderHolstered=true;
-                    s.weaponCalibrated=false;
-                    s.twoHandLatched=false;
-                    KharvoxWeaponSetHolstered(true);
-                    log(std::string("[QUICK-HOLSTERS] STOW ")
-                        +(side==0?"RIGHT":"LEFT")+" hip weapon="
-                        +backWeaponKindKey(slot));
-                }
-                break; // one physical hand action per tracking frame
-            }
-        }
+        s.hipZoneEntered={};
+        kharvox::resetQuickHipGestures(s.quickHolsters);
     }
-    // All five Quest capacitive surfaces must report ACTIVE, not simply
-    // false. No touch data (Valve Index, unsupported runtime, disconnected
-    // controllers) disables this gesture rather than dropping a weapon.
-    kharvox::OpenHandContacts openPalm{};
-    const int physicalWeaponSide=s.weaponHandLeft?1:0;
-    if(s.openHandTouchBindingsSuggested){
-        // Prefer true Quest 3 index/thumb proximity whenever the *current*
-        // runtime profile activates it. Otherwise sample every standard
-        // capacitive surface and require ALL to be active.
-        const int nearIndex=s.metaTouchPlusBindingsSuggested
-            ?readTouchAction(s.indexProximity[physicalWeaponSide]):-1;
-        const int nearThumb=s.metaTouchPlusBindingsSuggested
-            ?readTouchAction(s.thumbProximity[physicalWeaponSide]):-1;
-        if(nearIndex>=0&&nearThumb>=0){
-            openPalm.valid=true;
-            openPalm.indexTouch=nearIndex>0;
-            openPalm.thumbstickTouch=nearThumb>0;
-        }else{
-        const int index=readTouchAction(s.indexTouch[physicalWeaponSide]);
-        const int stick=readTouchAction(s.thumbstickTouch[physicalWeaponSide]);
-        const int rest=readTouchAction(s.thumbrestTouch[physicalWeaponSide]);
-        const int lower=readTouchAction(s.faceLowerTouch[physicalWeaponSide]);
-        const int upper=readTouchAction(s.faceUpperTouch[physicalWeaponSide]);
-        openPalm.valid=index>=0&&stick>=0&&rest>=0&&lower>=0&&upper>=0;
-        openPalm.indexTouch=index>0;
-        openPalm.thumbstickTouch=stick>0;
-        openPalm.thumbrestTouch=rest>0;
-        openPalm.faceLowerTouch=lower>0;
-        openPalm.faceUpperTouch=upper>0;
-        }
-        openPalm.trigger=readFloatAction(s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger);
-        openPalm.grip=readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip);
-    }
-    const bool canOpenHandUnequip=s.customMods.dynamicShoulderHolster
-        &&gameplay&&!s.openHandUnequipped&&!s.dynamicShoulderHolstered
-        &&!weaponWheelActive&&!s.behindHeadWheelActive
-        &&!s.twoHandCalibrationMode&&!s.twoHandLatched
-        &&!s.hipZoneEntered[physicalWeaponSide]
-        &&activeWeaponKind!=KharvoxWeaponKind::Unknown
-        &&activeWeaponKind!=KharvoxWeaponKind::Fists;
-    if(kharvox::updateOpenHandRelease(s.openHandRelease,openPalm,
-        canOpenHandUnequip,
-        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)))){
-        s.openHandUnequipped=true;
-        s.openHandUnequippedKind=activeWeaponKind;
-        s.dynamicShoulderHolstered=true;
-        s.quickHolsters.activeStowedSide=-1; // empty palm, no fake hip slot
-        s.weaponCalibrated=false;
-        s.twoHandLatched=false;
-        KharvoxWeaponSetHolstered(true);
-        log(std::string("[OPEN-HAND] ")
-            +(s.weaponHandLeft?"LEFT":"RIGHT")
-            +" palm open for 450ms -> virtual UNEQUIP (gun stays in DOOM inventory)");
-    }
+    // Previous invisible holstering and open-palm unequip are retired.
+    s.openHandUnequipped=false;
+    s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
+    s.dynamicShoulderHolstered=false;
+    KharvoxWeaponSetHolstered(false);
     kharvox::BackWeaponInput backWeaponInput{};
     backWeaponInput.shoulderGestureEnabled=!s.customMods.dynamicShoulderHolster;
     backWeaponInput.gameplayActive=gameplay;
