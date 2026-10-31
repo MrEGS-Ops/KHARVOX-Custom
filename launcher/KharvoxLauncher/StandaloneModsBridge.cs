@@ -12,6 +12,8 @@ internal sealed class StandaloneModsBridge
     public int Schema { get; set; } = 1;
     public bool WeaponWheelRemap { get; set; } = true;
     public bool HandFocus { get; set; }
+    public bool BehindHeadWeaponWheel { get; set; }
+    public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
@@ -56,6 +58,10 @@ internal sealed class StandaloneModsBridge
     internal void ApplyTo(CustomModSettings mods)
     {
         mods.HandFocusedRs = HandFocus;
+        mods.BehindHeadWeaponWheel = BehindHeadWeaponWheel;
+        mods.LeftWristWeaponWheel = BehindHeadWeaponWheel; // existing alias
+        mods.BehindHeadWheelHandSelection = BehindHeadWeaponWheel;
+        mods.DynamicShoulderHolster = DynamicQuickHolsters;
         mods.PhysicalCrouch = PhysicalCrouch;
         mods.ChainsawTriggerThrottle = PainsawRipshiftOverdrive;
         ActionSpeedCatalog.Validate(mods);
@@ -64,5 +70,27 @@ internal sealed class StandaloneModsBridge
             profile.Enabled = GloryKillSpeedOverride;
             profile.TargetHz = GloryKillHz;
         }
+    }
+
+    internal static int RunSelfTest()
+    {
+        var disabled = new StandaloneModsBridge();
+        var baseline = new CustomModSettings();
+        disabled.ApplyTo(baseline);
+        if (baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
+            baseline.BehindHeadWheelHandSelection || baseline.DynamicShoulderHolster)
+            return 1;
+        var enabled = new StandaloneModsBridge
+        {
+            BehindHeadWeaponWheel = true,
+            DynamicQuickHolsters = true
+        };
+        enabled.ApplyTo(baseline);
+        if (!baseline.BehindHeadWeaponWheel || !baseline.LeftWristWeaponWheel ||
+            !baseline.BehindHeadWheelHandSelection || !baseline.DynamicShoulderHolster)
+            return 1;
+        disabled.ApplyTo(baseline);
+        return baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
+            baseline.BehindHeadWheelHandSelection || baseline.DynamicShoulderHolster ? 1 : 0;
     }
 }

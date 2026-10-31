@@ -27,6 +27,8 @@ internal sealed partial class ModsForm
     private static bool IsConfirmedMod(string title) =>
         title == "Weapon Wheel Button Remap" ||
         title == "Hand Focus" ||
+        title == "Behind-the-Head Weapon Wheel" ||
+        title == "Dynamic Quick Holsters" ||
         title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE";
 
@@ -34,6 +36,8 @@ internal sealed partial class ModsForm
     {
         "Weapon Wheel Button Remap" => _modPrefs.WeaponWheelRemap,
         "Hand Focus" => _modPrefs.HandFocus,
+        "Behind-the-Head Weapon Wheel" => _modPrefs.BehindHeadWeaponWheel,
+        "Dynamic Quick Holsters" => _modPrefs.DynamicQuickHolsters,
         "Physical Crouch" => _modPrefs.PhysicalCrouch,
         "PAINSAW: RIPSHIFT OVERDRIVE" => _modPrefs.PainsawRipshiftOverdrive,
         _ => false
@@ -52,6 +56,8 @@ internal sealed partial class ModsForm
         {
             case "Weapon Wheel Button Remap": _modPrefs.WeaponWheelRemap = value; break;
             case "Hand Focus": _modPrefs.HandFocus = value; break;
+            case "Behind-the-Head Weapon Wheel": _modPrefs.BehindHeadWeaponWheel = value; break;
+            case "Dynamic Quick Holsters": _modPrefs.DynamicQuickHolsters = value; break;
             case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
             case "PAINSAW: RIPSHIFT OVERDRIVE":
                 _modPrefs.PainsawRipshiftOverdrive = value; break;
@@ -107,7 +113,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Behind-the-Head Weapon Wheel",
                 "Move either hand behind its own side of your head. Grip locks the selection.", true),
             new PreviewMod("Dynamic Quick Holsters",
-                "Grip at either hip to store or retrieve a weapon. Paused.")
+                "Grip at either hip to store/draw an eligible weapon. Heavy guns excluded.")
         }),
         ("➤  Legs & Movement", new[]
         {
@@ -570,7 +576,7 @@ internal sealed partial class ModsForm
                 .Where(check => string.Equals(check.Tag as string, "original-vr-mod",
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
-                vr.Count(check => check.Enabled) != 4 ||
+                vr.Count(check => check.Enabled) != 6 ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
                 throw new InvalidDataException("Only four confirmed numbered mod rows may be selectable.");
             if (!form.Controls.Descendants().OfType<Label>()

@@ -376,6 +376,10 @@ internal sealed partial class ModsForm
                 "In DOOM: tap A to quick-switch; hold A for the wheel and use the left stick.",
             "Hand Focus" =>
                 "In DOOM: activate with right-stick click, then aim or select with your hand.",
+            "Behind-the-Head Weapon Wheel" =>
+                "In DOOM: reach behind either side of your head to open the wheel. Move the hand to select; hold Grip to lock, then withdraw to equip. Leave without Grip to cancel.",
+            "Dynamic Quick Holsters" =>
+                "In DOOM: press Grip at either hip to store or draw a weapon. Heavy guns cannot be holstered. Hands appear while this mod is enabled.",
             "Physical Crouch" =>
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
@@ -943,7 +947,7 @@ internal sealed partial class ModsForm
     internal static void ValidateActiveVrPolicies()
     {
         var verified = VerifiedVrMods();
-        if (verified.Length != 5 || verified.Distinct().Count() != 5 ||
+        if (verified.Length != 7 || verified.Distinct().Count() != 7 ||
             DependenciesFor("Directional Dash").Length != 3 ||
             DependenciesFor("No Weapon Wheel").Length != 2 ||
             DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
@@ -954,7 +958,9 @@ internal sealed partial class ModsForm
         {
             if (dependencyTest.CanEnableMod("Directional Dash", out _) ||
                 dependencyTest.CanEnableMod("No Weapon Wheel", out _) ||
-                !dependencyTest.CanEnableMod("Hand Focus", out _))
+                !dependencyTest.CanEnableMod("Hand Focus", out _) ||
+                !dependencyTest.CanEnableMod("Behind-the-Head Weapon Wheel", out _) ||
+                !dependencyTest.CanEnableMod("Dynamic Quick Holsters", out _))
                 throw new InvalidDataException("Dependency gate allows unsupported mods.");
         }
         // Only enabled confirmed mods can appear in the Active Mods area.

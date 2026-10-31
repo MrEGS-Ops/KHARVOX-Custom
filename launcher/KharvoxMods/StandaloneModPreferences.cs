@@ -20,6 +20,8 @@ internal sealed class StandaloneModPreferences
     public int Schema { get; set; } = 1;
     public bool WeaponWheelRemap { get; set; } = true;
     public bool HandFocus { get; set; }
+    public bool BehindHeadWeaponWheel { get; set; }
+    public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
@@ -99,6 +101,7 @@ internal sealed class StandaloneModPreferences
             var path = Path.Combine(dir, "mods.json");
             var x = Load(path);
             if (!x.WeaponWheelRemap || x.HandFocus ||
+                x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
                 x.PhysicalCrouch || x.PainsawRipshiftOverdrive ||
                 x.GloryKillSpeedOverride ||
                 x.CollapsedCategories.Length !=
@@ -106,6 +109,8 @@ internal sealed class StandaloneModPreferences
                 x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )
                 throw new InvalidDataException("Unsafe default mod choices.");
             x.HandFocus = true;
+            x.BehindHeadWeaponWheel = true;
+            x.DynamicQuickHolsters = true;
             x.PainsawRipshiftOverdrive = true;
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
@@ -118,7 +123,8 @@ internal sealed class StandaloneModPreferences
             x.RuntimeRevision = "00000000000000000000000000000001";
             x.Save(path);
             var y = Load(path);
-            if (!y.HandFocus || !y.PainsawRipshiftOverdrive ||
+            if (!y.HandFocus || !y.BehindHeadWeaponWheel ||
+                !y.DynamicQuickHolsters || !y.PainsawRipshiftOverdrive ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
                 y.ActiveOrder.Length != 3 ||
                 y.ActiveOrder[0] != "Hand Focus" ||
@@ -130,6 +136,12 @@ internal sealed class StandaloneModPreferences
                 y.CollapsedCategories.Length != 1 ||
                 y.RuntimeRevision != "00000000000000000000000000000001")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
+            y.BehindHeadWeaponWheel = false;
+            y.DynamicQuickHolsters = false;
+            y.Save(path);
+            var disabled = Load(path);
+            if (disabled.BehindHeadWeaponWheel || disabled.DynamicQuickHolsters)
+                throw new InvalidDataException("Physical mods must remain off when unchecked.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }
     }

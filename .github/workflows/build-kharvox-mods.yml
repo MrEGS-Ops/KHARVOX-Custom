@@ -5,6 +5,7 @@ on:
     branches:
       - work/mods-sidecar-separation
       - work/cactus-original-launcher-mods-button
+      - work/manager-187-wheel-holsters
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxModsUpdater/**'
@@ -62,6 +63,13 @@ jobs:
       - name: Build native-bridge-aware KHARVOX launcher
         shell: pwsh
         run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
+
+      - name: Verify exactly two opt-in bridge mod flags
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-standalone-gestures" -PassThru -Wait -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "Behind-head wheel and quick holster bridge tests failed" }
 
       - name: Verify embedded launcher scales to avoid scrollbars
         shell: pwsh
@@ -286,6 +294,8 @@ jobs:
           retention-days: 14
 
       - name: Publish verified ZIP for automatic download
+        # Keep build #187's public release and existing updater untouched while testing.
+        if: github.ref == 'refs/heads/work/cactus-original-launcher-mods-button'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: kharvox-mods-standalone-preview

@@ -22,6 +22,9 @@ internal static class Program
             Console.WriteLine("Native DOOM Glory Kill Highlight startup policy passed.");
             return 0;
         }
+        if (args.Any(argument => string.Equals(argument, "--self-test-standalone-gestures",
+                StringComparison.OrdinalIgnoreCase)))
+            return StandaloneModsBridge.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
