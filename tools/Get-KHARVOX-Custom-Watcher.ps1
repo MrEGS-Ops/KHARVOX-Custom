@@ -64,6 +64,27 @@ function Wait-UntilNextCheck([int]$Seconds) {
     }
 }
 
+# A fresh installation must use the most recent verified FULL artifact,
+# not the latest launcher-only patch run.
+function Get-LatestSuccessfulFullRun {
+    $encodedBranch = [Uri]::EscapeDataString($Branch)
+    $url = "https://api.github.com/repos/$Repository/actions/workflows/$WorkflowFile/runs?branch=$encodedBranch&status=success&per_page=50"
+    $headers = @{ "User-Agent" = "KHARVOX-Custom-Watcher" }
+    try {
+        $runs = @((Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $url -TimeoutSec 20).workflow_runs)
+        foreach ($candidate in $runs) {
+            $artifactUrl = "https://api.github.com/repos/$Repository/actions/runs/$($candidate.id)/artifacts?per_page=100"
+            $artifacts = @((Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $artifactUrl -TimeoutSec 20).artifacts)
+            if (@($artifacts | Where-Object { $_.name -eq $FullArtifact -and -not $_.expired }).Count -gt 0) {
+                return $candidate
+            }
+        }
+    } catch {
+        Write-Status "Cannot locate a verified full-build artifact: $($_.Exception.Message)" DarkYellow
+    }
+    return $null
+}
+
 function Get-LatestSuccessfulRun {
     $encodedBranch = [Uri]::EscapeDataString($Branch)
     $uri = "https://api.github.com/repos/$Repository/actions/workflows/$WorkflowFile/runs?branch=$encodedBranch&status=success&per_page=1"
@@ -135,17 +156,19 @@ function Save-State($run, [string]$Mode) {
     $state | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath (Join-Path $InstallRoot $StateName)
 }
 
-function Get-ArtifactUrl([string]$ArtifactName) {
-    $encodedBranch = [Uri]::EscapeDataString($Branch)
-    return "https://nightly.link/$Repository/workflows/$WorkflowFile/$encodedBranch/$ArtifactName.zip"
+function Get-ArtifactUrl([string]$ArtifactName, [int64]$RunId) {
+    if ($RunId -le 0) { throw "Artifact run ID is missing." }
+    # Pin the download to the actual verified successful run, not the
+    # latest artifact of that name from a different commit.
+    return "https://nightly.link/$Repository/actions/runs/$RunId/$ArtifactName.zip"
 }
 
-function Download-And-Expand([string]$ArtifactName) {
+function Download-And-Expand([string]$ArtifactName, [int64]$RunId) {
     $work = Join-Path ([IO.Path]::GetTempPath()) ("KHARVOX-Watcher-" + [Guid]::NewGuid().ToString("N"))
     $zip = Join-Path $work "artifact.zip"
     $expanded = Join-Path $work "expanded"
     New-Item -ItemType Directory -Force -Path $expanded | Out-Null
-    $url = Get-ArtifactUrl $ArtifactName
+    $url = Get-ArtifactUrl $ArtifactName $RunId
 
     Write-Status "Downloading $ArtifactName..." Cyan
     Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip -TimeoutSec 120
@@ -351,7 +374,7 @@ function Start-Launcher {
 function Install-Full($run) {
     $payload = $null
     try {
-        $payload = Download-And-Expand $FullArtifact
+        $payload = Download-And-Expand $FullArtifact ([int64]$run.id)
         Verify-Payload $payload $run "full"
         Wait-ForDoomExit
         Stop-Launcher
@@ -367,7 +390,7 @@ function Install-Full($run) {
 function Install-Patch($run) {
     $payload = $null
     try {
-        $payload = Download-And-Expand $PatchArtifact
+        $payload = Download-And-Expand $PatchArtifact ([int64]$run.id)
         Verify-Payload $payload $run "patch"
         Wait-ForDoomExit
         Stop-Launcher
@@ -421,6 +444,32 @@ function Invoke-WatcherSelfTest {
             throw "Full install failed to preserve user data or update launcher."
         }
 
+        # A launcher-only patch updates the launcher without touching native
+        # DLLs, personal mods, or other files; three known files satisfy v1 schema.
+        $fastRoot = Join-Path $temp "fast-patch"
+        New-Item -ItemType Directory -Force -Path $fastRoot | Out-Null
+        $fastFiles = @()
+        foreach ($name in @("KharvoxLauncher.exe", "KharvoxLauncher.exe.config", "Get-KHARVOX-Custom-Watcher.ps1")) {
+            $source = Join-Path $fastRoot $name
+            [IO.File]::WriteAllText($source, "fast-$name")
+            $fastFiles += [pscustomobject]@{
+                path=$name
+                size=(Get-Item -LiteralPath $source).Length
+                sha256=(Get-FileHash -Algorithm SHA256 -LiteralPath $source).Hash.ToLowerInvariant()
+            }
+        }
+        $fastPayload = [pscustomobject]@{
+            Root=$fastRoot
+            Manifest=[pscustomobject]@{schema=1;kind="patch";run="77";commit=$run.head_sha;files=$fastFiles}
+        }
+        Verify-Payload $fastPayload $run "patch"
+        Install-VerifiedPayload $fastPayload $run "patch"
+        if ([IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLauncher.exe")) -ne "fast-KharvoxLauncher.exe" -or
+            [IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLayer.dll")) -ne "new-KharvoxLayer.dll" -or
+            [IO.File]::ReadAllText($userMod) -ne "MY PERSONAL MOD") {
+            throw "Fast launcher patch changed native or personal files."
+        }
+
         # Simulate a missing source during the second copy stage. The first
         # replacement must be reverted, not left as a mixed installation.
         [IO.File]::WriteAllText((Join-Path $payloadRoot "KharvoxLauncher.exe"), "broken-update")
@@ -428,7 +477,7 @@ function Invoke-WatcherSelfTest {
         $failed = $false
         try { Install-VerifiedPayload $payload $run "patch" } catch { $failed = $true }
         if (!$failed -or
-            [IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLauncher.exe")) -ne "new-KharvoxLauncher.exe" -or
+            [IO.File]::ReadAllText((Join-Path $InstallRoot "KharvoxLauncher.exe")) -ne "fast-KharvoxLauncher.exe" -or
             [IO.File]::ReadAllText($userMod) -ne "MY PERSONAL MOD") {
             throw "Failed update didn't correctly roll back or lost user data."
         }
@@ -464,8 +513,13 @@ while ($true) {
             $state = Get-State
 
             if (-not $installed) {
-                Write-Status "No complete local build found. Installing latest successful full build..." Yellow
-                Install-Full $run
+                $fullRun = Get-LatestSuccessfulFullRun
+                if ($fullRun) {
+                    Write-Status "No complete local build found. Installing latest successful full build..." Yellow
+                    Install-Full $fullRun
+                } else {
+                    Write-Status "No verified full install is available; refusing to apply a patch to an empty install." DarkYellow
+                }
             } elseif (!$state -or [string]$state.commit -ne [string]$run.head_sha) {
                 Write-Status "New successful build detected. Applying fast patch..." Cyan
                 Install-Patch $run
