@@ -1,0 +1,28 @@
+name: Hip Hotkeys and Wheel Focused Policy Tests
+on:
+  push:
+    branches: [work/hip-hotkeys-focused-ci]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  focused-tests:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure minimal CPU-only policy tests
+        shell: pwsh
+        run: |
+          cmake -S . -B build/hip-ci -A x64 -DBUILD_TESTING=ON -DKHARVOX_BUILD_LAYER=OFF -DKHARVOX_BUILD_SFS_COMPILER=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Configure failed" }
+      - name: Build only relevant policy tests
+        shell: pwsh
+        run: |
+          cmake --build build/hip-ci --config Release --parallel 3 --target KharvoxQuickHolsterPolicyTests KharvoxXInputHapticsPolicyTests KharvoxGestureWheelExitPolicyTests
+          if ($LASTEXITCODE -ne 0) { throw "Focused policy compile failed" }
+      - name: Test hip slot persistence, haptics, wheel Grip
+        shell: pwsh
+        run: |
+          ctest --test-dir build/hip-ci -C Release --output-on-failure -R "(QuickHolster|XInputHaptics|GestureWheelExit)"
+          if ($LASTEXITCODE -ne 0) { throw "Focused policy regressions failed" }
