@@ -102,7 +102,7 @@ internal static class CustomModSettingsStore
     // Bump this only when the next KHARVOX build introduces a different
     // opt-in mod that should start checked for the user's test session.
     // Never force it on again after the user deliberately unticks it.
-    internal const int CurrentDevelopmentTestDefaultsRevision = 5;
+    internal const int CurrentDevelopmentTestDefaultsRevision = 4;
     private static readonly JavaScriptSerializer Serializer = new();
 
     // Fail-closed allowlist: only confirmed/currently active experiments run.
@@ -117,6 +117,7 @@ internal static class CustomModSettingsStore
         value.BoxingGuard = false;
         value.DirectionalDash = false;
         value.RevengeDemon = false;
+        value.DynamicShoulderHolster = false;
         value.PersistentSuperShotgunReload = false;
         value.PhysicalGrenadeThrow = false;
         value.StoryCinematicSkip = false;
@@ -161,15 +162,6 @@ internal static class CustomModSettingsStore
             // test builds forced the 40 ms exit on. Future manual choices stick.
             value.CinematicExitHandoff = false;
             value.DevelopmentTestDefaultsRevision = 4;
-        }
-        if (value.DevelopmentTestDefaultsRevision < 5)
-        {
-            // Restore the existing native behind-head gesture wheel and physical
-            // quick-hip holster implementation for this user's next test.
-            // Apply only once: later manual OFF selections must persist.
-            value.BehindHeadWeaponWheel = true;
-            value.DynamicShoulderHolster = true;
-            value.DevelopmentTestDefaultsRevision = 5;
         }
         // Fixed measured regular-GK delay; changing JSON does not alter the native
         // action-specific 150ms/40ms selection in this experimental build.
@@ -335,15 +327,12 @@ internal static class CustomModSettingsStore
             }, path);
             var first = Load(path);
             if (first.BackOfHandHud || first.CinematicExitHandoff
-                || !first.BehindHeadWeaponWheel || !first.DynamicShoulderHolster
                 || first.CinematicExitHandoffDelayMs != 150
                 || first.CinematicSpeedFineTune || first.SpeedAdvancedExpanded
                 || first.CinematicSpeedFineTuneHz != 35
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("Action exit must default to game timing on first launch.");
             first.BackOfHandHud = false;
-            first.BehindHeadWeaponWheel = false;
-            first.DynamicShoulderHolster = false;
             first.CinematicExitHandoff = true; // paused diagnostic should not persist active
             first.CinematicExitHandoffDelayMs = 160; // retired override ignored
             first.SpeedAdvancedExpanded = true;
@@ -351,7 +340,6 @@ internal static class CustomModSettingsStore
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
             if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
-                || Load(path).BehindHeadWeaponWheel || Load(path).DynamicShoulderHolster
                 || Load(path).CinematicExitHandoffDelayMs != 150
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
@@ -366,22 +354,14 @@ internal static class CustomModSettingsStore
             }, oldActionExitPath);
             var migratedExit = Load(oldActionExitPath);
             if (migratedExit.CinematicExitHandoff
-                || migratedExit.DevelopmentTestDefaultsRevision != 5
-                || !migratedExit.BehindHeadWeaponWheel || !migratedExit.DynamicShoulderHolster)
+                || migratedExit.DevelopmentTestDefaultsRevision != 4)
                 throw new InvalidDataException("Old forced early handoff must migrate OFF.");
             migratedExit.CinematicExitHandoff = true;
             Save(migratedExit, oldActionExitPath);
-            migratedExit.BehindHeadWeaponWheel = false;
-            migratedExit.DynamicShoulderHolster = false;
-            Save(migratedExit, oldActionExitPath);
-            var persistedModChoice = Load(oldActionExitPath);
-            if (persistedModChoice.BehindHeadWeaponWheel || persistedModChoice.DynamicShoulderHolster)
-                throw new InvalidDataException("Manual OFF for restored physical weapon mods must survive restart.");
             if (Load(oldActionExitPath).CinematicExitHandoff)
                 throw new InvalidDataException("Paused action-exit must remain OFF.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
             if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
-                || !fresh.BehindHeadWeaponWheel || !fresh.DynamicShoulderHolster
                 || fresh.CinematicExitHandoffDelayMs != 150
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install must retain game-default action exit.");
