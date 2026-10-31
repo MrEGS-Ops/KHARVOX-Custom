@@ -379,7 +379,7 @@ internal sealed partial class ModsForm
             "Behind-the-Head Weapon Wheel" =>
                 "In DOOM: reach behind the LEFT side to open the left wheel and select with the left controller; reach behind the RIGHT to open the right wheel and select with the right controller. Leave with Grip held to equip. Without Grip, the wheel points back to the previously equipped weapon before closing, avoiding the post-close switch-back.",
             "Dynamic Quick Holsters" =>
-                "In DOOM: in an EMPTY hip zone, press Grip and release Grip inside to assign the equipped gun. In an ASSIGNED hip zone, pressing Grip immediately equips that gun; no exit required. To REPLACE an assigned gun, enter holding Grip then release inside. Each side retains its hotkey. No weapon hiding or relocation.",
+                "In DOOM: in an EMPTY hip zone, press Grip and release Grip inside to assign the equipped gun. In an ASSIGNED hip zone, pressing Grip immediately equips that gun; no exit required. To REPLACE an assigned gun, enter holding Grip then release inside. Each side retains its hotkey. LEFT hip equips into the LEFT hand; RIGHT hip into the RIGHT hand. No weapon hiding or relocation.",
             "Physical Crouch" =>
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>

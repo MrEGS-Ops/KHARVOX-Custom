@@ -113,7 +113,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Behind-the-Head Weapon Wheel",
                 "Behind-head wheel: RIGHT side uses right-hand motion; LEFT side uses left-hand motion. Exit with Grip to equip, or release Grip before exit to cancel without switching.", true),
             new PreviewMod("Dynamic Quick Holsters",
-                "Hip weapon hotkeys: press and release Grip inside an EMPTY zone to assign. Press Grip inside an assigned zone to equip. Enter already gripping and release to reassign.")
+                "Hip weapon hotkeys: retrieve LEFT hip into LEFT hand, RIGHT hip into RIGHT hand. Press Grip inside a saved slot to equip; enter gripping then release to reassign.")
         }),
         ("➤  Legs & Movement", new[]
         {
