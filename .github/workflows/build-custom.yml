@@ -316,7 +316,6 @@ jobs:
           if ($test.ExitCode -ne 0) { throw "Mod fingerprint test failed: $($test.ExitCode)" }
 
       - name: Test updater preservation and rollback
-        if: steps.build_mode.outputs.mode != 'fast'
         shell: powershell
         run: |
           .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
