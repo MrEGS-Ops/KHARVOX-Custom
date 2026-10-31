@@ -1712,13 +1712,12 @@ public sealed partial class MainForm : Form
         OptionChanged(sender, e);
     }
 
-    // Keep dormant mods visible but grey; the working gesture wheel and physical
-    // Quick Holsters must remain selectable and pass through to the VR runtime.
+    // Keep dormant mods visible but grey; confirm them one at a time later.
     internal CheckBox[] PausedCustomModControls() => new[]
     {
         customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
         customBackOfHandHud, customBoxingGuard, customDirectionalDash,
-        customRevengeDemon,
+        customRevengeDemon, customDynamicShoulderHolster,
         customPersistentSsgReload, customPhysicalGrenadeThrow,
         customStoryCinematicSkip, customStoryFreeWalk, customStoryCameraFocus,
         customUninterruptedStory, customActionExitHandoff, customHapticOverhaul
