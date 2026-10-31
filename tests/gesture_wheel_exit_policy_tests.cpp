@@ -25,5 +25,18 @@ int main() {
     drain.cancel();
     drain.reset();
     assert(!drain.active());
+    GestureWheelCancelGuard guard{};
+    guard.arm(1000000000ULL);
+    assert(!guard.shouldRestore(1100000000ULL,false,true));
+    assert(!guard.shouldRestore(1220000000ULL,false,true));
+    assert(guard.active);
+    assert(guard.shouldRestore(1350000000ULL,false,false));
+    assert(!guard.shouldRestore(1400000000ULL,false,false));
+    assert(guard.shouldRestore(1530000000ULL,false,false));
+    assert(!guard.shouldRestore(2300000000ULL,false,false));
+    assert(!guard.active);
+    guard.arm(3000000000ULL);
+    assert(!guard.shouldRestore(3300000000ULL,true,false));
+    assert(!guard.active);
     return 0;
 }
