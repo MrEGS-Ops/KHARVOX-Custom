@@ -20,6 +20,10 @@ struct QuickHolsters {
  std::array<QuickHipGesture,2> gestures{};
 };
 enum class QuickHipAction {None,Enter,Assign,Draw};
+// The hip that supplies the weapon becomes the combat/weapon hand.
+// 0 is the physical RIGHT hip; 1 is the physical LEFT hip.
+// This rule applies even when the saved weapon is already equipped.
+inline bool quickHipDrawUsesLeftHand(int side) { return side==1; }
 // Assign empty slot: press and release Grip INSIDE. Equip occupied slot:
 // press Grip INSIDE, no exit required. Reassign occupied slot: enter with
 // Grip held, release INSIDE. No weapon hiding and never clear on draw.

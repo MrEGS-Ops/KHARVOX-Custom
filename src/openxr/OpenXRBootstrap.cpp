@@ -3000,8 +3000,12 @@ void updateGameplayActions(XrTime displayTime){
                     +" (3 strong pulses, slot persists)");
             }else if(action==kharvox::QuickHipAction::Draw){
                 const auto stored=s.quickHolsters.slots[side];
-                // Quick-slot selection is independent of wheel cancellation.
-                // Do not change which hand is primary; only the DOOM weapon.
+                // Hotkey draw owns BOTH weapon choice and physical weapon
+                // hand: left hip -> left gun hand; right hip -> right gun hand.
+                // Handoff happens even when DOOM already has that gun selected.
+                selectPhysicalWeaponHand(
+                    kharvox::quickHipDrawUsesLeftHand(side),
+                    side==0?"right hip hotkey draw":"left hip hotkey draw");
                 if(stored!=activeBackWeapon){
                     const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
                     if(key)startBackWeaponKeyboardPulse(key,displayTime);
@@ -3019,7 +3023,8 @@ void updateGameplayActions(XrTime displayTime){
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")
                     +" Grip PRESS inside -> equip saved gun="
-                    +backWeaponKindKey(stored));
+                    +backWeaponKindKey(stored)
+                    +" in "+(s.weaponHandLeft?"LEFT":"RIGHT")+" weapon hand");
             }
         }
     }else{
