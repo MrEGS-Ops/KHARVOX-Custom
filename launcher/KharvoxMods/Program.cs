@@ -78,6 +78,7 @@ internal static class Program
         try
         {
             StandaloneModPreferences.SelfTest();
+            NativeBridgeInstaller.RunManagerBuildCompatibilitySelfTest();
             if (!string.Equals(AppState.DataDirectory,
                     Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(AppState.DefaultPath,

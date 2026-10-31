@@ -42,6 +42,34 @@ internal static class NativeBridgeInstaller
     internal static string TargetLauncher =>
         Path.Combine(TargetDirectory, "KharvoxLauncher.exe");
 
+    internal static string ExpectedManagerBuild()
+    {
+        var assembly = typeof(NativeBridgeInstaller).Assembly;
+        var attribute = (System.Reflection.AssemblyInformationalVersionAttribute?)
+            Attribute.GetCustomAttribute(assembly,
+                typeof(System.Reflection.AssemblyInformationalVersionAttribute));
+        var raw = attribute?.InformationalVersion ?? "";
+        var plus = raw.IndexOf('+');
+        if (plus >= 0) raw = raw.Substring(0, plus);
+        return long.TryParse(raw, out var value) && value > 0 ? value.ToString() : "";
+    }
+
+    internal static bool BridgeMatchesManagerBuild(string manifest, string managerBuild) =>
+        managerBuild.Length > 0 &&
+        manifest.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+            .Any(line => string.Equals(line.Trim(), "managerBuild=" + managerBuild,
+                StringComparison.Ordinal));
+
+    internal static void RunManagerBuildCompatibilitySelfTest()
+    {
+        const string example = "KHARVOX_MODS_BRIDGE_V1\nmanagerBuild=41175228703\n";
+        if (!BridgeMatchesManagerBuild(example, "41175228703") ||
+            BridgeMatchesManagerBuild(example, "41174630526") ||
+            BridgeMatchesManagerBuild(example, "4117522870") ||
+            BridgeMatchesManagerBuild(example, ""))
+            throw new InvalidDataException("Bridge manager version matching failed.");
+    }
+
     internal static bool IsReady()
     {
         try
@@ -53,7 +81,9 @@ internal static class NativeBridgeInstaller
                 File.ReadAllText(manifest).Contains(
                     "baseNativeCommit=" + PinnedNativeCommit) &&
                 File.ReadAllText(manifest).Contains(
-                    "launcherUi=" + RequiredLauncherUi);
+                    "launcherUi=" + RequiredLauncherUi) &&
+                BridgeMatchesManagerBuild(File.ReadAllText(manifest),
+                    ExpectedManagerBuild());
         }
         catch (IOException) { return false; }
         catch (UnauthorizedAccessException) { return false; }
@@ -132,7 +162,8 @@ internal static class NativeBridgeInstaller
             !File.ReadAllText(manifest).Contains(
                 "baseNativeCommit=" + PinnedNativeCommit) ||
             !File.ReadAllText(manifest).Contains(
-                "launcherUi=" + RequiredLauncherUi))
+                "launcherUi=" + RequiredLauncherUi) ||
+            !BridgeMatchesManagerBuild(File.ReadAllText(manifest), ExpectedManagerBuild()))
             throw new InvalidDataException("Native bridge build identity does not match our verified core.");
     }
 
