@@ -111,9 +111,9 @@ internal sealed partial class ModsForm
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
             new PreviewMod("Behind-the-Head Weapon Wheel",
-                "Move either hand behind its own side of your head. Grip locks the selection.", true),
+                "Reach behind either side of your head to open the wheel. Only Grip held on zone exit equips; leaving open-handed cancels.", true),
             new PreviewMod("Dynamic Quick Holsters",
-                "Grip at either hip to store/draw an eligible weapon. Heavy guns excluded.")
+                "Hip weapon hotkeys: enter with Grip closed, release inside to assign. To equip: enter open-handed, leave gripping. Strong entry cue and 3 assignment pulses.")
         }),
         ("➤  Legs & Movement", new[]
         {
