@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "id": "behind-head-weapon-wheel",
+  "title": "Behind-the-Head Weapon Wheel",
+  "version": "0.1.0-experimental",
+  "type": "external-vr-module",
+  "library": "kharvox_mod_behind_head_wheel.dll",
+  "abi": 1,
+  "enabledByDefault": false,
+  "requires": [
+    "vr-controller-pose",
+    "weapon-wheel-input",
+    "controller-grip",
+    "controller-haptics"
+  ],
+  "conflicts": [
+    "no-weapon-wheel"
+  ],
+  "status": "bridge-pending"
+}
