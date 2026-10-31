@@ -1,6 +1,13 @@
 name: KHARVOX Native Regression Tests
 
 on:
+  push:
+    branches: [work/gesture-wheel-hip-hotkeys-native]
+    paths:
+      - 'src/openxr/**'
+      - 'src/weapon/**'
+      - 'tests/**'
+      - '.github/workflows/native-regressions.yml'
   workflow_dispatch:
   schedule:
     - cron: "17 3 * * 0"

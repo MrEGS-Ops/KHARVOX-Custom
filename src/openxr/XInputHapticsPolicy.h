@@ -256,6 +256,8 @@ struct ControllerZoneCue {
     std::uint64_t untilMilliseconds{};
     float amplitude{};
     float frequencyHz{};
+    std::uint64_t startedMilliseconds{};
+    std::uint32_t pulseLengthMilliseconds{},pulsePeriodMilliseconds{};
 };
 inline void queueControllerZoneCue(ControllerZoneCue& cue,
     std::uint64_t now,std::uint32_t durationMilliseconds,
@@ -263,11 +265,27 @@ inline void queueControllerZoneCue(ControllerZoneCue& cue,
     cue.untilMilliseconds=now+durationMilliseconds;
     cue.amplitude=std::clamp(amplitude,0.0f,1.0f);
     cue.frequencyHz=frequencyHz;
+    cue.startedMilliseconds=now;
+    cue.pulseLengthMilliseconds=durationMilliseconds;
+    cue.pulsePeriodMilliseconds=durationMilliseconds;
+}
+inline void queueControllerTriplePulse(ControllerZoneCue& cue,std::uint64_t now){
+    cue.startedMilliseconds=now;
+    cue.pulseLengthMilliseconds=65;
+    cue.pulsePeriodMilliseconds=115;
+    cue.untilMilliseconds=now+295;
+    cue.amplitude=1.f;
+    cue.frequencyHz=170.f;
+}
+inline bool controllerZoneCuePulseActive(const ControllerZoneCue& cue,std::uint64_t now){
+    return now>=cue.startedMilliseconds&&now<cue.untilMilliseconds
+        &&cue.pulsePeriodMilliseconds>0
+        &&((now-cue.startedMilliseconds)%cue.pulsePeriodMilliseconds)<cue.pulseLengthMilliseconds;
 }
 inline XInputHapticSignal mixControllerZoneCue(
     const XInputHapticSignal& base,
     const ControllerZoneCue& cue,std::uint64_t now){
-    if(now>=cue.untilMilliseconds
+    if(!controllerZoneCuePulseActive(cue,now)
        ||(base.active&&base.amplitude>=cue.amplitude))return base;
     return {cue.amplitude,cue.frequencyHz,true};
 }
@@ -275,9 +293,11 @@ inline std::uint64_t controllerZoneCueDurationMilliseconds(
     const XInputHapticSignal& base,
     const ControllerZoneCue& cue,std::uint64_t now,
     std::uint64_t fallback){
-    if(now<cue.untilMilliseconds
-       &&(!base.active||base.amplitude<cue.amplitude))
-        return std::max<std::uint64_t>(1,cue.untilMilliseconds-now);
+    if(controllerZoneCuePulseActive(cue,now)
+       &&(!base.active||base.amplitude<cue.amplitude)) {
+        const auto elapsed=(now-cue.startedMilliseconds)%cue.pulsePeriodMilliseconds;
+        return std::max<std::uint64_t>(1,cue.pulseLengthMilliseconds-elapsed);
+    }
     return fallback;
 }
 
