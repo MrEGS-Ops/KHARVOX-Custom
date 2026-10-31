@@ -117,7 +117,6 @@ internal static class CustomModSettingsStore
         value.BoxingGuard = false;
         value.DirectionalDash = false;
         value.RevengeDemon = false;
-        value.DynamicShoulderHolster = false;
         value.PersistentSuperShotgunReload = false;
         value.PhysicalGrenadeThrow = false;
         value.StoryCinematicSkip = false;
@@ -266,6 +265,23 @@ internal static class CustomModSettingsStore
                 || Load(path).ChainsawStrokeDistanceCm != 42 || Load(path).ChainsawStrokeIdleHz != 285
                 || Load(path).ChainsawExperimentMode != 3)
                 throw new InvalidDataException("Active mods must persist while paused mods remain OFF.");
+            // Wheel and Quick Holsters are ordinary opt-in mods. Checked
+            // selections persist, and turning either off must remain OFF.
+            var physicalModsPath = Path.Combine(root, "physical-mods.json");
+            Save(new CustomModSettings
+            {
+                BehindHeadWeaponWheel = true,
+                DynamicShoulderHolster = true
+            }, physicalModsPath);
+            var modsOn = Load(physicalModsPath);
+            if (!modsOn.BehindHeadWeaponWheel || !modsOn.DynamicShoulderHolster)
+                throw new InvalidDataException("Opt-in wheel/holster mods did not persist ON.");
+            modsOn.BehindHeadWeaponWheel = false;
+            modsOn.DynamicShoulderHolster = false;
+            Save(modsOn, physicalModsPath);
+            var modsOff = Load(physicalModsPath);
+            if (modsOff.BehindHeadWeaponWheel || modsOff.DynamicShoulderHolster)
+                throw new InvalidDataException("Opt-in wheel/holster mods did not persist OFF.");
             foreach(int m in new[]{1,3,4,5,6,7,8,9}){
                 var modePath=Path.Combine(root,"chainsaw-ab-"+m+".json");
                 Save(new CustomModSettings{ChainsawExperimentMode=m},modePath);

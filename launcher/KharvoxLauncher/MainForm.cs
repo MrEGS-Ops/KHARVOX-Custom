@@ -1717,7 +1717,7 @@ public sealed partial class MainForm : Form
     {
         customDisableHud, customDisableWeaponWheel, customGaussChargeSlowMovement,
         customBackOfHandHud, customBoxingGuard, customDirectionalDash,
-        customRevengeDemon, customDynamicShoulderHolster,
+        customRevengeDemon,
         customPersistentSsgReload, customPhysicalGrenadeThrow,
         customStoryCinematicSkip, customStoryFreeWalk, customStoryCameraFocus,
         customUninterruptedStory, customActionExitHandoff, customHapticOverhaul
