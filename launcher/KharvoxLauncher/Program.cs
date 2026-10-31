@@ -59,6 +59,10 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        if (args.Any(argument => string.Equals(argument, "--self-test-shoulder-weapon-lock",
+                StringComparison.OrdinalIgnoreCase)))
+            return GunslingerShoulderWeaponLock.RunSelfTest();
+
         if (args.Any(argument => string.Equals(argument, "--self-test-embedded-layout",
                 StringComparison.OrdinalIgnoreCase)))
             return EmbeddedLauncherLayout.SelfTest() ? 0 : 1;
@@ -110,7 +114,8 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
                 window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
                 EmbeddedLauncherLayout.Watch(window);
-                LauncherStartupTrace.Mark("Embedding layout watcher installed");
+                GunslingerShoulderWeaponLock.Watch(window);
+                LauncherStartupTrace.Mark("Embedding and Gunslinger UI watchers installed");
                 Application.Run(window);
             }
             return 0;

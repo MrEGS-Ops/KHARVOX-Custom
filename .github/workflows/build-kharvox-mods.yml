@@ -71,6 +71,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-standalone-gestures" -PassThru -Wait -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Behind-head wheel and quick holster bridge tests failed" }
 
+      - name: Verify Gunslinger greys out the original Shoulder Weapon UI
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-shoulder-weapon-lock" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Gunslinger shoulder weapon UI lock regression" }
+
       - name: Verify embedded launcher scales to avoid scrollbars
         shell: pwsh
         run: |
