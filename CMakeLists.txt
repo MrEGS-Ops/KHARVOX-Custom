@@ -288,6 +288,7 @@ if(KHARVOX_BUILD_LAYER)
   set_property(TARGET KharvoxLayer APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hand_models_calibration_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/offhand_hud_default.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/right_hand_heavy_grip_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_flat_calibration_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_profile_calibration_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_quad_scale_default.cfg")
@@ -354,7 +355,10 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_pitch_default.cfg"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/two_hand_weapon_profiles_default.cfg"
-      "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_default.cfg")
+      "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_default.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/right_hand_heavy_grip_default.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/right_hand_heavy_grip_default.cfg")
 endif()
 
 if(WIN32)
