@@ -2,8 +2,8 @@ KHARVOX_ACTIVE_STANDALONE_TRACK_V1
 active_branch=work/manager-187-wheel-holsters
 release_workflow=.github/workflows/build-kharvox-mods.yml
 native_workflow=.github/workflows/build-custom.yml
-native_run_id=41282139729
-native_sha=b1dc0007c3f2dd0025f1ebd17b8e1864bf8a5a7e
+native_run_id=41286631417
+native_sha=8d38c17b900c2db6b5f30aa35ec74e7c29f8e4eb
 manager_executable=KharvoxVRModManager.exe
 bridge=KHARVOX-Mods-NativeBridge.zip
 updater=KharvoxVRModManagerUpdater.exe
