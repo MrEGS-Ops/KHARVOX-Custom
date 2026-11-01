@@ -138,6 +138,7 @@ public sealed partial class MainForm : Form
     private readonly Dictionary<string, Label> speedActionValues = new();
     private readonly CheckBox speedActionLogTest = MakeCheck("Chainsaw Animation Investigator", false);
     private readonly CheckBox customOffHandGripCapture = MakeCheck("Off-Hand Grip Capture (Test)", false);
+    private readonly CheckBox customRightHandHeavyGrip = MakeCheck("Right-Hand Gauss / Chaingun Grip (Test)", false);
     private readonly CheckBox customHapticOverhaul = MakeCheck("Haptic Overhaul", false);
     // Retain the stable runtime slider value as the model; only its UI changes.
     private readonly FlatGloryKillSlider cinematicKillSpeed = new() { Value = 1 };
@@ -468,6 +469,7 @@ public sealed partial class MainForm : Form
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customTriggerChainsawThrottle, "Chainsaw Revving: the trigger that starts the native chainsaw kill counts as pull ONE. Release fully and pull for TWO; a third pull latches the fastest tested 30 Hz finish until DOOM ends the execution. Holding does not mint extra revs. No circle or hand motion. RIGHT controller vibrates continuously at about 90% between pulls and 100% during revs and the finishing tail."),
             (speedActionLogTest, "DIAGNOSTICS: read-only chainsaw animation investigator, logs and per-kill CSV; makes no gameplay changes."),
+            (customRightHandHeavyGrip, "Attach the RIGHT hand model at your latest LEFT-hand captured pose for Gauss Cannon and Chaingun (minigun) ONLY. The weapon and aim remain on KHARVOX native 6DoF. Other weapons retain their original hand positions. Save further captures using the separate Off-Hand Grip Capture diagnostic. The profile is kept locally in right_hand_heavy_grip_saved.cfg. This mod requires Enable Hands and disables Virtual Gunstock."),
             (customOffHandGripCapture, "DIAGNOSTIC: with a RIGHT-hand weapon equipped, place your LEFT grip hand at the desired gun support point and click BOTH thumbsticks together. Saves full relative position and orientation to local logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv; a left-hand haptic confirms success. Release both sticks before another capture. Does NOT modify existing two-hand profiles. Pause/Melee stick clicks are temporarily disabled; keyboard Esc still pauses. Show Hands is forced on and Virtual Gunstock is forced off for this diagnostic."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
@@ -1834,25 +1836,27 @@ public sealed partial class MainForm : Form
             // overrides temporarily suspend it without deleting the choice.
             gloryKillSlowmo.Value = 10; // retired shared Full speed mode
             UpdateCinematicKillSpeedLabel();
-            // The off-hand capture test must measure the unassisted native
-            // KHARVOX aim. Grey out Virtual Gunstock without overwriting its
-            // saved preference; the launch runner and native runtime force it
-            // OFF while capture is selected, even if it was checked before.
-            virtualGunstock.Enabled = !customOffHandGripCapture.Checked;
-            virtualGunstock.AccessibleDescription = customOffHandGripCapture.Checked
-                ? "Inactive: Off-Hand Grip Capture forces Virtual Gunstock OFF. "
-                    + "Your saved selection will return when the mod is disabled."
+            // The diagnostic and the new right-hand heavy weapon grip require
+            // unassisted aim. Grey out the stock without losing saved settings.
+            var unassistedHandPose = customOffHandGripCapture.Checked
+                || customRightHandHeavyGrip.Checked;
+            virtualGunstock.Enabled = !unassistedHandPose;
+            virtualGunstock.AccessibleDescription = unassistedHandPose
+                ? "Inactive: Right-Hand Gauss/Chaingun Grip or Off-Hand Grip Capture "
+                    + "requires Virtual Gunstock OFF. Saved selection preserved."
                 : "Virtual shoulder stock for normal two-hand aiming.";
+            if (unassistedHandPose) showHands.Checked = true;
             statusToolTip.SetToolTip(virtualGunstock,
                 virtualGunstock.AccessibleDescription);
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
-                && !calibrateHands.Checked;
+                && !calibrateHands.Checked && !unassistedHandPose;
             showHands.AccessibleDescription = !showHands.Enabled
                 ? (customDynamicShoulderHolster.Checked
                     ? "Locked ON: Dynamic Quick Holsters requires Enable Hands."
-                    : "Locked ON: hand calibration requires Enable Hands.")
+                    : calibrateHands.Checked ? "Locked ON: hand calibration requires Enable Hands."
+                    : "Locked ON: Right-Hand Heavy Grip / Capture requires Enable Hands.")
                 : "Show the VR hand models.";
             statusToolTip.SetToolTip(showHands, showHands.AccessibleDescription);
             // Weapon Wheel Button Remap explicitly owns gameplay A/B routing;
@@ -1925,6 +1929,7 @@ public sealed partial class MainForm : Form
             }),
         ActionSpeedLogTestEnabled = speedActionLogTest.Checked,
         OffHandGripCapture = customOffHandGripCapture.Checked,
+        RightHandHeavyGrip = customRightHandHeavyGrip.Checked,
         HapticOverhaul = customHapticOverhaul.Checked
     };
 
@@ -1993,6 +1998,7 @@ public sealed partial class MainForm : Form
             speedActionSliders["glory"].Value=270-Math.Max(30,Math.Min(240,p.TargetHz));
             speedActionLogTest.Checked = mods.ActionSpeedLogTestEnabled;
             customOffHandGripCapture.Checked = mods.OffHandGripCapture;
+            customRightHandHeavyGrip.Checked = mods.RightHandHeavyGrip;
             customHapticOverhaul.Checked = mods.HapticOverhaul;
         }
         finally
