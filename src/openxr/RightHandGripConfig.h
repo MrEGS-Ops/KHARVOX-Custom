@@ -15,6 +15,15 @@
 namespace kharvox {
 // Weapon-relative offset in metres (+X right, +Y up, -Z forward).
 struct RightHandGripOffset {float x{},y{},z{};};
+struct RightHandGripRotation {
+    float x{},y{},z{},w{1.f};
+    bool valid{};
+};
+inline bool validRightHandRotation(RightHandGripRotation q) noexcept {
+    const float square=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
+    return std::isfinite(square)&&square>.81f&&square<1.21f;
+}
+
 // Gauss / Chaingun are physically large. 30 cm per-axis rejected verified
 // ~55 cm and ~74 cm owner captures despite valid tracking. Limit the full
 // Euclidean distance to 85 cm, including on reload.
@@ -26,6 +35,7 @@ inline bool validRightHandPlacement(RightHandGripOffset p) noexcept {
 }
 struct RightHandGripSettings {
     RightHandGripOffset gauss{},chaingun{};
+    RightHandGripRotation gaussRotation{},chaingunRotation{};
     // Move the rendered PRIMARY gun hand DOWN along the gun's own
     // up axis only while two-hand Grip is latched. This compensates for
     // the controller-origin anchor used by the earlier implementation.
@@ -46,6 +56,17 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
+        if(key=="gauss_cannon_rotation"||key=="chaingun_rotation"){
+            RightHandGripRotation q{};
+            if(!(v>>q.x>>q.y>>q.z>>q.w)||(v>>extra)
+                ||!validRightHandRotation(q)){++out.rejected;continue;}
+            const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+            q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;q.valid=true;
+            if(key=="gauss_cannon_rotation")out.gaussRotation=q;
+            else out.chaingunRotation=q;
+            ++out.accepted;
+            continue;
+        }
         if(key=="right_hand_drop_m"){
             // Separate global height setting from three-axis weapon offsets.
             // The unused extra xyz fields are not valid for this key.
@@ -128,6 +149,108 @@ inline bool saveRightHandGripMeasurement(
 #else
     fs::rename(temp,original,ec);
     if(ec){fs::remove(temp);return reject("cannot replace grip config");}
+#endif
+    return true;
+}
+// A left-controller orientation probe is expressed in WEAPON local space.
+// Save with the same atomic/backup discipline as the owner's position captures.
+inline bool saveRightHandGripRotation(const std::string&path,
+    const std::string&weapon,RightHandGripRotation q,std::string*why=nullptr){
+    auto fail=[&](const char*msg){if(why)*why=msg;return false;};
+    if(weapon!="gauss_cannon"&&weapon!="chaingun")
+        return fail("rotation calibration supports only Gauss/Chaingun");
+    if(!validRightHandRotation(q))return fail("invalid hand rotation");
+    const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+    q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;
+    const std::string key=weapon+"_rotation";
+    namespace fs=std::filesystem;
+    std::error_code ec;
+    const fs::path dest(path),tmp(path+".rotation.tmp");
+    if(fs::exists(dest,ec)&&fs::file_size(dest,ec)>16384)
+        return fail("right-hand calibration file too large");
+    std::vector<std::string> lines;
+    {std::ifstream in(path);std::string row;while(std::getline(in,row))lines.push_back(row);
+     if(in.bad())return fail("could not read right-hand settings");}
+    std::ostringstream entry;entry<<key<<" = "<<std::fixed<<std::setprecision(8)
+        <<q.x<<' '<<q.y<<' '<<q.z<<' '<<q.w;
+    bool updated=false;
+    for(auto&row:lines){
+        const auto eq=row.find('=');
+        if(eq==std::string::npos)continue;
+        const auto first=row.find_first_not_of(" \t");
+        if(first==std::string::npos||row[first]=='#')continue;
+        auto name=row.substr(first,eq-first);
+        const auto last=name.find_last_not_of(" \t");
+        if(last!=std::string::npos)name.erase(last+1);
+        if(name==key){row=entry.str();updated=true;}
+    }
+    if(!updated)lines.push_back(entry.str());
+    if(fs::exists(dest,ec)){
+        fs::copy_file(dest,path+".before-capture.bak",
+            fs::copy_options::overwrite_existing,ec);
+        if(ec)return fail("could not back up previous right-hand rotation");
+    }
+    {std::ofstream out(tmp,std::ios::trunc);if(!out)return fail("could not open rotation temp file");
+     for(const auto&row:lines)out<<row<<'\n';
+     out.flush();if(!out)return fail("could not save hand rotation");}
+#ifdef _WIN32
+    if(!MoveFileExW(tmp.wstring().c_str(),dest.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(tmp,ec);return fail("could not replace saved rotation");}
+#else
+    fs::rename(tmp,dest,ec);
+    if(ec){fs::remove(tmp);return fail("could not replace saved rotation");}
+#endif
+    return true;
+}
+// The two heavy-weapon support points live relative to the FINAL weapon
+// anchor, not the older rifle/controller aim origin.
+inline bool saveHeavySupportGrip(const std::string&path,
+    const std::string&weapon,RightHandGripOffset pos,
+    bool sideGrip,float radius,float weight,std::string*why=nullptr){
+    auto fail=[&](const char*msg){if(why)*why=msg;return false;};
+    if((weapon!="gauss_cannon"&&weapon!="chaingun")
+        ||!validRightHandPlacement(pos)||!std::isfinite(radius)
+        ||!std::isfinite(weight)||radius<.08f||radius>.40f
+        ||weight<0.f||weight>1.f)
+        return fail("invalid heavy weapon support calibration");
+    namespace fs=std::filesystem;
+    std::error_code ec;fs::path dest(path),tmp(path+".support.tmp");
+    if(fs::exists(dest,ec)&&fs::file_size(dest,ec)>65536)
+        return fail("two-hand calibration file too large");
+    std::vector<std::string> rows;
+    {std::ifstream in(path);std::string line;
+     while(std::getline(in,line))rows.push_back(line);
+     if(in.bad())return fail("cannot read two-hand calibration");}
+    std::ostringstream record;
+    record<<"2 "<<weapon<<' '<<(sideGrip?"side-grip":"barrel")<<' '
+        <<std::fixed<<std::setprecision(7)<<pos.x<<' '<<pos.y<<' '
+        <<pos.z<<' '<<radius<<' '<<weight;
+    bool updated=false;
+    for(auto it=rows.begin();it!=rows.end();){
+        std::istringstream in(*it);std::string ver,key;
+        if((in>>ver>>key)&&ver=="2"&&key==weapon){
+            if(!updated){*it=record.str();updated=true;++it;}
+            else it=rows.erase(it);
+        }else ++it;
+    }
+    if(!updated)rows.push_back(record.str());
+    if(fs::exists(dest,ec)){
+        fs::copy_file(dest,path+".before-heavy-support.bak",
+            fs::copy_options::overwrite_existing,ec);
+        if(ec)return fail("unable to back up previous support calibration");
+    }
+    {std::ofstream out(tmp,std::ios::trunc);
+     if(!out)return fail("unable to create support calibration temp file");
+     for(const auto&line:rows)out<<line<<'\n';
+     out.flush();if(!out)return fail("unable to save support calibration");}
+#ifdef _WIN32
+    if(!MoveFileExW(tmp.wstring().c_str(),dest.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(tmp,ec);return fail("unable to install support calibration");}
+#else
+    fs::rename(tmp,dest,ec);
+    if(ec){fs::remove(tmp);return fail("unable to install support calibration");}
 #endif
     return true;
 }
