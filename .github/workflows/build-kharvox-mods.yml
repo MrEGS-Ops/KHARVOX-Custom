@@ -111,13 +111,13 @@ jobs:
           # Pin the native runtime to the last verified working native build.
           # Fail closed until the native AUDIO build succeeds. This run is an
           # immutable native artifact and may be in progress when this job starts.
-          gh run watch 41269203157 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
+          gh run watch 41270030693 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
           if ($LASTEXITCODE -ne 0) { throw "Native PAINSAW audio build did not succeed" }
-          gh run download 41269203157 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
+          gh run download 41270030693 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
           if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
           $manifest = Join-Path $base "PATCH-BUILD.txt"
           if (!(Test-Path $manifest) -or
-              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=ec06cc44b777d26a6b2fc3fe15e758dfe4e1fdca")) {
+              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=528fb6589f215b7c6d9abdcccb60c6a7a69ba6a1")) {
             throw "Downloaded native build does not match the approved working commit"
           }
           if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
@@ -135,7 +135,7 @@ jobs:
           }
           @(
             "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=ec06cc44b777d26a6b2fc3fe15e758dfe4e1fdca"
+            "baseNativeCommit=528fb6589f215b7c6d9abdcccb60c6a7a69ba6a1"
             "bridgeLauncherCommit=${{ github.sha }}"
             "managerBuild=${{ github.run_id }}"
             "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"
