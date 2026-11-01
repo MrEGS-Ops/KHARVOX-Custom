@@ -365,6 +365,11 @@ internal static class KharvoxRunner
             var steamVrLayerIsolation = UsesSteamVrRuntime();
             var effectiveRenderScale = EffectiveRenderScale(
                 options.RenderScale, steamVrLayerIsolation && !RendererSelection.IsNative(options.RendererMode));
+            // Off-Hand Grip Capture must use unassisted, native KHARVOX weapon aiming.
+            // Never allow the launcher's virtual-stock selection to override it.
+            var effectiveVirtualGunstock = options.VirtualGunstock && !customMods.OffHandGripCapture;
+            if (customMods.OffHandGripCapture && options.VirtualGunstock)
+                statusUpdate?.Invoke("Off-Hand Grip Capture: virtual gunstock disabled for this run.");
 
             foreach (var flag in new[] {
                 "enable_xr_mediated", "enable_xr_session", "enable_native_xr_resolution",
@@ -373,7 +378,10 @@ internal static class KharvoxRunner
                 "enable_cached_eye_reprojection"
             }) WriteTemporary(flag);
             if (options.TwoHandCalibration) WriteTemporary("enable_two_hand_calibration");
-            if (options.VirtualGunstock) WriteTemporary("enable_virtual_gunstock");
+            // Clear a marker abandoned by an interrupted previous launch.
+            if (!effectiveVirtualGunstock)
+                File.Delete(Path.Combine(runtimeDir, "enable_virtual_gunstock"));
+            else WriteTemporary("enable_virtual_gunstock");
             WriteTemporary("two_hand_calibration_target.cfg", options.TwoHandCalibrationWeapon);
             WriteTemporary("two_hand_alignment.cfg", options.TwoHandAlignment);
             WriteTemporary("back_weapon.cfg", options.BackWeapon);
@@ -382,7 +390,7 @@ internal static class KharvoxRunner
                   ", hold both hands and press " + (options.LeftHanded ? "LEFT TRIGGER" : "RIGHT TRIGGER")
                 : "GAMEPLAY TEST: each calibrated weapon uses its own " +
                   (options.LeftHanded ? "RIGHT GRIP" : "LEFT GRIP") + " support profile" +
-                  (options.VirtualGunstock ? " + Virtual GunStock" : string.Empty));
+                  (effectiveVirtualGunstock ? " + Virtual GunStock" : string.Empty));
             // Isolation is complete: honor the launcher renderer selection.
             // Legacy renderer selections are normalized before launch.
             var nativeStereoEnabled = RendererSelection.IsNative(options.RendererMode);
@@ -553,7 +561,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_MODE"] = options.TwoHandCalibration ? "calibration" : "gameplay-test";
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_CALIBRATION_WEAPON"] = options.TwoHandCalibrationWeapon;
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_ALIGNMENT"] = options.TwoHandAlignment;
-            psi.EnvironmentVariables["KHARVOX_VIRTUAL_GUNSTOCK"] = options.VirtualGunstock ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_VIRTUAL_GUNSTOCK"] = effectiveVirtualGunstock ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_CAPTURE_EYES"] = options.CaptureEyes ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_DISABLE_AA"] = options.DisableAa ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_HANDS_JUMP"] = options.HandsJump ? "1" : "0";
@@ -695,7 +703,7 @@ internal static class KharvoxRunner
                 " weaponWheelRemap=" + (options.WeaponWheelRemapEnabled ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
-                " virtualGunstock=" + (options.VirtualGunstock ? "enabled" : "disabled") +
+                " virtualGunstock=" + (effectiveVirtualGunstock ? "enabled" : "disabled") +
                 " physicalGlorykill=" + (options.PhysicalGlorykill ? "enabled" : "disabled") +
                 " punchSpeed=" + Inv(options.PhysicalGlorykillSpeed) + "m/s" +
                 " punchHands=" + options.PhysicalGlorykillHands +
