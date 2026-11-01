@@ -94,6 +94,7 @@ internal sealed class CustomModSettings
     public bool ChainsawShowGripZones { get; set; } // debug stereo round markers, off by default
     public bool HapticOverhaul { get; set; }
     public bool OffHandGripCapture { get; set; } // Opt-in diagnostic, default OFF
+    public bool RightHandHeavyGrip { get; set; } // Scoped Gauss + Chaingun visual grip
 
     public bool SupervisorRequired => RevengeDemon;
 }
@@ -103,7 +104,7 @@ internal static class CustomModSettingsStore
     // Bump this only when the next KHARVOX build introduces a different
     // opt-in mod that should start checked for the user's test session.
     // Never force it on again after the user deliberately unticks it.
-    internal const int CurrentDevelopmentTestDefaultsRevision = 4;
+    internal const int CurrentDevelopmentTestDefaultsRevision = 5;
     private static readonly JavaScriptSerializer Serializer = new();
 
     // Fail-closed allowlist: only confirmed/currently active experiments run.
@@ -162,6 +163,13 @@ internal static class CustomModSettingsStore
             // test builds forced the 40 ms exit on. Future manual choices stick.
             value.CinematicExitHandoff = false;
             value.DevelopmentTestDefaultsRevision = 4;
+        }
+        if (value.DevelopmentTestDefaultsRevision < 5)
+        {
+            // One-time opt-in for the new Gauss/Chaingun grip headset test.
+            // Future user toggles always win.
+            value.RightHandHeavyGrip = true;
+            value.DevelopmentTestDefaultsRevision = 5;
         }
         // Fixed measured regular-GK delay; changing JSON does not alter the native
         // action-specific 150ms/40ms selection in this experimental build.
