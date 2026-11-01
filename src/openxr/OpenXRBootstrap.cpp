@@ -391,6 +391,12 @@ struct State {
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
+    // Keep the visible weapon-hand model attached to its native one-hand grip
+    // when the support-hand solver rotates the weapon. This is a visual-only
+    // rotation about the tracked primary aim; it never offsets the gun itself.
+    bool primaryGripVisualLockActive{};
+    XrQuaternionf primaryGripVisualDeltaTracking{0,0,0,1};
+    XrVector3f primaryGripVisualPivotTracking{};
     bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
     XrTime bfgGripHoldStart{},bfgPulseUntil{};
     kharvox::BackWeaponState backWeaponState{};
@@ -2419,6 +2425,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.primaryGripVisualLockActive=false;
         KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
 
         s.weaponTrackingHeld=false;s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
@@ -2435,6 +2442,7 @@ void updateWeapon6Dof(){
     const auto& primaryController=weaponController();
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
+        s.primaryGripVisualLockActive=false;
 
         if(s.weaponPoseSubmitted){
             if(!s.weaponTrackingHeld)
@@ -2537,6 +2545,26 @@ void updateWeapon6Dof(){
                 writeTwoHandStatus(std::string(weaponKindName(kind))+": "+supportHandName()+" grip held, move support hand onto its calibrated grab point");
             }
         }
+    }
+    // With a two-hand hold the barrel/side-grip solver can rotate the gun
+    // away from the tracked primary controller. In the stock one-hand pose
+    // the right/left grip hand already fits the weapon correctly. Apply that
+    // SAME rotation to the drawn primary hand around the controller aim pivot,
+    // retaining the stock hand-to-gun offset (including Gauss/Chaingun) while
+    // preserving two-hand aiming. Do not mutate the real controller inputs.
+    s.primaryGripVisualLockActive=s.twoHandLatched
+        &&s.twoHandEnabled&&!s.customMods.offHandGripCapture&&supportController.valid;
+    if(s.primaryGripVisualLockActive){
+        const auto trackingToBody=multiply(
+            yawQuaternion(s.controllerFrameYaw.turnForPose(artificialTurnVisualYaw())),
+            multiply(
+                conjugate(yawQuaternion(s.controllerFrameYaw.acceptedForPose(s.acceptedPhysicalYaw))),
+                conjugate(s.headZero)));
+        const auto weaponRotationDelta=multiply(rotation,conjugate(current.orientation));
+        s.primaryGripVisualDeltaTracking=normalizeQuaternion(
+            multiply(conjugate(trackingToBody),
+                multiply(weaponRotationDelta,trackingToBody)));
+        s.primaryGripVisualPivotTracking=primaryController.position;
     }
     const WeaponPose publishedWeaponPose{current.position,rotation};
     if(s.controllerFrameYaw.active&&kharvox::pose_trace::active.load(std::memory_order_relaxed)){
@@ -7221,14 +7249,30 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     auto nativeLeftController=s.leftGripController,nativeRightController=s.rightGripController;
     if(nativeFrameValid){nativeLeftController.valid=nativeFrame.pose.controllersValid[0];nativeRightController.valid=nativeFrame.pose.controllersValid[1];nativeLeftController.orientation=nativeFrame.pose.controllers[0].orientation;nativeLeftController.position=nativeFrame.pose.controllers[0].position;
         nativeRightController.orientation=nativeFrame.pose.controllers[1].orientation;nativeRightController.position=nativeFrame.pose.controllers[1].position;}
-    const auto currentLeftHandPose=handPose(nativeLeftController);
-    const auto currentRightHandPose=handPose(nativeRightController);
+    auto primaryHandLockedPose=[&](const ControllerPose& controller,bool left){
+        auto pose=handPose(controller);
+        if(!pose.valid||!s.primaryGripVisualLockActive||left!=s.weaponHandLeft)
+            return pose;
+        const auto anchoredPosition=addVector(s.primaryGripVisualPivotTracking,
+            rotateVector(s.primaryGripVisualDeltaTracking,
+                subtractVector(controller.position,s.primaryGripVisualPivotTracking)));
+        const auto anchoredOrientation=normalizeQuaternion(
+            multiply(s.primaryGripVisualDeltaTracking,controller.orientation));
+        pose.position={anchoredPosition.x,anchoredPosition.y,anchoredPosition.z};
+        pose.orientation={anchoredOrientation.x,anchoredOrientation.y,
+                          anchoredOrientation.z,anchoredOrientation.w};
+        return pose;
+    };
+    const auto currentLeftHandPose=primaryHandLockedPose(nativeLeftController,true);
+    const auto currentRightHandPose=primaryHandLockedPose(nativeRightController,false);
     const bool alignAerSourceHands=!nativeBackend&&s.alternatingStereo
         &&!nativePackedStereo&&handGameplayActive;
     const auto sourceLeftHandPose=alignAerSourceHands
-        ?handPose(aerSourceQualified?aerCapturedInput.left:sourceLeftGripController):currentLeftHandPose;
+        ?primaryHandLockedPose(aerSourceQualified?aerCapturedInput.left:sourceLeftGripController,true)
+        :currentLeftHandPose;
     const auto sourceRightHandPose=alignAerSourceHands
-        ?handPose(aerSourceQualified?aerCapturedInput.right:sourceRightGripController):currentRightHandPose;
+        ?primaryHandLockedPose(aerSourceQualified?aerCapturedInput.right:sourceRightGripController,false)
+        :currentRightHandPose;
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
         nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft};
