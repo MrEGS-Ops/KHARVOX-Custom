@@ -3,8 +3,8 @@ name: KHARVOX VR Mod Manager (Experimental)
 on:
   push:
     branches:
-      - work/mods-sidecar-separation
-      - work/cactus-original-launcher-mods-button
+      # Single active standalone release branch. Older KHARVOX tracks are not
+      # permitted to publish an updater-visible Mod Manager release.
       - work/manager-187-wheel-holsters
     paths:
       - 'launcher/KharvoxMods/**'
@@ -28,6 +28,24 @@ jobs:
     steps:
       - name: Checkout standalone integration branch
         uses: actions/checkout@v4
+
+      - name: Verify active manager branch and release contract
+        shell: pwsh
+        run: |
+          $approved = "work/manager-187-wheel-holsters"
+          if ("${{ github.ref_name }}" -ne $approved) {
+            throw "WRONG KHARVOX BUILD TRACK: only $approved may build the standalone VR Mod Manager"
+          }
+          $marker = Get-Content -LiteralPath "docs/KHARVOX-ACTIVE-TRACK.txt" -Raw
+          if (!$marker.Contains("active_branch=$approved") -or
+              !$marker.Contains("release_workflow=.github/workflows/build-kharvox-mods.yml") -or
+              !$marker.Contains("native_run_id=41276247830") -or
+              !(Test-Path "launcher/KharvoxMods/NativeBridgeInstaller.cs")) {
+            throw "KHARVOX release track marker missing, invalid or inconsistent"
+          }
+          if ((git rev-parse HEAD).Trim() -ne "${{ github.sha }}") {
+            throw "Ref/SHA mismatch: refusing to release potentially wrong source"
+          }
 
       - name: Restore KHARVOX VR Mod Manager
         shell: pwsh
@@ -111,14 +129,27 @@ jobs:
           # Pin the native runtime to the last verified working native build.
           # Fail closed until the native AUDIO build succeeds. This run is an
           # immutable native artifact and may be in progress when this job starts.
-          gh run watch 41271256305 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
+          # Immutable native build from THIS manager branch, never the old
+          # work/oct18-live-motion-chainsaw-hz launcher. Fail before publishing
+          # if this native run is unsuccessful or its SHA/branch mismatches.
+          gh run watch 41276247830 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
           if ($LASTEXITCODE -ne 0) { throw "Native PAINSAW audio build did not succeed" }
-          gh run download 41271256305 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
+          gh run download 41276247830 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
           if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
           $manifest = Join-Path $base "PATCH-BUILD.txt"
-          if (!(Test-Path $manifest) -or
-              !((Get-Content -LiteralPath $manifest -Raw) -match "commit=2c2aa668c339837b13166b18607be4d5e49f3500")) {
-            throw "Downloaded native build does not match the approved working commit"
+          $approvedNativeSha = "dcbef10c72d01d643b44704063d371508bae74d3"
+          $approvedBranch = "work/manager-187-wheel-holsters"
+          $nativeMetadata = gh run view 41276247830 --repo MrEGS-Ops/KHARVOX-Custom --json headSha,headBranch,conclusion | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $nativeMetadata.conclusion -ne "success" -or
+              $nativeMetadata.headSha -ne $approvedNativeSha -or
+              $nativeMetadata.headBranch -ne $approvedBranch) {
+            throw "Native build was not SUCCESSFUL on the approved Mod Manager branch and commit"
+          }
+          $nativeManifest = if (Test-Path $manifest) { Get-Content -LiteralPath $manifest -Raw } else { "" }
+          if (!$nativeManifest.Contains("kind=full") -or
+              !$nativeManifest.Contains("branch=$approvedBranch") -or
+              !$nativeManifest.Contains("commit=$approvedNativeSha")) {
+            throw "Native package provenance failed: wrong branch, commit or artifact kind"
           }
           if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
             throw "Verified native layer missing"
@@ -129,13 +160,16 @@ jobs:
             throw "Owner-recorded two-hand profiles must contain exactly eight lines."
           }
           Copy-Item -LiteralPath $grips -Destination (Join-Path $base "two_hand_weapon_profiles_captured.cfg") -Force
+          $rightHand = "config/offhand_right_hand_positions_latest.cfg"
+          if (!(Test-Path $rightHand)) { throw "Latest right-hand Gauss/Chaingun owner capture config missing" }
+          Copy-Item -LiteralPath $rightHand -Destination (Join-Path $base "offhand_right_hand_positions_latest.cfg") -Force
           Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe" -Destination $base -Force
           if (Test-Path "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config") {
             Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config" -Destination $base -Force
           }
           @(
             "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=2c2aa668c339837b13166b18607be4d5e49f3500"
+            "baseNativeCommit=dcbef10c72d01d643b44704063d371508bae74d3"
             "bridgeLauncherCommit=${{ github.sha }}"
             "managerBuild=${{ github.run_id }}"
             "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"

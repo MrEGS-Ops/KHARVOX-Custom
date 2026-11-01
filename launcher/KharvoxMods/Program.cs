@@ -86,6 +86,7 @@ internal static class Program
         {
             StandaloneModPreferences.SelfTest();
             CapturedGripProfiles.SelfTest();
+            RightHandGripCaptureImport.SelfTest();
             NativeBridgeInstaller.RunManagerBuildCompatibilitySelfTest();
             if (!string.Equals(AppState.DataDirectory,
                     Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
