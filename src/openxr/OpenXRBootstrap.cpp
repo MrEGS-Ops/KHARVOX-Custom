@@ -2246,7 +2246,8 @@ TwoHandCalibration activeHandCalibration(const TwoHandCalibration& saved){
     return active;
 }
 bool captureTwoHandCalibration(bool triggerDown){
-    if(!s.twoHandEnabled||!s.twoHandCalibrationMode)return false;
+    // The independent off-hand diagnostic must not overwrite live grip profiles.
+    if(!s.twoHandEnabled||!s.twoHandCalibrationMode||s.customMods.offHandGripCapture)return false;
     if(triggerDown&&!s.firePressed){
         const auto kind=KharvoxWeaponCurrentKind();
         if(kind==KharvoxWeaponKind::Unknown){
@@ -2470,7 +2471,9 @@ void updateWeapon6Dof(){
     }
     const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
-    if(s.twoHandEnabled){
+    // Capture must measure a stationary primary-only weapon frame. The native
+    // two-hand solver would otherwise rotate the gun while positioning the hand.
+    if(s.twoHandEnabled&&!s.customMods.offHandGripCapture){
         if(s.twoHandLatched&&s.twoHandLatchedWeapon!=kind){
             log(std::string("[TWO-HAND] support released after weapon change from ")
                 +KharvoxWeaponKindKey(s.twoHandLatchedWeapon)+" to "+KharvoxWeaponKindKey(kind));
