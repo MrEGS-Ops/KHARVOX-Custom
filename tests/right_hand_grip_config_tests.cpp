@@ -75,9 +75,9 @@ int main(){
  const kharvox::RightHandGripRotation liveRotation{
      0.2f,0.3f,0.4f,0.84261498f,true};
  {std::ofstream f(path);
-  f<<"# keep owner settings\\n"
-   <<"gauss_cannon = -0.09 0.21 0.50\\n"
-   <<"chaingun = -0.13 0.30 0.66\\n"; }
+  f<<"# keep owner settings\n"
+   <<"gauss_cannon = -0.09 0.21 0.50\n"
+   <<"chaingun = -0.13 0.30 0.66\n"; }
  assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",false,
      {-.08f,.10f,.23f},liveRotation,&why));
  assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",true,
@@ -91,7 +91,7 @@ int main(){
  assert(kharvox::saveHeavyAlternativeSupport(path,"chaingun",
      {-.21f,.06f,-.11f},&why));
  a=kharvox::readRightHandGripSettings(path);
- assert(a.rejected==0&&a.accepted==14);
+ assert(a.rejected==0&&a.accepted==12);
  assert(a.gaussHandValid&&a.gaussSiegeHandValid);
  assert(a.chaingunHandValid&&a.chaingunTurretHandValid);
  assert(a.gaussSiegeRotation.valid&&a.chaingunTurretRotation.valid);
