@@ -4,6 +4,7 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
+#include <utility>
 #include <iomanip>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -36,6 +37,16 @@ inline bool validRightHandPlacement(RightHandGripOffset p) noexcept {
 struct RightHandGripSettings {
     RightHandGripOffset gauss{},chaingun{};
     RightHandGripRotation gaussRotation{},chaingunRotation{};
+    // Separate glove-from-weapon grip poses. The older gauss/chaingun
+    // coordinates remain the VERIFIED gun-anchor offsets and are never
+    // overwritten by live hand-model calibration.
+    RightHandGripOffset gaussHand{},chaingunHand{},
+        gaussSiegeHand{},chaingunTurretHand{};
+    bool gaussHandValid{},chaingunHandValid{},
+        gaussSiegeHandValid{},chaingunTurretHandValid{};
+    RightHandGripRotation gaussSiegeRotation{},chaingunTurretRotation{};
+    RightHandGripOffset gaussSiegeSupport{},chaingunTurretSupport{};
+    bool gaussSiegeSupportValid{},chaingunTurretSupportValid{};
     // Move the rendered PRIMARY gun hand DOWN along the gun's own
     // up axis only while two-hand Grip is latched. This compensates for
     // the controller-origin anchor used by the earlier implementation.
@@ -56,14 +67,18 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
-        if(key=="gauss_cannon_rotation"||key=="chaingun_rotation"){
+        if(key=="gauss_cannon_rotation"||key=="chaingun_rotation"||
+            key=="gauss_cannon_siege_rotation"||
+            key=="chaingun_turret_rotation"){
             RightHandGripRotation q{};
             if(!(v>>q.x>>q.y>>q.z>>q.w)||(v>>extra)
                 ||!validRightHandRotation(q)){++out.rejected;continue;}
             const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
             q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;q.valid=true;
             if(key=="gauss_cannon_rotation")out.gaussRotation=q;
-            else out.chaingunRotation=q;
+            else if(key=="chaingun_rotation")out.chaingunRotation=q;
+            else if(key=="gauss_cannon_siege_rotation")out.gaussSiegeRotation=q;
+            else out.chaingunTurretRotation=q;
             ++out.accepted;
             continue;
         }
@@ -84,7 +99,19 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         }
         if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
         else if(key=="chaingun"){out.chaingun=p;++out.accepted;}
-        else ++out.rejected;
+        else if(key=="gauss_cannon_hand_position"){
+            out.gaussHand=p;out.gaussHandValid=true;++out.accepted;
+        }else if(key=="chaingun_hand_position"){
+            out.chaingunHand=p;out.chaingunHandValid=true;++out.accepted;
+        }else if(key=="gauss_cannon_siege_hand_position"){
+            out.gaussSiegeHand=p;out.gaussSiegeHandValid=true;++out.accepted;
+        }else if(key=="chaingun_turret_hand_position"){
+            out.chaingunTurretHand=p;out.chaingunTurretHandValid=true;++out.accepted;
+        }else if(key=="gauss_cannon_siege_support_position"){
+            out.gaussSiegeSupport=p;out.gaussSiegeSupportValid=true;++out.accepted;
+        }else if(key=="chaingun_turret_support_position"){
+            out.chaingunTurretSupport=p;out.chaingunTurretSupportValid=true;++out.accepted;
+        }else ++out.rejected;
     }
     return out;
 }
@@ -200,6 +227,131 @@ inline bool saveRightHandGripRotation(const std::string&path,
 #else
     fs::rename(tmp,dest,ec);
     if(ec){fs::remove(tmp);return fail("could not replace saved rotation");}
+#endif
+    return true;
+}
+
+// Atomic single-transaction update of one visual grip pose: both the
+// glove POSITION and ROTATION are saved together, or neither is saved.
+// Preserves the native weapon anchor values and all other weapon modes.
+inline bool saveRightHandVisualPose(const std::string&path,
+    const std::string&weapon,bool alternate,
+    RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr){
+    auto fail=[&](const char*msg){if(why)*why=msg;return false;};
+    if((weapon!="gauss_cannon"&&weapon!="chaingun")||
+       !validRightHandPlacement(pos)||!validRightHandRotation(q))
+        return fail("invalid measured position or orientation");
+    const std::string prefix=weapon+
+        (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"");
+    const std::string positionKey=prefix+"_hand_position";
+    const std::string rotationKey=prefix+"_rotation";
+    const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
+    q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;
+    std::ostringstream position,rotation;
+    position<<positionKey<<" = "<<std::fixed<<std::setprecision(8)
+        <<pos.x<<' '<<pos.y<<' '<<pos.z;
+    rotation<<rotationKey<<" = "<<std::fixed<<std::setprecision(8)
+        <<q.x<<' '<<q.y<<' '<<q.z<<' '<<q.w;
+    namespace fs=std::filesystem;
+    const fs::path destination(path),temp(path+".live.tmp");
+    std::error_code ec;
+    if(fs::exists(destination,ec)&&fs::file_size(destination,ec)>16384)
+        return fail("right-hand config exceeds safe file size");
+    std::vector<std::string> lines;
+    {std::ifstream input(path);std::string line;
+     while(std::getline(input,line))lines.push_back(line);
+     if(input.bad())return fail("failed reading existing settings");}
+    bool posFound=false,rotFound=false;
+    for(auto it=lines.begin();it!=lines.end();){
+        auto eq=it->find('=');
+        if(eq==std::string::npos){++it;continue;}
+        const auto first=it->find_first_not_of(" \t");
+        if(first==std::string::npos||(*it)[first]=='#'){++it;continue;}
+        auto key=it->substr(first,eq-first);
+        const auto end=key.find_last_not_of(" \t");
+        if(end!=std::string::npos)key.erase(end+1);
+        if(key==positionKey){
+            if(posFound){it=lines.erase(it);continue;}
+            *it=position.str();posFound=true;
+        }else if(key==rotationKey){
+            if(rotFound){it=lines.erase(it);continue;}
+            *it=rotation.str();rotFound=true;
+        }
+        ++it;
+    }
+    if(!posFound)lines.push_back(position.str());
+    if(!rotFound)lines.push_back(rotation.str());
+    if(fs::exists(destination,ec)){
+        fs::copy_file(destination,path+".before-live-capture.bak",
+            fs::copy_options::overwrite_existing,ec);
+        if(ec)return fail("unable to back up live calibration");
+    }
+    {std::ofstream output(temp,std::ios::trunc);
+     if(!output)return fail("unable to create temporary calibration");
+     for(const auto&line:lines)output<<line<<'\n';
+     output.flush();if(!output)return fail("unable to flush both grip fields");}
+#ifdef _WIN32
+    if(!MoveFileExW(temp.wstring().c_str(),destination.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(temp,ec);return fail("unable to replace saved live pose");}
+#else
+    fs::rename(temp,destination,ec);
+    if(ec){fs::remove(temp);return fail("unable to replace saved live pose");}
+#endif
+    return true;
+}
+inline bool saveHeavyAlternativeSupport(const std::string&path,
+    const std::string&weapon,RightHandGripOffset pos,std::string*why=nullptr){
+    auto fail=[&](const char*msg){if(why)*why=msg;return false;};
+    if((weapon!="gauss_cannon"&&weapon!="chaingun")||
+       !validRightHandPlacement(pos))
+        return fail("unsupported heavy weapon support point");
+    const std::string key=weapon+
+        (weapon=="gauss_cannon"?"_siege":"_turret")+"_support_position";
+    namespace fs=std::filesystem;
+    const fs::path destination(path),temp(path+".alt-support.tmp");
+    std::error_code ec;
+    if(fs::exists(destination,ec)&&fs::file_size(destination,ec)>16384)
+        return fail("settings file exceeds safe size");
+    std::vector<std::string> lines;
+    {std::ifstream input(path);std::string row;
+     while(std::getline(input,row))lines.push_back(row);
+     if(input.bad())return fail("cannot read existing settings");}
+    std::ostringstream entry;
+    entry<<key<<" = "<<std::fixed<<std::setprecision(8)
+        <<pos.x<<' '<<pos.y<<' '<<pos.z;
+    bool found=false;
+    for(auto it=lines.begin();it!=lines.end();){
+        const auto eq=it->find('=');
+        if(eq==std::string::npos){++it;continue;}
+        auto start=it->find_first_not_of(" \t");
+        if(start==std::string::npos||(*it)[start]=='#'){++it;continue;}
+        auto name=it->substr(start,eq-start);
+        const auto end=name.find_last_not_of(" \t");
+        if(end!=std::string::npos)name.erase(end+1);
+        if(name==key){
+            if(found){it=lines.erase(it);continue;}
+            *it=entry.str();found=true;
+        }
+        ++it;
+    }
+    if(!found)lines.push_back(entry.str());
+    if(fs::exists(destination,ec)){
+        fs::copy_file(destination,path+".before-live-capture.bak",
+            fs::copy_options::overwrite_existing,ec);
+        if(ec)return fail("cannot back up existing mode profile");
+    }
+    {std::ofstream output(temp,std::ios::trunc);
+     if(!output)return fail("cannot create temporary support profile");
+     for(const auto&line:lines)output<<line<<'\n';
+     output.flush();if(!output)return fail("cannot save alternate support");}
+#ifdef _WIN32
+    if(!MoveFileExW(temp.wstring().c_str(),destination.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(temp,ec);return fail("could not replace alternate support");}
+#else
+    fs::rename(temp,destination,ec);
+    if(ec){fs::remove(temp);return fail("could not replace alternate support");}
 #endif
     return true;
 }

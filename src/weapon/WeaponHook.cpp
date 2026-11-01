@@ -108,6 +108,7 @@ bool weaponKickSuppressed{};
 LONG weaponKickPreviousValue{};
 std::atomic<KharvoxWeaponKind> activeWeaponKind{KharvoxWeaponKind::Unknown};
 std::atomic<bool> gaussSiegeChargeActive{};
+std::atomic<bool> chaingunTurretModeActive{};
 std::atomic<bool> weaponHolstered{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
@@ -1147,6 +1148,15 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
     if (previousSiege != siegeCharge)
         log(std::string("[GAUSS] Siege charge decl ")
             + (siegeCharge ? "ACTIVE" : "released"));
+    // Read-only fallback-safe mode probe. It is intentionally NOT guessed
+    // from secondary fire Grip (which can also be used for calibration).
+    const bool turretDecl=kind==KharvoxWeaponKind::Chaingun
+        &&weaponObjectContainsAsciiInsensitive(weaponData,"turret");
+    const bool previousTurret=chaingunTurretModeActive.exchange(
+        turretDecl,std::memory_order_acq_rel);
+    if(previousTurret!=turretDecl)
+        log(std::string("[CHAINGUN] native Turret decl ")
+            +(turretDecl?"ACTIVE":"released"));
     activeWeaponKind.store(kind, std::memory_order_release);
     activeWeaponData.store(address, std::memory_order_release);
     if (!changed && kind == KharvoxWeaponKind::Unknown) return;
@@ -2761,6 +2771,9 @@ void invalidateAerWeaponPairCache() {
 
 bool KharvoxWeaponGaussSiegeChargeActive() {
     return gaussSiegeChargeActive.load(std::memory_order_acquire);
+}
+bool KharvoxWeaponChaingunTurretModeActive() {
+    return chaingunTurretModeActive.load(std::memory_order_acquire);
 }
 
 void KharvoxWeaponSetHolstered(bool holstered) {

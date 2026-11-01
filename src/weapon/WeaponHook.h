@@ -53,6 +53,9 @@ KharvoxChainsawAnimationEvidence KharvoxWeaponReadChainsawAnimationEvidence(
     uint64_t nowMs);
 // True while the live Gauss weapon decl is a charged Siege-mode state.
 bool KharvoxWeaponGaussSiegeChargeActive();
+// Only a native Turret-tagged Chaingun declaration counts as alternate.
+// If DOOM does not expose such a declaration, this safely stays false.
+bool KharvoxWeaponChaingunTurretModeActive();
 // Presentation-only holster state: keeps DOOM's selected weapon alive while
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
