@@ -1,19 +1,18 @@
 #include "../src/openxr/PrimaryGripAnchorPolicy.h"
 #include <cassert>
 #include <cmath>
+#include <initializer_list>
 struct Vec{float x,y,z;};
 struct Quat{float x,y,z,w;};
 static Vec rotate(Quat q,Vec v) {
     const Vec u{q.x,q.y,q.z};
     const Vec cross{u.y*v.z-u.z*v.y,u.z*v.x-u.x*v.z,
         u.x*v.y-u.y*v.x};
-    const Vec doubled{2.f*(cross.x+q.w*v.x),
-        2.f*(cross.y+q.w*v.y),2.f*(cross.z+q.w*v.z)};
-    const Vec second{u.y*doubled.z-u.z*doubled.y,
-        u.z*doubled.x-u.x*doubled.z,u.x*doubled.y-u.y*doubled.x};
-    return {v.x+2.f*q.w*cross.x+2.f*second.x,
-        v.y+2.f*q.w*cross.y+2.f*second.y,
-        v.z+2.f*q.w*cross.z+2.f*second.z};
+    const Vec second{u.y*cross.z-u.z*cross.y,
+        u.z*cross.x-u.x*cross.z,u.x*cross.y-u.y*cross.x};
+    return {v.x+2.f*(q.w*cross.x+second.x),
+        v.y+2.f*(q.w*cross.y+second.y),
+        v.z+2.f*(q.w*cross.z+second.z)};
 }
 static bool near(Vec a,Vec b){
     return std::abs(a.x-b.x)<.0002f&&std::abs(a.y-b.y)<.0002f
