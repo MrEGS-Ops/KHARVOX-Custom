@@ -396,6 +396,10 @@ public sealed partial class MainForm : Form
 
         virtualGunstock.Dock = DockStyle.Fill;
         virtualGunstock.CheckedChanged += OptionChanged;
+        // Off-Hand Grip Capture temporarily suspends this preference, but
+        // never deletes the user's selected value.
+        statusToolTip.SetToolTip(virtualGunstock,
+            "Virtual shoulder stock for normal two-hand aiming.");
         laserSight.Dock = DockStyle.Fill;
         laserSight.CheckedChanged += OptionChanged;
         enableBhaptics.Dock = DockStyle.Fill;
@@ -464,7 +468,7 @@ public sealed partial class MainForm : Form
             (customPhysicalGrenadeThrow, "Quick TAP Grip inside the chest zone to cycle equipment. HOLD Grip and pull out to arm, then release outside to throw. No premature grenade cycling. Throw uses the existing native equipment action; hand-pointing trajectory still requires verification."),
             (customTriggerChainsawThrottle, "Chainsaw Revving: the trigger that starts the native chainsaw kill counts as pull ONE. Release fully and pull for TWO; a third pull latches the fastest tested 30 Hz finish until DOOM ends the execution. Holding does not mint extra revs. No circle or hand motion. RIGHT controller vibrates continuously at about 90% between pulls and 100% during revs and the finishing tail."),
             (speedActionLogTest, "DIAGNOSTICS: read-only chainsaw animation investigator, logs and per-kill CSV; makes no gameplay changes."),
-            (customOffHandGripCapture, "DIAGNOSTIC: with a RIGHT-hand weapon equipped, place your LEFT grip hand at the desired gun support point and click BOTH thumbsticks together. Saves full relative position and orientation to local logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv; a left-hand haptic confirms success. Release both sticks before another capture. Does NOT modify existing two-hand profiles. Pause/Melee stick clicks are temporarily disabled; keyboard Esc still pauses. Show Hands is forced on for this diagnostic."),
+            (customOffHandGripCapture, "DIAGNOSTIC: with a RIGHT-hand weapon equipped, place your LEFT grip hand at the desired gun support point and click BOTH thumbsticks together. Saves full relative position and orientation to local logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv; a left-hand haptic confirms success. Release both sticks before another capture. Does NOT modify existing two-hand profiles. Pause/Melee stick clicks are temporarily disabled; keyboard Esc still pauses. Show Hands is forced on and Virtual Gunstock is forced off for this diagnostic."),
 
             (customStoryCinematicSkip, "EXPERIMENTAL: During confirmed independent in-world story cinematics, press RS to request native 4x fast-forward; press RS again to cancel. Automatically restores speed on exit/menu/focus loss or after 20 seconds. Does not jump scripted mission states. Requires an unambiguously resolved native timescale CVar; otherwise logs unavailable without memory writes. Glory Kills, chainsaw executions, ledge climbs and boss scenes are excluded."),
             (customStoryFreeWalk, "EXPERIMENTAL, OFF by default: During independent story cutscenes, press RS to request normal body locomotion while dialogue and scripts keep playing; press again to stop. Only conditionally releases validated forward/sideways movement-inhibit flags (not camera, weapon, jump, collision, or quest flags). Automatically stops at cutscene end, menus, boss, Glory Kill, ledge, loss of focus or after 30 seconds. Requires verified player object and stable movement-only flags; otherwise logs why unavailable. RS Free Walk takes priority over the old story fast-forward when both are selected. Back up your save for this test."),
@@ -1830,6 +1834,17 @@ public sealed partial class MainForm : Form
             // overrides temporarily suspend it without deleting the choice.
             gloryKillSlowmo.Value = 10; // retired shared Full speed mode
             UpdateCinematicKillSpeedLabel();
+            // The off-hand capture test must measure the unassisted native
+            // KHARVOX aim. Grey out Virtual Gunstock without overwriting its
+            // saved preference; the launch runner and native runtime force it
+            // OFF while capture is selected, even if it was checked before.
+            virtualGunstock.Enabled = !customOffHandGripCapture.Checked;
+            virtualGunstock.AccessibleDescription = customOffHandGripCapture.Checked
+                ? "Inactive: Off-Hand Grip Capture forces Virtual Gunstock OFF. "
+                    + "Your saved selection will return when the mod is disabled."
+                : "Virtual shoulder stock for normal two-hand aiming.";
+            statusToolTip.SetToolTip(virtualGunstock,
+                virtualGunstock.AccessibleDescription);
             // Main-launcher dependencies: keep the effective required state
             // checked, greyed and explained; unlock as soon as the mod releases it.
             showHands.Enabled = !customDynamicShoulderHolster.Checked
