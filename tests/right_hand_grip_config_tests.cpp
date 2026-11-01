@@ -70,6 +70,47 @@ int main(){
  {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.rejected==1&&!a.gaussRotation.valid);
+ // LIVE capture must atomically save a position and orientation without
+ // moving the pre-existing verified weapon anchor or the other gun.
+ const kharvox::RightHandGripRotation liveRotation{
+     0.2f,0.3f,0.4f,0.84261498f,true};
+ {std::ofstream f(path);
+  f<<"# keep owner settings\\n"
+   <<"gauss_cannon = -0.09 0.21 0.50\\n"
+   <<"chaingun = -0.13 0.30 0.66\\n"; }
+ assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",false,
+     {-.08f,.10f,.23f},liveRotation,&why));
+ assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",true,
+     {-.12f,.06f,.31f},liveRotation,&why));
+ assert(kharvox::saveRightHandVisualPose(path,"chaingun",false,
+     {-.17f,.09f,.24f},liveRotation,&why));
+ assert(kharvox::saveRightHandVisualPose(path,"chaingun",true,
+     {-.21f,.08f,.30f},liveRotation,&why));
+ assert(kharvox::saveHeavyAlternativeSupport(path,"gauss_cannon",
+     {-.25f,.03f,-.15f},&why));
+ assert(kharvox::saveHeavyAlternativeSupport(path,"chaingun",
+     {-.21f,.06f,-.11f},&why));
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.rejected==0&&a.accepted==14);
+ assert(a.gaussHandValid&&a.gaussSiegeHandValid);
+ assert(a.chaingunHandValid&&a.chaingunTurretHandValid);
+ assert(a.gaussSiegeRotation.valid&&a.chaingunTurretRotation.valid);
+ assert(a.gaussSiegeSupportValid&&a.chaingunTurretSupportValid);
+ assert(std::abs(a.gauss.z-.50f)<.0001f);
+ assert(std::abs(a.chaingun.z-.66f)<.0001f);
+ assert(std::abs(a.gaussSiegeHand.z-.31f)<.0001f);
+ assert(std::abs(a.chaingunTurretHand.z-.30f)<.0001f);
+ assert(!kharvox::saveRightHandVisualPose(
+     path,"shotgun",false,{0,0,0},liveRotation,&why));
+ assert(!kharvox::saveRightHandVisualPose(
+     path,"chaingun",false,{1.1f,0,0},liveRotation,&why));
+ assert(!kharvox::saveRightHandVisualPose(
+     path,"chaingun",false,{0,0,0},{0,0,0,0,false},&why));
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.rejected==0&&a.gaussSiegeRotation.valid);
+ {std::ifstream f(path);std::string comment;std::getline(f,comment);
+  assert(comment=="# keep owner settings");}
+ std::remove((std::string(path)+".before-live-capture.bak").c_str());
  std::remove((std::string(path)+".before-capture.bak").c_str());
  const std::string twoHand=std::string(path)+".twohand";
  const std::string original="2 shotgun barrel 0 0 -0.25 0.2 1\n"

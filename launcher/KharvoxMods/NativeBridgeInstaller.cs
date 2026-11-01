@@ -199,6 +199,7 @@ internal static class NativeBridgeInstaller
             "offhand_grip_capture_status.txt",
             "offhand_right_hand_positions.cfg",
             "offhand_right_hand_positions.cfg.before-capture.bak",
+            "offhand_right_hand_positions.cfg.before-live-capture.bak",
             "two_hand_weapon_profiles_saved.cfg.before-chainsaw-capture.bak",
             "two_hand_weapon_profiles_saved.cfg.before-heavy-support.bak"
         })
