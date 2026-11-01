@@ -87,15 +87,24 @@ function Get-LatestSuccessfulFullRun {
 
 function Get-LatestSuccessfulRun {
     $encodedBranch = [Uri]::EscapeDataString($Branch)
-    $uri = "https://api.github.com/repos/$Repository/actions/workflows/$WorkflowFile/runs?branch=$encodedBranch&status=success&per_page=1"
+    $uri = "https://api.github.com/repos/$Repository/actions/workflows/$WorkflowFile/runs?branch=$encodedBranch&status=success&per_page=10"
     try {
         $headers = @{ "User-Agent" = "KHARVOX-Custom-Watcher" }
         $response = Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $uri -TimeoutSec 20
-        return @($response.workflow_runs)[0]
+        foreach ($candidate in @($response.workflow_runs)) {
+            # A successful workflow without a live patch artifact is not an
+            # installable update. Check the exact run before advertising it.
+            $artifactUrl = "https://api.github.com/repos/$Repository/actions/runs/$($candidate.id)/artifacts?per_page=100"
+            $artifacts = @((Invoke-RestMethod -UseBasicParsing -Headers $headers -Uri $artifactUrl -TimeoutSec 20).artifacts)
+            if (@($artifacts | Where-Object { $_.name -eq $PatchArtifact -and -not $_.expired }).Count -gt 0) {
+                return $candidate
+            }
+        }
+        Write-Status "No successful build with a downloadable patch is available." DarkYellow
     } catch {
-        Write-Status "GitHub status check failed: $($_.Exception.Message)" DarkYellow
-        return $null
+        Write-Status "GitHub artifact status check failed: $($_.Exception.Message)" DarkYellow
     }
+    return $null
 }
 
 function Wait-ForDoomExit {
@@ -501,7 +510,7 @@ if ($SelfTest) {
 Write-Status "KHARVOX Custom Watcher" Cyan
 Write-Status "Branch: $Branch"
 Write-Status "Install: $InstallRoot"
-Write-Status "First install uses the full artifact; later updates use the small patch." DarkGray
+Write-Status "First install uses a full build; later updates include native files whenever a native build ships." DarkGray
 
 while ($true) {
     try {
@@ -521,7 +530,7 @@ while ($true) {
                     Write-Status "No verified full install is available; refusing to apply a patch to an empty install." DarkYellow
                 }
             } elseif (!$state -or [string]$state.commit -ne [string]$run.head_sha) {
-                Write-Status "New successful build detected. Applying fast patch..." Cyan
+                Write-Status "Build #$($run.run_number) is ready. Downloading the verified update patch..." Cyan
                 Install-Patch $run
             }
         }

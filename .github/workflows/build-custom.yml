@@ -31,22 +31,45 @@ jobs:
           PREVIOUS_SHA: ${{ github.event.before }}
           BRANCH_NAME: ${{ github.ref_name }}
           EVENT_NAME: ${{ github.event_name }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY_NAME: ${{ github.repository }}
         run: |
           $mode = "full"
           if ($env:EVENT_NAME -eq "push" -and $env:BRANCH_NAME -eq "work/oct18-live-motion-chainsaw-hz" -and
               $env:PREVIOUS_SHA -match '^[0-9a-f]{40}$' -and $env:PREVIOUS_SHA -ne ('0' * 40)) {
-            # Most previous push tips are already present in the bounded
-            # checkout history. Fetch the exact commit only if unavailable.
-            git cat-file -t $env:PREVIOUS_SHA *> $null
-            if ($LASTEXITCODE -ne 0) {
-              git fetch --no-tags --depth=1 origin $env:PREVIOUS_SHA
-            }
-            if ($LASTEXITCODE -eq 0) {
-              $changed = @(git diff --name-only $env:PREVIOUS_SHA HEAD)
-              if ($LASTEXITCODE -eq 0 -and $changed.Count -gt 0) {
-                $unsafe = @($changed | Where-Object { $_ -cnotmatch '^(launcher/KharvoxLauncher/[^/]+\.cs|tools/Get-KHARVOX-Custom-Watcher\.ps1|\.github/workflows/build-custom\.yml)$' })
-                if ($unsafe.Count -eq 0) { $mode = "fast" }
+            # A previous failed/cancelled native build must never be skipped by
+            # a later launcher-only commit. Fast mode is safe ONLY if the
+            # immediately preceding branch commit shipped successfully.
+            $previousBuilt = $false
+            try {
+              $encodedBranch = [Uri]::EscapeDataString($env:BRANCH_NAME)
+              $uri = "https://api.github.com/repos/$($env:REPOSITORY_NAME)/actions/workflows/build-custom.yml/runs?branch=$encodedBranch&status=success&per_page=1"
+              $headers = @{
+                "Authorization" = "Bearer $($env:GH_TOKEN)"
+                "Accept" = "application/vnd.github+json"
+                "User-Agent" = "KHARVOX-Build-Mode"
               }
+              $latest = @((Invoke-RestMethod -Uri $uri -Headers $headers -TimeoutSec 20).workflow_runs) | Select-Object -First 1
+              $previousBuilt = ($null -ne $latest -and [string]$latest.head_sha -eq $env:PREVIOUS_SHA)
+            } catch {
+              Write-Warning "Could not verify previous successful build; forcing full native build: $($_.Exception.Message)"
+            }
+            if ($previousBuilt) {
+              git cat-file -t $env:PREVIOUS_SHA *> $null
+              if ($LASTEXITCODE -ne 0) {
+                git fetch --no-tags --depth=1 origin $env:PREVIOUS_SHA
+              }
+              if ($LASTEXITCODE -eq 0) {
+                $changed = @(git diff --name-only $env:PREVIOUS_SHA HEAD)
+                if ($LASTEXITCODE -eq 0 -and $changed.Count -gt 0) {
+                  # Workflow changes always trigger a full build. The allowed
+                  # fast paths affect only the managed launcher or watcher.
+                  $unsafe = @($changed | Where-Object { $_ -cnotmatch '^(launcher/KharvoxLauncher/[^/]+\.cs|tools/Get-KHARVOX-Custom-Watcher\.ps1)$' })
+                  if ($unsafe.Count -eq 0) { $mode = "fast" }
+                }
+              }
+            } else {
+              Write-Host "Preceding commit has no successful build; include all pending native changes."
             }
           }
           "mode=$mode" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
