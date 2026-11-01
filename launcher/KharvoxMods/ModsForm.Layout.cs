@@ -170,7 +170,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Chainsaw Animation Investigator",
                 "Read-only animation timing traces and per-kill CSV.", true),
             new PreviewMod("Off-Hand Grip Capture (Test)",
-                "Right-hand weapon: position the left support hand, then click BOTH thumbsticks to save its relative grip offset and orientation to logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv. Left haptic confirms capture. Diagnostic only: no weapon transforms or calibration profiles are changed. Normal thumbstick pause/melee disabled while enabled; use Esc to pause.", true)
+                "Enables true two-hand gun control. Hold the support-hand Grip near each weapon's measured support point to attach the hand model to the gun; release Grip to let the hand move freely again. RIGHT thumbstick click pauses; LEFT click melees. Click BOTH sticks together to record a new support measurement (diagnostics CSV). Existing calibrations are preserved.", true)
         }),
         ("◎  Haptics & Feedback", new[]
         {

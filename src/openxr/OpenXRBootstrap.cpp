@@ -68,6 +68,7 @@
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
 #include "SupportGripCapturePolicy.h"
+#include "OffHandStickInputPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "OpenHandReleasePolicy.h"
@@ -406,6 +407,12 @@ struct State {
     KharvoxWeaponKind twoHandLatchedWeapon{KharvoxWeaponKind::Unknown};
     TwoHandAimMode twoHandCalibrationAimMode{TwoHandAimMode::Barrel};
     kharvox::SupportGripCaptureChord offHandCaptureChord{};
+    kharvox::OffHandStickInput offHandStickInput{};
+    kharvox::OffHandStickOutput offHandStickOutput{};
+    bool supportVisualLocked{},supportVisualWeaponLeft{};
+    KharvoxWeaponKind supportVisualWeapon{KharvoxWeaponKind::Unknown};
+    XrQuaternionf supportVisualLocalOrientation{0,0,0,1};
+    kharvox::hands::HandPose supportVisualPose{};
     XrVector3f bodyFollowPosition{}; XrVector2f roomscaleStick{};
     std::array<float,3> previousPhysicsOrigin{}; bool previousPhysicsOriginValid{};
     std::array<float,3> previousRoomscaleWorldDirection{}; XrVector3f previousRoomscaleTrackingDirection{};
@@ -2183,6 +2190,7 @@ void selectPhysicalWeaponHand(bool left,const char* action){
     s.weaponPoseSubmitted=false;
     s.twoHandLatched=false;
     s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+    s.supportVisualLocked=false;
     s.equipmentGrip.cancel();
     s.secondaryFireGripPressed=false;
     s.supportGripPressed=false;
@@ -2421,6 +2429,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.supportVisualLocked=false;
         KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
 
         s.weaponTrackingHeld=false;s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
@@ -2437,6 +2446,7 @@ void updateWeapon6Dof(){
     const auto& primaryController=weaponController();
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
+        s.supportVisualLocked=false;
 
         if(s.weaponPoseSubmitted){
             if(!s.weaponTrackingHeld)
@@ -2473,7 +2483,7 @@ void updateWeapon6Dof(){
     }
     const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
-    if(s.twoHandEnabled&&!s.customMods.offHandGripCapture){
+    if(s.twoHandEnabled){
         if(s.twoHandLatched&&s.twoHandLatchedWeapon!=kind){
             log(std::string("[TWO-HAND] support released after weapon change from ")
                 +KharvoxWeaponKindKey(s.twoHandLatchedWeapon)+" to "+KharvoxWeaponKindKey(kind));
@@ -2537,6 +2547,51 @@ void updateWeapon6Dof(){
                 writeTwoHandStatus(std::string(weaponKindName(kind))+": "+supportHandName()+" grip held, move support hand onto its calibrated grab point");
             }
         }
+    }
+    // The visible free hand is weapon-attached ONLY after a real support-Grip
+    // acquisition. Retain the hand's natural orientation at the latch, but
+    // pin its POSITION to this weapon's saved support point while held.
+    // The physics/aim solver continues using the actual tracked hand.
+    const bool supportVisualNow=s.customMods.offHandGripCapture &&
+        s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed &&
+        s.twoHandLatchedWeapon==kind&&primaryController.valid&&
+        supportController.valid&&!s.dynamicShoulderHolstered;
+    if(supportVisualNow){
+        const auto* profile=twoHandCalibrationFor(kind);
+        if(profile&&profile->valid){
+            const auto actual=activeHandCalibration(*profile);
+            // current and rotation are in KHARVOX body-follow space.
+            // Apply the local weapon orientation delta to the original
+            // OpenXR controller pose to recover a tracking-space gun pose.
+            const auto renderOrientation=normalizeQuaternion(multiply(
+                primaryController.orientation,
+                multiply(conjugate(current.orientation),rotation)));
+            const auto fixedPosition=addVector(primaryController.position,
+                rotateVector(renderOrientation,actual.supportPosition));
+            if(!s.supportVisualLocked||s.supportVisualWeapon!=kind||
+                s.supportVisualWeaponLeft!=s.weaponHandLeft){
+                s.supportVisualLocalOrientation=normalizeQuaternion(multiply(
+                    conjugate(renderOrientation),supportController.orientation));
+                log(std::string("[OFFHAND-GRIP] hand visual attached to ")+
+                    KharvoxWeaponKindKey(kind)+" (controller tracking remains independent)");
+            }
+            const auto fixedRotation=normalizeQuaternion(multiply(
+                renderOrientation,s.supportVisualLocalOrientation));
+            s.supportVisualPose.position[0]=fixedPosition.x;
+            s.supportVisualPose.position[1]=fixedPosition.y;
+            s.supportVisualPose.position[2]=fixedPosition.z;
+            s.supportVisualPose.orientation[0]=fixedRotation.x;
+            s.supportVisualPose.orientation[1]=fixedRotation.y;
+            s.supportVisualPose.orientation[2]=fixedRotation.z;
+            s.supportVisualPose.orientation[3]=fixedRotation.w;
+            s.supportVisualPose.valid=true;
+            s.supportVisualWeapon=kind;
+            s.supportVisualWeaponLeft=s.weaponHandLeft;
+            s.supportVisualLocked=true;
+        } else s.supportVisualLocked=false;
+    } else if(s.supportVisualLocked){
+        log("[OFFHAND-GRIP] hand visual detached (release, holster, or weapon change)");
+        s.supportVisualLocked=false;
     }
     const WeaponPose publishedWeaponPose{current.position,rotation};
     if(s.controllerFrameYaw.active&&kharvox::pose_trace::active.load(std::memory_order_relaxed)){
@@ -2663,9 +2718,17 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
-    if(s.customMods.offHandGripCapture)
-        captureOffHandGripDiagnostic(readBooleanAction(s.doomPause),
-            readBooleanAction(s.doomMelee),gameplay);
+    if(s.customMods.offHandGripCapture){
+        const bool physicalRightClick=readBooleanAction(
+            s.leftHanded?s.doomPause:s.doomMelee);
+        const bool physicalLeftClick=readBooleanAction(
+            s.leftHanded?s.doomMelee:s.doomPause);
+        captureOffHandGripDiagnostic(physicalLeftClick,physicalRightClick,gameplay);
+        s.offHandStickOutput=s.offHandStickInput.update(
+            physicalRightClick,physicalLeftClick,true,GetTickCount64());
+    }else{
+        s.offHandStickOutput=s.offHandStickInput.update(false,false,false,GetTickCount64());
+    }
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -3226,8 +3289,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    const bool meleeDown=!s.customMods.offHandGripCapture
-        &&readBooleanAction(s.doomMelee);
+    const bool meleeDown=s.customMods.offHandGripCapture
+        ?s.offHandStickOutput.leftMelee:readBooleanAction(s.doomMelee);
     const bool meleeUseDown=gameplay&&meleeDown;
     if(meleeUseDown!=s.meleePressed){
         if(meleeUseDown){
@@ -3803,10 +3866,10 @@ void updateGameplayActions(XrTime displayTime){
             +(missionInfoDown?"pressed":"released"));
     s.missionInfoPressed=missionInfoDown;
     const bool switchWeaponModDown=readBooleanAction(s.doomSwitchWeaponMod);
-    const bool pauseDown=!s.customMods.offHandGripCapture
-        &&readBooleanAction(s.doomPause);
+    const bool pauseDown=s.customMods.offHandGripCapture
+        ?s.offHandStickOutput.rightPause:readBooleanAction(s.doomPause);
     const bool restrictedLeftHandSwap=s.leftHanded&&!s.leftHandSwapSticks;
-    if(pauseDown&&!s.pausePressed)log(std::string("[INPUT] ")+pauseHandName()+" thumbstick click -> native JOY9/start pause");
+    if(pauseDown&&!s.pausePressed)log(std::string("[INPUT] ")+(s.customMods.offHandGripCapture?"right":pauseHandName())+" thumbstick click -> native JOY9/start pause");
     s.pausePressed=pauseDown;
     if(xinputHookReady){
         // Full-screen game interfaces are native gamepad UIs, not gameplay.
@@ -4854,7 +4917,7 @@ void traceEye(unsigned kind,int eye,const XrPosef& pose,const XrFovf& fov,
 bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExtent.width==extent.width&&s.stereoCacheExtent.height==extent.height)return true;if(!s.vk.createImage||!s.vk.getImageMemoryRequirements||!s.vk.allocateMemory||!s.vk.bindImageMemory||!s.vk.getPhysicalDeviceMemoryProperties)return false;if(!s.vk.queueWaitIdle||!s.queue||s.vk.queueWaitIdle(s.queue)!=VK_SUCCESS)return false;s.fsr1.releaseAfterCompletion();s.fsr1InitializationAttempted=false;invalidateAlternatingStereoHistory(true);for(int e=0;e<2;e++){if(s.stereoCache[e])s.vk.destroyImage(s.device,s.stereoCache[e],nullptr);if(s.stereoCacheMemory[e])s.vk.freeMemory(s.device,s.stereoCacheMemory[e],nullptr);s.stereoCache[e]=VK_NULL_HANDLE;s.stereoCacheMemory[e]=VK_NULL_HANDLE;}VkPhysicalDeviceMemoryProperties properties{};s.vk.getPhysicalDeviceMemoryProperties(s.physical,&properties);for(int e=0;e<2;e++){VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};ci.imageType=VK_IMAGE_TYPE_2D;ci.format=static_cast<VkFormat>(s.format);ci.extent={extent.width,extent.height,1};ci.mipLevels=1;ci.arrayLayers=1;ci.samples=VK_SAMPLE_COUNT_1_BIT;ci.tiling=VK_IMAGE_TILING_OPTIMAL;ci.usage=VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;ci.sharingMode=VK_SHARING_MODE_EXCLUSIVE;ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;if(s.vk.createImage(s.device,&ci,nullptr,&s.stereoCache[e])!=VK_SUCCESS)return false;VkMemoryRequirements requirements{};s.vk.getImageMemoryRequirements(s.device,s.stereoCache[e],&requirements);uint32_t memoryType=UINT32_MAX;for(uint32_t i=0;i<properties.memoryTypeCount;i++)if((requirements.memoryTypeBits&(1u<<i))&&(properties.memoryTypes[i].propertyFlags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)){memoryType=i;break;}if(memoryType==UINT32_MAX)return false;VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;if(s.vk.allocateMemory(s.device,&ai,nullptr,&s.stereoCacheMemory[e])!=VK_SUCCESS||s.vk.bindImageMemory(s.device,s.stereoCache[e],s.stereoCacheMemory[e],0)!=VK_SUCCESS)return false;}s.stereoCacheExtent=extent;log("Stereo cache ready "+std::to_string(extent.width)+"x"+std::to_string(extent.height)+" format="+std::to_string(s.format));return true;}
 }
 
-static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&twoHandMarker;s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker;s.twoHandCalibrationTarget=loadTwoHandCalibrationTarget();s.twoHandCalibrationAimMode=loadTwoHandCalibrationAimMode();loadTwoHandCalibrations();if(s.twoHandCalibrationMode){if(auto* calibration=twoHandCalibrationFor(s.twoHandCalibrationTarget))calibration->aimMode=s.twoHandCalibrationAimMode;}log(std::string("[WEAPON] native 6DOF ")+(s.weapon6Dof?"ENABLED":"disabled"));log(std::string("[TWO-HAND] ")+(s.twoHandEnabled?"ENABLED":"disabled")+" mode="+(s.twoHandCalibrationMode?"calibration":"gameplay-test")+" target="+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)+" alignment="+twoHandModeName(s.twoHandCalibrationAimMode)+" virtualGunstock="+(s.virtualGunstockEnabled?"enabled":"disabled")+" savedProfiles="+std::to_string(savedTwoHandCalibrationCount()));if(s.twoHandEnabled)writeTwoHandStatus(s.twoHandCalibrationMode?std::string("CALIBRATION: enter gameplay and equip ")+weaponKindName(s.twoHandCalibrationTarget):"GAMEPLAY TEST: waiting for gameplay weapon data");installXInputHook();s.vkInstance=instance;const auto bundledLoader=kharvox::runtimePath(L"openxr_loader.dll");s.loader=LoadLibraryW(bundledLoader.c_str());if(!s.loader)s.loader=LoadLibraryW(L"openxr_loader.dll");if(!s.loader){log("OpenXR loader not found beside KharvoxLayer.dll or on the system DLL path");return;}s.getProc=reinterpret_cast<PFN_xrGetInstanceProcAddr>(GetProcAddress(s.loader,"xrGetInstanceProcAddr"));s.enumerateExtensions=reinterpret_cast<PFN_xrEnumerateInstanceExtensionProperties>(GetProcAddress(s.loader,"xrEnumerateInstanceExtensionProperties"));s.createInstance=reinterpret_cast<PFN_xrCreateInstance>(GetProcAddress(s.loader,"xrCreateInstance"));if(!s.getProc||!s.enumerateExtensions||!s.createInstance){log("loader exports missing");return;}uint32_t n=0;s.enumerateExtensions(nullptr,0,&n,nullptr);std::vector<XrExtensionProperties> ex(n,{XR_TYPE_EXTENSION_PROPERTIES});s.enumerateExtensions(nullptr,n,&n,ex.data());bool e2=false,e1=false,metaPlusExtensionAvailable=false;for(auto&e:ex){e2|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);e1|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);metaPlusExtensionAvailable|=!strcmp(e.extensionName,"XR_META_touch_controller_plus");}const bool med=GetFileAttributesW(kharvox::runtimePath(L"enable_xr_mediated").c_str())!=INVALID_FILE_ATTRIBUTES;s.runtimeManifest=kharvox::activeOpenXRRuntimeManifest();s.runtimeKind=kharvox::classifyOpenXRRuntime(s.runtimeManifest);s.vulkanPath=kharvox::selectOpenXRVulkanPath(s.runtimeKind,med,e1,e2);s.useEnable2Bridge=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2VirtualDesktopBridge;s.useEnable2RuntimeManaged=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2RuntimeManaged;s.enable2=s.useEnable2Bridge||s.useEnable2RuntimeManaged;const char* ext=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable1Direct?XR_KHR_VULKAN_ENABLE_EXTENSION_NAME:s.enable2?XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME:nullptr;log("OpenXR runtime policy: runtime="+std::string(kharvox::openXRRuntimeKindName(s.runtimeKind))+" manifest="+(s.runtimeManifest.empty()?std::string("<unavailable>"):s.runtimeManifest)+" selected="+kharvox::openXRVulkanPathName(s.vulkanPath)+" supportsEnable1="+(e1?"yes":"no")+" supportsEnable2="+(e2?"yes":"no"));if(!ext){log("No safe Vulkan path exposed by the active OpenXR runtime");return;}XrInstanceCreateInfo ci{XR_TYPE_INSTANCE_CREATE_INFO};strcpy_s(ci.applicationInfo.applicationName,"KHARVOX");strcpy_s(ci.applicationInfo.engineName,"KHARVOX");ci.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);// Optional Meta Touch Plus proximity sensors are used only when advertised.
+static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker;s.twoHandCalibrationTarget=loadTwoHandCalibrationTarget();s.twoHandCalibrationAimMode=loadTwoHandCalibrationAimMode();loadTwoHandCalibrations();if(s.twoHandCalibrationMode){if(auto* calibration=twoHandCalibrationFor(s.twoHandCalibrationTarget))calibration->aimMode=s.twoHandCalibrationAimMode;}log(std::string("[WEAPON] native 6DOF ")+(s.weapon6Dof?"ENABLED":"disabled"));log(std::string("[TWO-HAND] ")+(s.twoHandEnabled?"ENABLED":"disabled")+" mode="+(s.twoHandCalibrationMode?"calibration":"gameplay-test")+" target="+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)+" alignment="+twoHandModeName(s.twoHandCalibrationAimMode)+" virtualGunstock="+(s.virtualGunstockEnabled?"enabled":"disabled")+" savedProfiles="+std::to_string(savedTwoHandCalibrationCount()));if(s.twoHandEnabled)writeTwoHandStatus(s.twoHandCalibrationMode?std::string("CALIBRATION: enter gameplay and equip ")+weaponKindName(s.twoHandCalibrationTarget):"GAMEPLAY TEST: waiting for gameplay weapon data");installXInputHook();s.vkInstance=instance;const auto bundledLoader=kharvox::runtimePath(L"openxr_loader.dll");s.loader=LoadLibraryW(bundledLoader.c_str());if(!s.loader)s.loader=LoadLibraryW(L"openxr_loader.dll");if(!s.loader){log("OpenXR loader not found beside KharvoxLayer.dll or on the system DLL path");return;}s.getProc=reinterpret_cast<PFN_xrGetInstanceProcAddr>(GetProcAddress(s.loader,"xrGetInstanceProcAddr"));s.enumerateExtensions=reinterpret_cast<PFN_xrEnumerateInstanceExtensionProperties>(GetProcAddress(s.loader,"xrEnumerateInstanceExtensionProperties"));s.createInstance=reinterpret_cast<PFN_xrCreateInstance>(GetProcAddress(s.loader,"xrCreateInstance"));if(!s.getProc||!s.enumerateExtensions||!s.createInstance){log("loader exports missing");return;}uint32_t n=0;s.enumerateExtensions(nullptr,0,&n,nullptr);std::vector<XrExtensionProperties> ex(n,{XR_TYPE_EXTENSION_PROPERTIES});s.enumerateExtensions(nullptr,n,&n,ex.data());bool e2=false,e1=false,metaPlusExtensionAvailable=false;for(auto&e:ex){e2|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);e1|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);metaPlusExtensionAvailable|=!strcmp(e.extensionName,"XR_META_touch_controller_plus");}const bool med=GetFileAttributesW(kharvox::runtimePath(L"enable_xr_mediated").c_str())!=INVALID_FILE_ATTRIBUTES;s.runtimeManifest=kharvox::activeOpenXRRuntimeManifest();s.runtimeKind=kharvox::classifyOpenXRRuntime(s.runtimeManifest);s.vulkanPath=kharvox::selectOpenXRVulkanPath(s.runtimeKind,med,e1,e2);s.useEnable2Bridge=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2VirtualDesktopBridge;s.useEnable2RuntimeManaged=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2RuntimeManaged;s.enable2=s.useEnable2Bridge||s.useEnable2RuntimeManaged;const char* ext=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable1Direct?XR_KHR_VULKAN_ENABLE_EXTENSION_NAME:s.enable2?XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME:nullptr;log("OpenXR runtime policy: runtime="+std::string(kharvox::openXRRuntimeKindName(s.runtimeKind))+" manifest="+(s.runtimeManifest.empty()?std::string("<unavailable>"):s.runtimeManifest)+" selected="+kharvox::openXRVulkanPathName(s.vulkanPath)+" supportsEnable1="+(e1?"yes":"no")+" supportsEnable2="+(e2?"yes":"no"));if(!ext){log("No safe Vulkan path exposed by the active OpenXR runtime");return;}XrInstanceCreateInfo ci{XR_TYPE_INSTANCE_CREATE_INFO};strcpy_s(ci.applicationInfo.applicationName,"KHARVOX");strcpy_s(ci.applicationInfo.engineName,"KHARVOX");ci.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);// Optional Meta Touch Plus proximity sensors are used only when advertised.
     // If the runtime declines this optional extension, retry the ORIGINAL
     // single Vulkan extension to avoid regressing headset initialization.
     const std::array<const char*,2> xrExtensions{ext,"XR_META_touch_controller_plus"};
@@ -5606,6 +5669,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // the next prediction; compositing fresh hands onto it creates a time skew.
     const auto sourceLeftGripController=s.leftGripController;
     const auto sourceRightGripController=s.rightGripController;
+    const auto sourceSupportVisualPose=s.supportVisualPose;
+    const bool sourceSupportVisualLocked=s.supportVisualLocked;
+    const bool sourceSupportWeaponLeft=s.supportVisualWeaponLeft;
     updateGameplayActions(frame.predictedDisplayTime);updateXInputHaptics();updatePresentationMode();updatePsvr2TriggerPolicy();
     kharvox::native::StereoFrame nativeFrame{};
     bool nativeFrameValid=false;
@@ -7148,14 +7214,36 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     auto nativeLeftController=s.leftGripController,nativeRightController=s.rightGripController;
     if(nativeFrameValid){nativeLeftController.valid=nativeFrame.pose.controllersValid[0];nativeRightController.valid=nativeFrame.pose.controllersValid[1];nativeLeftController.orientation=nativeFrame.pose.controllers[0].orientation;nativeLeftController.position=nativeFrame.pose.controllers[0].position;
         nativeRightController.orientation=nativeFrame.pose.controllers[1].orientation;nativeRightController.position=nativeFrame.pose.controllers[1].position;}
-    const auto currentLeftHandPose=handPose(nativeLeftController);
-    const auto currentRightHandPose=handPose(nativeRightController);
+    auto currentLeftHandPose=handPose(nativeLeftController);
+    auto currentRightHandPose=handPose(nativeRightController);
+    auto attachSupportVisual=[](kharvox::hands::HandPose&left,
+                                kharvox::hands::HandPose&right,
+                                const kharvox::hands::HandPose&locked,
+                                bool valid,bool leftWeapon){
+        if(!valid||!locked.valid)return;
+        if(leftWeapon)right=locked;else left=locked;
+    };
+    // Native paired frames refer to the previous source, not necessarily
+    // the next predicted controller sample. Match the rendered weapon frame.
+    if(handGameplayActive){
+        if(nativeFrameValid)
+            attachSupportVisual(currentLeftHandPose,currentRightHandPose,
+                sourceSupportVisualPose,sourceSupportVisualLocked,
+                sourceSupportWeaponLeft);
+        else
+            attachSupportVisual(currentLeftHandPose,currentRightHandPose,
+                s.supportVisualPose,s.supportVisualLocked,s.supportVisualWeaponLeft);
+    }
     const bool alignAerSourceHands=!nativeBackend&&s.alternatingStereo
         &&!nativePackedStereo&&handGameplayActive;
-    const auto sourceLeftHandPose=alignAerSourceHands
+    auto sourceLeftHandPose=alignAerSourceHands
         ?handPose(aerSourceQualified?aerCapturedInput.left:sourceLeftGripController):currentLeftHandPose;
-    const auto sourceRightHandPose=alignAerSourceHands
+    auto sourceRightHandPose=alignAerSourceHands
         ?handPose(aerSourceQualified?aerCapturedInput.right:sourceRightGripController):currentRightHandPose;
+    if(alignAerSourceHands&&handGameplayActive)
+        attachSupportVisual(sourceLeftHandPose,sourceRightHandPose,
+            sourceSupportVisualPose,sourceSupportVisualLocked,
+            sourceSupportWeaponLeft);
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
         nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft};

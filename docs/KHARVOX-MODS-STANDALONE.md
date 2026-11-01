@@ -47,8 +47,14 @@ weapon support positions **once** from the bundled
 `NativeBridge/two_hand_weapon_profiles_saved.cfg`. All existing saved
 non-captured weapons (including BFG and Chainsaw) are preserved. Any existing
 saved file is backed up under `Backups/GripProfiles/`. Once the import runs,
-the manager turns OFF `Off-Hand Grip Capture (Test)` and returns to normal
-two-hand aiming on the next DOOM launch. To revert, close DOOM and restore the
+the manager enables `Off-Hand Grip Capture (Test)` once. It restores
+normal two-hand aiming while the support grip is held and locks the visible
+support-hand model to the saved weapon grip position (not to the moving free
+controller). Releasing support Grip restores live hand motion. While enabled,
+RIGHT thumbstick click pauses, LEFT click melees, and BOTH clicks together
+record diagnostic CSV data without overwriting saved profiles. The one-time
+activation is remembered so disabling the feature manually remains OFF in
+future sessions. To revert, close DOOM and restore the
 saved profile from `Backups/GripProfiles/`; keep the applied marker so later
 updates will not reimport the experimental positions. Capture orientations
 are not yet used by the two-hand aiming solver. All eight need headset testing.

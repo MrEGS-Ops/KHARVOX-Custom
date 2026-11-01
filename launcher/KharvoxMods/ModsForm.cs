@@ -327,15 +327,23 @@ internal sealed partial class ModsForm : Form
             if (!NativeBridgeInstaller.IsReady())
                 throw new InvalidDataException("Custom KHARVOX runtime did not pass verification.");
 
-            // Install the eight owner-measured supports ONCE, backing up any
-            // previous saved profile. Disable the diagnostic after import so
-            // ordinary two-hand aiming is restored. All other mods unchanged.
-            if (CapturedGripProfiles.ApplyOnce(NativeBridgeInstaller.TargetDirectory,
-                Path.Combine(AppContext.BaseDirectory, "Backups")) &&
-                _modPrefs.OffHandGripCapture)
+            // Install the eight owner-measured supports only once.
+            // One-time migration enables real Off-Hand Grip handling, but a
+            // later manual OFF choice is respected across future launches.
+            var gripBackups = Path.Combine(AppContext.BaseDirectory, "Backups", "GripProfiles");
+            CapturedGripProfiles.ApplyOnce(NativeBridgeInstaller.TargetDirectory,
+                Path.Combine(AppContext.BaseDirectory, "Backups"));
+            var gripV2Marker = Path.Combine(gripBackups, "offhand-grip-v2-enabled");
+            if (File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
+                    CapturedGripProfiles.SourceName)) && !File.Exists(gripV2Marker))
             {
-                _modPrefs.OffHandGripCapture = false;
-                OnVrSelectionChanged("Off-Hand Grip Capture (Test)", false);
+                if (!_modPrefs.OffHandGripCapture)
+                {
+                    _modPrefs.OffHandGripCapture = true;
+                    OnVrSelectionChanged("Off-Hand Grip Capture (Test)", true);
+                }
+                Directory.CreateDirectory(gripBackups);
+                File.WriteAllText(gripV2Marker, "Off-hand two-hand grip feature migrated once.");
             }
 
             if (_launcher != null && !_launcher.HasExited)
