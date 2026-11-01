@@ -8,10 +8,19 @@ int main(){
  {std::ofstream f(path);f<<"gauss_cannon = -0.04 0.07 -0.02\nchaingun = 0.03 -0.06 0.01\n"; }
  auto a=kharvox::readRightHandGripSettings(path);
  assert(a.accepted==2&&a.rejected==0);
- assert(std::abs(a.gauss.x+0.04f)<0.0001f&&std::abs(a.chaingun.z-0.01f)<0.0001f);
+ assert(std::abs(a.rightHandDropMeters-0.08f)<0.0001f);
+ assert(std::abs(a.gauss.x+0.04f&&std::abs(a.chaingun.z-0.01f)<0.0001f);
  {std::ofstream f(path);f<<"gauss_cannon = NaN 0 0\nchaingun = 1.1 0 0\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.accepted==0&&a.rejected==2&&a.gauss.x==0.f&&a.chaingun.x==0.f);
+ {std::ofstream f(path);f<<"# user settings\nright_hand_drop_m = 0.11\ngauss_cannon = 0 0 0\nchaingun = 0 0 0\n";}
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.accepted==3&&a.rejected==0);
+ assert(std::abs(a.rightHandDropMeters-0.11f)<0.0001f);
+ {std::ofstream f(path);f<<"right_hand_drop_m = 0.50\n";}
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.rejected==1);
+ assert(std::abs(a.rightHandDropMeters-0.08f)<0.0001f);
  const auto sample=kharvox::RightHandGripOffset{-0.03f,0.04f,-0.02f};
  std::string why;
  {std::ofstream f(path);f<<"# keep me\n"

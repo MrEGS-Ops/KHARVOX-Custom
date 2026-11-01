@@ -399,7 +399,7 @@ internal sealed partial class ModsForm
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
                 "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
             "Off-Hand Grip Capture (Test)" =>
-                "Normal gameplay two-hand support is enabled. Hold LEFT Grip close to the saved point on a right-hand weapon: the visible support hand locks to the gun and follows it while Grip is held, then returns to hand tracking on release. RIGHT thumbstick click melees; LEFT click pauses. On Chainsaw, BOTH clicks save its true left-hand support grip (backed up); on Gauss/Chaingun they calibrate the right-hand visual position; all other weapons log diagnostics only.",
+                "Normal gameplay two-hand support is enabled. Hold LEFT Grip close to the saved point on a right-hand weapon: the visible support hand locks to the gun and follows it while Grip is held, then returns to hand tracking on release. RIGHT thumbstick click melees; LEFT click pauses. On Chainsaw, BOTH clicks save its true left-hand support grip (backed up); on Gauss/Chaingun they calibrate the right-hand visual position; all other weapons log diagnostics only. If the RIGHT hand appears too high or low, adjust right_hand_drop_m (default 0.08 = 8 cm down) in NativeBridge/offhand_right_hand_positions.cfg and restart DOOM.",
             "KILLTIME: RIP & TEAR" =>
                 "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
             _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."

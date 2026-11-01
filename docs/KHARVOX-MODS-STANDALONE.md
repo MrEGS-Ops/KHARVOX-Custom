@@ -62,7 +62,15 @@ are not yet used by the two-hand aiming solver. All eight need headset testing.
 With this mod enabled, Virtual GunStock is disabled in the two-hand
 aiming solver regardless of the original launcher setting. Both hand models
 follow the final weapon orientation while Grip is held (controller tracking
-and physical aiming remain unchanged). To tune the primary/right-hand
+and physical aiming remain unchanged). The right-hand visual model's shared height is corrected by
+`right_hand_drop_m = 0.08` (8 cm down along the solved gun's own axes)
+when the support Grip is latched, preventing the right glove from
+floating above multiple weapons. It can be adjusted from 0.00 to
+0.20 metres in `NativeBridge/offhand_right_hand_positions.cfg`,
+and the default applies even when older saved configs lack the new key.
+No physical gun/controller position, left support calibration, or
+non-two-hand pose is changed. Manual edits take effect on the next DOOM
+launch. To tune the primary/right-hand
 position for Gauss Cannon or Chaingun, edit
 `NativeBridge/offhand_right_hand_positions.cfg`:
 `gauss_cannon = X Y Z` and `chaingun = X Y Z`. Distances

@@ -170,7 +170,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Chainsaw Animation Investigator",
                 "Read-only animation timing traces and per-kill CSV.", true),
             new PreviewMod("Off-Hand Grip Capture (Test)",
-                "Enables true two-hand gun control. Hold the support-hand Grip near each weapon's measured support point to attach the hand model to the gun; release Grip to let the hand move freely again. RIGHT thumbstick click melees; LEFT click pauses. For Gauss Cannon/Chaingun, place LEFT controller where you want the RIGHT hand to appear, then click BOTH sticks to save the right-hand visual position. For Chainsaw, left-hand placement plus BOTH sticks saves its normal two-hand support grip with backup. Other weapons retain their existing capture modes.", true)
+                "Enables true two-hand gun control. Hold the support-hand Grip near each weapon's measured support point to attach the hand model to the gun; release Grip to let the hand move freely again. RIGHT thumbstick click melees; LEFT click pauses. For Gauss Cannon/Chaingun, place LEFT controller where you want the RIGHT hand to appear, then click BOTH sticks to save the right-hand visual position. For Chainsaw, left-hand placement plus BOTH sticks saves its normal two-hand support grip with backup. The right hand lowers by a shared configurable 8 cm (right_hand_drop_m in NativeBridge/offhand_right_hand_positions.cfg) while two-hand Grip is held. Other weapons retain their existing capture modes.", true)
         }),
         ("◎  Haptics & Feedback", new[]
         {

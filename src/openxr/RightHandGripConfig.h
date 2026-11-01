@@ -26,6 +26,11 @@ inline bool validRightHandPlacement(RightHandGripOffset p) noexcept {
 }
 struct RightHandGripSettings {
     RightHandGripOffset gauss{},chaingun{};
+    // Move the rendered PRIMARY gun hand DOWN along the gun's own
+    // up axis only while two-hand Grip is latched. This compensates for
+    // the controller-origin anchor used by the earlier implementation.
+    // Missing property in an existing local config has the same default.
+    float rightHandDropMeters{0.08f};
     int accepted{},rejected{};
 };
 inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
@@ -41,6 +46,17 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
+        if(key=="right_hand_drop_m"){
+            // Separate global height setting from three-axis weapon offsets.
+            // The unused extra xyz fields are not valid for this key.
+            float drop{};
+            std::istringstream v1(line.substr(split+1));
+            if(!(v1>>drop)||(v1>>extra)||!std::isfinite(drop)
+                ||drop<0.f||drop>0.20f){++out.rejected;continue;}
+            out.rightHandDropMeters=drop;
+            ++out.accepted;
+            continue;
+        }
         if(!(v>>p.x>>p.y>>p.z)||(v>>extra)||
             !validRightHandPlacement(p)){
             ++out.rejected;continue;

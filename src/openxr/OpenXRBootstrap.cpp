@@ -2663,6 +2663,12 @@ void updateWeapon6Dof(){
                 if(kind==KharvoxWeaponKind::GaussCannon)handOffset=s.rightGripSettings.gauss;
                 else if(kind==KharvoxWeaponKind::Chaingun)handOffset=s.rightGripSettings.chaingun;
             }
+            // Calibrate the right-hand mesh's shared height relative to the
+            // SOLVED weapon. DO NOT modify gun tracking or the left support.
+            // Keep both per-weapon offsets and height in the same weapon frame,
+            // so the hand stays attached while the gun rotates.
+            if(!s.weaponHandLeft)
+                handOffset.y-=s.rightGripSettings.rightHandDropMeters;
             const auto primaryFixed=addVector(primaryController.position,
                 rotateVector(renderOrientation,{handOffset.x,handOffset.y,handOffset.z}));
             const auto primaryRotation=normalizeQuaternion(multiply(
