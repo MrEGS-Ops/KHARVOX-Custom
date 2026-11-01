@@ -49,6 +49,27 @@ int main(){
  a=kharvox::readRightHandGripSettings(path);
  assert(std::abs(a.gauss.z-0.50f)<0.0001f);
  assert(std::abs(a.chaingun.z-0.66f)<0.0001f);
+ // Per-weapon RIGHT-hand rotation is stored independently of position.
+ const kharvox::RightHandGripRotation orientation{0.f,0.70710678f,0.f,
+     0.70710678f,true};
+ assert(kharvox::saveRightHandGripRotation(
+     path,"chaingun",orientation,&why));
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.accepted==3&&a.rejected==0);
+ assert(a.chaingunRotation.valid);
+ assert(std::abs(a.chaingunRotation.y-0.70710678f)<.0001f);
+ assert(!a.gaussRotation.valid);
+ assert(std::abs(a.gauss.z-.50f)<.0001f);
+ assert(std::abs(a.chaingun.z-.66f)<.0001f);
+ assert(!kharvox::saveRightHandGripRotation(
+     path,"shotgun",orientation,&why));
+ // A melee reset or runtime reload reads the same persistent rotation.
+ const auto restored=kharvox::readRightHandGripSettings(path);
+ assert(restored.chaingunRotation.valid
+     &&std::abs(restored.chaingunRotation.w-.70710678f)<.0001f);
+ {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\\n";}
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.rejected==1&&!a.gaussRotation.valid);
  std::remove((std::string(path)+".before-capture.bak").c_str());
  const std::string twoHand=std::string(path)+".twohand";
  const std::string original="2 shotgun barrel 0 0 -0.25 0.2 1\n"
@@ -66,6 +87,21 @@ int main(){
   std::string text((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
   assert(text==original);}
  assert(!kharvox::saveChainsawSupportGrip(twoHand,{0.95f,0,0},0.2f,1.f,&why));
+ // Capturing a new heavy support must update ONLY that gun.
+ assert(kharvox::saveHeavySupportGrip(twoHand,"gauss_cannon",
+     {-.12f,.07f,-.20f},true,.20f,1.f,&why));
+ assert(kharvox::saveHeavySupportGrip(twoHand,"chaingun",
+     {-.10f,.11f,-.35f},true,.24f,.8f,&why));
+ {std::ifstream in(twoHand);
+  std::string text((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+  assert(text.find("2 shotgun barrel 0 0 -0.25 0.2 1")!=std::string::npos);
+  assert(text.find("2 chainsaw side-grip -0.1500000 0.1000000 -0.0400000")!=std::string::npos);
+  assert(text.find("2 gauss_cannon side-grip -0.1200000 0.0700000 -0.2000000")!=std::string::npos);
+  assert(text.find("2 chaingun side-grip -0.1000000 0.1100000 -0.3500000")!=std::string::npos);
+ }
+ assert(!kharvox::saveHeavySupportGrip(twoHand,"rocket_launcher",
+     {0,0,0},true,.2f,1.f,&why));
+ std::remove((twoHand+".before-heavy-support.bak").c_str());
  std::remove((twoHand+".before-chainsaw-capture.bak").c_str());
  std::remove(twoHand.c_str());
  std::remove(path);return 0;
