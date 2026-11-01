@@ -2496,7 +2496,9 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
     std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),
         std::ios::trunc);
     if(status)status<<(chainsawSupport?"CHAINSAW TWO-HAND SAVED | ":
-        rightHandProbe?"RIGHT-HAND VISUAL SAVED | ":"")
+        heavy?(rightWeaponGripHeld?"RIGHT-HAND ROTATION SAVED | ":
+            leftSupportGripHeld?"LEFT SUPPORT GRIP SAVED | ":
+                "RIGHT-HAND POSITION SAVED | "):"")
         <<statusLine.str()<<'\n';
     // Confirmation uses existing left-controller haptic mixer after persistence.
     kharvox::queueControllerZoneCue(s.handZoneCues[0],GetTickCount64(),
@@ -2550,7 +2552,22 @@ bool supportGripInCaptureRange(){
     const auto current=controllerRelativeToBodyTrackingOrigin(primary);
     const auto grip=controllerRelativeToBodyTrackingOrigin(support);
     const auto active=activeHandCalibration(*calibration);
-    const auto target=addVector(current.position,rotateVector(current.orientation,active.supportPosition));
+    auto pivot=current.position;
+    const auto kind=KharvoxWeaponCurrentKind();
+    if(s.customMods.offHandGripCapture&&!s.weaponHandLeft
+        &&s.rightGripController.valid
+        &&(kind==KharvoxWeaponKind::GaussCannon
+           ||kind==KharvoxWeaponKind::Chaingun)){
+        const auto stored=kind==KharvoxWeaponKind::GaussCannon
+            ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
+        const XrVector3f local{stored.x,
+            stored.y-s.rightGripSettings.rightHandDropMeters,stored.z};
+        const auto physical=controllerRelativeToBodyTrackingOrigin(
+            s.rightGripController).position;
+        pivot=subtractVector(physical,rotateVector(current.orientation,local));
+    }
+    const auto target=addVector(pivot,
+        rotateVector(current.orientation,active.supportPosition));
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
@@ -2621,6 +2638,29 @@ void updateWeapon6Dof(){
     }
     const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
+    // Heavy support calibrations are stored relative to the moved WEAPON
+    // pivot, NOT the aim-controller origin used for regular KHARVOX guns.
+    // This origin is used consistently for latch, two-hand aim and the
+    // final gun position so recalibrating the left hand really sticks.
+    const bool heavyPivotEnabled=s.customMods.offHandGripCapture
+        &&!s.weaponHandLeft&&s.rightGripController.valid
+        &&(kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun)
+        &&!s.dynamicShoulderHolstered;
+    const auto heavyPosition=kind==KharvoxWeaponKind::GaussCannon
+        ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
+    const XrVector3f heavyOffset{heavyPosition.x,
+        heavyPosition.y-s.rightGripSettings.rightHandDropMeters,
+        heavyPosition.z};
+    const auto rightGripBody=s.rightGripController.valid
+        ?controllerRelativeToBodyTrackingOrigin(s.rightGripController).position
+        :current.position;
+    const auto gunPivotAt=[&](const XrQuaternionf&rot){
+        return kharvox::primarygrip::weaponAnchor(
+            current.position,rightGripBody,rot,heavyOffset,
+            heavyPivotEnabled,
+            [](const XrQuaternionf&q,const XrVector3f&v){return rotateVector(q,v);});
+    };
     if(s.twoHandEnabled){
         if(s.twoHandLatched&&s.twoHandLatchedWeapon!=kind){
             log(std::string("[TWO-HAND] support released after weapon change from ")
@@ -2659,7 +2699,8 @@ void updateWeapon6Dof(){
             const auto supportGrip=controllerRelativeToBodyTrackingOrigin(supportController);
             const auto activeCalibration=activeHandCalibration(*calibration);
             if(!s.twoHandLatched){
-                const auto target=addVector(current.position,rotateVector(current.orientation,activeCalibration.supportPosition));
+                const auto target=addVector(gunPivotAt(current.orientation),
+                    rotateVector(current.orientation,activeCalibration.supportPosition));
                 const float distance=vectorLength(subtractVector(supportGrip.position,target));
                 if(distance<=activeCalibration.captureRadius){
                     s.twoHandLatched=true;
@@ -2677,8 +2718,18 @@ void updateWeapon6Dof(){
                     ?positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition)
                     :XrVector3f{};
                 if(useVirtualGunstock)gunstockPosition.y-=.18f;
-                rotation=solveTwoHandOrientation(current,supportGrip,activeCalibration,
-                    useVirtualGunstock,gunstockPosition);
+                // A moved heavy-gun anchor must also be the solver origin.
+                // Two passes account for the small pivot movement as the gun
+                // rotates; regular guns retain the original one-pass solver.
+                WeaponPose solvePrimary=current;
+                solvePrimary.position=gunPivotAt(rotation);
+                rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
+                    activeCalibration,useVirtualGunstock,gunstockPosition);
+                if(heavyPivotEnabled){
+                    solvePrimary.position=gunPivotAt(rotation);
+                    rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
+                        activeCalibration,useVirtualGunstock,gunstockPosition);
+                }
                 writeTwoHandStatus(std::string(weaponKindName(kind))+": TWO-HAND ACTIVE — "
                     +(useVirtualGunstock?"virtual stock / ":"")
                     +twoHandModeName(activeCalibration.aimMode)+" alignment");
