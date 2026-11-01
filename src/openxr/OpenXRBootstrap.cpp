@@ -418,6 +418,9 @@ struct State {
     bool primaryVisualLocked{};
     XrQuaternionf primaryVisualLocalOrientation{0,0,0,1};
     kharvox::RightHandGripSettings rightGripSettings{};
+    XrQuaternionf lastWeaponRenderedTrackingRotation{0,0,0,1};
+    KharvoxWeaponKind lastWeaponRenderedKind{KharvoxWeaponKind::Unknown};
+    bool lastWeaponRenderedValid{};
     XrVector3f bodyFollowPosition{}; XrVector2f roomscaleStick{};
     std::array<float,3> previousPhysicsOrigin{}; bool previousPhysicsOriginValid{};
     std::array<float,3> previousRoomscaleWorldDirection{}; XrVector3f previousRoomscaleTrackingDirection{};
@@ -2362,6 +2365,34 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
         <<s.rightController.orientation.z<<','<<s.rightController.orientation.w<<'\n';
     out.flush();
     if(!out){reject("local diagnostic CSV write failed");return;}
+    // Gauss/Chaingun: LEFT tracked controller is a placement probe for
+    // RIGHT rendered hand, never a new left support-grip calibration.
+    const bool rightHandProbe=kind==KharvoxWeaponKind::GaussCannon
+        ||kind==KharvoxWeaponKind::Chaingun;
+    if(rightHandProbe){
+        const auto gunRotation=s.lastWeaponRenderedValid
+            &&s.lastWeaponRenderedKind==kind
+            ?s.lastWeaponRenderedTrackingRotation:s.rightController.orientation;
+        const auto displacement=rotateVector(conjugate(gunRotation),
+            subtractVector(s.leftGripController.position,
+                           s.rightController.position));
+        const kharvox::RightHandGripOffset offset{
+            displacement.x,displacement.y,displacement.z};
+        std::string error;
+        if(!kharvox::saveRightHandGripMeasurement(
+                kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
+                KharvoxWeaponKindKey(kind),offset,&error)){
+            reject((std::string("right-hand visual offset not saved: ")+error).c_str());
+            return;
+        }
+        if(kind==KharvoxWeaponKind::GaussCannon)
+            s.rightGripSettings.gauss=offset;
+        else s.rightGripSettings.chaingun=offset;
+        log("[RIGHT-HAND-CAPTURE] "+std::string(KharvoxWeaponKindKey(kind))
+            +" saved measured left-controller point as RIGHT-hand visual offset: "
+            +std::to_string(offset.x)+", "+std::to_string(offset.y)
+            +", "+std::to_string(offset.z)+" m");
+    }
     std::ostringstream statusLine;
     statusLine<<"SAVED "<<KharvoxWeaponKindDisplayName(kind)
         <<" | relative m ("<<relativePosition.x<<", "<<relativePosition.y
@@ -2371,7 +2402,8 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
     log("[OFFHAND-CAPTURE] "+statusLine.str());
     std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),
         std::ios::trunc);
-    if(status)status<<statusLine.str()<<'\n';
+    if(status)status<<(rightHandProbe?"RIGHT-HAND VISUAL SAVED | ":"")
+        <<statusLine.str()<<'\n';
     // Confirmation uses existing left-controller haptic mixer after persistence.
     kharvox::queueControllerZoneCue(s.handZoneCues[0],GetTickCount64(),
         220,.92f,190.f);
@@ -2435,6 +2467,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
         s.primaryVisualLocked=false;
         KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
@@ -2453,6 +2486,7 @@ void updateWeapon6Dof(){
     const auto& primaryController=weaponController();
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
+        s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
         s.primaryVisualLocked=false;
 
@@ -2628,6 +2662,13 @@ void updateWeapon6Dof(){
         s.supportVisualLocked=false;
         s.primaryVisualLocked=false;
     }
+    // Keep the last rendered gun rotation in actual tracking space for
+    // the left-controller placement probe. It includes solved two-hand aim.
+    s.lastWeaponRenderedTrackingRotation=normalizeQuaternion(multiply(
+        primaryController.orientation,
+        multiply(conjugate(current.orientation),rotation)));
+    s.lastWeaponRenderedKind=kind;
+    s.lastWeaponRenderedValid=true;
     const WeaponPose publishedWeaponPose{current.position,rotation};
     if(s.controllerFrameYaw.active&&kharvox::pose_trace::active.load(std::memory_order_relaxed)){
         kharvox::pose_trace::Event e{};e.kind=kharvox::pose_trace::ControllerTurnFrame;e.frame=s.frame;
