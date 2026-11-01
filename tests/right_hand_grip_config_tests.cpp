@@ -102,8 +102,14 @@ int main(){
  assert(std::abs(a.chaingunTurretHand.z-.30f)<.0001f);
  assert(!kharvox::saveRightHandVisualPose(
      path,"shotgun",false,{0,0,0},liveRotation,&why));
- assert(!kharvox::saveRightHandVisualPose(
+ // Valid model-local glove pose may be more than 85 cm from the gun
+ // anchor, while the physical GUN anchor retains its strict 85 cm limit.
+ assert(kharvox::saveRightHandVisualPose(
      path,"chaingun",false,{1.1f,0,0},liveRotation,&why));
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.chaingunHandValid&&std::abs(a.chaingunHand.x-1.1f)<.0001f);
+ assert(!kharvox::saveRightHandVisualPose(
+     path,"chaingun",false,{1.81f,0,0},liveRotation,&why));
  assert(!kharvox::saveRightHandVisualPose(
      path,"chaingun",false,{0,0,0},{0,0,0,0,false},&why));
  a=kharvox::readRightHandGripSettings(path);

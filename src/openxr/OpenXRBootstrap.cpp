@@ -2568,7 +2568,7 @@ void serviceLiveHeavyGripCalibration(bool rightClick,bool leftClick,
         const kharvox::RightHandGripOffset pos{delta.x,delta.y,delta.z};
         const kharvox::RightHandGripRotation rot{
             orientation.x,orientation.y,orientation.z,orientation.w,true};
-        s.liveHeavyCaptureValid=kharvox::validRightHandPlacement(pos)
+        s.liveHeavyCaptureValid=kharvox::validRightHandVisualPlacement(pos)
             &&kharvox::validRightHandRotation(rot);
         if(s.liveHeavyCaptureValid){
             s.liveHeavyGripPosition=pos;

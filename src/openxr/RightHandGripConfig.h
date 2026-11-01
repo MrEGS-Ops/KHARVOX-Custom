@@ -34,6 +34,16 @@ inline bool validRightHandPlacement(RightHandGripOffset p) noexcept {
         &&std::hypot(p.x,std::hypot(p.y,p.z))
             <=kMaximumRightHandPlacementMeters;
 }
+// The observed point of the RIGHT glove is relative to the shifted
+// WEAPON anchor, not the controller. It can be roughly twice as far away
+// as the original physical gun-anchor calibration, particularly for the
+// large Chaingun. Do not apply the 85 cm native-anchor limit to it.
+inline constexpr float kMaximumVisualGripDistanceMeters=1.75f;
+inline bool validRightHandVisualPlacement(RightHandGripOffset p) noexcept {
+    return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
+        &&std::hypot(p.x,std::hypot(p.y,p.z))
+            <=kMaximumVisualGripDistanceMeters;
+}
 struct RightHandGripSettings {
     RightHandGripOffset gauss{},chaingun{};
     RightHandGripRotation gaussRotation{},chaingunRotation{};
@@ -93,8 +103,16 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             ++out.accepted;
             continue;
         }
+        const bool extendedGrip=
+            key=="gauss_cannon_hand_position"
+            ||key=="chaingun_hand_position"
+            ||key=="gauss_cannon_siege_hand_position"
+            ||key=="chaingun_turret_hand_position"
+            ||key=="gauss_cannon_siege_support_position"
+            ||key=="chaingun_turret_support_position";
         if(!(v>>p.x>>p.y>>p.z)||(v>>extra)||
-            !validRightHandPlacement(p)){
+            !(extendedGrip?validRightHandVisualPlacement(p)
+                         :validRightHandPlacement(p))){
             ++out.rejected;continue;
         }
         if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
@@ -239,7 +257,7 @@ inline bool saveRightHandVisualPose(const std::string&path,
     RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
     if((weapon!="gauss_cannon"&&weapon!="chaingun")||
-       !validRightHandPlacement(pos)||!validRightHandRotation(q))
+       !validRightHandVisualPlacement(pos)||!validRightHandRotation(q))
         return fail("invalid measured position or orientation");
     const std::string prefix=weapon+
         (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"");
@@ -304,7 +322,7 @@ inline bool saveHeavyAlternativeSupport(const std::string&path,
     const std::string&weapon,RightHandGripOffset pos,std::string*why=nullptr){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
     if((weapon!="gauss_cannon"&&weapon!="chaingun")||
-       !validRightHandPlacement(pos))
+       !validRightHandVisualPlacement(pos))
         return fail("unsupported heavy weapon support point");
     const std::string key=weapon+
         (weapon=="gauss_cannon"?"_siege":"_turret")+"_support_position";
