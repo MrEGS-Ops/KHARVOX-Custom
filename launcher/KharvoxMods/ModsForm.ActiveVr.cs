@@ -975,7 +975,7 @@ internal sealed partial class ModsForm
     internal static void ValidateActiveVrPolicies()
     {
         var verified = VerifiedVrMods();
-        if (verified.Length != 6 || verified.Distinct().Count() != 6 ||
+        if (verified.Length != 7 || verified.Distinct().Count() != 7 ||
             DependenciesFor("Directional Dash").Length != 2 ||
             DependencyLinks("Gunslinger").Length != 2 ||
             DependencyLinks("Weapon Wheel Button Remap").Length != 1 ||
