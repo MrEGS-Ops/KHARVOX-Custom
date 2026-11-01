@@ -7343,8 +7343,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 const auto p=addVector(s.rightController.position,rel);
                 const auto q=normalizeQuaternion(multiply(s.rightController.orientation,
                     profile->orientation));
-                pose.position={p.x,p.y,p.z};
-                pose.orientation={q.x,q.y,q.z,q.w};
+                pose.position[0]=p.x;
+                pose.position[1]=p.y;
+                pose.position[2]=p.z;
+                pose.orientation[0]=q.x;
+                pose.orientation[1]=q.y;
+                pose.orientation[2]=q.z;
+                pose.orientation[3]=q.w;
                 pose.valid=true;
             }
         }
