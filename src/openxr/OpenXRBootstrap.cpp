@@ -370,7 +370,7 @@ struct State {
     XrTime lastChainsawAttackAt{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
-    XrTime usePulseUntil{},meleePulseUntil{};
+    XrTime usePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
     bool immersiveCinematics{immersiveCinematicsRequested()};
     bool immersiveCinematicFreelook{immersiveCinematicFreelookRequested()};
     bool otherCinematicsInQuad{otherCinematicsInQuadRequested()};
@@ -2917,6 +2917,7 @@ void updateGameplayActions(XrTime displayTime){
         releaseMovement();
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
         s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
+        s.physicalPunchPulseUntil=0;
         s.storySkip={};
         s.storyFreeWalk={};
         s.uninterruptedStory={};
@@ -3763,7 +3764,10 @@ void updateGameplayActions(XrTime displayTime){
             // Chainsaw gestures exclusively own the kill timescale during a
             // chainsaw sync attack. A punch must not overwrite that owner.
             if(s.physicalGlorykillEnabled){
-                s.meleePulseUntil=std::max(s.meleePulseUntil,displayTime+200000000);
+                // Deliberately separate from legacy RS melee. When
+                // Physical GK is enabled only THIS pulse can drive JOY8.
+                s.physicalPunchPulseUntil=std::max(
+                    s.physicalPunchPulseUntil,displayTime+200000000);
                 o<<"[INPUT] Physical Glorykill "<<punchHandNames[hand]
                  <<" punch -> native JOY8 melee/glory pulse horizontalSpeed="
                  <<std::fixed<<std::setprecision(2)<<horizontalStrikeSpeed
@@ -3804,7 +3808,9 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraSetGloryKillTimescaleOverride(0.f);
         log("[CHAINSAW-GESTURE] kill gate released");
     }
-    if(!gameplay){s.usePulseUntil=0;s.meleePulseUntil=0;}
+    if(!gameplay){
+        s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
+    }
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
     const float manualTurnX=nativeManualTurnX(displayTime,turnActive&&gameplay&&!weaponSelectDown&&!weaponWheelActive);
     const bool manualTurnActive=manualTurnX!=0.f;
@@ -4073,9 +4079,17 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
     s.crouchPressed=crouchDown;
-    const bool nativeUseDown=gameplay&&displayTime<s.usePulseUntil;
-    const bool nativeMeleeDown=gameplay&&displayTime>=s.usePulseUntil
-        &&(meleeDown||displayTime<s.meleePulseUntil);
+    // Final XInput gate: when Physical GK is enabled, RS never sends
+    // melee (JOY8) or the preceding USE phase. Only the independent,
+    // tracked physical-punch pulse can cause a native melee/GK animation.
+    const bool nativeUseDown=kharvox::physicalgk::routeNativeUse(
+        s.physicalGlorykillEnabled,gameplay,
+        displayTime<s.usePulseUntil);
+    const bool nativeMeleeDown=kharvox::physicalgk::routeNativeMelee(
+        s.physicalGlorykillEnabled,gameplay,meleeDown,
+        displayTime<s.meleePulseUntil,
+        displayTime<s.physicalPunchPulseUntil,
+        displayTime>=s.usePulseUntil);
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown;
