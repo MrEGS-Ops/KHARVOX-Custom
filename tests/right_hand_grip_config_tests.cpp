@@ -70,6 +70,29 @@ int main(){
  {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.rejected==1&&!a.gaussRotation.valid);
+ // A virtual probe 15 cm forward (-Z) of the LEFT controller allows the
+ // right glove to be positioned without physically overlapping controllers.
+ const auto probe=kharvox::liveHeavyGripProbePoint(
+     {1.f,2.f,3.f},{0.f,0.f,0.f,1.f,true});
+ assert(std::abs(probe.x-1.f)<.00001f);
+ assert(std::abs(probe.y-2.f)<.00001f);
+ assert(std::abs(probe.z-2.85f)<.00001f);
+ const auto yawProbe=kharvox::liveHeavyGripProbePoint(
+     {1.f,2.f,3.f},{0.f,.70710678f,0.f,.70710678f,true});
+ assert(std::abs(yawProbe.x-.85f)<.00001f);
+ assert(std::abs(yawProbe.y-2.f)<.00001f);
+ assert(std::abs(yawProbe.z-3.f)<.00001f);
+ const auto pitchProbe=kharvox::liveHeavyGripProbePoint(
+     {1.f,2.f,3.f},{.70710678f,0.f,0.f,.70710678f,true});
+ assert(std::abs(pitchProbe.x-1.f)<.00001f);
+ assert(std::abs(pitchProbe.y-2.15f)<.00001f);
+ assert(std::abs(pitchProbe.z-3.f)<.00001f);
+ const auto unnormalized=kharvox::liveHeavyGripProbePoint(
+     {1.f,2.f,3.f},{0.f,0.f,0.f,2.f,true});
+ assert(std::abs(unnormalized.z-2.85f)<.00001f);
+ const auto invalidProbe=kharvox::liveHeavyGripProbePoint(
+     {0,0,0},{0,0,0,0,false});
+ assert(!kharvox::validRightHandVisualPlacement(invalidProbe));
  // LIVE capture must atomically save a position and orientation without
  // moving the pre-existing verified weapon anchor or the other gun.
  const kharvox::RightHandGripRotation liveRotation{

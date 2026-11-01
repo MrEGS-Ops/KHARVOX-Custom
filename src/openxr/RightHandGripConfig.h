@@ -6,6 +6,7 @@
 #include <vector>
 #include <utility>
 #include <iomanip>
+#include <limits>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -23,6 +24,30 @@ struct RightHandGripRotation {
 inline bool validRightHandRotation(RightHandGripRotation q) noexcept {
     const float square=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
     return std::isfinite(square)&&square>.81f&&square<1.21f;
+}
+
+// Live RIGHT-glove capture uses a point 15 cm ahead of the LEFT controller's
+// local -Z pointing axis, avoiding physical controller collisions. The LEFT
+// controller's own orientation still determines the glove rotation.
+inline constexpr float kLiveHeavyGripProbeForwardMeters=0.15f;
+inline RightHandGripOffset liveHeavyGripProbePoint(
+    RightHandGripOffset controllerPosition,
+    RightHandGripRotation controllerRotation) noexcept {
+    const auto& q=controllerRotation;
+    const float norm=q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w;
+    if(!std::isfinite(norm)||norm<0.000001f){
+        const float invalid=std::numeric_limits<float>::quiet_NaN();
+        return {invalid,invalid,invalid};
+    }
+    // Equivalent to controllerPosition + rotate(q, {0,0,-0.15}),
+    // normalized by |q|^2 for non-unit tracking quaternions.
+    const float scale=2.f*kLiveHeavyGripProbeForwardMeters/norm;
+    return {
+        controllerPosition.x-scale*(q.w*q.y+q.x*q.z),
+        controllerPosition.y+scale*(q.w*q.x-q.y*q.z),
+        controllerPosition.z-kLiveHeavyGripProbeForwardMeters
+            +scale*(q.x*q.x+q.y*q.y)
+    };
 }
 
 // Gauss / Chaingun are physically large. 30 cm per-axis rejected verified

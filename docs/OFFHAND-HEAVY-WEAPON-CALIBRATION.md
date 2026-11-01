@@ -4,10 +4,10 @@ Active branch: `work/manager-187-wheel-holsters`. Uses the Mod Manager's NativeB
 ## RIGHT glove: one live position + rotation capture
 1. Equip **Gauss Cannon** or **Chaingun** with Off-Hand Grip Capture enabled.
 2. **Hold RIGHT Grip** and click **RIGHT joystick ONCE**. The mode (Normal or alternate) is latched as capture begins.
-3. While holding RIGHT Grip, move AND rotate your LEFT controller. The visible RIGHT glove previews the target placement live; the LEFT controller remains the probe.
+3. While holding RIGHT Grip, move AND rotate your LEFT controller. The live probe is **15 cm forward of the LEFT controller in its pointing direction**, letting you hold your LEFT controller behind the desired glove location without the two physical controllers colliding. The RIGHT glove previews the shifted target live and follows your LEFT controller's rotation.
 4. **Release RIGHT Grip** to confirm. The position and quaternion are atomically written together to `NativeBridge/offhand_right_hand_positions.cfg`, with a `.before-live-capture.bak` backup. Failure/invalid tracking cancels without changing the file. A success haptic confirms the write.
 
-The live preview does **not** redirect weapon aim, controller tracking, or the validated heavy-gun anchor. Saved glove coordinates are gun-local. The glove follows the gun after the capture ends and is restored after a melee/cinematic interruption. Re-entering calibration doesn't overwrite the other weapon or the other mode.
+The 15 cm offset changes **only** the live right-glove position preview and its saved position, not the captured rotation. It does **not** redirect weapon aim, controller tracking, or the validated heavy-gun anchor. Saved glove coordinates are gun-local. The glove follows the gun after the capture ends and is restored after a melee/cinematic interruption. Re-entering calibration doesn't overwrite the other weapon or the other mode.
 
 ## LEFT support grip, normal and alternate
 For each heavy weapon, **hold LEFT Grip + click BOTH joysticks** while placing the LEFT controller at the chosen support point. Release and re-grip LEFT Grip afterwards. This is a separate capture because its grip must track the weapon's moving second handle.

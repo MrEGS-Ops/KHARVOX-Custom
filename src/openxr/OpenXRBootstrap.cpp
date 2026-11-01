@@ -2522,8 +2522,9 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
         220,.92f,190.f);
 }
 
-// Grip+right-stick starts LIVE RIGHT glove calibration. Left-hand tracking is
-// a probe only; actual firing controller tracking and weapon anchor stay put.
+// Grip+right-stick starts LIVE RIGHT glove calibration. The LEFT hand moves
+// a probe 15 cm ahead of its pointing axis; controller tracking and the
+// weapon anchor stay put.
 // Release right Grip to atomically confirm both translation and orientation.
 void serviceLiveHeavyGripCalibration(bool rightClick,bool leftClick,
                                      bool rightGripHeld,bool leftGripHeld,
@@ -2561,8 +2562,15 @@ void serviceLiveHeavyGripCalibration(bool rightClick,bool leftClick,
     }
     if(rightGripHeld){
         const auto inv=conjugate(s.lastWeaponRenderedTrackingRotation);
+        // Offset BEFORE converting to gun-local space: preview and saved
+        // right glove position both follow a point beyond the LEFT controller.
+        const auto probe=kharvox::liveHeavyGripProbePoint(
+            {s.leftGripController.position.x,s.leftGripController.position.y,
+             s.leftGripController.position.z},
+            {s.leftGripController.orientation.x,s.leftGripController.orientation.y,
+             s.leftGripController.orientation.z,s.leftGripController.orientation.w,true});
         const auto delta=rotateVector(inv,subtractVector(
-            s.leftGripController.position,s.lastWeaponRenderedTrackingAnchor));
+            {probe.x,probe.y,probe.z},s.lastWeaponRenderedTrackingAnchor));
         const auto orientation=normalizeQuaternion(multiply(
             inv,s.leftGripController.orientation));
         const kharvox::RightHandGripOffset pos{delta.x,delta.y,delta.z};
@@ -2963,7 +2971,7 @@ void updateWeapon6Dof(){
         if(s.liveHeavyGripActive&&kind==s.liveHeavyGripWeapon
            &&s.liveHeavyGripAlternate==visualAlternate
            &&s.liveHeavyCaptureValid){
-            // Live preview follows every move AND twist of the LEFT probe.
+            // Live preview follows the point 15 cm ahead of the LEFT controller.
             // Uses gun-local coordinates; the actual gun/controller pivot
             // is never moved or fed the probe's pose.
             const auto& p=s.liveHeavyGripPosition;
