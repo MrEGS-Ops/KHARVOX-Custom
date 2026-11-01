@@ -593,6 +593,7 @@ public sealed partial class MainForm
                 main.customGaussChargeSlowMovement,
                 main.customPersistentSsgReload,
                 main.customTriggerChainsawThrottle,
+                main.customRightHandHeavyGrip,
                 main.customStoryCinematicSkip,
                 main.customStoryFreeWalk,
                 main.customStoryCameraFocus,
@@ -613,8 +614,8 @@ public sealed partial class MainForm
                 || !checks.OrderBy(x => Array.IndexOf(expectedChecks, x))
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
-                    != (index < 5 ? 0 : index < 7 ? 1 : index < 11 ? 2
-                        : index < 19 ? 3 : index < 22 ? 4 : 5)).Any()
+                    != (index < 5 ? 0 : index < 7 ? 1 : index < 12 ? 2
+                        : index < 20 ? 3 : index < 23 ? 4 : 5)).Any()
                 || main.modOrderSlots.Count != expectedChecks.Length
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
