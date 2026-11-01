@@ -18,8 +18,12 @@ internal static class NativeBridgeInstaller
 {
     private const string ReleaseApi =
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
-    private const string PinnedNativeCommit =
-        "8d38c17b900c2db6b5f30aa35ec74e7c29f8e4eb";
+    // The publication workflow verifies native source ancestry, its GitHub
+    // Actions result and both artifact provenance manifests. Runtime identity
+    // is supplied by that signed-off package rather than a frozen old SHA.
+    private static bool ValidNativeCommitIdentity(string manifest) =>
+        Regex.Matches(manifest, @"(?m)^baseNativeCommit=[0-9a-f]{40}\r?$").Count == 1 &&
+        Regex.Matches(manifest, @"(?m)^baseNativeCommit=").Count == 1;
     private const string ZipName = "KHARVOX-Mods-NativeBridge.zip";
     private const string RequiredLauncherUi = "cactus-original-v1.1.1-unmodified-ui-v2";
     private const long MaxArchiveBytes = 250L * 1024 * 1024;
@@ -78,8 +82,7 @@ internal static class NativeBridgeInstaller
             return File.Exists(TargetLauncher) &&
                 File.Exists(Path.Combine(TargetDirectory, "KharvoxLayer.dll")) &&
                 File.Exists(manifest) &&
-                File.ReadAllText(manifest).Contains(
-                    "baseNativeCommit=" + PinnedNativeCommit) &&
+                ValidNativeCommitIdentity(File.ReadAllText(manifest)) &&
                 File.ReadAllText(manifest).Contains(
                     "launcherUi=" + RequiredLauncherUi) &&
                 BridgeMatchesManagerBuild(File.ReadAllText(manifest),
@@ -159,8 +162,7 @@ internal static class NativeBridgeInstaller
             throw new InvalidDataException("Bridge package is missing the launcher or native layer.");
         var manifest = Path.Combine(destination, "KharvoxModsBridge.v1");
         if (!File.Exists(manifest) ||
-            !File.ReadAllText(manifest).Contains(
-                "baseNativeCommit=" + PinnedNativeCommit) ||
+            !ValidNativeCommitIdentity(File.ReadAllText(manifest)) ||
             !File.ReadAllText(manifest).Contains(
                 "launcherUi=" + RequiredLauncherUi) ||
             !BridgeMatchesManagerBuild(File.ReadAllText(manifest), ExpectedManagerBuild()))

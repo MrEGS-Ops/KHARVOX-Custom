@@ -2,14 +2,15 @@ KHARVOX_ACTIVE_STANDALONE_TRACK_V1
 active_branch=work/manager-187-wheel-holsters
 release_workflow=.github/workflows/build-kharvox-mods.yml
 native_workflow=.github/workflows/build-custom.yml
-native_run_id=41286631417
-native_sha=8d38c17b900c2db6b5f30aa35ec74e7c29f8e4eb
+native_selection=latest-successful-same-branch-matching-native-source
 manager_executable=KharvoxVRModManager.exe
 bridge=KHARVOX-Mods-NativeBridge.zip
 updater=KharvoxVRModManagerUpdater.exe
 legacy_disabled_branch=work/oct18-live-motion-chainsaw-hz
 
 Only the manager branch/workflow publishes the updater-visible preview release.
-The native bridge is taken from an explicit successful same-branch build.
-The release build step verifies GitHub run metadata AND artifact manifest.
-Do not change the native SHA without matching a successful same-branch run ID.
+The native bridge is selected from the latest successful same-branch build
+whose gameplay/runtime source is unchanged from the manager release checkout.
+New gameplay commits trigger both workflows; the manager waits for a matching
+native success before publishing. GitHub run metadata and artifact manifests
+are checked before the updater-visible release is replaced.

@@ -10,6 +10,15 @@ on:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxModsUpdater/**'
       - 'launcher/KharvoxLauncher/**'
+      # Changes to native gameplay require a new native artifact before we
+      # publish an updater-visible Mod Manager release.
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - 'supervisor/**'
+      - 'tools/**'
+      - 'assets/**'
+      - '.github/workflows/build-custom.yml'
       - '.github/workflows/build-kharvox-mods.yml'
       - 'docs/KHARVOX-MODS-STANDALONE.md'
   workflow_dispatch:
@@ -28,6 +37,10 @@ jobs:
     steps:
       - name: Checkout standalone integration branch
         uses: actions/checkout@v4
+        with:
+          # Full history is essential: we must prove that the selected native
+          # artifact was built from identical gameplay/runtime source.
+          fetch-depth: 0
 
       - name: Verify active manager branch and release contract
         shell: pwsh
@@ -39,7 +52,7 @@ jobs:
           $marker = Get-Content -LiteralPath "docs/KHARVOX-ACTIVE-TRACK.txt" -Raw
           if (!$marker.Contains("active_branch=$approved") -or
               !$marker.Contains("release_workflow=.github/workflows/build-kharvox-mods.yml") -or
-              !$marker.Contains("native_run_id=41286631417") -or
+              !$marker.Contains("native_workflow=.github/workflows/build-custom.yml") -or
               !(Test-Path "launcher/KharvoxMods/NativeBridgeInstaller.cs")) {
             throw "KHARVOX release track marker missing, invalid or inconsistent"
           }
@@ -126,25 +139,58 @@ jobs:
         run: |
           $base = Join-Path $PWD "dist/native-base"
           New-Item -ItemType Directory -Force -Path $base | Out-Null
-          # Pin the native runtime to the last verified working native build.
-          # Fail closed until the native AUDIO build succeeds. This run is an
-          # immutable native artifact and may be in progress when this job starts.
-          # Immutable native build from THIS manager branch, never the old
-          # work/oct18-live-motion-chainsaw-hz launcher. Fail before publishing
-          # if this native run is unsuccessful or its SHA/branch mismatches.
-          gh run watch 41286631417 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
-          if ($LASTEXITCODE -ne 0) { throw "Native PAINSAW audio build did not succeed" }
-          gh run download 41286631417 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
-          if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
-          $manifest = Join-Path $base "PATCH-BUILD.txt"
-          $approvedNativeSha = "8d38c17b900c2db6b5f30aa35ec74e7c29f8e4eb"
+          # Find the newest successful native build on THIS branch whose
+          # runtime-affecting source is identical to the manager checkout.
+          # Manager-only commits may reuse that native build; changed runtime
+          # source must wait for the matching native build to succeed.
           $approvedBranch = "work/manager-187-wheel-holsters"
-          $nativeMetadata = gh run view 41286631417 --repo MrEGS-Ops/KHARVOX-Custom --json headSha,headBranch,conclusion | ConvertFrom-Json
+          $repo = "MrEGS-Ops/KHARVOX-Custom"
+          $nativePaths = @("src", "tests", "CMakeLists.txt",
+              "launcher/KharvoxLauncher", "supervisor", "tools", "assets",
+              ".github/workflows/build-custom.yml")
+          $nativeRun = $null
+          for ($attempt = 0; $attempt -lt 90 -and $null -eq $nativeRun; $attempt++) {
+            $json = gh run list --repo $repo --workflow build-custom.yml `
+              --branch $approvedBranch --limit 100 `
+              --json databaseId,headSha,headBranch,status,conclusion
+            if ($LASTEXITCODE -ne 0) {
+              throw "Could not query same-branch KHARVOX native builds"
+            }
+            foreach ($candidate in @($json | ConvertFrom-Json)) {
+              if ($candidate.headBranch -ne $approvedBranch -or
+                  $candidate.conclusion -ne "success") { continue }
+              git merge-base --is-ancestor $candidate.headSha "${{ github.sha }}"
+              if ($LASTEXITCODE -ne 0) { continue }
+              git diff --quiet $candidate.headSha "${{ github.sha }}" -- $nativePaths
+              if ($LASTEXITCODE -eq 0) {
+                $nativeRun = $candidate
+                break
+              }
+            }
+            if ($null -eq $nativeRun) {
+              Write-Host "Waiting for successful same-source native build (attempt $($attempt+1)/90)."
+              Start-Sleep -Seconds 20
+            }
+          }
+          if ($null -eq $nativeRun) {
+            throw "No successful native build matches this branch's gameplay source; not publishing stale code."
+          }
+          $approvedNativeSha = [string]$nativeRun.headSha
+          $approvedNativeRunId = [string]$nativeRun.databaseId
+          $nativeMetadata = gh run view $approvedNativeRunId --repo $repo `
+            --json headSha,headBranch,conclusion | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $nativeMetadata.conclusion -ne "success" -or
               $nativeMetadata.headSha -ne $approvedNativeSha -or
               $nativeMetadata.headBranch -ne $approvedBranch) {
-            throw "Native build was not SUCCESSFUL on the approved Mod Manager branch and commit"
+            throw "Selected native build provenance does not match the approved branch and SHA"
           }
+          Write-Host "Selected verified native build $approvedNativeRunId at $approvedNativeSha"
+          gh run download $approvedNativeRunId --repo $repo `
+            --name KHARVOX-Full-Build --dir $base
+          if ($LASTEXITCODE -ne 0) {
+            throw "Could not download the verified native artifact from run $approvedNativeRunId"
+          }
+          $manifest = Join-Path $base "PATCH-BUILD.txt"
           # PATCH-BUILD.txt has kind, run and commit but NO branch.
           # The complete SHA/branch/kind provenance lives in PATCH-MANIFEST.json.
           $jsonManifest = Join-Path $base "PATCH-MANIFEST.json"
@@ -180,7 +226,7 @@ jobs:
           }
           @(
             "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=8d38c17b900c2db6b5f30aa35ec74e7c29f8e4eb"
+            "baseNativeCommit=$approvedNativeSha"
             "bridgeLauncherCommit=${{ github.sha }}"
             "managerBuild=${{ github.run_id }}"
             "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"
