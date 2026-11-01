@@ -4078,9 +4078,13 @@ void updateGameplayActions(XrTime displayTime){
         &&s.backWeaponPulse==kharvox::BackWeaponPulse::Bfg;
     const bool chainsawPulse=(gameplay&&displayTime<s.chainsawPulseUntil)
         ||(backWeaponPulseActive&&s.backWeaponPulse==kharvox::BackWeaponPulse::Chainsaw);
+    // A live glove calibration owns RIGHT Grip until it is released.
+    // Don't also feed that same held Grip into DOOM's secondary-fire
+    // button, which could enter Siege/Turret mid-preview or fire a mod.
     const bool weaponModDown=gameplay&&!s.dynamicShoulderHolstered
         &&!weaponWheelActive&&!quickHolsterGripConsumed
         &&!s.wheelWeaponGripSuppressedUntilRelease
+        &&!s.liveHeavyGripActive
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
