@@ -2313,6 +2313,10 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
     if(!s.customMods.offHandGripCapture){s.offHandCaptureChord={};return;}
     if(!s.offHandCaptureChord.pressed(leftClick,rightClick))return;
     auto reject=[&](const char*reason){
+        // A short, weak pulse means REJECTED (success is long/strong). Keep
+        // the status file and log message as the detailed reason.
+        kharvox::queueControllerZoneCue(s.handZoneCues[0],GetTickCount64(),
+            75,.20f,95.f);
         log(std::string("[OFFHAND-CAPTURE] REJECTED: ")+reason);
         std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),std::ios::trunc);
         if(status)status<<"NOT SAVED: "<<reason<<'\n';

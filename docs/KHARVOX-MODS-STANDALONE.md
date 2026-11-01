@@ -67,7 +67,7 @@ position for Gauss Cannon or Chaingun, edit
 `NativeBridge/offhand_right_hand_positions.cfg`:
 `gauss_cannon = X Y Z` and `chaingun = X Y Z`. Distances
 are **metres**, in weapon-local axes (+X right, +Y up, -Z forward),
-limited to +/-0.30. Defaults are neutral zero until in-game fitting.
+limited to 0.85 metres TOTAL distance (not per axis). Defaults are neutral zero until in-game fitting.
 Gauss Cannon and Chaingun can also calibrate this directly in VR:
 equip either weapon in the RIGHT hand; move the physical LEFT controller
 to the position where the visible RIGHT hand should sit; click BOTH
@@ -77,7 +77,7 @@ offset, and records the original diagnostic CSV as well. This does not
 change the physical right-controller tracking, left support-grip position,
 or any other weapon. An adjacent
 `offhand_right_hand_positions.cfg.before-capture.bak` holds the
-previous config. Values outside +/-30 cm are rejected, and successful
+previous config. Values beyond 85 cm total distance are rejected with a short/weak haptic, and successful
 captures apply during the current session. Manual edits need a DOOM restart.
 Local edits are preserved on bridge updates.
 

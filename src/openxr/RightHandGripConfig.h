@@ -15,6 +15,15 @@
 namespace kharvox {
 // Weapon-relative offset in metres (+X right, +Y up, -Z forward).
 struct RightHandGripOffset {float x{},y{},z{};};
+// Gauss / Chaingun are physically large. 30 cm per-axis rejected verified
+// ~55 cm and ~74 cm owner captures despite valid tracking. Limit the full
+// Euclidean distance to 85 cm, including on reload.
+inline constexpr float kMaximumRightHandPlacementMeters=0.85f;
+inline bool validRightHandPlacement(RightHandGripOffset p) noexcept {
+    return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
+        &&std::hypot(p.x,std::hypot(p.y,p.z))
+            <=kMaximumRightHandPlacementMeters;
+}
 struct RightHandGripSettings {
     RightHandGripOffset gauss{},chaingun{};
     int accepted{},rejected{};
@@ -33,8 +42,7 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
         if(!(v>>p.x>>p.y>>p.z)||(v>>extra)||
-            !std::isfinite(p.x)||!std::isfinite(p.y)||!std::isfinite(p.z)||
-            std::abs(p.x)>0.30f||std::abs(p.y)>0.30f||std::abs(p.z)>0.30f){
+            !validRightHandPlacement(p)){
             ++out.rejected;continue;
         }
         if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
@@ -54,10 +62,8 @@ inline bool saveRightHandGripMeasurement(
     };
     if(key!="gauss_cannon"&&key!="chaingun")
         return reject("unsupported weapon");
-    if(!std::isfinite(offset.x)||!std::isfinite(offset.y)||
-        !std::isfinite(offset.z)||std::abs(offset.x)>0.30f||
-        std::abs(offset.y)>0.30f||std::abs(offset.z)>0.30f)
-        return reject("placement exceeds +/-30 cm; reposition left hand");
+    if(!validRightHandPlacement(offset))
+        return reject("placement is invalid or exceeds 85 cm total distance; reposition left hand");
     namespace fs=std::filesystem;
     std::error_code ec;
     if(fs::exists(path,ec)&&fs::file_size(path,ec)>16384)
