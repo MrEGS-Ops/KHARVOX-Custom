@@ -2369,10 +2369,14 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
         reject("not in unobstructed weapon gameplay");return;
     }
     if(s.weaponHandLeft){reject("left-primary weapon; right-primary only for this test");return;}
-    if(rightWeaponGripHeld&&leftSupportGripHeld){
-        reject("release one Grip: right Grip = rotation, left Grip = support");return;
-    }
     const auto kind=KharvoxWeaponCurrentKind();
+    // Siege/Turret can require the weapon Grip to stay held while its
+    // second handle is deployed. Two-Grip support capture is safe in that
+    // case because the RIGHT live probe refuses a held LEFT Grip.
+    if(rightWeaponGripHeld&&leftSupportGripHeld
+       &&!(heavyWeapon(kind)&&heavyAltMode(kind))){
+        reject("release RIGHT Grip for normal support calibration");return;
+    }
     if(kind==KharvoxWeaponKind::Unknown||kind==KharvoxWeaponKind::Fists){
         reject("native weapon identity unknown or fists equipped");return;
     }
@@ -2421,8 +2425,9 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
     const bool heavy=kind==KharvoxWeaponKind::GaussCannon
         ||kind==KharvoxWeaponKind::Chaingun;
     if(heavy){
-        if(!leftSupportGripHeld||rightWeaponGripHeld){
-            reject("Heavy right glove: RIGHT Grip + RIGHT click, move LEFT hand, release RIGHT Grip. Left support: LEFT Grip + BOTH clicks.");
+        if(!leftSupportGripHeld
+           ||(rightWeaponGripHeld&&!heavyAltMode(kind))){
+            reject("Right glove: RIGHT Grip + RIGHT click, release Grip to save. Left support: LEFT Grip + BOTH clicks.");
             return;
         }
         if(!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=kind){
@@ -2520,7 +2525,8 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
 // Grip+right-stick starts LIVE RIGHT glove calibration. Left-hand tracking is
 // a probe only; actual firing controller tracking and weapon anchor stay put.
 // Release right Grip to atomically confirm both translation and orientation.
-void serviceLiveHeavyGripCalibration(bool rightClick,bool rightGripHeld,
+void serviceLiveHeavyGripCalibration(bool rightClick,bool leftClick,
+                                     bool rightGripHeld,bool leftGripHeld,
                                      bool gameplay){
     const bool clickEdge=rightClick&&!s.liveHeavyRightClickPrevious;
     s.liveHeavyRightClickPrevious=rightClick;
@@ -2532,7 +2538,8 @@ void serviceLiveHeavyGripCalibration(bool rightClick,bool rightGripHeld,
         &&s.leftGripController.valid&&s.leftGripController.positionTracked
         &&s.rightGripController.valid&&s.lastWeaponRenderedValid
         &&s.lastWeaponRenderedKind==kind;
-    if(!s.liveHeavyGripActive&&clickEdge&&rightGripHeld&&safe){
+    if(!s.liveHeavyGripActive&&clickEdge&&rightGripHeld
+       &&!leftGripHeld&&!leftClick&&safe){
         s.liveHeavyGripActive=true;
         s.liveHeavyGripWeapon=kind;
         s.liveHeavyGripAlternate=heavyAltMode(kind);
@@ -2546,7 +2553,7 @@ void serviceLiveHeavyGripCalibration(bool rightClick,bool rightGripHeld,
     // Abort without touching old settings if the weapon, mode or game context
     // changes. Keep preview pose out of native gameplay input entirely.
     if(!safe||kind!=s.liveHeavyGripWeapon
-       ||heavyAltMode(kind)!=s.liveHeavyGripAlternate){
+       ||(rightGripHeld&&heavyAltMode(kind)!=s.liveHeavyGripAlternate)){
         s.liveHeavyGripActive=false;s.liveHeavyCaptureValid=false;
         s.primaryVisualLocked=false;
         log("[GRIP-LIVE] CANCEL weapon/mode/tracking changed; profile unchanged");
@@ -3173,7 +3180,8 @@ void updateGameplayActions(XrTime displayTime){
             rightGripHeld,readFloatAction(s.leftWeaponGrip)>.65f);
         s.offHandStickOutput=s.offHandStickInput.update(
             physicalRightClick,physicalLeftClick,true,GetTickCount64());
-        serviceLiveHeavyGripCalibration(physicalRightClick,rightGripHeld,gameplay);
+        serviceLiveHeavyGripCalibration(physicalRightClick,physicalLeftClick,
+            rightGripHeld,readFloatAction(s.leftWeaponGrip)>.65f,gameplay);
         if(rightGripHeld&&physicalRightClick){
             s.offHandStickInput.right.blocked=true;
             s.offHandStickOutput.rightMelee=false;
