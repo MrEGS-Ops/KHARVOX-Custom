@@ -145,11 +145,22 @@ jobs:
               $nativeMetadata.headBranch -ne $approvedBranch) {
             throw "Native build was not SUCCESSFUL on the approved Mod Manager branch and commit"
           }
-          $nativeManifest = if (Test-Path $manifest) { Get-Content -LiteralPath $manifest -Raw } else { "" }
-          if (!$nativeManifest.Contains("kind=full") -or
-              !$nativeManifest.Contains("branch=$approvedBranch") -or
-              !$nativeManifest.Contains("commit=$approvedNativeSha")) {
-            throw "Native package provenance failed: wrong branch, commit or artifact kind"
+          # PATCH-BUILD.txt has kind, run and commit but NO branch.
+          # The complete SHA/branch/kind provenance lives in PATCH-MANIFEST.json.
+          $jsonManifest = Join-Path $base "PATCH-MANIFEST.json"
+          if (!(Test-Path -LiteralPath $manifest) -or
+              !(Test-Path -LiteralPath $jsonManifest)) {
+            throw "Verified native package lacks required build or JSON provenance"
+          }
+          $nativeManifest = Get-Content -LiteralPath $manifest -Raw
+          $nativeProvenance = Get-Content -LiteralPath $jsonManifest -Raw | ConvertFrom-Json
+          if (!$nativeManifest.Contains("KHARVOX_CUSTOM_WATCHER_1") -or
+              !$nativeManifest.Contains("kind=full") -or
+              !$nativeManifest.Contains("commit=$approvedNativeSha") -or
+              $nativeProvenance.kind -ne "full" -or
+              $nativeProvenance.branch -ne $approvedBranch -or
+              $nativeProvenance.commit -ne $approvedNativeSha) {
+            throw "Native package provenance failed: build marker and JSON SHA/branch/kind disagree"
           }
           if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
             throw "Verified native layer missing"
