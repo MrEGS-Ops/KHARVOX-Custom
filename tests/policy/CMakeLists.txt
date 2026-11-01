@@ -8,6 +8,15 @@ add_executable(KharvoxPhysicalGrenadeGestureTests ../physical_grenade_gesture_te
 target_compile_features(KharvoxPhysicalGrenadeGestureTests PRIVATE cxx_std_17)
 add_test(NAME physical-grenade-gesture COMMAND KharvoxPhysicalGrenadeGestureTests)
 
+add_executable(KharvoxPhysicalGkMeleePolicyTests ../physical_glorykill_melee_policy_tests.cpp)
+target_compile_features(KharvoxPhysicalGkMeleePolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxPhysicalGkMeleePolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxPhysicalGkMeleePolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME physical-gk-blocks-stick-melee COMMAND KharvoxPhysicalGkMeleePolicyTests)
+
 # Pure colour math only. Renderer/Vulkan integration is a separate milestone.
 add_executable(KharvoxVisualTonePolicyTests ../visual_tone_policy_tests.cpp)
 target_compile_features(KharvoxVisualTonePolicyTests PRIVATE cxx_std_17)

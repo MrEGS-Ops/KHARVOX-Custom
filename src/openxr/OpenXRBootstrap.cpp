@@ -73,6 +73,7 @@
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
+#include "PhysicalGlorykillMeleePolicy.h"
 #include "OpenHandReleasePolicy.h"
 #include "PersistentSuperShotgunReloadPolicy.h"
 #include "MovementDirectionPolicy.h"
@@ -3567,8 +3568,13 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    const bool meleeDown=s.customMods.offHandGripCapture
+    const bool rawMeleeDown=s.customMods.offHandGripCapture
         ?s.offHandStickOutput.rightMelee:readBooleanAction(s.doomMelee);
+    // Physical Glory Kills disables thumbstick-driven gameplay melee/USE.
+    // Physical punch input still sends the dedicated native JOY8 GK pulse.
+    // Outside gameplay, RS retains menu and story interaction bindings.
+    const bool meleeDown=kharvox::physicalgk::routeStickMelee(
+        s.physicalGlorykillEnabled,gameplay,rawMeleeDown);
     const bool meleeUseDown=gameplay&&meleeDown;
     if(meleeUseDown!=s.meleePressed){
         if(meleeUseDown){

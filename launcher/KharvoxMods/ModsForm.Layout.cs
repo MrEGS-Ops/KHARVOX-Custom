@@ -179,6 +179,7 @@ internal sealed partial class ModsForm
         })
     };
 
+    private const string AutoMeleeDevTitle = "Disable RS Melee / Animation (Physical GK)";
     private static readonly PreviewMod[] DevOverrides =
     {
         new PreviewMod("Disable Glory Kill Highlighting",
@@ -194,8 +195,28 @@ internal sealed partial class ModsForm
         new PreviewMod("Protect Native Ledge Speed",
             "Exclude ledge climbs, falls and landings from experimental action-speed changes."),
         new PreviewMod("Protect Scripted Cinematic Speed",
-            "Keep story sequences at their original timing.")
+            "Keep story sequences at their original timing."),
+        new PreviewMod(AutoMeleeDevTitle,
+            "Read-only automatic protection when Physical Glory Kills is ON: blocks RS gameplay melee and its normal punch animation; physical punches still initiate Glory Kills. Enable or disable Physical Glory Kills in the embedded KHARVOX launcher.")
     };
+
+    private static bool ReadPhysicalGkSettings(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return false;
+            var data = new System.Web.Script.Serialization.JavaScriptSerializer()
+                .Deserialize<Dictionary<string, object>>(File.ReadAllText(path));
+            return data != null && data.TryGetValue("PhysicalGlorykill", out var value)
+                && value is bool enabled && enabled;
+        }
+        catch (Exception ex) when (ex is IOException ||
+            ex is UnauthorizedAccessException || ex is ArgumentException ||
+            ex is InvalidOperationException) { return false; }
+    }
+
+    private static bool PhysicalGkEnabledInLauncher() => ReadPhysicalGkSettings(
+        Path.Combine(NativeBridgeInstaller.TargetDirectory, "kharvox-launcher-settings.json"));
 
     // Exact same group-box styling as KHARVOX MainForm.MakeGroup().
     private static GroupBox MakeOriginalGroup(string title) => new GroupBox
@@ -512,7 +533,7 @@ internal sealed partial class ModsForm
         var titles = OriginalModGroups.SelectMany(group => group.Mods)
             .Select(mod => mod.Title).ToArray();
         return count == LegacyVrModCount && titles.Distinct(StringComparer.Ordinal).Count() == count
-            && OriginalModGroups.Length == 6 && DevOverrides.Length == 7
+            && OriginalModGroups.Length == 6 && DevOverrides.Length == 8
             && titles.Contains("PAINSAW: RIPSHIFT OVERDRIVE");
     }
 
@@ -521,6 +542,18 @@ internal sealed partial class ModsForm
         if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != LegacyVrModCount + 1)
             throw new InvalidDataException("KHARVOX VR Mods inventory differs from the approved 22 mod rows.");
         ValidateActiveVrPolicies();
+        var testPath = Path.Combine(Path.GetTempPath(),
+            "kharvox-gk-checkbox-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(testPath, "{\"PhysicalGlorykill\":true}");
+            if (!ReadPhysicalGkSettings(testPath))
+                throw new InvalidDataException("Enabled Physical GK must check automatic Dev protection.");
+            File.WriteAllText(testPath, "{\"PhysicalGlorykill\":false}");
+            if (ReadPhysicalGkSettings(testPath))
+                throw new InvalidDataException("Disabled Physical GK must clear automatic Dev protection.");
+        }
+        finally { try { File.Delete(testPath); } catch (IOException) { } }
         // The DOOM resource-mod panel and its standalone companion sources
         // must not occur in the compiled application, even as hidden UI.
         var assembly = typeof(ModsForm).Assembly;
@@ -603,6 +636,11 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal));
             if (dev != DevOverrides.Length)
                 throw new InvalidDataException("Developer overrides missing.");
+            var melee = form.Controls.Descendants().OfType<CheckBox>()
+                .SingleOrDefault(box => box.AccessibleName == AutoMeleeDevTitle);
+            if (melee == null || melee.Enabled ||
+                melee.Checked != PhysicalGkEnabledInLauncher())
+                throw new InvalidDataException("Automatic, disabled Dev melee checkbox mismatch.");
             if (form.Controls.Descendants().OfType<Button>()
                 .Any(button => string.Equals(button.Tag as string,
                     "native-bridge-install", StringComparison.Ordinal)))

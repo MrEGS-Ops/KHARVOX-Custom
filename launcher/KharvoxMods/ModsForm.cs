@@ -15,6 +15,8 @@ internal sealed partial class ModsForm : Form
     private readonly Label _status = new Label();
     private readonly Button _attachButton = new Button();
     private readonly Button _startButton = new Button();
+    private CheckBox? _autoMeleeDevIndicator;
+    private int _lastMeleeIndicatorTick;
     private readonly ToolTip _tooltips = new ToolTip
     {
         ShowAlways = true, InitialDelay = 400, ReshowDelay = 120,
@@ -103,7 +105,16 @@ internal sealed partial class ModsForm : Form
         // A MaximumSize height of 0 collapses WinForms to the caption!
         LockHorizontalSize();
         TopMost = false;
-        _dockTimer.Tick += (_, _) => SyncEmbeddedLauncher();
+        _dockTimer.Tick += (_, _) =>
+        {
+            SyncEmbeddedLauncher();
+            if (unchecked(Environment.TickCount - _lastMeleeIndicatorTick) >= 1000)
+            {
+                _lastMeleeIndicatorTick = Environment.TickCount;
+                if (_autoMeleeDevIndicator != null && !_autoMeleeDevIndicator.IsDisposed)
+                    _autoMeleeDevIndicator.Checked = PhysicalGkEnabledInLauncher();
+            }
+        };
         _launcherHost.SizeChanged += (_, _) => ResizeEmbeddedLauncher();
         Shown += async (_, _) =>
         {
