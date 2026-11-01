@@ -1037,8 +1037,8 @@ public sealed partial class MainForm
     }
 
     // Exercise cross-window dependencies without a DOOM runtime or modifying
-    // actual user settings. Hand calibration, hip holsters and A/B remapping
-    // are the only features that currently own these launcher controls.
+    // actual user settings. Hand calibration, hip holsters, weapon remapping,
+    // off-hand capture and the new right-hand heavy weapon grips own controls.
     private static void TestMainLauncherModLocks(MainForm main)
     {
         var tracked = new[]
@@ -1048,7 +1048,8 @@ public sealed partial class MainForm
             main.swapJumpCrouch, main.customBehindHeadWeaponWheel,
             main.customDisableWeaponWheel, main.customPersistentSsgReload,
             main.customBoxingGuard, main.speedAdvanced,
-            main.customActionExitHandoff
+            main.customActionExitHandoff, main.customRightHandHeavyGrip,
+            main.customOffHandGripCapture, main.virtualGunstock
         };
         var original = tracked.Select(box => box.Checked).ToArray();
         var previousRestore = main.restoringConfiguration;
@@ -1065,6 +1066,9 @@ public sealed partial class MainForm
             main.customPersistentSsgReload.Checked = false;
             main.customBehindHeadWeaponWheel.Checked = false;
             main.customDisableWeaponWheel.Checked = false;
+            main.customRightHandHeavyGrip.Checked = false;
+            main.customOffHandGripCapture.Checked = false;
+            main.virtualGunstock.Checked = true;
             main.weaponWheelRemap.Checked = false;
             main.showHands.Checked = false;
             main.swapJumpCrouch.Checked = true;
@@ -1195,6 +1199,39 @@ public sealed partial class MainForm
                 throw new InvalidDataException("Scoped action presets must not resurrect the retired shared speed mode.");
             main.customBoxingGuard.Checked=false;
             main.ApplyActionSpeedPreset(0);
+
+            // The new gameplay mod and the separate capture diagnostic must
+            // both force unassisted aim while retaining the saved stock choice.
+            main.applyingCustomModDependencies = true;
+            main.customBehindHeadWeaponWheel.Checked = false;
+            main.customRightHandHeavyGrip.Checked = true;
+            main.showHands.Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.virtualGunstock.Enabled || !main.virtualGunstock.Checked
+                || main.showHands.Enabled || !main.showHands.Checked
+                || !main.ReadCustomModSettingsFromControls().RightHandHeavyGrip)
+                throw new InvalidDataException(
+                    "Gauss/Chaingun right-hand grip must lock hands ON, disable stock and preserve its saved selection.");
+            main.applyingCustomModDependencies = true;
+            main.customRightHandHeavyGrip.Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (!main.virtualGunstock.Enabled || !main.virtualGunstock.Checked
+                || !main.showHands.Enabled)
+                throw new InvalidDataException(
+                    "Turning off Gauss/Chaingun grip must restore launcher stock and hands controls.");
+            main.applyingCustomModDependencies = true;
+            main.customOffHandGripCapture.Checked = true;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
+            if (main.virtualGunstock.Enabled || main.showHands.Enabled)
+                throw new InvalidDataException(
+                    "Off-hand capture diagnostic must continue to disable virtual stock and lock hands.");
+            main.applyingCustomModDependencies = true;
+            main.customOffHandGripCapture.Checked = false;
+            main.applyingCustomModDependencies = false;
+            main.ApplyCustomModDependencies(null);
         }
         finally
         {
