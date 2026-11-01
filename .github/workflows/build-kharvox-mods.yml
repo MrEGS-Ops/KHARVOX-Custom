@@ -39,7 +39,7 @@ jobs:
           $marker = Get-Content -LiteralPath "docs/KHARVOX-ACTIVE-TRACK.txt" -Raw
           if (!$marker.Contains("active_branch=$approved") -or
               !$marker.Contains("release_workflow=.github/workflows/build-kharvox-mods.yml") -or
-              !$marker.Contains("native_run_id=41277771908") -or
+              !$marker.Contains("native_run_id=41281182820") -or
               !(Test-Path "launcher/KharvoxMods/NativeBridgeInstaller.cs")) {
             throw "KHARVOX release track marker missing, invalid or inconsistent"
           }
@@ -132,14 +132,14 @@ jobs:
           # Immutable native build from THIS manager branch, never the old
           # work/oct18-live-motion-chainsaw-hz launcher. Fail before publishing
           # if this native run is unsuccessful or its SHA/branch mismatches.
-          gh run watch 41277771908 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
+          gh run watch 41281182820 --repo MrEGS-Ops/KHARVOX-Custom --exit-status --interval 15
           if ($LASTEXITCODE -ne 0) { throw "Native PAINSAW audio build did not succeed" }
-          gh run download 41277771908 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
+          gh run download 41281182820 --repo MrEGS-Ops/KHARVOX-Custom --name KHARVOX-Full-Build --dir $base
           if ($LASTEXITCODE -ne 0) { throw "Could not download verified native KHARVOX core" }
           $manifest = Join-Path $base "PATCH-BUILD.txt"
-          $approvedNativeSha = "afd2be367bc799b6d5d7fa8428f5f6f2ec2a3b3d"
+          $approvedNativeSha = "82d41c6fe289cf9fb6d5aa63534d12687fa9f1a1"
           $approvedBranch = "work/manager-187-wheel-holsters"
-          $nativeMetadata = gh run view 41277771908 --repo MrEGS-Ops/KHARVOX-Custom --json headSha,headBranch,conclusion | ConvertFrom-Json
+          $nativeMetadata = gh run view 41281182820 --repo MrEGS-Ops/KHARVOX-Custom --json headSha,headBranch,conclusion | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $nativeMetadata.conclusion -ne "success" -or
               $nativeMetadata.headSha -ne $approvedNativeSha -or
               $nativeMetadata.headBranch -ne $approvedBranch) {
@@ -180,7 +180,7 @@ jobs:
           }
           @(
             "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=afd2be367bc799b6d5d7fa8428f5f6f2ec2a3b3d"
+            "baseNativeCommit=82d41c6fe289cf9fb6d5aa63534d12687fa9f1a1"
             "bridgeLauncherCommit=${{ github.sha }}"
             "managerBuild=${{ github.run_id }}"
             "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"
