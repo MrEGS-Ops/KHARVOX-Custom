@@ -358,13 +358,15 @@ internal static class CustomModSettingsStore
                 || first.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("Action exit must default to game timing on first launch.");
             first.BackOfHandHud = false;
+            first.RightHandHeavyGrip = false; // New grip opt-in must remain user-controlled.
             first.CinematicExitHandoff = true; // paused diagnostic should not persist active
             first.CinematicExitHandoffDelayMs = 160; // retired override ignored
             first.SpeedAdvancedExpanded = true;
             first.CinematicSpeedFineTune = true;
             first.CinematicSpeedFineTuneHz = 38;
             Save(first, path);
-            if (Load(path).BackOfHandHud || Load(path).CinematicExitHandoff
+            if (Load(path).BackOfHandHud || Load(path).RightHandHeavyGrip
+                || Load(path).CinematicExitHandoff
                 || Load(path).CinematicExitHandoffDelayMs != 150
                 || !Load(path).CinematicSpeedFineTune || !Load(path).SpeedAdvancedExpanded
                 || Load(path).CinematicSpeedFineTuneHz != 38)
@@ -379,14 +381,16 @@ internal static class CustomModSettingsStore
             }, oldActionExitPath);
             var migratedExit = Load(oldActionExitPath);
             if (migratedExit.CinematicExitHandoff
-                || migratedExit.DevelopmentTestDefaultsRevision != 4)
+                || !migratedExit.RightHandHeavyGrip
+                || migratedExit.DevelopmentTestDefaultsRevision != CurrentDevelopmentTestDefaultsRevision)
                 throw new InvalidDataException("Old forced early handoff must migrate OFF.");
             migratedExit.CinematicExitHandoff = true;
             Save(migratedExit, oldActionExitPath);
             if (Load(oldActionExitPath).CinematicExitHandoff)
                 throw new InvalidDataException("Paused action-exit must remain OFF.");
             var fresh = Load(Path.Combine(root, "new-user.json"));
-            if (fresh.BackOfHandHud || fresh.CinematicExitHandoff
+            if (!fresh.RightHandHeavyGrip
+                || fresh.BackOfHandHud || fresh.CinematicExitHandoff
                 || fresh.CinematicExitHandoffDelayMs != 150
                 || fresh.CinematicSpeedFineTune || fresh.SpeedAdvancedExpanded)
                 throw new InvalidDataException("Fresh install must retain game-default action exit.");
