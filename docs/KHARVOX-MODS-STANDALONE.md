@@ -51,13 +51,24 @@ the manager enables `Off-Hand Grip Capture (Test)` once. It restores
 normal two-hand aiming while the support grip is held and locks the visible
 support-hand model to the saved weapon grip position (not to the moving free
 controller). Releasing support Grip restores live hand motion. While enabled,
-RIGHT thumbstick click pauses, LEFT click melees, and BOTH clicks together
+RIGHT thumbstick click melees, LEFT click pauses, and BOTH clicks together
 record diagnostic CSV data without overwriting saved profiles. The one-time
 activation is remembered so disabling the feature manually remains OFF in
 future sessions. To revert, close DOOM and restore the
 saved profile from `Backups/GripProfiles/`; keep the applied marker so later
 updates will not reimport the experimental positions. Capture orientations
 are not yet used by the two-hand aiming solver. All eight need headset testing.
+
+With this mod enabled, Virtual GunStock is disabled in the two-hand
+aiming solver regardless of the original launcher setting. Both hand models
+follow the final weapon orientation while Grip is held (controller tracking
+and physical aiming remain unchanged). To tune the primary/right-hand
+position for Gauss Cannon or Chaingun, edit
+`NativeBridge/offhand_right_hand_positions.cfg`:
+`gauss_cannon = X Y Z` and `chaingun = X Y Z`. Distances
+are **metres**, in weapon-local axes (+X right, +Y up, -Z forward),
+limited to +/-0.30. Defaults are neutral zero until in-game fitting.
+Restart DOOM after editing. Local edits are preserved on bridge updates.
 
 The standard manager updater retains existing user preferences and NativeBridge
 files. When NativeBridge is refreshed, local PAINSAW audio, saved grip profiles,

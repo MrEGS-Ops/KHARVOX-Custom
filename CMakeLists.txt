@@ -354,7 +354,10 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_pitch_default.cfg"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/two_hand_weapon_profiles_default.cfg"
-      "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_default.cfg")
+      "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_default.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/offhand_right_hand_positions.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/offhand_right_hand_positions.cfg")
 endif()
 
 if(WIN32)

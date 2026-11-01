@@ -108,3 +108,7 @@ add_test(NAME support-grip-capture-chord COMMAND KharvoxSupportGripCapturePolicy
 add_executable(KharvoxOffHandStickInputTests ../offhand_stick_input_policy_tests.cpp)
 target_compile_features(KharvoxOffHandStickInputTests PRIVATE cxx_std_17)
 add_test(NAME offhand-stick-pause-and-capture-isolation COMMAND KharvoxOffHandStickInputTests)
+
+add_executable(KharvoxRightHandGripConfigTests ../right_hand_grip_config_tests.cpp)
+target_compile_features(KharvoxRightHandGripConfigTests PRIVATE cxx_std_17)
+add_test(NAME offhand-right-hand-config COMMAND KharvoxRightHandGripConfigTests)

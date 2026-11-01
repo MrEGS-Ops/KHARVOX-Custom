@@ -3,7 +3,7 @@
 
 namespace kharvox {
 // Both physical thumbstick clicks are reserved for capture only when
-// pressed together. Single right-click pauses, single left-click melees.
+// pressed together. Single right-click melees, single left-click pauses.
 // Allow a brief simultaneous-click window so capturing cannot pause the game.
 struct OffHandDelayedClick {
     bool held{}, blocked{}, emitted{};
@@ -21,7 +21,7 @@ struct OffHandDelayedClick {
         return emitted;
     }
 };
-struct OffHandStickOutput {bool rightPause{},leftMelee{};};
+struct OffHandStickOutput {bool rightMelee{},leftPause{};};
 struct OffHandStickInput {
     OffHandDelayedClick right{},left{};
     OffHandStickOutput update(bool rightPressed,bool leftPressed,
