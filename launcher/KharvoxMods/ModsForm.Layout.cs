@@ -518,8 +518,8 @@ internal sealed partial class ModsForm
 
     internal static void RunUiSelfTest()
     {
-        if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != 22)
-            throw new InvalidDataException("Legacy KHARVOX Mods inventory differs from the approved 21 mod rows.");
+        if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != LegacyVrModCount + 1)
+            throw new InvalidDataException("KHARVOX VR Mods inventory differs from the approved 22 mod rows.");
         ValidateActiveVrPolicies();
         // The DOOM resource-mod panel and its standalone companion sources
         // must not occur in the compiled application, even as hidden UI.
