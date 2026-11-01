@@ -7360,9 +7360,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 subtractVector(controller.position,s.primaryGripVisualPivotTracking)));
         const auto anchoredOrientation=normalizeQuaternion(
             multiply(s.primaryGripVisualDeltaTracking,controller.orientation));
-        pose.position={anchoredPosition.x,anchoredPosition.y,anchoredPosition.z};
-        pose.orientation={anchoredOrientation.x,anchoredOrientation.y,
-                          anchoredOrientation.z,anchoredOrientation.w};
+        pose.position[0]=anchoredPosition.x;
+        pose.position[1]=anchoredPosition.y;
+        pose.position[2]=anchoredPosition.z;
+        pose.orientation[0]=anchoredOrientation.x;
+        pose.orientation[1]=anchoredOrientation.y;
+        pose.orientation[2]=anchoredOrientation.z;
+        pose.orientation[3]=anchoredOrientation.w;
         return pose;
     };
     const auto currentLeftHandPose=primaryHandLockedPose(nativeLeftController,true);
