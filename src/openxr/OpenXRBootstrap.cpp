@@ -416,7 +416,8 @@ struct State {
     XrQuaternionf supportVisualLocalOrientation{0,0,0,1};
     kharvox::hands::HandPose supportVisualPose{};
     kharvox::hands::HandPose primaryVisualPose{};
-    bool primaryVisualLocked{};
+    bool primaryVisualLocked{},primaryVisualWeaponLeft{};
+    KharvoxWeaponKind primaryVisualWeapon{KharvoxWeaponKind::Unknown};
     // Captured ONCE at the real controller grip on two-hand acquisition.
     // Remains rigid in weapon-local space instead of drifting with the aim pose.
     XrVector3f primaryVisualLocalPosition{};
@@ -2662,8 +2663,46 @@ void updateWeapon6Dof(){
     const auto weaponAnchorTracking=kharvox::primarygrip::weaponAnchor(
         primaryController.position,primaryHandGripController.position,
         renderOrientation,capturedGripPoint,repositionHeavyRight,rotateGrip);
-    // The visible support hand remains attached to the new weapon anchor
-    // too; its physics/controller tracking never follows this render pose.
+    // Primary RIGHT hand stays in its native KHARVOX grip-space pose on
+    // EVERY equipped weapon, even without two-hand latch. Capture the grip
+    // once per weapon; from then on it has a constant gun-local position and
+    // orientation. This avoids the gun rolling inside the glove.
+    const bool primaryVisualNow=s.customMods.offHandGripCapture
+        &&!s.weaponHandLeft&&primaryHandGripController.valid
+        &&kind!=KharvoxWeaponKind::Unknown
+        &&kind!=KharvoxWeaponKind::Fists&&!s.dynamicShoulderHolstered;
+    if(primaryVisualNow){
+        if(!s.primaryVisualLocked||s.primaryVisualWeapon!=kind
+            ||s.primaryVisualWeaponLeft!=s.weaponHandLeft){
+            s.primaryVisualLocalPosition=kharvox::primarygrip::localGrip(
+                weaponAnchorTracking,primaryHandGripController.position,
+                renderOrientation,rotateGrip);
+            s.primaryVisualLocalOrientation=normalizeQuaternion(multiply(
+                conjugate(renderOrientation),
+                primaryHandGripController.orientation));
+        }
+        const auto primaryFixed=kharvox::primarygrip::lockedHand(
+            weaponAnchorTracking,renderOrientation,
+            s.primaryVisualLocalPosition,rotateGrip);
+        const auto primaryRotation=normalizeQuaternion(multiply(
+            renderOrientation,s.primaryVisualLocalOrientation));
+        s.primaryVisualPose.position[0]=primaryFixed.x;
+        s.primaryVisualPose.position[1]=primaryFixed.y;
+        s.primaryVisualPose.position[2]=primaryFixed.z;
+        s.primaryVisualPose.orientation[0]=primaryRotation.x;
+        s.primaryVisualPose.orientation[1]=primaryRotation.y;
+        s.primaryVisualPose.orientation[2]=primaryRotation.z;
+        s.primaryVisualPose.orientation[3]=primaryRotation.w;
+        s.primaryVisualPose.valid=true;
+        s.primaryVisualLocked=true;
+        s.primaryVisualWeapon=kind;
+        s.primaryVisualWeaponLeft=s.weaponHandLeft;
+    }else{
+        s.primaryVisualLocked=false;
+        s.primaryVisualWeapon=KharvoxWeaponKind::Unknown;
+    }
+    // Support glove remains attached only after an actual support Grip.
+    // Physics/controller tracking is always independent of visual locks.
     const bool supportVisualNow=s.customMods.offHandGripCapture &&
         s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed &&
         s.twoHandLatchedWeapon==kind&&primaryController.valid&&
@@ -2682,33 +2721,6 @@ void updateWeapon6Dof(){
                 log(std::string("[OFFHAND-GRIP] hand visual attached to ")+
                     KharvoxWeaponKindKey(kind)+" (controller tracking remains independent)");
             }
-            // ALWAYS latch the primary gun hand at its real KHARVOX
-            // grip-space pose, once, and retain that gun-local transform.
-            // Do NOT let a two-hand roll make the rifle rotate inside the
-            // glove. All weapons use their existing per-weapon mesh configs.
-            if(!s.primaryVisualLocked||!s.supportVisualLocked||
-               s.supportVisualWeapon!=kind||s.supportVisualWeaponLeft!=s.weaponHandLeft){
-                s.primaryVisualLocalPosition=kharvox::primarygrip::localGrip(
-                    weaponAnchorTracking,primaryHandGripController.position,
-                    renderOrientation,rotateGrip);
-                s.primaryVisualLocalOrientation=normalizeQuaternion(multiply(
-                    conjugate(renderOrientation),
-                    primaryHandGripController.orientation));
-            }
-            const auto primaryFixed=kharvox::primarygrip::lockedHand(
-                weaponAnchorTracking,renderOrientation,
-                s.primaryVisualLocalPosition,rotateGrip);
-            const auto primaryRotation=normalizeQuaternion(multiply(
-                renderOrientation,s.primaryVisualLocalOrientation));
-            s.primaryVisualPose.position[0]=primaryFixed.x;
-            s.primaryVisualPose.position[1]=primaryFixed.y;
-            s.primaryVisualPose.position[2]=primaryFixed.z;
-            s.primaryVisualPose.orientation[0]=primaryRotation.x;
-            s.primaryVisualPose.orientation[1]=primaryRotation.y;
-            s.primaryVisualPose.orientation[2]=primaryRotation.z;
-            s.primaryVisualPose.orientation[3]=primaryRotation.w;
-            s.primaryVisualPose.valid=true;
-            s.primaryVisualLocked=true;
             const auto fixedRotation=normalizeQuaternion(multiply(
                 renderOrientation,s.supportVisualLocalOrientation));
             s.supportVisualPose.position[0]=fixedPosition.x;
@@ -2722,11 +2734,10 @@ void updateWeapon6Dof(){
             s.supportVisualWeapon=kind;
             s.supportVisualWeaponLeft=s.weaponHandLeft;
             s.supportVisualLocked=true;
-        } else {s.supportVisualLocked=false;s.primaryVisualLocked=false;}
-    } else if(s.supportVisualLocked||s.primaryVisualLocked){
-        log("[OFFHAND-GRIP] hand visual detached (release, holster, or weapon change)");
+        } else {s.supportVisualLocked=false;}
+    } else if(s.supportVisualLocked){
+        log("[OFFHAND-GRIP] support visual detached (release, holster, or weapon change)");
         s.supportVisualLocked=false;
-        s.primaryVisualLocked=false;
     }
     // Keep the last rendered gun rotation in actual tracking space for
     // the left-controller placement probe. It includes solved two-hand aim.
@@ -5818,6 +5829,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool sourceSupportVisualLocked=s.supportVisualLocked;
     const bool sourcePrimaryVisualLocked=s.primaryVisualLocked;
     const bool sourceSupportWeaponLeft=s.supportVisualWeaponLeft;
+    const bool sourcePrimaryWeaponLeft=s.primaryVisualWeaponLeft;
     updateGameplayActions(frame.predictedDisplayTime);updateXInputHaptics();updatePresentationMode();updatePsvr2TriggerPolicy();
     kharvox::native::StereoFrame nativeFrame{};
     bool nativeFrameValid=false;
@@ -7386,14 +7398,14 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 sourceSupportWeaponLeft);
             attachPrimaryVisual(currentLeftHandPose,currentRightHandPose,
                 sourcePrimaryVisualPose,sourcePrimaryVisualLocked,
-                sourceSupportWeaponLeft);
+                sourcePrimaryWeaponLeft);
         }
         else
         {
             attachSupportVisual(currentLeftHandPose,currentRightHandPose,
                 s.supportVisualPose,s.supportVisualLocked,s.supportVisualWeaponLeft);
             attachPrimaryVisual(currentLeftHandPose,currentRightHandPose,
-                s.primaryVisualPose,s.primaryVisualLocked,s.supportVisualWeaponLeft);
+                s.primaryVisualPose,s.primaryVisualLocked,s.primaryVisualWeaponLeft);
         }
     }
     const bool alignAerSourceHands=!nativeBackend&&s.alternatingStereo
@@ -7408,7 +7420,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             sourceSupportWeaponLeft);
         attachPrimaryVisual(sourceLeftHandPose,sourceRightHandPose,
             sourcePrimaryVisualPose,sourcePrimaryVisualLocked,
-            sourceSupportWeaponLeft);
+            sourcePrimaryWeaponLeft);
     }
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
