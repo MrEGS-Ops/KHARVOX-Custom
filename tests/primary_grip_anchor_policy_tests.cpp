@@ -53,6 +53,6 @@ int main(){
         aim,identity,normalLocal,rotate),grip));
     const auto turned=kharvox::primarygrip::lockedHand(
         aim,yaw90,normalLocal,rotate);
-    assert(near(turned,Vec{aim.x+normalLocal.z,aim.y,aim.z-normalLocal.x}));
+    assert(near(turned,Vec{aim.x+normalLocal.z,aim.y+normalLocal.y,aim.z-normalLocal.x}));
     return 0;
 }
