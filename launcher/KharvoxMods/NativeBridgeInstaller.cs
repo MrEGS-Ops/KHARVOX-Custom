@@ -197,7 +197,9 @@ internal static class NativeBridgeInstaller
             "two_hand_weapon_profiles_saved.cfg", "two_hand_shotgun_saved.cfg",
             "two_hand_alignment.cfg", "two_hand_calibration_target.cfg",
             "offhand_grip_capture_status.txt",
-            "offhand_right_hand_positions.cfg"
+            "offhand_right_hand_positions.cfg",
+            "offhand_right_hand_positions.cfg.before-capture.bak",
+            "two_hand_weapon_profiles_saved.cfg.before-chainsaw-capture.bak"
         })
         {
             var from = Path.Combine(TargetDirectory, name);
