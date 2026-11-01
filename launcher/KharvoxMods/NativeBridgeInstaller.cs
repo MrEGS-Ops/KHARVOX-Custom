@@ -19,7 +19,7 @@ internal static class NativeBridgeInstaller
     private const string ReleaseApi =
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
     private const string PinnedNativeCommit =
-        "dcbef10c72d01d643b44704063d371508bae74d3";
+        "afd2be367bc799b6d5d7fa8428f5f6f2ec2a3b3d";
     private const string ZipName = "KHARVOX-Mods-NativeBridge.zip";
     private const string RequiredLauncherUi = "cactus-original-v1.1.1-unmodified-ui-v2";
     private const long MaxArchiveBytes = 250L * 1024 * 1024;
