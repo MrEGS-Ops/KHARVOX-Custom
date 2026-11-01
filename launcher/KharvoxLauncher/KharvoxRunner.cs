@@ -367,9 +367,10 @@ internal static class KharvoxRunner
                 options.RenderScale, steamVrLayerIsolation && !RendererSelection.IsNative(options.RendererMode));
             // Off-Hand Grip Capture must use unassisted, native KHARVOX weapon aiming.
             // Never allow the launcher's virtual-stock selection to override it.
-            var effectiveVirtualGunstock = options.VirtualGunstock && !customMods.OffHandGripCapture;
-            if (customMods.OffHandGripCapture && options.VirtualGunstock)
-                statusUpdate?.Invoke("Off-Hand Grip Capture: virtual gunstock disabled for this run.");
+            var unassistedHandGrip = customMods.OffHandGripCapture || customMods.RightHandHeavyGrip;
+            var effectiveVirtualGunstock = options.VirtualGunstock && !unassistedHandGrip;
+            if (unassistedHandGrip && options.VirtualGunstock)
+                statusUpdate?.Invoke("Right-hand heavy grip / grip capture: virtual gunstock disabled for this run.");
 
             foreach (var flag in new[] {
                 "enable_xr_mediated", "enable_xr_session", "enable_native_xr_resolution",
@@ -664,12 +665,13 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_OFFHAND_GRIP_CAPTURE"] = customMods.OffHandGripCapture ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_RIGHT_HAND_HEAVY_GRIP"] = customMods.RightHandHeavyGrip ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
             psi.EnvironmentVariables["KHARVOX_HANDS_PROJECTION_SCALE"] = "1";
             psi.EnvironmentVariables["KHARVOX_WORLD_SCALE"] = "39.3701";
             psi.EnvironmentVariables["KHARVOX_HUD_DEBUG"] = options.HudDebugging ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_SHOW_HANDS"] = options.ShowHands || customMods.OffHandGripCapture ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_SHOW_HANDS"] = options.ShowHands || unassistedHandGrip ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_HAND_CALIBRATION"] = options.HandCalibrationMode;
             psi.EnvironmentVariables["KHARVOX_RENDER_SCALE"] = Inv(effectiveRenderScale / 100m);
             // Direct SteamVR keeps the WSI carrier at 100%, but the FSR test
