@@ -2314,7 +2314,8 @@ bool captureTwoHandCalibration(bool triggerDown){
 }
 // Read-only per-weapon support-grip measurement. It never writes a weapon
 // transform or any of the existing two-hand calibration profiles.
-void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) {
+void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay,
+    bool rightWeaponGripHeld,bool leftSupportGripHeld) {
     if(!s.customMods.offHandGripCapture){s.offHandCaptureChord={};return;}
     if(!s.offHandCaptureChord.pressed(leftClick,rightClick))return;
     auto reject=[&](const char*reason){
@@ -2331,6 +2332,9 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
         reject("not in unobstructed weapon gameplay");return;
     }
     if(s.weaponHandLeft){reject("left-primary weapon; right-primary only for this test");return;}
+    if(rightWeaponGripHeld&&leftSupportGripHeld){
+        reject("release one Grip: right Grip = rotation, left Grip = support");return;
+    }
     const auto kind=KharvoxWeaponCurrentKind();
     if(kind==KharvoxWeaponKind::Unknown||kind==KharvoxWeaponKind::Fists){
         reject("native weapon identity unknown or fists equipped");return;
@@ -2374,33 +2378,85 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
         <<s.rightController.orientation.z<<','<<s.rightController.orientation.w<<'\n';
     out.flush();
     if(!out){reject("local diagnostic CSV write failed");return;}
-    // Gauss/Chaingun: LEFT tracked controller is a placement probe for
-    // RIGHT rendered hand, never a new left support-grip calibration.
-    const bool rightHandProbe=kind==KharvoxWeaponKind::GaussCannon
+    // Both joystick clicks: with NO grip, LEFT controller sets the RIGHT
+    // heavy-weapon pivot position; with RIGHT grip, it sets RIGHT glove
+    // rotation; with LEFT grip, it sets the LEFT support-grip location.
+    const bool heavy=kind==KharvoxWeaponKind::GaussCannon
         ||kind==KharvoxWeaponKind::Chaingun;
-    if(rightHandProbe){
-        const auto gunRotation=s.lastWeaponRenderedValid
-            &&s.lastWeaponRenderedKind==kind
-            ?s.lastWeaponRenderedTrackingRotation:s.rightController.orientation;
-        const auto displacement=rotateVector(conjugate(gunRotation),
-            subtractVector(s.leftGripController.position,
-                           s.rightController.position));
-        const kharvox::RightHandGripOffset offset{
-            displacement.x,displacement.y,displacement.z};
-        std::string error;
-        if(!kharvox::saveRightHandGripMeasurement(
-                kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
-                KharvoxWeaponKindKey(kind),offset,&error)){
-            reject((std::string("right-hand visual offset not saved: ")+error).c_str());
+    if(heavy){
+        if(!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=kind){
+            reject("weapon rendered transform not ready; try again in gameplay");
             return;
         }
-        if(kind==KharvoxWeaponKind::GaussCannon)
-            s.rightGripSettings.gauss=offset;
-        else s.rightGripSettings.chaingun=offset;
-        log("[RIGHT-HAND-CAPTURE] "+std::string(KharvoxWeaponKindKey(kind))
-            +" saved measured left-controller point as RIGHT-hand visual offset: "
-            +std::to_string(offset.x)+", "+std::to_string(offset.y)
-            +", "+std::to_string(offset.z)+" m");
+        const auto gunRotation=s.lastWeaponRenderedTrackingRotation;
+        const auto key=std::string(KharvoxWeaponKindKey(kind));
+        if(rightWeaponGripHeld){
+            const auto local=normalizeQuaternion(multiply(
+                conjugate(gunRotation),s.leftGripController.orientation));
+            kharvox::RightHandGripRotation target{
+                local.x,local.y,local.z,local.w,true};
+            std::string reason;
+            if(!kharvox::saveRightHandGripRotation(
+                kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
+                key,target,&reason)){
+                reject((std::string("right hand ROTATION not saved: ")+reason).c_str());
+                return;
+            }
+            if(kind==KharvoxWeaponKind::GaussCannon)
+                s.rightGripSettings.gaussRotation=target;
+            else s.rightGripSettings.chaingunRotation=target;
+            s.primaryVisualLocked=false;
+            log("[RIGHT-HAND-ROTATION] "+key+" saved RIGHT glove orientation"
+                " from left-controller probe; survives melee and weapon swaps");
+        }else if(leftSupportGripHeld){
+            const auto saved=kind==KharvoxWeaponKind::GaussCannon
+                ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
+            const XrVector3f rightLocal{saved.x,
+                saved.y-s.rightGripSettings.rightHandDropMeters,saved.z};
+            const auto pivot=subtractVector(s.rightGripController.position,
+                rotateVector(gunRotation,rightLocal));
+            const auto difference=rotateVector(conjugate(gunRotation),
+                subtractVector(s.leftGripController.position,pivot));
+            auto* profile=twoHandCalibrationFor(kind);
+            if(!profile){reject("missing heavy-weapon support profile");return;}
+            std::string reason;
+            if(!kharvox::saveHeavySupportGrip(
+                kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg"),
+                key,{difference.x,difference.y,difference.z},
+                profile->aimMode==TwoHandAimMode::SideGrip,
+                std::clamp(profile->captureRadius,.08f,.40f),
+                std::clamp(profile->maximumHandLineWeight,0.f,1.f),
+                &reason)){
+                reject((std::string("left support calibration not saved: ")+reason).c_str());
+                return;
+            }
+            profile->supportPosition=difference;profile->valid=true;
+            s.twoHandLatched=false;
+            s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+            s.supportVisualLocked=false;
+            log("[HEAVY-SUPPORT-CAPTURE] "+key+" saved left-hand support"
+                " relative to new gun anchor; release/repress left Grip");
+        }else{
+            const auto relative=rotateVector(conjugate(gunRotation),
+                subtractVector(s.leftGripController.position,
+                               s.rightGripController.position));
+            const kharvox::RightHandGripOffset offset{
+                relative.x,relative.y,relative.z};
+            std::string reason;
+            if(!kharvox::saveRightHandGripMeasurement(
+                    kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
+                    key,offset,&reason)){
+                reject((std::string("right-hand POSITION not saved: ")+reason).c_str());
+                return;
+            }
+            if(kind==KharvoxWeaponKind::GaussCannon)
+                s.rightGripSettings.gauss=offset;
+            else s.rightGripSettings.chaingun=offset;
+            s.primaryVisualLocked=false;
+            s.supportVisualLocked=false;
+            log("[RIGHT-HAND-POSITION] "+key
+                +" saved actual gun-anchor placement from left hand probe");
+        }
     }
     // Chainsaw captures a NORMAL two-hand left support point, unlike
     // Gauss/Chaingun which measure the right-hand visual placement.
@@ -2507,7 +2563,9 @@ void updateWeapon6Dof(){
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
         s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
-        s.primaryVisualLocked=false;
+        // Melee/Glory Kill gameplay gaps must NOT destroy a saved primary
+        // grip's local orientation; it will be reattached when gameplay resumes.
+        if(!s.weapon6Dof||!s.headZeroValid)s.primaryVisualLocked=false;
         KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
 
         s.weaponTrackingHeld=false;s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
@@ -2680,6 +2738,18 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalOrientation=normalizeQuaternion(multiply(
                 conjugate(renderOrientation),
                 primaryHandGripController.orientation));
+            // The manually calibrated hand ROTATION is weapon-local, not
+            // relative to the current grip. Re-apply it after melee, recenter
+            // or a weapon switch instead of resampling a random transient pose.
+            const auto savedRotation=kind==KharvoxWeaponKind::GaussCannon
+                ?s.rightGripSettings.gaussRotation
+                :kind==KharvoxWeaponKind::Chaingun
+                    ?s.rightGripSettings.chaingunRotation
+                    :kharvox::RightHandGripRotation{};
+            if(savedRotation.valid)
+                s.primaryVisualLocalOrientation={
+                    savedRotation.x,savedRotation.y,
+                    savedRotation.z,savedRotation.w};
         }
         const auto primaryFixed=kharvox::primarygrip::lockedHand(
             weaponAnchorTracking,renderOrientation,
@@ -2878,7 +2948,9 @@ void updateGameplayActions(XrTime displayTime){
             s.leftHanded?s.doomPause:s.doomMelee);
         const bool physicalLeftClick=readBooleanAction(
             s.leftHanded?s.doomMelee:s.doomPause);
-        captureOffHandGripDiagnostic(physicalLeftClick,physicalRightClick,gameplay);
+        captureOffHandGripDiagnostic(physicalLeftClick,physicalRightClick,gameplay,
+            readFloatAction(s.rightWeaponGrip)>.65f,
+            readFloatAction(s.leftWeaponGrip)>.65f);
         s.offHandStickOutput=s.offHandStickInput.update(
             physicalRightClick,physicalLeftClick,true,GetTickCount64());
     }else{
