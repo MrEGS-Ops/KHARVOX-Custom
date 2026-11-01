@@ -9,7 +9,7 @@ int main(){
  auto a=kharvox::readRightHandGripSettings(path);
  assert(a.accepted==2&&a.rejected==0);
  assert(std::abs(a.rightHandDropMeters-0.08f)<0.0001f);
- assert(std::abs(a.gauss.x+0.04f&&std::abs(a.chaingun.z-0.01f)<0.0001f);
+ assert(std::abs(a.gauss.x+0.04f)<0.0001f && std::abs(a.chaingun.z-0.01f)<0.0001f);
  {std::ofstream f(path);f<<"gauss_cannon = NaN 0 0\nchaingun = 1.1 0 0\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.accepted==0&&a.rejected==2&&a.gauss.x==0.f&&a.chaingun.x==0.f);

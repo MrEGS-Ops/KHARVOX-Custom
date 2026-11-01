@@ -2667,7 +2667,11 @@ void updateWeapon6Dof(){
             // SOLVED weapon. DO NOT modify gun tracking or the left support.
             // Keep both per-weapon offsets and height in the same weapon frame,
             // so the hand stays attached while the gun rotates.
-            if(!s.weaponHandLeft)
+            // This height correction belongs to the new right-hand heavy
+            // weapon grips ONLY. Never shift the normal hand on other guns.
+            if(!s.weaponHandLeft
+                &&(kind==KharvoxWeaponKind::GaussCannon
+                   ||kind==KharvoxWeaponKind::Chaingun))
                 handOffset.y-=s.rightGripSettings.rightHandDropMeters;
             const auto primaryFixed=addVector(primaryController.position,
                 rotateVector(renderOrientation,{handOffset.x,handOffset.y,handOffset.z}));
