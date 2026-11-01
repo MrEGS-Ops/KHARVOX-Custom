@@ -603,6 +603,7 @@ public sealed partial class MainForm
                 main.customDisableWeaponWheel,
                 main.customRevengeDemon,
                 main.speedActionLogTest,
+                main.customOffHandGripCapture,
                 main.customHapticOverhaul
             };
             // A persisted layout may reorder WITHIN a group. Never allow a mod
@@ -613,7 +614,7 @@ public sealed partial class MainForm
                     .SequenceEqual(expectedChecks)
                 || orderedRows.Where((row, index) => row.Group
                     != (index < 5 ? 0 : index < 7 ? 1 : index < 11 ? 2
-                        : index < 19 ? 3 : index < 21 ? 4 : 5)).Any()
+                        : index < 19 ? 3 : index < 22 ? 4 : 5)).Any()
                 || main.modOrderSlots.Count != expectedChecks.Length
                 || main.modOrderSlots.Where((slot, index) =>
                     slot.Index != index
