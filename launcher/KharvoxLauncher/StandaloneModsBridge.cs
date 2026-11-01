@@ -21,6 +21,7 @@ internal sealed class StandaloneModsBridge
     internal bool EffectiveWheelRemap => WeaponWheelRemap || EffectiveGunslinger;
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
+    public bool OffHandGripCapture { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
     public int GloryKillHz { get; set; } = 200;
     public string RuntimeRevision { get; set; } = "";
@@ -72,6 +73,7 @@ internal sealed class StandaloneModsBridge
         mods.DynamicShoulderHolster = EffectiveGunslinger;
         mods.PhysicalCrouch = PhysicalCrouch;
         mods.ChainsawTriggerThrottle = PainsawRipshiftOverdrive;
+        mods.OffHandGripCapture = OffHandGripCapture;
         ActionSpeedCatalog.Validate(mods);
         if (mods.ActionSpeedProfiles.TryGetValue("glory", out var profile))
         {
@@ -85,22 +87,23 @@ internal sealed class StandaloneModsBridge
         var disabled = new StandaloneModsBridge();
         var baseline = new CustomModSettings();
         disabled.ApplyTo(baseline);
-        if (baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
+        if (baseline.OffHandGripCapture || baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
             baseline.BehindHeadWheelHandSelection || baseline.DynamicShoulderHolster)
             return 1;
         var enabled = new StandaloneModsBridge
         {
             Gunslinger = true,
-            WeaponWheelRemap = false
+            WeaponWheelRemap = false,
+            OffHandGripCapture = true
         };
         if (!enabled.EffectiveGunslinger || !enabled.EffectiveWheelRemap)
             return 1;
         enabled.ApplyTo(baseline);
-        if (!baseline.BehindHeadWeaponWheel || !baseline.LeftWristWeaponWheel ||
+        if (!baseline.OffHandGripCapture || !baseline.BehindHeadWeaponWheel || !baseline.LeftWristWeaponWheel ||
             !baseline.BehindHeadWheelHandSelection || !baseline.DynamicShoulderHolster)
             return 1;
         disabled.ApplyTo(baseline);
-        if (baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
+        if (baseline.OffHandGripCapture || baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
             baseline.BehindHeadWheelHandSelection || baseline.DynamicShoulderHolster)
             return 1;
         // Existing JSON from the two separate mod switches also migrates.

@@ -398,6 +398,8 @@ internal sealed partial class ModsForm
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
                 "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
+            "Off-Hand Grip Capture (Test)" =>
+                "Equip a RIGHT-hand weapon, hold your LEFT hand at the desired support position, then click BOTH thumbsticks together. A left-hand vibration confirms a saved capture in logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv. Release one stick before capturing again. Esc pauses during this test; no existing grip calibrations change.",
             "KILLTIME: RIP & TEAR" =>
                 "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
             _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."

@@ -93,6 +93,7 @@ internal sealed class CustomModSettings
     public int ChainsawExperimentMode { get; set; } = 1; // 1 Grip Zones, 3 Pointer; legacy 2 migrates to 1
     public bool ChainsawShowGripZones { get; set; } // debug stereo round markers, off by default
     public bool HapticOverhaul { get; set; }
+    public bool OffHandGripCapture { get; set; } // Diagnostic, OFF by default
 
     public bool SupervisorRequired => RevengeDemon;
 }

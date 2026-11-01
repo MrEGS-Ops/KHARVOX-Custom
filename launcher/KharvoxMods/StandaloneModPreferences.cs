@@ -33,6 +33,7 @@ internal sealed class StandaloneModPreferences
     public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
+    public bool OffHandGripCapture { get; set; } // Diagnostic, OFF by default
     public bool GloryKillSpeedOverride { get; set; }
     public int GloryKillHz { get; set; } = 200;
     // Presentation order only: the bridge ignores this metadata. Enables
@@ -127,7 +128,7 @@ internal sealed class StandaloneModPreferences
             var x = Load(path);
             if (!x.WeaponWheelRemap || x.HandFocus ||
                 x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
-                x.PhysicalCrouch || x.PainsawRipshiftOverdrive ||
+                x.PhysicalCrouch || x.PainsawRipshiftOverdrive || x.OffHandGripCapture ||
                 x.GloryKillSpeedOverride ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
@@ -137,6 +138,7 @@ internal sealed class StandaloneModPreferences
             x.Gunslinger = true;
             x.WeaponWheelRemap = false;
             x.PainsawRipshiftOverdrive = true;
+            x.OffHandGripCapture = true;
             x.GloryKillSpeedOverride = true;
             x.GloryKillHz = 35;
             // Legacy mod names should retain their saved positions.
@@ -150,7 +152,7 @@ internal sealed class StandaloneModPreferences
             var y = Load(path);
             if (!y.HandFocus || !y.Gunslinger || y.WeaponWheelRemap ||
                 y.BehindHeadWeaponWheel || y.DynamicQuickHolsters ||
-                !y.PainsawRipshiftOverdrive ||
+                !y.PainsawRipshiftOverdrive || !y.OffHandGripCapture ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
                 y.ActiveOrder.Length != 3 ||
                 y.ActiveOrder[0] != "Hand Focus" ||

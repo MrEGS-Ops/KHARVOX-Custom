@@ -663,13 +663,14 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_EXPERIMENT_MODE"] = "9";
             psi.EnvironmentVariables["KHARVOX_CHAINSAW_ZONES_DEBUG"] = "0";
             psi.EnvironmentVariables["KHARVOX_MOD_HAPTIC_OVERHAUL"] = customMods.HapticOverhaul ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_MOD_OFFHAND_GRIP_CAPTURE"] = customMods.OffHandGripCapture ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_LASER_SIGHT"] = options.LaserSight ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_WEAPON_SCALE"] = "0.77";
             psi.EnvironmentVariables["KHARVOX_HANDS_PROJECTION_SCALE"] = "1";
             psi.EnvironmentVariables["KHARVOX_WORLD_SCALE"] = "39.3701";
             psi.EnvironmentVariables["KHARVOX_HUD_DEBUG"] = options.HudDebugging ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_SHOW_HANDS"] =
-                (options.ShowHands || customMods.DynamicShoulderHolster) ? "1" : "0";
+                (options.ShowHands || customMods.DynamicShoulderHolster || customMods.OffHandGripCapture) ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_HAND_CALIBRATION"] = options.HandCalibrationMode;
             psi.EnvironmentVariables["KHARVOX_RENDER_SCALE"] = Inv(effectiveRenderScale / 100m);
             // Direct SteamVR keeps the WSI carrier at 100%, but the FSR test

@@ -27,14 +27,14 @@ int main() {
         "left-handed mode mirrors weapon and free-hand poses");
 
     output = selectHandVisibility({false, true, false, all, true, true});
-    require(output.left == HandModelKind::None
+    require(output.left == HandModelKind::Fist
         && output.right == HandModelKind::GunHolding,
-        "right-handed two-hand grab hides the left off-hand pose");
+        "right-handed two-hand grab retains the left off-hand pose");
 
     output = selectHandVisibility({true, true, false, all, true, true});
     require(output.left == HandModelKind::GunHolding
-        && output.right == HandModelKind::None,
-        "left-handed two-hand grab hides the right off-hand pose");
+        && output.right == HandModelKind::Fist,
+        "left-handed two-hand grab retains the right off-hand pose");
 
     output = selectHandVisibility({false, true, true, all, true, true});
     require(output.left == HandModelKind::Fist

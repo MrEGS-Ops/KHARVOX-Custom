@@ -13,7 +13,7 @@ namespace KharvoxMods;
 // scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private const int LegacyVrModCount = 21;
+    private const int LegacyVrModCount = 22;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
     private bool _savingSettings;
@@ -29,7 +29,8 @@ internal sealed partial class ModsForm
         title == "Hand Focus" ||
         title == "Gunslinger" ||
         title == "Physical Crouch" ||
-        title == "PAINSAW: RIPSHIFT OVERDRIVE";
+        title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
+        title == "Off-Hand Grip Capture (Test)";
 
     private bool CurrentSelection(string name) => name switch
     {
@@ -38,6 +39,7 @@ internal sealed partial class ModsForm
         "Gunslinger" => _modPrefs.Gunslinger,
         "Physical Crouch" => _modPrefs.PhysicalCrouch,
         "PAINSAW: RIPSHIFT OVERDRIVE" => _modPrefs.PainsawRipshiftOverdrive,
+        "Off-Hand Grip Capture (Test)" => _modPrefs.OffHandGripCapture,
         _ => false
     };
 
@@ -70,6 +72,8 @@ internal sealed partial class ModsForm
             case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
             case "PAINSAW: RIPSHIFT OVERDRIVE":
                 _modPrefs.PainsawRipshiftOverdrive = value; break;
+            case "Off-Hand Grip Capture (Test)":
+                _modPrefs.OffHandGripCapture = value; break;
             default: return;
         }
         OnVrSelectionChanged(name, value);
@@ -164,7 +168,9 @@ internal sealed partial class ModsForm
             new PreviewMod("Revenge Demon",
                 "Diagnostic-only death-time enemy logging. Paused."),
             new PreviewMod("Chainsaw Animation Investigator",
-                "Read-only animation timing traces and per-kill CSV.", true)
+                "Read-only animation timing traces and per-kill CSV.", true),
+            new PreviewMod("Off-Hand Grip Capture (Test)",
+                "Right-hand weapon: position the left support hand, then click BOTH thumbsticks to save its relative grip offset and orientation to logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv. Left haptic confirms capture. Diagnostic only: no weapon transforms or calibration profiles are changed. Normal thumbstick pause/melee disabled while enabled; use Esc to pause.", true)
         }),
         ("◎  Haptics & Feedback", new[]
         {
@@ -584,7 +590,7 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
                 vr.Count(check => check.Enabled) !=
-                    5 - (form._modPrefs.Gunslinger ? 1 : 0) ||
+                    6 - (form._modPrefs.Gunslinger ? 1 : 0) ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
                 throw new InvalidDataException("Verified mod rows or Gunslinger conflict gating changed.");
             if (!form.Controls.Descendants().OfType<Label>()
