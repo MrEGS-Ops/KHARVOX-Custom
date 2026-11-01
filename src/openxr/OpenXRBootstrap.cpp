@@ -70,6 +70,7 @@
 #include "SupportGripCapturePolicy.h"
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
+#include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "OpenHandReleasePolicy.h"
@@ -416,6 +417,9 @@ struct State {
     kharvox::hands::HandPose supportVisualPose{};
     kharvox::hands::HandPose primaryVisualPose{};
     bool primaryVisualLocked{};
+    // Captured ONCE at the real controller grip on two-hand acquisition.
+    // Remains rigid in weapon-local space instead of drifting with the aim pose.
+    XrVector3f primaryVisualLocalPosition{};
     XrQuaternionf primaryVisualLocalOrientation{0,0,0,1};
     kharvox::RightHandGripSettings rightGripSettings{};
     XrQuaternionf lastWeaponRenderedTrackingRotation{0,0,0,1};
@@ -2624,25 +2628,52 @@ void updateWeapon6Dof(){
             }
         }
     }
-    // The visible free hand is weapon-attached ONLY after a real support-Grip
-    // acquisition. Retain the hand's natural orientation at the latch, but
-    // pin its POSITION to this weapon's saved support point while held.
-    // The physics/aim solver continues using the actual tracked hand.
+    // The normal KHARVOX hand model uses the controller's GRIP pose, not
+    // the AIM pose from which weapon 6DoF is normally published. This gap
+    // matters: moving only the visible mesh makes it float beside the gun.
+    // For Gauss/Chaingun, make the measured right-hand point the actual gun
+    // attachment pivot. For every other weapon keep the original aim pivot.
+    const auto& primaryHandGripController=s.weaponHandLeft
+        ?s.leftGripController:s.rightGripController;
+    const auto renderOrientation=normalizeQuaternion(multiply(
+        primaryController.orientation,
+        multiply(conjugate(current.orientation),rotation)));
+    const bool repositionHeavyRight=s.customMods.offHandGripCapture
+        &&!s.weaponHandLeft&&primaryHandGripController.valid
+        &&(kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun)
+        &&!s.dynamicShoulderHolstered;
+    XrVector3f capturedGripPoint{};
+    if(repositionHeavyRight){
+        const auto measured=kind==KharvoxWeaponKind::GaussCannon
+            ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
+        capturedGripPoint={measured.x,
+            measured.y-s.rightGripSettings.rightHandDropMeters,measured.z};
+    }
+    const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
+        return rotateVector(q,v);
+    };
+    const auto weaponAnchorBody=kharvox::primarygrip::weaponAnchor(
+        current.position,
+        primaryHandGripController.valid
+            ?controllerRelativeToBodyTrackingOrigin(primaryHandGripController).position
+            :current.position,
+        rotation,capturedGripPoint,repositionHeavyRight,rotateGrip);
+    const auto weaponAnchorTracking=kharvox::primarygrip::weaponAnchor(
+        primaryController.position,primaryHandGripController.position,
+        renderOrientation,capturedGripPoint,repositionHeavyRight,rotateGrip);
+    // The visible support hand remains attached to the new weapon anchor
+    // too; its physics/controller tracking never follows this render pose.
     const bool supportVisualNow=s.customMods.offHandGripCapture &&
         s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed &&
         s.twoHandLatchedWeapon==kind&&primaryController.valid&&
-        supportController.valid&&!s.dynamicShoulderHolstered;
+        primaryHandGripController.valid&&supportController.valid
+        &&!s.dynamicShoulderHolstered;
     if(supportVisualNow){
         const auto* profile=twoHandCalibrationFor(kind);
         if(profile&&profile->valid){
             const auto actual=activeHandCalibration(*profile);
-            // current and rotation are in KHARVOX body-follow space.
-            // Apply the local weapon orientation delta to the original
-            // OpenXR controller pose to recover a tracking-space gun pose.
-            const auto renderOrientation=normalizeQuaternion(multiply(
-                primaryController.orientation,
-                multiply(conjugate(current.orientation),rotation)));
-            const auto fixedPosition=addVector(primaryController.position,
+            const auto fixedPosition=addVector(weaponAnchorTracking,
                 rotateVector(renderOrientation,actual.supportPosition));
             if(!s.supportVisualLocked||s.supportVisualWeapon!=kind||
                 s.supportVisualWeaponLeft!=s.weaponHandLeft){
@@ -2651,30 +2682,22 @@ void updateWeapon6Dof(){
                 log(std::string("[OFFHAND-GRIP] hand visual attached to ")+
                     KharvoxWeaponKindKey(kind)+" (controller tracking remains independent)");
             }
-            // Primary holding hand follows the final solved gun orientation.
-            // Only the visual hand model is adjusted; aiming and controller
-            // tracking are unchanged.
+            // ALWAYS latch the primary gun hand at its real KHARVOX
+            // grip-space pose, once, and retain that gun-local transform.
+            // Do NOT let a two-hand roll make the rifle rotate inside the
+            // glove. All weapons use their existing per-weapon mesh configs.
             if(!s.primaryVisualLocked||!s.supportVisualLocked||
-               s.supportVisualWeapon!=kind||s.supportVisualWeaponLeft!=s.weaponHandLeft)
+               s.supportVisualWeapon!=kind||s.supportVisualWeaponLeft!=s.weaponHandLeft){
+                s.primaryVisualLocalPosition=kharvox::primarygrip::localGrip(
+                    weaponAnchorTracking,primaryHandGripController.position,
+                    renderOrientation,rotateGrip);
                 s.primaryVisualLocalOrientation=normalizeQuaternion(multiply(
-                    conjugate(renderOrientation),primaryController.orientation));
-            kharvox::RightHandGripOffset handOffset{};
-            if(!s.weaponHandLeft){
-                if(kind==KharvoxWeaponKind::GaussCannon)handOffset=s.rightGripSettings.gauss;
-                else if(kind==KharvoxWeaponKind::Chaingun)handOffset=s.rightGripSettings.chaingun;
+                    conjugate(renderOrientation),
+                    primaryHandGripController.orientation));
             }
-            // Calibrate the right-hand mesh's shared height relative to the
-            // SOLVED weapon. DO NOT modify gun tracking or the left support.
-            // Keep both per-weapon offsets and height in the same weapon frame,
-            // so the hand stays attached while the gun rotates.
-            // This height correction belongs to the new right-hand heavy
-            // weapon grips ONLY. Never shift the normal hand on other guns.
-            if(!s.weaponHandLeft
-                &&(kind==KharvoxWeaponKind::GaussCannon
-                   ||kind==KharvoxWeaponKind::Chaingun))
-                handOffset.y-=s.rightGripSettings.rightHandDropMeters;
-            const auto primaryFixed=addVector(primaryController.position,
-                rotateVector(renderOrientation,{handOffset.x,handOffset.y,handOffset.z}));
+            const auto primaryFixed=kharvox::primarygrip::lockedHand(
+                weaponAnchorTracking,renderOrientation,
+                s.primaryVisualLocalPosition,rotateGrip);
             const auto primaryRotation=normalizeQuaternion(multiply(
                 renderOrientation,s.primaryVisualLocalOrientation));
             s.primaryVisualPose.position[0]=primaryFixed.x;
@@ -2712,7 +2735,9 @@ void updateWeapon6Dof(){
         multiply(conjugate(current.orientation),rotation)));
     s.lastWeaponRenderedKind=kind;
     s.lastWeaponRenderedValid=true;
-    const WeaponPose publishedWeaponPose{current.position,rotation};
+    // One physical pivot is used by the weapon renderer and both hand meshes.
+    // Gauss/Chaingun move the GUN, not an independently floating glove.
+    const WeaponPose publishedWeaponPose{weaponAnchorBody,rotation};
     if(s.controllerFrameYaw.active&&kharvox::pose_trace::active.load(std::memory_order_relaxed)){
         kharvox::pose_trace::Event e{};e.kind=kharvox::pose_trace::ControllerTurnFrame;e.frame=s.frame;
         e.data[0]=s.controllerFrameYaw.turnForPose(artificialTurnVisualYaw());

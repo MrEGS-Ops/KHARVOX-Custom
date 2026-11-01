@@ -112,3 +112,14 @@ add_test(NAME offhand-stick-pause-and-capture-isolation COMMAND KharvoxOffHandSt
 add_executable(KharvoxRightHandGripConfigTests ../right_hand_grip_config_tests.cpp)
 target_compile_features(KharvoxRightHandGripConfigTests PRIVATE cxx_std_17)
 add_test(NAME offhand-right-hand-config COMMAND KharvoxRightHandGripConfigTests)
+
+# Reposition the Gauss/Chaingun weapon itself to the measured grip. Other
+# guns keep original pivots and the glove must remain rigid under 2-hand roll.
+add_executable(KharvoxPrimaryGripAnchorPolicyTests ../primary_grip_anchor_policy_tests.cpp)
+target_compile_features(KharvoxPrimaryGripAnchorPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxPrimaryGripAnchorPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxPrimaryGripAnchorPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME primary-hand-rigid-gun-anchor COMMAND KharvoxPrimaryGripAnchorPolicyTests)
