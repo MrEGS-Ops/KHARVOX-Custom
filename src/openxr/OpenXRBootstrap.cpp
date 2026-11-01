@@ -2393,6 +2393,34 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
             +std::to_string(offset.x)+", "+std::to_string(offset.y)
             +", "+std::to_string(offset.z)+" m");
     }
+    // Chainsaw captures a NORMAL two-hand left support point, unlike
+    // Gauss/Chaingun which measure the right-hand visual placement.
+    const bool chainsawSupport=kind==KharvoxWeaponKind::Chainsaw;
+    if(chainsawSupport){
+        auto* profile=twoHandCalibrationFor(kind);
+        if(!profile){reject("chainsaw profile unavailable");return;}
+        std::string reason;
+        if(!kharvox::saveChainsawSupportGrip(
+            kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg"),
+            {relativePosition.x,relativePosition.y,relativePosition.z},
+            std::clamp(profile->captureRadius,0.08f,0.40f),
+            std::clamp(profile->maximumHandLineWeight,0.f,1.f),&reason)){
+            reject((std::string("chainsaw support not saved: ")+reason).c_str());
+            return;
+        }
+        profile->supportPosition=relativePosition;
+        profile->aimMode=TwoHandAimMode::SideGrip;
+        profile->valid=true;
+        s.twoHandLatched=false;
+        s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+        s.supportVisualLocked=false;
+        s.primaryVisualLocked=false;
+        log("[CHAINSAW-SUPPORT-CAPTURE] LEFT two-hand support position saved "
+            +std::to_string(relativePosition.x)+", "
+            +std::to_string(relativePosition.y)+", "
+            +std::to_string(relativePosition.z));
+        writeTwoHandStatus("CHAINSAW two-hand grip saved. Release/repress left Grip to acquire.");
+    }
     std::ostringstream statusLine;
     statusLine<<"SAVED "<<KharvoxWeaponKindDisplayName(kind)
         <<" | relative m ("<<relativePosition.x<<", "<<relativePosition.y
@@ -2402,7 +2430,8 @@ void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) 
     log("[OFFHAND-CAPTURE] "+statusLine.str());
     std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),
         std::ios::trunc);
-    if(status)status<<(rightHandProbe?"RIGHT-HAND VISUAL SAVED | ":"")
+    if(status)status<<(chainsawSupport?"CHAINSAW TWO-HAND SAVED | ":
+        rightHandProbe?"RIGHT-HAND VISUAL SAVED | ":"")
         <<statusLine.str()<<'\n';
     // Confirmation uses existing left-controller haptic mixer after persistence.
     kharvox::queueControllerZoneCue(s.handZoneCues[0],GetTickCount64(),

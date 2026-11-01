@@ -27,5 +27,23 @@ int main(){
  a=kharvox::readRightHandGripSettings(path);
  assert(std::abs(a.gauss.x+0.03f)<0.0001f);
  std::remove((std::string(path)+".before-capture.bak").c_str());
+ const std::string twoHand=std::string(path)+".twohand";
+ const std::string original="2 shotgun barrel 0 0 -0.25 0.2 1\n"
+  "2 chainsaw side-grip -0.13 0.23 0 0.2 1\n"
+  "2 chaingun side-grip -0.31 0 0 0.2 1\n";
+ {std::ofstream out(twoHand);out<<original;}
+ assert(kharvox::saveChainsawSupportGrip(twoHand,{-0.15f,0.10f,-0.04f},
+    0.2f,1.f,&why));
+ {std::ifstream in(twoHand);
+  std::string text((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+  assert(text.find("2 shotgun barrel 0 0 -0.25 0.2 1")!=std::string::npos);
+  assert(text.find("2 chaingun side-grip -0.31 0 0 0.2 1")!=std::string::npos);
+  assert(text.find("2 chainsaw side-grip -0.1500000 0.1000000 -0.0400000")!=std::string::npos);}
+ {std::ifstream in(twoHand+".before-chainsaw-capture.bak");
+  std::string text((std::istreambuf_iterator<char>(in)),std::istreambuf_iterator<char>());
+  assert(text==original);}
+ assert(!kharvox::saveChainsawSupportGrip(twoHand,{0.95f,0,0},0.2f,1.f,&why));
+ std::remove((twoHand+".before-chainsaw-capture.bak").c_str());
+ std::remove(twoHand.c_str());
  std::remove(path);return 0;
 }

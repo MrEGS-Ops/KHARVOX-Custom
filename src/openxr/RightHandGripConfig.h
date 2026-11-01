@@ -109,4 +109,55 @@ inline bool saveRightHandGripMeasurement(
 #endif
     return true;
 }
+inline bool saveChainsawSupportGrip(const std::string&path,
+    RightHandGripOffset pos,float radius,float weight,std::string*why=nullptr){
+    auto fail=[&](const char*msg){if(why)*why=msg;return false;};
+    if(!std::isfinite(pos.x)||!std::isfinite(pos.y)||!std::isfinite(pos.z)||
+        !std::isfinite(radius)||!std::isfinite(weight)||
+        std::abs(pos.x)>0.75f||std::abs(pos.y)>0.75f||
+        std::abs(pos.z)>0.75f||radius<0.08f||radius>0.40f||
+        weight<0.f||weight>1.f)return fail("invalid chainsaw grip measurement");
+    namespace fs=std::filesystem;
+    std::error_code ec;
+    fs::path dest(path),temp(path+".chainsaw.tmp");
+    if(fs::exists(dest,ec)&&fs::file_size(dest,ec)>65536)
+        return fail("saved profile file too large");
+    std::vector<std::string> original;
+    {std::ifstream in(path);std::string row;
+     while(std::getline(in,row))original.push_back(row);
+     if(in.bad())return fail("unable to read saved profile");}
+    std::ostringstream value;
+    value<<"2 chainsaw side-grip "<<std::fixed<<std::setprecision(7)
+        <<pos.x<<' '<<pos.y<<' '<<pos.z<<' '<<radius<<' '<<weight;
+    std::vector<std::string> outLines;
+    bool wrote=false;
+    for(const auto&row:original){
+        std::istringstream parse(row);std::string version,key;
+        if((parse>>version>>key)&&version=="2"&&key=="chainsaw"){
+            if(!wrote){outLines.push_back(value.str());wrote=true;}
+        }else outLines.push_back(row);
+    }
+    if(!wrote)outLines.push_back(value.str());
+    if(fs::exists(dest,ec)){
+        const fs::path backup(path+".before-chainsaw-capture.bak");
+        if(!fs::exists(backup,ec)){
+            fs::copy_file(dest,backup,fs::copy_options::none,ec);
+            if(ec)return fail("failed to back up original saved profiles");
+        }
+    }
+    {std::ofstream out(temp,std::ios::trunc);
+     if(!out)return fail("unable to create temporary profile");
+     for(const auto&row:outLines)out<<row<<'\n';
+     out.flush();if(!out)return fail("could not save chainsaw support");}
+#ifdef _WIN32
+    if(!MoveFileExW(temp.wstring().c_str(),dest.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(temp,ec);return fail("could not replace saved chainsaw support");}
+#else
+    fs::rename(temp,dest,ec);
+    if(ec){fs::remove(temp);return fail("could not replace saved chainsaw support");}
+#endif
+    return true;
+}
+
 }
