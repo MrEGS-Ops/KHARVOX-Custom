@@ -165,6 +165,7 @@ public sealed partial class MainForm
             Define(customDisableWeaponWheel, "no-weapon-wheel", 3),
             Define(customRevengeDemon, "revenge-demon", 4),
             Define(speedActionLogTest, "chainsaw-animation-investigator", 4),
+            Define(customOffHandGripCapture, "offhand-grip-capture", 4),
             Define(customHapticOverhaul, "haptic-overhaul", 5)
         };
         if (tips.Count != defaults.Length || defaults.Select(row => row.Box).Distinct().Count()

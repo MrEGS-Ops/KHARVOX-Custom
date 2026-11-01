@@ -41,6 +41,7 @@ struct CustomModFlags {
     bool motionChainsawKillSpeed{};
     bool chainsawTriggerThrottle{};
     bool hapticOverhaul{};
+    bool offHandGripCapture{};
 };
 
 inline CustomModFlags loadCustomModFlags() {
@@ -83,6 +84,7 @@ inline CustomModFlags loadCustomModFlags() {
     flags.motionChainsawKillSpeed = customModEnvironmentEnabled("KHARVOX_MOD_MOTION_CHAINSAW_SPEED");
     flags.chainsawTriggerThrottle = customModEnvironmentEnabled("KHARVOX_MOD_CHAINSAW_TRIGGER_THROTTLE");
     flags.hapticOverhaul = customModEnvironmentEnabled("KHARVOX_MOD_HAPTIC_OVERHAUL");
+    flags.offHandGripCapture = customModEnvironmentEnabled("KHARVOX_MOD_OFFHAND_GRIP_CAPTURE");
     return flags;
 }
 

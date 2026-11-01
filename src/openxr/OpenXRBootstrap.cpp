@@ -66,6 +66,7 @@
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
+#include "SupportGripCapturePolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "OpenHandReleasePolicy.h"
@@ -87,6 +88,7 @@
 #include <cctype>
 #include <cmath>
 #include <condition_variable>
+#include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
@@ -402,6 +404,7 @@ struct State {
     KharvoxWeaponKind twoHandCalibrationTarget{KharvoxWeaponKind::Shotgun};
     KharvoxWeaponKind twoHandLatchedWeapon{KharvoxWeaponKind::Unknown};
     TwoHandAimMode twoHandCalibrationAimMode{TwoHandAimMode::Barrel};
+    kharvox::SupportGripCaptureChord offHandCaptureChord{};
     XrVector3f bodyFollowPosition{}; XrVector2f roomscaleStick{};
     std::array<float,3> previousPhysicsOrigin{}; bool previousPhysicsOriginValid{};
     std::array<float,3> previousRoomscaleWorldDirection{}; XrVector3f previousRoomscaleTrackingDirection{};
@@ -2284,6 +2287,78 @@ bool captureTwoHandCalibration(bool triggerDown){
     // Calibration confirmation is deliberately never forwarded to DOOM as a shot.
     return triggerDown;
 }
+// Read-only per-weapon support-grip measurement. It never writes a weapon
+// transform or any of the existing two-hand calibration profiles.
+void captureOffHandGripDiagnostic(bool leftClick,bool rightClick,bool gameplay) {
+    if(!s.customMods.offHandGripCapture){s.offHandCaptureChord={};return;}
+    if(!s.offHandCaptureChord.pressed(leftClick,rightClick))return;
+    auto reject=[&](const char*reason){
+        log(std::string("[OFFHAND-CAPTURE] REJECTED: ")+reason);
+        std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),std::ios::trunc);
+        if(status)status<<"NOT SAVED: "<<reason<<'\n';
+    };
+    if(!gameplay||s.dynamicShoulderHolstered||s.openHandUnequipped
+        ||s.behindHeadWheelActive||s.weaponWheelOpened){
+        reject("not in unobstructed weapon gameplay");return;
+    }
+    if(s.weaponHandLeft){reject("left-primary weapon; right-primary only for this test");return;}
+    const auto kind=KharvoxWeaponCurrentKind();
+    if(kind==KharvoxWeaponKind::Unknown||kind==KharvoxWeaponKind::Fists){
+        reject("native weapon identity unknown or fists equipped");return;
+    }
+    if(!s.headZeroValid||!s.rightController.valid||!s.rightController.positionTracked
+        ||!s.leftGripController.valid||!s.leftGripController.positionTracked){
+        reject("both right aim and left grip tracking required");return;
+    }
+    const auto primary=controllerRelativeToBodyTrackingOrigin(s.rightController);
+    const auto support=controllerRelativeToBodyTrackingOrigin(s.leftGripController);
+    const auto relativePosition=rotateVector(conjugate(primary.orientation),
+        subtractVector(support.position,primary.position));
+    const auto relativeOrientation=normalizeQuaternion(multiply(
+        conjugate(primary.orientation),support.orientation));
+    const auto& raw=s.leftGripController;
+    const auto path=kharvox::logPathA("OFFHAND-GRIP-CAPTURE.csv");
+    std::error_code error;
+    const bool firstRecord=!std::filesystem::exists(path,error)
+        ||std::filesystem::file_size(path,error)==0;
+    std::ofstream out(path,std::ios::app);
+    if(!out){reject("could not open local diagnostic CSV");return;}
+    if(firstRecord)out<<"unix_ms,weapon,primary_hand,support_hand,"
+        "relative_x_m,relative_y_m,relative_z_m,relative_qx,relative_qy,relative_qz,relative_qw,"
+        "left_grip_world_x,left_grip_world_y,left_grip_world_z,"
+        "left_grip_world_qx,left_grip_world_qy,left_grip_world_qz,left_grip_world_qw,"
+        "right_aim_world_x,right_aim_world_y,right_aim_world_z,"
+        "right_aim_world_qx,right_aim_world_qy,right_aim_world_qz,right_aim_world_qw\n";
+    const auto wallTime=std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    out<<std::fixed<<std::setprecision(8)
+        <<wallTime<<','<<KharvoxWeaponKindKey(kind)<<",right,left,"
+        <<relativePosition.x<<','<<relativePosition.y<<','<<relativePosition.z<<','
+        <<relativeOrientation.x<<','<<relativeOrientation.y<<','
+        <<relativeOrientation.z<<','<<relativeOrientation.w<<','
+        <<raw.position.x<<','<<raw.position.y<<','<<raw.position.z<<','
+        <<raw.orientation.x<<','<<raw.orientation.y<<','
+        <<raw.orientation.z<<','<<raw.orientation.w<<','
+        <<s.rightController.position.x<<','<<s.rightController.position.y<<','
+        <<s.rightController.position.z<<','
+        <<s.rightController.orientation.x<<','<<s.rightController.orientation.y<<','
+        <<s.rightController.orientation.z<<','<<s.rightController.orientation.w<<'\n';
+    out.flush();
+    if(!out){reject("local diagnostic CSV write failed");return;}
+    std::ostringstream statusLine;
+    statusLine<<"SAVED "<<KharvoxWeaponKindDisplayName(kind)
+        <<" | relative m ("<<relativePosition.x<<", "<<relativePosition.y
+        <<", "<<relativePosition.z<<") | relative quat ("
+        <<relativeOrientation.x<<", "<<relativeOrientation.y<<", "
+        <<relativeOrientation.z<<", "<<relativeOrientation.w<<")";
+    log("[OFFHAND-CAPTURE] "+statusLine.str());
+    std::ofstream status(kharvox::runtimePathA("offhand_grip_capture_status.txt"),
+        std::ios::trunc);
+    if(status)status<<statusLine.str()<<'\n';
+    // Confirmation uses existing left-controller haptic mixer after persistence.
+    kharvox::queueControllerZoneCue(s.handZoneCues[0],GetTickCount64(),
+        220,.92f,190.f);
+}
 void locateGameplayControllerPoses(XrTime displayTime){
     auto locateController=[&](XrAction action,XrSpace space,ControllerPose& controller){
         XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;
@@ -2583,6 +2658,9 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
+    if(s.customMods.offHandGripCapture)
+        captureOffHandGripDiagnostic(readBooleanAction(s.doomPause),
+            readBooleanAction(s.doomMelee),gameplay);
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -3250,7 +3328,9 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    const bool meleeDown=readBooleanAction(s.doomMelee);
+    // Capture mode owns both thumbstick clicks; avoid accidental Melee/Use.
+    const bool meleeDown=!s.customMods.offHandGripCapture
+        &&readBooleanAction(s.doomMelee);
     const bool meleeUseDown=gameplay&&meleeDown;
     if(meleeUseDown!=s.meleePressed){
         if(meleeUseDown){
@@ -3821,7 +3901,8 @@ void updateGameplayActions(XrTime displayTime){
             +(missionInfoDown?"pressed":"released"));
     s.missionInfoPressed=missionInfoDown;
     const bool switchWeaponModDown=readBooleanAction(s.doomSwitchWeaponMod);
-    const bool pauseDown=readBooleanAction(s.doomPause);
+    const bool pauseDown=!s.customMods.offHandGripCapture
+        &&readBooleanAction(s.doomPause);
     const bool restrictedLeftHandSwap=s.leftHanded&&!s.leftHandSwapSticks;
     if(pauseDown&&!s.pausePressed)log(std::string("[INPUT] ")+pauseHandName()+" thumbstick click -> native JOY9/start pause");
     s.pausePressed=pauseDown;
@@ -3990,7 +4071,8 @@ bool createGameplayActions(){
         +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" chainsawMotionHz="+(s.customMods.motionChainsawKillSpeed?"on (200..30Hz dynamic)":"off")
         +" chainsawTriggerThrottle="+(s.customMods.chainsawTriggerThrottle?"ON (240..30Hz trigger + hand motion)":"off")
-        +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off"));
+        +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off")
+        +" offHandGripCapture="+(s.customMods.offHandGripCapture?"on":"off"));
     char leftHandSwap[32]{};
     GetEnvironmentVariableA("KHARVOX_LEFT_HAND_SWAP",leftHandSwap,sizeof(leftHandSwap));
     s.leftHandSwapSticks=s.leftHanded&&!_stricmp(leftHandSwap,"buttons-and-sticks");

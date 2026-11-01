@@ -45,15 +45,12 @@ inline HandVisibilityOutput selectHandVisibility(
     }
 
     const bool leftIsWeaponHand = input.leftHanded;
-    // Once the support grip is latched, DOOM's weapon already supplies the
-    // visual two-hand contact. Keep only KHARVOX's weapon-hand pose so the
-    // free/off-hand model cannot overlap the grabbed weapon.
+    // Do not hide the tracked off-hand during a two-hand grip. Its fist
+    // remains visible until we implement model-accurate grabbing/posing.
     const auto desiredLeft = leftIsWeaponHand
-        ? HandModelKind::GunHolding
-        : (input.twoHandGrab ? HandModelKind::None : HandModelKind::Fist);
+        ? HandModelKind::GunHolding : HandModelKind::Fist;
     const auto desiredRight = !leftIsWeaponHand
-        ? HandModelKind::GunHolding
-        : (input.twoHandGrab ? HandModelKind::None : HandModelKind::Fist);
+        ? HandModelKind::GunHolding : HandModelKind::Fist;
     const auto available = [&](bool left, HandModelKind kind) {
         if (kind == HandModelKind::Fist)
             return left ? input.assets.leftFist : input.assets.rightFist;
@@ -66,7 +63,7 @@ inline HandVisibilityOutput selectHandVisibility(
 
     const bool offHandIsRight = input.leftHanded;
     const auto offHandKind = offHandIsRight ? desiredRight : desiredLeft;
-    if (!input.twoHandGrab && !available(!offHandIsRight, offHandKind))
+    if (!available(!offHandIsRight, offHandKind))
         output.preserveNativeOffHand = true;
     return output;
 }
