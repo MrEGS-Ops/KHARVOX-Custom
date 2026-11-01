@@ -188,6 +188,35 @@ internal static class NativeBridgeInstaller
         }
     }
 
+    // The bridge refresh MUST preserve user calibration and measurements.
+    // The previous complete bridge is also retained under Backups/NativeBridge.
+    private static void PreserveLocalGripData(string extracted)
+    {
+        foreach (var name in new[]
+        {
+            "two_hand_weapon_profiles_saved.cfg", "two_hand_shotgun_saved.cfg",
+            "two_hand_alignment.cfg", "two_hand_calibration_target.cfg",
+            "offhand_grip_capture_status.txt"
+        })
+        {
+            var from = Path.Combine(TargetDirectory, name);
+            if (!File.Exists(from)) continue;
+            if (new FileInfo(from).Length > 1024 * 1024)
+                throw new InvalidDataException("Existing user calibration exceeds safe size: " + name);
+            File.Copy(from, Path.Combine(extracted, name), true);
+        }
+        var relative = Path.Combine("logs", "diagnostics", "OFFHAND-GRIP-CAPTURE.csv");
+        var csv = Path.Combine(TargetDirectory, relative);
+        if (File.Exists(csv))
+        {
+            if (new FileInfo(csv).Length > 8L * 1024 * 1024)
+                throw new InvalidDataException("Owner grip capture CSV exceeds safe size.");
+            var target = Path.Combine(extracted, relative);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(csv, target, true);
+        }
+    }
+
     private static bool BridgeLauncherRunning()
     {
         foreach (var p in Process.GetProcessesByName("KharvoxLauncher"))
@@ -266,6 +295,7 @@ internal static class NativeBridgeInstaller
                 // Do this BEFORE moving the previous bridge to backups.
                 // On a copy error, the old runtime and user audio stay intact.
                 PreserveLocalPainsawAudio(extracted);
+                PreserveLocalGripData(extracted);
 
                 var backup = "";
                 if (Directory.Exists(TargetDirectory))

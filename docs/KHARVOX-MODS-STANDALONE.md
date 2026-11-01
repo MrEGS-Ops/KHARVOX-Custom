@@ -39,6 +39,25 @@ Close the manager, then run **KharvoxVRModManagerUpdater.exe**. It checks the of
 
 This is a clean rename of the actual executables. Old `KharvoxMods.exe` and `KharvoxModsUpdater.exe` are not included. For an existing installation, extract into a new folder; optionally copy your existing settings and Mods folder yourself, rather than overwriting the old installation.
 
+## Owner-recorded off-hand grip positions
+
+After updating and launching the manager, it automatically imports the eight recorded
+weapon support positions **once** from the bundled
+`NativeBridge/two_hand_weapon_profiles_captured.cfg` into
+`NativeBridge/two_hand_weapon_profiles_saved.cfg`. All existing saved
+non-captured weapons (including BFG and Chainsaw) are preserved. Any existing
+saved file is backed up under `Backups/GripProfiles/`. Once the import runs,
+the manager turns OFF `Off-Hand Grip Capture (Test)` and returns to normal
+two-hand aiming on the next DOOM launch. To revert, close DOOM and restore the
+saved profile from `Backups/GripProfiles/`; keep the applied marker so later
+updates will not reimport the experimental positions. Capture orientations
+are not yet used by the two-hand aiming solver. All eight need headset testing.
+
+The standard manager updater retains existing user preferences and NativeBridge
+files. When NativeBridge is refreshed, local PAINSAW audio, saved grip profiles,
+calibration settings, and the off-hand capture CSV are carried over, while the
+entire previous bridge is backed up under `Backups/NativeBridge/`.
+
 ## Testing / runtime
 
 The native gameplay runtime remains pinned to a separately verified KHARVOX build. Cactus's original launcher UI is checked against its known source hash by the Windows build workflow. Real headset interaction and resizing at different DPI configurations still require testing on Windows.

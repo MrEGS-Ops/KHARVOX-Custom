@@ -327,6 +327,17 @@ internal sealed partial class ModsForm : Form
             if (!NativeBridgeInstaller.IsReady())
                 throw new InvalidDataException("Custom KHARVOX runtime did not pass verification.");
 
+            // Install the eight owner-measured supports ONCE, backing up any
+            // previous saved profile. Disable the diagnostic after import so
+            // ordinary two-hand aiming is restored. All other mods unchanged.
+            if (CapturedGripProfiles.ApplyOnce(NativeBridgeInstaller.TargetDirectory,
+                Path.Combine(AppContext.BaseDirectory, "Backups")) &&
+                _modPrefs.OffHandGripCapture)
+            {
+                _modPrefs.OffHandGripCapture = false;
+                OnVrSelectionChanged("Off-Hand Grip Capture (Test)", false);
+            }
+
             if (_launcher != null && !_launcher.HasExited)
             {
                 SetStatus("Custom KHARVOX already running.");

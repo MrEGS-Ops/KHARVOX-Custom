@@ -123,6 +123,12 @@ jobs:
           if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
             throw "Verified native layer missing"
           }
+          # Eight owner-recorded, gameplay-only coordinates; NOT retail DOOM audio.
+          $grips = "config/two_hand_weapon_profiles_captured.cfg"
+          if (@(Get-Content -LiteralPath $grips).Count -ne 8) {
+            throw "Owner-recorded two-hand profiles must contain exactly eight lines."
+          }
+          Copy-Item -LiteralPath $grips -Destination (Join-Path $base "two_hand_weapon_profiles_captured.cfg") -Force
           Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe" -Destination $base -Force
           if (Test-Path "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config") {
             Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config" -Destination $base -Force
