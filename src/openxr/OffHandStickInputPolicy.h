@@ -2,23 +2,30 @@
 #include <cstdint>
 
 namespace kharvox {
-// Both physical thumbstick clicks are reserved for capture only when
-// pressed together. Single right-click melees, single left-click pauses.
-// Allow a brief simultaneous-click window so capturing cannot pause the game.
+// Both thumbstick clicks are a dedicated calibration chord. Never emit
+// regular right-stick melee or left-stick pause while EITHER stick is held:
+// an arbitrary interval can elapse before the second click arrives.
+// Solo actions are emitted once, ON RELEASE, only if the other stick was
+// never down at any time during that hold. This is necessary to guarantee
+// calibration cannot trigger a normal melee animation or a pause.
+// With Off-Hand Grip Capture disabled, the normal DOOM controls are used
+// instead of this policy, and remain unchanged.
 struct OffHandDelayedClick {
-    bool held{}, blocked{}, emitted{};
-    std::uint64_t startedAt{};
+    bool held{},blocked{};
     bool update(bool down,bool other,std::uint64_t ms) noexcept {
-        if(!down) {
-            const bool pulse=held&&!blocked&&!emitted;
-            held=blocked=emitted=false;
-            return pulse;
+        (void)ms;
+        if(!down){
+            const bool singleClick=held&&!blocked;
+            held=false;
+            blocked=false;
+            return singleClick;
         }
-        if(!held) {held=true;startedAt=ms;blocked=other;emitted=false;}
-        if(other) blocked=true;
-        if(blocked)return false;
-        if(!emitted&&ms-startedAt>=100)emitted=true;
-        return emitted;
+        if(!held){
+            held=true;
+            blocked=other;
+        }
+        if(other)blocked=true;
+        return false;
     }
 };
 struct OffHandStickOutput {bool rightMelee{},leftPause{};};
@@ -26,7 +33,7 @@ struct OffHandStickInput {
     OffHandDelayedClick right{},left{};
     OffHandStickOutput update(bool rightPressed,bool leftPressed,
                               bool enabled,std::uint64_t ms) noexcept {
-        if(!enabled) {right={};left={};return {};}
+        if(!enabled){right={};left={};return {};}
         return {right.update(rightPressed,leftPressed,ms),
                 left.update(leftPressed,rightPressed,ms)};
     }

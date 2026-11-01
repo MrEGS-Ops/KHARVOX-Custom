@@ -7,6 +7,7 @@ With **Off-Hand Grip Capture** enabled and either Gauss Cannon or Chaingun equip
 - **Hold RIGHT Grip + both joystick clicks**: rotate LEFT controller to the desired RIGHT-glove orientation; save **RIGHT-hand ROTATION** in the gun's local frame. No position changes.
 - **Hold LEFT Grip + both joystick clicks**: place LEFT hand on the new support point on the heavy gun; save the **LEFT two-hand support calibration** relative to the adjusted weapon anchor. Release and re-grip the LEFT controller after the cue.
 - **Do not hold both Grips** when clicking both sticks: ambiguous chords are rejected. No other weapon position/rotation changes from these heavy-weapon modes.
+- **Calibration click safety:** the joystick capture chord consumes both stick clicks even if you press them at different moments while both are eventually held together. Single-click melee (right) and pause (left) trigger **on release** when Off-Hand Grip Capture is enabled, never on press, so they cannot fire a normal melee animation/pause halfway through calibration. With Off-Hand Grip Capture disabled, ordinary joystick click timing is unchanged.
 
 Each successful capture is recorded in `logs/diagnostics/OFFHAND-GRIP-CAPTURE.csv`, with outcome details in `offhand_grip_capture_status.txt`. Rejected captures emit a short light haptic; successful captures emit the existing longer confirmation pulse.
 
