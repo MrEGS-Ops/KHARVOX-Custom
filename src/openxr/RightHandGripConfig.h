@@ -7,6 +7,7 @@
 #include <utility>
 #include <iomanip>
 #include <limits>
+#include <map>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -50,6 +51,16 @@ inline RightHandGripOffset liveHeavyGripProbePoint(
     };
 }
 
+inline bool validVrCalibrationWeapon(const std::string& key) noexcept {
+    return key=="pistol"||key=="shotgun"||key=="heavy_assault_rifle"||
+        key=="plasma_rifle"||key=="rocket_launcher"||key=="super_shotgun"||
+        key=="gauss_cannon"||key=="chaingun"||key=="bfg"||key=="chainsaw";
+}
+inline bool gripKeySuffix(const std::string& key,const std::string& suffix) noexcept {
+    return key.size()>=suffix.size()
+        &&key.compare(key.size()-suffix.size(),suffix.size(),suffix)==0;
+}
+
 // Gauss / Chaingun are physically large. 30 cm per-axis rejected verified
 // ~55 cm and ~74 cm owner captures despite valid tracking. Limit the full
 // Euclidean distance to 85 cm, including on reload.
@@ -87,6 +98,8 @@ struct RightHandGripSettings {
     // the controller-origin anchor used by the earlier implementation.
     // Missing property in an existing local config has the same default.
     float rightHandDropMeters{0.08f};
+    std::map<std::string,RightHandGripOffset> visualPositions;
+    std::map<std::string,RightHandGripRotation> visualRotations;
     int accepted{},rejected{};
 };
 inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
@@ -102,8 +115,9 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
-        if(key=="gauss_cannon_rotation"||key=="chaingun_rotation"||
-            key=="gauss_cannon_siege_rotation"||
+        const bool genericRotation=gripKeySuffix(key,"_rotation")
+            &&validVrCalibrationWeapon(key.substr(0,key.size()-9));
+        if(genericRotation||key=="gauss_cannon_siege_rotation"||
             key=="chaingun_turret_rotation"){
             RightHandGripRotation q{};
             if(!(v>>q.x>>q.y>>q.z>>q.w)||(v>>extra)
@@ -113,7 +127,8 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             if(key=="gauss_cannon_rotation")out.gaussRotation=q;
             else if(key=="chaingun_rotation")out.chaingunRotation=q;
             else if(key=="gauss_cannon_siege_rotation")out.gaussSiegeRotation=q;
-            else out.chaingunTurretRotation=q;
+            else if(key=="chaingun_turret_rotation")out.chaingunTurretRotation=q;
+            if(genericRotation)out.visualRotations[key.substr(0,key.size()-9)]=q;
             ++out.accepted;
             continue;
         }
@@ -128,7 +143,9 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             ++out.accepted;
             continue;
         }
-        const bool extendedGrip=
+        const bool genericHandPosition=gripKeySuffix(key,"_hand_position")
+            &&validVrCalibrationWeapon(key.substr(0,key.size()-14));
+        const bool extendedGrip=genericHandPosition||
             key=="gauss_cannon_hand_position"
             ||key=="chaingun_hand_position"
             ||key=="gauss_cannon_siege_hand_position"
@@ -143,9 +160,11 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
         else if(key=="chaingun"){out.chaingun=p;++out.accepted;}
         else if(key=="gauss_cannon_hand_position"){
-            out.gaussHand=p;out.gaussHandValid=true;++out.accepted;
+            out.gaussHand=p;out.gaussHandValid=true;
+            out.visualPositions["gauss_cannon"]=p;++out.accepted;
         }else if(key=="chaingun_hand_position"){
-            out.chaingunHand=p;out.chaingunHandValid=true;++out.accepted;
+            out.chaingunHand=p;out.chaingunHandValid=true;
+            out.visualPositions["chaingun"]=p;++out.accepted;
         }else if(key=="gauss_cannon_siege_hand_position"){
             out.gaussSiegeHand=p;out.gaussSiegeHandValid=true;++out.accepted;
         }else if(key=="chaingun_turret_hand_position"){
@@ -154,6 +173,8 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             out.gaussSiegeSupport=p;out.gaussSiegeSupportValid=true;++out.accepted;
         }else if(key=="chaingun_turret_support_position"){
             out.chaingunTurretSupport=p;out.chaingunTurretSupportValid=true;++out.accepted;
+        }else if(genericHandPosition){
+            out.visualPositions[key.substr(0,key.size()-14)]=p;++out.accepted;
         }else ++out.rejected;
     }
     return out;
@@ -281,7 +302,8 @@ inline bool saveRightHandVisualPose(const std::string&path,
     const std::string&weapon,bool alternate,
     RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
-    if((weapon!="gauss_cannon"&&weapon!="chaingun")||
+    if(!validVrCalibrationWeapon(weapon)||
+       (alternate&&weapon!="gauss_cannon"&&weapon!="chaingun")||
        !validRightHandVisualPlacement(pos)||!validRightHandRotation(q))
         return fail("invalid measured position or orientation");
     const std::string prefix=weapon+
@@ -404,7 +426,7 @@ inline bool saveHeavySupportGrip(const std::string&path,
     const std::string&weapon,RightHandGripOffset pos,
     bool sideGrip,float radius,float weight,std::string*why=nullptr){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
-    if((weapon!="gauss_cannon"&&weapon!="chaingun")
+    if(!validVrCalibrationWeapon(weapon)
         ||!validRightHandPlacement(pos)||!std::isfinite(radius)
         ||!std::isfinite(weight)||radius<.08f||radius>.40f
         ||weight<0.f||weight>1.f)
