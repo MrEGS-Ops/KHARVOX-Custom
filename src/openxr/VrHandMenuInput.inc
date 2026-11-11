@@ -155,7 +155,7 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
         if(m.mode==kharvox::VrHandMenuMode::Closed){
             if(!vrHandMenuSurface.ready){
                 log("[VR-HAND-MENU] cannot open: XR overlay texture unavailable");
-                return false;
+                return true;
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
             const auto equipped=KharvoxWeaponCurrentKind();
