@@ -1,7 +1,6 @@
 // VR weapon-hand settings panel. Its own OpenXR quad never modifies DOOM HUD
 // surfaces, and the Vulkan staging buffer is used only while frame submission
 // waits for GPU completion. No external assets or ImGui dependency.
-constexpr UINT vrMenuW=960,vrMenuH=720;
 bool initializeVrHandMenuSurface(const std::vector<int64_t>& formats) {
     auto& menu=vrHandMenuSurface;
     if(menu.ready)return true;
