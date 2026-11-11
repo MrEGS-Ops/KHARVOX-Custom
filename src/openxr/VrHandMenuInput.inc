@@ -175,10 +175,12 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
         }
         s.offHandCaptureChord={};
         s.offHandStickInput={};
+        m.rightTriggerPreviously=rightTrigger;
+        m.leftTriggerPreviously=leftTrigger;
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
-        return chord; // swallow the opening/closing chord frame
+        return chord||(leftClick&&rightClick); // never leak the held chord
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;
