@@ -3225,7 +3225,12 @@ void updateGameplayActions(XrTime displayTime){
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
     if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
-         readFloatAction(s.leftWeaponTrigger)>.55f))return;
+         readFloatAction(s.leftWeaponTrigger)>.55f)){
+        // Input is muted, but the gun/hand transforms must still refresh so
+        // live preview never freezes with the menu closed.
+        updateWeapon6Dof();
+        return;
+    }
     if(s.customMods.offHandGripCapture){
         const bool physicalRightClick=readBooleanAction(
             s.leftHanded?s.doomPause:s.doomMelee);
