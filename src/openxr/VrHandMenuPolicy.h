@@ -20,7 +20,7 @@ struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     int selectedWeapon{1};
     bool rightHand{true};
-    bool bothClickedPreviously{},rightTriggerPreviously{},leftStickCentered{true};
+    bool bothClickedPreviously{},rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
