@@ -1,5 +1,6 @@
 #pragma once
 #include "RightHandGripConfig.h"
+#include "VrLiveModsConfig.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -53,8 +54,15 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
+enum class VrMenuPage {Mods,WeaponGrip};
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
+    VrMenuPage page{VrMenuPage::Mods};
+    VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
+    int modScroll{};
+    VrLiveCapture liveCapture{VrLiveCapture::None};
+    bool autoSelectingWeapon{};
+    unsigned long long autoSelectionDeadlineMs{};
     int selectedWeapon{1};
     bool rightHand{true};
     // Gauss Siege and Chaingun Turret have separate visual hand profiles.
