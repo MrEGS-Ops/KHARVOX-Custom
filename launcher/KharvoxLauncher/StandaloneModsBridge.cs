@@ -66,8 +66,8 @@ internal sealed class StandaloneModsBridge
     {
         mods.HandFocusedRs = HandFocus;
         // Reuse the exact verified native wheel and hip implementations.
-        // The remap checkbox is independent in the UI, but its compatible
-        // button routing remains active under Gunslinger.
+        // Gunslinger exclusively owns the compatible merged button routing;
+        // old saved wheel-remap checkboxes are ignored.
         mods.BehindHeadWeaponWheel = EffectiveGunslinger;
         mods.LeftWristWeaponWheel = EffectiveGunslinger; // existing alias
         mods.BehindHeadWheelHandSelection = EffectiveGunslinger;
