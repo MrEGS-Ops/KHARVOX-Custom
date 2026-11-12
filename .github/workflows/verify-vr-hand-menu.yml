@@ -9,6 +9,7 @@ on:
       - fix/rs-hand-focus-use-interactions
       - fix/calibration-live-secondary-fire
       - fix/gunslinger-weapon-hand-only-hip-assign
+      - fix/rs-native-interaction-and-held-altfire
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'

@@ -78,7 +78,7 @@ int main(){
  assert(!quickHipMayAssign(2,true));
  assert(updateQuickHip(offhand,0,true,true,BackWeaponKind::CombatShotgun,false)
         ==QuickHipAction::Enter);
- assert(!quickHipConsumesGrip(false,true,true,QuickHipAction::Enter));
+ assert(!quickHipConsumesGrip(QuickHipAction::Enter));
  assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::CombatShotgun,false)
         ==QuickHipAction::None);
  assert(offhand.slots[0]==BackWeaponKind::Unknown);
@@ -100,7 +100,7 @@ int main(){
  const auto offhandDraw=updateQuickHip(offhand,0,true,true,
                                       BackWeaponKind::CombatShotgun,false);
  assert(offhandDraw==QuickHipAction::Draw);
- assert(quickHipConsumesGrip(false,true,true,offhandDraw));
+ assert(quickHipConsumesGrip(offhandDraw));
  assert(offhand.slots[0]==BackWeaponKind::Pistol);
  assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::Pistol,true)
         ==QuickHipAction::None); // draw cannot become a STORE on release
@@ -118,8 +118,13 @@ int main(){
  assert(updateQuickHip(ownershipSwap,0,true,false,BackWeaponKind::GaussCannon,false)
         ==QuickHipAction::None);
  assert(ownershipSwap.slots[0]==BackWeaponKind::Unknown);
- assert(!quickHipConsumesGrip(false,true,true,QuickHipAction::None));
- assert(quickHipConsumesGrip(true,true,true,QuickHipAction::None));
+ assert(!quickHipConsumesGrip(QuickHipAction::None));
+ assert(!quickHipConsumesGrip(QuickHipAction::None));
+ // Holding Gauss Siege / Minigun Turret primary Grip through the hip
+ // remains native ALT FIRE. Enter and assignment never consume Grip.
+ assert(!quickHipConsumesGrip(QuickHipAction::Enter));
+ assert(!quickHipConsumesGrip(QuickHipAction::Assign));
+ assert(quickHipConsumesGrip(QuickHipAction::Draw));
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
  // Full two-hand latch: hip zones are disabled for ALL weapons.

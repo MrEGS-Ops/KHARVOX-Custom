@@ -6,11 +6,16 @@ namespace kharvox::physicalgk {
 inline constexpr bool routeStickMelee(bool physicalGK,bool gameplay,bool pressed) noexcept {
     return pressed && !(physicalGK && gameplay);
 }
-// Hand Focus' native world interaction is independent of RS-driven melee.
-// A direct USE-only press must remain available even with Physical GK on.
+// DOOM 2016 maps controller RS (JOY8) to Use/Melee/Glory Kill.
+// D-pad Right cycles equipment; it is NOT USE. When RS melee is disabled,
+// inject the game's separate keyboard Use binding (default E) instead.
+inline constexpr bool routeKeyboardWorldUse(bool gameplay,bool handFocusEnabled,
+    bool physicalGK,bool isolatedRightClick) noexcept {
+    return gameplay && isolatedRightClick && (handFocusEnabled||physicalGK);
+}
 inline constexpr bool routeNativeUse(bool physicalGK,bool gameplay,
-    bool stickUsePulse,bool handFocusUsePulse=false) noexcept {
-    return gameplay && (handFocusUsePulse || (!physicalGK && stickUsePulse));
+    bool legacyStickUsePulse) noexcept {
+    return gameplay && !physicalGK && legacyStickUsePulse;
 }
 inline constexpr bool routeNativeMelee(bool physicalGK,bool gameplay,
     bool stickDown,bool legacyMeleePulse,bool physicalPunchPulse,

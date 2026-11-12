@@ -37,12 +37,11 @@ inline QuickHipDrawPlan quickHipPlanDraw(int side,BackWeaponKind stored,
 inline bool quickHipMayAssign(int side,bool weaponHandLeft) noexcept {
     return (side==0&&!weaponHandLeft)||(side==1&&weaponHandLeft);
 }
-// An empty off-hand held inside its hip is not automatically a holster
-// gesture. Only a real DRAW edge should consume that Grip; this preserves
-// normal two-hand aiming and any other off-hand use of the Grip.
-inline bool quickHipConsumesGrip(bool weaponHand,bool inside,bool gripDown,
-                                 QuickHipAction action) noexcept {
-    return action==QuickHipAction::Draw||(weaponHand&&inside&&gripDown);
+// Holster assignments occur on Grip RELEASE: holding ALT FIRE must remain
+// forwarded to DOOM when the gun is lowered into its own hip. Only an actual
+// quick-holster DRAW press may consume that Grip and suppress native alt fire.
+inline bool quickHipConsumesGrip(QuickHipAction action) noexcept {
+    return action==QuickHipAction::Draw;
 }
 // Disable hip-hotkey recognition while two-handed aiming is latched.
 // For Gauss/Chaingun, both held Grips also protect alt-fire before latch.

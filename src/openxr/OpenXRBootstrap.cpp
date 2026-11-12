@@ -322,6 +322,10 @@ struct State {
     // Hand Focus is activated by an isolated PHYSICAL right-stick click.
     // The VR-menu two-stick chord must never activate it.
     bool handFocusActivated{};
+    // SendInput's default keyboard Use key is independent of the native
+    // RS/JOY8 melee action and must be released on XR focus loss/menu entry.
+    bool handFocusUseKeyboardKeyDown{};
+    XrTime handFocusUseKeyboardReleaseTime{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
     bool heavyAlternateInputForwarded{}; // native secondary-fire Grip, not upgrade installed
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
@@ -383,7 +387,7 @@ struct State {
     XrTime lastChainsawAttackAt{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
-    XrTime usePulseUntil{},handFocusUsePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
+    XrTime usePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
     bool immersiveCinematics{immersiveCinematicsRequested()};
     bool immersiveCinematicFreelook{immersiveCinematicFreelookRequested()};
     bool otherCinematicsInQuad{otherCinematicsInQuadRequested()};
@@ -1827,6 +1831,32 @@ void serviceBackWeaponKeyboardPulse(XrTime displayTime,bool contextActive){
         &&(!contextActive||displayTime>=s.backWeaponKeyboardReleaseTime))
         releaseBackWeaponKeyboardPulse();
 }
+// DOOM uses keyboard E for independent Use/Interact. Its native controller
+// RS is a combined Use+Melee+Glory button, while D-pad Right is equipment.
+// Use a separate key hold so Physical GK can disable RS melee WITHOUT
+// taking away doors, health stations, or the Hand Focus control.
+constexpr WORD kWorldUseDefaultVirtualKey=static_cast<WORD>('E');
+void releaseHandFocusUseKeyboardPulse(){
+    if(s.handFocusUseKeyboardKeyDown
+        &&!sendBackWeaponKeyboardKey(kWorldUseDefaultVirtualKey,false))
+        log("[USE] keyboard E KEYUP failed");
+    s.handFocusUseKeyboardKeyDown=false;
+    s.handFocusUseKeyboardReleaseTime=0;
+}
+bool startHandFocusUseKeyboardPulse(XrTime displayTime){
+    releaseHandFocusUseKeyboardPulse();
+    focusDoomWindow();
+    if(!sendBackWeaponKeyboardKey(kWorldUseDefaultVirtualKey,true))
+        return false;
+    s.handFocusUseKeyboardKeyDown=true;
+    s.handFocusUseKeyboardReleaseTime=displayTime+150000000;
+    return true;
+}
+void serviceHandFocusUseKeyboardPulse(XrTime displayTime,bool contextActive){
+    if(s.handFocusUseKeyboardKeyDown
+        &&(!contextActive||displayTime>=s.handFocusUseKeyboardReleaseTime))
+        releaseHandFocusUseKeyboardPulse();
+}
 float environmentFloat(const char* name,float fallback,float minimum,float maximum){char text[64]{};if(!GetEnvironmentVariableA(name,text,sizeof(text)))return fallback;char*end{};const float value=std::strtof(text,&end);return end!=text?std::clamp(value,minimum,maximum):fallback;}
 bool environmentEnabled(const char* name){char text[16]{};if(!GetEnvironmentVariableA(name,text,sizeof(text)))return false;return !_stricmp(text,"1")||!_stricmp(text,"true")||!_stricmp(text,"yes")||!_stricmp(text,"on");}
 float configuredWorldScale(){std::ifstream config(kharvox::runtimePathA("world_scale.cfg"));float value{};if(config>>value)return std::clamp(value,10.f,200.f);return environmentFloat("KHARVOX_WORLD_SCALE",39.3701f,10.f,200.f);}
@@ -2862,6 +2892,7 @@ void updateWeapon6Dof(){
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        releaseHandFocusUseKeyboardPulse();
         s.heavyAlternateInputForwarded=false;
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
@@ -2881,13 +2912,14 @@ void updateGameplayActions(XrTime displayTime){
     XrActiveActionSet active{s.gameplayActionSet,XR_NULL_PATH}; XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets=1; sync.activeActionSets=&active;
     if(XR_FAILED(s.syncActionsFn(s.session,&sync))
         ||s.sessionState!=XR_SESSION_STATE_FOCUSED){
+        releaseHandFocusUseKeyboardPulse();
         s.motionWheelState={};
         s.wheelStickHaptics={};
         s.equipmentGrip.cancel();
         clearCapturedXInputRumble();
         releaseMovement();
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
-        s.meleePressed=false;s.usePulseUntil=0;s.handFocusUsePulseUntil=0;s.meleePulseUntil=0;
+        s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
         s.physicalPunchPulseUntil=0;
         s.storySkip={};
         s.storyFreeWalk={};
@@ -2968,12 +3000,14 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
+    serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
     if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
+        releaseHandFocusUseKeyboardPulse();
         // Menu inputs are muted except the primary weapon Grip's ALT FIRE
         // during LIVE capture. Keep refreshing transforms for visual preview.
         updateWeapon6Dof();
@@ -2982,28 +3016,26 @@ void updateGameplayActions(XrTime displayTime){
     // Short solo RS click retains Hand Focus. Only the hold-then-click
     // sequence is swallowed by the in-headset calibration menu.
     const bool guardedStickClicks=s.customMods.offHandGripCapture
-        ||s.customMods.handFocusedRs;
+        ||s.customMods.handFocusedRs||s.physicalGlorykillEnabled;
     s.offHandStickOutput=s.offHandStickInput.update(
         vrRightClick,vrLeftClick,guardedStickClicks,GetTickCount64());
-    if(gameplay&&s.customMods.handFocusedRs
-        &&s.offHandStickOutput.rightMelee){
-        s.handFocusActivated=!s.handFocusActivated;
-        // Hand Focus must NEVER swallow DOOM's native USE action. The
-        // single, release-confirmed RS tap sends the existing USE channel,
-        // but intentionally does NOT synthesize JOY8/melee. Physical GK can
-        // block stick melee without disabling doors/health stations.
-        s.handFocusUsePulseUntil=displayTime+150000000;
-        log(std::string("[FOCUS] isolated physical RIGHT thumbstick -> ")
-            +(s.handFocusActivated?"HAND":"HEAD")
-            +" focus; native USE D-pad Right pulse=150ms (no melee)");
-        kharvox::queueControllerZoneCue(
-            s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
-            GetTickCount64(),70,.6f,150.f);
+    if(kharvox::physicalgk::routeKeyboardWorldUse(
+        gameplay,s.customMods.handFocusedRs,s.physicalGlorykillEnabled,
+        s.offHandStickOutput.rightMelee)){
+        if(s.customMods.handFocusedRs){
+            s.handFocusActivated=!s.handFocusActivated;
+            log(std::string("[FOCUS] isolated physical RIGHT thumbstick -> ")
+                +(s.handFocusActivated?"HAND":"HEAD")+" focus");
+            kharvox::queueControllerZoneCue(
+                s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
+                GetTickCount64(),70,.6f,150.f);
+        }
+        const bool sent=startHandFocusUseKeyboardPulse(displayTime);
+        log(std::string("[USE] isolated RS -> native keyboard E ")
+            +(sent?"KEYDOWN (150ms; no JOY8 melee)":"FAILED to inject")
+            +(s.physicalGlorykillEnabled?" PhysicalGK=on":" PhysicalGK=off"));
     }
-    if(!s.customMods.handFocusedRs){
-        s.handFocusActivated=false;
-        s.handFocusUsePulseUntil=0;
-    }
+    if(!s.customMods.handFocusedRs)s.handFocusActivated=false;
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -3409,8 +3441,10 @@ void updateGameplayActions(XrTime displayTime){
                 s.quickHolsters,side,inside,held,activeBackWeapon,
                 weaponHandAtThisHip);
             s.hipZoneEntered[side]=inside;
-            if(kharvox::quickHipConsumesGrip(
-                weaponHandAtThisHip,inside,held,action)){
+            // Only an ACTUAL hip draw may consume Grip. Merely bringing a
+            // Gauss/Chaingun into the zone with ALT FIRE held must not
+            // drop native weapon-mod input or latch suppression until release.
+            if(kharvox::quickHipConsumesGrip(action)){
                 quickHolsterGripConsumed=true;
                 s.bfgGripSuppressedUntilRelease=true;
                 if(weaponHandAtThisHip)
@@ -3585,8 +3619,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    // Hand Focus owns isolated right-stick clicks. It emits native USE
-    // independently above, but never forwards the same press to melee.
+    // Hand Focus owns isolated right-stick clicks. Independent keyboard E
+    // handles world USE above; the same press must never produce JOY8 melee.
     const bool rawMeleeDown=s.customMods.handFocusedRs?false
         :s.customMods.offHandGripCapture?s.offHandStickOutput.rightMelee
         :readBooleanAction(s.doomMelee);
@@ -3828,7 +3862,7 @@ void updateGameplayActions(XrTime displayTime){
         log("[CHAINSAW-GESTURE] kill gate released");
     }
     if(!gameplay){
-        s.usePulseUntil=0;s.handFocusUsePulseUntil=0;
+        s.usePulseUntil=0;
         s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
     }
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
@@ -4101,12 +4135,10 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
     s.crouchPressed=crouchDown;
-    // Final XInput gate: Physical GK blocks ordinary RS melee/USE pairs
-    // but NEVER blocks Hand Focus' independent world-interaction USE pulse.
-    // Thus doors and health stations work without a thumbstick melee anim.
+    // Physical GK blocks native RS melee/USE. A separate keyboard E press
+    // above provides world interaction; D-pad Right is NOT the Use button.
     const bool nativeUseDown=kharvox::physicalgk::routeNativeUse(
-        s.physicalGlorykillEnabled,gameplay,
-        displayTime<s.usePulseUntil,displayTime<s.handFocusUsePulseUntil);
+        s.physicalGlorykillEnabled,gameplay,displayTime<s.usePulseUntil);
     const bool nativeMeleeDown=kharvox::physicalgk::routeNativeMelee(
         s.physicalGlorykillEnabled,gameplay,meleeDown,
         displayTime<s.meleePulseUntil,
