@@ -266,6 +266,13 @@ void paintVrHandMenu() {
     write(538,582,"Point RIGHT hand + trigger to select",muted);
     write(538,611,"Hold RIGHT stick 1s: close",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
+        // Back to the list of active mods, leaving weapon profiles intact.
+        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
+        SelectObject(dc,smallFont);
+        write(815,30,"BACK",white);
+    }
+    // Render the same right-controller pointer on BOTH the main mods page
+    // and weapon calibration page. Hit testing already supports both.
     if(m.cursorX>=0&&m.cursorY>=0&&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -275,11 +282,6 @@ void paintVrHandMenu() {
         Ellipse(dc,x-8,y-8,x+8,y+8);
         SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
         DeleteObject(pen);DeleteObject(marker);
-    }
-        // Back to the list of active mods, leaving weapon profiles intact.
-        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
-        SelectObject(dc,smallFont);
-        write(815,30,"BACK",white);
     }
     SelectObject(dc,previous);
     DeleteObject(title);DeleteObject(regular);DeleteObject(smallFont);
