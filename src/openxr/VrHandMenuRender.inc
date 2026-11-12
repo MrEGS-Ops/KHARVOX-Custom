@@ -108,7 +108,9 @@ void paintVrHandMenu() {
             if(index>=count)break;
             const int y=136+shown*45;
             const bool active=index==selected;
-            const bool hovered=m.hovered==1000+index;
+            const bool hovered=m.hovered==1000+index
+                ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                    &&m.selectedRow==index);
             fill(38,y,455,40,active?RGB(32,89,104):
                 hovered?RGB(44,54,71):RGB(27,32,43));
             if(active)fill(38,y,5,40,RGB(55,209,214));
@@ -131,7 +133,10 @@ void paintVrHandMenu() {
         const bool enabled=count>0&&entries[selected].enabled;
         SelectObject(dc,regular);
         write(536,126,count>0?entries[selected].title:"No active mods",white);
-        fill(531,159,384,60,editable?RGB(39,49,63):RGB(30,35,44));
+        const bool focusToggle=m.navigation.usingStick
+            &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
+        fill(531,159,384,60,focusToggle?RGB(52,83,99):
+            editable?RGB(39,49,63):RGB(30,35,44));
         fill(553,172,36,36,editable?RGB(54,79,91):RGB(45,49,56));
         if(enabled)fill(562,181,18,18,RGB(76,231,167));
         SelectObject(dc,regular);
@@ -177,7 +182,10 @@ void paintVrHandMenu() {
             }
             for(int index=0;index<optionCount;++index){
                 const int y=248+68*index;
-                fill(531,y,384,58,m.hovered==130+index
+                const bool focused=m.hovered==130+index
+                    ||(m.navigation.usingStick&&m.navigation.settingsColumn
+                        &&m.navigation.actionIndex==index+1);
+                fill(531,y,384,58,focused
                      ?RGB(52,83,99):RGB(39,49,63));
                 SelectObject(dc,smallFont);
                 write(548,y+17,options[index],white);
@@ -203,7 +211,7 @@ void paintVrHandMenu() {
             }
         }
         SelectObject(dc,smallFont);
-        write(538,623,"Hold RIGHT stick 1s to close",muted);
+        write(538,623,"LEFT STICK NAV / A SELECT / B BACK",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else{
@@ -214,7 +222,9 @@ void paintVrHandMenu() {
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const int y=136+int(i)*45;
         const bool selected=int(i)==m.selectedWeapon;
-        const bool hover=m.hovered==int(i);
+        const bool hover=m.hovered==int(i)
+            ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                &&m.selectedWeapon==int(i));
         fill(38,y,455,40,selected?RGB(32,89,104):
             hover?RGB(44,54,71):RGB(27,32,43));
         if(selected)fill(38,y,5,40,RGB(55,209,214));
@@ -231,8 +241,13 @@ void paintVrHandMenu() {
         fill(x,y,w,h,active?RGB(31,104,115):
             hovered?RGB(53,68,84):RGB(39,49,63));
     };
-    button(531,151,170,58,!m.rightHand,m.hovered==20);
-    button(715,151,202,58,m.rightHand,m.hovered==21);
+    const auto gamepadFocus=[&](int action){
+        return m.navigation.usingStick&&m.navigation.settingsColumn
+            &&kharvox::vrMenuGripGamepadTarget(m.navigation,
+                m.selectedWeapon,heavy)==action;
+    };
+    button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
+    button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
     SelectObject(dc,regular);
     write(555,163,"LEFT",white);write(742,163,"RIGHT",white);
     SelectObject(dc,smallFont);
@@ -245,7 +260,7 @@ void paintVrHandMenu() {
     const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
         ||selectedKind==KharvoxWeaponKind::Chaingun;
     if(heavy){
-        button(531,306,384,49,m.alternateProfile,m.hovered==32);
+        button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
         write(550,317,m.alternateProfile
             ?(selectedKind==KharvoxWeaponKind::GaussCannon
                 ?"PROFILE: SIEGE":"PROFILE: TURRET")
@@ -255,19 +270,20 @@ void paintVrHandMenu() {
             ?"Hand locked to gun"
             :"Support rotation on grab",muted);
     }
-    button(531,363,384,69,false,m.hovered==30);
+    button(531,363,384,69,false,m.hovered==30||gamepadFocus(30));
     SelectObject(dc,title);
     write(568,376,"CALIBRATE",white);
-    button(531,454,384,69,false,m.hovered==31);
+    button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
     write(538,551,"LEFT / RIGHT / BOTH = gun grip saved",muted);
-    write(538,582,"Point RIGHT hand + trigger to select",muted);
+    write(538,582,"LEFT STICK NAV / A SELECT / B BACK",muted);
     write(538,611,"Hold RIGHT stick 1s: close",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
-        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
+        fill(797,16,129,57,m.hovered==95||gamepadFocus(95)
+            ?RGB(47,95,110):RGB(39,49,63));
         SelectObject(dc,smallFont);
         write(815,30,"BACK",white);
     }
