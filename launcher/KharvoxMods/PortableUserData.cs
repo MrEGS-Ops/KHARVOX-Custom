@@ -3,58 +3,88 @@ using System.IO;
 
 namespace KharvoxMods;
 
-// Keep ALL mutable desktop settings beside the manager in the obvious
-// top-level UserData folder. Never put them in the replaceable NativeBridge.
-// Existing files are copied before removing legacy root copies, without
-// overwriting a current preference or launcher-consent value.
+// ONE visible, portable folder beside KharvoxVRModManager.exe.
+// Preserve the original user-owned root preferences when migrating; if
+// another copy already exists, archive the legacy one rather than deleting
+// different settings, losing attachment consent, or overwriting mod choices.
 internal static class PortableUserData
 {
-    internal static string Root =>
-        Path.Combine(AppContext.BaseDirectory, "UserData");
+    internal static string Root => Path.Combine(AppContext.BaseDirectory, "UserData");
+    internal static string PathFor(string filename) => Path.Combine(Root, filename);
 
-    internal static string PathFor(string filename) =>
-        Path.Combine(Root, filename);
-
-    internal static void MigrateManagerSettings()
+    private static void MigrateOne(string root, string name)
     {
-        Directory.CreateDirectory(Root);
+        var legacy = Path.Combine(root, name);
+        if (!File.Exists(legacy)) return;
+        var userData = Path.Combine(root, "UserData");
+        Directory.CreateDirectory(userData);
+        var current = Path.Combine(userData, name);
+        if (!File.Exists(current))
+        {
+            File.Move(legacy, current);
+            return;
+        }
+        // The newer UserData file ALWAYS wins; do not discard differing
+        // old settings in case the owner wants to inspect them.
+        if (FilesEqual(legacy, current))
+        {
+            try { File.Delete(legacy); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            return;
+        }
+        var backupDir = Path.Combine(userData, "LegacyBackups");
+        Directory.CreateDirectory(backupDir);
+        var oldCopy = Path.Combine(backupDir,
+            name + ".before-userdata-" + Guid.NewGuid().ToString("N"));
+        File.Move(legacy, oldCopy);
+    }
+
+    private static bool FilesEqual(string a, string b)
+    {
+        var aBytes = File.ReadAllBytes(a);
+        var bBytes = File.ReadAllBytes(b);
+        if (aBytes.Length != bBytes.Length) return false;
+        for (int i = 0; i < aBytes.Length; ++i)
+            if (aBytes[i] != bBytes[i]) return false;
+        return true;
+    }
+
+    private static void MigrateIn(string managerRoot)
+    {
+        Directory.CreateDirectory(Path.Combine(managerRoot, "UserData"));
         foreach (var name in new[] {
             "settings.json", "kharvox-mods-bridge.json",
             "kharvox-mods-applied.txt"
         })
-        {
-            var legacy = Path.Combine(AppContext.BaseDirectory, name);
-            var current = PathFor(name);
-            if (!File.Exists(legacy)) continue;
-            if (!File.Exists(current))
-                File.Copy(legacy, current, false);
-            // The current file wins if it already existed. Leave the old
-            // source alone in that case: it may be user-maintained.
-            if (File.Exists(current))
-            {
-                try { File.Delete(legacy); }
-                catch (IOException) { /* New copy is already durable. */ }
-                catch (UnauthorizedAccessException) { /* Keep legacy copy. */ }
-            }
-        }
+            MigrateOne(managerRoot, name);
     }
+
+    internal static void MigrateManagerSettings() => MigrateIn(AppContext.BaseDirectory);
 
     internal static void SelfTest()
     {
-        var root = System.IO.Path.Combine(System.IO.Path.GetTempPath(),
+        var root = Path.Combine(Path.GetTempPath(),
             "kharvox-portable-userdata-" + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(root);
-            var user = System.IO.Path.Combine(root, "UserData");
-            Directory.CreateDirectory(user);
-            var old = System.IO.Path.Combine(root, "settings.json");
-            var saved = System.IO.Path.Combine(user, "settings.json");
-            File.WriteAllText(old, "old");
-            File.Copy(old, saved, false);
-            File.WriteAllText(saved, "latest");
-            if (File.ReadAllText(saved) != "latest")
-                throw new InvalidDataException("UserData settings must win.");
+            File.WriteAllText(Path.Combine(root, "settings.json"), "consented");
+            File.WriteAllText(Path.Combine(root, "kharvox-mods-bridge.json"), "gunslinger-on");
+            MigrateIn(root);
+            var path = Path.Combine(root, "UserData");
+            if (File.ReadAllText(Path.Combine(path, "settings.json")) != "consented"
+                || File.ReadAllText(Path.Combine(path, "kharvox-mods-bridge.json"))
+                    != "gunslinger-on"
+                || File.Exists(Path.Combine(root, "settings.json")))
+                throw new InvalidDataException("Portable user-data migration failed.");
+            File.WriteAllText(Path.Combine(root, "settings.json"), "old-consent");
+            MigrateIn(root);
+            if (File.ReadAllText(Path.Combine(path, "settings.json")) != "consented"
+                || Directory.GetFiles(Path.Combine(path, "LegacyBackups"),
+                     "settings.json.before-userdata-*").Length != 1)
+                throw new InvalidDataException("Conflicting legacy preferences lost.");
+            MigrateIn(root); // idempotent, no more backups
         }
         finally { try { Directory.Delete(root, true); } catch { } }
     }
