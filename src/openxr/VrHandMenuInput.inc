@@ -349,6 +349,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     // B cancels capture without saving. From weapon profiles B returns to
     // Mods; from the top-level Mods page it closes the overlay.
     if(bEdge){
+        const bool wasLiveModCapture=m.liveCapture!=kharvox::VrLiveCapture::None;
         m.liveCapture=kharvox::VrLiveCapture::None;
         m.autoSelectingWeapon=false;
         m.pendingNativeSelection=0;
@@ -357,12 +358,20 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         s.supportVisualLocked=false;
         if(m.mode==kharvox::VrHandMenuMode::Calibrating){
             m.mode=kharvox::VrHandMenuMode::Menu;
-            m.page=kharvox::VrMenuPage::WeaponGrip;
+            // Gunslinger/Crouch capture returns to Mods; weapon grip capture
+            // returns to the selected weapon. Neither cancellation saves.
+            m.page=wasLiveModCapture?kharvox::VrMenuPage::Mods
+                :kharvox::VrMenuPage::WeaponGrip;
             m.message="Calibration cancelled. No changes saved.";
         }else if(m.page==kharvox::VrMenuPage::WeaponGrip){
             m.page=kharvox::VrMenuPage::Mods;
             m.navigation={};
             m.message="Back to VR Mod Settings.";
+        }else if(m.navigation.usingStick&&m.navigation.settingsColumn){
+            // Return to the mod list before closing the main overlay.
+            m.navigation.settingsColumn=false;
+            m.navigation.actionIndex=0;
+            m.message="Back to mod list.";
         }else{
             m.mode=kharvox::VrHandMenuMode::Closed;
             m.consumeMenuFaceUntilRelease=true;
