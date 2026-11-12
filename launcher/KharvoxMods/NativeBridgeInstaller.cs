@@ -311,6 +311,24 @@ internal static class NativeBridgeInstaller
                     || name.Equals("offhand_right_hand_positions_latest.cfg",
                         StringComparison.OrdinalIgnoreCase))
                     continue;
+                // Historic bridge bundles shipped a deliberately NEUTRAL
+                // Gauss/Chaingun file with no owner calibration. Do not
+                // mistakenly migrate that as an intentional saved profile:
+                // it would block the user's exact uploaded factory preset
+                // from being copied into a fresh UserData directory.
+                if (name.Equals("offhand_right_hand_positions.cfg",
+                    StringComparison.OrdinalIgnoreCase))
+                {
+                    var active = File.ReadAllLines(source)
+                        .Select(line => line.Trim())
+                        .Where(line => line.Length > 0 && !line.StartsWith("#"))
+                        .ToArray();
+                    if (active.Length == 3
+                        && active.Contains("right_hand_drop_m = 0.08")
+                        && active.Contains("gauss_cannon = 0.00 0.00 0.00")
+                        && active.Contains("chaingun = 0.00 0.00 0.00"))
+                        continue; // Known uncalibrated shipping fallback, NOT a save.
+                }
                 var dest = Path.Combine(folder, name);
                 if (File.Exists(dest)) continue;
                 if (new FileInfo(source).Length > 1024 * 1024)
