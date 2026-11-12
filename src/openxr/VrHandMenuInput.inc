@@ -368,80 +368,120 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.consumeMenuFaceUntilRelease=true;
         }
     }
-    if(m.mode==kharvox::VrHandMenuMode::Calibrating){
+    if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Calibrating){
         if(m.liveCapture!=kharvox::VrLiveCapture::None){
-            if(triggerEdge)captureVrLivePosition();
+            if(triggerEdge||aEdge)captureVrLivePosition();
         }else{
             updateVrMenuPreview();
-            if(triggerEdge)saveVrHandMenuCalibration();
+            if(triggerEdge||aEdge)saveVrHandMenuCalibration();
         }
-    }else{
+    }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
-        auto rows=activeVrMenuEntries();
+        const auto rows=activeVrMenuEntries();
         if(m.page==kharvox::VrMenuPage::Mods){
             const int n=static_cast<int>(rows.size());
-            if(std::abs(s.leftStick.y)>.75f&&m.leftStickCentered&&n>0){
-                m.selectedRow=(m.selectedRow+(s.leftStick.y<0.f?1:n-1))%n;
+            if(n>0)m.selectedRow=std::clamp(m.selectedRow,0,n-1);
+            const auto optionCount=[](kharvox::VrLiveMod mod)->int{
+                using kharvox::VrLiveMod;
+                if(!kharvox::vrLiveModEditable(mod))return 0;
+                switch(mod){
+                    case VrLiveMod::WeaponGrip:return 2; // toggle + open calibration
+                    case VrLiveMod::Gunslinger:return 6;
+                    case VrLiveMod::PhysicalCrouch:return 4;
+                    case VrLiveMod::Killtime:return 4;
+                    case VrLiveMod::PhysicalGloryKills:return 5;
+                    default:return 0;
+                }
+            };
+            const auto before=m.selectedRow;
+            const int previousOptions=n>0?optionCount(rows[m.selectedRow].mod):0;
+            kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
+                n,m.selectedRow,previousOptions);
+            if(n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
+                if(before!=m.selectedRow)m.navigation.actionIndex=0;
+                const int options=optionCount(m.selectedMod);
+                if(options>0)m.navigation.actionIndex=std::clamp(
+                    m.navigation.actionIndex,0,options-1);
+                else m.navigation.actionIndex=0;
                 m.modScroll=std::clamp(m.modScroll,0,std::max(0,n-10));
                 if(m.selectedRow<m.modScroll)m.modScroll=m.selectedRow;
                 if(m.selectedRow>=m.modScroll+10)m.modScroll=m.selectedRow-9;
-                m.leftStickCentered=false;
-            }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
-            if(triggerEdge){
-                if(m.hovered>=1000&&m.hovered<1000+n){
-                    m.selectedRow=m.hovered-1000;
-                    m.selectedMod=rows[m.selectedRow].mod;
-                    m.message=kharvox::vrLiveModEditable(m.selectedMod)
-                        ?"Live options on the RIGHT.":"Read-only; configured in desktop launcher.";
-                }else if(m.hovered==110
-                    ||(m.hovered>=130&&m.hovered<=134))
-                    handleVrLiveMenuAction(m.hovered);
+            }
+            const int pointed=triggerEdge?m.hovered:-1;
+            const int chosen=pointed>=0?pointed:
+                aEdge?kharvox::vrMenuModsGamepadTarget(m.navigation,
+                    m.selectedRow,n,n>0?optionCount(m.selectedMod):0):-1;
+            if(pointed>=0)m.navigation.usingStick=false;
+            if(chosen>=1000&&chosen<1000+n){
+                m.selectedRow=chosen-1000;
+                m.selectedMod=rows[m.selectedRow].mod;
+                m.navigation.actionIndex=0;
+                // A on a highlighted mod moves focus to its options.
+                if(aEdge){m.navigation.settingsColumn=true;
+                    m.navigation.usingStick=true;}
+                m.message=kharvox::vrLiveModEditable(m.selectedMod)
+                    ?"Live options on the RIGHT.":"Read-only; desktop launcher only.";
+            }else if(chosen==110||(chosen>=130&&chosen<=134)){
+                handleVrLiveMenuAction(chosen);
+                if(m.page==kharvox::VrMenuPage::WeaponGrip)m.navigation={};
             }
         }else{
-        if(m.autoSelectingWeapon){
-            const auto desired=KharvoxWeaponKindFromKey(m.weapon());
-            if(desired==KharvoxWeaponCurrentKind()){
-                startVrSelectedWeaponCalibration();
-            }else if(GetTickCount64()>=m.autoSelectionDeadlineMs){
-                m.autoSelectingWeapon=false;
-                m.pendingNativeSelection=0;
-                m.message="Weapon unavailable or selection timed out. Not calibrated.";
-            }
-        }
-        if(std::abs(s.leftStick.y)>.75f&&m.leftStickCentered){
-            m.selectedWeapon=(m.selectedWeapon+(s.leftStick.y<0.f?1:9))%10;
-            m.autoSelectingWeapon=false;
-            m.pendingNativeSelection=0;
-            m.leftStickCentered=false;
-        }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
-        if(triggerEdge){
-            if(m.hovered==95){
-                m.page=kharvox::VrMenuPage::Mods;
-                m.autoSelectingWeapon=false;
-                m.pendingNativeSelection=0;
-                m.message="Live VR Mod Settings";
-            }else if(m.hovered>=0&&m.hovered<10){
-                m.selectedWeapon=m.hovered;
+            const auto previousWeapon=m.selectedWeapon;
+            const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
+            const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
+                ||selectedKind==KharvoxWeaponKind::Chaingun;
+            kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
+                10,m.selectedWeapon,heavy?6:5);
+            if(previousWeapon!=m.selectedWeapon){
+                m.navigation.actionIndex=0;
                 m.autoSelectingWeapon=false;
                 m.pendingNativeSelection=0;
                 m.alternateProfile=false;
             }
-            else if(m.hovered==20)m.rightHand=false;
-            else if(m.hovered==21)m.rightHand=true;
-            else if(m.hovered==31)resetVrMenuSelectedWeapon();
-            else if(m.hovered==32){
-                const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
-                if(weapon==KharvoxWeaponKind::GaussCannon
-                    ||weapon==KharvoxWeaponKind::Chaingun){
+            const auto selectedNow=KharvoxWeaponKindFromKey(m.weapon());
+            const bool heavyNow=selectedNow==KharvoxWeaponKind::GaussCannon
+                ||selectedNow==KharvoxWeaponKind::Chaingun;
+            m.navigation.actionIndex=std::clamp(m.navigation.actionIndex,
+                0,heavyNow?5:4);
+            if(m.autoSelectingWeapon){
+                const auto desired=KharvoxWeaponKindFromKey(m.weapon());
+                if(desired==KharvoxWeaponCurrentKind()){
+                    startVrSelectedWeaponCalibration();
+                }else if(GetTickCount64()>=m.autoSelectionDeadlineMs){
+                    m.autoSelectingWeapon=false;
+                    m.pendingNativeSelection=0;
+                    m.message="Weapon unavailable or selection timed out. Not calibrated.";
+                }
+            }
+            const int pointed=triggerEdge?m.hovered:-1;
+            const int chosen=pointed>=0?pointed:
+                aEdge?kharvox::vrMenuGripGamepadTarget(m.navigation,
+                    m.selectedWeapon,heavyNow):-1;
+            if(pointed>=0)m.navigation.usingStick=false;
+            if(chosen==95){
+                m.page=kharvox::VrMenuPage::Mods;
+                m.navigation={};
+                m.autoSelectingWeapon=false;
+                m.pendingNativeSelection=0;
+                m.message="Live VR Mod Settings";
+            }else if(chosen>=0&&chosen<10){
+                m.selectedWeapon=chosen;
+                m.autoSelectingWeapon=false;
+                m.pendingNativeSelection=0;
+                m.alternateProfile=false;
+                if(aEdge){m.navigation.settingsColumn=true;
+                    m.navigation.usingStick=true;}
+            }else if(chosen==20)m.rightHand=false;
+            else if(chosen==21)m.rightHand=true;
+            else if(chosen==31)resetVrMenuSelectedWeapon();
+            else if(chosen==32){
+                if(heavyNow){
                     m.alternateProfile=!m.alternateProfile;
                     m.message=m.alternateProfile?"Alternate handle selected.":"Normal handle selected.";
                 }
-            }
-            else if(m.hovered==30||m.hovered==-1)
-                requestVrSelectedWeaponCalibration(displayTime);
-        }
-        m.leftTriggerPreviously=leftTrigger;
+            }else if(chosen==30)requestVrSelectedWeaponCalibration(displayTime);
+            m.leftTriggerPreviously=leftTrigger;
         }
     }
     // Keep the ordinary menu entirely input-muted. ONLY during LIVE
