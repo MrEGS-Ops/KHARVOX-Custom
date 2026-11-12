@@ -226,7 +226,10 @@ int main(){
  const auto leftSiege=kharvox::savedPrimaryWeaponGripOffset(
      visual,"gauss_cannon",true,true);
  assert(leftSiege.valid&&std::abs(leftSiege.position.x+.15f)<.0001f);
- assert(!kharvox::savedPrimaryWeaponGripOffset(visual,"gauss_cannon",false,true).valid);
+ // Existing RIGHT Gauss primary calibration is a deliberate fallback when
+ // Siege has no separate right primary pose; never lose old calibrations.
+ assert(kharvox::savedPrimaryWeaponGripOffset(
+     visual,"gauss_cannon",false,true).valid);
  assert(visual.leftVisualPositions.count("gauss_cannon_siege")==1);
  assert(visual.leftVisualRotations.count("gauss_cannon_siege")==1);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
