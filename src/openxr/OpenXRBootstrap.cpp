@@ -3024,7 +3024,9 @@ void updateGameplayActions(XrTime displayTime){
     if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
-         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
+         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f,
+         readBooleanAction(s.doomCrouch), // physical RIGHT A: menu select
+         readBooleanAction(s.doomJump))){ // physical RIGHT B: menu back
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         // Menu inputs are muted except the primary weapon Grip's ALT FIRE
