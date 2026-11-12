@@ -1,0 +1,38 @@
+name: KHARVOX VR Mod Manager Clean Install Smoke Tests
+
+on:
+  push:
+    branches:
+      - feature/live-vr-mod-calibration-menu
+      - work/manager-187-wheel-holsters
+    paths:
+      - 'launcher/KharvoxMods/**'
+      - 'launcher/KharvoxLauncher/**'
+      - '.github/workflows/verify-vr-mod-manager-clean-install.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-user:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore standalone Mod Manager
+        shell: pwsh
+        run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
+      - name: Compile portable Mod Manager
+        shell: pwsh
+        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj -c Release --no-restore
+      - name: Validate first-run settings, neutral-fallback rejection and exact factory seeding
+        shell: pwsh
+        run: |
+          & launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe --self-test
+          if ($LASTEXITCODE -ne 0) { throw "Fresh-install settings and factory calibration smoke tests failed" }
+      - name: Validate mod inventory and locked Developer options in actual Windows UI
+        shell: pwsh
+        run: |
+          & launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe --self-test-ui
+          if ($LASTEXITCODE -ne 0) { throw "First-run VR Mod Manager UI self-tests failed" }
