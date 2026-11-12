@@ -89,6 +89,13 @@ internal static class NativeBridgeInstaller
             Directory.CreateDirectory(immutable);
             foreach (var name in OwnerFactoryNames)
                 File.WriteAllText(Path.Combine(immutable, name), "factory-" + name);
+            // A previously shipped bridge contains a NEUTRAL anchor CFG
+            // that must NOT become the first-run user's custom calibration.
+            File.WriteAllText(Path.Combine(oldBridge,
+                "offhand_right_hand_positions.cfg"),
+                "right_hand_drop_m = 0.08\n"
+                + "gauss_cannon = 0.00 0.00 0.00\n"
+                + "chaingun = 0.00 0.00 0.00\n");
             // Existing shotgun calibration must beat the NEW shipped factory.
             File.WriteAllText(Path.Combine(oldBridge,
                 "two_hand_weapon_profiles_saved.cfg"), "owner-custom");
