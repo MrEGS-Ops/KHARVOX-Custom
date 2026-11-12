@@ -181,19 +181,25 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
 bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                             bool rightTrigger,bool leftTrigger){
     auto& m=s.vrHandMenu;
-    const bool chord=kharvox::vrHandMenuBothStickEdge(m,leftClick,rightClick);
+    // RIGHT-stick hold (>=600 ms), release, then quick RIGHT-stick click.
+    // No two-stick shortcut: keep independent RS Hand Focus normal.
+    const auto shortcut=s.customMods.offHandGripCapture
+        ?kharvox::updateVrMenuHoldThenClick(
+            m.shortcut,rightClick,GetTickCount64())
+        :kharvox::VrMenuShortcutAction::None;
     if(!gameplay){
         m.mode=kharvox::VrHandMenuMode::Closed;
         m.previewValid=false;
-        m.swallowStickReleases=false;
+        m.shortcut={};
         m.rightTriggerPreviously=rightTrigger;
         return false;
     }
-    if(chord){
-        // Ignore both-click release tails, not just the press frame.
-        // Otherwise an RS released last after closing the menu can be
-        // misinterpreted as a single Hand Focus toggle or melee.
-        m.swallowStickReleases=true;
+    if(shortcut==kharvox::VrMenuShortcutAction::Armed
+        ||shortcut==kharvox::VrMenuShortcutAction::SecondDown){
+        // An armed hold or the second click must NOT toggle Hand Focus.
+        s.offHandStickInput.right={};
+    }
+    if(shortcut==kharvox::VrMenuShortcutAction::Toggle){
         if(m.mode==kharvox::VrHandMenuMode::Closed){
             if(!vrHandMenuSurface.ready){
                 log("[VR-HAND-MENU] cannot open: XR overlay texture unavailable");
@@ -211,14 +217,14 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                 (s.weaponHandLeft?"LEFT":"RIGHT")+
                 " hand. Choose physical hand to calibrate.";
             refreshVrHandMenuSavedStatus();
-            log("[VR-HAND-MENU] opened by BOTH thumbsticks");
+            log("[VR-HAND-MENU] opened by hold/release/RIGHT-click shortcut");
         }else{
             m.mode=m.mode==kharvox::VrHandMenuMode::Menu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
             s.primaryVisualLocked=false;
             s.supportVisualLocked=false;
-            log("[VR-HAND-MENU] thumbstick chord closes/cancels current screen");
+            log("[VR-HAND-MENU] hold/release/RIGHT-click closes/cancels screen");
         }
         s.offHandStickInput={};
         m.rightTriggerPreviously=rightTrigger;
@@ -226,14 +232,7 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
-        if(m.swallowStickReleases){
-            if(!leftClick&&!rightClick){
-                m.swallowStickReleases=false;
-                s.offHandStickInput={};
-            }
-            return true; // consume every chord release, including last click
-        }
-        return chord||(leftClick&&rightClick);
+        return shortcut==kharvox::VrMenuShortcutAction::Toggle;
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;

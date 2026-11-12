@@ -2850,6 +2850,9 @@ void updateWeapon6Dof(){
 
 
 }
+// Native VR hand menu input must precede the gameplay input dispatcher.
+// Render-side compositor helper stays in its later Vulkan include.
+#include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
@@ -2969,9 +2972,8 @@ void updateGameplayActions(XrTime displayTime){
         updateWeapon6Dof();
         return;
     }
-    // The VR menu exclusively owns the two-thumbstick chord. A solo RS
-    // click is emitted ON RELEASE so it cannot also fire before the other
-    // thumbstick joins the chord. Hand Focus uses this isolated RS pulse.
+    // Short solo RS click retains Hand Focus. Only the hold-then-click
+    // sequence is swallowed by the in-headset calibration menu.
     const bool guardedStickClicks=s.customMods.offHandGripCapture
         ||s.customMods.handFocusedRs;
     s.offHandStickOutput=s.offHandStickInput.update(

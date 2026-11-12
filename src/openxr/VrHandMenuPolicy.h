@@ -16,6 +16,40 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// Hold RIGHT thumbstick click, RELEASE, then click again promptly.
+// A normal short right-stick click is never consumed and retains Hand Focus.
+struct VrMenuHoldThenClick {
+    bool held{},armed{},secondClick{};
+    std::uint64_t holdBegan{},armedUntil{};
+};
+enum class VrMenuShortcutAction {None,Armed,SecondDown,Toggle};
+inline VrMenuShortcutAction updateVrMenuHoldThenClick(
+    VrMenuHoldThenClick& s,bool rightClick,std::uint64_t nowMs) noexcept {
+    if(s.armed&&nowMs>s.armedUntil)s.armed=false;
+    if(rightClick&&!s.held){
+        s.held=true;
+        s.holdBegan=nowMs;
+        if(s.armed){
+            s.armed=false;
+            s.secondClick=true;
+            return VrMenuShortcutAction::SecondDown;
+        }
+        return VrMenuShortcutAction::None;
+    }
+    if(!rightClick&&s.held){
+        s.held=false;
+        if(s.secondClick){
+            s.secondClick=false;
+            return VrMenuShortcutAction::Toggle;
+        }
+        if(nowMs>=s.holdBegan+600){
+            s.armed=true;
+            s.armedUntil=nowMs+850;
+            return VrMenuShortcutAction::Armed;
+        }
+    }
+    return VrMenuShortcutAction::None;
+}
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     int selectedWeapon{1};
@@ -25,8 +59,8 @@ struct VrHandMenuState {
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
-    bool bothClickedPreviously{},rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
-    bool swallowStickReleases{};
+    VrMenuHoldThenClick shortcut{};
+    bool rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
