@@ -156,4 +156,94 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
 #endif
     return true;
 }
+// Restore only one selected weapon from the user's PROVIDED factory preset.
+// Unlike the legacy reset (which removes overrides), this reproduces the
+// exact calibrated left/right primary and support values, including Siege /
+// Turret, without touching other weapons or shared Gauss/Chaingun anchors.
+// Validate the factory and stage everything BEFORE modifying any live file.
+inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
+    const std::string& factoryPath,const std::string& weapon,
+    bool primaryFile,std::string*why=nullptr) {
+    namespace fs=std::filesystem;
+    auto fail=[&](const char* message){
+        if(why)*why=message;
+        return false;
+    };
+    if(!validVrCalibrationWeapon(weapon))
+        return fail("unsupported reset weapon");
+    const std::string alternate=weapon=="gauss_cannon"?"gauss_cannon_siege"
+        :weapon=="chaingun"?"chaingun_turret":"";
+    const auto belongs=[&](const std::string& line)->bool {
+        if(primaryFile){
+            const auto first=line.find_first_not_of(" \t");
+            const auto equal=line.find('=');
+            if(first==std::string::npos||equal==std::string::npos
+               ||line[first]=='#'||first>=equal)return false;
+            auto key=line.substr(first,equal-first);
+            const auto end=key.find_last_not_of(" \t");
+            if(end!=std::string::npos)key.resize(end+1);
+            const auto matches=[&](const std::string& name){
+                return key==name+"_hand_position"||key==name+"_rotation"
+                    ||key==name+"_left_hand_position"
+                    ||key==name+"_left_rotation";
+            };
+            if(matches(weapon))return true;
+            return !alternate.empty()
+                &&(matches(alternate)||key==alternate+"_support_position"
+                   ||key==alternate+"_left_primary_support_position");
+        }
+        std::istringstream row(line);
+        std::string version,key;
+        return (row>>version>>key)&&version=="2"&&key==weapon;
+    };
+    std::error_code ec;
+    if(!fs::exists(factoryPath,ec)||ec)return fail("packaged factory calibration missing");
+    if(fs::file_size(factoryPath,ec)>(primaryFile?16384u:65536u)||ec)
+        return fail("factory calibration exceeds size limit");
+    std::ifstream factory(factoryPath);
+    if(!factory)return fail("cannot read factory calibration");
+    std::vector<std::string> restore;
+    std::string line;
+    while(std::getline(factory,line))
+        if(belongs(line))restore.push_back(line);
+    if(factory.bad()||restore.empty())
+        return fail("factory has no saved pose for this weapon");
+    const bool exists=fs::exists(path,ec);
+    if(ec)return fail("cannot access existing calibration");
+    std::vector<std::string> outputLines;
+    if(exists){
+        if(fs::file_size(path,ec)>(primaryFile?16384u:65536u)||ec)
+            return fail("existing calibration exceeds size limit");
+        std::ifstream input(path);
+        if(!input)return fail("cannot read existing calibration");
+        while(std::getline(input,line))
+            if(!belongs(line))outputLines.push_back(line);
+        if(input.bad())return fail("failed reading existing calibration");
+    }
+    outputLines.insert(outputLines.end(),restore.begin(),restore.end());
+    const fs::path dest(path),staging(path+".vr-default.tmp");
+    // Backup is always left adjacent in portable UserData for recovery.
+    if(exists){
+        fs::copy_file(dest,path+".before-vr-reset.bak",
+            fs::copy_options::overwrite_existing,ec);
+        if(ec)return fail("cannot back up current weapon calibration");
+    }
+    {std::ofstream output(staging,std::ios::trunc);
+     if(!output)return fail("cannot create reset staging file");
+     for(const auto& record:outputLines)output<<record<<'\n';
+     output.flush();
+     if(!output){fs::remove(staging,ec);return fail("cannot save reset staging file");}}
+#ifdef _WIN32
+    if(!MoveFileExW(staging.wstring().c_str(),dest.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(staging,ec);
+        return fail("cannot install factory calibration");
+    }
+#else
+    fs::rename(staging,dest,ec);
+    if(ec){fs::remove(staging);return fail("cannot install factory calibration");}
+#endif
+    return true;
+}
+
 }
