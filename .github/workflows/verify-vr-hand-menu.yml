@@ -12,11 +12,16 @@ on:
       - fix/rs-native-interaction-and-held-altfire
       - fix/always-hand-focus-normal-gameplay
       - feature/userdata-calibration-factory-defaults
+      - feature/live-vr-mod-calibration-menu
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
       - 'config/user_calibration_defaults/**'
       - 'src/openxr/VrHandMenuInput.inc'
+      - 'src/openxr/VrLiveModsConfig.h'
+      - 'src/openxr/VrLiveMenuLogic.inc'
+      - 'src/openxr/VrHandMenuRender.inc'
+      - 'tests/vr_live_mods_config_tests.cpp'
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
       - 'tests/quick_holster_policy_tests.cpp'
@@ -36,6 +41,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+      - name: Compile standalone live VR mod calibration and toggle regressions
+        run: c++ -std=c++17 -Wall -Wextra -pedantic tests/vr_live_mods_config_tests.cpp -o /tmp/vr-live-tests
+      - name: Verify precise capture, default-preserving overrides and saved live toggles
+        run: /tmp/vr-live-tests
       - name: Compile isolated per-weapon profile regression tests
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/right_hand_grip_config_tests.cpp -o /tmp/vr-hand-config-tests
       - name: Validate left/right profiles, reset and right-click hold shortcut
