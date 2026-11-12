@@ -7,6 +7,8 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
+#include <cmath>
 
 // In-headset weapon-hand calibration. Left support hand saves TRANSLATION
 // only. Its orientation is intentionally established anew on every Grip.
@@ -55,6 +57,59 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     return VrMenuShortcutAction::None;
 }
 enum class VrMenuPage {Mods,WeaponGrip};
+// Independent, edge-triggered left-stick navigation. It never modifies the
+// in-game movement or the right-hand laser/pointer input outside this menu.
+struct VrMenuNavigation {
+    bool settingsColumn{},usingStick{};
+    bool verticalCentered{true},horizontalCentered{true};
+    int actionIndex{}; // 0=toggle on Mods, 1..n=setting actions
+};
+inline bool vrMenuButtonEdge(bool down,bool& previously) noexcept {
+    const bool pressed=down&&!previously;
+    previously=down;
+    return pressed;
+}
+inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
+    int listCount,int& selectedIndex,int settingsCount) noexcept {
+    if(std::isfinite(x)){
+        if(std::abs(x)<.3f)nav.horizontalCentered=true;
+        else if(std::abs(x)>.75f&&nav.horizontalCentered){
+            nav.horizontalCentered=false;
+            nav.settingsColumn=x>0.f;
+            nav.actionIndex=0;
+            nav.usingStick=true;
+        }
+    }
+    if(std::isfinite(y)){
+        if(std::abs(y)<.3f)nav.verticalCentered=true;
+        else if(std::abs(y)>.75f&&nav.verticalCentered){
+            nav.verticalCentered=false;
+            nav.usingStick=true;
+            if(nav.settingsColumn){
+                if(settingsCount>0)
+                    nav.actionIndex=(nav.actionIndex+(y<0.f?1:settingsCount-1))%settingsCount;
+            }else if(listCount>0){
+                selectedIndex=(selectedIndex+(y<0.f?1:listCount-1))%listCount;
+            }
+        }
+    }
+}
+inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
+    int selectedRow,int count,int actionCount) noexcept {
+    if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
+        ?1000+selectedRow:-1;
+    if(nav.actionIndex<0||nav.actionIndex>=actionCount)return -1;
+    return nav.actionIndex==0?110:130+nav.actionIndex-1;
+}
+inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
+    int selectedWeapon,bool heavy) noexcept {
+    if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
+        ?selectedWeapon:-1;
+    constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
+    constexpr std::array<int,5> normalActions{20,21,30,31,95};
+    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
+        ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
+}
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     VrMenuPage page{VrMenuPage::Mods};
@@ -74,7 +129,9 @@ struct VrHandMenuState {
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
     VrMenuHoldShortcut shortcut{};
-    bool rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
+    VrMenuNavigation navigation{};
+    bool rightTriggerPreviously{},leftTriggerPreviously{};
+    bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
