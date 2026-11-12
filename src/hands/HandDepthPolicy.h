@@ -52,9 +52,10 @@ struct HandDepthRange {
     float farMeters{100.0f};
 };
 
-// DOOM's native scene projection uses a three-unit near clip plane. Hand
-// geometry is expressed in OpenXR metres, so the shared-depth render path must
-// use the same near plane after applying KHARVOX's configured world scale.
+// KHARVOX launches DOOM with r_znear=1 (was native 3 units) to preserve
+// weapon surfaces closer to the HMD. Hand geometry is expressed in OpenXR
+// metres: its shared-depth path MUST match that same scene near plane after
+// applying KHARVOX world scale. Do not change this value in isolation.
 // A zero native far plane means infinity; a very distant finite plane gives
 // the same stable Vulkan depth curve without producing infinities in the CPU
 // matrix. The isolated OpenXR overlay deliberately retains its old range.
