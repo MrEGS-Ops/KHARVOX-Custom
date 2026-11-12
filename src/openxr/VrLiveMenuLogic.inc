@@ -244,14 +244,13 @@ bool handleVrLiveMenuAction(int action){
             break;
         case VrLiveMod::Killtime:
             if(option==0){
-                s.vrLiveSettings.gloryKillHz=std::max(30,
-                    (s.vrLiveSettings.gloryKillHz==0?200:
-                        s.vrLiveSettings.gloryKillHz)-10);
+                // Slower means more ticks: 240 Hz is slow, 30 Hz is fast.
+                s.vrLiveSettings.gloryKillHz=kharvox::vrLiveStepKilltimeHz(
+                    s.vrLiveSettings.gloryKillHz,true);
                 changed=true;
             }else if(option==1){
-                s.vrLiveSettings.gloryKillHz=std::min(240,
-                    (s.vrLiveSettings.gloryKillHz==0?200:
-                        s.vrLiveSettings.gloryKillHz)+10);
+                s.vrLiveSettings.gloryKillHz=kharvox::vrLiveStepKilltimeHz(
+                    s.vrLiveSettings.gloryKillHz,false);
                 changed=true;
             }else if(option==2){
                 s.vrLiveSettings.gloryKillHz=0;changed=true;
