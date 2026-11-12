@@ -1,6 +1,7 @@
 #pragma once
 #include <windows.h>
 #include <cstring>
+#include <cwchar>
 #include <string>
 
 namespace kharvox {
