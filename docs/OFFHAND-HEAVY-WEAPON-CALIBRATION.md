@@ -2,7 +2,7 @@
 Active branch: `work/manager-187-wheel-holsters`. Applies to the Mod Manager's NativeBridge, not the original Cactus installation.
 
 ## In-headset controls
-1. During gameplay, click **BOTH thumbsticks** to open the VR hand calibration panel.
+1. During gameplay, **hold RIGHT thumbstick click for 1 second** to open the VR hand calibration panel. Short click still toggles Hand Focus.
 2. Select **Gauss Cannon** or **Chaingun**; the menu detects which physical hand holds the gun. The hand selector chooses the physical glove to calibrate: the holding hand is PRIMARY and the other is SUPPORT.
 3. Select **PROFILE: NORMAL** or **PROFILE: SIEGE/TURRET** to keep ordinary and alternate hand positions separate.
 4. Press **CALIBRATE**; the panel closes for live placement using the LEFT controller.

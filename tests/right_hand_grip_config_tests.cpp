@@ -181,11 +181,22 @@ int main(){
  assert(!menu.alternateProfile);
  menu.alternateProfile=true;
  assert(menu.alternateProfile); // Alternate heavy profile is a menu option, not a chord.
- assert(!kharvox::vrHandMenuBothStickEdge(menu,false,false));
- assert(kharvox::vrHandMenuBothStickEdge(menu,true,true));
- assert(!kharvox::vrHandMenuBothStickEdge(menu,true,true));
- assert(!kharvox::vrHandMenuBothStickEdge(menu,false,false));
- assert(kharvox::vrHandMenuBothStickEdge(menu,true,true));
+ using kharvox::VrMenuShortcutAction;
+ auto hold=kharvox::VrMenuHoldShortcut{};
+ // Short taps are left alone for Hand Focus.
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,100)==VrMenuShortcutAction::None);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,false,200)==VrMenuShortcutAction::None);
+ // Single long hold opens exactly once at 1000ms, not on release.
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,1000)==VrMenuShortcutAction::None);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,1999)==VrMenuShortcutAction::None);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,2000)==VrMenuShortcutAction::Toggle);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,2400)==VrMenuShortcutAction::None);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,false,2500)==VrMenuShortcutAction::ConsumedRelease);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,false,2501)==VrMenuShortcutAction::None);
+ // Another long hold closes it.
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,3000)==VrMenuShortcutAction::None);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,true,4000)==VrMenuShortcutAction::Toggle);
+ assert(kharvox::updateVrMenuHoldShortcut(hold,false,4010)==VrMenuShortcutAction::ConsumedRelease);
  assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
      {.05f,.02f,-.12f},{0.f,0.f,0.f,1.f,true},&why));
  assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,

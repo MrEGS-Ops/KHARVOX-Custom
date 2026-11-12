@@ -4,7 +4,7 @@ This is an independent OpenXR compositor overlay in the **mod-enabled NativeBrid
 
 ## Controls
 
-- **Click both thumbsticks together** during gameplay to open or close the VR calibration panel. The same chord during calibration cancels calibration and returns to the panel without saving. This is the ONLY thumbstick-based hand calibration shortcut: old LEFT Grip + BOTH sticks and RIGHT Grip + RIGHT stick capture commands have been removed.
+- **Hold RIGHT thumbstick click for 1 second** during gameplay to open or close the VR calibration panel; another hold during calibration cancels and returns to the panel without saving. A normal short click still toggles Hand Focus (when enabled). Old LEFT Grip + BOTH sticks and RIGHT Grip + RIGHT stick capture shortcuts are gone.
 - Point the **right controller** at a weapon, LEFT/RIGHT hand choice, CALIBRATE, or RESET THIS WEAPON. **Right trigger** selects the highlighted control. **Left thumbstick up/down** can scroll weapons; **right trigger** starts calibration when not pointing at a menu control. Only the explicit RESET THIS WEAPON button resets a profile.
 - Equip the chosen weapon normally before starting calibration. The panel never cheats inventory or silently switches DOOM's selected weapon. A mismatch leaves the panel open with an explanation.
 - For Gauss Cannon and Chaingun, choose **PROFILE: NORMAL** or **PROFILE: SIEGE/TURRET** in the same menu. These keep the separate alternate hand slots accessible without an old controller capture shortcut.

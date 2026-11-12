@@ -16,37 +16,28 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
-// Hold RIGHT thumbstick click, RELEASE, then click again promptly.
-// A normal short right-stick click is never consumed and retains Hand Focus.
-struct VrMenuHoldThenClick {
-    bool held{},armed{},secondClick{};
-    std::uint64_t holdBegan{},armedUntil{};
+// Single physical RIGHT thumbstick hold >= 1000ms opens/closes the menu.
+// A short click is untouched, so Hand Focus retains its original input.
+struct VrMenuHoldShortcut {
+    bool held{},triggered{};
+    std::uint64_t beganAt{};
 };
-enum class VrMenuShortcutAction {None,Armed,SecondDown,Toggle};
-inline VrMenuShortcutAction updateVrMenuHoldThenClick(
-    VrMenuHoldThenClick& s,bool rightClick,std::uint64_t nowMs) noexcept {
-    if(s.armed&&nowMs>s.armedUntil)s.armed=false;
-    if(rightClick&&!s.held){
-        s.held=true;
-        s.holdBegan=nowMs;
-        if(s.armed){
-            s.armed=false;
-            s.secondClick=true;
-            return VrMenuShortcutAction::SecondDown;
-        }
-        return VrMenuShortcutAction::None;
+enum class VrMenuShortcutAction {None,Toggle,ConsumedRelease};
+inline VrMenuShortcutAction updateVrMenuHoldShortcut(
+    VrMenuHoldShortcut& state,bool rightClick,std::uint64_t nowMs) noexcept {
+    if(!rightClick){
+        const bool consumed=state.triggered;
+        state.held=false;state.triggered=false;state.beganAt=0;
+        return consumed?VrMenuShortcutAction::ConsumedRelease
+            :VrMenuShortcutAction::None;
     }
-    if(!rightClick&&s.held){
-        s.held=false;
-        if(s.secondClick){
-            s.secondClick=false;
-            return VrMenuShortcutAction::Toggle;
-        }
-        if(nowMs>=s.holdBegan+600){
-            s.armed=true;
-            s.armedUntil=nowMs+850;
-            return VrMenuShortcutAction::Armed;
-        }
+    if(!state.held){
+        state.held=true;state.triggered=false;state.beganAt=nowMs;
+    }
+    if(!state.triggered&&nowMs>=state.beganAt
+        &&nowMs-state.beganAt>=1000ULL){
+        state.triggered=true;
+        return VrMenuShortcutAction::Toggle;
     }
     return VrMenuShortcutAction::None;
 }
@@ -59,7 +50,7 @@ struct VrHandMenuState {
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
-    VrMenuHoldThenClick shortcut{};
+    VrMenuHoldShortcut shortcut{};
     bool rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
@@ -72,12 +63,6 @@ struct VrHandMenuState {
 };
 inline bool isVrMenuInputOwner(const VrHandMenuState& m) noexcept {
     return m.mode!=VrHandMenuMode::Closed;
-}
-inline bool vrHandMenuBothStickEdge(VrHandMenuState& m,bool left,bool right) noexcept {
-    const bool both=left&&right;
-    const bool edge=both&&!m.bothClickedPreviously;
-    m.bothClickedPreviously=both;
-    return edge;
 }
 inline bool hasSavedVrPrimaryPose(const RightHandGripSettings& settings,
     const std::string&weapon,bool leftHand) {

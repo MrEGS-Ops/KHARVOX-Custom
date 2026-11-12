@@ -23,5 +23,5 @@ jobs:
       - uses: actions/checkout@v4
       - name: Compile isolated per-weapon profile regression tests
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/right_hand_grip_config_tests.cpp -o /tmp/vr-hand-config-tests
-      - name: Validate save, reset, backups and two-stick chord
+      - name: Validate left/right profiles, reset and right-click hold shortcut
         run: /tmp/vr-hand-config-tests
