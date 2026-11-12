@@ -62,6 +62,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-shoulder-weapon-lock",
                 StringComparison.OrdinalIgnoreCase)))
             return GunslingerShoulderWeaponLock.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-virtual-gunstock-lock",
+                StringComparison.OrdinalIgnoreCase)))
+            return VirtualGunstockGripCalibrationLock.RunSelfTest();
 
         if (args.Any(argument => string.Equals(argument, "--self-test-embedded-layout",
                 StringComparison.OrdinalIgnoreCase)))
@@ -115,7 +118,8 @@ internal static class Program
                 window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
                 EmbeddedLauncherLayout.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
-                LauncherStartupTrace.Mark("Embedding and Gunslinger UI watchers installed");
+                VirtualGunstockGripCalibrationLock.Watch(window);
+                LauncherStartupTrace.Mark("Embedding, Gunslinger and gunstock UI watchers installed");
                 Application.Run(window);
             }
             return 0;
