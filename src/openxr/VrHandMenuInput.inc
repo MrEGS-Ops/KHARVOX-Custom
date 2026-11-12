@@ -3,13 +3,17 @@
 // save is edge-based and cannot fire the selected weapon.
 void refreshVrHandMenuSavedStatus(){
     auto& m=s.vrHandMenu;
+    const auto factory=kharvox::readRightHandGripSettings(
+        kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const std::string key=kharvox::kVrCalibrationWeapons[i];
-        // Show PRIMARY gun-in-hand calibrations. The off-hand support grip
-        // is separate and does NOT make an uncalibrated left-primary gun
-        // appear as "LEFT calibrated".
-        m.rightSaved[i]=kharvox::hasSavedVrPrimaryPose(s.rightGripSettings,key,false);
-        m.leftSaved[i]=kharvox::hasSavedVrPrimaryPose(s.rightGripSettings,key,true);
+        // Factory profiles are shipped into UserData on first run, so they
+        // should display DEFAULT, NOT BOTH. Only modifications to PRIMARY
+        // position/rotation get a left or right custom marker.
+        m.rightSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
+            s.rightGripSettings,factory,key,false);
+        m.leftSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
+            s.rightGripSettings,factory,key,true);
     }
 }
 void updateVrMenuPreview(bool primaryWeaponGripHeld){
