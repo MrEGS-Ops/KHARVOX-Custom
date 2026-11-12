@@ -120,7 +120,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Weapon Wheel Button Remap",
                 "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Greyed out while Gunslinger is enabled; disable Gunslinger first.", true),
             new PreviewMod("Hand Focus",
-                "Controller-directed focus with RS activation.", true),
+                "Weapon-hand focus by default during gameplay, including doors and stations. RS click remains Use and never toggles to head focus. Native Glory Kills, chainsaw executions, ledges and cinematics temporarily use head focus.", true),
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
             new PreviewMod("Gunslinger",
