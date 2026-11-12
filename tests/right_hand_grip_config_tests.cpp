@@ -1,4 +1,5 @@
 #include "../src/openxr/RightHandGripConfig.h"
+#include "../src/openxr/VrHandMenuPolicy.h"
 #include <cassert>
 #include <cmath>
 #include <fstream>
@@ -124,7 +125,7 @@ int main(){
  assert(std::abs(a.gaussSiegeHand.z-.31f)<.0001f);
  assert(std::abs(a.chaingunTurretHand.z-.30f)<.0001f);
  assert(!kharvox::saveRightHandVisualPose(
-     path,"shotgun",false,{0,0,0},liveRotation,&why));
+     path,"invalid_weapon",false,{0,0,0},liveRotation,&why));
  // Valid model-local glove pose may be more than 85 cm from the gun
  // anchor, while the physical GUN anchor retains its strict 85 cm limit.
  assert(kharvox::saveRightHandVisualPose(
@@ -169,10 +170,40 @@ int main(){
   assert(text.find("2 gauss_cannon side-grip -0.1200000 0.0700000 -0.2000000")!=std::string::npos);
   assert(text.find("2 chaingun side-grip -0.1000000 0.1100000 -0.3500000")!=std::string::npos);
  }
- assert(!kharvox::saveHeavySupportGrip(twoHand,"rocket_launcher",
+ assert(!kharvox::saveHeavySupportGrip(twoHand,"invalid_weapon",
      {0,0,0},true,.2f,1.f,&why));
  std::remove((twoHand+".before-heavy-support.bak").c_str());
  std::remove((twoHand+".before-chainsaw-capture.bak").c_str());
+
+ // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
+ // support stores only a point; its quaternion remains a grab-time snapshot.
+ auto menu=kharvox::VrHandMenuState{};
+ assert(!kharvox::vrHandMenuBothStickEdge(menu,false,false));
+ assert(kharvox::vrHandMenuBothStickEdge(menu,true,true));
+ assert(!kharvox::vrHandMenuBothStickEdge(menu,true,true));
+ assert(!kharvox::vrHandMenuBothStickEdge(menu,false,false));
+ assert(kharvox::vrHandMenuBothStickEdge(menu,true,true));
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     {.05f,.02f,-.12f},{0.f,0.f,0.f,1.f,true},&why));
+ assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
+     {.07f,.03f,-.15f},{0.f,0.f,0.f,1.f,true},&why));
+ auto visual=kharvox::readRightHandGripSettings(path);
+ assert(visual.visualPositions.count("pistol")==1);
+ assert(visual.visualRotations.count("pistol")==1);
+ assert(visual.visualPositions.count("shotgun")==1);
+ assert(kharvox::saveHeavySupportGrip(twoHand,"pistol",
+     {.03f,.04f,-.20f},false,.2f,1.f,&why));
+ assert(kharvox::hasSavedVrSupport(twoHand,"pistol"));
+ assert(kharvox::resetVrWeaponCalibrationFile(path,"pistol",true,&why));
+ assert(kharvox::resetVrWeaponCalibrationFile(twoHand,"pistol",false,&why));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(visual.visualPositions.count("pistol")==0);
+ assert(visual.visualRotations.count("pistol")==0);
+ assert(visual.visualPositions.count("shotgun")==1);
+ assert(!kharvox::hasSavedVrSupport(twoHand,"pistol"));
+ assert(kharvox::hasSavedVrSupport(twoHand,"shotgun"));
+ std::remove((std::string(path)+".before-vr-reset.bak").c_str());
+ std::remove((twoHand+".before-vr-reset.bak").c_str());
  std::remove(twoHand.c_str());
  std::remove(path);return 0;
 }

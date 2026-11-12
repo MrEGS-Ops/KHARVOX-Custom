@@ -70,6 +70,7 @@
 #include "SupportGripCapturePolicy.h"
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
+#include "VrHandMenuPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
@@ -134,6 +135,15 @@ namespace {
 struct DoomSwapchain { VkExtent2D extent{}; VkFormat format{}; std::vector<VkImage> images; uint32_t stablePresents{}; bool copyRecoveryPending{}; };
 static uint64_t nativeQualityPresentEpoch{}; // Protected by the XR state mutex.
 struct EyeSwapchain { XrSwapchain handle{XR_NULL_HANDLE}; uint32_t width{},height{}; std::vector<XrSwapchainImageVulkanKHR> images; std::vector<bool> initialized; };
+constexpr UINT vrMenuW=960,vrMenuH=720;
+struct VrHandMenuSurface {
+    EyeSwapchain target{};
+    VkBuffer staging{};
+    VkDeviceMemory memory{};
+    void* mapped{};
+    bool ready{};
+};
+VrHandMenuSurface vrHandMenuSurface;
 EyeSwapchain pauseBindings;
 bool pauseBindingsReady{};
 EyeSwapchain gripZoneDebug;
@@ -424,6 +434,7 @@ struct State {
     XrVector3f primaryVisualLocalPosition{};
     XrQuaternionf primaryVisualLocalOrientation{0,0,0,1};
     kharvox::RightHandGripSettings rightGripSettings{};
+    kharvox::VrHandMenuState vrHandMenu{};
     XrQuaternionf lastWeaponRenderedTrackingRotation{0,0,0,1};
     XrVector3f lastWeaponRenderedTrackingAnchor{};
     // Grip+right-stick enters LIVE visual calibration; left hand is the
@@ -2636,6 +2647,7 @@ void serviceLiveHeavyGripCalibration(bool rightClick,bool leftClick,
         <<(s.liveHeavyGripAlternate?" ALT":" NORMAL")
         <<" (position + rotation)."<<'\n';
 }
+#include "VrHandMenuInput.inc"
 void locateGameplayControllerPoses(XrTime displayTime){
     auto locateController=[&](XrAction action,XrSpace space,ControllerPose& controller){
         XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;
@@ -2960,6 +2972,17 @@ void updateWeapon6Dof(){
                     savedHand=settings.chaingunHand;savedHandValid=true;
                 }
             }
+            // Every right-handed weapon may have its own saved visual pose.
+            // Existing Gauss/Chaingun normal and alternate values still win.
+            if(!savedHandValid){
+                const auto key=std::string(KharvoxWeaponKindKey(kind));
+                const auto it=settings.visualPositions.find(key);
+                if(it!=settings.visualPositions.end()){
+                    savedHand=it->second;savedHandValid=true;
+                }
+                const auto rotationIt=settings.visualRotations.find(key);
+                if(rotationIt!=settings.visualRotations.end())savedRot=rotationIt->second;
+            }
             if(savedHandValid)
                 s.primaryVisualLocalPosition={
                     savedHand.x,savedHand.y,savedHand.z};
@@ -2976,6 +2999,14 @@ void updateWeapon6Dof(){
             // is never moved or fed the probe's pose.
             const auto& p=s.liveHeavyGripPosition;
             const auto& q=s.liveHeavyGripOrientation;
+            s.primaryVisualLocalPosition={p.x,p.y,p.z};
+            s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
+        }
+        if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
+           &&s.vrHandMenu.rightHand&&s.vrHandMenu.previewValid
+           &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())){
+            const auto& p=s.vrHandMenu.previewPosition;
+            const auto& q=s.vrHandMenu.previewRotation;
             s.primaryVisualLocalPosition={p.x,p.y,p.z};
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
@@ -3001,21 +3032,35 @@ void updateWeapon6Dof(){
     }
     // Support glove remains attached only after an actual support Grip.
     // Physics/controller tracking is always independent of visual locks.
-    const bool supportVisualNow=s.customMods.offHandGripCapture &&
-        s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed &&
+    const bool menuLeftPreview=s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
+        &&!s.vrHandMenu.rightHand&&s.vrHandMenu.previewValid
+        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())
+        &&!s.weaponHandLeft;
+    const bool supportVisualNow=menuLeftPreview||
+        (s.customMods.offHandGripCapture&&
+        s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed&&
         s.twoHandLatchedWeapon==kind&&primaryController.valid&&
-        primaryHandGripController.valid&&supportController.valid
-        &&!s.dynamicShoulderHolstered;
+        primaryHandGripController.valid&&supportController.valid&&
+        !s.dynamicShoulderHolstered);
     if(supportVisualNow){
         const auto* profile=twoHandCalibrationFor(kind);
-        if(profile&&profile->valid){
-            auto actual=activeHandCalibration(*profile);
+        if((profile&&profile->valid)||menuLeftPreview){
+            auto actual=profile?activeHandCalibration(*profile):TwoHandCalibration{};
+            if(menuLeftPreview){
+                const auto& offset=s.vrHandMenu.previewPosition;
+                actual.supportPosition={offset.x,offset.y,offset.z};
+            }
             XrVector3f alternateSupport{};
-            if(altHeavySupport(kind,alternateSupport))
+            if(!menuLeftPreview&&altHeavySupport(kind,alternateSupport))
                 actual.supportPosition=alternateSupport;
             const auto fixedPosition=addVector(weaponAnchorTracking,
                 rotateVector(renderOrientation,actual.supportPosition));
-            if(!s.supportVisualLocked||s.supportVisualWeapon!=kind||
+            if(menuLeftPreview){
+                // Preview follows the controller's CURRENT orientation. No
+                // LEFT quaternion is saved; normal play still latches at grab.
+                s.supportVisualLocalOrientation=normalizeQuaternion(multiply(
+                    conjugate(renderOrientation),s.leftGripController.orientation));
+            }else if(!s.supportVisualLocked||s.supportVisualWeapon!=kind||
                 s.supportVisualWeaponLeft!=s.weaponHandLeft){
                 s.supportVisualLocalOrientation=normalizeQuaternion(multiply(
                     conjugate(renderOrientation),supportController.orientation));
@@ -3176,6 +3221,16 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
+    const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
+    const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
+    if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
+         readFloatAction(s.rightWeaponTrigger)>.55f,
+         readFloatAction(s.leftWeaponTrigger)>.55f)){
+        // Input is muted, but the gun/hand transforms must still refresh so
+        // live preview never freezes with the menu closed.
+        updateWeapon6Dof();
+        return;
+    }
     if(s.customMods.offHandGripCapture){
         const bool physicalRightClick=readBooleanAction(
             s.leftHanded?s.doomPause:s.doomMelee);
@@ -5117,6 +5172,7 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 
 #include "PauseBindings.inc"
 #include "GripZoneDebug.inc"
+#include "VrHandMenuRender.inc"
 
 bool createSwapchains() {
     uint32_t viewCount{};
@@ -5285,6 +5341,9 @@ bool createSwapchains() {
         log(initializeGripZoneDebug(formats)
             ? "[CHAINSAW-ZONES] elliptical XR marker ready (stereo tracked)"
             : "[CHAINSAW-ZONES] OpenXR marker texture unavailable; grip haptics/logs remain active");
+    log(initializeVrHandMenuSurface(formats)
+        ? "[VR-HAND-MENU] dedicated OpenXR compositor panel ready"
+        : "[VR-HAND-MENU] overlay unavailable; native gameplay unaffected");
     log("Swapchains ready");
     return true;
 }
@@ -7672,6 +7731,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         }
     }
 
+    bool vrMenuImageAcquired=false;
+    uint32_t vrMenuImageIndex{};
+    if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Menu&&vrHandMenuSurface.ready){
+        XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+        r=s.acquireImage(vrHandMenuSurface.target.handle,&acquire,&vrMenuImageIndex);
+        if(XR_SUCCEEDED(r)&&vrMenuImageIndex<vrHandMenuSurface.target.images.size()){
+            vrMenuImageAcquired=true;
+            XrSwapchainImageWaitInfo wait{XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+            wait.timeout=XR_INFINITE_DURATION;
+            r=s.waitImage(vrHandMenuSurface.target.handle,&wait);
+            if(XR_FAILED(r)){
+                XrSwapchainImageReleaseInfo release{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+                s.releaseImage(vrHandMenuSurface.target.handle,&release);
+                vrMenuImageAcquired=false;
+            }
+        }
+    }
     const bool monoColorCache=steamLinkMonoColorCache||initialMonoColorCache;
     std::array<XrRect2Di,2> submittedRects{};
     if(steamXrAerReusePublishedPair)
@@ -8274,6 +8350,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         hudImageCopied=true;
     }
 
+    if(vrMenuImageAcquired)recordVrHandMenuCopy(s.commandBuffer,vrMenuImageIndex);
+
     // Alternating camera offsets are useful for proving stereo, but showing the
     // raw alternating render on the desktop produces extreme left/right flicker.
     // Keep the HMD eye caches untouched and mirror one stable eye to the game's
@@ -8312,7 +8390,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Owned sources can use the existing ordered XR release contract: submit
     // before release/endFrame, then prove completion before reusing parameters,
     // command buffers or hand attachments. Readbacks keep synchronous retirement.
-    const bool earlyReleaseRequested=(!sfsBackend||sourceRingBackend)&&kharvox::rendererDefaults::earlyXrRelease;
+    // The dynamic menu uses one persistently mapped staging buffer. When it
+    // is visible, finish GPU submission before rewriting that buffer.
+    const bool earlyReleaseRequested=(!sfsBackend||sourceRingBackend)
+        &&kharvox::rendererDefaults::earlyXrRelease&&!vrMenuImageAcquired;
     const bool nativePairReady=nativeFrameValid&&updateEyeSwapchains&&eyeImageAcquired[0]&&eyeImageAcquired[1];
     const bool queueSynchronized=queueAccessLockCallback&&queueAccessUnlockCallback;
     const bool readbackRecorded=nativeXrCaptureRecorded||nativeWatchRecorded||eyeCaptureRecorded
@@ -8372,6 +8453,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.handRenderer.finishSceneIntegratedFrame();
         releaseAcquiredEyeImages();
         if(hudImageAcquired){XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};s.releaseImage(s.hudQuad.handle,&ri);}
+        if(vrMenuImageAcquired)releaseImageChecked(vrHandMenuSurface.target.handle);
         log("copy submit failed "+std::to_string(submitResult));endEmptyFrame("copy-submit-failed");return;
     }
     if(steamRuntime){QueryPerformanceCounter(&copyWaitEnd);steamCopyWaitMs=performanceMilliseconds(copyWaitStart,copyWaitEnd);}
@@ -8382,6 +8464,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(nativeFrameValid)kharvox::native::fail("owner native copy completion failed; restart required");
         releaseAcquiredEyeImages();
         if(hudImageAcquired){XrSwapchainImageReleaseInfo ri{XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};s.releaseImage(s.hudQuad.handle,&ri);}
+        if(vrMenuImageAcquired)releaseImageChecked(vrHandMenuSurface.target.handle);
         log(std::string(copyCompletion?"copy fence wait failed ":"copy queue wait failed ")+std::to_string(completionResult));endEmptyFrame("copy-completion-failed");return;
     }
     if(!earlyRelease){
@@ -8398,6 +8481,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     if(nativeFrameValid)QueryPerformanceCounter(&nativeReleaseAt);
     releaseAcquiredEyeImages();
     if(hudImageAcquired)releaseImageChecked(s.hudQuad.handle);
+    if(vrMenuImageAcquired)releaseImageChecked(vrHandMenuSurface.target.handle);
 
     if(nativeFrameValid)QueryPerformanceCounter(&nativeReleaseDone);
     if(freshWorldPairRecorded){
@@ -8630,6 +8714,19 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const float hudWidthMeters=std::max(0.05f,hudAngularWidthMeters);
     hudQuadLayer.size={hudWidthMeters,hudWidthMeters/hudContentAspect};
 
+    XrCompositionLayerQuad vrMenuLayer{XR_TYPE_COMPOSITION_LAYER_QUAD};
+    if(vrMenuImageAcquired){
+        vrMenuLayer.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+        vrMenuLayer.space=s.viewSpace;
+        vrMenuLayer.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+        vrMenuLayer.subImage.swapchain=vrHandMenuSurface.target.handle;
+        vrMenuLayer.subImage.imageRect={{0,0},
+            {static_cast<int32_t>(vrMenuW),static_cast<int32_t>(vrMenuH)}};
+        vrMenuLayer.pose.orientation.w=1.f;
+        vrMenuLayer.pose.position.z=-1.1f;
+        vrMenuLayer.size={1.28f,.96f};
+    }
+
     // Small circular START marker, same draw/projection dimensions.
     // Once armed, hide it so it cannot imply an ongoing cutting corridor.
     std::array<XrCompositionLayerQuad,1> gripZoneLayers{};
@@ -8710,6 +8807,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         for(const auto& marker:gripZoneLayers)
             layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&marker);
     }
+    if(vrMenuImageAcquired)
+        layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&vrMenuLayer);
     XrFrameEndInfo ei{XR_TYPE_FRAME_END_INFO};
     ei.displayTime=frame.predictedDisplayTime;
     ei.environmentBlendMode=XR_ENVIRONMENT_BLEND_MODE_OPAQUE;

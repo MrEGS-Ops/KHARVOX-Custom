@@ -1,0 +1,27 @@
+name: KHARVOX VR Hand Calibration Unit Tests
+
+on:
+  push:
+    branches:
+      - work/in-headset-weapon-hand-calibration
+      - work/manager-187-wheel-holsters
+    paths:
+      - 'src/openxr/RightHandGripConfig.h'
+      - 'src/openxr/VrHandMenuPolicy.h'
+      - 'tests/right_hand_grip_config_tests.cpp'
+      - '.github/workflows/verify-vr-hand-menu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vr-hand-profiles:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile isolated per-weapon profile regression tests
+        run: c++ -std=c++17 -Wall -Wextra -pedantic tests/right_hand_grip_config_tests.cpp -o /tmp/vr-hand-config-tests
+      - name: Validate save, reset, backups and two-stick chord
+        run: /tmp/vr-hand-config-tests
