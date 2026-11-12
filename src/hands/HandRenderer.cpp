@@ -22,6 +22,15 @@
 namespace kharvox::hands {
 namespace {
 
+// The hand-model renderer is a separate calibration system from the weapon
+// pivot loader. Both MUST read saved overrides from the same top-level
+// UserData directory, never the replaceable NativeBridge folder.
+std::filesystem::path userHandCalibrationDirectory(
+    const std::filesystem::path& runtime){
+    return (runtime.filename()==L"NativeBridge"
+        ?runtime.parent_path():runtime)/L"UserData";
+}
+
 struct Mat4 { float m[16]{}; };
 struct Vertex {
     float position[3]{};
@@ -496,7 +505,9 @@ const HandCalibration&HandRenderer::Impl::selectedCalibration()const{
 }
 
 void HandRenderer::Impl::loadCalibrationFile(const wchar_t* filename, bool defaults){
-    std::ifstream input(root/filename);
+    const auto file=defaults?root/filename
+        :userHandCalibrationDirectory(root)/filename;
+    std::ifstream input(file);
     // Repository defaults are the baseline. A legacy v1 save deliberately
     // uses its global wrists for every weapon; partial v2 saves override only
     // their named profiles, preserving all other accepted defaults.
@@ -534,7 +545,7 @@ void HandRenderer::Impl::writeCalibrationStatus(const char*message)const{
     const auto&value=selectedCalibration();
     const bool weaponProfile=selectHandCalibrationProfile(calibrateLeft,
         calibrationLeftHanded,calibrationWeapon,true).weaponSpecific;
-    const auto path=root/L"hand_calibration_status.txt";
+    const auto path=userHandCalibrationDirectory(root)/L"hand_calibration_status.txt";
     std::ofstream output(path,std::ios::trunc);
     if(!output)return;
     output<<std::fixed<<std::setprecision(3)
@@ -548,8 +559,12 @@ void HandRenderer::Impl::writeCalibrationStatus(const char*message)const{
 }
 
 void HandRenderer::Impl::saveCalibration(){
-    const auto target=root/L"hand_models_calibration_saved.cfg";
-    const auto temporary=root/L"hand_models_calibration_saved.tmp";
+    const auto folder=userHandCalibrationDirectory(root);
+    std::error_code error;
+    std::filesystem::create_directories(folder,error);
+    if(error){say("hand calibration cannot open UserData");return;}
+    const auto target=folder/L"hand_models_calibration_saved.cfg";
+    const auto temporary=folder/L"hand_models_calibration_saved.tmp";
     {
         std::ofstream output(temporary,std::ios::trunc);
         if(!output){say("hand calibration save failed");return;}
@@ -659,6 +674,25 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
     impl_->loadCalibrationFile(L"hand_models_calibration_default.cfg",true);
     impl_->defaultLeftCalibration=impl_->leftCalibration;impl_->defaultRightCalibration=impl_->rightCalibration;
     impl_->defaultWeaponCalibrations=impl_->weaponCalibrations;
+    {
+        // Preserve in-game hand-model saves made by older builds before
+        // clearing/upgrading the native runtime. Never replace a modern
+        // UserData save if one already exists.
+        const auto user=userHandCalibrationDirectory(impl_->root);
+        const auto legacy=impl_->root/L"hand_models_calibration_saved.cfg";
+        const auto current=user/L"hand_models_calibration_saved.cfg";
+        std::error_code ec;
+        std::filesystem::create_directories(user,ec);
+        if(!ec&&std::filesystem::exists(legacy,ec)&&!ec
+            &&!std::filesystem::exists(current,ec)&&!ec){
+            std::filesystem::copy_file(legacy,current,
+                std::filesystem::copy_options::none,ec);
+            impl_->say(ec?"WARNING: old hand-model calibration migration failed"
+                :"Migrated old hand-model calibration to UserData");
+        }
+        impl_->say(std::string("hand model calibration saved overrides: ")
+            +(std::filesystem::exists(current,ec)?"UserData present":"not present; native default"));
+    }
     impl_->loadCalibrationFile(L"hand_models_calibration_saved.cfg",false);
     char calibrationMode[24]{};
     if(GetEnvironmentVariableA("KHARVOX_HAND_CALIBRATION",calibrationMode,sizeof(calibrationMode))>0){
