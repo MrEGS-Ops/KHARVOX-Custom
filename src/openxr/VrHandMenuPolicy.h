@@ -22,6 +22,9 @@ struct VrHandMenuState {
     bool rightHand{true};
     // Gauss Siege and Chaingun Turret have separate visual hand profiles.
     bool alternateProfile{};
+    // Latch holster ownership at capture start; switching hands while
+    // calibrating never writes a pose to the wrong physical hand.
+    bool calibratingWeaponLeft{};
     bool bothClickedPreviously{},rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};

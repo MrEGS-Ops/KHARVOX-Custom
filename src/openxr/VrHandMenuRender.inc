@@ -97,7 +97,7 @@ void paintVrHandMenu() {
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
     write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
-    write(40,102,"RIGHT-HANDED WEAPONS",muted);
+    write(40,102,"WEAPON PROFILES",muted);
     write(536,102,"SELECT HAND",muted);
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const int y=136+int(i)*45;
@@ -111,8 +111,9 @@ void paintVrHandMenu() {
         const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
         write(56,y+6,name&&*name?name:key,white);
         SelectObject(dc,smallFont);
-        write(365,y+9,std::string(m.rightSaved[i]?"R":"-")+
-            "/" +(m.leftSaved[i]?"L":"-"),muted);
+        const char* state=m.rightSaved[i]&&m.leftSaved[i]?"BOTH"
+            :m.rightSaved[i]?"RIGHT":m.leftSaved[i]?"LEFT":"-";
+        write(365,y+9,state,selected?white:muted);
     }
     const auto button=[&](int x,int y,int w,int h,bool active,bool hovered){
         fill(x,y,w,h,active?RGB(31,104,115):
@@ -123,8 +124,11 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(555,163,"LEFT",white);write(742,163,"RIGHT",white);
     SelectObject(dc,smallFont);
-    write(538,233,"LEFT: position only",muted);
-    write(538,267,"Rotation follows each grab",muted);
+    write(538,233,s.weaponHandLeft?"WEAPON HELD: LEFT":"WEAPON HELD: RIGHT",muted);
+    const bool primarySelected=m.rightHand!=s.weaponHandLeft;
+    write(538,267,primarySelected
+        ?"PRIMARY: position + rotation"
+        :"SUPPORT: position only",muted);
     const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
     const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
         ||selectedKind==KharvoxWeaponKind::Chaingun;
@@ -135,7 +139,9 @@ void paintVrHandMenu() {
                 ?"PROFILE: SIEGE":"PROFILE: TURRET")
             :"PROFILE: NORMAL",white);
     }else{
-        write(538,306,"RIGHT: position + rotation",muted);
+        write(538,306,primarySelected
+            ?"Hand locked to gun"
+            :"Support rotation on grab",muted);
     }
     button(531,363,384,69,false,m.hovered==30);
     SelectObject(dc,title);
@@ -144,7 +150,7 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,551,"R / L = saved hand profiles",muted);
+    write(538,551,"LEFT / RIGHT / BOTH = gun grip saved",muted);
     write(538,582,"Point RIGHT hand + trigger to select",muted);
     write(538,611,"Both thumbsticks: close menu",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));

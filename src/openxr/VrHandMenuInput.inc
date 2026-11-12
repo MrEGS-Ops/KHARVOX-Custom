@@ -3,38 +3,41 @@
 // save is edge-based and cannot fire the selected weapon.
 void refreshVrHandMenuSavedStatus(){
     auto& m=s.vrHandMenu;
-    const auto& positions=s.rightGripSettings.visualPositions;
-    const std::string supportFile=kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg");
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const std::string key=kharvox::kVrCalibrationWeapons[i];
-        m.rightSaved[i]=positions.find(key)!=positions.end();
-        m.leftSaved[i]=kharvox::hasSavedVrSupport(supportFile,key);
+        // Show PRIMARY gun-in-hand calibrations. The off-hand support grip
+        // is separate and does NOT make an uncalibrated left-primary gun
+        // appear as "LEFT calibrated".
+        m.rightSaved[i]=kharvox::hasSavedVrPrimaryPose(s.rightGripSettings,key,false);
+        m.leftSaved[i]=kharvox::hasSavedVrPrimaryPose(s.rightGripSettings,key,true);
     }
 }
 void updateVrMenuPreview(){
     auto& m=s.vrHandMenu;
     m.previewValid=false;
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+    const auto& placement=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     if(weapon==KharvoxWeaponKind::Unknown||weapon!=KharvoxWeaponCurrentKind()
-        ||s.weaponHandLeft||!s.lastWeaponRenderedValid
-        ||s.lastWeaponRenderedKind!=weapon
-        ||!s.leftGripController.valid||!s.leftGripController.positionTracked)return;
-    XrVector3f probe=s.leftGripController.position;
-    if(m.rightHand){
+        ||s.weaponHandLeft!=m.calibratingWeaponLeft
+        ||!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=weapon
+        ||!placement.valid||!placement.positionTracked)return;
+    const bool primaryHand=m.rightHand!=s.weaponHandLeft;
+    XrVector3f probe=placement.position;
+    if(primaryHand){
         const auto forward=kharvox::liveHeavyGripProbePoint(
             {probe.x,probe.y,probe.z},
-            {s.leftGripController.orientation.x,s.leftGripController.orientation.y,
-             s.leftGripController.orientation.z,s.leftGripController.orientation.w,true});
+            {placement.orientation.x,placement.orientation.y,
+             placement.orientation.z,placement.orientation.w,true});
         probe={forward.x,forward.y,forward.z};
     }
     const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
     const auto local=rotateVector(inverted,
         subtractVector(probe,s.lastWeaponRenderedTrackingAnchor));
     const auto rotation=normalizeQuaternion(multiply(
-        inverted,s.leftGripController.orientation));
+        inverted,placement.orientation));
     m.previewPosition={local.x,local.y,local.z};
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
-    m.previewValid=(m.rightHand
+    m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
         :kharvox::validRightHandPlacement(m.previewPosition))
         &&kharvox::validRightHandRotation(m.previewRotation);
@@ -43,18 +46,21 @@ void saveVrHandMenuCalibration(){
     auto& m=s.vrHandMenu;
     if(!m.previewValid){m.message="Tracking/placement invalid; try again.";return;}
     const auto kind=KharvoxWeaponKindFromKey(m.weapon());
-    if(kind!=KharvoxWeaponCurrentKind()){
-        m.message="Equip the chosen weapon first.";return;
+    if(kind!=KharvoxWeaponCurrentKind()
+        ||s.weaponHandLeft!=m.calibratingWeaponLeft){
+        m.message="Weapon or holding hand changed; capture not saved.";return;
     }
+    const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     std::string why;
     bool ok=false;
     const bool alternate=m.alternateProfile
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
-    if(m.rightHand){
+    if(primaryHand){
         ok=kharvox::saveRightHandVisualPose(
             kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
-            m.weapon(),alternate,m.previewPosition,m.previewRotation,&why);
+            m.weapon(),alternate,m.previewPosition,m.previewRotation,
+            &why,s.weaponHandLeft);
         if(ok){
             s.rightGripSettings=kharvox::readRightHandGripSettings(
                 kharvox::runtimePathA("offhand_right_hand_positions.cfg"));
@@ -65,7 +71,7 @@ void saveVrHandMenuCalibration(){
         // by a physical shortcut; now configurable only through the menu.
         const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
         ok=kharvox::saveHeavyAlternativeSupport(
-            rightFile,m.weapon(),m.previewPosition,&why);
+            rightFile,m.weapon(),m.previewPosition,&why,s.weaponHandLeft);
         if(ok){
             s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
             s.twoHandLatched=false;
@@ -75,14 +81,21 @@ void saveVrHandMenuCalibration(){
         auto* profile=twoHandCalibrationFor(kind);
         if(!profile){m.message="No support-hand profile for this weapon.";return;}
         const auto mode=profile->aimMode;
+        // Left-primary supports are stored in their own file, in the
+        // original canonical (right-primary) coordinates. Runtime mirrors
+        // them back when the weapon is held in the left hand.
+        auto position=m.previewPosition;
+        if(s.weaponHandLeft)position.x=-position.x;
         ok=kharvox::saveHeavySupportGrip(
-            kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg"),
-            m.weapon(),m.previewPosition,mode==TwoHandAimMode::SideGrip,
+            kharvox::runtimePathA(s.weaponHandLeft
+                ?"two_hand_weapon_profiles_left_primary_saved.cfg"
+                :"two_hand_weapon_profiles_saved.cfg"),
+            m.weapon(),position,mode==TwoHandAimMode::SideGrip,
             std::clamp(profile->captureRadius,.08f,.40f),
             std::clamp(profile->maximumHandLineWeight,0.f,1.f),&why);
         if(ok){
-            profile->supportPosition={m.previewPosition.x,m.previewPosition.y,
-                m.previewPosition.z};
+            profile->supportPosition={position.x,position.y,
+                position.z};
             profile->valid=true;
             s.twoHandLatched=false;
             s.supportVisualLocked=false;
@@ -95,12 +108,14 @@ void saveVrHandMenuCalibration(){
     }
     log(std::string("[VR-HAND-MENU] saved ")+m.weapon()+
         (alternate?" ALTERNATE":" NORMAL")+
-        (m.rightHand?" RIGHT pose+rotation":" LEFT position (grab rotation preserved)"));
+        (m.rightHand?" RIGHT":" LEFT")+
+        (primaryHand?" primary pose+rotation":" support position (grab rotation preserved)"));
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.message=std::string(m.rightHand?"RIGHT":"LEFT")+
-        (alternate?" ALT":" NORMAL")+" hand saved for "+m.weapon();
+        (primaryHand?" PRIMARY":" SUPPORT")+
+        (alternate?" ALT":" NORMAL")+" saved for "+m.weapon();
     m.previewValid=false;
     refreshVrHandMenuSavedStatus();
 }
@@ -108,15 +123,20 @@ void resetVrMenuSelectedWeapon(){
     auto& m=s.vrHandMenu;
     const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
     const auto leftFile=kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg");
+    const auto leftPrimarySupport=kharvox::runtimePathA(
+        "two_hand_weapon_profiles_left_primary_saved.cfg");
     std::string why;
     if(!kharvox::resetVrWeaponCalibrationFile(rightFile,m.weapon(),true,&why)
-        ||!kharvox::resetVrWeaponCalibrationFile(leftFile,m.weapon(),false,&why)){
+        ||!kharvox::resetVrWeaponCalibrationFile(leftFile,m.weapon(),false,&why)
+        ||!kharvox::resetVrWeaponCalibrationFile(
+            leftPrimarySupport,m.weapon(),false,&why)){
         m.message="RESET FAILED: "+why;
         log("[VR-HAND-MENU] "+m.message);
         return;
     }
     s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
     s.twoHandCalibrations={};
+    s.twoHandCalibrationsLeft={};
     loadTwoHandCalibrations();
     s.primaryVisualLocked=false;s.supportVisualLocked=false;
     s.twoHandLatched=false;
@@ -176,11 +196,15 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
             m.alternateProfile=false;
+            // A left-holster draw means LEFT primary, not "LEFT support".
+            m.rightHand=!s.weaponHandLeft;
             const auto equipped=KharvoxWeaponCurrentKind();
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
                     ==equipped)m.selectedWeapon=i;
-            m.message="Select weapon + hand. Right trigger starts.";
+            m.message=std::string("Holding in ")+
+                (s.weaponHandLeft?"LEFT":"RIGHT")+
+                " hand. Choose physical hand to calibrate.";
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by BOTH thumbsticks");
         }else{
@@ -229,17 +253,18 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
             else if(m.hovered==30||m.hovered==-1){
                 if(!s.customMods.offHandGripCapture)
                     m.message="Enable Off-Hand Grip Capture in desktop Mod Manager.";
-                else if(s.weaponHandLeft)
-                    m.message="Switch to right-hand weapon mode first.";
                 else if(KharvoxWeaponKindFromKey(m.weapon())!=KharvoxWeaponCurrentKind())
                     m.message="Equip the selected weapon first, then open this menu.";
                 else{
                     m.mode=kharvox::VrHandMenuMode::Calibrating;
+                    m.calibratingWeaponLeft=s.weaponHandLeft;
                     m.previewValid=false;
                     s.primaryVisualLocked=false;s.supportVisualLocked=false;
                     m.message="Live hand calibration";
                     log(std::string("[VR-HAND-MENU] calibrating ")+m.weapon()+
-                        (m.rightHand?" RIGHT pose+rotation":" LEFT position only"));
+                        (m.rightHand?" RIGHT":" LEFT")+
+                        (m.rightHand!=s.weaponHandLeft
+                            ?" primary pose+rotation":" support position only"));
                 }
             }
         }
