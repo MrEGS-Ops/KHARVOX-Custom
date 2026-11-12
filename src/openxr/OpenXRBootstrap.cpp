@@ -2972,10 +2972,10 @@ void updateGameplayActions(XrTime displayTime){
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
     if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
-         readFloatAction(s.leftWeaponTrigger)>.55f)){
-        s.heavyAlternateInputForwarded=false;
-        // Input is muted, but the gun/hand transforms must still refresh so
-        // live preview never freezes with the menu closed.
+         readFloatAction(s.leftWeaponTrigger)>.55f,
+         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
+        // Menu inputs are muted except the primary weapon Grip's ALT FIRE
+        // during LIVE capture. Keep refreshing transforms for visual preview.
         updateWeapon6Dof();
         return;
     }
