@@ -41,10 +41,12 @@ jobs:
       - name: Validate first-run settings, neutral-fallback rejection and exact factory seeding
         shell: pwsh
         run: |
-          & launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Fresh-install settings and factory calibration smoke tests failed" }
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Fresh-install settings and factory calibration smoke tests failed (exit $($result.ExitCode))" }
       - name: Validate mod inventory and locked Developer options in actual Windows UI
         shell: pwsh
         run: |
-          & launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe --self-test-ui
-          if ($LASTEXITCODE -ne 0) { throw "First-run VR Mod Manager UI self-tests failed" }
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "First-run VR Mod Manager UI self-tests failed (exit $($result.ExitCode))" }
