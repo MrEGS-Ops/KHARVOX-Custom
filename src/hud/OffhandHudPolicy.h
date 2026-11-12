@@ -78,6 +78,19 @@ inline bool readOffhandHudConfig(std::istream& stream,OffhandHudConfig& out){
     }
     value.enabled=enabled!=0;out=value;return true;
 }
+// A clean installation has no editable UserData/offhand_hud.cfg yet.
+// Prefer the user's valid calibration; otherwise use the verified bundled
+// offhand_hud_default.cfg rather than generic uncalibrated offsets.
+// Never write a fallback over the editable file.
+inline bool readOffhandHudConfigOrDefault(std::istream& user,
+    std::istream& factory,OffhandHudConfig& out){
+    OffhandHudConfig next;
+    if(readOffhandHudConfig(user,next)||readOffhandHudConfig(factory,next)){
+        out=next;return true;
+    }
+    return false;
+}
+
 inline void offhandHudBasis(const float* hand,const OffhandHudCalibration& c,float* out){
     std::array<float,9> local{1,0,0,0,1,0,0,0,1};
     // Intrinsic pitch (forward/up), yaw (forward/left), roll (left/up).
