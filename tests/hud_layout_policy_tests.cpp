@@ -76,6 +76,27 @@ int main() {
     {
         if(offhandHudSurface(0xbdcf54,512,300,83)!=0||offhandHudSurface(0xbdcf54,512,300,100)!=1)return 100;
         if(offhandHudSurface(0xbdcf54,512,301,100)!=-1||offhandHudSurface(0xbdcf55,512,300,100)!=-1)return 101;
+        // A clean UserData folder must use the shipped factory HUD pose,
+        // while a valid user calibration always takes precedence.
+        OffhandHudConfig factoryPose;
+        std::istringstream emptyUser(""),factoryV3(
+            "3 1 -9.5 -5 24.5 -65 90 15 0.4 "
+            "-10 -14 0 -75 -65 20 0.4 "
+            "-4.5 20.5 17.5 -65 60 15 0.4 "
+            "-13 12.5 11 -55 -100 0 0.4 "
+            "-11.5 7.5 18 -130 95 -50 0.4 "
+            "-18 -1 6 -85 -65 30 0.4");
+        if(!readOffhandHudConfigOrDefault(emptyUser,factoryV3,factoryPose)
+            ||!near(factoryPose.modes[0].centimeters[0],-9.5f)
+            ||!near(factoryPose.modes[1].centimeters[1],-14.f)
+            ||!near(factoryPose.modes[5].degrees[0],-85.f))return 188;
+        OffhandHudConfig ownerPose;
+        std::istringstream owner(
+            "1 1 8 0 8 0 0 0 .1 4 2 6 0 90 0 .2");
+        std::istringstream ignoredFactory("3 0");
+        if(!readOffhandHudConfigOrDefault(owner,ignoredFactory,ownerPose)
+            ||!near(ownerPose.modes[0].centimeters[0],8.f)
+            ||!ownerPose.enabled)return 189;
         OffhandHudConfig config;std::istringstream saved("1 1 8 0 8 0 0 0 .1 4 2 6 0 90 0 .2");
         if(!readOffhandHudConfig(saved,config)||!near(config.modes[1].centimeters[0],4)||!near(config.modes[0].scale,.1f))return 102;
         if(!near(config.modes[2].centimeters[0],config.modes[0].centimeters[0])||!near(config.modes[3].scale,config.modes[1].scale))return 107;
