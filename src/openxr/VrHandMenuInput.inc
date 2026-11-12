@@ -295,7 +295,7 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     s.firePressed=rightTrigger;
     s.weaponSelectPressed=false;s.weaponWheelOpened=false;
     s.equipmentButtonPressed=false;
-    s.usePulseUntil=0;s.meleePulseUntil=0;
+    s.usePulseUntil=0;s.handFocusUsePulseUntil=0;s.meleePulseUntil=0;
     s.chainsawPulseUntil=0;
     s.backWeaponPulseUntil=0;
     s.bfgPulseUntil=0;

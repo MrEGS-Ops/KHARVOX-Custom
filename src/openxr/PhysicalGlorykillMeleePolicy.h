@@ -6,8 +6,11 @@ namespace kharvox::physicalgk {
 inline constexpr bool routeStickMelee(bool physicalGK,bool gameplay,bool pressed) noexcept {
     return pressed && !(physicalGK && gameplay);
 }
-inline constexpr bool routeNativeUse(bool physicalGK,bool gameplay,bool stickUsePulse) noexcept {
-    return gameplay && !physicalGK && stickUsePulse;
+// Hand Focus' native world interaction is independent of RS-driven melee.
+// A direct USE-only press must remain available even with Physical GK on.
+inline constexpr bool routeNativeUse(bool physicalGK,bool gameplay,
+    bool stickUsePulse,bool handFocusUsePulse=false) noexcept {
+    return gameplay && (handFocusUsePulse || (!physicalGK && stickUsePulse));
 }
 inline constexpr bool routeNativeMelee(bool physicalGK,bool gameplay,
     bool stickDown,bool legacyMeleePulse,bool physicalPunchPulse,
