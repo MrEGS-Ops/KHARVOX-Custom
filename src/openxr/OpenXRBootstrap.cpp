@@ -1912,12 +1912,12 @@ void configureMotionWeaponWheel(){
         return !_stricmp(text,"1")||!_stricmp(text,"true")
             ||!_stricmp(text,"yes")||!_stricmp(text,"on");
     };
-    // The standalone Weapon Wheel Button Remap no longer exists.
-    // Ignore legacy KHARVOX_WEAPON_WHEEL_REMAP environment values and allow
-    // only Gunslinger's behind-head wheel to use motion selection.
-    s.weaponWheelRemapEnabled=false;
+    // There is NO standalone Weapon Wheel Button Remap anymore.
+    // Preserve the merged Gunslinger face-button routing, but completely
+    // ignore legacy KHARVOX_WEAPON_WHEEL_REMAP environment values.
+    s.weaponWheelRemapEnabled=s.customMods.behindHeadWeaponWheel;
     s.motionWheelEnabled=s.customMods.behindHeadWeaponWheel;
-    log("[INPUT] retired standalone wheel remap ignored; Gunslinger is sole owner");
+    log("[INPUT] wheel button layout owned by Gunslinger ONLY");
     log(std::string("[INPUT] Motion Weapon Wheel (Alyx Style) ")
         +(s.motionWheelEnabled
             ?"ENABLED; physical hand displacement drives selection; haptic clicks on sector change"
