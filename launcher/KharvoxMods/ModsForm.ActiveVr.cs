@@ -788,9 +788,11 @@ internal sealed partial class ModsForm
         var check = MakePreviewCheck(mod.Title,
             description + Environment.NewLine + statusReason,
             isDev ? "dev-override" : "original-vr-mod");
-        check.Enabled = available;
-        check.Checked = isDev && mod.Title == AutoMeleeDevTitle
-            ? PhysicalGkEnabledInLauncher() : active;
+        check.Enabled = available && !isDev;
+        check.Checked = isDev && (mod.Title == "Hand Focus"
+                || mod.Title == "Physical Crouch")
+            ? true : isDev && mod.Title == AutoMeleeDevTitle
+                ? PhysicalGkEnabledInLauncher() : active;
         if (isDev && mod.Title == AutoMeleeDevTitle)
             _autoMeleeDevIndicator = check;
         check.Text = ""; // Only the checkbox glyph; label renders the name.
