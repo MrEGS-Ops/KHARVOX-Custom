@@ -262,7 +262,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
 }
 bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool rightClick,
                             bool rightTrigger,bool leftTrigger,
-                            bool primaryWeaponGripDown){
+                            bool primaryWeaponGripDown,bool menuA,bool menuB){
     auto& m=s.vrHandMenu;
     // A single 1-second RIGHT-stick hold opens/closes this menu.
     // Ordinary RS taps still belong to Hand Focus.
@@ -278,6 +278,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.previewValid=false;
         m.shortcut={};
         m.rightTriggerPreviously=rightTrigger;
+        m.menuAPreviously=menuA;
+        m.menuBPreviously=menuB;
+        m.consumeMenuFaceUntilRelease=false;
         return false;
     }
     if(shortcut==kharvox::VrMenuShortcutAction::Toggle){
@@ -293,6 +296,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.selectedMod=kharvox::VrLiveMod::WeaponGrip;
             m.selectedRow=0;
             m.modScroll=0;
+            m.navigation={};
             m.liveCapture=kharvox::VrLiveCapture::None;
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
@@ -303,7 +307,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
                     ==equipped)m.selectedWeapon=i;
-            m.message="Select a mod LEFT; adjust settings RIGHT. RIGHT TRIGGER confirms.";
+            m.message="LEFT stick navigates; A selects; B backs out. RIGHT pointer + trigger also works.";
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
@@ -320,9 +324,16 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         s.offHandStickInput={};
         m.rightTriggerPreviously=rightTrigger;
         m.leftTriggerPreviously=leftTrigger;
+        m.menuAPreviously=menuA;
+        m.menuBPreviously=menuB;
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
+        // Keep a menu-closing B/A held press out of normal jump/crouch.
+        if(m.consumeMenuFaceUntilRelease){
+            if(!menuA&&!menuB)m.consumeMenuFaceUntilRelease=false;
+            else return true;
+        }
         // Closing during a held right click must also swallow release.
         if(m.shortcut.triggered
             ||shortcut==kharvox::VrMenuShortcutAction::ConsumedRelease){
@@ -333,6 +344,30 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;
+    const bool aEdge=kharvox::vrMenuButtonEdge(menuA,m.menuAPreviously);
+    const bool bEdge=kharvox::vrMenuButtonEdge(menuB,m.menuBPreviously);
+    // B cancels capture without saving. From weapon profiles B returns to
+    // Mods; from the top-level Mods page it closes the overlay.
+    if(bEdge){
+        m.liveCapture=kharvox::VrLiveCapture::None;
+        m.autoSelectingWeapon=false;
+        m.pendingNativeSelection=0;
+        m.previewValid=false;
+        s.primaryVisualLocked=false;
+        s.supportVisualLocked=false;
+        if(m.mode==kharvox::VrHandMenuMode::Calibrating){
+            m.mode=kharvox::VrHandMenuMode::Menu;
+            m.page=kharvox::VrMenuPage::WeaponGrip;
+            m.message="Calibration cancelled. No changes saved.";
+        }else if(m.page==kharvox::VrMenuPage::WeaponGrip){
+            m.page=kharvox::VrMenuPage::Mods;
+            m.navigation={};
+            m.message="Back to VR Mod Settings.";
+        }else{
+            m.mode=kharvox::VrHandMenuMode::Closed;
+            m.consumeMenuFaceUntilRelease=true;
+        }
+    }
     if(m.mode==kharvox::VrHandMenuMode::Calibrating){
         if(m.liveCapture!=kharvox::VrLiveCapture::None){
             if(triggerEdge)captureVrLivePosition();
