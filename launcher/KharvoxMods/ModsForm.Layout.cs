@@ -27,14 +27,12 @@ internal sealed partial class ModsForm
     // Hand Focus and Physical Crouch are always-on, read-only Developer
     // overrides. They must not be counted as selectable Active VR mods.
     private static bool IsConfirmedMod(string title) =>
-        title == "Weapon Wheel Button Remap" ||
         title == "Gunslinger" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
         title == "Weapon Grip Calibration";
 
     private bool CurrentSelection(string name) => name switch
     {
-        "Weapon Wheel Button Remap" => _modPrefs.WeaponWheelRemap,
         "Hand Focus" => _modPrefs.HandFocus,
         "Gunslinger" => _modPrefs.Gunslinger,
         "Physical Crouch" => _modPrefs.PhysicalCrouch,
@@ -54,20 +52,9 @@ internal sealed partial class ModsForm
         }
         switch (name)
         {
-            case "Weapon Wheel Button Remap":
-                // Gunslinger owns the compatible remapped controls. The
-                // independent remap stays locked until Gunslinger is OFF.
-                if (_modPrefs.Gunslinger)
-                {
-                    QueueVrRebuild();
-                    return;
-                }
-                _modPrefs.WeaponWheelRemap = value;
-                break;
             case "Hand Focus": _modPrefs.HandFocus = value; break;
             case "Gunslinger":
                 _modPrefs.Gunslinger = value;
-                if (value) _modPrefs.WeaponWheelRemap = false;
                 break;
             case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
             case "PAINSAW: RIPSHIFT OVERDRIVE":
@@ -117,12 +104,10 @@ internal sealed partial class ModsForm
     {
         ("✥  Hands & Arms", new[]
         {
-            new PreviewMod("Weapon Wheel Button Remap",
-                "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Greyed out while Gunslinger is enabled; disable Gunslinger first.", true),
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
             new PreviewMod("Gunslinger",
-                "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back. Automatically disables standalone Weapon Wheel Button Remap.", true),
+                "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back.", true),
             new PreviewMod("Weapon Grip Calibration",
                 "Calibrate primary and support grips for either weapon hand in VR. Hold RIGHT stick click for 1 second to open the menu. Each main grip becomes the weapon pivot; LEFT / RIGHT / BOTH show saved profiles. During live capture, hold the weapon-hand Grip for native alt fire (Gauss Siege / Chaingun Turret), and use RIGHT trigger to save without firing. Select NORMAL or alternate profile before calibrating. Automatically disables Virtual Gunstock.", true)
         }),
