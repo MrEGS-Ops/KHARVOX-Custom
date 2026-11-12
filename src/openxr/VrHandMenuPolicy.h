@@ -162,6 +162,79 @@ inline bool hasSavedVrPrimaryPose(const RightHandGripSettings& settings,
     return positions.find(weapon)!=positions.end()
         &&rotations.find(weapon)!=rotations.end();
 }
+// Factory files are seeded into UserData on a fresh installation. The mere
+// presence of a profile is NOT evidence of a user calibration, so the
+// LEFT/RIGHT/BOTH UI states must compare values against the packaged factory.
+inline bool vrPrimaryPoseChangedFromFactory(
+    const RightHandGripSettings& current,
+    const RightHandGripSettings& factory,
+    const std::string& weapon,bool leftHand) noexcept {
+    const auto& positions=leftHand?current.leftVisualPositions:current.visualPositions;
+    const auto& rotations=leftHand?current.leftVisualRotations:current.visualRotations;
+    const auto& basePositions=leftHand?factory.leftVisualPositions:factory.visualPositions;
+    const auto& baseRotations=leftHand?factory.leftVisualRotations:factory.visualRotations;
+    const auto positionChanged=[&](const std::string& key) {
+        const auto found=positions.find(key);
+        if(found==positions.end())return false; // no user grip data at all
+        const auto base=basePositions.find(key);
+        if(base==basePositions.end())return true;
+        const auto a=found->second,b=base->second;
+        return std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+            ||std::abs(a.z-b.z)>.0001f;
+    };
+    const auto rotationChanged=[&](const std::string& key) {
+        const auto found=rotations.find(key);
+        if(found==rotations.end())return false;
+        const auto base=baseRotations.find(key);
+        if(base==baseRotations.end())return true;
+        const auto a=found->second,b=base->second;
+        // q and -q represent the same orientation.
+        const auto similar=[&](float sign){
+            return std::abs(a.x-sign*b.x)<.0001f
+                &&std::abs(a.y-sign*b.y)<.0001f
+                &&std::abs(a.z-sign*b.z)<.0001f
+                &&std::abs(a.w-sign*b.w)<.0001f;
+        };
+        return !similar(1.f)&&!similar(-1.f);
+    };
+    // Require a complete primary profile; support-only writes must not make
+    // the primary hand appear calibrated.
+    if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
+    if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    const std::string alternate=weapon=="gauss_cannon"
+        ?"gauss_cannon_siege":weapon=="chaingun"
+            ?"chaingun_turret":"";
+    if(alternate.empty())return false;
+    if(leftHand)return positionChanged(alternate)||rotationChanged(alternate);
+    // Right-heavy alternate values live in dedicated fields rather than the
+    // generic profile map. Compare those as well.
+    if(weapon=="gauss_cannon"){
+        if(current.gaussSiegeHandValid!=factory.gaussSiegeHandValid)return true;
+        if(current.gaussSiegeHandValid){
+            const auto a=current.gaussSiegeHand,b=factory.gaussSiegeHand;
+            if(std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+               ||std::abs(a.z-b.z)>.0001f)return true;
+        }
+        return current.gaussSiegeRotation.valid
+            &&(!factory.gaussSiegeRotation.valid
+                ||std::abs(current.gaussSiegeRotation.x-factory.gaussSiegeRotation.x)>.0001f
+                ||std::abs(current.gaussSiegeRotation.y-factory.gaussSiegeRotation.y)>.0001f
+                ||std::abs(current.gaussSiegeRotation.z-factory.gaussSiegeRotation.z)>.0001f
+                ||std::abs(current.gaussSiegeRotation.w-factory.gaussSiegeRotation.w)>.0001f);
+    }
+    if(current.chaingunTurretHandValid!=factory.chaingunTurretHandValid)return true;
+    if(current.chaingunTurretHandValid){
+        const auto a=current.chaingunTurretHand,b=factory.chaingunTurretHand;
+        if(std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+            ||std::abs(a.z-b.z)>.0001f)return true;
+    }
+    return current.chaingunTurretRotation.valid
+        &&(!factory.chaingunTurretRotation.valid
+            ||std::abs(current.chaingunTurretRotation.x-factory.chaingunTurretRotation.x)>.0001f
+            ||std::abs(current.chaingunTurretRotation.y-factory.chaingunTurretRotation.y)>.0001f
+            ||std::abs(current.chaingunTurretRotation.z-factory.chaingunTurretRotation.z)>.0001f
+            ||std::abs(current.chaingunTurretRotation.w-factory.chaingunTurretRotation.w)>.0001f);
+}
 inline bool hasSavedVrSupport(const std::string&path,const std::string&weapon){
     std::ifstream input(path);std::string row;
     while(std::getline(input,row)){
