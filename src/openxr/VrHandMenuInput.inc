@@ -235,7 +235,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         if(pixelX>=38&&pixelX<=493){
             for(int i=0;i<10;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
-                    return 100+s.vrHandMenu.modScroll+i;
+                    return 1000+s.vrHandMenu.modScroll+i;
         }
         if(pixelX>=531&&pixelX<=915){
             if(pixelY>=150&&pixelY<210)return 110;
@@ -354,8 +354,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.leftStickCentered=false;
             }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
             if(triggerEdge){
-                if(m.hovered>=100&&m.hovered<100+n){
-                    m.selectedRow=m.hovered-100;
+                if(m.hovered>=1000&&m.hovered<1000+n){
+                    m.selectedRow=m.hovered-1000;
                     m.selectedMod=rows[m.selectedRow].mod;
                     m.message=kharvox::vrLiveModEditable(m.selectedMod)
                         ?"Live options on the RIGHT.":"Read-only; configured in desktop launcher.";
@@ -422,7 +422,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         log(std::string("[VR-HAND-MENU] live calibration native secondary fire ")
             +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
     s.heavyAlternateInputForwarded=liveAltFire;
-    releaseMovement();
+    releaseMovement(m.autoSelectingWeapon);
     // Special BFG/Chainsaw auto-equip uses its native selection channel.
     // Never forward right-trigger FIRE or any melee while this menu owns input.
     const bool selectionPulse=m.autoSelectingWeapon
