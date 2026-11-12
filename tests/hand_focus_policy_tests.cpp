@@ -8,7 +8,7 @@ int main(){
         assert(useWeaponHandFocus(true,true,false,false,false,false));
     // Both physical weapon hands use the same persistent mode; ownership
     // selects which controller pose to publish at the caller.
-    for(bool leftWeaponHand:{false,true}){
+    for(int leftWeaponHand=0;leftWeaponHand<2;++leftWeaponHand){
         (void)leftWeaponHand;
         assert(useWeaponHandFocus(true,true,false,false,false,false));
     }
