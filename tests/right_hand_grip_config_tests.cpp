@@ -194,6 +194,21 @@ int main(){
  assert(visual.visualPositions.count("pistol")==1);
  assert(visual.visualRotations.count("pistol")==1);
  assert(visual.visualPositions.count("shotgun")==1);
+ // Primary-hand calibration statuses must be independent of support grips.
+ assert(!kharvox::hasSavedVrPrimaryPose(visual,"pistol",true));
+ assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",false));
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     {-.08f,.05f,-.11f},{0.f,0.f,0.f,1.f,true},&why,true));
+ assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",true,
+     {-.15f,.06f,-.20f},{0.f,0.f,0.f,1.f,true},&why,true));
+ assert(kharvox::saveHeavyAlternativeSupport(path,"gauss_cannon",
+     {-.04f,.10f,-.12f},&why,true));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",false));
+ assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",true)); // BOTH
+ assert(visual.leftVisualPositions.count("gauss_cannon_siege")==1);
+ assert(visual.leftVisualRotations.count("gauss_cannon_siege")==1);
+ assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
  assert(kharvox::saveHeavySupportGrip(twoHand,"pistol",
      {.03f,.04f,-.20f},false,.2f,1.f,&why));
  assert(kharvox::hasSavedVrSupport(twoHand,"pistol"));
@@ -202,7 +217,15 @@ int main(){
  visual=kharvox::readRightHandGripSettings(path);
  assert(visual.visualPositions.count("pistol")==0);
  assert(visual.visualRotations.count("pistol")==0);
+ assert(visual.leftVisualPositions.count("pistol")==0);
+ assert(visual.leftVisualRotations.count("pistol")==0);
+ assert(!kharvox::hasSavedVrPrimaryPose(visual,"pistol",true));
  assert(visual.visualPositions.count("shotgun")==1);
+ assert(visual.leftVisualPositions.count("gauss_cannon_siege")==1);
+ assert(kharvox::resetVrWeaponCalibrationFile(path,"gauss_cannon",true,&why));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(visual.leftVisualPositions.count("gauss_cannon_siege")==0);
+ assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==0);
  assert(!kharvox::hasSavedVrSupport(twoHand,"pistol"));
  assert(kharvox::hasSavedVrSupport(twoHand,"shotgun"));
  std::remove((std::string(path)+".before-vr-reset.bak").c_str());

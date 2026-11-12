@@ -240,7 +240,9 @@ internal static class NativeBridgeInstaller
     {
         foreach (var name in new[]
         {
-            "two_hand_weapon_profiles_saved.cfg", "two_hand_shotgun_saved.cfg",
+            "two_hand_weapon_profiles_saved.cfg",
+            "two_hand_weapon_profiles_left_primary_saved.cfg",
+            "two_hand_shotgun_saved.cfg",
             "two_hand_alignment.cfg", "two_hand_calibration_target.cfg",
             "offhand_grip_capture_status.txt",
             "offhand_right_hand_positions.cfg",
@@ -248,6 +250,8 @@ internal static class NativeBridgeInstaller
             "offhand_right_hand_positions.cfg.before-live-capture.bak",
             "offhand_right_hand_positions.cfg.before-vr-reset.bak",
             "two_hand_weapon_profiles_saved.cfg.before-vr-reset.bak",
+            "two_hand_weapon_profiles_left_primary_saved.cfg.before-vr-reset.bak",
+            "two_hand_weapon_profiles_left_primary_saved.cfg.before-heavy-support.bak",
             "two_hand_weapon_profiles_saved.cfg.before-chainsaw-capture.bak",
             "two_hand_weapon_profiles_saved.cfg.before-heavy-support.bak"
         })
