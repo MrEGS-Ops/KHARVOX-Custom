@@ -11,9 +11,11 @@ on:
       - fix/gunslinger-weapon-hand-only-hip-assign
       - fix/rs-native-interaction-and-held-altfire
       - fix/always-hand-focus-normal-gameplay
+      - feature/userdata-calibration-factory-defaults
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
+      - 'config/user_calibration_defaults/**'
       - 'src/openxr/VrHandMenuInput.inc'
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
