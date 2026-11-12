@@ -34,7 +34,6 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
         case VrLiveMod::PhysicalGloryKills:return "Physical Glory Kills";
         case VrLiveMod::HandFocus:return "Hand Focus";
         case VrLiveMod::Painsaw:return "PAINSAW: RIPSHIFT";
-        case VrLiveMod::WheelRemap:return "Weapon Wheel Remap";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
