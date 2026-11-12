@@ -224,6 +224,33 @@ int main(){
  assert(visual.visualPositions.count("pistol")==1);
  assert(visual.visualRotations.count("pistol")==1);
  assert(visual.visualPositions.count("shotgun")==1);
+ // A factory-seeded profile does NOT mean the user calibrated that hand.
+ // LEFT/RIGHT/BOTH only reflect actual overrides relative to factory values.
+ kharvox::RightHandGripSettings factoryStatus{};
+ factoryStatus.visualPositions["pistol"]={.05f,.02f,-.12f};
+ factoryStatus.visualRotations["pistol"]={0.f,0.f,0.f,1.f,true};
+ factoryStatus.leftVisualPositions["pistol"]={-.05f,.02f,-.12f};
+ factoryStatus.leftVisualRotations["pistol"]={0.f,0.f,0.f,1.f,true};
+ auto userStatus=factoryStatus;
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",false));
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true)); // DEFAULT, not BOTH
+ userStatus.visualPositions["pistol"].x+=.02f;
+ assert(kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",false));
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true)); // RIGHT, not BOTH
+ userStatus.leftVisualRotations["pistol"]={0.f,0.f,.70710678f,.70710678f,true};
+ assert(kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true)); // BOTH now custom
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"shotgun",false)); // unrelated weapon unaffected
+ userStatus=factoryStatus; // per-weapon reset restores DEFAULT
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",false));
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true));
  // Primary-hand calibration statuses must be independent of support grips.
  assert(!kharvox::hasSavedVrPrimaryPose(visual,"pistol",true));
  assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",false));
