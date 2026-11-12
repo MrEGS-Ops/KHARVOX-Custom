@@ -14,15 +14,15 @@ internal sealed class AppState
     // Portable-only storage: resolve relative to the executable, never the
     // current working directory or %LOCALAPPDATA%. No hidden user data.
     internal static string DataDirectory => Path.GetFullPath(AppContext.BaseDirectory);
-    internal static string DefaultPath => Path.Combine(DataDirectory, "settings.json");
+    internal static string DefaultPath => PortableUserData.PathFor("settings.json");
     internal static string LogsDirectory => Path.Combine(DataDirectory, "Logs");
     internal static string BackupsDirectory => Path.Combine(DataDirectory, "Backups");
 
     private static void EnsurePortableFolders(string root)
     {
-        Directory.CreateDirectory(root);
-        Directory.CreateDirectory(Path.Combine(root, "Logs"));
-        Directory.CreateDirectory(Path.Combine(root, "Backups"));
+        Directory.CreateDirectory(root); // UserData (or explicit test folder)
+        Directory.CreateDirectory(LogsDirectory);
+        Directory.CreateDirectory(BackupsDirectory);
     }
 
     internal static AppState Load(string? path = null)

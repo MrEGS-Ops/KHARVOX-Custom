@@ -72,6 +72,47 @@ internal static class NativeBridgeInstaller
             BridgeMatchesManagerBuild(example, "4117522870") ||
             BridgeMatchesManagerBuild(example, ""))
             throw new InvalidDataException("Bridge manager version matching failed.");
+        RunPortableCalibrationFactorySelfTest();
+    }
+
+    private static void RunPortableCalibrationFactorySelfTest()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "kharvox-factory-userdata-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var oldBridge = Path.Combine(root, "OldNativeBridge");
+            var newBridge = Path.Combine(root, "NewNativeBridge");
+            var immutable = Path.Combine(newBridge, "CalibrationDefaults");
+            var user = Path.Combine(root, "UserData");
+            Directory.CreateDirectory(oldBridge);
+            Directory.CreateDirectory(immutable);
+            foreach (var name in OwnerFactoryNames)
+                File.WriteAllText(Path.Combine(immutable, name), "factory-" + name);
+            // Existing shotgun calibration must beat the NEW shipped factory.
+            File.WriteAllText(Path.Combine(oldBridge,
+                "two_hand_weapon_profiles_saved.cfg"), "owner-custom");
+            // An unrelated editable user config must also leave NativeBridge.
+            File.WriteAllText(Path.Combine(oldBridge, "world_scale.cfg"), "42");
+            EnsurePortableUserDataAt(oldBridge, newBridge, user);
+            if (File.ReadAllText(Path.Combine(user,
+                    "two_hand_weapon_profiles_saved.cfg")) != "owner-custom"
+                || File.ReadAllText(Path.Combine(user, "world_scale.cfg")) != "42"
+                || File.ReadAllText(Path.Combine(user,
+                    "offhand_right_hand_positions.cfg"))
+                    != "factory-offhand_right_hand_positions.cfg"
+                || File.ReadAllText(Path.Combine(user,
+                    "two_hand_weapon_profiles_left_primary_saved.cfg"))
+                    != "factory-two_hand_weapon_profiles_left_primary_saved.cfg")
+                throw new InvalidDataException("First-run factory or migration lost user configs.");
+            File.WriteAllText(Path.Combine(user,
+                "offhand_right_hand_positions.cfg"), "edited-after-install");
+            EnsurePortableUserDataAt(oldBridge, newBridge, user);
+            if (File.ReadAllText(Path.Combine(user,
+                    "offhand_right_hand_positions.cfg")) != "edited-after-install")
+                throw new InvalidDataException("Updater overwrote edited calibration.");
+        }
+        finally { try { Directory.Delete(root, true); } catch { } }
     }
 
     internal static bool IsReady()
@@ -234,34 +275,70 @@ internal static class NativeBridgeInstaller
         catch (UnauthorizedAccessException) { }
     }
 
-    // The bridge refresh MUST preserve user calibration and measurements.
-    // The previous complete bridge is also retained under Backups/NativeBridge.
+    // The native bridge is replaceable. User-created CFG files MUST live
+    // one level up, in top-level UserData beside the Mods Manager. During
+    // upgrade, copy legacy local CFGs first. Never replace a user's current
+    // calibration or settings with the shipped factory defaults.
+    private static readonly string[] OwnerFactoryNames = {
+        "offhand_right_hand_positions.cfg",
+        "two_hand_weapon_profiles_saved.cfg",
+        "two_hand_weapon_profiles_left_primary_saved.cfg"
+    };
+
+    internal static void EnsurePortableUserData(string? factoryBridge = null) =>
+        EnsurePortableUserDataAt(TargetDirectory,
+            factoryBridge ?? TargetDirectory, PortableUserData.Root);
+
+    // Parameterized for isolated tests: proving first-run seeding, upgrade
+    // migration and preserving edits without touching an actual installation.
+    private static void EnsurePortableUserDataAt(
+        string existingBridge,string packagedBridge,string folder)
+    {
+        Directory.CreateDirectory(folder);
+        // Old native releases wrote saved profiles and other user configs
+        // directly beside KharvoxLayer.dll. Migrate ALL editable .cfg files,
+        // including manually customized settings, but not read-only assets
+        // or the older one-time capture import sources.
+        if (Directory.Exists(existingBridge))
+        {
+            foreach (var source in Directory.GetFiles(existingBridge, "*.cfg"))
+            {
+                var name = Path.GetFileName(source);
+                if (name.EndsWith("_default.cfg", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("hand_models.cfg", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("two_hand_weapon_profiles_captured.cfg",
+                        StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("offhand_right_hand_positions_latest.cfg",
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var dest = Path.Combine(folder, name);
+                if (File.Exists(dest)) continue;
+                if (new FileInfo(source).Length > 1024 * 1024)
+                    throw new InvalidDataException("Legacy user CFG too large: " + name);
+                File.Copy(source, dest, false);
+            }
+        }
+        // The three actual uploaded November calibration files are shipped
+        // read-only in CalibrationDefaults. First-run gets exact saved values;
+        // all subsequent user edits always take precedence.
+        var packaged = Path.Combine(packagedBridge, "CalibrationDefaults");
+        foreach (var name in OwnerFactoryNames)
+        {
+            var factory = Path.Combine(packaged, name);
+            if (!File.Exists(factory))
+                throw new InvalidDataException("Missing owner factory calibration: " + name);
+            if (new FileInfo(factory).Length == 0 ||
+                new FileInfo(factory).Length > 65536)
+                throw new InvalidDataException("Factory calibration invalid: " + name);
+            var editable = Path.Combine(folder, name);
+            if (!File.Exists(editable)) File.Copy(factory, editable, false);
+        }
+    }
+
     private static void PreserveLocalGripData(string extracted)
     {
-        foreach (var name in new[]
-        {
-            "two_hand_weapon_profiles_saved.cfg",
-            "two_hand_weapon_profiles_left_primary_saved.cfg",
-            "two_hand_shotgun_saved.cfg",
-            "two_hand_alignment.cfg", "two_hand_calibration_target.cfg",
-            "offhand_grip_capture_status.txt",
-            "offhand_right_hand_positions.cfg",
-            "offhand_right_hand_positions.cfg.before-capture.bak",
-            "offhand_right_hand_positions.cfg.before-live-capture.bak",
-            "offhand_right_hand_positions.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_left_primary_saved.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_left_primary_saved.cfg.before-heavy-support.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-chainsaw-capture.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-heavy-support.bak"
-        })
-        {
-            var from = Path.Combine(TargetDirectory, name);
-            if (!File.Exists(from)) continue;
-            if (new FileInfo(from).Length > 1024 * 1024)
-                throw new InvalidDataException("Existing user calibration exceeds safe size: " + name);
-            File.Copy(from, Path.Combine(extracted, name), true);
-        }
+        // Diagnostics remain with diagnostics; user-owned CFGs have already
+        // been copied into UserData and are NEVER put in the new NativeBridge.
         var relative = Path.Combine("logs", "diagnostics", "OFFHAND-GRIP-CAPTURE.csv");
         var csv = Path.Combine(TargetDirectory, relative);
         if (File.Exists(csv))
@@ -349,8 +426,10 @@ internal static class NativeBridgeInstaller
                 if (BridgeLauncherRunning())
                     throw new InvalidOperationException("Close the active NativeBridge launcher.");
 
-                // Do this BEFORE moving the previous bridge to backups.
-                // On a copy error, the old runtime and user audio stay intact.
+                // Migrate existing user CFGs out of NativeBridge, then seed
+                // uploaded factory defaults ONLY for missing user files.
+                // Complete this before replacing the previous native runtime.
+                EnsurePortableUserData(extracted);
                 PreserveLocalPainsawAudio(extracted);
                 PreserveLocalGripData(extracted);
 

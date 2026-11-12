@@ -290,7 +290,10 @@ if(KHARVOX_BUILD_LAYER)
     "${CMAKE_CURRENT_SOURCE_DIR}/config/offhand_hud_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_flat_calibration_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_profile_calibration_default.cfg"
-    "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_quad_scale_default.cfg")
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_quad_scale_default.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_right_hand_positions.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_saved.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg")
   add_custom_command(TARGET KharvoxLayer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan/KharvoxLayer.json"
@@ -355,9 +358,20 @@ if(KHARVOX_BUILD_LAYER)
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/two_hand_weapon_profiles_default.cfg"
       "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_default.cfg"
+    # The uploaded user calibrations are immutable factory presets, NOT the
+    # mutable profiles. The installer seeds top-level UserData on first run;
+    # reset reads ONLY these FactoryDefaults files by name.
+    COMMAND ${CMAKE_COMMAND} -E make_directory
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
-      "${CMAKE_CURRENT_SOURCE_DIR}/config/offhand_right_hand_positions.cfg"
-      "$<TARGET_FILE_DIR:KharvoxLayer>/offhand_right_hand_positions.cfg")
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_right_hand_positions.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/offhand_right_hand_positions.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/two_hand_weapon_profiles_saved.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/two_hand_weapon_profiles_left_primary_saved.cfg")
 endif()
 
 if(WIN32)

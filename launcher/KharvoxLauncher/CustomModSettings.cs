@@ -184,7 +184,9 @@ internal static class CustomModSettingsStore
     }
 
     internal static string DefaultPath =>
-        Path.Combine(AppContext.BaseDirectory, "kharvox-custom-mods.json");
+        LauncherUserData.BridgeMode
+            ? LauncherUserData.PathFor("kharvox-custom-mods.json")
+            : Path.Combine(AppContext.BaseDirectory, "kharvox-custom-mods.json");
 
     internal static CustomModSettings Load(string? path = null)
     {

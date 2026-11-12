@@ -86,6 +86,9 @@ internal static class Program
             return 0;
         }
 
+        // Migrate bridge-enabled launcher settings into portable UserData
+        // before headless or GUI paths load any saved preferences.
+        LauncherUserData.Migrate();
         // The normal GUI is measured separately from the headless -run path.
         var headlessRun = args.Any(argument => string.Equals(argument, "-run",
             StringComparison.OrdinalIgnoreCase));

@@ -68,7 +68,7 @@ int main(){
  const auto restored=kharvox::readRightHandGripSettings(path);
  assert(restored.chaingunRotation.valid
      &&std::abs(restored.chaingunRotation.w-.70710678f)<.0001f);
- {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\\n";}
+ {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.rejected==1&&!a.gaussRotation.valid);
  // A virtual probe 15 cm forward (-Z) of the LEFT controller allows the
@@ -271,6 +271,65 @@ int main(){
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==0);
  assert(!kharvox::hasSavedVrSupport(twoHand,"pistol"));
  assert(kharvox::hasSavedVrSupport(twoHand,"shotgun"));
+ // NEW: Reset Weapon restores the user's uploaded factory pose instead
+ // of only deleting saved overrides. Leave other weapon data untouched.
+ const std::string factoryRight=std::string(path)+".factory";
+ const std::string factorySupport=twoHand+".factory";
+ {std::ofstream factory(factoryRight);
+  factory<<"right_hand_drop_m = 0.08\n"
+         <<"pistol_hand_position = 0.12 -0.02 0.08\n"
+         <<"pistol_rotation = 0 0 0 1\n"
+         <<"pistol_left_hand_position = -0.12 0.01 0.08\n"
+         <<"pistol_left_rotation = 0 0 0 1\n"
+         <<"gauss_cannon = -0.07 0.18 0.42\n"
+         <<"gauss_cannon_siege_hand_position = 0.30 0.01 0.08\n"
+         <<"gauss_cannon_siege_rotation = 0 0 0 1\n"
+         <<"gauss_cannon_siege_left_hand_position = -0.30 0.02 0.08\n"
+         <<"gauss_cannon_siege_left_rotation = 0 0 0 1\n"
+         <<"gauss_cannon_siege_support_position = -0.1 0.2 0.3\n"
+         <<"gauss_cannon_siege_left_primary_support_position = 0.1 0.2 0.3\n"
+         <<"shotgun_hand_position = 0.02 0.03 -0.01\n"
+         <<"shotgun_rotation = 0 0 0 1\n";}
+ {std::ofstream factory(factorySupport);
+  factory<<"2 pistol barrel -0.1 0.1 -0.2 0.2 1\n"
+         <<"2 shotgun barrel 0.03 0.01 -0.2 0.2 1\n";}
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     {0.22f,0.05f,-0.06f},{0.f,0.f,0.f,1.f,true},&why,false));
+ assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
+     {.03f,.04f,-.05f},{0.f,0.f,0.f,1.f,true},&why,false));
+ assert(kharvox::saveHeavySupportGrip(twoHand,"pistol",
+     {.11f,-.1f,-.22f},false,.2f,1.f,&why));
+ assert(kharvox::restoreVrWeaponCalibrationDefault(
+     path,factoryRight,"pistol",true,&why));
+ assert(kharvox::restoreVrWeaponCalibrationDefault(
+     twoHand,factorySupport,"pistol",false,&why));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(std::abs(visual.visualPositions["pistol"].x-.12f)<.0001f);
+ assert(std::abs(visual.leftVisualPositions["pistol"].x+.12f)<.0001f);
+ assert(std::abs(visual.visualPositions["shotgun"].x-.03f)<.0001f);
+ assert(kharvox::hasSavedVrSupport(twoHand,"pistol"));
+ assert(kharvox::hasSavedVrSupport(twoHand,"shotgun"));
+ {std::ifstream existing(twoHand);std::string row,all;
+  while(std::getline(existing,row))all+=row+"\n";
+  assert(all.find("2 pistol barrel -0.1 0.1 -0.2")!=std::string::npos);
+  assert(all.find("2 shotgun barrel")!=std::string::npos);}
+ // Both hands and heavy alternate poses go back to factory together.
+ assert(kharvox::saveRightHandVisualPose(path,"gauss_cannon",true,
+     {-.15f,.06f,-.2f},{0.f,0.f,0.f,1.f,true},&why,true));
+ assert(kharvox::restoreVrWeaponCalibrationDefault(
+     path,factoryRight,"gauss_cannon",true,&why));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(std::abs(visual.leftVisualPositions["gauss_cannon_siege"].x+.30f)<.0001f);
+ assert(visual.gaussSiegeHandValid);
+ assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
+ assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
+ // No factory available means NO destructive reset.
+ assert(!kharvox::restoreVrWeaponCalibrationDefault(
+     path,"unavailable-owner-factory.cfg","pistol",true,&why));
+ assert(std::abs(kharvox::readRightHandGripSettings(path).
+     visualPositions["pistol"].x-.12f)<.0001f);
+ std::remove((factoryRight).c_str());
+ std::remove((factorySupport).c_str());
  std::remove((std::string(path)+".before-vr-reset.bak").c_str());
  std::remove((twoHand+".before-vr-reset.bak").c_str());
  std::remove(twoHand.c_str());
