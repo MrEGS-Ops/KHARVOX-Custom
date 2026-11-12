@@ -178,6 +178,9 @@ int main(){
  // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
  // support stores only a point; its quaternion remains a grab-time snapshot.
  auto menu=kharvox::VrHandMenuState{};
+ assert(!menu.alternateProfile);
+ menu.alternateProfile=true;
+ assert(menu.alternateProfile); // Alternate heavy profile is a menu option, not a chord.
  assert(!kharvox::vrHandMenuBothStickEdge(menu,false,false));
  assert(kharvox::vrHandMenuBothStickEdge(menu,true,true));
  assert(!kharvox::vrHandMenuBothStickEdge(menu,true,true));

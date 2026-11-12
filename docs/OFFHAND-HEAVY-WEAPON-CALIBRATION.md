@@ -1,23 +1,20 @@
-# KHARVOX live heavy-weapon grip calibration (Quest 3)
-Active branch: `work/manager-187-wheel-holsters`. Uses the Mod Manager's NativeBridge only.
+# KHARVOX heavy-weapon hand calibration — VR menu only
+Active branch: `work/manager-187-wheel-holsters`. Applies to the Mod Manager's NativeBridge, not the original Cactus installation.
 
-## RIGHT glove: one live position + rotation capture
-1. Equip **Gauss Cannon** or **Chaingun** with Off-Hand Grip Capture enabled.
-2. **Hold RIGHT Grip** and click **RIGHT joystick ONCE**. The mode (Normal or alternate) is latched as capture begins.
-3. While holding RIGHT Grip, move AND rotate your LEFT controller. The live probe is **15 cm forward of the LEFT controller in its pointing direction**, letting you hold your LEFT controller behind the desired glove location without the two physical controllers colliding. The RIGHT glove previews the shifted target live and follows your LEFT controller's rotation.
-4. **Release RIGHT Grip** to confirm. The position and quaternion are atomically written together to `NativeBridge/offhand_right_hand_positions.cfg`, with a `.before-live-capture.bak` backup. Failure/invalid tracking cancels without changing the file. A success haptic confirms the write.
+## In-headset controls
+1. During gameplay, click **BOTH thumbsticks** to open the VR hand calibration panel.
+2. Select **Gauss Cannon** or **Chaingun**, then choose **LEFT** support hand or **RIGHT** primary hand.
+3. Select **PROFILE: NORMAL** or **PROFILE: SIEGE/TURRET** to keep ordinary and alternate hand positions separate.
+4. Press **CALIBRATE**; the panel closes for live placement using the LEFT controller.
+5. For the RIGHT hand, a virtual point **15 cm forward** of the LEFT controller prevents physical controller collisions. Position and rotation are saved together.
+6. For the LEFT support hand, only the weapon-local position is saved. Rotation is sampled afresh at the moment of every normal grip.
+7. Pull **RIGHT trigger** to save and automatically reopen the menu. **RESET THIS WEAPON** clears only that weapon's overrides, including its alternate slots.
 
-The 15 cm offset changes **only** the live right-glove position preview and its saved position, not the captured rotation. It does **not** redirect weapon aim, controller tracking, or the validated heavy-gun anchor. Saved glove coordinates are gun-local. The glove follows the gun after the capture ends and is restored after a melee/cinematic interruption. Re-entering calibration doesn't overwrite the other weapon or the other mode.
+## Retired shortcuts and retained safety
+- LEFT Grip + BOTH thumbsticks no longer captures support grip position.
+- RIGHT Grip + RIGHT thumbstick no longer starts right-glove live calibration; releasing Right Grip cannot save calibration.
+- The only hand calibration entry point is the VR menu. Single-click melee/pause behaviour outside the menu remains unchanged.
+- Native Gauss/Chaingun gun anchors, mode detection, existing saved hand profiles and active PAINSAW audio remain unchanged.
+- Profiles are stored in `NativeBridge/offhand_right_hand_positions.cfg` and `NativeBridge/two_hand_weapon_profiles_saved.cfg`; per-weapon resets create adjacent `.before-vr-reset.bak` files.
 
-## LEFT support grip, normal and alternate
-For each heavy weapon, **hold LEFT Grip + click BOTH joysticks** while placing the LEFT controller at the chosen support point. Release and re-grip LEFT Grip afterwards. This is a separate capture because its grip must track the weapon's moving second handle.
-
-**Normal and alternate profile slots:**
-- Gauss Cannon: Normal / Siege. Native Siege-charge declaration selects the alternate right glove and left support grip; if no alternate data was captured it uses normal defaults.
-- Chaingun: Normal / Turret. An explicit Turret token in the native active weapon declaration selects the alternate profile; if DOOM does not expose it, the code deliberately retains Normal and logs the missing/changed declaration rather than guessing from Grip input.
-
-Support points for alternate modes are stored alongside the right hand poses; normal support remains in `two_hand_weapon_profiles_saved.cfg`. Existing gun-anchor settings (`gauss_cannon`, `chaingun`) are never altered by live glove calibration.
-
-Chainsaw's established BOTH-click support capture remains unchanged. Single-stick melee/pause are release-triggered while Off-Hand Grip Capture is active, so the live calibration's right-stick click cannot start an ordinary melee animation. Physical Glory Kills' independent no-RS-melee protection is unchanged.
-
-VR visual alignment and the actual existence/identity of the native Turret mode declaration still require in-headset verification.
+Actual cursor alignment, alternate handle pose, haptics and display legibility still require in-headset testing.

@@ -2,12 +2,11 @@
 #include <cstdint>
 
 namespace kharvox {
-// Both thumbstick clicks are a dedicated calibration chord. Never emit
-// regular right-stick melee or left-stick pause while EITHER stick is held:
-// an arbitrary interval can elapse before the second click arrives.
-// Solo actions are emitted once, ON RELEASE, only if the other stick was
-// never down at any time during that hold. This is necessary to guarantee
-// calibration cannot trigger a normal melee animation or a pause.
+// The VR menu owns BOTH thumbstick clicks before this helper runs.
+// Never emit regular right-stick melee or left-stick pause while EITHER
+// stick is held, so a staggered two-stick menu chord cannot cause a
+// premature melee or pause action. Independent clicks fire on RELEASE
+// only when the opposite stick was never held during that press.
 // With Off-Hand Grip Capture disabled, the normal DOOM controls are used
 // instead of this policy, and remain unchanged.
 struct OffHandDelayedClick {

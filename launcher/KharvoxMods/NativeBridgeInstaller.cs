@@ -190,6 +190,50 @@ internal static class NativeBridgeInstaller
         }
     }
 
+    // Old NativeBridge snapshots duplicate local user-supplied PAINSAW WAVs.
+    // After successful installation, remove ONLY those known WAV names from
+    // updater-managed BACKUP snapshots, never active NativeBridge audio.
+    private static void CleanupArchivedPainsawAudio()
+    {
+        var active = Path.Combine(TargetDirectory, "audio", "painsaw");
+        var names = new[] { "rev_1.wav", "rev_2.wav", "rev_3.wav" };
+        if (names.Any(name => !File.Exists(Path.Combine(active, name)))) return;
+        var backups = Path.Combine(AppContext.BaseDirectory, "Backups", "NativeBridge");
+        if (!Directory.Exists(backups)) return;
+        try
+        {
+            foreach (var snapshot in Directory.EnumerateDirectories(backups))
+            {
+                try
+                {
+                    if ((File.GetAttributes(snapshot) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    var audio = Path.Combine(snapshot, "audio");
+                    var painsaw = Path.Combine(audio, "painsaw");
+                    if (!Directory.Exists(painsaw) ||
+                        (File.GetAttributes(audio) & FileAttributes.ReparsePoint) != 0 ||
+                        (File.GetAttributes(painsaw) & FileAttributes.ReparsePoint) != 0)
+                        continue;
+                    foreach (var name in names)
+                    {
+                        var copy = Path.Combine(painsaw, name);
+                        if (File.Exists(copy) &&
+                            (File.GetAttributes(copy) & FileAttributes.ReparsePoint) == 0)
+                            File.Delete(copy);
+                    }
+                    if (!Directory.EnumerateFileSystemEntries(painsaw).Any())
+                        Directory.Delete(painsaw);
+                    if (!Directory.EnumerateFileSystemEntries(audio).Any())
+                        Directory.Delete(audio);
+                }
+                catch (IOException) { /* Keep backup if locked. */ }
+                catch (UnauthorizedAccessException) { /* Keep backup if protected. */ }
+            }
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
+
     // The bridge refresh MUST preserve user calibration and measurements.
     // The previous complete bridge is also retained under Backups/NativeBridge.
     private static void PreserveLocalGripData(string extracted)
@@ -324,6 +368,8 @@ internal static class NativeBridgeInstaller
                         Directory.Move(backup, TargetDirectory);
                     throw;
                 }
+                // Only after the new runtime and current local WAVs are safe.
+                CleanupArchivedPainsawAudio();
                 return "Native bridge installed in local NativeBridge folder. Original KHARVOX untouched.";
             }
             finally { try { Directory.Delete(working, true); } catch { } }
