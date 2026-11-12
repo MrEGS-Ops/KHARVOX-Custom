@@ -60,6 +60,7 @@ struct VrHandMenuState {
     VrMenuPage page{VrMenuPage::Mods};
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
+    int selectedRow{};
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
