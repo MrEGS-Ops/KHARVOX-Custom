@@ -398,8 +398,8 @@ internal sealed partial class ModsForm
                 "In DOOM: physically lower your headset to crouch; stand to rise.",
             "PAINSAW: RIPSHIFT OVERDRIVE" =>
                 "During a chainsaw execution: release and repull the trigger to rev in short bursts. Holding the trigger does not continuously rev.",
-            "Off-Hand Grip Capture (Test)" =>
-                "In VR hold RIGHT thumbstick click for 1 second to open the hand calibration menu. It automatically detects LEFT or RIGHT weapon hand (including Gunslinger hip holsters); pick your weapon and physical hand, press CALIBRATE, position the virtual hand with the opposite controller and pull RIGHT trigger to save. Primary weapon hands save position + rotation independently for each side; support grips save position only, preserving rotation at every new grab. The menu marks LEFT, RIGHT or BOTH primary gloves calibrated and resets only the selected weapon. Gauss Siege and Chaingun Turret have separate profiles. Old LEFT Grip + BOTH clicks and RIGHT Grip + RIGHT click shortcuts have been removed. When Hand Focus is disabled, a solo RIGHT click melees and LEFT click pauses.",
+            "Weapon Grip Calibration" =>
+                "Hold RIGHT thumbstick click for 1 second to open the headset menu. Select weapon and LEFT or RIGHT hand, CALIBRATE, position using the opposite controller, and pull RIGHT trigger to save. Primary grips save position + rotation AND define the gun pivot; support grips save position only, retaining rotation at each grab. LEFT / RIGHT / BOTH show saved main-hand profiles. Gauss Siege and Chaingun Turret have separate profiles. When enabled, Virtual Gunstock is automatically disabled and greyed out in the KHARVOX launcher.",
             "KILLTIME: RIP & TEAR" =>
                 "Enable this mod, then move its slider. Right is faster (30 Hz); left is slower (240 Hz). Changes apply on the next DOOM launch.",
             _ => "This mod is currently paused. You can organize its row, but it cannot be enabled until its runtime support is verified."

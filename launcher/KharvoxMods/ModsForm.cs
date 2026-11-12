@@ -356,7 +356,7 @@ internal sealed partial class ModsForm : Form
                 if (!_modPrefs.OffHandGripCapture)
                 {
                     _modPrefs.OffHandGripCapture = true;
-                    OnVrSelectionChanged("Off-Hand Grip Capture (Test)", true);
+                    OnVrSelectionChanged("Weapon Grip Calibration", true);
                 }
                 Directory.CreateDirectory(gripBackups);
                 File.WriteAllText(gripV2Marker, "Off-hand two-hand grip feature migrated once.");

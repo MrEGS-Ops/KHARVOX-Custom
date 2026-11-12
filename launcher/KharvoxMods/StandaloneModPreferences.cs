@@ -13,6 +13,8 @@ internal sealed class StandaloneModPreferences
     private const string PreviousRipTearTitle = "RIP & TEAR: KILLTIME";
     private const string KilltimeTitle = "KILLTIME: RIP & TEAR";
     private const string GunslingerTitle = "Gunslinger";
+    internal const string WeaponGripCalibrationTitle = "Weapon Grip Calibration";
+    private const string PreviousGripTitle = "Off-Hand Grip Capture (Test)";
     private static string UpgradeModTitle(string title)
     {
         if (string.Equals(title, PreviousGloryTitle, StringComparison.Ordinal) ||
@@ -21,6 +23,7 @@ internal sealed class StandaloneModPreferences
         if (title == "Behind-the-Head Weapon Wheel" ||
             title == "Dynamic Quick Holsters")
             return GunslingerTitle;
+        if (title == PreviousGripTitle) return WeaponGripCalibrationTitle;
         return title;
     }
 
@@ -143,7 +146,7 @@ internal sealed class StandaloneModPreferences
             x.GloryKillHz = 35;
             // Legacy mod names should retain their saved positions.
             x.ActiveOrder = new[] { "Hand Focus", PreviousGloryTitle,
-                "PAINSAW: RIPSHIFT OVERDRIVE" };
+                PreviousGripTitle, "PAINSAW: RIPSHIFT OVERDRIVE" };
             x.AvailableOrder = new[] { "Directional Dash", PreviousRipTearTitle,
                 "Boxing Guard Mode" };
             x.CollapsedCategories = new[] { "A:✥  Hands & Arms" };
@@ -154,10 +157,11 @@ internal sealed class StandaloneModPreferences
                 y.BehindHeadWeaponWheel || y.DynamicQuickHolsters ||
                 !y.PainsawRipshiftOverdrive || !y.OffHandGripCapture ||
                 !y.GloryKillSpeedOverride || y.GloryKillHz != 35 ||
-                y.ActiveOrder.Length != 3 ||
+                y.ActiveOrder.Length != 4 ||
                 y.ActiveOrder[0] != "Hand Focus" ||
                 y.ActiveOrder[1] != KilltimeTitle ||
-                y.ActiveOrder[2] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
+                y.ActiveOrder[2] != WeaponGripCalibrationTitle ||
+                y.ActiveOrder[3] != "PAINSAW: RIPSHIFT OVERDRIVE" ||
                 y.AvailableOrder.Length != 3 ||
                 y.AvailableOrder[0] != "Directional Dash" ||
                 y.AvailableOrder[1] != KilltimeTitle ||

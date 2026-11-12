@@ -30,7 +30,7 @@ internal sealed partial class ModsForm
         title == "Gunslinger" ||
         title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
-        title == "Off-Hand Grip Capture (Test)";
+        title == "Weapon Grip Calibration";
 
     private bool CurrentSelection(string name) => name switch
     {
@@ -39,7 +39,7 @@ internal sealed partial class ModsForm
         "Gunslinger" => _modPrefs.Gunslinger,
         "Physical Crouch" => _modPrefs.PhysicalCrouch,
         "PAINSAW: RIPSHIFT OVERDRIVE" => _modPrefs.PainsawRipshiftOverdrive,
-        "Off-Hand Grip Capture (Test)" => _modPrefs.OffHandGripCapture,
+        "Weapon Grip Calibration" => _modPrefs.OffHandGripCapture,
         _ => false
     };
 
@@ -72,7 +72,7 @@ internal sealed partial class ModsForm
             case "Physical Crouch": _modPrefs.PhysicalCrouch = value; break;
             case "PAINSAW: RIPSHIFT OVERDRIVE":
                 _modPrefs.PainsawRipshiftOverdrive = value; break;
-            case "Off-Hand Grip Capture (Test)":
+            case "Weapon Grip Calibration":
                 _modPrefs.OffHandGripCapture = value; break;
             default: return;
         }
@@ -124,7 +124,9 @@ internal sealed partial class ModsForm
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
             new PreviewMod("Gunslinger",
-                "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back. Automatically disables standalone Weapon Wheel Button Remap.", true)
+                "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back. Automatically disables standalone Weapon Wheel Button Remap.", true),
+            new PreviewMod("Weapon Grip Calibration",
+                "Calibrate primary and support grips for either weapon hand in VR. Hold RIGHT stick click for 1 second to open the menu. Each main grip becomes the weapon pivot; LEFT / RIGHT / BOTH show saved profiles. Automatically disables Virtual Gunstock.", true)
         }),
         ("➤  Legs & Movement", new[]
         {
@@ -168,9 +170,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Revenge Demon",
                 "Diagnostic-only death-time enemy logging. Paused."),
             new PreviewMod("Chainsaw Animation Investigator",
-                "Read-only animation timing traces and per-kill CSV.", true),
-            new PreviewMod("Off-Hand Grip Capture (Test)",
-                "Enables true two-hand gun control. Hold the support-hand Grip near each weapon's measured support point to attach the hand model to the gun; release Grip to let the hand move freely again. RIGHT thumbstick click melees; LEFT click pauses. For Gauss Cannon or Chaingun, hold RIGHT Grip and click RIGHT joystick once to start LIVE right glove preview. Move/rotate LEFT controller and watch RIGHT glove follow; release RIGHT Grip to save BOTH position and rotation. LEFT Grip + BOTH joystick clicks saves the LEFT support point (including Siege/Turret profile when the native weapon reports that mode). Chainsaw uses BOTH joystick clicks for its normal support point. Normal and alternate weapon modes are stored separately, and the actual weapon anchor/aim is unchanged by live glove preview. Turret automatic detection requires a native Turret weapon declaration; otherwise normal mode stays active.", true)
+                "Read-only animation timing traces and per-kill CSV.", true)
         }),
         ("◎  Haptics & Feedback", new[]
         {
