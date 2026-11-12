@@ -179,7 +179,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     return -1;
 }
 bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
-                            bool rightTrigger,bool leftTrigger){
+                            bool rightTrigger,bool leftTrigger,
+                            bool primaryWeaponGripDown){
     auto& m=s.vrHandMenu;
     // A single 1-second RIGHT-stick hold opens/closes this menu.
     // Ordinary RS taps still belong to Hand Focus.
@@ -284,10 +285,21 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
         }
         m.leftTriggerPreviously=leftTrigger;
     }
-    // While the menu OR capture is active, never forward gamepad movement,
-    // weapon fire, grenade, melee, pause or use actions to native DOOM.
+    // Keep the ordinary menu entirely input-muted. ONLY during LIVE
+    // calibration, pass the CURRENT weapon hand's physical Grip directly to
+    // native alternate fire, allowing Gauss Siege / Chaingun Turret to deploy
+    // while the other hand positions the grip. The RIGHT trigger still SAVES
+    // calibration; it never fires the weapon. All other inputs stay muted.
+    const bool liveAltFire=kharvox::vrCalibrationNativeAltFireAllowed(
+        m.mode,gameplay,s.customMods.offHandGripCapture,
+        KharvoxWeaponCurrentKind()==KharvoxWeaponKindFromKey(m.weapon()),
+        s.weaponHandLeft==m.calibratingWeaponLeft,primaryWeaponGripDown);
+    if(s.heavyAlternateInputForwarded!=liveAltFire)
+        log(std::string("[VR-HAND-MENU] live calibration native secondary fire ")
+            +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
+    s.heavyAlternateInputForwarded=liveAltFire;
     releaseMovement();
-    updateVirtualButtons(false,false,false,false,false,false,false,
+    updateVirtualButtons(false,false,false,liveAltFire,false,false,false,
         false,false,false,false,false,false,false);
     s.offHandStickInput={};
     s.offHandStickOutput={};
