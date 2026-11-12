@@ -23,6 +23,18 @@ jobs:
       - name: Restore standalone Mod Manager
         shell: pwsh
         run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
+      - name: Generate the pinned embedded MrEGS application icon
+        shell: pwsh
+        run: ./launcher/KharvoxMods/Generate-MrEGSIcon.ps1
+      - name: Fetch and verify the pinned CC0 WAV resource
+        shell: pwsh
+        run: |
+          $file = "launcher/KharvoxMods/twitch-unlock.wav"
+          $source = "https://raw.githubusercontent.com/Beatscribe/homebrew_vgm/5a82f88b87bb442499685c494b7a96278121b4c7/GB/fanfares/wav/treasure.wav"
+          Invoke-WebRequest -Uri $source -OutFile $file -MaximumRedirection 2
+          if ((git hash-object $file).Trim() -ne "a579e15ab70e4e0b8884e7c4504bb6d7cb4fdb64") {
+            throw "Pinned CC0 sound integrity check failed"
+          }
       - name: Compile portable Mod Manager
         shell: pwsh
         run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj -c Release --no-restore
