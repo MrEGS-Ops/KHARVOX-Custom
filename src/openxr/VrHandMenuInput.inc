@@ -12,16 +12,29 @@ void refreshVrHandMenuSavedStatus(){
         m.leftSaved[i]=kharvox::hasSavedVrPrimaryPose(s.rightGripSettings,key,true);
     }
 }
-void updateVrMenuPreview(){
+void updateVrMenuPreview(bool primaryWeaponGripHeld){
     auto& m=s.vrHandMenu;
-    m.previewValid=false;
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
     const auto& placement=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     if(weapon==KharvoxWeaponKind::Unknown||weapon!=KharvoxWeaponCurrentKind()
         ||s.weaponHandLeft!=m.calibratingWeaponLeft
         ||!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=weapon
-        ||!placement.valid||!placement.positionTracked)return;
+        ||!placement.valid||!placement.positionTracked){
+        m.previewValid=false;
+        m.primaryGripPreviewHeld=false;
+        return;
+    }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
+    const bool testAllowed=kharvox::vrPrimaryGripHoldPreviewAllowed(
+        m.mode,primaryHand,m.weapon());
+    // While the gun hand holds Grip, leave the current valid preview pose
+    // attached to the weapon. Aiming moves the gun and glove together.
+    // Releasing Grip resumes live placement from the OTHER controller.
+    // This never writes disk; RIGHT TRIGGER remains the only save action.
+    if(testAllowed&&primaryWeaponGripHeld
+        &&m.primaryGripPreviewHeld&&m.previewValid)return;
+    m.primaryGripPreviewHeld=false;
+    m.previewValid=false;
     XrVector3f probe=placement.position;
     if(primaryHand){
         const auto forward=kharvox::liveHeavyGripProbePoint(
@@ -41,6 +54,7 @@ void updateVrMenuPreview(){
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
         :kharvox::validRightHandPlacement(m.previewPosition))
         &&kharvox::validRightHandRotation(m.previewRotation);
+    m.primaryGripPreviewHeld=testAllowed&&primaryWeaponGripHeld&&m.previewValid;
 }
 void saveVrHandMenuCalibration(){
     auto& m=s.vrHandMenu;
@@ -117,6 +131,7 @@ void saveVrHandMenuCalibration(){
         (primaryHand?" PRIMARY":" SUPPORT")+
         (alternate?" ALT":" NORMAL")+" saved for "+m.weapon();
     m.previewValid=false;
+    m.primaryGripPreviewHeld=false;
     refreshVrHandMenuSavedStatus();
 }
 void resetVrMenuSelectedWeapon(){
@@ -163,9 +178,10 @@ void startVrSelectedWeaponCalibration(){
     m.mode=kharvox::VrHandMenuMode::Calibrating;
     m.calibratingWeaponLeft=s.weaponHandLeft;
     m.previewValid=false;
+    m.primaryGripPreviewHeld=false;
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Live weapon calibration. RIGHT TRIGGER saves.";
+    m.message="Live weapon calibration. Move other hand; hold weapon Grip to test; RIGHT TRIGGER saves.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
@@ -368,6 +384,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.autoSelectingWeapon=false;
         m.pendingNativeSelection=0;
         m.previewValid=false;
+        m.primaryGripPreviewHeld=false;
         s.primaryVisualLocked=false;
         s.supportVisualLocked=false;
         if(m.mode==kharvox::VrHandMenuMode::Calibrating){
@@ -395,8 +412,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.liveCapture!=kharvox::VrLiveCapture::None){
             if(triggerEdge||aEdge)captureVrLivePosition();
         }else{
-            updateVrMenuPreview();
-            if(triggerEdge||aEdge)saveVrHandMenuCalibration();
+            updateVrMenuPreview(primaryWeaponGripDown);
+            if(triggerEdge)saveVrHandMenuCalibration();
         }
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
