@@ -45,6 +45,15 @@ int main(){
     const auto local=kharvox::primarygrip::localGrip(
         anchored,grip,yaw90,rotate);
     assert(near(local,gauss));
+    // Explicit user calibration on an ordinary gun ALSO relocates the gun
+    // pivot to the saved local point, for either physical holster hand.
+    for(const Vec physical:{Vec{.30f,.40f,-.22f},Vec{-.30f,.40f,-.22f}}){
+        const Vec savedLocal{.10f,-.03f,-.16f};
+        const auto newPivot=kharvox::primarygrip::weaponAnchor(
+            aim,physical,yaw90,savedLocal,true,rotate);
+        assert(near(kharvox::primarygrip::lockedHand(
+            newPivot,yaw90,savedLocal,rotate),physical));
+    }
     // Normal gun: model hand stays at its original XR grip on first latch
     // and moves as a rigid gun-local attachment as the gun rotates.
     const auto normalLocal=kharvox::primarygrip::localGrip(

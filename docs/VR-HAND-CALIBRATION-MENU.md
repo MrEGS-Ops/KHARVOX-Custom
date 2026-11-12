@@ -21,6 +21,8 @@ This is an independent OpenXR compositor overlay in the **mod-enabled NativeBrid
 
 ## Settings and backups
 
+The saved PRIMARY hand position now defines the weapon's physical grip pivot, keeping gun rotation centred on the calibrated grip (right or left). The same anchor drives two-handed aiming and the hand meshes. The original heavy-weapon anchor values stay intact as fallbacks.
+
 The existing `NativeBridge/offhand_right_hand_positions.cfg` now stores **both physical LEFT and RIGHT primary glove poses** with independent keys. `NativeBridge/two_hand_weapon_profiles_saved.cfg` still holds LEFT support positions for RIGHT-held weapons; the new `NativeBridge/two_hand_weapon_profiles_left_primary_saved.cfg` holds RIGHT support positions for LEFT-held weapons. Per-weapon RESET writes adjacent `.before-vr-reset.bak` backups. The NativeBridge updater preserves all active profile files and backups. All files remain in the portable manager folder.
 
 ### Build/test limitations

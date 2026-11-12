@@ -217,6 +217,16 @@ int main(){
  visual=kharvox::readRightHandGripSettings(path);
  assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",false));
  assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",true)); // BOTH
+ const auto pivotRight=kharvox::savedPrimaryWeaponGripOffset(visual,"pistol",false);
+ const auto pivotLeft=kharvox::savedPrimaryWeaponGripOffset(visual,"pistol",true);
+ assert(pivotRight.valid&&pivotLeft.valid);
+ assert(std::abs(pivotRight.position.x-.05f)<.0001f);
+ assert(std::abs(pivotLeft.position.x+.08f)<.0001f);
+ assert(!kharvox::savedPrimaryWeaponGripOffset(visual,"rocket_launcher",true).valid);
+ const auto leftSiege=kharvox::savedPrimaryWeaponGripOffset(
+     visual,"gauss_cannon",true,true);
+ assert(leftSiege.valid&&std::abs(leftSiege.position.x+.15f)<.0001f);
+ assert(!kharvox::savedPrimaryWeaponGripOffset(visual,"gauss_cannon",false,true).valid);
  assert(visual.leftVisualPositions.count("gauss_cannon_siege")==1);
  assert(visual.leftVisualRotations.count("gauss_cannon_siege")==1);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);

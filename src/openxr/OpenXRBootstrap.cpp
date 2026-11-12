@@ -2426,17 +2426,27 @@ bool supportGripInCaptureRange(){
         active.supportPosition=altPos;
     auto pivot=current.position;
     const auto kind=KharvoxWeaponCurrentKind();
-    if(s.customMods.offHandGripCapture&&!s.weaponHandLeft
-        &&s.rightGripController.valid
-        &&(kind==KharvoxWeaponKind::GaussCannon
-           ||kind==KharvoxWeaponKind::Chaingun)){
-        const auto stored=kind==KharvoxWeaponKind::GaussCannon
-            ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
-        const XrVector3f local{stored.x,
-            stored.y-s.rightGripSettings.rightHandDropMeters,stored.z};
-        const auto physical=controllerRelativeToBodyTrackingOrigin(
-            s.rightGripController).position;
-        pivot=subtractVector(physical,rotateVector(current.orientation,local));
+    const auto& primaryGrip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
+    if(s.customMods.offHandGripCapture&&primaryGrip.valid
+        &&!s.dynamicShoulderHolstered){
+        const auto saved=kharvox::savedPrimaryWeaponGripOffset(
+            s.rightGripSettings,KharvoxWeaponKindKey(kind),
+            s.weaponHandLeft,heavyAltMode(kind));
+        const bool heavyFallback=!saved.valid&&!s.weaponHandLeft
+            &&(kind==KharvoxWeaponKind::GaussCannon
+                ||kind==KharvoxWeaponKind::Chaingun);
+        if(saved.valid||heavyFallback){
+            const auto legacy=kind==KharvoxWeaponKind::GaussCannon
+                ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
+            const auto& point=saved.position;
+            const XrVector3f local=saved.valid
+                ?XrVector3f{point.x,point.y,point.z}
+                :XrVector3f{legacy.x,
+                    legacy.y-s.rightGripSettings.rightHandDropMeters,legacy.z};
+            const auto physical=controllerRelativeToBodyTrackingOrigin(
+                primaryGrip).position;
+            pivot=subtractVector(physical,rotateVector(current.orientation,local));
+        }
     }
     const auto target=addVector(pivot,
         rotateVector(current.orientation,active.supportPosition));
@@ -2510,27 +2520,34 @@ void updateWeapon6Dof(){
     }
     const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
-    // Heavy support calibrations are stored relative to the moved WEAPON
-    // pivot, NOT the aim-controller origin used for regular KHARVOX guns.
-    // This origin is used consistently for latch, two-hand aim and the
-    // final gun position so recalibrating the left hand really sticks.
-    const bool heavyPivotEnabled=s.customMods.offHandGripCapture
-        &&!s.weaponHandLeft&&s.rightGripController.valid
+    // The saved primary hand location is now the shared gun pivot for
+    // ALL calibrated weapons, right OR left holster. The grip and gun
+    // rotate as one, with the support-hand solver using that same pivot.
+    const auto& primaryHandGripController=s.weaponHandLeft
+        ?s.leftGripController:s.rightGripController;
+    const auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
+        s.rightGripSettings,KharvoxWeaponKindKey(kind),
+        s.weaponHandLeft,heavyAltMode(kind));
+    const bool heavyFallback=!savedPivot.valid&&!s.weaponHandLeft
         &&(kind==KharvoxWeaponKind::GaussCannon
-            ||kind==KharvoxWeaponKind::Chaingun)
-        &&!s.dynamicShoulderHolstered;
-    const auto heavyPosition=kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun);
+    const bool gripPivotEnabled=s.customMods.offHandGripCapture
+        &&primaryHandGripController.valid&&!s.dynamicShoulderHolstered
+        &&(savedPivot.valid||heavyFallback);
+    const auto legacy=kind==KharvoxWeaponKind::GaussCannon
         ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
-    const XrVector3f heavyOffset{heavyPosition.x,
-        heavyPosition.y-s.rightGripSettings.rightHandDropMeters,
-        heavyPosition.z};
-    const auto rightGripBody=s.rightGripController.valid
-        ?controllerRelativeToBodyTrackingOrigin(s.rightGripController).position
+    const auto& savedPoint=savedPivot.position;
+    const XrVector3f pivotLocalOffset=savedPivot.valid
+        ?XrVector3f{savedPoint.x,savedPoint.y,savedPoint.z}
+        :XrVector3f{legacy.x,
+            legacy.y-s.rightGripSettings.rightHandDropMeters,legacy.z};
+    const auto primaryGripBody=primaryHandGripController.valid
+        ?controllerRelativeToBodyTrackingOrigin(primaryHandGripController).position
         :current.position;
     const auto gunPivotAt=[&](const XrQuaternionf&rot){
         return kharvox::primarygrip::weaponAnchor(
-            current.position,rightGripBody,rot,heavyOffset,
-            heavyPivotEnabled,
+            current.position,primaryGripBody,rot,pivotLocalOffset,
+            gripPivotEnabled,
             [](const XrQuaternionf&q,const XrVector3f&v){return rotateVector(q,v);});
     };
     if(s.twoHandEnabled){
@@ -2600,7 +2617,7 @@ void updateWeapon6Dof(){
                 solvePrimary.position=gunPivotAt(rotation);
                 rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
                     activeCalibration,useVirtualGunstock,gunstockPosition);
-                if(heavyPivotEnabled){
+                if(gripPivotEnabled){
                     solvePrimary.position=gunPivotAt(rotation);
                     rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
                         activeCalibration,useVirtualGunstock,gunstockPosition);
@@ -2613,40 +2630,21 @@ void updateWeapon6Dof(){
             }
         }
     }
-    // The normal KHARVOX hand model uses the controller's GRIP pose, not
-    // the AIM pose from which weapon 6DoF is normally published. This gap
-    // matters: moving only the visible mesh makes it float beside the gun.
-    // For Gauss/Chaingun, make the measured right-hand point the actual gun
-    // attachment pivot. For every other weapon keep the original aim pivot.
-    const auto& primaryHandGripController=s.weaponHandLeft
-        ?s.leftGripController:s.rightGripController;
+    // Use EXACTLY the same pivot for native gun pose and both hand meshes.
+    // A stored primary glove position makes its grip the rotation centre,
+    // including left-handed holster draws and Gauss/Chaingun alternate modes.
     const auto renderOrientation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
-    const bool repositionHeavyRight=s.customMods.offHandGripCapture
-        &&!s.weaponHandLeft&&primaryHandGripController.valid
-        &&(kind==KharvoxWeaponKind::GaussCannon
-            ||kind==KharvoxWeaponKind::Chaingun)
-        &&!s.dynamicShoulderHolstered;
-    XrVector3f capturedGripPoint{};
-    if(repositionHeavyRight){
-        const auto measured=kind==KharvoxWeaponKind::GaussCannon
-            ?s.rightGripSettings.gauss:s.rightGripSettings.chaingun;
-        capturedGripPoint={measured.x,
-            measured.y-s.rightGripSettings.rightHandDropMeters,measured.z};
-    }
     const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
         return rotateVector(q,v);
     };
-    const auto weaponAnchorBody=kharvox::primarygrip::weaponAnchor(
-        current.position,
-        primaryHandGripController.valid
-            ?controllerRelativeToBodyTrackingOrigin(primaryHandGripController).position
-            :current.position,
-        rotation,capturedGripPoint,repositionHeavyRight,rotateGrip);
+    const auto weaponAnchorBody=gunPivotAt(rotation);
     const auto weaponAnchorTracking=kharvox::primarygrip::weaponAnchor(
-        primaryController.position,primaryHandGripController.position,
-        renderOrientation,capturedGripPoint,repositionHeavyRight,rotateGrip);
+        primaryController.position,
+        primaryHandGripController.valid?primaryHandGripController.position
+            :primaryController.position,
+        renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
     // The primary hand (RIGHT or LEFT, selected by the holster/draw) stays
     // in its native KHARVOX grip-space pose. Capture the grip
     // once per weapon; from then on it has a constant gun-local position and
@@ -2674,8 +2672,8 @@ void updateWeapon6Dof(){
                 :kind==KharvoxWeaponKind::Chaingun
                     ?s.rightGripSettings.chaingunRotation
                     :kharvox::RightHandGripRotation{};
-            // The verified original weapon anchor stays unchanged. Only
-            // the glove's independent weapon-local pose is recalibrated.
+            // Saved primary glove coordinates also move the gun pivot.
+            // Legacy right-heavy fallback remains when no saved pose exists.
             const auto& settings=s.rightGripSettings;
             kharvox::RightHandGripOffset savedHand{};
             bool savedHandValid=false;

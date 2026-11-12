@@ -111,6 +111,43 @@ struct RightHandGripSettings {
     std::map<std::string,RightHandGripOffset> leftPrimaryAlternateSupport;
     int accepted{},rejected{};
 };
+// Weapon-local location on the 6DoF gun where the physical PRIMARY grip
+// belongs. The saved point is now the gun pivot for BOTH holster hands,
+// rather than moving only the glove mesh. Legacy Gauss/Chaingun anchors are
+// retained for fallback when no primary glove pose has been saved.
+struct SavedPrimaryGripOffset {
+    RightHandGripOffset position{};
+    bool valid{};
+};
+inline SavedPrimaryGripOffset savedPrimaryWeaponGripOffset(
+    const RightHandGripSettings& settings,const std::string& weapon,
+    bool leftPrimary,bool alternate=false) {
+    if(!validVrCalibrationWeapon(weapon))return {};
+    const auto& values=leftPrimary
+        ?settings.leftVisualPositions:settings.visualPositions;
+    const std::string special=(weapon=="gauss_cannon"?"_siege"
+        :weapon=="chaingun"?"_turret":"");
+    if(alternate&&!special.empty()){
+        const auto key=weapon+special;
+        if(leftPrimary){
+            const auto found=values.find(key);
+            if(found!=values.end())return {found->second,true};
+        }else if(weapon=="gauss_cannon"&&settings.gaussSiegeHandValid){
+            return {settings.gaussSiegeHand,true};
+        }else if(weapon=="chaingun"&&settings.chaingunTurretHandValid){
+            return {settings.chaingunTurretHand,true};
+        }
+    }
+    if(!leftPrimary){
+        if(weapon=="gauss_cannon"&&settings.gaussHandValid)
+            return {settings.gaussHand,true};
+        if(weapon=="chaingun"&&settings.chaingunHandValid)
+            return {settings.chaingunHand,true};
+    }
+    const auto found=values.find(weapon);
+    return found!=values.end()
+        ?SavedPrimaryGripOffset{found->second,true}:SavedPrimaryGripOffset{};
+}
 inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
     RightHandGripSettings out{};std::ifstream f(path);std::string line;
     while(std::getline(f,line)){

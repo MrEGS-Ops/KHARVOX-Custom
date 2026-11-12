@@ -152,7 +152,7 @@ void paintVrHandMenu() {
     SelectObject(dc,smallFont);
     write(538,551,"LEFT / RIGHT / BOTH = gun grip saved",muted);
     write(538,582,"Point RIGHT hand + trigger to select",muted);
-    write(538,611,"Both thumbsticks: close menu",muted);
+    write(538,611,"Hold RIGHT stick 1s: close",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
     if(m.cursorX>=0&&m.cursorY>=0&&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
