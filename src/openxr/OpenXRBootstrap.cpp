@@ -334,7 +334,8 @@ struct State {
     bool chestZoneEntered{},shoulderZoneEntered{};
     std::uint64_t nextCookPulseAt{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
-    bool weaponWheelRemapEnabled{true};
+    // Retired standalone remap. Gunslinger alone owns behind-head wheel input.
+    bool weaponWheelRemapEnabled{false};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
