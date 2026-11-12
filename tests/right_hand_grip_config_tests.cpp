@@ -320,7 +320,8 @@ int main(){
      path,factoryRight,"gauss_cannon",true,&why));
  visual=kharvox::readRightHandGripSettings(path);
  assert(std::abs(visual.leftVisualPositions["gauss_cannon_siege"].x+.30f)<.0001f);
- assert(std::abs(visual.visualPositions["gauss_cannon_siege"].x-.30f)<.0001f);
+ assert(visual.gaussSiegeHandValid);
+ assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
  // No factory available means NO destructive reset.
  assert(!kharvox::restoreVrWeaponCalibrationDefault(
