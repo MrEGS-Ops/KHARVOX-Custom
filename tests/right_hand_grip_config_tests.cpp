@@ -201,8 +201,22 @@ int main(){
      {.05f,.02f,-.12f},{0.f,0.f,0.f,1.f,true},&why));
  assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
      {.07f,.03f,-.15f},{0.f,0.f,0.f,1.f,true},&why));
- // Only the actual live capture phase can forward native alternate fire.
+ // Ordinary PRIMARY grip may hold an aim-test preview; the two heavy
+ // weapon captures retain native alt-fire for Siege/Turret, not this mode.
  using kharvox::VrHandMenuMode;
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Calibrating,true,"pistol"));
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Calibrating,true,"super_shotgun"));
+ assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Calibrating,true,"gauss_cannon"));
+ assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Calibrating,true,"chaingun"));
+ assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Calibrating,false,"pistol")); // SUPPORT is unchanged
+ assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+     VrHandMenuMode::Menu,true,"pistol")); // no gameplay menu grip preview
+ // Only the actual live capture phase can forward native alternate fire.
  using kharvox::vrCalibrationNativeAltFireAllowed;
  assert(vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
      true,true,true,true,true)); // Gauss Siege / Chaingun Turret grip
