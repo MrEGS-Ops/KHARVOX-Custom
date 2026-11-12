@@ -51,6 +51,7 @@ public sealed class MainForm : Form
     private readonly CheckBox cinewindowFollowsHeadset = MakeCheck(
         "Cine Window follows headset", false);
     private readonly CheckBox virtualGunstock = MakeCheck("Virtual Gunstock", false);
+    private bool gripCalibrationBlocksVirtualGunstock;
     private readonly CheckBox physicalGlorykill = MakeCheck("Physical Glory Kills", false);
     private readonly CheckBox laserSight = MakeCheck("Laser sight", false);
     private readonly CheckBox leftHanded = MakeCheck("Left Hand mode", false);
@@ -379,7 +380,11 @@ public sealed class MainForm : Form
         };
         calibrateHands.CheckedChanged += HandCalibrationModeChanged;
 
-        runtimeStatusTimer.Tick += (_, _) => RefreshRuntimeStatus();
+        runtimeStatusTimer.Tick += (_, _) =>
+        {
+            RefreshVirtualGunstockCompatibility();
+            RefreshRuntimeStatus();
+        };
         runtimeStatusTimer.Start();
 
         var action = new TableLayoutPanel
@@ -468,6 +473,7 @@ public sealed class MainForm : Form
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
+        RefreshVirtualGunstockCompatibility();
         RefreshRenderScaleAvailability();
         if (string.IsNullOrWhiteSpace(doomPath.Text) || !File.Exists(Path.Combine(doomPath.Text, "DOOMx64vk.exe")))
             doomPath.Text = KharvoxRunner.FindDoomInstall() ?? string.Empty;
@@ -791,14 +797,44 @@ public sealed class MainForm : Form
             }
         }
         finally { applyingPreset = false; }
+        RefreshVirtualGunstockCompatibility();
         cinematicFreelook.Enabled = intense.Checked;
         otherCinematicsInQuad.Enabled = intense.Checked;
         smoothSpeed.Enabled = turnMode.SelectedIndex == 0;
         snapAngle.Enabled = turnMode.SelectedIndex == 1;
     }
 
+    // Mod Manager's sidecar is authoritative. Refresh even when the
+    // modified KHARVOX launcher is already open, so the greyed-out state
+    // follows the actual enabled Weapon Grip Calibration selection.
+    private void RefreshVirtualGunstockCompatibility()
+    {
+        var blocked = gripCalibrationBlocksVirtualGunstock;
+        try { blocked = StandaloneModsBridge.LoadFromEnvironment()?.OffHandGripCapture == true; }
+        catch (IOException) { /* Keep the last known safe lock. */ }
+        catch (UnauthorizedAccessException) { /* Keep the last known safe lock. */ }
+        catch (InvalidDataException) { /* Keep the last known safe lock. */ }
+        gripCalibrationBlocksVirtualGunstock = blocked;
+        if (blocked && virtualGunstock.Checked)
+        {
+            var oldApplying = applyingPreset;
+            applyingPreset = true;
+            try { virtualGunstock.Checked = false; }
+            finally { applyingPreset = oldApplying; }
+        }
+        virtualGunstock.Enabled = !blocked;
+        statusToolTip.SetToolTip(virtualGunstock, blocked
+            ? "Disabled by Weapon Grip Calibration. Disable that mod in the Mod Manager to re-enable Virtual Gunstock."
+            : "Virtual Gunstock is available while Weapon Grip Calibration is disabled.");
+    }
+
     private void OptionChanged(object? sender, EventArgs e)
     {
+        if (sender == virtualGunstock && gripCalibrationBlocksVirtualGunstock)
+        {
+            RefreshVirtualGunstockCompatibility();
+            return;
+        }
         if (!applyingPreset && Visible && preset.SelectedIndex >= 0 && preset.SelectedIndex != 3) preset.SelectedIndex = 3;
         smoothSpeed.Enabled = turnMode.SelectedIndex == 0;
         snapAngle.Enabled = turnMode.SelectedIndex == 1;
@@ -943,7 +979,7 @@ public sealed class MainForm : Form
         weaponMode.SelectedIndex == 1,
         SelectedCalibrationWeaponKey(),
         gripAlignment.SelectedIndex == 1 ? "side-grip" : "barrel",
-        virtualGunstock.Checked,
+        virtualGunstock.Checked && !gripCalibrationBlocksVirtualGunstock,
         physicalGlorykill.Checked,
         SelectedPhysicalGlorykillSpeed(),
         physicalGlorykillHands.SelectedIndex switch { 0 => "left", 1 => "right", _ => "both" },
@@ -1090,6 +1126,7 @@ public sealed class MainForm : Form
         }
         finally
         {
+            RefreshVirtualGunstockCompatibility();
             UpdateWeaponModeDescription();
             cinematicFreelook.Enabled = intense.Checked;
             otherCinematicsInQuad.Enabled = intense.Checked;
@@ -1116,7 +1153,8 @@ public sealed class MainForm : Form
                 Math.Max(0, weaponMode.SelectedIndex), Math.Max(0, calibrationWeapon.SelectedIndex),
                 Math.Max(0, backWeapon.SelectedIndex),
                 Math.Max(0, gripAlignment.SelectedIndex),
-                virtualGunstock.Checked, physicalGlorykill.Checked,
+                virtualGunstock.Checked && !gripCalibrationBlocksVirtualGunstock,
+                physicalGlorykill.Checked,
                 SelectedPhysicalGlorykillSpeed(), Math.Max(0, physicalGlorykillHands.SelectedIndex),
                 leftHanded.Checked, Math.Max(0, leftHandSwapMode.SelectedIndex),
                 laserSight.Checked,

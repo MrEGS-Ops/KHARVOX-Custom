@@ -280,6 +280,10 @@ internal static class KharvoxRunner
         // No local bridge file = original KHARVOX selections unchanged.
         var standaloneMods = StandaloneModsBridge.LoadFromEnvironment();
         standaloneMods?.ApplyTo(customMods);
+        // Force the runtime setting off even if saved launcher settings,
+        // presets or a direct caller request Virtual Gunstock.
+        var effectiveVirtualGunstock =
+            options.VirtualGunstock && !customMods.OffHandGripCapture;
 
         if (!File.Exists(gameExe)) throw new FileNotFoundException(
             "Select the DOOM (2016) installation folder containing DOOMx64vk.exe.", gameExe);
@@ -379,7 +383,14 @@ internal static class KharvoxRunner
                 "enable_cached_eye_reprojection"
             }) WriteTemporary(flag);
             if (options.TwoHandCalibration) WriteTemporary("enable_two_hand_calibration");
-            if (options.VirtualGunstock) WriteTemporary("enable_virtual_gunstock");
+            if (effectiveVirtualGunstock) WriteTemporary("enable_virtual_gunstock");
+            else if (customMods.OffHandGripCapture)
+            {
+                // Remove a stale gunstock marker left by an interrupted old
+                // launch. The mod must not see that marker in the runtime.
+                var marker = Path.Combine(runtimeDir, "enable_virtual_gunstock");
+                if (File.Exists(marker)) File.Delete(marker);
+            }
             WriteTemporary("two_hand_calibration_target.cfg", options.TwoHandCalibrationWeapon);
             WriteTemporary("two_hand_alignment.cfg", options.TwoHandAlignment);
             WriteTemporary("back_weapon.cfg", options.BackWeapon);
@@ -388,7 +399,7 @@ internal static class KharvoxRunner
                   ", hold both hands and press " + (options.LeftHanded ? "LEFT TRIGGER" : "RIGHT TRIGGER")
                 : "GAMEPLAY TEST: each calibrated weapon uses its own " +
                   (options.LeftHanded ? "RIGHT GRIP" : "LEFT GRIP") + " support profile" +
-                  (options.VirtualGunstock ? " + Virtual GunStock" : string.Empty));
+                  (effectiveVirtualGunstock ? " + Virtual GunStock" : string.Empty));
             // Isolation is complete: honor the launcher renderer selection.
             // Legacy renderer selections are normalized before launch.
             var nativeStereoEnabled = RendererSelection.IsNative(options.RendererMode);
@@ -559,7 +570,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_MODE"] = options.TwoHandCalibration ? "calibration" : "gameplay-test";
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_CALIBRATION_WEAPON"] = options.TwoHandCalibrationWeapon;
             psi.EnvironmentVariables["KHARVOX_TWO_HAND_ALIGNMENT"] = options.TwoHandAlignment;
-            psi.EnvironmentVariables["KHARVOX_VIRTUAL_GUNSTOCK"] = options.VirtualGunstock ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_VIRTUAL_GUNSTOCK"] = effectiveVirtualGunstock ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_CAPTURE_EYES"] = options.CaptureEyes ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_DISABLE_AA"] = options.DisableAa ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_HANDS_JUMP"] = options.HandsJump ? "1" : "0";
@@ -704,7 +715,8 @@ internal static class KharvoxRunner
                 " weaponWheelRemap=" + ((standaloneMods?.EffectiveWheelRemap ?? options.WeaponWheelRemapEnabled) ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
-                " virtualGunstock=" + (options.VirtualGunstock ? "enabled" : "disabled") +
+                " virtualGunstock=" + (effectiveVirtualGunstock ? "enabled" : "disabled") +
+                (customMods.OffHandGripCapture ? "(locked by Weapon Grip Calibration)" : "") +
                 " physicalGlorykill=" + (options.PhysicalGlorykill ? "enabled" : "disabled") +
                 " punchSpeed=" + Inv(options.PhysicalGlorykillSpeed) + "m/s" +
                 " punchHands=" + options.PhysicalGlorykillHands +
