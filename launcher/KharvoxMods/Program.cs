@@ -107,8 +107,8 @@ internal static class Program
             clean.KharvoxLauncherPath = Path.Combine(root, "KharvoxLauncher.exe");
             clean.Save(path);
             if (!File.Exists(path) ||
-                !Directory.Exists(Path.Combine(root, "Logs")) ||
-                !Directory.Exists(Path.Combine(root, "Backups")) ||
+                !Directory.Exists(AppState.LogsDirectory) ||
+                !Directory.Exists(AppState.BackupsDirectory) ||
                 Directory.Exists(Path.Combine(root, "Mods")))
                 throw new InvalidDataException("All portable folders must be beside settings.json.");
             var reloaded = AppState.Load(path);
