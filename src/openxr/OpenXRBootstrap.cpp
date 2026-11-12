@@ -1681,7 +1681,7 @@ void updateHeadPose(const XrViewState& viewState,XrTime displayTime,bool nativeP
     publishGameCameraHeadPose(physicalHeadYaw,s.head.pitch,s.head.roll,forward,lateral,up,s.headCameraArmed,centeredNativeMenuActive);
 }
 void releaseBackWeaponKeyboardPulse();
-void releaseMovement(){s.handsJump={};const auto oldMovement=virtualMovementAxes.exchange(0,std::memory_order_relaxed);const SHORT oldRightX=virtualRightX.exchange(0,std::memory_order_relaxed),oldRightY=virtualRightY.exchange(0,std::memory_order_relaxed);if(oldMovement||oldRightX||oldRightY)virtualPacket.fetch_add(1,std::memory_order_relaxed);releaseBackWeaponKeyboardPulse();}
+void releaseMovement(bool preserveKeyboardPulse=false){s.handsJump={};const auto oldMovement=virtualMovementAxes.exchange(0,std::memory_order_relaxed);const SHORT oldRightX=virtualRightX.exchange(0,std::memory_order_relaxed),oldRightY=virtualRightY.exchange(0,std::memory_order_relaxed);if(oldMovement||oldRightX||oldRightY)virtualPacket.fetch_add(1,std::memory_order_relaxed);if(!preserveKeyboardPulse)releaseBackWeaponKeyboardPulse();}
 SHORT stickToXInput(float value){return static_cast<SHORT>(std::lround(std::clamp(value,-1.f,1.f)*(value<0.f?32768.f:32767.f)));}
 void updateVirtualLeftStick(XrVector2f stick,bool active){
     const SHORT x=active?stickToXInput(stick.x):0,y=active?stickToXInput(stick.y):0;
