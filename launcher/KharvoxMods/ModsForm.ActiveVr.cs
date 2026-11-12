@@ -1108,7 +1108,9 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException("Every mod must show an explicit availability status.");
 
             // Standard rows must keep their info/drag columns anchored right.
-            var other = form._visibleModRows["Hand Focus"];
+            // Hand Focus is now a locked Developer row, not an ordinary mod row.
+            // Inspect the always-present paused No HUD row for standard layout.
+            var other = form._visibleModRows["No HUD"];
             var normal = other as TableLayoutPanel;
             var normalInfo = EnumerateRowControls(other).OfType<LinkLabel>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
