@@ -3019,7 +3019,7 @@ void updateGameplayActions(XrTime displayTime){
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
-    if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
+    if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
