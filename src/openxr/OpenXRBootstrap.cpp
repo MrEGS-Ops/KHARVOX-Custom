@@ -415,6 +415,9 @@ struct State {
     XrTime backWeaponKeyboardReleaseTime{};
     bool backWeaponKeyboardKeyDown{};
     std::array<TwoHandCalibration,static_cast<size_t>(KharvoxWeaponKind::Count)> twoHandCalibrations{};
+    // The right-hand support when a gun is in LEFT holster/hand is independent
+    // from the original left-hand support profile for RIGHT-primary guns.
+    std::array<TwoHandCalibration,static_cast<size_t>(KharvoxWeaponKind::Count)> twoHandCalibrationsLeft{};
     KharvoxWeaponKind twoHandCalibrationTarget{KharvoxWeaponKind::Shotgun};
     KharvoxWeaponKind twoHandLatchedWeapon{KharvoxWeaponKind::Unknown};
     TwoHandAimMode twoHandCalibrationAimMode{TwoHandAimMode::Barrel};
@@ -2067,10 +2070,15 @@ bool renderedLaserPoseInTrackingSpace(XrVector3f& trackingOrigin,XrVector3f& tra
     return std::isfinite(trackingOrigin.x)&&std::isfinite(trackingOrigin.y)&&std::isfinite(trackingOrigin.z)
         &&std::isfinite(trackingDirection.x)&&std::isfinite(trackingDirection.y)&&std::isfinite(trackingDirection.z);
 }
-TwoHandCalibration* twoHandCalibrationFor(KharvoxWeaponKind kind){
+TwoHandCalibration* twoHandCalibrationFor(KharvoxWeaponKind kind,bool leftPrimary){
     const int index=static_cast<int>(kind);
-    if(index<=static_cast<int>(KharvoxWeaponKind::Unknown)||index>=static_cast<int>(KharvoxWeaponKind::Count))return nullptr;
-    return &s.twoHandCalibrations[static_cast<size_t>(index)];
+    if(index<=static_cast<int>(KharvoxWeaponKind::Unknown)
+        ||index>=static_cast<int>(KharvoxWeaponKind::Count))return nullptr;
+    auto& profiles=leftPrimary?s.twoHandCalibrationsLeft:s.twoHandCalibrations;
+    return &profiles[static_cast<size_t>(index)];
+}
+TwoHandCalibration* twoHandCalibrationFor(KharvoxWeaponKind kind){
+    return twoHandCalibrationFor(kind,s.weaponHandLeft);
 }
 void writeTwoHandStatus(const std::string& value){
     static std::string previous;
@@ -2101,14 +2109,14 @@ bool validTwoHandCalibrationValues(XrVector3f support,float radius,float maximum
     return std::isfinite(support.x)&&std::isfinite(support.y)&&std::isfinite(support.z)
         &&std::isfinite(radius)&&std::isfinite(maximumWeight);
 }
-bool loadTwoHandCalibrationFile(const std::string& path){
+bool loadTwoHandCalibrationFile(const std::string& path,bool leftPrimary=false){
     bool loadedAny=false;
     std::ifstream saved(path);
     int version{};std::string weaponKey,savedMode;XrVector3f support{};float radius{},maximumWeight{};
     while(saved>>version>>weaponKey>>savedMode>>support.x>>support.y>>support.z>>radius>>maximumWeight){
         const auto kind=KharvoxWeaponKindFromKey(weaponKey.c_str());
         if(version!=2||kind==KharvoxWeaponKind::Unknown||!validTwoHandCalibrationValues(support,radius,maximumWeight))continue;
-        auto* calibration=twoHandCalibrationFor(kind);
+        auto* calibration=twoHandCalibrationFor(kind,leftPrimary);
         calibration->supportPosition=support;
         calibration->captureRadius=std::clamp(radius,.08f,.40f);
         calibration->maximumHandLineWeight=std::clamp(maximumWeight,0.f,1.f);
@@ -2128,7 +2136,7 @@ bool loadTwoHandCalibrations(){
 
     // Preserve the already proven shotgun calibration from builds that stored
     // only one global profile. It overrides the project shotgun default.
-    auto* shotgun=twoHandCalibrationFor(KharvoxWeaponKind::Shotgun);
+    auto* shotgun=twoHandCalibrationFor(KharvoxWeaponKind::Shotgun,false);
     std::ifstream legacy(kharvox::runtimePathA("two_hand_shotgun_saved.cfg"));
     int version{};std::string savedMode;XrVector3f support{};float radius{},maximumWeight{};
     if(legacy>>version>>savedMode>>support.x>>support.y>>support.z>>radius>>maximumWeight&&version==1
@@ -2143,10 +2151,17 @@ bool loadTwoHandCalibrations(){
     }
     loadedAny=loadTwoHandCalibrationFile(
         kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg"))||loadedAny;
+    // Default left-primary support mirrors the existing right-primary data.
+    // Saved left-primary support positions override ONLY the left-primary copy.
+    s.twoHandCalibrationsLeft=s.twoHandCalibrations;
+    loadTwoHandCalibrationFile(
+        kharvox::runtimePathA("two_hand_weapon_profiles_left_primary_saved.cfg"),true);
     return loadedAny;
 }
 bool saveTwoHandCalibrations(){
-    std::ofstream out(kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg"),std::ios::trunc);
+    std::ofstream out(kharvox::runtimePathA(s.weaponHandLeft
+        ?"two_hand_weapon_profiles_left_primary_saved.cfg"
+        :"two_hand_weapon_profiles_saved.cfg"),std::ios::trunc);
     if(!out)return false;
     for(int index=static_cast<int>(KharvoxWeaponKind::Pistol);index<static_cast<int>(KharvoxWeaponKind::Count);++index){
         const auto kind=static_cast<KharvoxWeaponKind>(index);
@@ -2215,15 +2230,24 @@ bool heavyAltMode(KharvoxWeaponKind kind){
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
     if(!heavyAltMode(kind))return false;
+    if(s.weaponHandLeft){
+        const std::string key=kind==KharvoxWeaponKind::GaussCannon
+            ?"gauss_cannon_siege":"chaingun_turret";
+        const auto it=s.rightGripSettings.leftPrimaryAlternateSupport.find(key);
+        if(it!=s.rightGripSettings.leftPrimaryAlternateSupport.end()){
+            pos={it->second.x,it->second.y,it->second.z};
+            return true;
+        }
+    }
     if(kind==KharvoxWeaponKind::GaussCannon
         &&s.rightGripSettings.gaussSiegeSupportValid){
         const auto v=s.rightGripSettings.gaussSiegeSupport;
-        pos={v.x,v.y,v.z};return true;
+        pos={s.weaponHandLeft?-v.x:v.x,v.y,v.z};return true;
     }
     if(kind==KharvoxWeaponKind::Chaingun
         &&s.rightGripSettings.chaingunTurretSupportValid){
         const auto v=s.rightGripSettings.chaingunTurretSupport;
-        pos={v.x,v.y,v.z};return true;
+        pos={s.weaponHandLeft?-v.x:v.x,v.y,v.z};return true;
     }
     return false;
 }
@@ -2619,13 +2643,13 @@ void updateWeapon6Dof(){
     const auto weaponAnchorTracking=kharvox::primarygrip::weaponAnchor(
         primaryController.position,primaryHandGripController.position,
         renderOrientation,capturedGripPoint,repositionHeavyRight,rotateGrip);
-    // Primary RIGHT hand stays in its native KHARVOX grip-space pose on
-    // EVERY equipped weapon, even without two-hand latch. Capture the grip
+    // The primary hand (RIGHT or LEFT, selected by the holster/draw) stays
+    // in its native KHARVOX grip-space pose. Capture the grip
     // once per weapon; from then on it has a constant gun-local position and
     // orientation. This avoids the gun rolling inside the glove.
     const bool visualAlternate=heavyAltMode(kind);
     const bool primaryVisualNow=s.customMods.offHandGripCapture
-        &&!s.weaponHandLeft&&primaryHandGripController.valid
+        &&primaryHandGripController.valid
         &&kind!=KharvoxWeaponKind::Unknown
         &&kind!=KharvoxWeaponKind::Fists&&!s.dynamicShoulderHolstered;
     if(primaryVisualNow){
@@ -2671,7 +2695,27 @@ void updateWeapon6Dof(){
             }
             // Every right-handed weapon may have its own saved visual pose.
             // Existing Gauss/Chaingun normal and alternate values still win.
-            if(!savedHandValid){
+            if(s.weaponHandLeft){
+                // Left-primary glove profiles are independent; never import
+                // the old right-hand Gauss/Chaingun glove coordinates.
+                savedHandValid=false;
+                savedRot={};
+                const auto key=std::string(KharvoxWeaponKindKey(kind))
+                    +(visualAlternate&&(kind==KharvoxWeaponKind::GaussCannon
+                      ||kind==KharvoxWeaponKind::Chaingun)
+                        ?(kind==KharvoxWeaponKind::GaussCannon?"_siege":"_turret"):"");
+                auto it=settings.leftVisualPositions.find(key);
+                if(it==settings.leftVisualPositions.end()&&key!=KharvoxWeaponKindKey(kind))
+                    it=settings.leftVisualPositions.find(KharvoxWeaponKindKey(kind));
+                if(it!=settings.leftVisualPositions.end()){
+                    savedHand=it->second;savedHandValid=true;
+                }
+                auto rotationIt=settings.leftVisualRotations.find(key);
+                if(rotationIt==settings.leftVisualRotations.end()
+                    &&key!=KharvoxWeaponKindKey(kind))
+                    rotationIt=settings.leftVisualRotations.find(KharvoxWeaponKindKey(kind));
+                if(rotationIt!=settings.leftVisualRotations.end())savedRot=rotationIt->second;
+            }else if(!savedHandValid){
                 const auto key=std::string(KharvoxWeaponKindKey(kind));
                 const auto it=settings.visualPositions.find(key);
                 if(it!=settings.visualPositions.end()){
@@ -2689,7 +2733,8 @@ void updateWeapon6Dof(){
             s.primaryVisualAlternate=visualAlternate;
         }
         if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
-           &&s.vrHandMenu.rightHand&&s.vrHandMenu.previewValid
+           &&(s.vrHandMenu.rightHand!=s.weaponHandLeft)
+           &&s.vrHandMenu.previewValid
            &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())){
             const auto& p=s.vrHandMenu.previewPosition;
             const auto& q=s.vrHandMenu.previewRotation;
@@ -2718,11 +2763,11 @@ void updateWeapon6Dof(){
     }
     // Support glove remains attached only after an actual support Grip.
     // Physics/controller tracking is always independent of visual locks.
-    const bool menuLeftPreview=s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
-        &&!s.vrHandMenu.rightHand&&s.vrHandMenu.previewValid
-        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())
-        &&!s.weaponHandLeft;
-    const bool supportVisualNow=menuLeftPreview||
+    const bool menuSupportPreview=s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
+        &&s.vrHandMenu.rightHand==s.weaponHandLeft
+        &&s.vrHandMenu.previewValid
+        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon());
+    const bool supportVisualNow=menuSupportPreview||
         (s.customMods.offHandGripCapture&&
         s.twoHandEnabled&&s.twoHandLatched&&s.supportGripPressed&&
         s.twoHandLatchedWeapon==kind&&primaryController.valid&&
@@ -2730,22 +2775,22 @@ void updateWeapon6Dof(){
         !s.dynamicShoulderHolstered);
     if(supportVisualNow){
         const auto* profile=twoHandCalibrationFor(kind);
-        if((profile&&profile->valid)||menuLeftPreview){
+        if((profile&&profile->valid)||menuSupportPreview){
             auto actual=profile?activeHandCalibration(*profile):TwoHandCalibration{};
-            if(menuLeftPreview){
+            if(menuSupportPreview){
                 const auto& offset=s.vrHandMenu.previewPosition;
                 actual.supportPosition={offset.x,offset.y,offset.z};
             }
             XrVector3f alternateSupport{};
-            if(!menuLeftPreview&&altHeavySupport(kind,alternateSupport))
+            if(!menuSupportPreview&&altHeavySupport(kind,alternateSupport))
                 actual.supportPosition=alternateSupport;
             const auto fixedPosition=addVector(weaponAnchorTracking,
                 rotateVector(renderOrientation,actual.supportPosition));
-            if(menuLeftPreview){
-                // Preview follows the controller's CURRENT orientation. No
-                // LEFT quaternion is saved; normal play still latches at grab.
+            if(menuSupportPreview){
+                // Preview follows the current SUPPORT controller orientation;
+                // it is NEVER written as a fixed support-hand quaternion.
                 s.supportVisualLocalOrientation=normalizeQuaternion(multiply(
-                    conjugate(renderOrientation),s.leftGripController.orientation));
+                    conjugate(renderOrientation),supportController.orientation));
             }else if(!s.supportVisualLocked||s.supportVisualWeapon!=kind||
                 s.supportVisualWeaponLeft!=s.weaponHandLeft){
                 s.supportVisualLocalOrientation=normalizeQuaternion(multiply(
