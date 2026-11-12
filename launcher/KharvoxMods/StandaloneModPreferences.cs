@@ -133,9 +133,9 @@ internal sealed class StandaloneModPreferences
         {
             var path = Path.Combine(dir, "mods.json");
             var x = Load(path);
-            if (!x.WeaponWheelRemap || x.HandFocus ||
+            if (!x.WeaponWheelRemap || !x.HandFocus ||
                 x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
-                x.PhysicalCrouch || x.PainsawRipshiftOverdrive || x.OffHandGripCapture ||
+                !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || x.OffHandGripCapture ||
                 x.GloryKillSpeedOverride ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
