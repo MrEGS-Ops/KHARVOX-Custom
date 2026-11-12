@@ -13,7 +13,7 @@ namespace KharvoxMods;
 // scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private const int LegacyVrModCount = 20;
+    private const int LegacyVrModCount = 19;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
     private bool _savingSettings;
@@ -525,7 +525,7 @@ internal sealed partial class ModsForm
     internal static void RunUiSelfTest()
     {
         if (!VerifyOriginalLayoutMetadata() || ModNumber(GloryModTitle) != LegacyVrModCount + 1)
-            throw new InvalidDataException("KHARVOX VR Mods inventory differs from the approved 22 mod rows.");
+            throw new InvalidDataException("KHARVOX VR Mods inventory differs from the approved 19 core mod rows.");
         ValidateActiveVrPolicies();
         var testPath = Path.Combine(Path.GetTempPath(),
             "kharvox-gk-checkbox-" + Guid.NewGuid().ToString("N") + ".json");
@@ -608,9 +608,9 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
                 vr.Count(check => check.Enabled) !=
-                    4 - (form._modPrefs.Gunslinger ? 1 : 0) ||
+                    3 ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
-                throw new InvalidDataException("Verified mod rows or Gunslinger conflict gating changed.");
+                throw new InvalidDataException("Verified mod rows or retired remap inventory changed.");
             if (!form.Controls.Descendants().OfType<Label>()
                 .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
                 throw new InvalidDataException("Active Mods heading is missing.");
