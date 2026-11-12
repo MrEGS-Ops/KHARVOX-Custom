@@ -5,7 +5,7 @@ This is an independent OpenXR compositor overlay in the **mod-enabled NativeBrid
 ## Controls
 
 - **Click both thumbsticks together** during gameplay to open or close the VR calibration panel. The same chord during calibration cancels calibration and returns to the panel without saving.
-- Point the **right controller** at a weapon, LEFT/RIGHT hand choice, CALIBRATE, or RESET THIS WEAPON. **Right trigger** selects the highlighted control. **Left thumbstick up/down** can scroll weapons; **right trigger** starts calibration when not pointing at a menu control. **Left trigger** is a reset shortcut.
+- Point the **right controller** at a weapon, LEFT/RIGHT hand choice, CALIBRATE, or RESET THIS WEAPON. **Right trigger** selects the highlighted control. **Left thumbstick up/down** can scroll weapons; **right trigger** starts calibration when not pointing at a menu control. Only the explicit RESET THIS WEAPON button resets a profile.
 - Equip the chosen weapon normally before starting calibration. The panel never cheats inventory or silently switches DOOM's selected weapon. A mismatch leaves the panel open with an explanation.
 - Selecting CALIBRATE hides the panel. The **left controller** then moves the selected virtual hand live; RIGHT-hand fitting targets a point 15 cm ahead of the left controller along its pointing direction to prevent real controller collision.
 - Pull the **physical RIGHT trigger** once to persist the selected weapon/hand and reopen the panel automatically.
