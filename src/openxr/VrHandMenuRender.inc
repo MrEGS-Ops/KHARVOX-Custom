@@ -95,7 +95,55 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(m.page==kharvox::VrMenuPage::Mods){
+    if(m.mode==kharvox::VrHandMenuMode::Calibrating){
+        write(38,24,"KHARVOX VR  /  LIVE CALIBRATION",white);
+        SelectObject(dc,regular);
+        const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
+        const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
+        const auto kind=KharvoxWeaponKindFromKey(m.weapon());
+        const bool heavy=kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun;
+        if(weaponCapture){
+            const auto name=KharvoxWeaponKindDisplayName(kind);
+            write(40,116,std::string("WEAPON: ")+(name&&*name?name:m.weapon()),white);
+            write(40,165,std::string("CALIBRATING: ")+(primary?"PRIMARY":"SUPPORT")
+                +(m.rightHand?" RIGHT HAND":" LEFT HAND"),RGB(84,233,214));
+            SelectObject(dc,smallFont);
+            write(40,225,"1. Move the OPPOSITE hand to adjust the grip position.",white);
+            if(primary&&!heavy){
+                write(40,279,"2. HOLD WEAPON GRIP to test the hand position and aim.",white);
+                write(40,326,"3. RELEASE GRIP to return to positioning.",white);
+                fill(38,384,870,70,m.primaryGripPreviewHeld
+                    ?RGB(35,85,72):RGB(36,51,68));
+                write(62,406,m.primaryGripPreviewHeld
+                    ?"TESTING POSITION - grip held"
+                    :"POSITIONING - move opposite controller",RGB(84,233,214));
+            }else if(primary&&heavy){
+                write(40,279,"2. Gauss / Minigun: hold weapon GRIP for native alt fire.",white);
+                write(40,326,"3. Position the primary glove; no grip-test mode yet.",white);
+            }else{
+                write(40,279,"2. Move the support hand; rotation follows the grip.",white);
+                write(40,326,"3. Confirm its position before saving.",white);
+            }
+            write(40,506,m.previewValid?"TRACKING: valid preview"
+                :"TRACKING: waiting for a valid grip preview",
+                m.previewValid?RGB(108,235,161):RGB(239,197,116));
+        }else{
+            const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
+                ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
+            write(40,122,crouch?"PHYSICAL CROUCH - HEIGHT CALIBRATION"
+                :"GUNSLINGER - HAND ZONE CALIBRATION",white);
+            SelectObject(dc,smallFont);
+            write(40,205,crouch
+                ?"Move your HEAD to the requested standing/crouching height."
+                :"Move the specified HAND into the new holster/wheel zone.",white);
+            write(40,262,m.message,RGB(84,233,214));
+        }
+        SelectObject(dc,regular);
+        write(40,588,"RIGHT TRIGGER  /  SAVE AT ANY STAGE",RGB(108,235,161));
+        SelectObject(dc,smallFont);
+        write(40,644,"B  /  CANCEL WITHOUT SAVING",muted);
+    }else if(m.page==kharvox::VrMenuPage::Mods){
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
         write(40,102,"CONFIGURABLE MODS",muted);
@@ -266,7 +314,7 @@ void paintVrHandMenu() {
         write(56,y+6,name&&*name?name:key,white);
         SelectObject(dc,smallFont);
         const char* state=m.rightSaved[i]&&m.leftSaved[i]?"BOTH"
-            :m.rightSaved[i]?"RIGHT":m.leftSaved[i]?"LEFT":"-";
+            :m.rightSaved[i]?"RIGHT":m.leftSaved[i]?"LEFT":"DEFAULT";
         write(365,y+9,state,selected?white:muted);
     }
     const auto button=[&](int x,int y,int w,int h,bool active,bool hovered){
@@ -309,9 +357,9 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,551,"LEFT / RIGHT / BOTH = gun grip saved",muted);
-    write(538,582,"LEFT STICK NAV / A SELECT / B BACK",muted);
-    write(538,611,"Hold RIGHT stick 1s: close",muted);
+    write(538,551,"DEFAULT = factory grip",muted);
+    write(538,582,"LEFT / RIGHT / BOTH = custom",muted);
+    write(538,611,"STICK NAV / A SELECT / B BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
         fill(797,16,129,57,m.hovered==95||gamepadFocus(95)
