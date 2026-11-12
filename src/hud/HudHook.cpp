@@ -175,8 +175,13 @@ void reloadOffhandHud(){
     static unsigned long long last{};const auto now=GetTickCount64();if(last&&now-last<500)return;last=now;
     const auto attributes=GetFileAttributesA(kharvox::runtimePathA("enable_live_ammo_calibration").c_str());
     offhandCalibrationActive.store(attributes!=INVALID_FILE_ATTRIBUTES&&!(attributes&FILE_ATTRIBUTE_DIRECTORY),std::memory_order_release);
-    std::ifstream file(kharvox::runtimePathA("offhand_hud.cfg"));kharvox::OffhandHudConfig next;
-    if(kharvox::readOffhandHudConfig(file,next)){std::lock_guard<std::mutex> lock(offhandHudMutex);offhandHudConfig=next;}
+    std::ifstream file(kharvox::runtimePathA("offhand_hud.cfg"));
+    std::ifstream factory(kharvox::runtimePathA("offhand_hud_default.cfg"));
+    kharvox::OffhandHudConfig next;
+    if(kharvox::readOffhandHudConfigOrDefault(file,factory,next)){
+        std::lock_guard<std::mutex> lock(offhandHudMutex);
+        offhandHudConfig=next;
+    }
 }
 
 

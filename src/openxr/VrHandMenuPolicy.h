@@ -7,6 +7,8 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
+#include <cmath>
 
 // In-headset weapon-hand calibration. Left support hand saves TRANSLATION
 // only. Its orientation is intentionally established anew on every Grip.
@@ -17,6 +19,15 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// Grip-held aim preview is for ordinary PRIMARY weapon poses only.
+// Gauss Cannon / Chaingun keep their existing Grip -> native alt-fire
+// behaviour while their Siege/Turret calibration is being tested.
+inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
+    bool calibratingPrimary,const std::string& weapon) noexcept {
+    return mode==VrHandMenuMode::Calibrating && calibratingPrimary
+        && validVrCalibrationWeapon(weapon)
+        && weapon!="gauss_cannon" && weapon!="chaingun";
+}
 // Only LIVE weapon-pose calibration forwards the physically held PRIMARY
 // weapon Grip to DOOM's native alternate-fire input (XInput left trigger).
 // Never allow it from the visible settings menu, the wrong equipped weapon,
@@ -55,12 +66,66 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     return VrMenuShortcutAction::None;
 }
 enum class VrMenuPage {Mods,WeaponGrip};
+// Independent, edge-triggered left-stick navigation. It never modifies the
+// in-game movement or the right-hand laser/pointer input outside this menu.
+struct VrMenuNavigation {
+    bool settingsColumn{},usingStick{};
+    bool verticalCentered{true},horizontalCentered{true};
+    int actionIndex{}; // 0=toggle on Mods, 1..n=setting actions
+};
+inline bool vrMenuButtonEdge(bool down,bool& previously) noexcept {
+    const bool pressed=down&&!previously;
+    previously=down;
+    return pressed;
+}
+inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
+    int listCount,int& selectedIndex,int settingsCount) noexcept {
+    if(std::isfinite(x)){
+        if(std::abs(x)<.3f)nav.horizontalCentered=true;
+        else if(std::abs(x)>.75f&&nav.horizontalCentered){
+            nav.horizontalCentered=false;
+            nav.settingsColumn=x>0.f;
+            nav.actionIndex=0;
+            nav.usingStick=true;
+        }
+    }
+    if(std::isfinite(y)){
+        if(std::abs(y)<.3f)nav.verticalCentered=true;
+        else if(std::abs(y)>.75f&&nav.verticalCentered){
+            nav.verticalCentered=false;
+            nav.usingStick=true;
+            if(nav.settingsColumn){
+                if(settingsCount>0)
+                    nav.actionIndex=(nav.actionIndex+(y<0.f?1:settingsCount-1))%settingsCount;
+            }else if(listCount>0){
+                selectedIndex=(selectedIndex+(y<0.f?1:listCount-1))%listCount;
+            }
+        }
+    }
+}
+inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
+    int selectedRow,int count,int actionCount) noexcept {
+    if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
+        ?1000+selectedRow:-1;
+    if(nav.actionIndex<0||nav.actionIndex>=actionCount)return -1;
+    return nav.actionIndex==0?110:130+nav.actionIndex-1;
+}
+inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
+    int selectedWeapon,bool heavy) noexcept {
+    if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
+        ?selectedWeapon:-1;
+    constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
+    constexpr std::array<int,5> normalActions{20,21,30,31,95};
+    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
+        ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
+}
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     VrMenuPage page{VrMenuPage::Mods};
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
+    int devScroll{}; // vertical viewport of read-only DEV rows
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
@@ -74,10 +139,13 @@ struct VrHandMenuState {
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
     VrMenuHoldShortcut shortcut{};
-    bool rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
+    VrMenuNavigation navigation{};
+    bool rightTriggerPreviously{},leftTriggerPreviously{};
+    bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
+    bool primaryGripPreviewHeld{}; // freeze current tested pose only while Grip held
     RightHandGripOffset previewPosition{};
     RightHandGripRotation previewRotation{};
     std::array<bool,10> rightSaved{},leftSaved{};
@@ -93,6 +161,79 @@ inline bool hasSavedVrPrimaryPose(const RightHandGripSettings& settings,
     const auto& rotations=leftHand?settings.leftVisualRotations:settings.visualRotations;
     return positions.find(weapon)!=positions.end()
         &&rotations.find(weapon)!=rotations.end();
+}
+// Factory files are seeded into UserData on a fresh installation. The mere
+// presence of a profile is NOT evidence of a user calibration, so the
+// LEFT/RIGHT/BOTH UI states must compare values against the packaged factory.
+inline bool vrPrimaryPoseChangedFromFactory(
+    const RightHandGripSettings& current,
+    const RightHandGripSettings& factory,
+    const std::string& weapon,bool leftHand) noexcept {
+    const auto& positions=leftHand?current.leftVisualPositions:current.visualPositions;
+    const auto& rotations=leftHand?current.leftVisualRotations:current.visualRotations;
+    const auto& basePositions=leftHand?factory.leftVisualPositions:factory.visualPositions;
+    const auto& baseRotations=leftHand?factory.leftVisualRotations:factory.visualRotations;
+    const auto positionChanged=[&](const std::string& key) {
+        const auto found=positions.find(key);
+        if(found==positions.end())return false; // no user grip data at all
+        const auto base=basePositions.find(key);
+        if(base==basePositions.end())return true;
+        const auto a=found->second,b=base->second;
+        return std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+            ||std::abs(a.z-b.z)>.0001f;
+    };
+    const auto rotationChanged=[&](const std::string& key) {
+        const auto found=rotations.find(key);
+        if(found==rotations.end())return false;
+        const auto base=baseRotations.find(key);
+        if(base==baseRotations.end())return true;
+        const auto a=found->second,b=base->second;
+        // q and -q represent the same orientation.
+        const auto similar=[&](float sign){
+            return std::abs(a.x-sign*b.x)<.0001f
+                &&std::abs(a.y-sign*b.y)<.0001f
+                &&std::abs(a.z-sign*b.z)<.0001f
+                &&std::abs(a.w-sign*b.w)<.0001f;
+        };
+        return !similar(1.f)&&!similar(-1.f);
+    };
+    // Require a complete primary profile; support-only writes must not make
+    // the primary hand appear calibrated.
+    if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
+    if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    const std::string alternate=weapon=="gauss_cannon"
+        ?"gauss_cannon_siege":weapon=="chaingun"
+            ?"chaingun_turret":"";
+    if(alternate.empty())return false;
+    if(leftHand)return positionChanged(alternate)||rotationChanged(alternate);
+    // Right-heavy alternate values live in dedicated fields rather than the
+    // generic profile map. Compare those as well.
+    if(weapon=="gauss_cannon"){
+        if(current.gaussSiegeHandValid!=factory.gaussSiegeHandValid)return true;
+        if(current.gaussSiegeHandValid){
+            const auto a=current.gaussSiegeHand,b=factory.gaussSiegeHand;
+            if(std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+               ||std::abs(a.z-b.z)>.0001f)return true;
+        }
+        return current.gaussSiegeRotation.valid
+            &&(!factory.gaussSiegeRotation.valid
+                ||std::abs(current.gaussSiegeRotation.x-factory.gaussSiegeRotation.x)>.0001f
+                ||std::abs(current.gaussSiegeRotation.y-factory.gaussSiegeRotation.y)>.0001f
+                ||std::abs(current.gaussSiegeRotation.z-factory.gaussSiegeRotation.z)>.0001f
+                ||std::abs(current.gaussSiegeRotation.w-factory.gaussSiegeRotation.w)>.0001f);
+    }
+    if(current.chaingunTurretHandValid!=factory.chaingunTurretHandValid)return true;
+    if(current.chaingunTurretHandValid){
+        const auto a=current.chaingunTurretHand,b=factory.chaingunTurretHand;
+        if(std::abs(a.x-b.x)>.0001f||std::abs(a.y-b.y)>.0001f
+            ||std::abs(a.z-b.z)>.0001f)return true;
+    }
+    return current.chaingunTurretRotation.valid
+        &&(!factory.chaingunTurretRotation.valid
+            ||std::abs(current.chaingunTurretRotation.x-factory.chaingunTurretRotation.x)>.0001f
+            ||std::abs(current.chaingunTurretRotation.y-factory.chaingunTurretRotation.y)>.0001f
+            ||std::abs(current.chaingunTurretRotation.z-factory.chaingunTurretRotation.z)>.0001f
+            ||std::abs(current.chaingunTurretRotation.w-factory.chaingunTurretRotation.w)>.0001f);
 }
 inline bool hasSavedVrSupport(const std::string&path,const std::string&weapon){
     std::ifstream input(path);std::string row;

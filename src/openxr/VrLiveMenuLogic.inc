@@ -5,7 +5,53 @@ struct VrLiveMenuEntry {
     const char* title;
     kharvox::VrLiveMod mod{kharvox::VrLiveMod::Other};
     bool enabled{};
+    bool devSection{};  // not a toggle or a gameplay mod
 };
+struct VrDevMenuEntry {
+    const char* title;
+    const char* status; // LOCKED, ON, AUTO or DESKTOP, never an in-headset switch
+};
+std::vector<VrDevMenuEntry> devVrMenuEntries(){
+    // This is a read-only inventory: changing a desktop-only mod in the
+    // headset must never mutate its flags or claim it has been enabled.
+    std::vector<VrDevMenuEntry> rows;
+    const auto enabled=[&](const char* label,bool isOn){
+        if(isOn)rows.push_back({label,"ON"});
+    };
+    if(s.customMods.handFocusedRs)rows.push_back({"Hand Focus","LOCKED"});
+    enabled("PAINSAW",s.customMods.chainsawTriggerThrottle);
+    enabled("Hands Jump",s.handsJumpEnabled);
+    enabled("Boxing Guard",s.customMods.boxingGuard);
+    enabled("Back-of-Hand HUD",s.customMods.backOfHandHud);
+    enabled("No HUD",s.customMods.disableHud);
+    enabled("No Weapon Wheel",s.customMods.disableWeaponWheel);
+    enabled("Directional Dash",s.customMods.directionalDash);
+    enabled("Gauss Charge Slow",s.customMods.gaussChargeSlowMovement);
+    enabled("Persistent SSG Reload",s.customMods.persistentSuperShotgunReload);
+    enabled("Physical Grenade",s.customMods.physicalGrenadeThrow);
+    enabled("Story Skip",s.customMods.storyCinematicSkip);
+    enabled("Story Free Walk",s.customMods.storyFreeWalk);
+    enabled("Story Camera Focus",s.customMods.storyCameraFocus);
+    enabled("Uninterrupted Story",s.customMods.uninterruptedStory);
+    enabled("Revenge Demon",s.customMods.revengeDemon);
+    enabled("Haptic Overhaul",s.customMods.hapticOverhaul);
+    enabled("Fast Glory Kills",s.customMods.fastGloryKills);
+    enabled("Fast Chainsaw Kills",s.customMods.fastChainsawKills);
+    enabled("Cinematic Exit Handoff",s.customMods.cinematicExitHandoff);
+    // These launcher Developer overrides have no adjustable in-VR settings.
+    // Their desktop selections are not exposed as live flags here; show
+    // DESKTOP instead of inventing an enabled/disabled runtime status.
+    rows.push_back({"DEV: Glory Kill Highlighting","DESKTOP"});
+    rows.push_back({"DEV: Glory Kill Motion Blur","DESKTOP"});
+    rows.push_back({"DEV: Camera Kicks & Shaking","DESKTOP"});
+    rows.push_back({"DEV: Native Weapon Kick","DESKTOP"});
+    rows.push_back({"DEV: Hand-Hit Reactions","DESKTOP"});
+    rows.push_back({"DEV: Native Ledge Speed","DESKTOP"});
+    rows.push_back({"DEV: Scripted Cinematic Speed","DESKTOP"});
+    rows.push_back({"DEV: RS Melee / Animation",
+        s.physicalGlorykillEnabled?"AUTO":"OFF"});
+    return rows;
+}
 std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     using kharvox::VrLiveMod;
     std::vector<VrLiveMenuEntry> rows;
@@ -23,28 +69,9 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.vrLiveKilltimeEnabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
-    // All the OTHER enabled mods are visible but read-only here.
-    add("Hand Focus [LOCKED]",VrLiveMod::HandFocus,s.customMods.handFocusedRs);
-    add("PAINSAW",VrLiveMod::Painsaw,s.customMods.chainsawTriggerThrottle);
-    add("Wheel Button Remap",VrLiveMod::WheelRemap,s.weaponWheelRemapEnabled);
-    add("Hands Jump",VrLiveMod::HandsJump,s.handsJumpEnabled);
-    add("Boxing Guard",VrLiveMod::BoxingGuard,s.customMods.boxingGuard);
-    add("Back-of-Hand HUD",VrLiveMod::Other,s.customMods.backOfHandHud);
-    add("No HUD",VrLiveMod::Other,s.customMods.disableHud);
-    add("No Weapon Wheel",VrLiveMod::Other,s.customMods.disableWeaponWheel);
-    add("Directional Dash",VrLiveMod::Other,s.customMods.directionalDash);
-    add("Gauss Charge Slow",VrLiveMod::Other,s.customMods.gaussChargeSlowMovement);
-    add("Persistent SSG Reload",VrLiveMod::Other,s.customMods.persistentSuperShotgunReload);
-    add("Physical Grenade",VrLiveMod::Other,s.customMods.physicalGrenadeThrow);
-    add("Story Skip",VrLiveMod::Other,s.customMods.storyCinematicSkip);
-    add("Story Free Walk",VrLiveMod::Other,s.customMods.storyFreeWalk);
-    add("Story Camera Focus",VrLiveMod::Other,s.customMods.storyCameraFocus);
-    add("Uninterrupted Story",VrLiveMod::Other,s.customMods.uninterruptedStory);
-    add("Revenge Demon",VrLiveMod::Other,s.customMods.revengeDemon);
-    add("Haptic Overhaul",VrLiveMod::Other,s.customMods.hapticOverhaul);
-    add("Fast Glory Kills",VrLiveMod::Other,s.customMods.fastGloryKills);
-    add("Fast Chainsaw Kills",VrLiveMod::Other,s.customMods.fastChainsawKills);
-    add("Cinematic Exit Handoff",VrLiveMod::Other,s.customMods.cinematicExitHandoff);
+    // Keep the left list strictly configurable. DEV consolidates every
+    // currently active read-only mod and non-configurable developer override.
+    rows.push_back({"DEV",VrLiveMod::Other,true,true});
     return rows;
 }
 void applyVrLiveModRuntimeState(){
@@ -216,14 +243,13 @@ bool handleVrLiveMenuAction(int action){
             break;
         case VrLiveMod::Killtime:
             if(option==0){
-                s.vrLiveSettings.gloryKillHz=std::max(30,
-                    (s.vrLiveSettings.gloryKillHz==0?200:
-                        s.vrLiveSettings.gloryKillHz)-10);
+                // Slower means more ticks: 240 Hz is slow, 30 Hz is fast.
+                s.vrLiveSettings.gloryKillHz=kharvox::vrLiveStepKilltimeHz(
+                    s.vrLiveSettings.gloryKillHz,true);
                 changed=true;
             }else if(option==1){
-                s.vrLiveSettings.gloryKillHz=std::min(240,
-                    (s.vrLiveSettings.gloryKillHz==0?200:
-                        s.vrLiveSettings.gloryKillHz)+10);
+                s.vrLiveSettings.gloryKillHz=kharvox::vrLiveStepKilltimeHz(
+                    s.vrLiveSettings.gloryKillHz,false);
                 changed=true;
             }else if(option==2){
                 s.vrLiveSettings.gloryKillHz=0;changed=true;

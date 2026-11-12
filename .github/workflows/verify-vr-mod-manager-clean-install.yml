@@ -5,6 +5,7 @@ on:
     branches:
       - feature/live-vr-mod-calibration-menu
       - work/manager-187-wheel-holsters
+      - fix/nov12-hud-factory-pointer
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxLauncher/**'

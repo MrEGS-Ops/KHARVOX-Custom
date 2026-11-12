@@ -28,7 +28,9 @@ internal sealed class StandaloneModPreferences
     }
 
     public int Schema { get; set; } = 1;
-    public bool WeaponWheelRemap { get; set; } = true;
+    // Deprecated schema field retained only to read old bridge JSON.
+    // It is always FALSE and cannot activate a standalone native remap.
+    public bool WeaponWheelRemap { get; set; } = false;
     public bool HandFocus { get; set; } = true;
     public bool Gunslinger { get; set; }
     // Read old bridge files; these flags are never written as active mods again.
@@ -74,14 +76,16 @@ internal sealed class StandaloneModPreferences
                 value.Gunslinger = true;
             value.BehindHeadWeaponWheel = false;
             value.DynamicQuickHolsters = false;
-            if (value.Gunslinger) value.WeaponWheelRemap = false;
+            value.WeaponWheelRemap = false; // discard any legacy on-disk selection
             value.HandFocus = true;
             value.PhysicalCrouch = true;
             value.ActiveOrder = Array.ConvertAll(value.ActiveOrder ??
                 Array.Empty<string>(), UpgradeModTitle)
+                .Where(title => title != "Weapon Wheel Button Remap")
                 .Distinct(StringComparer.Ordinal).ToArray();
             value.AvailableOrder = Array.ConvertAll(value.AvailableOrder ??
                 Array.Empty<string>(), UpgradeModTitle)
+                .Where(title => title != "Weapon Wheel Button Remap")
                 .Distinct(StringComparer.Ordinal).ToArray();
             value.CollapsedCategories ??= Array.Empty<string>();
             value.RuntimeRevision ??= "";
@@ -101,15 +105,17 @@ internal sealed class StandaloneModPreferences
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
         HandFocus = true;
         PhysicalCrouch = true;
-        // Never leave two separate input owners enabled after a save.
-        if (Gunslinger) WeaponWheelRemap = false;
+        // Standalone wheel remap was retired; Gunslinger alone owns the wheel.
+        WeaponWheelRemap = false;
         BehindHeadWeaponWheel = false;
         DynamicQuickHolsters = false;
         ActiveOrder = Array.ConvertAll(ActiveOrder ??
             Array.Empty<string>(), UpgradeModTitle)
+            .Where(title => title != "Weapon Wheel Button Remap")
             .Distinct(StringComparer.Ordinal).ToArray();
         AvailableOrder = Array.ConvertAll(AvailableOrder ??
             Array.Empty<string>(), UpgradeModTitle)
+            .Where(title => title != "Weapon Wheel Button Remap")
             .Distinct(StringComparer.Ordinal).ToArray();
         CollapsedCategories ??= Array.Empty<string>();
         RuntimeRevision ??= "";
@@ -133,7 +139,7 @@ internal sealed class StandaloneModPreferences
         {
             var path = Path.Combine(dir, "mods.json");
             var x = Load(path);
-            if (!x.WeaponWheelRemap || !x.HandFocus ||
+            if (x.WeaponWheelRemap || !x.HandFocus ||
                 x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
                 !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || x.OffHandGripCapture ||
                 x.GloryKillSpeedOverride ||
@@ -192,7 +198,8 @@ internal sealed class StandaloneModPreferences
             if (!legacy.Gunslinger || legacy.WeaponWheelRemap ||
                 legacy.BehindHeadWeaponWheel || legacy.DynamicQuickHolsters ||
                 legacy.ActiveOrder.Length != 1 ||
-                legacy.ActiveOrder[0] != GunslingerTitle)
+                legacy.ActiveOrder[0] != GunslingerTitle ||
+                legacy.AvailableOrder.Length != 0)
                 throw new InvalidDataException("Legacy physical-mod migration failed.");
         }
         finally { if (Directory.Exists(dir)) Directory.Delete(dir, true); }

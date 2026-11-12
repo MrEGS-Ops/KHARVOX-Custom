@@ -134,7 +134,10 @@ public sealed partial class MainForm
         (CheckBox Box, string Tip)[] available)
     {
         modOrderGrid = grid;
-        var tips = available.ToDictionary(item => item.Box, item => item.Tip);
+        // Legacy standalone wheel remap was merged into Gunslinger.
+        // Keep its serialized settings readable, but never show its old checkbox.
+        var tips = available.Where(item => item.Box != weaponWheelRemap)
+            .ToDictionary(item => item.Box, item => item.Tip);
         ModOrderRow Define(CheckBox check, string id, int group) => new()
         {
             Box = check, Id = id, Group = group,
@@ -142,7 +145,6 @@ public sealed partial class MainForm
         };
         var defaults = new[]
         {
-            Define(weaponWheelRemap, "weapon-wheel-remap", 0),
             Define(customHandFocusedRs, "hand-focus", 0),
             Define(customBoxingGuard, "boxing-guard", 0),
             Define(customBehindHeadWeaponWheel, "behind-head-wheel", 0),
@@ -205,10 +207,7 @@ public sealed partial class MainForm
             check.ForeColor = Color.White;
             check.Margin = new Padding(2, 0, 0, 0);
             check.AllowDrop = true;
-            if (check == weaponWheelRemap)
-                check.CheckedChanged += WeaponWheelRemapChanged;
-            else
-                check.CheckedChanged += CustomModChanged;
+            check.CheckedChanged += CustomModChanged;
             check.MouseEnter += (_, _) =>
             {
                 var slot = modOrderSlots.FirstOrDefault(x =>
@@ -460,8 +459,7 @@ public sealed partial class MainForm
                 var slot = modOrderSlots[i];
                 string dependencies = "";
                 if (item.Box == customDirectionalDash)
-                    dependencies = " — Requires " + Number(weaponWheelRemap)
-                        + ", " + Number(customBehindHeadWeaponWheel)
+                    dependencies = " — Requires " + Number(customBehindHeadWeaponWheel)
                         + "; disables " + Number(customDisableWeaponWheel);
                 else if (item.Box == customDisableWeaponWheel)
                     dependencies = " — Disables " + Number(customBehindHeadWeaponWheel)

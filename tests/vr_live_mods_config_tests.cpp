@@ -39,6 +39,13 @@ int main(){
     assert(vrLiveModEditable(VrLiveMod::PhysicalCrouch));
     assert(!vrLiveModEditable(VrLiveMod::HandFocus));
     assert(!vrLiveModEditable(VrLiveMod::Painsaw));
+    // Native action pacing: LOWER Hz means faster, HIGHER Hz means slower.
+    assert(vrLiveStepKilltimeHz(0,true)==210); // unset baseline 200
+    assert(vrLiveStepKilltimeHz(0,false)==190);
+    assert(vrLiveStepKilltimeHz(150,true)==160);
+    assert(vrLiveStepKilltimeHz(150,false)==140);
+    assert(vrLiveStepKilltimeHz(240,true)==240);
+    assert(vrLiveStepKilltimeHz(30,false)==30);
     const VrLiveSettings defaults{};
     assert(defaults.gloryKillHz==0);
     assert(defaults.punchSpeedMetersPerSec==2.8f);

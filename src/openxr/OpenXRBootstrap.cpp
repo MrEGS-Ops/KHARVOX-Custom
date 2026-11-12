@@ -334,7 +334,8 @@ struct State {
     bool chestZoneEntered{},shoulderZoneEntered{};
     std::uint64_t nextCookPulseAt{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
-    bool weaponWheelRemapEnabled{true};
+    // Retired standalone remap. Gunslinger alone owns behind-head wheel input.
+    bool weaponWheelRemapEnabled{false};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
     bool crouchToggleActive{},crouchStickPressed{};
     bool physicalCrouchActive{};
@@ -356,6 +357,7 @@ struct State {
     KharvoxWeaponKind openHandUnequippedKind{KharvoxWeaponKind::Unknown};
     kharvox::OpenHandReleaseState openHandRelease{};
     kharvox::QuickHolsters quickHolsters{};
+    kharvox::QuickHipPendingTransfer quickHipPendingTransfer{};
     kharvox::PersistentSuperShotgunReloadState persistentSsgReload{};
     std::uint64_t persistentSsgLevelGeneration{};
     bool persistentSsgBlockedLogged{};
@@ -1910,17 +1912,12 @@ void configureMotionWeaponWheel(){
         return !_stricmp(text,"1")||!_stricmp(text,"true")
             ||!_stricmp(text,"yes")||!_stricmp(text,"on");
     };
-    s.weaponWheelRemapEnabled=
-        enabledOrDefault("KHARVOX_WEAPON_WHEEL_REMAP",true);
-    s.motionWheelEnabled=
-        enabledOrDefault("KHARVOX_MOTION_WEAPON_WHEEL",true)
-        &&(s.weaponWheelRemapEnabled||s.customMods.behindHeadWeaponWheel);
-    // Physical weapon-hand motion must work even when remap is disabled.
-    if(s.customMods.behindHeadWeaponWheel)s.motionWheelEnabled=true;
-    log(std::string("[INPUT] Weapon Wheel Remap ")
-        +(s.weaponWheelRemapEnabled
-            ?"ENABLED; A tap/hold uses KHARVOX quick-switch/wheel timing"
-            :"disabled; official KHARVOX controls restored"));
+    // There is NO standalone Weapon Wheel Button Remap anymore.
+    // Preserve the merged Gunslinger face-button routing, but completely
+    // ignore legacy KHARVOX_WEAPON_WHEEL_REMAP environment values.
+    s.weaponWheelRemapEnabled=s.customMods.behindHeadWeaponWheel;
+    s.motionWheelEnabled=s.customMods.behindHeadWeaponWheel;
+    log("[INPUT] wheel button layout owned by Gunslinger ONLY");
     log(std::string("[INPUT] Motion Weapon Wheel (Alyx Style) ")
         +(s.motionWheelEnabled
             ?"ENABLED; physical hand displacement drives selection; haptic clicks on sector change"
@@ -2971,6 +2968,7 @@ void updateGameplayActions(XrTime displayTime){
         s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
         s.openHandRelease={};
         s.quickHolsterPhysicalGripHeld={};
+        s.quickHipPendingTransfer={};
         // Keep the persistent reload debt, but do not credit an unfocused
         // frame, menu, or tracking gap towards equipped reload time.
         s.persistentSsgReload.lastFrameEquipped=false;
@@ -3022,7 +3020,9 @@ void updateGameplayActions(XrTime displayTime){
     if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
-         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
+         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f,
+         readBooleanAction(s.doomCrouch), // physical RIGHT A: menu select
+         readBooleanAction(s.doomJump))){ // physical RIGHT B: menu back
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         // Menu inputs are muted except the primary weapon Grip's ALT FIRE
@@ -3161,6 +3161,7 @@ void updateGameplayActions(XrTime displayTime){
             // Wheel selects active weapon hand; it does NOT assign a hip slot.
             // Either empty hip can stow without opening the wheel.
             // Wheel hand is selected by the completed physical pull only.
+            s.quickHipPendingTransfer={}; // An explicit wheel selection wins.
             selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
@@ -3278,6 +3279,22 @@ void updateGameplayActions(XrTime displayTime){
     }
     constexpr XrDuration bfgGripHoldDuration=650000000;
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
+    // A native keyboard hotkey is immediate, but DOOM may not equip the
+    // requested weapon until a later game frame. Keep the previous gun in its
+    // original physical hand until the requested weapon is truly equipped.
+    const bool pendingHipLeft=s.quickHipPendingTransfer.leftWeaponHand;
+    const auto pendingHipWeapon=s.quickHipPendingTransfer.weapon;
+    const auto hipTransfer=kharvox::quickHipPollTransfer(
+        s.quickHipPendingTransfer,backWeaponKindFromActive(activeWeaponKind),
+        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
+    if(hipTransfer==kharvox::QuickHipTransferResult::Confirmed){
+        selectPhysicalWeaponHand(pendingHipLeft,"confirmed quick-hip native equip");
+        log(std::string("[QUICK-HOTKEY] confirmed native equip ")
+            +backWeaponKindKey(pendingHipWeapon)+" -> hand transferred");
+    }else if(hipTransfer==kharvox::QuickHipTransferResult::TimedOut){
+        log(std::string("[QUICK-HOTKEY] no native equip acknowledgment for ")
+            +backWeaponKindKey(pendingHipWeapon)+"; original hand retained");
+    }
     // Siege mode has already latched the charge variant; the player can
     // RELEASE the mod Grip while continuing to charge with the trigger.
     // Never gate movement restoration on Grip being held after Siege starts.
@@ -3496,12 +3513,20 @@ void updateGameplayActions(XrTime displayTime){
                         s.backWeaponPulseUntil=displayTime+100000000;
                     }else requested=false;
                 }
-                // Direct draw: request gun and select its physical hand
-                // in this input frame. DOOM owns weapon presentation.
-                if(requested)
-                    selectPhysicalWeaponHand(plan.leftWeaponHand,
-                        side==0?"right-hip direct hotkey":"left-hip direct hotkey");
-                else log("[QUICK-HOTKEY] native selection failed; no hand transfer");
+                // Do not move the STILL-VISIBLE previous gun to the other
+                // hand while DOOM processes the native hotkey. Same-weapon
+                // draws transfer immediately; new-weapon draws transfer only
+                // when KharvoxWeaponCurrentKind acknowledges their target.
+                if(requested){
+                    if(plan.needsNativeSelect){
+                        kharvox::quickHipBeginTransfer(s.quickHipPendingTransfer,
+                            plan,static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
+                    }else{
+                        s.quickHipPendingTransfer={};
+                        selectPhysicalWeaponHand(plan.leftWeaponHand,
+                            side==0?"right-hip already equipped":"left-hip already equipped");
+                    }
+                }else log("[QUICK-HOTKEY] native selection failed; original hand retained");
                 s.wheelWeaponGripSuppressedUntilRelease=true;
                 s.wheelSupportGripSuppressedUntilRelease=true;
                 s.bfgGripSuppressedUntilRelease=true;

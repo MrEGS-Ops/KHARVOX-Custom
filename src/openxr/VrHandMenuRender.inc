@@ -95,10 +95,58 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(m.page==kharvox::VrMenuPage::Mods){
+    if(m.mode==kharvox::VrHandMenuMode::Calibrating){
+        write(38,24,"KHARVOX VR  /  LIVE CALIBRATION",white);
+        SelectObject(dc,regular);
+        const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
+        const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
+        const auto kind=KharvoxWeaponKindFromKey(m.weapon());
+        const bool heavy=kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun;
+        if(weaponCapture){
+            const auto name=KharvoxWeaponKindDisplayName(kind);
+            write(40,116,std::string("WEAPON: ")+(name&&*name?name:m.weapon()),white);
+            write(40,165,std::string("CALIBRATING: ")+(primary?"PRIMARY":"SUPPORT")
+                +(m.rightHand?" RIGHT HAND":" LEFT HAND"),RGB(84,233,214));
+            SelectObject(dc,smallFont);
+            write(40,225,"1. Move the OPPOSITE hand to adjust the grip position.",white);
+            if(primary&&!heavy){
+                write(40,279,"2. HOLD WEAPON GRIP to test the hand position and aim.",white);
+                write(40,326,"3. RELEASE GRIP to return to positioning.",white);
+                fill(38,384,870,70,m.primaryGripPreviewHeld
+                    ?RGB(35,85,72):RGB(36,51,68));
+                write(62,406,m.primaryGripPreviewHeld
+                    ?"TESTING POSITION - grip held"
+                    :"POSITIONING - move opposite controller",RGB(84,233,214));
+            }else if(primary&&heavy){
+                write(40,279,"2. Gauss / Minigun: hold weapon GRIP for native alt fire.",white);
+                write(40,326,"3. Position the primary glove; no grip-test mode yet.",white);
+            }else{
+                write(40,279,"2. Move the support hand; rotation follows the grip.",white);
+                write(40,326,"3. Confirm its position before saving.",white);
+            }
+            write(40,506,m.previewValid?"TRACKING: valid preview"
+                :"TRACKING: waiting for a valid grip preview",
+                m.previewValid?RGB(108,235,161):RGB(239,197,116));
+        }else{
+            const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
+                ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
+            write(40,122,crouch?"PHYSICAL CROUCH - HEIGHT CALIBRATION"
+                :"GUNSLINGER - HAND ZONE CALIBRATION",white);
+            SelectObject(dc,smallFont);
+            write(40,205,crouch
+                ?"Move your HEAD to the requested standing/crouching height."
+                :"Move the specified HAND into the new holster/wheel zone.",white);
+            write(40,262,m.message,RGB(84,233,214));
+        }
+        SelectObject(dc,regular);
+        write(40,588,"RIGHT TRIGGER  /  SAVE AT ANY STAGE",RGB(108,235,161));
+        SelectObject(dc,smallFont);
+        write(40,644,"B  /  CANCEL WITHOUT SAVING",muted);
+    }else if(m.page==kharvox::VrMenuPage::Mods){
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
-        write(40,102,"ACTIVE / AVAILABLE MODS",muted);
+        write(40,102,"CONFIGURABLE MODS",muted);
         write(535,102,"LIVE SETTINGS",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
@@ -108,7 +156,9 @@ void paintVrHandMenu() {
             if(index>=count)break;
             const int y=136+shown*45;
             const bool active=index==selected;
-            const bool hovered=m.hovered==1000+index;
+            const bool hovered=m.hovered==1000+index
+                ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                    &&m.selectedRow==index);
             fill(38,y,455,40,active?RGB(32,89,104):
                 hovered?RGB(44,54,71):RGB(27,32,43));
             if(active)fill(38,y,5,40,RGB(55,209,214));
@@ -117,21 +167,55 @@ void paintVrHandMenu() {
             // The left edge lists ALL enabled mods, but the five supported
             // adjustable ones remain visible even when switched off.
             if(title.size()>29)title.resize(29);
-            write(55,y+10,title,entries[index].enabled?white:muted);
-            write(436,y+10,entries[index].enabled?"ON":"OFF",
-                entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
+            write(55,y+10,title,entries[index].devSection
+                ?RGB(84,233,214):entries[index].enabled?white:muted);
+            write(entries[index].devSection?421:436,y+10,
+                entries[index].devSection?"VIEW":entries[index].enabled?"ON":"OFF",
+                entries[index].devSection?RGB(84,233,214):
+                    entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
         }
         if(count>10){
             SelectObject(dc,smallFont);
             write(48,602,"LEFT STICK: scroll  ("+
                 std::to_string(selected+1)+"/"+std::to_string(count)+")",muted);
         }
+        const bool devSelected=count>0&&entries[selected].devSection;
+        if(devSelected){
+            const auto dev=devVrMenuEntries();
+            const int n=static_cast<int>(dev.size());
+            const int focus=std::clamp(m.navigation.actionIndex,0,std::max(0,n-1));
+            SelectObject(dc,regular);
+            write(536,126,"DEV  /  READ-ONLY",white);
+            SelectObject(dc,smallFont);
+            write(538,156,"STATUS ONLY - CHANGE IN DESKTOP LAUNCHER",muted);
+            for(int shown=0;shown<10;++shown){
+                const int index=shown+m.devScroll;
+                if(index>=n)break;
+                const int y=186+shown*39;
+                const bool selected=m.navigation.settingsColumn&&index==focus;
+                const bool hovered=m.hovered==1200+index
+                    ||(selected&&m.navigation.usingStick);
+                fill(531,y,384,36,hovered?RGB(48,80,92)
+                    :selected?RGB(35,66,79):RGB(27,32,43));
+                std::string label=dev[index].title;
+                if(label.size()>27)label.resize(27);
+                write(545,y+8,label,white);
+                const std::string status=dev[index].status;
+                write(status=="LOCKED"?837:status=="DESKTOP"?829:856,y+8,
+                    status,status=="LOCKED"?RGB(84,233,214):muted);
+            }
+            write(544,598,"DEV ITEMS: "+std::to_string(n)
+                +(n>10?"  ("+std::to_string(focus+1)+"/"+std::to_string(n)+")":""),muted);
+        }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
         const bool enabled=count>0&&entries[selected].enabled;
         SelectObject(dc,regular);
         write(536,126,count>0?entries[selected].title:"No active mods",white);
-        fill(531,159,384,60,editable?RGB(39,49,63):RGB(30,35,44));
+        const bool focusToggle=m.navigation.usingStick
+            &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
+        fill(531,159,384,60,focusToggle?RGB(52,83,99):
+            editable?RGB(39,49,63):RGB(30,35,44));
         fill(553,172,36,36,editable?RGB(54,79,91):RGB(45,49,56));
         if(enabled)fill(562,181,18,18,RGB(76,231,167));
         SelectObject(dc,regular);
@@ -161,8 +245,8 @@ void paintVrHandMenu() {
                     optionCount=3;
                     break;
                 case kharvox::VrLiveMod::Killtime:
-                    options[0]="SLOWER (-10 HZ)";
-                    options[1]="FASTER (+10 HZ)";
+                    options[0]="SLOWER (+10 HZ)";
+                    options[1]="FASTER (-10 HZ)";
                     options[2]="RESET TO DESKTOP PRESET";
                     optionCount=3;
                     break;
@@ -177,7 +261,10 @@ void paintVrHandMenu() {
             }
             for(int index=0;index<optionCount;++index){
                 const int y=248+68*index;
-                fill(531,y,384,58,m.hovered==130+index
+                const bool focused=m.hovered==130+index
+                    ||(m.navigation.usingStick&&m.navigation.settingsColumn
+                        &&m.navigation.actionIndex==index+1);
+                fill(531,y,384,58,focused
                      ?RGB(52,83,99):RGB(39,49,63));
                 SelectObject(dc,smallFont);
                 write(548,y+17,options[index],white);
@@ -202,8 +289,9 @@ void paintVrHandMenu() {
                 write(548,609,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
         }
+        }
         SelectObject(dc,smallFont);
-        write(538,623,"Hold RIGHT stick 1s to close",muted);
+        write(538,623,"LEFT STICK NAV / A SELECT / B BACK",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else{
@@ -214,7 +302,9 @@ void paintVrHandMenu() {
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const int y=136+int(i)*45;
         const bool selected=int(i)==m.selectedWeapon;
-        const bool hover=m.hovered==int(i);
+        const bool hover=m.hovered==int(i)
+            ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                &&m.selectedWeapon==int(i));
         fill(38,y,455,40,selected?RGB(32,89,104):
             hover?RGB(44,54,71):RGB(27,32,43));
         if(selected)fill(38,y,5,40,RGB(55,209,214));
@@ -224,15 +314,23 @@ void paintVrHandMenu() {
         write(56,y+6,name&&*name?name:key,white);
         SelectObject(dc,smallFont);
         const char* state=m.rightSaved[i]&&m.leftSaved[i]?"BOTH"
-            :m.rightSaved[i]?"RIGHT":m.leftSaved[i]?"LEFT":"-";
+            :m.rightSaved[i]?"RIGHT":m.leftSaved[i]?"LEFT":"DEFAULT";
         write(365,y+9,state,selected?white:muted);
     }
     const auto button=[&](int x,int y,int w,int h,bool active,bool hovered){
         fill(x,y,w,h,active?RGB(31,104,115):
             hovered?RGB(53,68,84):RGB(39,49,63));
     };
-    button(531,151,170,58,!m.rightHand,m.hovered==20);
-    button(715,151,202,58,m.rightHand,m.hovered==21);
+    const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
+    const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
+        ||selectedKind==KharvoxWeaponKind::Chaingun;
+    const auto gamepadFocus=[&](int action){
+        return m.navigation.usingStick&&m.navigation.settingsColumn
+            &&kharvox::vrMenuGripGamepadTarget(m.navigation,
+                m.selectedWeapon,heavy)==action;
+    };
+    button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
+    button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
     SelectObject(dc,regular);
     write(555,163,"LEFT",white);write(742,163,"RIGHT",white);
     SelectObject(dc,smallFont);
@@ -241,11 +339,8 @@ void paintVrHandMenu() {
     write(538,267,primarySelected
         ?"PRIMARY: position + rotation"
         :"SUPPORT: position only",muted);
-    const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
-    const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
-        ||selectedKind==KharvoxWeaponKind::Chaingun;
     if(heavy){
-        button(531,306,384,49,m.alternateProfile,m.hovered==32);
+        button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
         write(550,317,m.alternateProfile
             ?(selectedKind==KharvoxWeaponKind::GaussCannon
                 ?"PROFILE: SIEGE":"PROFILE: TURRET")
@@ -255,17 +350,25 @@ void paintVrHandMenu() {
             ?"Hand locked to gun"
             :"Support rotation on grab",muted);
     }
-    button(531,363,384,69,false,m.hovered==30);
+    button(531,363,384,69,false,m.hovered==30||gamepadFocus(30));
     SelectObject(dc,title);
     write(568,376,"CALIBRATE",white);
-    button(531,454,384,69,false,m.hovered==31);
+    button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,551,"LEFT / RIGHT / BOTH = gun grip saved",muted);
-    write(538,582,"Point RIGHT hand + trigger to select",muted);
-    write(538,611,"Hold RIGHT stick 1s: close",muted);
+    write(538,551,"DEFAULT = factory grip",muted);
+    write(538,582,"LEFT / RIGHT / BOTH = custom",muted);
+    write(538,611,"STICK NAV / A SELECT / B BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
+        // Back to the list of active mods, leaving weapon profiles intact.
+        fill(797,16,129,57,m.hovered==95||gamepadFocus(95)
+            ?RGB(47,95,110):RGB(39,49,63));
+        SelectObject(dc,smallFont);
+        write(815,30,"BACK",white);
+    }
+    // Render the same right-controller pointer on BOTH the main mods page
+    // and weapon calibration page. Hit testing already supports both.
     if(m.cursorX>=0&&m.cursorY>=0&&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -275,11 +378,6 @@ void paintVrHandMenu() {
         Ellipse(dc,x-8,y-8,x+8,y+8);
         SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
         DeleteObject(pen);DeleteObject(marker);
-    }
-        // Back to the list of active mods, leaving weapon profiles intact.
-        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
-        SelectObject(dc,smallFont);
-        write(815,30,"BACK",white);
     }
     SelectObject(dc,previous);
     DeleteObject(title);DeleteObject(regular);DeleteObject(smallFont);

@@ -196,13 +196,9 @@ internal sealed partial class ModsForm
             ("Gunslinger", true),
             ("No Weapon Wheel", false)
         },
-        // The standalone remap is superseded by Gunslinger, not a switch
-        // that can replace Gunslinger while the combo is selected.
         "Gunslinger" => new[] {
-            ("Weapon Wheel Button Remap", false),
             ("No Weapon Wheel", false)
         },
-        "Weapon Wheel Button Remap" => new[] { ("Gunslinger", false) },
         "No Weapon Wheel" => new[] {
             ("Gunslinger", false),
             ("Directional Dash", false)
@@ -230,12 +226,6 @@ internal sealed partial class ModsForm
             }
             if (!link.Required && IsVrActive(link.Name))
             {
-                // On initial enable only, Gunslinger takes ownership of the
-                // already selected standalone remap and clears that checkbox.
-                // Once active, the standalone remap must remain disabled.
-                if (title == "Gunslinger" &&
-                    link.Name == "Weapon Wheel Button Remap")
-                    continue;
                 reason = "Conflicts with #" + ModNumber(link.Name).ToString("00") +
                     " " + link.Name + ". Disable it first.";
                 return false;
@@ -252,11 +242,8 @@ internal sealed partial class ModsForm
             "#" + ModNumber(x.Name).ToString("00") + " " + x.Name).ToList();
         if (mod == "Gunslinger")
         {
-            lines.Add("Disables and greys out: Weapon Wheel Button Remap (standalone)");
             lines.Add("Requires: Hands enabled in the original KHARVOX launcher");
         }
-        if (mod == "Weapon Wheel Button Remap")
-            lines.Add("Unavailable while Gunslinger is enabled; disable Gunslinger first");
         return lines.ToArray();
     }
 
@@ -388,8 +375,6 @@ internal sealed partial class ModsForm
         var heading = number > 0 ? "#" + number.ToString("00") + " " + name : name;
         var howToUse = name switch
         {
-            "Weapon Wheel Button Remap" =>
-                "Standalone mode: tap A to quick-switch; hold A for the native weapon wheel. This checkbox is greyed out while Gunslinger is enabled. Disable Gunslinger first to make it selectable; no automatic mode switching.",
             "Hand Focus" =>
                 "In DOOM: tap and release RIGHT thumbstick to toggle HEAD/HAND focus as normal. Hold RIGHT thumbstick click for 1 second to open/close the calibration menu, without changing focus.",
             "Gunslinger" =>
@@ -776,15 +761,11 @@ internal sealed partial class ModsForm
         var dependencies = DependenciesFor(mod.Title);
         if (dependencies.Length > 0)
             description += Environment.NewLine + string.Join(Environment.NewLine, dependencies);
-        var gunslingerConflict = mod.Title == "Weapon Wheel Button Remap" &&
-            _modPrefs.Gunslinger;
         var verified = IsConfirmedMod(mod.Title);
-        var available = verified && !gunslingerConflict;
-        var statusReason = gunslingerConflict
-            ? "Conflicts with Gunslinger. Disable Gunslinger to unlock the standalone remap."
-            : verified
-                ? "Verified core feature. Changes apply on next DOOM launch."
-                : "Paused; not available in this build.";
+        var available = verified;
+        var statusReason = verified
+            ? "Verified core feature. Changes apply on next DOOM launch."
+            : "Paused; not available in this build.";
         var check = MakePreviewCheck(mod.Title,
             description + Environment.NewLine + statusReason,
             isDev ? "dev-override" : "original-vr-mod");
@@ -826,23 +807,18 @@ internal sealed partial class ModsForm
         // Active Mods section. Paused rows remain subdued without a label.
         var status = new Label
         {
-            Text = gunslingerConflict ? "CONFLICT" :
-                !active && check.Enabled ? "ACTIVE" : "",
+            Text = !active && check.Enabled ? "ACTIVE" : "",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = gunslingerConflict
-                ? Color.FromArgb(141, 145, 154)
-                : Color.FromArgb(103, 198, 157),
+            ForeColor = Color.FromArgb(103, 198, 157),
             BackColor = row.BackColor,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             Margin = Padding.Empty,
             Tag = "vr-mod-status"
         };
-        _tooltips.SetToolTip(status, gunslingerConflict
-            ? statusReason
-            : check.Enabled
-                ? "Verified and working; click the checkbox to enable."
-                : "Paused: the runtime feature is not verified in this build.");
+        _tooltips.SetToolTip(status, check.Enabled
+            ? "Verified and working; click the checkbox to enable."
+            : "Paused: the runtime feature is not verified in this build.");
 
         var info = MakeRowInfo("How to use this mod and its dependencies",
             mod.Title, mod.Help);
@@ -980,65 +956,25 @@ internal sealed partial class ModsForm
     internal static void ValidateActiveVrPolicies()
     {
         var verified = VerifiedVrMods();
-        // Hand Focus and Physical Crouch moved to always-on Developer rows,
-        // so the selectable mod count is now five, not seven.
-        if (verified.Length != 5 || verified.Distinct().Count() != 5 ||
+        // Hand Focus and Physical Crouch are fixed Dev overrides.
+        // Weapon Wheel Button Remap was retired: only Gunslinger owns its
+        // behind-head wheel; no independent remap checkbox or dependency.
+        if (verified.Length != 4 || verified.Distinct().Count() != 4 ||
             DependenciesFor("Directional Dash").Length != 2 ||
-            DependencyLinks("Gunslinger").Length != 2 ||
-            DependencyLinks("Weapon Wheel Button Remap").Length != 1 ||
+            DependencyLinks("Gunslinger").Length != 1 ||
             DependenciesFor("No Weapon Wheel").Length != 2 ||
-            DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0)
+            DependenciesFor("PAINSAW: RIPSHIFT OVERDRIVE").Length != 0 ||
+            AllDisplayMods().Contains("Weapon Wheel Button Remap"))
             throw new InvalidDataException("VR active-mod inventory/dependency policy changed.");
 
-        // Activation validation must fail closed for paused or missing dependencies.
         using (var dependencyTest = new ModsForm())
         {
             if (dependencyTest.CanEnableMod("Directional Dash", out _) ||
                 dependencyTest.CanEnableMod("No Weapon Wheel", out _) ||
                 dependencyTest.CanEnableMod("Hand Focus", out _) ||
+                dependencyTest.CanEnableMod("Weapon Wheel Button Remap", out _) ||
                 !dependencyTest.CanEnableMod("Gunslinger", out _))
-                throw new InvalidDataException("Dependency gate allows unsupported mods.");
-            // Gunslinger may be selected while the old standalone remap is
-            // active; enabling it clears the remap instead of blocking.
-            dependencyTest._modPrefs.Gunslinger = false;
-            dependencyTest._modPrefs.WeaponWheelRemap = true;
-            if (!dependencyTest.CanEnableMod("Gunslinger", out _))
-                throw new InvalidDataException("Gunslinger cannot take ownership of remap.");
-            dependencyTest._modPrefs.Gunslinger = true;
-            dependencyTest._modPrefs.WeaponWheelRemap = false;
-            if (dependencyTest.CanEnableMod("Weapon Wheel Button Remap", out _))
-                throw new InvalidDataException("Standalone remap can override Gunslinger.");
-        }
-        // Exercise the conflict state on a separate form, so the ordinary
-        // row-layout checks below never refer to disposed/rebuilt controls.
-        using (var conflictForm = new ModsForm())
-        {
-            conflictForm._modPrefs.CollapsedCategories = Array.Empty<string>();
-            // Gunslinger greys out the standalone remap without switching
-            // to it. The row remains present with its conflict explanation.
-            conflictForm._modPrefs.Gunslinger = true;
-            conflictForm._modPrefs.WeaponWheelRemap = false;
-            conflictForm.RenderVrRows();
-            var remapRow = conflictForm._visibleModRows["Weapon Wheel Button Remap"];
-            var remapCheckbox = EnumerateRowControls(remapRow)
-                .OfType<CheckBox>().Single();
-            var remapStatus = EnumerateRowControls(remapRow)
-                .OfType<Label>().Single(x =>
-                    (x.Tag as string) == "vr-mod-status");
-            if (remapCheckbox.Enabled || remapCheckbox.Checked ||
-                remapStatus.Text != "CONFLICT" ||
-                !DependenciesFor("Weapon Wheel Button Remap").Any(x =>
-                    x.StartsWith("Conflicts with:")))
-                throw new InvalidDataException(
-                    "Gunslinger did not grey out the conflicting standalone remap.");
-            conflictForm._modPrefs.Gunslinger = false;
-            conflictForm.RenderVrRows();
-            remapCheckbox = EnumerateRowControls(
-                conflictForm._visibleModRows["Weapon Wheel Button Remap"])
-                .OfType<CheckBox>().Single();
-            if (!remapCheckbox.Enabled)
-                throw new InvalidDataException(
-                    "Standalone remap did not unlock when Gunslinger was disabled.");
+                throw new InvalidDataException("Dependency gate allows an unsupported or retired mod.");
         }
         // Only enabled confirmed mods can appear in the Active Mods area.
         using (var form = new ModsForm())

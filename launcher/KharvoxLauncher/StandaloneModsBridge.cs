@@ -10,7 +10,8 @@ namespace KharvoxLauncher;
 internal sealed class StandaloneModsBridge
 {
     public int Schema { get; set; } = 1;
-    public bool WeaponWheelRemap { get; set; } = true;
+    // Deprecated JSON compatibility field. Never activates a standalone mod.
+    public bool WeaponWheelRemap { get; set; } = false;
     public bool HandFocus { get; set; }
     public bool Gunslinger { get; set; }
     // Kept for older sidecar JSON files; either maps to the full combo.
@@ -18,7 +19,7 @@ internal sealed class StandaloneModsBridge
     public bool DynamicQuickHolsters { get; set; }
     internal bool EffectiveGunslinger =>
         Gunslinger || BehindHeadWeaponWheel || DynamicQuickHolsters;
-    internal bool EffectiveWheelRemap => WeaponWheelRemap || EffectiveGunslinger;
+    internal bool EffectiveWheelRemap => EffectiveGunslinger;
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool OffHandGripCapture { get; set; }
@@ -65,8 +66,8 @@ internal sealed class StandaloneModsBridge
     {
         mods.HandFocusedRs = HandFocus;
         // Reuse the exact verified native wheel and hip implementations.
-        // The remap checkbox is independent in the UI, but its compatible
-        // button routing remains active under Gunslinger.
+        // Gunslinger exclusively owns the compatible merged button routing;
+        // old saved wheel-remap checkboxes are ignored.
         mods.BehindHeadWeaponWheel = EffectiveGunslinger;
         mods.LeftWristWeaponWheel = EffectiveGunslinger; // existing alias
         mods.BehindHeadWheelHandSelection = EffectiveGunslinger;

@@ -31,6 +31,30 @@ inline QuickHipDrawPlan quickHipPlanDraw(int side,BackWeaponKind stored,
  if(side<0||side>1||stored==BackWeaponKind::Unknown)return {};
  return {true,stored!=current,side==1,stored};
 }
+// Selecting a different native weapon can take several game frames, even
+// when its number-row hotkey is sent on the draw frame. Keep the old gun in
+// its original hand until DOOM reports the requested kind; never present the
+// old gun temporarily in the new hand, and never send a second selection.
+struct QuickHipPendingTransfer {
+ bool active{},leftWeaponHand{};
+ BackWeaponKind weapon{BackWeaponKind::Unknown};
+ std::uint64_t deadlineNanoseconds{};
+};
+enum class QuickHipTransferResult {None,Confirmed,TimedOut};
+inline void quickHipBeginTransfer(QuickHipPendingTransfer& p,
+    const QuickHipDrawPlan& plan,std::uint64_t now) noexcept {
+ p={};
+ if(!plan.valid||!plan.needsNativeSelect)return;
+ p.active=true;p.weapon=plan.weapon;p.leftWeaponHand=plan.leftWeaponHand;
+ p.deadlineNanoseconds=now+2000000000ULL;
+}
+inline QuickHipTransferResult quickHipPollTransfer(QuickHipPendingTransfer& p,
+    BackWeaponKind equipped,std::uint64_t now) noexcept {
+ if(!p.active)return QuickHipTransferResult::None;
+ if(equipped==p.weapon){p.active=false;return QuickHipTransferResult::Confirmed;}
+ if(now>=p.deadlineNanoseconds){p.active=false;return QuickHipTransferResult::TimedOut;}
+ return QuickHipTransferResult::None;
+}
 // Only the hand that actually holds the weapon may STORE it in its own
 // physical hip. The opposite hand is empty, even when DOOM reports a
 // globally equipped native weapon. It can still DRAW from its saved hip.

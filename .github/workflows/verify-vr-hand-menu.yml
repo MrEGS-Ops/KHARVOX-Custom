@@ -13,6 +13,7 @@ on:
       - fix/always-hand-focus-normal-gameplay
       - feature/userdata-calibration-factory-defaults
       - feature/live-vr-mod-calibration-menu
+      - fix/nov12-hud-factory-pointer
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
@@ -25,6 +26,7 @@ on:
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
       - 'tests/quick_holster_policy_tests.cpp'
+      - 'tests/vr_menu_navigation_tests.cpp'
       - 'src/openxr/PhysicalGlorykillMeleePolicy.h'
       - 'src/openxr/HandFocusPolicy.h'
       - 'tests/hand_focus_policy_tests.cpp'
@@ -51,8 +53,12 @@ jobs:
         run: /tmp/vr-hand-config-tests
       - name: Compile direct Gunslinger hip-holster regression tests
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/quick_holster_policy_tests.cpp -o /tmp/quick-hip-tests
-      - name: Validate immediate left/right native-selection plans and two-handed hip gating
+      - name: Validate immediate left/right native-selection plans and confirmed equip handoff
         run: /tmp/quick-hip-tests
+      - name: Compile left-stick A/B VR menu navigation tests
+        run: c++ -std=c++17 -Wall -Wextra -pedantic tests/vr_menu_navigation_tests.cpp -o /tmp/vr-menu-nav-tests
+      - name: Verify left/right columns, A/B edge controls and calibration action targets
+        run: /tmp/vr-menu-nav-tests
       - name: Compile persistent hand focus and native execution exceptions regression
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/hand_focus_policy_tests.cpp -o /tmp/hand-focus-policy-tests
       - name: Verify normal gameplay stays weapon-hand aimed and execution focus is head
