@@ -74,6 +74,7 @@
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "PhysicalGlorykillMeleePolicy.h"
+#include "HandFocusPolicy.h"
 #include "OpenHandReleasePolicy.h"
 #include "PersistentSuperShotgunReloadPolicy.h"
 #include "MovementDirectionPolicy.h"
@@ -319,9 +320,8 @@ struct State {
     XrTime physicalPunchCooldownUntil{};
     XrTime boxingPoseStartedAt{},headFocusHeldUntil{};
     bool boxingHeadFocus{};
-    // Hand Focus is activated by an isolated PHYSICAL right-stick click.
-    // The VR-menu two-stick chord must never activate it.
-    bool handFocusActivated{};
+    // Hand Focus is the normal gameplay default when enabled. An isolated
+    // physical RIGHT stick click only sends native Use; it NEVER toggles aim.
     // SendInput's default keyboard Use key is independent of the native
     // RS/JOY8 melee action and must be released on XR focus loss/menu entry.
     bool handFocusUseKeyboardKeyDown{};
@@ -2893,6 +2893,7 @@ void updateWeapon6Dof(){
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
         releaseHandFocusUseKeyboardPulse();
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.heavyAlternateInputForwarded=false;
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
@@ -2913,6 +2914,7 @@ void updateGameplayActions(XrTime displayTime){
     if(XR_FAILED(s.syncActionsFn(s.session,&sync))
         ||s.sessionState!=XR_SESSION_STATE_FOCUSED){
         releaseHandFocusUseKeyboardPulse();
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.motionWheelState={};
         s.wheelStickHaptics={};
         s.equipmentGrip.cancel();
@@ -2929,7 +2931,7 @@ void updateGameplayActions(XrTime displayTime){
         s.storySkipInputWasDown=false;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
-        s.handFocusActivated=false;
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         KharvoxCameraResetCombatTimeDilation();
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
@@ -3008,6 +3010,7 @@ void updateGameplayActions(XrTime displayTime){
          readFloatAction(s.leftWeaponTrigger)>.55f,
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
         releaseHandFocusUseKeyboardPulse();
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         // Menu inputs are muted except the primary weapon Grip's ALT FIRE
         // during LIVE capture. Keep refreshing transforms for visual preview.
         updateWeapon6Dof();
@@ -3023,9 +3026,9 @@ void updateGameplayActions(XrTime displayTime){
         gameplay,s.customMods.handFocusedRs,s.physicalGlorykillEnabled,
         s.offHandStickOutput.rightMelee)){
         if(s.customMods.handFocusedRs){
-            s.handFocusActivated=!s.handFocusActivated;
-            log(std::string("[FOCUS] isolated physical RIGHT thumbstick -> ")
-                +(s.handFocusActivated?"HAND":"HEAD")+" focus");
+            // RS is USE only. Never flip from weapon-hand to head aim when
+            // opening a door, using a station or any world interaction.
+            log("[FOCUS] isolated RS Use -> persistent HAND focus unchanged");
             kharvox::queueControllerZoneCue(
                 s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
                 GetTickCount64(),70,.6f,150.f);
@@ -3035,7 +3038,6 @@ void updateGameplayActions(XrTime displayTime){
             +(sent?"KEYDOWN (150ms; no JOY8 melee)":"FAILED to inject")
             +(s.physicalGlorykillEnabled?" PhysicalGK=on":" PhysicalGK=off"));
     }
-    if(!s.customMods.handFocusedRs)s.handFocusActivated=false;
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -4270,9 +4272,10 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(false,s.leftGripController);
 
     if((s.customMods.handFocusedRs||s.customMods.boxingGuard)&&gameplay){
-        // Both guards raised in front of the face = temporary HEAD focus for
-        // easy Glory Kill targeting and punching. Enter after 180 ms to avoid
-        // false positives; hold head focus for 900 ms after hands drop.
+        // Boxing Guard's raised-hands stance still activates its own
+        // time dilation. It does NOT switch the interaction aim to head:
+        // only native Glory Kills, chainsaw kills, ledges and cinematics
+        // should temporarily override the always-on weapon-hand ray.
         auto boxingGuard=[&](const ControllerPose& controller,int side){
             if(!controller.valid||!controller.positionTracked
                 ||!s.trackingHeadPositionValid||!s.headZeroValid)return false;
@@ -4292,7 +4295,7 @@ void updateGameplayActions(XrTime displayTime){
             if(!s.boxingPoseStartedAt)s.boxingPoseStartedAt=displayTime;
             if(displayTime>=s.boxingPoseStartedAt+180000000LL){
                 if(!s.boxingHeadFocus){
-                    log("[FOCUS] guard pose held -> HEAD focus and Boxing Guard slowdown");
+                    log("[FOCUS] guard pose held -> Boxing Guard slowdown; HAND focus retained");
                     // Confirm that the guarded stance actually engaged,
                     // even when the player normally uses head-focused aiming.
                     for(int side=0;side<2;++side)
@@ -4306,12 +4309,18 @@ void updateGameplayActions(XrTime displayTime){
         }else s.boxingPoseStartedAt=0;
         if(s.boxingHeadFocus&&displayTime>=s.headFocusHeldUntil){
             s.boxingHeadFocus=false;
-            log("[FOCUS] guard pose released -> HAND focus restored after grace period");
+            log("[FOCUS] guard pose released -> Boxing Guard slowdown ended");
         }
         const auto& controller=weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
-        if(s.customMods.handFocusedRs&&s.handFocusActivated
-            &&!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
+        // Native actions own HEAD focus for the duration of their authored
+        // executions. Otherwise always use the current physical weapon
+        // controller (left or right), no persistent toggle/RS dependency.
+        if(kharvox::useWeaponHandFocus(
+                s.customMods.handFocusedRs,gameplay,syncAttackActive,
+                s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
+                KharvoxCameraBossSequenceActive())
+            &&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
             const auto trackingForward=normalizeVector(
