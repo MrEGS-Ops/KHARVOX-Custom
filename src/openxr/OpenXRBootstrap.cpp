@@ -383,7 +383,7 @@ struct State {
     XrTime lastChainsawAttackAt{};
     XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
-    XrTime usePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
+    XrTime usePulseUntil{},handFocusUsePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
     bool immersiveCinematics{immersiveCinematicsRequested()};
     bool immersiveCinematicFreelook{immersiveCinematicFreelookRequested()};
     bool otherCinematicsInQuad{otherCinematicsInQuadRequested()};
@@ -2887,7 +2887,7 @@ void updateGameplayActions(XrTime displayTime){
         clearCapturedXInputRumble();
         releaseMovement();
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
-        s.meleePressed=false;s.usePulseUntil=0;s.meleePulseUntil=0;
+        s.meleePressed=false;s.usePulseUntil=0;s.handFocusUsePulseUntil=0;s.meleePulseUntil=0;
         s.physicalPunchPulseUntil=0;
         s.storySkip={};
         s.storyFreeWalk={};
@@ -2988,13 +2988,22 @@ void updateGameplayActions(XrTime displayTime){
     if(gameplay&&s.customMods.handFocusedRs
         &&s.offHandStickOutput.rightMelee){
         s.handFocusActivated=!s.handFocusActivated;
+        // Hand Focus must NEVER swallow DOOM's native USE action. The
+        // single, release-confirmed RS tap sends the existing USE channel,
+        // but intentionally does NOT synthesize JOY8/melee. Physical GK can
+        // block stick melee without disabling doors/health stations.
+        s.handFocusUsePulseUntil=displayTime+150000000;
         log(std::string("[FOCUS] isolated physical RIGHT thumbstick -> ")
-            +(s.handFocusActivated?"HAND":"HEAD")+" focus");
+            +(s.handFocusActivated?"HAND":"HEAD")
+            +" focus; native USE D-pad Right pulse=150ms (no melee)");
         kharvox::queueControllerZoneCue(
             s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
             GetTickCount64(),70,.6f,150.f);
     }
-    if(!s.customMods.handFocusedRs)s.handFocusActivated=false;
+    if(!s.customMods.handFocusedRs){
+        s.handFocusActivated=false;
+        s.handFocusUsePulseUntil=0;
+    }
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -3569,8 +3578,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    // Hand Focus owns isolated right-stick clicks: never also produce a
-    // gameplay USE/melee event for the same press.
+    // Hand Focus owns isolated right-stick clicks. It emits native USE
+    // independently above, but never forwards the same press to melee.
     const bool rawMeleeDown=s.customMods.handFocusedRs?false
         :s.customMods.offHandGripCapture?s.offHandStickOutput.rightMelee
         :readBooleanAction(s.doomMelee);
@@ -3812,7 +3821,8 @@ void updateGameplayActions(XrTime displayTime){
         log("[CHAINSAW-GESTURE] kill gate released");
     }
     if(!gameplay){
-        s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
+        s.usePulseUntil=0;s.handFocusUsePulseUntil=0;
+        s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
     }
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
     const float manualTurnX=nativeManualTurnX(displayTime,turnActive&&gameplay&&!weaponSelectDown&&!weaponWheelActive);
@@ -4084,12 +4094,12 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
     s.crouchPressed=crouchDown;
-    // Final XInput gate: when Physical GK is enabled, RS never sends
-    // melee (JOY8) or the preceding USE phase. Only the independent,
-    // tracked physical-punch pulse can cause a native melee/GK animation.
+    // Final XInput gate: Physical GK blocks ordinary RS melee/USE pairs
+    // but NEVER blocks Hand Focus' independent world-interaction USE pulse.
+    // Thus doors and health stations work without a thumbstick melee anim.
     const bool nativeUseDown=kharvox::physicalgk::routeNativeUse(
         s.physicalGlorykillEnabled,gameplay,
-        displayTime<s.usePulseUntil);
+        displayTime<s.usePulseUntil,displayTime<s.handFocusUsePulseUntil);
     const bool nativeMeleeDown=kharvox::physicalgk::routeNativeMelee(
         s.physicalGlorykillEnabled,gameplay,meleeDown,
         displayTime<s.meleePulseUntil,
