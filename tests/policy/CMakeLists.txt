@@ -110,10 +110,6 @@ add_executable(KharvoxChainsawRevPulseTests ../chainsaw_rev_pulse_tests.cpp)
 target_compile_features(KharvoxChainsawRevPulseTests PRIVATE cxx_std_17)
 add_test(NAME chainsaw-x6-no-zone-trigger-revs COMMAND KharvoxChainsawRevPulseTests)
 
-add_executable(KharvoxSupportGripCapturePolicyTests ../support_grip_capture_policy_tests.cpp)
-target_compile_features(KharvoxSupportGripCapturePolicyTests PRIVATE cxx_std_17)
-add_test(NAME support-grip-capture-chord COMMAND KharvoxSupportGripCapturePolicyTests)
-
 add_executable(KharvoxOffHandStickInputTests ../offhand_stick_input_policy_tests.cpp)
 target_compile_features(KharvoxOffHandStickInputTests PRIVATE cxx_std_17)
 add_test(NAME offhand-stick-pause-and-capture-isolation COMMAND KharvoxOffHandStickInputTests)

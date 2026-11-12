@@ -56,6 +56,21 @@ int main(){
  assert(updateQuickHip(empty,1,true,true,BackWeaponKind::Pistol)==QuickHipAction::None);
  assert(updateQuickHip(empty,1,false,true,BackWeaponKind::Pistol)==QuickHipAction::None);
  assert(empty.slots[1]==BackWeaponKind::Unknown);
+ QuickHipHandoff pending{};
+ assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,10)
+    ==QuickHipHandoffState::Idle);
+ pending.request(1,BackWeaponKind::SuperShotgun,100);
+ assert(pending.pending()&&pending.side==1);
+ assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,101)
+    ==QuickHipHandoffState::Waiting); // Old gun cannot cross to new hand.
+ assert(quickHipHandoffState(pending,BackWeaponKind::SuperShotgun,102)
+    ==QuickHipHandoffState::Ready);
+ pending.reset();pending.request(0,BackWeaponKind::Pistol,200);
+ assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,2000000300ULL)
+    ==QuickHipHandoffState::Expired);
+ pending.request(1,BackWeaponKind::Chainsaw,300);
+ pending.request(0,BackWeaponKind::Chaingun,301);
+ assert(pending.side==0&&pending.target==BackWeaponKind::Chaingun);
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
  return 0;

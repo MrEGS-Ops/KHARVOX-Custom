@@ -20,6 +20,28 @@ struct QuickHolsters {
  std::array<QuickHipGesture,2> gestures{};
 };
 enum class QuickHipAction {None,Enter,Assign,Draw};
+// Native weapon selection can complete on a later frame. Do not transfer the
+// OLD weapon across to the other physical hand while the new gun is pending.
+struct QuickHipHandoff {
+    int side{-1};
+    BackWeaponKind target{BackWeaponKind::Unknown};
+    std::uint64_t deadlineNanoseconds{};
+    void reset() noexcept {side=-1;target=BackWeaponKind::Unknown;deadlineNanoseconds=0;}
+    bool pending() const noexcept {return side>=0&&target!=BackWeaponKind::Unknown;}
+    void request(int targetSide,BackWeaponKind weapon,std::uint64_t now) noexcept {
+        if(targetSide<0||targetSide>1||weapon==BackWeaponKind::Unknown){reset();return;}
+        side=targetSide;target=weapon;
+        deadlineNanoseconds=now+2000000000ULL;
+    }
+};
+enum class QuickHipHandoffState {Waiting,Ready,Expired,Idle};
+inline QuickHipHandoffState quickHipHandoffState(
+    const QuickHipHandoff& pending,BackWeaponKind active,std::uint64_t now) noexcept {
+    if(!pending.pending())return QuickHipHandoffState::Idle;
+    if(active==pending.target)return QuickHipHandoffState::Ready;
+    if(now>=pending.deadlineNanoseconds)return QuickHipHandoffState::Expired;
+    return QuickHipHandoffState::Waiting;
+}
 // The hip that supplies the weapon becomes the combat/weapon hand.
 // 0 is the physical RIGHT hip; 1 is the physical LEFT hip.
 // This rule applies even when the saved weapon is already equipped.
