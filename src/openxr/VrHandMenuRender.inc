@@ -86,7 +86,7 @@ void paintVrHandMenu() {
     HFONT regular=CreateFontA(-24,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY,DEFAULT_PITCH,"Segoe UI");
-    HFONT small=CreateFontA(-20,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
+    HFONT smallFont=CreateFontA(-20,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
         ANTIALIASED_QUALITY,DEFAULT_PITCH,"Segoe UI");
     HGDIOBJ previous=SelectObject(dc,title);
@@ -96,7 +96,7 @@ void paintVrHandMenu() {
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
     write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
-    SelectObject(dc,small);
+    SelectObject(dc,smallFont);
     write(40,102,"RIGHT-HANDED WEAPONS",muted);
     write(536,102,"SELECT HAND",muted);
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
@@ -110,7 +110,7 @@ void paintVrHandMenu() {
         const auto key=kharvox::kVrCalibrationWeapons[i];
         const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
         write(56,y+6,name&&*name?name:key,white);
-        SelectObject(dc,small);
+        SelectObject(dc,smallFont);
         write(365,y+9,std::string(m.rightSaved[i]?"R":"-")+
             "/" +(m.leftSaved[i]?"L":"-"),muted);
     }
@@ -122,7 +122,7 @@ void paintVrHandMenu() {
     button(715,151,202,58,m.rightHand,m.hovered==21);
     SelectObject(dc,regular);
     write(555,163,"LEFT",white);write(742,163,"RIGHT",white);
-    SelectObject(dc,small);
+    SelectObject(dc,smallFont);
     write(538,233,"LEFT: position only",muted);
     write(538,267,"Rotation follows each grab",muted);
     write(538,306,"RIGHT: position + rotation",muted);
@@ -132,7 +132,7 @@ void paintVrHandMenu() {
     button(531,454,384,69,false,m.hovered==31);
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
-    SelectObject(dc,small);
+    SelectObject(dc,smallFont);
     write(538,551,"R / L = saved hand profiles",muted);
     write(538,582,"Point RIGHT hand + trigger to select",muted);
     write(538,611,"Both thumbsticks: close menu",muted);
@@ -148,7 +148,7 @@ void paintVrHandMenu() {
         DeleteObject(pen);DeleteObject(marker);
     }
     SelectObject(dc,previous);
-    DeleteObject(title);DeleteObject(regular);DeleteObject(small);
+    DeleteObject(title);DeleteObject(regular);DeleteObject(smallFont);
     // GDI's 32-bit DIB uses BGRA. Convert to straight-alpha RGBA required by
     // VK_FORMAT_R8G8B8A8_SRGB. The panel is intentionally opaque.
     auto* src=static_cast<const unsigned char*>(bits);
