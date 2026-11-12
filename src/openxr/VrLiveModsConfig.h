@@ -17,7 +17,7 @@ namespace kharvox {
 struct VrLivePoint { float x{},y{},z{}; };
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
-    PhysicalGloryKills, HandFocus, Painsaw, WheelRemap,
+    PhysicalGloryKills, HandFocus, Painsaw,
     HandsJump, BoxingGuard, Other
 };
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
