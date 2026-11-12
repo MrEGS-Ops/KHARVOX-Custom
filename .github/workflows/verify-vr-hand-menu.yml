@@ -5,10 +5,13 @@ on:
     branches:
       - work/in-headset-weapon-hand-calibration
       - work/manager-187-wheel-holsters
+      - fix/manager-187-heavy-alt-grip-hip-zones
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
       - 'tests/right_hand_grip_config_tests.cpp'
+      - 'src/weapon/QuickHolsterPolicy.h'
+      - 'tests/quick_holster_policy_tests.cpp'
       - '.github/workflows/verify-vr-hand-menu.yml'
   workflow_dispatch:
 
@@ -25,3 +28,7 @@ jobs:
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/right_hand_grip_config_tests.cpp -o /tmp/vr-hand-config-tests
       - name: Validate left/right profiles, reset and right-click hold shortcut
         run: /tmp/vr-hand-config-tests
+      - name: Compile direct Gunslinger hip-holster regression tests
+        run: c++ -std=c++17 -Wall -Wextra -pedantic tests/quick_holster_policy_tests.cpp -o /tmp/quick-hip-tests
+      - name: Validate immediate left/right native-selection plans and two-handed hip gating
+        run: /tmp/quick-hip-tests
