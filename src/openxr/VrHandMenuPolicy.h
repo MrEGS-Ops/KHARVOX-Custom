@@ -19,6 +19,15 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// Grip-held aim preview is for ordinary PRIMARY weapon poses only.
+// Gauss Cannon / Chaingun keep their existing Grip -> native alt-fire
+// behaviour while their Siege/Turret calibration is being tested.
+inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
+    bool calibratingPrimary,const std::string& weapon) noexcept {
+    return mode==VrHandMenuMode::Calibrating && calibratingPrimary
+        && validVrCalibrationWeapon(weapon)
+        && weapon!="gauss_cannon" && weapon!="chaingun";
+}
 // Only LIVE weapon-pose calibration forwards the physically held PRIMARY
 // weapon Grip to DOOM's native alternate-fire input (XInput left trigger).
 // Never allow it from the visible settings menu, the wrong equipped weapon,
@@ -136,6 +145,7 @@ struct VrHandMenuState {
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
+    bool primaryGripPreviewHeld{}; // freeze current tested pose only while Grip held
     RightHandGripOffset previewPosition{};
     RightHandGripRotation previewRotation{};
     std::array<bool,10> rightSaved{},leftSaved{};
