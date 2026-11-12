@@ -3400,13 +3400,20 @@ void updateGameplayActions(XrTime displayTime){
             }
             const bool held=readFloatAction(side==0
                 ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
+            // Native DOOM tracks one equipped gun, not the physical
+            // hand holding it. Never let the empty support hand STORE that
+            // gun in the opposite hip just because it releases Grip there.
+            const bool weaponHandAtThisHip=kharvox::quickHipMayAssign(
+                side,s.weaponHandLeft);
             const auto action=kharvox::updateQuickHip(
-                s.quickHolsters,side,inside,held,activeBackWeapon);
+                s.quickHolsters,side,inside,held,activeBackWeapon,
+                weaponHandAtThisHip);
             s.hipZoneEntered[side]=inside;
-            if(inside&&held||action==kharvox::QuickHipAction::Draw){
+            if(kharvox::quickHipConsumesGrip(
+                weaponHandAtThisHip,inside,held,action)){
                 quickHolsterGripConsumed=true;
                 s.bfgGripSuppressedUntilRelease=true;
-                if(side==(s.weaponHandLeft?1:0))
+                if(weaponHandAtThisHip)
                     s.wheelWeaponGripSuppressedUntilRelease=true;
                 else s.wheelSupportGripSuppressedUntilRelease=true;
             }
