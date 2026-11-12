@@ -323,6 +323,7 @@ struct State {
     // The VR-menu two-stick chord must never activate it.
     bool handFocusActivated{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
+    bool heavyAlternateInputForwarded{}; // native secondary-fire Grip, not upgrade installed
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
@@ -2235,13 +2236,20 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
-// Native declaration only. No inference from right Grip (which is also
-// used to arm calibration); an unsupported Turret detector falls back safely.
+// An installed upgrade contains "siege"/"turret" in its native declaration.
+// That name alone does not mean it is deployed. Gate mode selection on the
+// secondary-fire Grip actually being forwarded to the game.
 bool heavyAltMode(KharvoxWeaponKind kind){
-    return kind==KharvoxWeaponKind::GaussCannon
+    const bool upgradePresent=kind==KharvoxWeaponKind::GaussCannon
         ?KharvoxWeaponGaussSiegeChargeActive()
         :kind==KharvoxWeaponKind::Chaingun
             &&KharvoxWeaponChaingunTurretModeActive();
+    if(!upgradePresent)return false;
+    // Calibration menu owns Grip; its explicit Normal/Alternate selection wins.
+    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+       &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
+        return s.vrHandMenu.alternateProfile;
+    return s.heavyAlternateInputForwarded;
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
     if(!heavyAltMode(kind))return false;
@@ -2864,6 +2872,7 @@ void updateWeapon6Dof(){
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        s.heavyAlternateInputForwarded=false;
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
         s.storyFreeWalk={};
@@ -2976,6 +2985,7 @@ void updateGameplayActions(XrTime displayTime){
     if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f)){
+        s.heavyAlternateInputForwarded=false;
         // Input is muted, but the gun/hand transforms must still refresh so
         // live preview never freezes with the menu closed.
         updateWeapon6Dof();
@@ -3386,7 +3396,16 @@ void updateGameplayActions(XrTime displayTime){
     // Physical hip hotkeys, not stowable weapon props. The gun never
     // disappears or moves and the assignment remains after every draw.
     bool quickHolsterGripConsumed=false;
+    // A two-hand weapon lowered to the hip is NOT a holster gesture.
+    // For Gauss/Chaingun, protect the first dual-held frame before support
+    // capture latches, so neither Grip interrupts Siege/Turret.
+    const bool quickHipTwoHandGuard=kharvox::quickHipSuspendedForTwoHand(
+        s.twoHandLatched,
+        activeWeaponKind==KharvoxWeaponKind::GaussCannon
+            ||activeWeaponKind==KharvoxWeaponKind::Chaingun,
+        secondaryFireGripDown,supportGripDown);
     if(s.customMods.dynamicShoulderHolster&&gameplay
+       &&!quickHipTwoHandGuard
        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
        &&s.trackingHeadPositionValid&&s.headZeroValid){
         const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
@@ -3926,6 +3945,7 @@ void updateGameplayActions(XrTime displayTime){
         &&!weaponWheelActive&&!quickHolsterGripConsumed
         &&!s.wheelWeaponGripSuppressedUntilRelease
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
+    s.heavyAlternateInputForwarded=weaponModDown;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
         &&!weaponWheelActive&&!calibrationFireBlocked;
