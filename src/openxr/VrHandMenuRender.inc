@@ -197,8 +197,8 @@ void paintVrHandMenu() {
                     optionCount=3;
                     break;
                 case kharvox::VrLiveMod::Killtime:
-                    options[0]="SLOWER (-10 HZ)";
-                    options[1]="FASTER (+10 HZ)";
+                    options[0]="SLOWER (+10 HZ)";
+                    options[1]="FASTER (-10 HZ)";
                     options[2]="RESET TO DESKTOP PRESET";
                     optionCount=3;
                     break;
