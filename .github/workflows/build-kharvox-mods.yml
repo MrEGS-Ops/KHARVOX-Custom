@@ -360,6 +360,44 @@ jobs:
           if (Test-Path (Join-Path $destination "KharvoxLayer.dll")) {
             throw "Standalone package must not contain a patched KHARVOX runtime"
           }
+          # A fresh user installs the manager from this READY-TO-RUN ZIP.
+          # All mutable settings start in its visible top-level UserData,
+          # never as stale developer saves inside NativeBridge.
+          $userData = Join-Path $destination "UserData"
+          New-Item -Path $userData -ItemType Directory -Force | Out-Null
+          if ((Get-ChildItem -Path $userData -File -Recurse | Measure-Object).Count -gt 0) {
+            throw "CLEAN INSTALL VIOLATION: developer UserData bundled in release"
+          }
+          $factoryDir = Join-Path $bundledRuntime "CalibrationDefaults"
+          foreach ($name in @(
+              "offhand_right_hand_positions.cfg",
+              "two_hand_weapon_profiles_saved.cfg",
+              "two_hand_weapon_profiles_left_primary_saved.cfg")) {
+            $expected = Join-Path $PWD ("config/user_calibration_defaults/" + $name)
+            $actual = Join-Path $factoryDir $name
+            if (!(Test-Path -LiteralPath $actual)) {
+              throw "CLEAN INSTALL VIOLATION: uploaded factory calibration missing: $name"
+            }
+            $sourceHash = (Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash
+            $installedHash = (Get-FileHash -LiteralPath $actual -Algorithm SHA256).Hash
+            if ($sourceHash -ne $installedHash) {
+              throw "CLEAN INSTALL VIOLATION: factory file differs from owner's saved calibration: $name"
+            }
+            if (Test-Path -LiteralPath (Join-Path $bundledRuntime $name)) {
+              throw "CLEAN INSTALL VIOLATION: stale editable calibration in NativeBridge: $name"
+            }
+          }
+          foreach ($legacy in @(
+              "hand_models_calibration_saved.cfg", "offhand_hud.cfg",
+              "two_hand_shotgun_saved.cfg", "vr_live_mods_saved.cfg")) {
+            if (Test-Path -LiteralPath (Join-Path $bundledRuntime $legacy)) {
+              throw "CLEAN INSTALL VIOLATION: user profile bundled in NativeBridge: $legacy"
+            }
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $bundledRuntime "hand_models_calibration_default.cfg"))) {
+            throw "CLEAN INSTALL VIOLATION: required hand-model baseline missing"
+          }
+          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all three exact uploaded calibration presets"
 
       - name: Package ready-to-run standalone with bundled custom KHARVOX
         shell: pwsh
