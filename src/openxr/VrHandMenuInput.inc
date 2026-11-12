@@ -238,6 +238,19 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                     return 1000+s.vrHandMenu.modScroll+i;
         }
         if(pixelX>=531&&pixelX<=915){
+            const auto list=activeVrMenuEntries();
+            const int row=s.vrHandMenu.selectedRow;
+            if(row>=0&&row<static_cast<int>(list.size())
+                &&list[row].devSection){
+                const auto dev=devVrMenuEntries();
+                for(int i=0;i<10;++i){
+                    const int index=s.vrHandMenu.devScroll+i;
+                    if(index>=static_cast<int>(dev.size()))break;
+                    if(pixelY>=186+i*39&&pixelY<222+i*39)
+                        return 1200+index;
+                }
+                return -1; // DEV status cannot activate gameplay
+            }
             if(pixelY>=150&&pixelY<210)return 110;
             for(int i=0;i<5;++i)
                 if(pixelY>=248+i*68&&pixelY<306+i*68)return 130+i;
@@ -296,6 +309,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.selectedMod=kharvox::VrLiveMod::WeaponGrip;
             m.selectedRow=0;
             m.modScroll=0;
+            m.devScroll=0;
             m.navigation={};
             m.liveCapture=kharvox::VrLiveCapture::None;
             m.autoSelectingWeapon=false;
@@ -367,7 +381,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.page=kharvox::VrMenuPage::Mods;
             m.navigation={};
             m.message="Back to VR Mod Settings.";
-        }else if(m.navigation.usingStick&&m.navigation.settingsColumn){
+        }else if(m.navigation.settingsColumn){
             // Return to the mod list before closing the main overlay.
             m.navigation.settingsColumn=false;
             m.navigation.actionIndex=0;
@@ -390,8 +404,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.page==kharvox::VrMenuPage::Mods){
             const int n=static_cast<int>(rows.size());
             if(n>0)m.selectedRow=std::clamp(m.selectedRow,0,n-1);
-            const auto optionCount=[](kharvox::VrLiveMod mod)->int{
+            const auto devEntries=devVrMenuEntries();
+            const auto optionCount=[&](const VrLiveMenuEntry& entry)->int{
                 using kharvox::VrLiveMod;
+                if(entry.devSection)return static_cast<int>(devEntries.size());
+                const auto mod=entry.mod;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 2; // toggle + open calibration
@@ -403,16 +420,24 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }
             };
             const auto before=m.selectedRow;
-            const int previousOptions=n>0?optionCount(rows[m.selectedRow].mod):0;
+            const int previousOptions=n>0?optionCount(rows[m.selectedRow]):0;
             kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
                 n,m.selectedRow,previousOptions);
             if(n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
                 if(before!=m.selectedRow)m.navigation.actionIndex=0;
-                const int options=optionCount(m.selectedMod);
+                const int options=optionCount(rows[m.selectedRow]);
                 if(options>0)m.navigation.actionIndex=std::clamp(
                     m.navigation.actionIndex,0,options-1);
                 else m.navigation.actionIndex=0;
+                if(rows[m.selectedRow].devSection){
+                    const int devN=static_cast<int>(devEntries.size());
+                    m.devScroll=std::clamp(m.devScroll,0,std::max(0,devN-10));
+                    if(m.navigation.actionIndex<m.devScroll)
+                        m.devScroll=m.navigation.actionIndex;
+                    if(m.navigation.actionIndex>=m.devScroll+10)
+                        m.devScroll=m.navigation.actionIndex-9;
+                }
                 m.modScroll=std::clamp(m.modScroll,0,std::max(0,n-10));
                 if(m.selectedRow<m.modScroll)m.modScroll=m.selectedRow;
                 if(m.selectedRow>=m.modScroll+10)m.modScroll=m.selectedRow-9;
@@ -420,7 +445,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
                 aEdge?kharvox::vrMenuModsGamepadTarget(m.navigation,
-                    m.selectedRow,n,n>0?optionCount(m.selectedMod):0):-1;
+                    m.selectedRow,n,n>0?optionCount(rows[m.selectedRow]):0):-1;
             if(pointed>=0)m.navigation.usingStick=false;
             if(chosen>=1000&&chosen<1000+n){
                 m.selectedRow=chosen-1000;
@@ -429,9 +454,19 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 // A on a highlighted mod moves focus to its options.
                 if(aEdge){m.navigation.settingsColumn=true;
                     m.navigation.usingStick=true;}
-                m.message=kharvox::vrLiveModEditable(m.selectedMod)
-                    ?"Live options on the RIGHT.":"Read-only; desktop launcher only.";
-            }else if(chosen==110||(chosen>=130&&chosen<=134)){
+                m.message=rows[m.selectedRow].devSection
+                    ?"DEV: read-only mods and locked launcher overrides."
+                    :kharvox::vrLiveModEditable(m.selectedMod)
+                        ?"Live options on the RIGHT.":"Read-only; desktop launcher only.";
+            }else if(chosen>=1200&&chosen<1200+static_cast<int>(devEntries.size())
+                &&rows[m.selectedRow].devSection){
+                m.navigation.settingsColumn=true;
+                m.navigation.actionIndex=chosen-1200;
+                m.navigation.usingStick=false;
+                m.message=std::string(devEntries[chosen-1200].title)
+                    +" is read-only in headset.";
+            }else if(!rows[m.selectedRow].devSection
+                &&(chosen==110||(chosen>=130&&chosen<=134))){
                 handleVrLiveMenuAction(chosen);
                 if(m.page==kharvox::VrMenuPage::WeaponGrip)m.navigation={};
             }
