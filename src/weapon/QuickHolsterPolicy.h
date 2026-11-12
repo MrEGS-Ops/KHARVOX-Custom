@@ -20,8 +20,9 @@ struct QuickHolsters {
  std::array<QuickHipGesture,2> gestures{};
 };
 enum class QuickHipAction {None,Enter,Assign,Draw};
-// Native weapon selection can complete on a later frame. Do not transfer the
-// OLD weapon across to the other physical hand while the new gun is pending.
+// Physical weapon hand switches INSTANTLY. If the native gun declaration
+// needs another game frame to change, hide only the old model until the
+// requested hotkey weapon is active. No timed handoff or weapon-wheel delay.
 struct QuickHipHandoff {
     int side{-1};
     BackWeaponKind target{BackWeaponKind::Unknown};
@@ -35,6 +36,10 @@ struct QuickHipHandoff {
     }
 };
 enum class QuickHipHandoffState {Waiting,Ready,Expired,Idle};
+inline bool quickHipHideStaleWeapon(
+    const QuickHipHandoff& pending,BackWeaponKind active) noexcept {
+    return pending.pending()&&pending.target!=active;
+}
 inline QuickHipHandoffState quickHipHandoffState(
     const QuickHipHandoff& pending,BackWeaponKind active,std::uint64_t now) noexcept {
     if(!pending.pending())return QuickHipHandoffState::Idle;
@@ -48,7 +53,8 @@ inline QuickHipHandoffState quickHipHandoffState(
 inline bool quickHipDrawUsesLeftHand(int side) { return side==1; }
 // Assign empty slot: press and release Grip INSIDE. Equip occupied slot:
 // press Grip INSIDE, no exit required. Reassign occupied slot: enter with
-// Grip held, release INSIDE. No weapon hiding and never clear on draw.
+// Grip held, release INSIDE. Slots never clear on draw. The old weapon model
+// is only temporarily hidden if a new native hotkey has not taken effect.
 inline QuickHipAction updateQuickHip(QuickHolsters& h,int side,bool inside,
  bool gripDown,BackWeaponKind equipped) {
  if(side<0||side>1)return QuickHipAction::None;

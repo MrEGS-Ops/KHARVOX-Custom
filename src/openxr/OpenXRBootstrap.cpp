@@ -1811,6 +1811,17 @@ void releaseBackWeaponKeyboardPulse(){
     s.backWeaponKeyboardKey=0;
     s.backWeaponKeyboardReleaseTime=0;
 }
+// Direct Quick Hip scancode, key DOWN on the draw frame and UP on the
+// very next XR update. No 100ms artificial holster pulse/delay.
+bool startQuickHipKeyboardHotkey(WORD virtualKey,XrTime displayTime){
+    releaseBackWeaponKeyboardPulse();
+    focusDoomWindow();
+    if(!sendBackWeaponKeyboardKey(virtualKey,true))return false;
+    s.backWeaponKeyboardKey=virtualKey;
+    s.backWeaponKeyboardKeyDown=true;
+    s.backWeaponKeyboardReleaseTime=displayTime+1;
+    return true;
+}
 bool startBackWeaponKeyboardPulse(WORD virtualKey,XrTime displayTime){
     releaseBackWeaponKeyboardPulse();
     focusDoomWindow();
@@ -3363,16 +3374,13 @@ void updateGameplayActions(XrTime displayTime){
             static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
         if(outcome==kharvox::QuickHipHandoffState::Ready){
             s.quickHipHandoff.reset();
-            selectPhysicalWeaponHand(
-                kharvox::quickHipDrawUsesLeftHand(pendingSide),
-                "quick hip verified native selection");
-            log(std::string("[QUICK-HOTKEY] confirmed ")+
+            log(std::string("[QUICK-HOTKEY] confirmed immediate ")+
                 backWeaponKindKey(target)+" -> "+
-                (pendingSide==1?"LEFT":"RIGHT")+" hand without interim gun flash");
+                (pendingSide==1?"LEFT":"RIGHT")+" hand; stale gun never shown");
         }else if(outcome==kharvox::QuickHipHandoffState::Expired){
             s.quickHipHandoff.reset();
             log(std::string("[QUICK-HOTKEY] equip not confirmed for ")+
-                backWeaponKindKey(target)+"; hand stays unchanged");
+                backWeaponKindKey(target)+"; ending temporary stale-gun guard");
         }
     }
     // Physical hip hotkeys, not stowable weapon props. The gun never
@@ -3423,7 +3431,7 @@ void updateGameplayActions(XrTime displayTime){
                 bool requested=stored==activeBackWeapon;
                 if(stored!=activeBackWeapon){
                     const WORD key=kharvox::backWeaponKeyboardVirtualKey(stored);
-                    if(key)requested=startBackWeaponKeyboardPulse(key,displayTime);
+                    if(key)requested=startQuickHipKeyboardHotkey(key,displayTime);
                     else if(stored==kharvox::BackWeaponKind::Bfg){
                         s.backWeaponPulse=kharvox::BackWeaponPulse::Bfg;
                         s.backWeaponPulseUntil=displayTime+100000000;
@@ -3434,15 +3442,18 @@ void updateGameplayActions(XrTime displayTime){
                         requested=true;
                     }
                 }
-                // A newer draw cancels any older pending hand transfer.
+                // Physical hand changes NOW, in the SAME draw frame, including
+                // a switch to the opposite holster. A stale gun model is
+                // temporarily hidden only until DOOM acknowledges its hotkey.
                 s.quickHipHandoff.reset();
-                if(requested&&stored==activeBackWeapon){
+                if(requested){
                     selectPhysicalWeaponHand(
                         kharvox::quickHipDrawUsesLeftHand(side),
-                        side==0?"right hip already equipped":"left hip already equipped");
-                }else if(requested){
-                    s.quickHipHandoff.request(side,stored,
-                        static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
+                        side==0?"instant right-hip hotkey":"instant left-hip hotkey");
+                    if(stored!=activeBackWeapon){
+                        s.quickHipHandoff.request(side,stored,
+                            static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
+                    }
                 }else{
                     log("[QUICK-HOTKEY] native selection failed; no hand transfer");
                 }
@@ -3451,21 +3462,23 @@ void updateGameplayActions(XrTime displayTime){
                 s.bfgGripSuppressedUntilRelease=true;
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")
-                    +" Grip PRESS inside -> request saved gun="
+                    +" Grip PRESS inside -> IMMEDIATE hotkey gun="
                     +backWeaponKindKey(stored)
-                    +" for "+(side==1?"LEFT":"RIGHT")+" weapon hand"
-                    +(s.quickHipHandoff.pending()?" (await native selection)":""));
+                    +" in "+(side==1?"LEFT":"RIGHT")+" hand"
+                    +(s.quickHipHandoff.pending()?" (hide stale model until selected)":""));
             }
         }
     }else{
         s.hipZoneEntered={};
         kharvox::resetQuickHipGestures(s.quickHolsters);
     }
-    // Previous invisible holstering and open-palm unequip are retired.
+    // The old invisible-holster feature is retired. Only guard a pending
+    // DIRECT hotkey so the previous hip gun never appears in the new hand.
     s.openHandUnequipped=false;
     s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
     s.dynamicShoulderHolstered=false;
-    KharvoxWeaponSetHolstered(false);
+    KharvoxWeaponSetHolstered(kharvox::quickHipHideStaleWeapon(
+        s.quickHipHandoff,activeBackWeapon));
     kharvox::BackWeaponInput backWeaponInput{};
     backWeaponInput.shoulderGestureEnabled=!s.customMods.dynamicShoulderHolster;
     backWeaponInput.gameplayActive=gameplay;

@@ -61,6 +61,8 @@ int main(){
     ==QuickHipHandoffState::Idle);
  pending.request(1,BackWeaponKind::SuperShotgun,100);
  assert(pending.pending()&&pending.side==1);
+ assert(quickHipHideStaleWeapon(pending,BackWeaponKind::GaussCannon));
+ assert(!quickHipHideStaleWeapon(pending,BackWeaponKind::SuperShotgun));
  assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,101)
     ==QuickHipHandoffState::Waiting); // Old gun cannot cross to new hand.
  assert(quickHipHandoffState(pending,BackWeaponKind::SuperShotgun,102)
