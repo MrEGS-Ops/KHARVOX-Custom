@@ -108,7 +108,7 @@ internal static class LauncherSettingsStore
 {
     internal static string DefaultPath =>
         !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KHARVOX_MODS_BRIDGE_FILE"))
-            ? Path.Combine(AppContext.BaseDirectory, "kharvox-launcher-settings.json")
+            ? LauncherUserData.PathFor("kharvox-launcher-settings.json")
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "KHARVOX", "settings.json");
 
