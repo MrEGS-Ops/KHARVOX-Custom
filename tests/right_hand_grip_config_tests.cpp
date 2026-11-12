@@ -68,7 +68,7 @@ int main(){
  const auto restored=kharvox::readRightHandGripSettings(path);
  assert(restored.chaingunRotation.valid
      &&std::abs(restored.chaingunRotation.w-.70710678f)<.0001f);
- {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\\n";}
+ {std::ofstream out(path);out<<"gauss_cannon_rotation = 0 0 0 0\n";}
  a=kharvox::readRightHandGripSettings(path);
  assert(a.rejected==1&&!a.gaussRotation.valid);
  // A virtual probe 15 cm forward (-Z) of the LEFT controller allows the
@@ -276,23 +276,23 @@ int main(){
  const std::string factoryRight=std::string(path)+".factory";
  const std::string factorySupport=twoHand+".factory";
  {std::ofstream factory(factoryRight);
-  factory<<"right_hand_drop_m = 0.08\\n"
-         <<"pistol_hand_position = 0.12 -0.02 0.08\\n"
-         <<"pistol_rotation = 0 0 0 1\\n"
-         <<"pistol_left_hand_position = -0.12 0.01 0.08\\n"
-         <<"pistol_left_rotation = 0 0 0 1\\n"
-         <<"gauss_cannon = -0.07 0.18 0.42\\n"
-         <<"gauss_cannon_siege_hand_position = 0.30 0.01 0.08\\n"
-         <<"gauss_cannon_siege_rotation = 0 0 0 1\\n"
-         <<"gauss_cannon_siege_left_hand_position = -0.30 0.02 0.08\\n"
-         <<"gauss_cannon_siege_left_rotation = 0 0 0 1\\n"
-         <<"gauss_cannon_siege_support_position = -0.1 0.2 0.3\\n"
-         <<"gauss_cannon_siege_left_primary_support_position = 0.1 0.2 0.3\\n"
-         <<"shotgun_hand_position = 0.02 0.03 -0.01\\n"
-         <<"shotgun_rotation = 0 0 0 1\\n";}
+  factory<<"right_hand_drop_m = 0.08\n"
+         <<"pistol_hand_position = 0.12 -0.02 0.08\n"
+         <<"pistol_rotation = 0 0 0 1\n"
+         <<"pistol_left_hand_position = -0.12 0.01 0.08\n"
+         <<"pistol_left_rotation = 0 0 0 1\n"
+         <<"gauss_cannon = -0.07 0.18 0.42\n"
+         <<"gauss_cannon_siege_hand_position = 0.30 0.01 0.08\n"
+         <<"gauss_cannon_siege_rotation = 0 0 0 1\n"
+         <<"gauss_cannon_siege_left_hand_position = -0.30 0.02 0.08\n"
+         <<"gauss_cannon_siege_left_rotation = 0 0 0 1\n"
+         <<"gauss_cannon_siege_support_position = -0.1 0.2 0.3\n"
+         <<"gauss_cannon_siege_left_primary_support_position = 0.1 0.2 0.3\n"
+         <<"shotgun_hand_position = 0.02 0.03 -0.01\n"
+         <<"shotgun_rotation = 0 0 0 1\n";}
  {std::ofstream factory(factorySupport);
-  factory<<"2 pistol barrel -0.1 0.1 -0.2 0.2 1\\n"
-         <<"2 shotgun barrel 0.03 0.01 -0.2 0.2 1\\n";}
+  factory<<"2 pistol barrel -0.1 0.1 -0.2 0.2 1\n"
+         <<"2 shotgun barrel 0.03 0.01 -0.2 0.2 1\n";}
  assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
      {0.22f,0.05f,-0.06f},{0.f,0.f,0.f,1.f,true},&why,false));
  assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
@@ -310,7 +310,7 @@ int main(){
  assert(kharvox::hasSavedVrSupport(twoHand,"pistol"));
  assert(kharvox::hasSavedVrSupport(twoHand,"shotgun"));
  {std::ifstream existing(twoHand);std::string row,all;
-  while(std::getline(existing,row))all+=row+"\\n";
+  while(std::getline(existing,row))all+=row+"\n";
   assert(all.find("2 pistol barrel -0.1 0.1 -0.2")!=std::string::npos);
   assert(all.find("2 shotgun barrel")!=std::string::npos);}
  // Both hands and heavy alternate poses go back to factory together.
