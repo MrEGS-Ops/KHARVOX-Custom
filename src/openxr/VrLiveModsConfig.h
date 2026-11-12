@@ -68,6 +68,13 @@ struct VrLiveSettings {
     float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
 };
+// Native Sync Action pacing is inverse to the displayed speed: lower Hz
+// gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
+// An unset override starts from the same 200-Hz baseline as the VR menu.
+inline int vrLiveStepKilltimeHz(int currentHz,bool slower) noexcept {
+    const int current=currentHz==0?200:currentHz;
+    return std::clamp(current+(slower?10:-10),30,240);
+}
 inline constexpr VrLivePoint vrLiveHipDefaultCenter() { return {.315f,-.76f,.225f}; }
 inline constexpr VrLivePoint vrLiveWheelDefaultCenter() { return {.20f,.09f,.3075f}; }
 inline bool vrLiveValidPoint(VrLivePoint p) {
