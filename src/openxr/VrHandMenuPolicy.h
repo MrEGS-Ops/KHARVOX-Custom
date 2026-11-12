@@ -116,6 +116,7 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
+    int devScroll{}; // vertical viewport of read-only DEV rows
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
