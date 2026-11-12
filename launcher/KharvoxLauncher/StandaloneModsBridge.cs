@@ -19,7 +19,7 @@ internal sealed class StandaloneModsBridge
     public bool DynamicQuickHolsters { get; set; }
     internal bool EffectiveGunslinger =>
         Gunslinger || BehindHeadWeaponWheel || DynamicQuickHolsters;
-    internal bool EffectiveWheelRemap => WeaponWheelRemap || EffectiveGunslinger;
+    internal bool EffectiveWheelRemap => EffectiveGunslinger;
     public bool PhysicalCrouch { get; set; }
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool OffHandGripCapture { get; set; }
