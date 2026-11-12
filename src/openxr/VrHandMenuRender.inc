@@ -241,6 +241,9 @@ void paintVrHandMenu() {
         fill(x,y,w,h,active?RGB(31,104,115):
             hovered?RGB(53,68,84):RGB(39,49,63));
     };
+    const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
+    const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
+        ||selectedKind==KharvoxWeaponKind::Chaingun;
     const auto gamepadFocus=[&](int action){
         return m.navigation.usingStick&&m.navigation.settingsColumn
             &&kharvox::vrMenuGripGamepadTarget(m.navigation,
@@ -256,9 +259,6 @@ void paintVrHandMenu() {
     write(538,267,primarySelected
         ?"PRIMARY: position + rotation"
         :"SUPPORT: position only",muted);
-    const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
-    const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
-        ||selectedKind==KharvoxWeaponKind::Chaingun;
     if(heavy){
         button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
         write(550,317,m.alternateProfile
