@@ -321,6 +321,7 @@ struct State {
     XrTime boxingPoseStartedAt{},headFocusHeldUntil{};
     bool boxingHeadFocus{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
+    bool heavyAlternateInputForwarded{}; // native secondary-fire input, not installed upgrade
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
@@ -2215,13 +2216,20 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
-// Native declaration only. No inference from right Grip (which is also
-// used to arm calibration); an unsupported Turret detector falls back safely.
+// A weapon-data "turret"/"siege" string only proves the upgrade is
+// installed, not deployed. Require secondary fire actually forwarded to DOOM.
+// Freeze this choice during hand calibration, when calibration owns Grip.
 bool heavyAltMode(KharvoxWeaponKind kind){
-    return kind==KharvoxWeaponKind::GaussCannon
+    if(s.liveHeavyGripActive&&s.liveHeavyGripWeapon==kind)
+        return s.liveHeavyGripAlternate;
+    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+       &&KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())==kind)
+        return s.vrHandMenu.alternateProfile;
+    const bool upgradePresent=kind==KharvoxWeaponKind::GaussCannon
         ?KharvoxWeaponGaussSiegeChargeActive()
         :kind==KharvoxWeaponKind::Chaingun
             &&KharvoxWeaponChaingunTurretModeActive();
+    return upgradePresent&&s.heavyAlternateInputForwarded;
 }
 bool heavyWeapon(KharvoxWeaponKind kind){
     return kind==KharvoxWeaponKind::GaussCannon
@@ -3117,6 +3125,7 @@ void updateWeapon6Dof(){
 }
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        s.heavyAlternateInputForwarded=false;
         if(s.storySkip.accelerating)KharvoxCameraSetStoryCinematicFastForward(false);
         s.storySkip={};
         s.storyFreeWalk={};
@@ -3226,6 +3235,7 @@ void updateGameplayActions(XrTime displayTime){
     if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f)){
+        s.heavyAlternateInputForwarded=false;
         // Input is muted, but the gun/hand transforms must still refresh so
         // live preview never freezes with the menu closed.
         updateWeapon6Dof();
@@ -3624,7 +3634,13 @@ void updateGameplayActions(XrTime displayTime){
     // Physical hip hotkeys, not stowable weapon props. The gun never
     // disappears or moves and the assignment remains after every draw.
     bool quickHolsterGripConsumed=false;
+    // Never consume a two-handed grip at hip height, even on the frame
+    // before heavy-weapon support latching has been established.
+    const bool quickHipTwoHandGuard=kharvox::quickHipSuspendedForTwoHand(
+        s.twoHandLatched,heavyWeapon(activeWeaponKind),
+        secondaryFireGripDown,supportGripDown);
     if(s.customMods.dynamicShoulderHolster&&gameplay
+       &&!quickHipTwoHandGuard
        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
        &&s.trackingHeadPositionValid&&s.headZeroValid){
         const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
@@ -4149,6 +4165,7 @@ void updateGameplayActions(XrTime displayTime){
         &&!s.wheelWeaponGripSuppressedUntilRelease
         &&!s.liveHeavyGripActive
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
+    s.heavyAlternateInputForwarded=weaponModDown;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
         &&!weaponWheelActive&&!calibrationFireBlocked;
