@@ -60,7 +60,7 @@ struct HandDepthRange {
 // the same stable Vulkan depth curve without producing infinities in the CPU
 // matrix. The isolated OpenXR overlay deliberately retains its old range.
 inline HandDepthRange doomSceneHandDepthRange(float worldUnitsPerMeter) {
-    constexpr float nativeNearUnits = 3.0f;
+    constexpr float nativeNearUnits = 1.0f;
     constexpr float effectivelyInfiniteFarUnits = 1000000.0f;
     const float scale = std::clamp(worldUnitsPerMeter, 10.0f, 200.0f);
     return {nativeNearUnits / scale, effectivelyInfiniteFarUnits / scale};
