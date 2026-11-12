@@ -53,10 +53,10 @@ internal sealed class StandaloneModPreferences
     // start writes a corresponding receipt. Never infer applied from a Save.
     public string RuntimeRevision { get; set; } = "";
     internal static string AppliedReceiptPath =>
-        Path.Combine(AppContext.BaseDirectory, "kharvox-mods-applied.txt");
+        PortableUserData.PathFor("kharvox-mods-applied.txt");
 
     internal static string DefaultPath =>
-        Path.Combine(AppContext.BaseDirectory, "kharvox-mods-bridge.json");
+        PortableUserData.PathFor("kharvox-mods-bridge.json");
 
     internal static StandaloneModPreferences Load(string? path = null)
     {
