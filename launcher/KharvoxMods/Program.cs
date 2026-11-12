@@ -42,7 +42,7 @@ internal static class Program
             try
             {
                 ModsForm.RunUiSelfTest();
-                Console.WriteLine("Original two-column UI and 22 mod rows verified.");
+                Console.WriteLine("VR Mod Manager UI passed: 20 standard mods plus 10 locked Developer rows.");
                 return 0;
             }
             catch (Exception error)
