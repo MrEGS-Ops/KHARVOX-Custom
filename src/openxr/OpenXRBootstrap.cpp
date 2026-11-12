@@ -319,6 +319,9 @@ struct State {
     XrTime physicalPunchCooldownUntil{};
     XrTime boxingPoseStartedAt{},headFocusHeldUntil{};
     bool boxingHeadFocus{};
+    // Hand Focus is activated by an isolated PHYSICAL right-stick click.
+    // The VR-menu two-stick chord must never activate it.
+    bool handFocusActivated{};
     bool weaponSelectPressed{},weaponSelectNativeStarted{},weaponWheelOpened{},secondaryFireGripPressed{};
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
@@ -2883,6 +2886,7 @@ void updateGameplayActions(XrTime displayTime){
         s.storySkipInputWasDown=false;
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.boxingPoseStartedAt=0;s.headFocusHeldUntil=0;s.boxingHeadFocus=false;
+        s.handFocusActivated=false;
         KharvoxCameraResetCombatTimeDilation();
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
@@ -2965,15 +2969,23 @@ void updateGameplayActions(XrTime displayTime){
         updateWeapon6Dof();
         return;
     }
-    // The VR menu exclusively owns the two-thumbstick calibration chord.
-    // Outside the menu retain delayed-release single-stick melee/pause.
-    if(s.customMods.offHandGripCapture){
-        s.offHandStickOutput=s.offHandStickInput.update(
-            vrRightClick,vrLeftClick,true,GetTickCount64());
-    }else{
-        s.offHandStickOutput=s.offHandStickInput.update(
-            false,false,false,GetTickCount64());
+    // The VR menu exclusively owns the two-thumbstick chord. A solo RS
+    // click is emitted ON RELEASE so it cannot also fire before the other
+    // thumbstick joins the chord. Hand Focus uses this isolated RS pulse.
+    const bool guardedStickClicks=s.customMods.offHandGripCapture
+        ||s.customMods.handFocusedRs;
+    s.offHandStickOutput=s.offHandStickInput.update(
+        vrRightClick,vrLeftClick,guardedStickClicks,GetTickCount64());
+    if(gameplay&&s.customMods.handFocusedRs
+        &&s.offHandStickOutput.rightMelee){
+        s.handFocusActivated=!s.handFocusActivated;
+        log(std::string("[FOCUS] isolated physical RIGHT thumbstick -> ")
+            +(s.handFocusActivated?"HAND":"HEAD")+" focus");
+        kharvox::queueControllerZoneCue(
+            s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
+            GetTickCount64(),70,.6f,150.f);
     }
+    if(!s.customMods.handFocusedRs)s.handFocusActivated=false;
     if(nativeUiMenu!=s.nativeUiInputContext){
         s.nativeUiInputContext=nativeUiMenu;
         log(nativeUiMenu
@@ -3566,8 +3578,11 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    const bool rawMeleeDown=s.customMods.offHandGripCapture
-        ?s.offHandStickOutput.rightMelee:readBooleanAction(s.doomMelee);
+    // Hand Focus owns isolated right-stick clicks: never also produce a
+    // gameplay USE/melee event for the same press.
+    const bool rawMeleeDown=s.customMods.handFocusedRs?false
+        :s.customMods.offHandGripCapture?s.offHandStickOutput.rightMelee
+        :readBooleanAction(s.doomMelee);
     // Physical Glory Kills disables thumbstick-driven gameplay melee/USE.
     // Physical punch input still sends the dedicated native JOY8 GK pulse.
     // Outside gameplay, RS retains menu and story interaction bindings.
@@ -4162,7 +4177,8 @@ void updateGameplayActions(XrTime displayTime){
             +(missionInfoDown?"pressed":"released"));
     s.missionInfoPressed=missionInfoDown;
     const bool switchWeaponModDown=readBooleanAction(s.doomSwitchWeaponMod);
-    const bool pauseDown=s.customMods.offHandGripCapture
+    const bool pauseDown=(s.customMods.offHandGripCapture
+        ||s.customMods.handFocusedRs)
         ?s.offHandStickOutput.leftPause:readBooleanAction(s.doomPause);
     const bool restrictedLeftHandSwap=s.leftHanded&&!s.leftHandSwapSticks;
     if(pauseDown&&!s.pausePressed)log(std::string("[INPUT] ")+(s.customMods.offHandGripCapture?"left":pauseHandName())+" thumbstick click -> native JOY9/start pause");
@@ -4253,7 +4269,8 @@ void updateGameplayActions(XrTime displayTime){
         }
         const auto& controller=weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
-        if(s.customMods.handFocusedRs&&!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
+        if(s.customMods.handFocusedRs&&s.handFocusActivated
+            &&!s.boxingHeadFocus&&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
             const auto trackingForward=normalizeVector(

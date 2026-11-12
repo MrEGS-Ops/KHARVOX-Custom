@@ -185,10 +185,15 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     if(!gameplay){
         m.mode=kharvox::VrHandMenuMode::Closed;
         m.previewValid=false;
+        m.swallowStickReleases=false;
         m.rightTriggerPreviously=rightTrigger;
         return false;
     }
     if(chord){
+        // Ignore both-click release tails, not just the press frame.
+        // Otherwise an RS released last after closing the menu can be
+        // misinterpreted as a single Hand Focus toggle or melee.
+        m.swallowStickReleases=true;
         if(m.mode==kharvox::VrHandMenuMode::Closed){
             if(!vrHandMenuSurface.ready){
                 log("[VR-HAND-MENU] cannot open: XR overlay texture unavailable");
@@ -221,7 +226,14 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
-        return chord||(leftClick&&rightClick); // never leak the held chord
+        if(m.swallowStickReleases){
+            if(!leftClick&&!rightClick){
+                m.swallowStickReleases=false;
+                s.offHandStickInput={};
+            }
+            return true; // consume every chord release, including last click
+        }
+        return chord||(leftClick&&rightClick);
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;

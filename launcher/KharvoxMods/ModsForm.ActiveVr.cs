@@ -391,7 +391,7 @@ internal sealed partial class ModsForm
             "Weapon Wheel Button Remap" =>
                 "Standalone mode: tap A to quick-switch; hold A for the native weapon wheel. This checkbox is greyed out while Gunslinger is enabled. Disable Gunslinger first to make it selectable; no automatic mode switching.",
             "Hand Focus" =>
-                "In DOOM: activate with right-stick click, then aim or select with your hand.",
+                "In DOOM: single-click and release the PHYSICAL RIGHT thumbstick to toggle between HEAD and HAND focus. The right-click is consumed by Hand Focus rather than firing melee. Both thumbsticks open the calibration menu without toggling focus.",
             "Gunslinger" =>
                 "Reach behind the LEFT or RIGHT side of your head to open that side's weapon wheel and aim with the SAME hand. Leave with Grip held to equip; without Grip the previous weapon stays selected without a visible switch-back. Hip hotkeys: in an EMPTY zone, press then release Grip to assign; in an ASSIGNED zone, press Grip to equip immediately. Enter holding Grip and release to replace a slot. LEFT hip equips in LEFT hand, RIGHT hip in RIGHT hand. Compatible remapped jump/crouch controls apply, but holding A does NOT open a duplicate wheel. Hands must be enabled in KHARVOX.",
             "Physical Crouch" =>

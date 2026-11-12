@@ -26,6 +26,7 @@ struct VrHandMenuState {
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
     bool bothClickedPreviously{},rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
+    bool swallowStickReleases{};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
