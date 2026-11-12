@@ -12,6 +12,8 @@ on:
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
       - 'tests/quick_holster_policy_tests.cpp'
+      - 'src/openxr/PhysicalGlorykillMeleePolicy.h'
+      - 'tests/physical_glorykill_melee_policy_tests.cpp'
       - '.github/workflows/verify-vr-hand-menu.yml'
   workflow_dispatch:
 
@@ -32,3 +34,7 @@ jobs:
         run: c++ -std=c++17 -Wall -Wextra -pedantic tests/quick_holster_policy_tests.cpp -o /tmp/quick-hip-tests
       - name: Validate immediate left/right native-selection plans and two-handed hip gating
         run: /tmp/quick-hip-tests
+      - name: Compile physical GK and Hand Focus USE routing regression
+        run: c++ -std=c++17 -Wall -Wextra -pedantic tests/physical_glorykill_melee_policy_tests.cpp -o /tmp/focus-use-tests
+      - name: Verify RS Hand Focus USE survives Physical GK without JOY8 melee
+        run: /tmp/focus-use-tests
