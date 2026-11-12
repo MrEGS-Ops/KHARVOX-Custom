@@ -75,5 +75,13 @@ int main(){
  assert(pending.side==0&&pending.target==BackWeaponKind::Chaingun);
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
+ // Full two-hand latch: hip zones are disabled for ALL weapons.
+ assert(quickHipSuspendedForTwoHand(true,false,false,true));
+ // Both held Grips protect heavy-gun alt-fire even before support latch.
+ assert(quickHipSuspendedForTwoHand(false,true,true,true));
+ // Normal one-hand holsters remain usable (including heavy weapons).
+ assert(!quickHipSuspendedForTwoHand(false,true,true,false));
+ assert(!quickHipSuspendedForTwoHand(false,false,true,true));
+ assert(!quickHipSuspendedForTwoHand(false,true,false,false));
  return 0;
 }
