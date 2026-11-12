@@ -1902,6 +1902,13 @@ internal static class KharvoxRunner
             "+view_skipKicks", "1", "+view_skipShakes", "1",
             // Disable native view bob and weapon sway at their engine source.
             "+pm_noBob", "1",
+            // Reduce DOOM's camera near-plane from its native three units
+            // to one unit (~2.54 cm at KHARVOX default world scale).
+            // This retains more of a held weapon when its stock approaches
+            // the HMD. It does NOT recolor already-clipped mesh interiors;
+            // any black interior treatment requires a verified weapon-only
+            // render/material pass. Keep normal world depth/culling enabled.
+            "+r_znear", "1",
             "+r_skipShadows", "0", // Restore shadows after the r285 comparison.
             // Make the selected RenderScale the actual render resolution;
             // DOOM's dynamic scaler must not silently lower it again.
