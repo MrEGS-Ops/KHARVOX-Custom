@@ -20,32 +20,16 @@ struct QuickHolsters {
  std::array<QuickHipGesture,2> gestures{};
 };
 enum class QuickHipAction {None,Enter,Assign,Draw};
-// Physical weapon hand switches INSTANTLY. If the native gun declaration
-// needs another game frame to change, hide only the old model until the
-// requested hotkey weapon is active. No timed handoff or weapon-wheel delay.
-struct QuickHipHandoff {
-    int side{-1};
-    BackWeaponKind target{BackWeaponKind::Unknown};
-    std::uint64_t deadlineNanoseconds{};
-    void reset() noexcept {side=-1;target=BackWeaponKind::Unknown;deadlineNanoseconds=0;}
-    bool pending() const noexcept {return side>=0&&target!=BackWeaponKind::Unknown;}
-    void request(int targetSide,BackWeaponKind weapon,std::uint64_t now) noexcept {
-        if(targetSide<0||targetSide>1||weapon==BackWeaponKind::Unknown){reset();return;}
-        side=targetSide;target=weapon;
-        deadlineNanoseconds=now+2000000000ULL;
-    }
+// A hip draw requests one native hotkey and its correct physical hand.
+// No delayed handoff, gun hiding or weapon restoration.
+struct QuickHipDrawPlan {
+ bool valid{},needsNativeSelect{},leftWeaponHand{};
+ BackWeaponKind weapon{BackWeaponKind::Unknown};
 };
-enum class QuickHipHandoffState {Waiting,Ready,Expired,Idle};
-inline bool quickHipHideStaleWeapon(
-    const QuickHipHandoff& pending,BackWeaponKind active) noexcept {
-    return pending.pending()&&pending.target!=active;
-}
-inline QuickHipHandoffState quickHipHandoffState(
-    const QuickHipHandoff& pending,BackWeaponKind active,std::uint64_t now) noexcept {
-    if(!pending.pending())return QuickHipHandoffState::Idle;
-    if(active==pending.target)return QuickHipHandoffState::Ready;
-    if(now>=pending.deadlineNanoseconds)return QuickHipHandoffState::Expired;
-    return QuickHipHandoffState::Waiting;
+inline QuickHipDrawPlan quickHipPlanDraw(int side,BackWeaponKind stored,
+                                        BackWeaponKind current) noexcept {
+ if(side<0||side>1||stored==BackWeaponKind::Unknown)return {};
+ return {true,stored!=current,side==1,stored};
 }
 // Disable hip-hotkey recognition while two-handed aiming is latched.
 // For Gauss/Chaingun, both held Grips also protect alt-fire before latch.
@@ -59,8 +43,7 @@ inline bool quickHipSuspendedForTwoHand(bool latched,bool heavy,
 inline bool quickHipDrawUsesLeftHand(int side) { return side==1; }
 // Assign empty slot: press and release Grip INSIDE. Equip occupied slot:
 // press Grip INSIDE, no exit required. Reassign occupied slot: enter with
-// Grip held, release INSIDE. Slots never clear on draw. The old weapon model
-// is only temporarily hidden if a new native hotkey has not taken effect.
+// Grip held, release INSIDE. Saved slots never clear on draw.
 inline QuickHipAction updateQuickHip(QuickHolsters& h,int side,bool inside,
  bool gripDown,BackWeaponKind equipped) {
  if(side<0||side>1)return QuickHipAction::None;
