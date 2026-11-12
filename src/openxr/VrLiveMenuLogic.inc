@@ -20,7 +20,6 @@ std::vector<VrDevMenuEntry> devVrMenuEntries(){
     };
     if(s.customMods.handFocusedRs)rows.push_back({"Hand Focus","LOCKED"});
     enabled("PAINSAW",s.customMods.chainsawTriggerThrottle);
-    enabled("Wheel Button Remap (legacy)",s.weaponWheelRemapEnabled);
     enabled("Hands Jump",s.handsJumpEnabled);
     enabled("Boxing Guard",s.customMods.boxingGuard);
     enabled("Back-of-Hand HUD",s.customMods.backOfHandHud);
