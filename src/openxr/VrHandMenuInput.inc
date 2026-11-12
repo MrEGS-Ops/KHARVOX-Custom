@@ -126,10 +126,22 @@ void resetVrMenuSelectedWeapon(){
     const auto leftPrimarySupport=kharvox::runtimePathA(
         "two_hand_weapon_profiles_left_primary_saved.cfg");
     std::string why;
-    if(!kharvox::resetVrWeaponCalibrationFile(rightFile,m.weapon(),true,&why)
-        ||!kharvox::resetVrWeaponCalibrationFile(leftFile,m.weapon(),false,&why)
-        ||!kharvox::resetVrWeaponCalibrationFile(
-            leftPrimarySupport,m.weapon(),false,&why)){
+    // Factory defaults are the user's uploaded in-headset calibration,
+    // packaged as read-only files inside the native bridge. The active
+    // editable profiles live in top-level UserData; only this weapon is
+    // restored, while every other weapon's adjustments remain intact.
+    const auto defaultPrimary=kharvox::runtimePathA(
+        "CalibrationDefaults/offhand_right_hand_positions.cfg");
+    const auto defaultRightSupport=kharvox::runtimePathA(
+        "CalibrationDefaults/two_hand_weapon_profiles_saved.cfg");
+    const auto defaultLeftSupport=kharvox::runtimePathA(
+        "CalibrationDefaults/two_hand_weapon_profiles_left_primary_saved.cfg");
+    if(!kharvox::restoreVrWeaponCalibrationDefault(
+            rightFile,defaultPrimary,m.weapon(),true,&why)
+        ||!kharvox::restoreVrWeaponCalibrationDefault(
+            leftFile,defaultRightSupport,m.weapon(),false,&why)
+        ||!kharvox::restoreVrWeaponCalibrationDefault(
+            leftPrimarySupport,defaultLeftSupport,m.weapon(),false,&why)){
         m.message="RESET FAILED: "+why;
         log("[VR-HAND-MENU] "+m.message);
         return;
@@ -141,7 +153,7 @@ void resetVrMenuSelectedWeapon(){
     s.primaryVisualLocked=false;s.supportVisualLocked=false;
     s.twoHandLatched=false;
     refreshVrHandMenuSavedStatus();
-    m.message=std::string("Default hand positions restored: ")+m.weapon();
+    m.message=std::string("Your factory calibration restored: ")+m.weapon();
     log("[VR-HAND-MENU] "+m.message);
 }
 int vrMenuRayTarget(float&pixelX,float&pixelY){
