@@ -10,7 +10,8 @@ namespace KharvoxLauncher;
 internal sealed class StandaloneModsBridge
 {
     public int Schema { get; set; } = 1;
-    public bool WeaponWheelRemap { get; set; } = true;
+    // Deprecated JSON compatibility field. Never activates a standalone mod.
+    public bool WeaponWheelRemap { get; set; } = false;
     public bool HandFocus { get; set; }
     public bool Gunslinger { get; set; }
     // Kept for older sidecar JSON files; either maps to the full combo.
