@@ -21,78 +21,61 @@ The original Cactus **MainForm.cs** is preserved, and the separately installed o
 KHARVOX VR Mod Manager/
 ├── KharvoxVRModManager.exe
 ├── KharvoxVRModManagerUpdater.exe
-├── README.md
-├── build-info.txt
-├── kharvox-mods-bridge.json        (created locally)
-├── settings.json                 (created locally)
-├── NativeBridge/                 (bundled modified launcher + native runtime)
-├── Logs/                         (created when needed)
-├── Backups/                      (created when needed)
-└── UpdateCache/                  (created when needed)
+├── UserData/                         (ALL mutable user configurations)
+│   ├── settings.json
+│   ├── kharvox-mods-bridge.json
+│   ├── kharvox-mods-applied.txt
+│   ├── kharvox-launcher-settings.json
+│   ├── kharvox-custom-mods.json
+│   ├── known-configurations.json
+│   ├── offhand_right_hand_positions.cfg
+│   ├── two_hand_weapon_profiles_saved.cfg
+│   └── two_hand_weapon_profiles_left_primary_saved.cfg
+├── NativeBridge/                     (replaceable native runtime)
+│   └── CalibrationDefaults/          (read-only uploaded owner presets)
+├── Logs/
+├── Backups/
+└── UpdateCache/
 ```
 
-All settings and game-adjacent content are kept in these local folders. **No AppData installation** is required.
+**Only edit the files under `UserData`.** The NativeBridge runtime can be
+replaced by the updater without touching user settings. Existing manager,
+launcher and native configuration files are migrated automatically when first
+running this version. If an older and newer settings file both exist with
+different values, the newer `UserData` file takes precedence and the old
+one is kept under `UserData/LegacyBackups` where applicable. There is no
+new AppData storage for this mod-manager installation.
 
 ## Updates
 
-Close the manager, then run **KharvoxVRModManagerUpdater.exe**. It checks the official project release, downloads the build-specific ZIP and verifies its SHA-256 before replacing managed app files. Local user settings and native files are preserved; a previous managed version is kept for rollback.
+Close the manager, then run `KharvoxVRModManagerUpdater.exe`. The updater
+verifies its release SHA-256, replaces only managed app files and retains the
+entire `UserData` directory. When upgrading the bridge, older active CFG
+files are migrated out of NativeBridge into `UserData` before the replace.
+The existing rollback folder remains `Backups/NativeBridge`.
 
-This is a clean rename of the actual executables. Old `KharvoxMods.exe` and `KharvoxModsUpdater.exe` are not included. For an existing installation, extract into a new folder; optionally copy your existing settings and Mods folder yourself, rather than overwriting the old installation.
+## Owner-calibrated first-run and Reset Weapon defaults
 
-## Owner-recorded off-hand grip positions
+The three CFG files uploaded by the owner on 12 November 2026 are the
+factory calibration baseline. A **new installation** copies the exact saved
+left and right weapon grips, quaternions, two-hand support placements, Gauss
+Siege and Minigun Turret positions into `UserData`. Once seeded, KHARVOX
+never overwrites these editable profiles during normal updates.
 
-After updating and launching the manager, it automatically imports the eight recorded
-weapon support positions **once** from the bundled
-`NativeBridge/two_hand_weapon_profiles_captured.cfg` into
-`NativeBridge/two_hand_weapon_profiles_saved.cfg`. All existing saved
-non-captured weapons (including BFG and Chainsaw) are preserved. Any existing
-saved file is backed up under `Backups/GripProfiles/`. Once the import runs,
-the manager enables `Off-Hand Grip Capture (Test)` once. It restores
-normal two-hand aiming while the support grip is held and locks the visible
-support-hand model to the saved weapon grip position (not to the moving free
-controller). Releasing support Grip restores live hand motion. While enabled,
-RIGHT thumbstick click melees, LEFT click pauses, and BOTH clicks together
-record diagnostic CSV data without overwriting saved profiles. The one-time
-activation is remembered so disabling the feature manually remains OFF in
-future sessions. To revert, close DOOM and restore the
-saved profile from `Backups/GripProfiles/`; keep the applied marker so later
-updates will not reimport the experimental positions. Capture orientations
-are not yet used by the two-hand aiming solver. All eight need headset testing.
+In the headset, **RESET THIS WEAPON** restores *only* that weapon's
+factory primary poses and normal/alternate support positions, with an
+adjacent `.before-vr-reset.bak` backup of the earlier user settings.
+Other weapons remain untouched. Read-only factory copies live under
+`NativeBridge/CalibrationDefaults`; they are not the editable settings.
 
-With this mod enabled, Virtual GunStock is disabled in the two-hand
-aiming solver regardless of the original launcher setting. Both hand models
-follow the final weapon orientation while Grip is held (controller tracking
-and physical aiming remain unchanged). The right-hand visual model's shared height is corrected by
-`right_hand_drop_m = 0.08` (8 cm down along the solved gun's own axes)
-when the support Grip is latched, preventing the right glove from
-floating above multiple weapons. It can be adjusted from 0.00 to
-0.20 metres in `NativeBridge/offhand_right_hand_positions.cfg`,
-and the default applies even when older saved configs lack the new key.
-No physical gun/controller position, left support calibration, or
-non-two-hand pose is changed. Manual edits take effect on the next DOOM
-launch. To tune the primary/right-hand
-position for Gauss Cannon or Chaingun, edit
-`NativeBridge/offhand_right_hand_positions.cfg`:
-`gauss_cannon = X Y Z` and `chaingun = X Y Z`. Distances
-are **metres**, in weapon-local axes (+X right, +Y up, -Z forward),
-limited to 0.85 metres TOTAL distance (not per axis). Defaults are neutral zero until in-game fitting.
-Gauss Cannon and Chaingun can also calibrate this directly in VR:
-equip either weapon in the RIGHT hand; move the physical LEFT controller
-to the position where the visible RIGHT hand should sit; click BOTH
-thumbsticks at once. The code converts that point into the rendered gun's
-weapon-relative frame, updates only the selected weapon's RIGHT visual
-offset, and records the original diagnostic CSV as well. This does not
-change the physical right-controller tracking, left support-grip position,
-or any other weapon. An adjacent
-`offhand_right_hand_positions.cfg.before-capture.bak` holds the
-previous config. Values beyond 85 cm total distance are rejected with a short/weak haptic, and successful
-captures apply during the current session. Manual edits need a DOOM restart.
-Local edits are preserved on bridge updates.
-
-The standard manager updater retains existing user preferences and NativeBridge
-files. When NativeBridge is refreshed, local PAINSAW audio, saved grip profiles,
-calibration settings, and the off-hand capture CSV are carried over, while the
-entire previous bridge is backed up under `Backups/NativeBridge/`.
+To calibrate live: hold right-stick click for one second to open the panel,
+choose the weapon and physical hand, select Normal or Siege/Turret, and
+start calibration. The **current weapon-hand Grip** still operates DOOM's
+native alternate mode while calibrating. Right trigger saves the position
+without firing. Hand Focus stays weapon-hand aimed in ordinary gameplay;
+short RS clicks remain world Use rather than aim toggles. During native
+Glory Kills, chainsaw kills, ledge transitions and cinematics, focus
+temporarily returns to the head.
 
 ## Testing / runtime
 
