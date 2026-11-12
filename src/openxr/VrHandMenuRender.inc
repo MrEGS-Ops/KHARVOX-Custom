@@ -98,7 +98,7 @@ void paintVrHandMenu() {
     if(m.page==kharvox::VrMenuPage::Mods){
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
-        write(40,102,"ACTIVE / AVAILABLE MODS",muted);
+        write(40,102,"CONFIGURABLE MODS",muted);
         write(535,102,"LIVE SETTINGS",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
@@ -119,15 +119,46 @@ void paintVrHandMenu() {
             // The left edge lists ALL enabled mods, but the five supported
             // adjustable ones remain visible even when switched off.
             if(title.size()>29)title.resize(29);
-            write(55,y+10,title,entries[index].enabled?white:muted);
-            write(436,y+10,entries[index].enabled?"ON":"OFF",
-                entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
+            write(55,y+10,title,entries[index].devSection
+                ?RGB(84,233,214):entries[index].enabled?white:muted);
+            write(entries[index].devSection?421:436,y+10,
+                entries[index].devSection?"VIEW":entries[index].enabled?"ON":"OFF",
+                entries[index].devSection?RGB(84,233,214):
+                    entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
         }
         if(count>10){
             SelectObject(dc,smallFont);
             write(48,602,"LEFT STICK: scroll  ("+
                 std::to_string(selected+1)+"/"+std::to_string(count)+")",muted);
         }
+        const bool devSelected=count>0&&entries[selected].devSection;
+        if(devSelected){
+            const auto dev=devVrMenuEntries();
+            const int n=static_cast<int>(dev.size());
+            const int focus=std::clamp(m.navigation.actionIndex,0,std::max(0,n-1));
+            SelectObject(dc,regular);
+            write(536,126,"DEV  /  READ-ONLY",white);
+            SelectObject(dc,smallFont);
+            write(538,156,"STATUS ONLY - CHANGE IN DESKTOP LAUNCHER",muted);
+            for(int shown=0;shown<10;++shown){
+                const int index=shown+m.devScroll;
+                if(index>=n)break;
+                const int y=186+shown*39;
+                const bool selected=m.navigation.settingsColumn&&index==focus;
+                const bool hovered=m.hovered==1200+index
+                    ||(selected&&m.navigation.usingStick);
+                fill(531,y,384,36,hovered?RGB(48,80,92)
+                    :selected?RGB(35,66,79):RGB(27,32,43));
+                std::string label=dev[index].title;
+                if(label.size()>27)label.resize(27);
+                write(545,y+8,label,white);
+                const std::string status=dev[index].status;
+                write(status=="LOCKED"?837:status=="DESKTOP"?829:856,y+8,
+                    status,status=="LOCKED"?RGB(84,233,214):muted);
+            }
+            write(544,598,"DEV ITEMS: "+std::to_string(n)
+                +(n>10?"  ("+std::to_string(focus+1)+"/"+std::to_string(n)+")":""),muted);
+        }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
         const bool enabled=count>0&&entries[selected].enabled;
@@ -209,6 +240,7 @@ void paintVrHandMenu() {
             }else if(mod==kharvox::VrLiveMod::Gunslinger){
                 write(548,609,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
+        }
         }
         SelectObject(dc,smallFont);
         write(538,623,"LEFT STICK NAV / A SELECT / B BACK",muted);
