@@ -56,23 +56,17 @@ int main(){
  assert(updateQuickHip(empty,1,true,true,BackWeaponKind::Pistol)==QuickHipAction::None);
  assert(updateQuickHip(empty,1,false,true,BackWeaponKind::Pistol)==QuickHipAction::None);
  assert(empty.slots[1]==BackWeaponKind::Unknown);
- QuickHipHandoff pending{};
- assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,10)
-    ==QuickHipHandoffState::Idle);
- pending.request(1,BackWeaponKind::SuperShotgun,100);
- assert(pending.pending()&&pending.side==1);
- assert(quickHipHideStaleWeapon(pending,BackWeaponKind::GaussCannon));
- assert(!quickHipHideStaleWeapon(pending,BackWeaponKind::SuperShotgun));
- assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,101)
-    ==QuickHipHandoffState::Waiting); // Old gun cannot cross to new hand.
- assert(quickHipHandoffState(pending,BackWeaponKind::SuperShotgun,102)
-    ==QuickHipHandoffState::Ready);
- pending.reset();pending.request(0,BackWeaponKind::Pistol,200);
- assert(quickHipHandoffState(pending,BackWeaponKind::GaussCannon,2000000300ULL)
-    ==QuickHipHandoffState::Expired);
- pending.request(1,BackWeaponKind::Chainsaw,300);
- pending.request(0,BackWeaponKind::Chaingun,301);
- assert(pending.side==0&&pending.target==BackWeaponKind::Chaingun);
+ // Direct one-shot plan: target and physical hand; never a pending swap.
+ const auto right=quickHipPlanDraw(0,BackWeaponKind::GaussCannon,BackWeaponKind::SuperShotgun);
+ assert(right.valid&&right.needsNativeSelect&&!right.leftWeaponHand
+        &&right.weapon==BackWeaponKind::GaussCannon);
+ const auto left=quickHipPlanDraw(1,BackWeaponKind::Chaingun,BackWeaponKind::GaussCannon);
+ assert(left.valid&&left.needsNativeSelect&&left.leftWeaponHand
+        &&left.weapon==BackWeaponKind::Chaingun);
+ const auto equipped=quickHipPlanDraw(1,BackWeaponKind::Chaingun,BackWeaponKind::Chaingun);
+ assert(equipped.valid&&!equipped.needsNativeSelect&&equipped.leftWeaponHand);
+ assert(!quickHipPlanDraw(2,BackWeaponKind::Pistol,BackWeaponKind::Pistol).valid);
+ assert(!quickHipPlanDraw(0,BackWeaponKind::Unknown,BackWeaponKind::GaussCannon).valid);
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
  // Full two-hand latch: hip zones are disabled for ALL weapons.
