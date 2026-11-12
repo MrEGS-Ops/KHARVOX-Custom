@@ -215,8 +215,6 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                 }
             }
         }
-        if(leftTrigger&&!m.leftTriggerPreviously)
-            resetVrMenuSelectedWeapon(); // fallback for thumbstick navigation
         m.leftTriggerPreviously=leftTrigger;
     }
     // While the menu OR capture is active, never forward gamepad movement,
