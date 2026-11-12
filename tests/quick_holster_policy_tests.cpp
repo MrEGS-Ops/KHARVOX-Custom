@@ -17,44 +17,44 @@ int main(){
  assert(quickHipDrawUsesLeftHand(1));  // LEFT hip -> LEFT weapon hand
  QuickHolsters h{};
  // Actual reported path: enter OPEN, press then RELEASE inside to assign.
- assert(updateQuickHip(h,0,true,false,BackWeaponKind::Pistol)==QuickHipAction::Enter);
- assert(updateQuickHip(h,0,true,true,BackWeaponKind::Pistol)==QuickHipAction::None);
- assert(updateQuickHip(h,0,true,false,BackWeaponKind::Pistol)==QuickHipAction::Assign);
+ assert(updateQuickHip(h,0,true,false,BackWeaponKind::Pistol,true)==QuickHipAction::Enter);
+ assert(updateQuickHip(h,0,true,true,BackWeaponKind::Pistol,true)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,true,false,BackWeaponKind::Pistol,true)==QuickHipAction::Assign);
  assert(h.slots[0]==BackWeaponKind::Pistol);
- assert(updateQuickHip(h,0,true,true,BackWeaponKind::Pistol)==QuickHipAction::None);
- assert(updateQuickHip(h,0,false,true,BackWeaponKind::Pistol)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,true,true,BackWeaponKind::Pistol,true)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,false,true,BackWeaponKind::Pistol,true)==QuickHipAction::None);
  // Equip as soon as Grip PRESSES in occupied zone, before any exit.
- assert(updateQuickHip(h,0,true,false,BackWeaponKind::SuperShotgun)==QuickHipAction::Enter);
- const auto rightDraw=updateQuickHip(h,0,true,true,BackWeaponKind::SuperShotgun);
+ assert(updateQuickHip(h,0,true,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::Enter);
+ const auto rightDraw=updateQuickHip(h,0,true,true,BackWeaponKind::SuperShotgun,true);
  assert(rightDraw==QuickHipAction::Draw);
  bool leftHandActive=true; // simulate player currently holding a gun on left
  if(rightDraw==QuickHipAction::Draw)leftHandActive=quickHipDrawUsesLeftHand(0);
  assert(!leftHandActive);  // retrieving RIGHT hip moves the gun to RIGHT
  assert(h.slots[0]==BackWeaponKind::Pistol);
- assert(updateQuickHip(h,0,true,false,BackWeaponKind::SuperShotgun)==QuickHipAction::None);
- assert(updateQuickHip(h,0,false,false,BackWeaponKind::SuperShotgun)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,true,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,false,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::None);
  // Replace occupied right slot by entering CLOSED and releasing INSIDE.
- assert(updateQuickHip(h,0,true,true,BackWeaponKind::GaussCannon)==QuickHipAction::Enter);
- assert(updateQuickHip(h,0,true,false,BackWeaponKind::GaussCannon)==QuickHipAction::Assign);
- assert(updateQuickHip(h,0,false,false,BackWeaponKind::GaussCannon)==QuickHipAction::None);
+ assert(updateQuickHip(h,0,true,true,BackWeaponKind::GaussCannon,true)==QuickHipAction::Enter);
+ assert(updateQuickHip(h,0,true,false,BackWeaponKind::GaussCannon,true)==QuickHipAction::Assign);
+ assert(updateQuickHip(h,0,false,false,BackWeaponKind::GaussCannon,true)==QuickHipAction::None);
  assert(h.slots[0]==BackWeaponKind::GaussCannon);
- assert(updateQuickHip(h,1,true,true,BackWeaponKind::SuperShotgun)==QuickHipAction::Enter);
- assert(updateQuickHip(h,1,true,false,BackWeaponKind::SuperShotgun)==QuickHipAction::Assign);
+ assert(updateQuickHip(h,1,true,true,BackWeaponKind::SuperShotgun,true)==QuickHipAction::Enter);
+ assert(updateQuickHip(h,1,true,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::Assign);
  assert(h.slots[1]==BackWeaponKind::SuperShotgun);
- assert(updateQuickHip(h,1,false,false,BackWeaponKind::SuperShotgun)==QuickHipAction::None);
+ assert(updateQuickHip(h,1,false,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::None);
  // LEFT hip draw must make LEFT the weapon hand, even when the very
  // same weapon is already active in the right hand.
- assert(updateQuickHip(h,1,true,false,BackWeaponKind::SuperShotgun)==QuickHipAction::Enter);
- const auto leftDraw=updateQuickHip(h,1,true,true,BackWeaponKind::SuperShotgun);
+ assert(updateQuickHip(h,1,true,false,BackWeaponKind::SuperShotgun,true)==QuickHipAction::Enter);
+ const auto leftDraw=updateQuickHip(h,1,true,true,BackWeaponKind::SuperShotgun,true);
  assert(leftDraw==QuickHipAction::Draw);
  if(leftDraw==QuickHipAction::Draw)leftHandActive=quickHipDrawUsesLeftHand(1);
  assert(leftHandActive);
  assert(h.slots[1]==BackWeaponKind::SuperShotgun);
- assert(updateQuickHip(h,1,false,true,BackWeaponKind::SuperShotgun)==QuickHipAction::None);
+ assert(updateQuickHip(h,1,false,true,BackWeaponKind::SuperShotgun,true)==QuickHipAction::None);
  QuickHolsters empty{};
- assert(updateQuickHip(empty,1,true,false,BackWeaponKind::Pistol)==QuickHipAction::Enter);
- assert(updateQuickHip(empty,1,true,true,BackWeaponKind::Pistol)==QuickHipAction::None);
- assert(updateQuickHip(empty,1,false,true,BackWeaponKind::Pistol)==QuickHipAction::None);
+ assert(updateQuickHip(empty,1,true,false,BackWeaponKind::Pistol,true)==QuickHipAction::Enter);
+ assert(updateQuickHip(empty,1,true,true,BackWeaponKind::Pistol,true)==QuickHipAction::None);
+ assert(updateQuickHip(empty,1,false,true,BackWeaponKind::Pistol,true)==QuickHipAction::None);
  assert(empty.slots[1]==BackWeaponKind::Unknown);
  // Direct one-shot plan: target and physical hand; never a pending swap.
  const auto right=quickHipPlanDraw(0,BackWeaponKind::GaussCannon,BackWeaponKind::SuperShotgun);
@@ -67,6 +67,59 @@ int main(){
  assert(equipped.valid&&!equipped.needsNativeSelect&&equipped.leftWeaponHand);
  assert(!quickHipPlanDraw(2,BackWeaponKind::Pistol,BackWeaponKind::Pistol).valid);
  assert(!quickHipPlanDraw(0,BackWeaponKind::Unknown,BackWeaponKind::GaussCannon).valid);
+ // Specific real-world regression: shotgun held in LEFT, RIGHT is empty.
+ // Releasing the right Grip IN THE RIGHT HIP must never store that shotgun.
+ QuickHolsters offhand{};
+ assert(!quickHipMayAssign(0,true)); // right hip is empty hand
+ assert(quickHipMayAssign(1,true));  // left hip owns shotgun
+ assert(quickHipMayAssign(0,false));
+ assert(!quickHipMayAssign(1,false));
+ assert(!quickHipMayAssign(-1,false));
+ assert(!quickHipMayAssign(2,true));
+ assert(updateQuickHip(offhand,0,true,true,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::Enter);
+ assert(!quickHipConsumesGrip(false,true,true,QuickHipAction::Enter));
+ assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::None);
+ assert(offhand.slots[0]==BackWeaponKind::Unknown);
+ // Same bug against an already populated right hip: never overwrite it.
+ offhand.slots[0]=BackWeaponKind::Pistol;
+ assert(updateQuickHip(offhand,0,false,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::None);
+ assert(updateQuickHip(offhand,0,true,true,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::Enter);
+ assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::None);
+ assert(offhand.slots[0]==BackWeaponKind::Pistol);
+ // But opening an EMPTY right hand in that hip, then pressing Grip,
+ // must still DRAW right-hip pistol immediately and transfer hand.
+ assert(updateQuickHip(offhand,0,false,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::None);
+ assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::Enter);
+ const auto offhandDraw=updateQuickHip(offhand,0,true,true,
+                                      BackWeaponKind::CombatShotgun,false);
+ assert(offhandDraw==QuickHipAction::Draw);
+ assert(quickHipConsumesGrip(false,true,true,offhandDraw));
+ assert(offhand.slots[0]==BackWeaponKind::Pistol);
+ assert(updateQuickHip(offhand,0,true,false,BackWeaponKind::Pistol,true)
+        ==QuickHipAction::None); // draw cannot become a STORE on release
+ // Same test mirrored: shotgun held RIGHT, empty LEFT may not save it.
+ QuickHolsters emptyLeft{};
+ assert(updateQuickHip(emptyLeft,1,true,true,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::Enter);
+ assert(updateQuickHip(emptyLeft,1,true,false,BackWeaponKind::CombatShotgun,false)
+        ==QuickHipAction::None);
+ assert(emptyLeft.slots[1]==BackWeaponKind::Unknown);
+ // Hand ownership switching while an assignment is armed must cancel STORE.
+ QuickHolsters ownershipSwap{};
+ assert(updateQuickHip(ownershipSwap,0,true,true,BackWeaponKind::GaussCannon,true)
+        ==QuickHipAction::Enter);
+ assert(updateQuickHip(ownershipSwap,0,true,false,BackWeaponKind::GaussCannon,false)
+        ==QuickHipAction::None);
+ assert(ownershipSwap.slots[0]==BackWeaponKind::Unknown);
+ assert(!quickHipConsumesGrip(false,true,true,QuickHipAction::None));
+ assert(quickHipConsumesGrip(true,true,true,QuickHipAction::None));
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
  // Full two-hand latch: hip zones are disabled for ALL weapons.

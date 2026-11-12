@@ -8,6 +8,7 @@ on:
       - fix/manager-187-heavy-alt-grip-hip-zones
       - fix/rs-hand-focus-use-interactions
       - fix/calibration-live-secondary-fire
+      - fix/gunslinger-weapon-hand-only-hip-assign
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
