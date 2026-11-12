@@ -29,12 +29,12 @@ internal sealed class StandaloneModPreferences
 
     public int Schema { get; set; } = 1;
     public bool WeaponWheelRemap { get; set; } = true;
-    public bool HandFocus { get; set; }
+    public bool HandFocus { get; set; } = true;
     public bool Gunslinger { get; set; }
     // Read old bridge files; these flags are never written as active mods again.
     public bool BehindHeadWeaponWheel { get; set; }
     public bool DynamicQuickHolsters { get; set; }
-    public bool PhysicalCrouch { get; set; }
+    public bool PhysicalCrouch { get; set; } = true;
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool OffHandGripCapture { get; set; } // Diagnostic, OFF by default
     public bool GloryKillSpeedOverride { get; set; }
@@ -75,6 +75,8 @@ internal sealed class StandaloneModPreferences
             value.BehindHeadWeaponWheel = false;
             value.DynamicQuickHolsters = false;
             if (value.Gunslinger) value.WeaponWheelRemap = false;
+            value.HandFocus = true;
+            value.PhysicalCrouch = true;
             value.ActiveOrder = Array.ConvertAll(value.ActiveOrder ??
                 Array.Empty<string>(), UpgradeModTitle)
                 .Distinct(StringComparer.Ordinal).ToArray();
@@ -97,6 +99,8 @@ internal sealed class StandaloneModPreferences
     {
         path ??= DefaultPath;
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
+        HandFocus = true;
+        PhysicalCrouch = true;
         // Never leave two separate input owners enabled after a save.
         if (Gunslinger) WeaponWheelRemap = false;
         BehindHeadWeaponWheel = false;
