@@ -31,6 +31,19 @@ inline QuickHipDrawPlan quickHipPlanDraw(int side,BackWeaponKind stored,
  if(side<0||side>1||stored==BackWeaponKind::Unknown)return {};
  return {true,stored!=current,side==1,stored};
 }
+// Only the hand that actually holds the weapon may STORE it in its own
+// physical hip. The opposite hand is empty, even when DOOM reports a
+// globally equipped native weapon. It can still DRAW from its saved hip.
+inline bool quickHipMayAssign(int side,bool weaponHandLeft) noexcept {
+    return (side==0&&!weaponHandLeft)||(side==1&&weaponHandLeft);
+}
+// An empty off-hand held inside its hip is not automatically a holster
+// gesture. Only a real DRAW edge should consume that Grip; this preserves
+// normal two-hand aiming and any other off-hand use of the Grip.
+inline bool quickHipConsumesGrip(bool weaponHand,bool inside,bool gripDown,
+                                 QuickHipAction action) noexcept {
+    return action==QuickHipAction::Draw||(weaponHand&&inside&&gripDown);
+}
 // Disable hip-hotkey recognition while two-handed aiming is latched.
 // For Gauss/Chaingun, both held Grips also protect alt-fire before latch.
 inline bool quickHipSuspendedForTwoHand(bool latched,bool heavy,
@@ -41,17 +54,23 @@ inline bool quickHipSuspendedForTwoHand(bool latched,bool heavy,
 // 0 is the physical RIGHT hip; 1 is the physical LEFT hip.
 // This rule applies even when the saved weapon is already equipped.
 inline bool quickHipDrawUsesLeftHand(int side) { return side==1; }
-// Assign empty slot: press and release Grip INSIDE. Equip occupied slot:
-// press Grip INSIDE, no exit required. Reassign occupied slot: enter with
-// Grip held, release INSIDE. Saved slots never clear on draw.
+// STORE: only the current weapon hand may save to its OWN hip. DRAW:
+// either physical hand may equip its OWN populated hip on Grip press.
+// Releasing an EMPTY support hand Grip inside a hip cannot accidentally
+// clone the currently equipped gun into the other side's quick slot.
 inline QuickHipAction updateQuickHip(QuickHolsters& h,int side,bool inside,
- bool gripDown,BackWeaponKind equipped) {
+ bool gripDown,BackWeaponKind equipped,bool isWeaponHand) {
  if(side<0||side>1)return QuickHipAction::None;
  auto& g=h.gestures[side];
  const bool wasInside=g.inside,wasGrip=g.gripWasDown;
  g.inside=inside;g.gripWasDown=gripDown;
+ // Ownership can change mid-gesture (Gunslinger draws). Never carry a
+ // previously armed STORE onto a physical hand that is now empty.
+ if(!isWeaponHand)g.assignmentArmed=false;
  if(inside&&!wasInside) {
-  g.enteredWithGrip=gripDown;g.assignmentArmed=gripDown;g.consumed=false;
+  g.enteredWithGrip=gripDown;
+  g.assignmentArmed=isWeaponHand&&gripDown;
+  g.consumed=false;
   return QuickHipAction::Enter;
  }
  if(inside&&!g.consumed) {
@@ -59,9 +78,9 @@ inline QuickHipAction updateQuickHip(QuickHolsters& h,int side,bool inside,
    if(!g.enteredWithGrip&&h.slots[side]!=BackWeaponKind::Unknown) {
     g.consumed=true;return QuickHipAction::Draw;
    }
-   g.assignmentArmed=true;
+   if(isWeaponHand)g.assignmentArmed=true;
   }
-  if(wasGrip&&!gripDown&&g.assignmentArmed
+  if(wasGrip&&!gripDown&&g.assignmentArmed&&isWeaponHand
      &&equipped!=BackWeaponKind::Unknown) {
    h.slots[side]=equipped;g.assignmentArmed=false;g.consumed=true;
    return QuickHipAction::Assign;
