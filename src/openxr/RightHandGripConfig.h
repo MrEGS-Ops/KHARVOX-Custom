@@ -60,6 +60,12 @@ inline bool gripKeySuffix(const std::string& key,const std::string& suffix) noex
     return key.size()>=suffix.size()
         &&key.compare(key.size()-suffix.size(),suffix.size(),suffix)==0;
 }
+// Normal and alternate left-primary profiles use their own namespace;
+// right-primary keys remain byte-for-byte compatible with existing files.
+inline bool validVrPrimaryProfileKey(const std::string& key) noexcept {
+    return validVrCalibrationWeapon(key)||key=="gauss_cannon_siege"
+        ||key=="chaingun_turret";
+}
 
 // Gauss / Chaingun are physically large. 30 cm per-axis rejected verified
 // ~55 cm and ~74 cm owner captures despite valid tracking. Limit the full
@@ -100,6 +106,9 @@ struct RightHandGripSettings {
     float rightHandDropMeters{0.08f};
     std::map<std::string,RightHandGripOffset> visualPositions;
     std::map<std::string,RightHandGripRotation> visualRotations;
+    std::map<std::string,RightHandGripOffset> leftVisualPositions;
+    std::map<std::string,RightHandGripRotation> leftVisualRotations;
+    std::map<std::string,RightHandGripOffset> leftPrimaryAlternateSupport;
     int accepted{},rejected{};
 };
 inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
@@ -115,15 +124,22 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
+        const bool leftRotation=gripKeySuffix(key,"_left_rotation")
+            &&validVrPrimaryProfileKey(
+                key.substr(0,key.size()-std::string("_left_rotation").size()));
         const bool genericRotation=gripKeySuffix(key,"_rotation")
             &&validVrCalibrationWeapon(key.substr(0,key.size()-9));
-        if(genericRotation||key=="gauss_cannon_siege_rotation"||
+        if(leftRotation||genericRotation||key=="gauss_cannon_siege_rotation"||
             key=="chaingun_turret_rotation"){
             RightHandGripRotation q{};
             if(!(v>>q.x>>q.y>>q.z>>q.w)||(v>>extra)
                 ||!validRightHandRotation(q)){++out.rejected;continue;}
             const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
             q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;q.valid=true;
+            if(leftRotation){
+                out.leftVisualRotations[
+                    key.substr(0,key.size()-std::string("_left_rotation").size())]=q;
+            }
             if(key=="gauss_cannon_rotation")out.gaussRotation=q;
             else if(key=="chaingun_rotation")out.chaingunRotation=q;
             else if(key=="gauss_cannon_siege_rotation")out.gaussSiegeRotation=q;
@@ -143,9 +159,14 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             ++out.accepted;
             continue;
         }
+        const bool leftHandPosition=gripKeySuffix(key,"_left_hand_position")
+            &&validVrPrimaryProfileKey(
+                key.substr(0,key.size()-std::string("_left_hand_position").size()));
+        const bool leftAlternateSupport=key=="gauss_cannon_siege_left_primary_support_position"
+            ||key=="chaingun_turret_left_primary_support_position";
         const bool genericHandPosition=gripKeySuffix(key,"_hand_position")
             &&validVrCalibrationWeapon(key.substr(0,key.size()-14));
-        const bool extendedGrip=genericHandPosition||
+        const bool extendedGrip=leftHandPosition||leftAlternateSupport||genericHandPosition||
             key=="gauss_cannon_hand_position"
             ||key=="chaingun_hand_position"
             ||key=="gauss_cannon_siege_hand_position"
@@ -157,7 +178,15 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
                          :validRightHandPlacement(p))){
             ++out.rejected;continue;
         }
-        if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
+        if(leftHandPosition){
+            out.leftVisualPositions[
+                key.substr(0,key.size()-std::string("_left_hand_position").size())]=p;
+            ++out.accepted;
+        }else if(leftAlternateSupport){
+            out.leftPrimaryAlternateSupport[
+                key.substr(0,key.size()-std::string("_left_primary_support_position").size())]=p;
+            ++out.accepted;
+        }else if(key=="gauss_cannon"){out.gauss=p;++out.accepted;}
         else if(key=="chaingun"){out.chaingun=p;++out.accepted;}
         else if(key=="gauss_cannon_hand_position"){
             out.gaussHand=p;out.gaussHandValid=true;
@@ -300,14 +329,16 @@ inline bool saveRightHandGripRotation(const std::string&path,
 // Preserves the native weapon anchor values and all other weapon modes.
 inline bool saveRightHandVisualPose(const std::string&path,
     const std::string&weapon,bool alternate,
-    RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr){
+    RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr,
+    bool leftPrimary=false){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
     if(!validVrCalibrationWeapon(weapon)||
        (alternate&&weapon!="gauss_cannon"&&weapon!="chaingun")||
        !validRightHandVisualPlacement(pos)||!validRightHandRotation(q))
         return fail("invalid measured position or orientation");
     const std::string prefix=weapon+
-        (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"");
+        (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"")+
+        (leftPrimary?"_left":"");
     const std::string positionKey=prefix+"_hand_position";
     const std::string rotationKey=prefix+"_rotation";
     const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
@@ -366,13 +397,15 @@ inline bool saveRightHandVisualPose(const std::string&path,
     return true;
 }
 inline bool saveHeavyAlternativeSupport(const std::string&path,
-    const std::string&weapon,RightHandGripOffset pos,std::string*why=nullptr){
+    const std::string&weapon,RightHandGripOffset pos,std::string*why=nullptr,
+    bool leftPrimary=false){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
     if((weapon!="gauss_cannon"&&weapon!="chaingun")||
        !validRightHandVisualPlacement(pos))
         return fail("unsupported heavy weapon support point");
     const std::string key=weapon+
-        (weapon=="gauss_cannon"?"_siege":"_turret")+"_support_position";
+        (weapon=="gauss_cannon"?"_siege":"_turret")+
+        (leftPrimary?"_left_primary_support_position":"_support_position");
     namespace fs=std::filesystem;
     const fs::path destination(path),temp(path+".alt-support.tmp");
     std::error_code ec;

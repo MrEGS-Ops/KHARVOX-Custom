@@ -41,6 +41,13 @@ inline bool vrHandMenuBothStickEdge(VrHandMenuState& m,bool left,bool right) noe
     m.bothClickedPreviously=both;
     return edge;
 }
+inline bool hasSavedVrPrimaryPose(const RightHandGripSettings& settings,
+    const std::string&weapon,bool leftHand) {
+    const auto& positions=leftHand?settings.leftVisualPositions:settings.visualPositions;
+    const auto& rotations=leftHand?settings.leftVisualRotations:settings.visualRotations;
+    return positions.find(weapon)!=positions.end()
+        &&rotations.find(weapon)!=rotations.end();
+}
 inline bool hasSavedVrSupport(const std::string&path,const std::string&weapon){
     std::ifstream input(path);std::string row;
     while(std::getline(input,row)){
@@ -78,9 +85,14 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                 auto key=line.substr(first,eq-first);
                 const auto end=key.find_last_not_of(" \t");
                 if(end!=std::string::npos)key.erase(end+1);
-                matches=key==weapon+"_hand_position"||key==weapon+"_rotation"||
-                    (!alternate.empty()&&(key==alternate+"_hand_position"||
-                      key==alternate+"_rotation"||key==alternate+"_support_position"));
+                matches=key==weapon+"_hand_position"||key==weapon+"_rotation"
+                    ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
+                    ||(!alternate.empty()&&(
+                        key==alternate+"_hand_position"||key==alternate+"_rotation"
+                        ||key==alternate+"_left_hand_position"
+                        ||key==alternate+"_left_rotation"
+                        ||key==alternate+"_support_position"
+                        ||key==alternate+"_left_primary_support_position"));
             }
         }else{
             std::istringstream record(line);std::string version,key;
