@@ -7,9 +7,11 @@ on:
       - work/manager-187-wheel-holsters
       - fix/manager-187-heavy-alt-grip-hip-zones
       - fix/rs-hand-focus-use-interactions
+      - fix/calibration-live-secondary-fire
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
+      - 'src/openxr/VrHandMenuInput.inc'
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
       - 'tests/quick_holster_policy_tests.cpp'
