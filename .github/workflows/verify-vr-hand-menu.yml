@@ -6,6 +6,7 @@ on:
       - work/in-headset-weapon-hand-calibration
       - work/manager-187-wheel-holsters
       - fix/manager-187-heavy-alt-grip-hip-zones
+      - fix/rs-hand-focus-use-interactions
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
