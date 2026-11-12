@@ -108,7 +108,7 @@ void paintVrHandMenu() {
             if(index>=count)break;
             const int y=136+shown*45;
             const bool active=index==selected;
-            const bool hovered=m.hovered==100+index;
+            const bool hovered=m.hovered==1000+index;
             fill(38,y,455,40,active?RGB(32,89,104):
                 hovered?RGB(44,54,71):RGB(27,32,43));
             if(active)fill(38,y,5,40,RGB(55,209,214));
