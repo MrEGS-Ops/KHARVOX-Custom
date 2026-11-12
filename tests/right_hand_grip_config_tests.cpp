@@ -201,6 +201,25 @@ int main(){
      {.05f,.02f,-.12f},{0.f,0.f,0.f,1.f,true},&why));
  assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
      {.07f,.03f,-.15f},{0.f,0.f,0.f,1.f,true},&why));
+ // Only the actual live capture phase can forward native alternate fire.
+ using kharvox::VrHandMenuMode;
+ using kharvox::vrCalibrationNativeAltFireAllowed;
+ assert(vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     true,true,true,true,true)); // Gauss Siege / Chaingun Turret grip
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     true,true,true,true,false)); // releasing primary Grip immediately releases alt
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Menu,
+     true,true,true,true,true)); // selecting profiles cannot deploy weapons
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Closed,
+     true,true,true,true,true)); // no native input outside menu service
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     false,true,true,true,true)); // paused/cutscene
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     true,false,true,true,true)); // calibration mod disabled
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     true,true,false,true,true)); // equipped gun changed
+ assert(!vrCalibrationNativeAltFireAllowed(VrHandMenuMode::Calibrating,
+     true,true,true,false,true)); // wrong current primary hand
  auto visual=kharvox::readRightHandGripSettings(path);
  assert(visual.visualPositions.count("pistol")==1);
  assert(visual.visualRotations.count("pistol")==1);
