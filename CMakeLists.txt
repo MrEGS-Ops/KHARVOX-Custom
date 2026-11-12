@@ -370,6 +370,12 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_saved.cfg"
       "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_weapon_profiles_left_primary_saved.cfg"
       "$<TARGET_FILE_DIR:KharvoxLayer>/hand_models_calibration_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/offhand_hud.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/two_hand_shotgun_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_pitch.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_roll.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_yaw.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/vr_live_mods_saved.cfg"
     COMMAND ${CMAKE_COMMAND} -E make_directory
       "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
