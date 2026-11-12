@@ -581,7 +581,10 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_LEFT_HAND_SWAP"] = options.LeftHandSwapMode;
             psi.EnvironmentVariables["KHARVOX_SWAP_JUMP_CROUCH"] = options.SwapJumpCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
-            var wheelRemap = standaloneMods?.EffectiveWheelRemap ?? options.WeaponWheelRemapEnabled;
+            // Legacy Wheel Remap checkbox no longer activates any input
+            // route. The merged Gunslinger owns this button behaviour.
+            var wheelRemap = standaloneMods?.EffectiveGunslinger
+                ?? customMods.BehindHeadWeaponWheel;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] =
                 (wheelRemap || customMods.BehindHeadWeaponWheel) ? "1" : "0";
@@ -712,7 +715,7 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
-                " weaponWheelRemap=" + ((standaloneMods?.EffectiveWheelRemap ?? options.WeaponWheelRemapEnabled) ? "enabled" : "native") +
+                " gunslingerWheelButtons=" + ((standaloneMods?.EffectiveGunslinger ?? customMods.BehindHeadWeaponWheel) ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (effectiveVirtualGunstock ? "enabled" : "disabled") +
