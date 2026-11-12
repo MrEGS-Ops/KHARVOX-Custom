@@ -16,6 +16,18 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// Only LIVE weapon-pose calibration forwards the physically held PRIMARY
+// weapon Grip to DOOM's native alternate-fire input (XInput left trigger).
+// Never allow it from the visible settings menu, the wrong equipped weapon,
+// a changed weapon hand, or outside live gameplay.
+inline constexpr bool vrCalibrationNativeAltFireAllowed(
+    VrHandMenuMode mode,bool gameplay,bool calibrationEnabled,
+    bool selectedWeaponEquipped,bool weaponHandUnchanged,
+    bool primaryWeaponGripDown) noexcept {
+    return mode==VrHandMenuMode::Calibrating && gameplay
+        && calibrationEnabled && selectedWeaponEquipped
+        && weaponHandUnchanged && primaryWeaponGripDown;
+}
 // Single physical RIGHT thumbstick hold >= 1000ms opens/closes the menu.
 // A short click is untouched, so Hand Focus retains its original input.
 struct VrMenuHoldShortcut {

@@ -126,7 +126,7 @@ internal sealed partial class ModsForm
             new PreviewMod("Gunslinger",
                 "Combined behind-head wheel, left/right physical hip hotkeys and compatible remapped controls. Grip confirms wheel selection; a wheel exit without Grip cancels without a visible switch-back. Automatically disables standalone Weapon Wheel Button Remap.", true),
             new PreviewMod("Weapon Grip Calibration",
-                "Calibrate primary and support grips for either weapon hand in VR. Hold RIGHT stick click for 1 second to open the menu. Each main grip becomes the weapon pivot; LEFT / RIGHT / BOTH show saved profiles. Automatically disables Virtual Gunstock.", true)
+                "Calibrate primary and support grips for either weapon hand in VR. Hold RIGHT stick click for 1 second to open the menu. Each main grip becomes the weapon pivot; LEFT / RIGHT / BOTH show saved profiles. During live capture, hold the weapon-hand Grip for native alt fire (Gauss Siege / Chaingun Turret), and use RIGHT trigger to save without firing. Select NORMAL or alternate profile before calibrating. Automatically disables Virtual Gunstock.", true)
         }),
         ("➤  Legs & Movement", new[]
         {
