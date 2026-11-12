@@ -43,7 +43,20 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
 enum class VrLiveCapture : int {
     None,HipRight,HipLeft,WheelRight,WheelLeft,CrouchStanding,CrouchLowered
 };
+inline constexpr int vrLiveToggleIndex(VrLiveMod mod) {
+    switch(mod){
+        case VrLiveMod::WeaponGrip:return 0;
+        case VrLiveMod::Gunslinger:return 1;
+        case VrLiveMod::PhysicalCrouch:return 2;
+        case VrLiveMod::Killtime:return 3;
+        case VrLiveMod::PhysicalGloryKills:return 4;
+        default:return -1;
+    }
+}
 struct VrLiveSettings {
+    // -1 follows desktop startup status (and preserves existing defaults);
+    // 0/1 is an explicit live menu override saved across sessions.
+    std::array<int,5> enabledOverrides{{-1,-1,-1,-1,-1}};
     // Offset from the EXISTING tracking-relative zones. Zero exactly
     // reproduces existing Gunslinger behaviour on a fresh installation.
     std::array<VrLivePoint,2> hipShift{};
@@ -66,7 +79,22 @@ inline bool vrLiveValidShift(VrLivePoint p) {
     return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
         &&std::abs(p.x)<=.7f&&std::abs(p.y)<=.9f&&std::abs(p.z)<=1.f;
 }
+inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
+    VrLiveMod mod,bool desktopStartupEnabled) {
+    const int index=vrLiveToggleIndex(mod);
+    return index<0 ? desktopStartupEnabled
+       :s.enabledOverrides[static_cast<size_t>(index)]<0
+        ?desktopStartupEnabled
+        :s.enabledOverrides[static_cast<size_t>(index)]==1;
+}
+inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
+    const int index=vrLiveToggleIndex(mod);
+    if(index<0)return false; // read-only entries never toggle.
+    s.enabledOverrides[static_cast<size_t>(index)]=on?1:0;
+    return true;
+}
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
+    for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
     for(const auto& p:s.hipShift)if(!vrLiveValidShift(p))return false;
     for(const auto& p:s.wheelShift)if(!vrLiveValidShift(p))return false;
     return std::isfinite(s.crouchStandDelta)
@@ -160,6 +188,9 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
             if(!(row>>valid>>value)||(row>>trailing)||(valid!=0&&valid!=1))return false;
             (name=="standing"?next.crouchStandSaved:next.crouchLoweredSaved)=valid!=0;
             (name=="standing"?next.crouchStandDelta:next.crouchLoweredDelta)=value;
+        }else if(name=="enabled"){
+            for(int& value:next.enabledOverrides)if(!(row>>value))return false;
+            std::string trailing;if(row>>trailing)return false;
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
@@ -179,6 +210,9 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
     std::ofstream out(tmp,std::ios::trunc);
     if(!out)return false;
     out<<std::fixed<<std::setprecision(7)<<"schema 1\n";
+    out<<"enabled";
+    for(int value:s.enabledOverrides)out<<' '<<value;
+    out<<'\n';
     auto point=[&](const char* name,VrLivePoint p){
         out<<name<<' '<<p.x<<' '<<p.y<<' '<<p.z<<'\n';
     };
