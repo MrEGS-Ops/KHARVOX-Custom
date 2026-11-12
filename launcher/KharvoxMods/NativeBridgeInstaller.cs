@@ -72,6 +72,47 @@ internal static class NativeBridgeInstaller
             BridgeMatchesManagerBuild(example, "4117522870") ||
             BridgeMatchesManagerBuild(example, ""))
             throw new InvalidDataException("Bridge manager version matching failed.");
+        RunPortableCalibrationFactorySelfTest();
+    }
+
+    private static void RunPortableCalibrationFactorySelfTest()
+    {
+        var root = Path.Combine(Path.GetTempPath(),
+            "kharvox-factory-userdata-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var oldBridge = Path.Combine(root, "OldNativeBridge");
+            var newBridge = Path.Combine(root, "NewNativeBridge");
+            var immutable = Path.Combine(newBridge, "CalibrationDefaults");
+            var user = Path.Combine(root, "UserData");
+            Directory.CreateDirectory(oldBridge);
+            Directory.CreateDirectory(immutable);
+            foreach (var name in OwnerFactoryNames)
+                File.WriteAllText(Path.Combine(immutable, name), "factory-" + name);
+            // Existing shotgun calibration must beat the NEW shipped factory.
+            File.WriteAllText(Path.Combine(oldBridge,
+                "two_hand_weapon_profiles_saved.cfg"), "owner-custom");
+            // An unrelated editable user config must also leave NativeBridge.
+            File.WriteAllText(Path.Combine(oldBridge, "world_scale.cfg"), "42");
+            EnsurePortableUserDataAt(oldBridge, newBridge, user);
+            if (File.ReadAllText(Path.Combine(user,
+                    "two_hand_weapon_profiles_saved.cfg")) != "owner-custom"
+                || File.ReadAllText(Path.Combine(user, "world_scale.cfg")) != "42"
+                || File.ReadAllText(Path.Combine(user,
+                    "offhand_right_hand_positions.cfg"))
+                    != "factory-offhand_right_hand_positions.cfg"
+                || File.ReadAllText(Path.Combine(user,
+                    "two_hand_weapon_profiles_left_primary_saved.cfg"))
+                    != "factory-two_hand_weapon_profiles_left_primary_saved.cfg")
+                throw new InvalidDataException("First-run factory or migration lost user configs.");
+            File.WriteAllText(Path.Combine(user,
+                "offhand_right_hand_positions.cfg"), "edited-after-install");
+            EnsurePortableUserDataAt(oldBridge, newBridge, user);
+            if (File.ReadAllText(Path.Combine(user,
+                    "offhand_right_hand_positions.cfg")) != "edited-after-install")
+                throw new InvalidDataException("Updater overwrote edited calibration.");
+        }
+        finally { try { Directory.Delete(root, true); } catch { } }
     }
 
     internal static bool IsReady()
@@ -244,17 +285,23 @@ internal static class NativeBridgeInstaller
         "two_hand_weapon_profiles_left_primary_saved.cfg"
     };
 
-    internal static void EnsurePortableUserData(string? factoryBridge = null)
+    internal static void EnsurePortableUserData(string? factoryBridge = null) =>
+        EnsurePortableUserDataAt(TargetDirectory,
+            factoryBridge ?? TargetDirectory, PortableUserData.Root);
+
+    // Parameterized for isolated tests: proving first-run seeding, upgrade
+    // migration and preserving edits without touching an actual installation.
+    private static void EnsurePortableUserDataAt(
+        string existingBridge,string packagedBridge,string folder)
     {
-        var folder = PortableUserData.Root;
         Directory.CreateDirectory(folder);
         // Old native releases wrote saved profiles and other user configs
         // directly beside KharvoxLayer.dll. Migrate ALL editable .cfg files,
         // including manually customized settings, but not read-only assets
         // or the older one-time capture import sources.
-        if (Directory.Exists(TargetDirectory))
+        if (Directory.Exists(existingBridge))
         {
-            foreach (var source in Directory.GetFiles(TargetDirectory, "*.cfg"))
+            foreach (var source in Directory.GetFiles(existingBridge, "*.cfg"))
             {
                 var name = Path.GetFileName(source);
                 if (name.EndsWith("_default.cfg", StringComparison.OrdinalIgnoreCase)
@@ -274,8 +321,7 @@ internal static class NativeBridgeInstaller
         // The three actual uploaded November calibration files are shipped
         // read-only in CalibrationDefaults. First-run gets exact saved values;
         // all subsequent user edits always take precedence.
-        var packaged = Path.Combine(factoryBridge ?? TargetDirectory,
-            "CalibrationDefaults");
+        var packaged = Path.Combine(packagedBridge, "CalibrationDefaults");
         foreach (var name in OwnerFactoryNames)
         {
             var factory = Path.Combine(packaged, name);
