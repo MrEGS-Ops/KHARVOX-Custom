@@ -47,6 +47,12 @@ inline QuickHipHandoffState quickHipHandoffState(
     if(now>=pending.deadlineNanoseconds)return QuickHipHandoffState::Expired;
     return QuickHipHandoffState::Waiting;
 }
+// Disable hip-hotkey recognition while two-handed aiming is latched.
+// For Gauss/Chaingun, both held Grips also protect alt-fire before latch.
+inline bool quickHipSuspendedForTwoHand(bool latched,bool heavy,
+                                       bool weaponGrip,bool supportGrip) noexcept {
+ return latched||(heavy&&weaponGrip&&supportGrip);
+}
 // The hip that supplies the weapon becomes the combat/weapon hand.
 // 0 is the physical RIGHT hip; 1 is the physical LEFT hip.
 // This rule applies even when the saved weapon is already equipped.
