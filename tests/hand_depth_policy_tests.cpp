@@ -42,7 +42,7 @@ int main() {
     const auto clampedLow = kharvox::hands::doomSceneHandDepthRange(0.0f);
     const auto clampedHigh =
         kharvox::hands::doomSceneHandDepthRange(1000.0f);
-    assert(std::fabs(clampedLow.nearMeters - 0.3f) < 0.0001f);
-    assert(std::fabs(clampedHigh.nearMeters - 0.015f) < 0.0001f);
+    assert(std::fabs(clampedLow.nearMeters - 0.1f) < 0.0001f);
+    assert(std::fabs(clampedHigh.nearMeters - 0.005f) < 0.0001f);
     return 0;
 }
