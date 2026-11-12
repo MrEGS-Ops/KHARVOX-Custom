@@ -111,9 +111,11 @@ internal sealed class StandaloneModPreferences
         DynamicQuickHolsters = false;
         ActiveOrder = Array.ConvertAll(ActiveOrder ??
             Array.Empty<string>(), UpgradeModTitle)
+            .Where(title => title != "Weapon Wheel Button Remap")
             .Distinct(StringComparer.Ordinal).ToArray();
         AvailableOrder = Array.ConvertAll(AvailableOrder ??
             Array.Empty<string>(), UpgradeModTitle)
+            .Where(title => title != "Weapon Wheel Button Remap")
             .Distinct(StringComparer.Ordinal).ToArray();
         CollapsedCategories ??= Array.Empty<string>();
         RuntimeRevision ??= "";
