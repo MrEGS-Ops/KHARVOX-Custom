@@ -62,6 +62,9 @@ internal static class Program
                 return 0;
             }
             StartupTrace.Begin();
+            // Migrate existing root settings BEFORE the first-run chooser
+            // or ModsForm loads any preferences. Never reinitialize consent.
+            PortableUserData.MigrateManagerSettings();
             StartupTrace.Mark("Manager process ready; initialize Windows Forms");
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
@@ -87,11 +90,12 @@ internal static class Program
             StandaloneModPreferences.SelfTest();
             CapturedGripProfiles.SelfTest();
             RightHandGripCaptureImport.SelfTest();
+            PortableUserData.SelfTest();
             NativeBridgeInstaller.RunManagerBuildCompatibilitySelfTest();
             if (!string.Equals(AppState.DataDirectory,
                     Path.GetFullPath(AppContext.BaseDirectory), StringComparison.OrdinalIgnoreCase) ||
                 !string.Equals(AppState.DefaultPath,
-                    Path.Combine(AppState.DataDirectory, "settings.json"),
+                    PortableUserData.PathFor("settings.json"),
                     StringComparison.OrdinalIgnoreCase))
                 throw new InvalidDataException("Portable storage must be beside KharvoxVRModManager.exe.");
 
