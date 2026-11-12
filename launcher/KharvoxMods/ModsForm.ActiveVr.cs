@@ -807,23 +807,18 @@ internal sealed partial class ModsForm
         // Active Mods section. Paused rows remain subdued without a label.
         var status = new Label
         {
-            Text = gunslingerConflict ? "CONFLICT" :
-                !active && check.Enabled ? "ACTIVE" : "",
+            Text = !active && check.Enabled ? "ACTIVE" : "",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleCenter,
-            ForeColor = gunslingerConflict
-                ? Color.FromArgb(141, 145, 154)
-                : Color.FromArgb(103, 198, 157),
+            ForeColor = Color.FromArgb(103, 198, 157),
             BackColor = row.BackColor,
             Font = new Font("Segoe UI", 7.5f, FontStyle.Bold),
             Margin = Padding.Empty,
             Tag = "vr-mod-status"
         };
-        _tooltips.SetToolTip(status, gunslingerConflict
-            ? statusReason
-            : check.Enabled
-                ? "Verified and working; click the checkbox to enable."
-                : "Paused: the runtime feature is not verified in this build.");
+        _tooltips.SetToolTip(status, check.Enabled
+            ? "Verified and working; click the checkbox to enable."
+            : "Paused: the runtime feature is not verified in this build.");
 
         var info = MakeRowInfo("How to use this mod and its dependencies",
             mod.Title, mod.Help);
