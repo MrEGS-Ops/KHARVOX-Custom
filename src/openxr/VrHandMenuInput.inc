@@ -48,14 +48,28 @@ void saveVrHandMenuCalibration(){
     }
     std::string why;
     bool ok=false;
+    const bool alternate=m.alternateProfile
+        &&(kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun);
     if(m.rightHand){
         ok=kharvox::saveRightHandVisualPose(
             kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
-            m.weapon(),false,m.previewPosition,m.previewRotation,&why);
+            m.weapon(),alternate,m.previewPosition,m.previewRotation,&why);
         if(ok){
             s.rightGripSettings=kharvox::readRightHandGripSettings(
                 kharvox::runtimePathA("offhand_right_hand_positions.cfg"));
             s.primaryVisualLocked=false;
+        }
+    }else if(alternate){
+        // Preserve separate Siege/Turret support positions formerly saved
+        // by a physical shortcut; now configurable only through the menu.
+        const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
+        ok=kharvox::saveHeavyAlternativeSupport(
+            rightFile,m.weapon(),m.previewPosition,&why);
+        if(ok){
+            s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
+            s.twoHandLatched=false;
+            s.supportVisualLocked=false;
         }
     }else{
         auto* profile=twoHandCalibrationFor(kind);
@@ -80,11 +94,13 @@ void saveVrHandMenuCalibration(){
         return;
     }
     log(std::string("[VR-HAND-MENU] saved ")+m.weapon()+
+        (alternate?" ALTERNATE":" NORMAL")+
         (m.rightHand?" RIGHT pose+rotation":" LEFT position (grab rotation preserved)"));
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
     m.mode=kharvox::VrHandMenuMode::Menu;
-    m.message=std::string(m.rightHand?"RIGHT":"LEFT")+" hand saved for "+m.weapon();
+    m.message=std::string(m.rightHand?"RIGHT":"LEFT")+
+        (alternate?" ALT":" NORMAL")+" hand saved for "+m.weapon();
     m.previewValid=false;
     refreshVrHandMenuSavedStatus();
 }
@@ -135,6 +151,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         if(pixelX>=531&&pixelX<701)return 20;
         if(pixelX>=715&&pixelX<917)return 21;
     }
+    if(pixelX>=531&&pixelX<915&&pixelY>=306&&pixelY<355)return 32;
     if(pixelX>=531&&pixelX<915){
         if(pixelY>=363&&pixelY<432)return 30;
         if(pixelY>=454&&pixelY<523)return 31;
@@ -158,6 +175,7 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                 return true;
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
+            m.alternateProfile=false;
             const auto equipped=KharvoxWeaponCurrentKind();
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
@@ -173,7 +191,6 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
             s.supportVisualLocked=false;
             log("[VR-HAND-MENU] thumbstick chord closes/cancels current screen");
         }
-        s.offHandCaptureChord={};
         s.offHandStickInput={};
         m.rightTriggerPreviously=rightTrigger;
         m.leftTriggerPreviously=leftTrigger;
@@ -194,10 +211,21 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
             m.leftStickCentered=false;
         }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
         if(triggerEdge){
-            if(m.hovered>=0&&m.hovered<10)m.selectedWeapon=m.hovered;
+            if(m.hovered>=0&&m.hovered<10){
+                m.selectedWeapon=m.hovered;
+                m.alternateProfile=false;
+            }
             else if(m.hovered==20)m.rightHand=false;
             else if(m.hovered==21)m.rightHand=true;
             else if(m.hovered==31)resetVrMenuSelectedWeapon();
+            else if(m.hovered==32){
+                const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+                if(weapon==KharvoxWeaponKind::GaussCannon
+                    ||weapon==KharvoxWeaponKind::Chaingun){
+                    m.alternateProfile=!m.alternateProfile;
+                    m.message=m.alternateProfile?"Alternate handle selected.":"Normal handle selected.";
+                }
+            }
             else if(m.hovered==30||m.hovered==-1){
                 if(!s.customMods.offHandGripCapture)
                     m.message="Enable Off-Hand Grip Capture in desktop Mod Manager.";
@@ -222,9 +250,8 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     releaseMovement();
     updateVirtualButtons(false,false,false,false,false,false,false,
         false,false,false,false,false,false,false);
-    s.offHandStickInput={};s.offHandCaptureChord={};
+    s.offHandStickInput={};
     s.offHandStickOutput={};
-    s.liveHeavyGripActive=false;s.liveHeavyCaptureValid=false;
     s.primaryFireDown=false;
     s.firePressed=rightTrigger;
     s.weaponSelectPressed=false;s.weaponWheelOpened=false;

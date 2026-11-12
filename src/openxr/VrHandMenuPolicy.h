@@ -20,6 +20,8 @@ struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     int selectedWeapon{1};
     bool rightHand{true};
+    // Gauss Siege and Chaingun Turret have separate visual hand profiles.
+    bool alternateProfile{};
     bool bothClickedPreviously{},rightTriggerPreviously{},leftTriggerPreviously{},leftStickCentered{true};
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};

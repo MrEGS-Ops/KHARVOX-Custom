@@ -125,7 +125,18 @@ void paintVrHandMenu() {
     SelectObject(dc,smallFont);
     write(538,233,"LEFT: position only",muted);
     write(538,267,"Rotation follows each grab",muted);
-    write(538,306,"RIGHT: position + rotation",muted);
+    const auto selectedKind=KharvoxWeaponKindFromKey(m.weapon());
+    const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
+        ||selectedKind==KharvoxWeaponKind::Chaingun;
+    if(heavy){
+        button(531,306,384,49,m.alternateProfile,m.hovered==32);
+        write(550,317,m.alternateProfile
+            ?(selectedKind==KharvoxWeaponKind::GaussCannon
+                ?"PROFILE: SIEGE":"PROFILE: TURRET")
+            :"PROFILE: NORMAL",white);
+    }else{
+        write(538,306,"RIGHT: position + rotation",muted);
+    }
     button(531,363,384,69,false,m.hovered==30);
     SelectObject(dc,title);
     write(568,376,"CALIBRATE",white);
