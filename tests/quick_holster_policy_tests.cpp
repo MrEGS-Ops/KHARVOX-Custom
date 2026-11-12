@@ -67,6 +67,28 @@ int main(){
  assert(equipped.valid&&!equipped.needsNativeSelect&&equipped.leftWeaponHand);
  assert(!quickHipPlanDraw(2,BackWeaponKind::Pistol,BackWeaponKind::Pistol).valid);
  assert(!quickHipPlanDraw(0,BackWeaponKind::Unknown,BackWeaponKind::GaussCannon).valid);
+ // Native DOOM can still display the previous weapon for a game frame
+ // after the direct hotkey. Never transfer hand ownership before the native
+ // weapon kind matches the target (and never issue an extra hotkey).
+ QuickHipPendingTransfer pending{};
+ quickHipBeginTransfer(pending,right,1000000000ULL);
+ assert(pending.active&&!pending.leftWeaponHand
+        &&pending.weapon==BackWeaponKind::GaussCannon);
+ assert(quickHipPollTransfer(pending,BackWeaponKind::SuperShotgun,
+        1100000000ULL)==QuickHipTransferResult::None);
+ assert(pending.active);
+ assert(quickHipPollTransfer(pending,BackWeaponKind::GaussCannon,
+        1200000000ULL)==QuickHipTransferResult::Confirmed);
+ assert(!pending.active);
+ quickHipBeginTransfer(pending,left,1300000000ULL);
+ assert(pending.active&&pending.leftWeaponHand);
+ assert(quickHipPollTransfer(pending,BackWeaponKind::Unknown,
+        3299999999ULL)==QuickHipTransferResult::None);
+ assert(quickHipPollTransfer(pending,BackWeaponKind::Pistol,
+        3300000000ULL)==QuickHipTransferResult::TimedOut);
+ assert(!pending.active);
+ quickHipBeginTransfer(pending,equipped,4000000000ULL);
+ assert(!pending.active); // already-equipped same-weapon hand transfer is immediate
  // Specific real-world regression: shotgun held in LEFT, RIGHT is empty.
  // Releasing the right Grip IN THE RIGHT HIP must never store that shotgun.
  QuickHolsters offhand{};
