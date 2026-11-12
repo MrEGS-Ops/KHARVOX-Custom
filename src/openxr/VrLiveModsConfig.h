@@ -205,8 +205,10 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
     namespace fs=std::filesystem;
     const fs::path dest(path),tmp(path+".tmp");
     std::error_code ec;
-    fs::create_directories(dest.parent_path(),ec);
-    if(ec)return false;
+    if(!dest.parent_path().empty()){
+        fs::create_directories(dest.parent_path(),ec);
+        if(ec)return false;
+    }
     std::ofstream out(tmp,std::ios::trunc);
     if(!out)return false;
     out<<std::fixed<<std::setprecision(7)<<"schema 1\n";
