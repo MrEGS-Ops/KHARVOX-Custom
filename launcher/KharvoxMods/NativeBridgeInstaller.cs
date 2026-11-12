@@ -234,34 +234,65 @@ internal static class NativeBridgeInstaller
         catch (UnauthorizedAccessException) { }
     }
 
-    // The bridge refresh MUST preserve user calibration and measurements.
-    // The previous complete bridge is also retained under Backups/NativeBridge.
+    // The native bridge is replaceable. User-created CFG files MUST live
+    // one level up, in top-level UserData beside the Mods Manager. During
+    // upgrade, copy legacy local CFGs first. Never replace a user's current
+    // calibration or settings with the shipped factory defaults.
+    private static readonly string[] OwnerFactoryNames = {
+        "offhand_right_hand_positions.cfg",
+        "two_hand_weapon_profiles_saved.cfg",
+        "two_hand_weapon_profiles_left_primary_saved.cfg"
+    };
+
+    internal static void EnsurePortableUserData(string? factoryBridge = null)
+    {
+        var folder = PortableUserData.Root;
+        Directory.CreateDirectory(folder);
+        // Old native releases wrote saved profiles and other user configs
+        // directly beside KharvoxLayer.dll. Migrate ALL editable .cfg files,
+        // including manually customized settings, but not read-only assets
+        // or the older one-time capture import sources.
+        if (Directory.Exists(TargetDirectory))
+        {
+            foreach (var source in Directory.GetFiles(TargetDirectory, "*.cfg"))
+            {
+                var name = Path.GetFileName(source);
+                if (name.EndsWith("_default.cfg", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("hand_models.cfg", StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("two_hand_weapon_profiles_captured.cfg",
+                        StringComparison.OrdinalIgnoreCase)
+                    || name.Equals("offhand_right_hand_positions_latest.cfg",
+                        StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var dest = Path.Combine(folder, name);
+                if (File.Exists(dest)) continue;
+                if (new FileInfo(source).Length > 1024 * 1024)
+                    throw new InvalidDataException("Legacy user CFG too large: " + name);
+                File.Copy(source, dest, false);
+            }
+        }
+        // The three actual uploaded November calibration files are shipped
+        // read-only in CalibrationDefaults. First-run gets exact saved values;
+        // all subsequent user edits always take precedence.
+        var packaged = Path.Combine(factoryBridge ?? TargetDirectory,
+            "CalibrationDefaults");
+        foreach (var name in OwnerFactoryNames)
+        {
+            var factory = Path.Combine(packaged, name);
+            if (!File.Exists(factory))
+                throw new InvalidDataException("Missing owner factory calibration: " + name);
+            if (new FileInfo(factory).Length == 0 ||
+                new FileInfo(factory).Length > 65536)
+                throw new InvalidDataException("Factory calibration invalid: " + name);
+            var editable = Path.Combine(folder, name);
+            if (!File.Exists(editable)) File.Copy(factory, editable, false);
+        }
+    }
+
     private static void PreserveLocalGripData(string extracted)
     {
-        foreach (var name in new[]
-        {
-            "two_hand_weapon_profiles_saved.cfg",
-            "two_hand_weapon_profiles_left_primary_saved.cfg",
-            "two_hand_shotgun_saved.cfg",
-            "two_hand_alignment.cfg", "two_hand_calibration_target.cfg",
-            "offhand_grip_capture_status.txt",
-            "offhand_right_hand_positions.cfg",
-            "offhand_right_hand_positions.cfg.before-capture.bak",
-            "offhand_right_hand_positions.cfg.before-live-capture.bak",
-            "offhand_right_hand_positions.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_left_primary_saved.cfg.before-vr-reset.bak",
-            "two_hand_weapon_profiles_left_primary_saved.cfg.before-heavy-support.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-chainsaw-capture.bak",
-            "two_hand_weapon_profiles_saved.cfg.before-heavy-support.bak"
-        })
-        {
-            var from = Path.Combine(TargetDirectory, name);
-            if (!File.Exists(from)) continue;
-            if (new FileInfo(from).Length > 1024 * 1024)
-                throw new InvalidDataException("Existing user calibration exceeds safe size: " + name);
-            File.Copy(from, Path.Combine(extracted, name), true);
-        }
+        // Diagnostics remain with diagnostics; user-owned CFGs have already
+        // been copied into UserData and are NEVER put in the new NativeBridge.
         var relative = Path.Combine("logs", "diagnostics", "OFFHAND-GRIP-CAPTURE.csv");
         var csv = Path.Combine(TargetDirectory, relative);
         if (File.Exists(csv))
@@ -349,8 +380,10 @@ internal static class NativeBridgeInstaller
                 if (BridgeLauncherRunning())
                     throw new InvalidOperationException("Close the active NativeBridge launcher.");
 
-                // Do this BEFORE moving the previous bridge to backups.
-                // On a copy error, the old runtime and user audio stay intact.
+                // Migrate existing user CFGs out of NativeBridge, then seed
+                // uploaded factory defaults ONLY for missing user files.
+                // Complete this before replacing the previous native runtime.
+                EnsurePortableUserData(extracted);
                 PreserveLocalPainsawAudio(extracted);
                 PreserveLocalGripData(extracted);
 
