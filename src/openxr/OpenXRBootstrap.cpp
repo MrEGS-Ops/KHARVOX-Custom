@@ -447,7 +447,9 @@ struct State {
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::CustomModFlags vrDesktopMods{};
     bool vrDesktopPhysicalGk{},vrDesktopKilltime{};
-    bool vrLiveKilltimeEnabled{};
+    float vrDesktopPunchSpeed{2.8f};
+    int vrDesktopPunchHands{2};
+    bool vrLiveKilltimeEnabled{},vrCrouchReleasePending{};
     XrQuaternionf lastWeaponRenderedTrackingRotation{0,0,0,1};
     XrVector3f lastWeaponRenderedTrackingAnchor{};
     KharvoxWeaponKind lastWeaponRenderedKind{KharvoxWeaponKind::Unknown};
@@ -2900,6 +2902,7 @@ void updateWeapon6Dof(){
 }
 // Native VR hand menu input must precede the gameplay input dispatcher.
 // Render-side compositor helper stays in its later Vulkan include.
+#include "VrLiveMenuLogic.inc"
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
@@ -4121,6 +4124,12 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalCrouchActive=false;
         s.physicalCrouchPulseUntil=0;
     }
+    if(gameplay&&s.vrCrouchReleasePending){
+        // If switched off while physically crouched, issue one native
+        // toggle release only after the VR overlay has closed.
+        s.physicalCrouchPulseUntil=displayTime+90000000;
+        s.vrCrouchReleasePending=false;
+    }
     const bool physicalCrouchNativePulse=gameplay
         &&displayTime<s.physicalCrouchPulseUntil;
     bool gamepadADown{};
@@ -4679,6 +4688,8 @@ bool createGameplayActions(){
     s.interactionProfilesKnown=false;
     configureTurning();configureMovementDirection();configurePhysicalGlorykill();
     s.vrDesktopPhysicalGk=s.physicalGlorykillEnabled;
+    s.vrDesktopPunchSpeed=s.physicalGlorykillSpeed;
+    s.vrDesktopPunchHands=static_cast<int>(s.physicalGlorykillHands);
     s.vrDesktopKilltime=actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ")>0;
     // Keep the owner's launcher-defined punch values until an explicit
     // UserData/vr_live_mods_saved.cfg override is present.
