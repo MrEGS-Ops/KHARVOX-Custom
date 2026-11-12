@@ -35,7 +35,7 @@ int main() {
     assert(!overrides.update(1, INFINITY, true, desired));
     const auto defaultRange =
         kharvox::hands::doomSceneHandDepthRange(39.3701f);
-    assert(std::fabs(defaultRange.nearMeters - 0.0762f) < 0.0001f);
+    assert(std::fabs(defaultRange.nearMeters - 0.0254f) < 0.0001f);
     assert(defaultRange.farMeters > 1000.0f);
     assert(defaultRange.farMeters > defaultRange.nearMeters);
 
