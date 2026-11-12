@@ -109,6 +109,13 @@ jobs:
           $result = Start-Process -FilePath $exe -ArgumentList "--self-test-shoulder-weapon-lock" -Wait -PassThru -NoNewWindow
           if ($result.ExitCode -ne 0) { throw "Gunslinger shoulder weapon UI lock regression" }
 
+      - name: Verify calibration greys out Virtual Gunstock without modifying Cactus
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-virtual-gunstock-lock" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Virtual Gunstock external UI lock regression" }
+
       - name: Verify embedded launcher scales to avoid scrollbars
         shell: pwsh
         run: |
