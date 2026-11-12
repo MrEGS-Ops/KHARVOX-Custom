@@ -24,11 +24,11 @@ internal sealed partial class ModsForm
         if (_runtimePreparing) SetStatus("Preparing KHARVOX…");
     }
 
+    // Hand Focus and Physical Crouch are always-on, read-only Developer
+    // overrides. They must not be counted as selectable Active VR mods.
     private static bool IsConfirmedMod(string title) =>
         title == "Weapon Wheel Button Remap" ||
-        title == "Hand Focus" ||
         title == "Gunslinger" ||
-        title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
         title == "Weapon Grip Calibration";
 
