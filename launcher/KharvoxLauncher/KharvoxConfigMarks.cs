@@ -26,9 +26,11 @@ internal static class KharvoxConfigMarks
         public List<Entry> Entries { get; set; } = new();
     }
 
-    internal static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "KHARVOX", "known-configurations.json");
+    internal static string DefaultPath => LauncherUserData.BridgeMode
+        ? LauncherUserData.PathFor("known-configurations.json")
+        : Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "KHARVOX", "known-configurations.json");
 
     internal static string Fingerprint(
         KharvoxLaunchOptions launch, CustomModSettings mods,
