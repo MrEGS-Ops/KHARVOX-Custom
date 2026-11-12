@@ -26,6 +26,8 @@ on:
       - 'tests/right_hand_grip_config_tests.cpp'
       - 'src/weapon/QuickHolsterPolicy.h'
       - 'tests/quick_holster_policy_tests.cpp'
+      - 'tests/vr_menu_navigation_tests.cpp'
+      - 'src/openxr/VrHandMenuPolicy.h'
       - 'src/openxr/PhysicalGlorykillMeleePolicy.h'
       - 'src/openxr/HandFocusPolicy.h'
       - 'tests/hand_focus_policy_tests.cpp'
