@@ -13,7 +13,7 @@ namespace KharvoxMods;
 // scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private const int LegacyVrModCount = 22;
+    private const int LegacyVrModCount = 20;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
     private bool _savingSettings;
@@ -24,11 +24,11 @@ internal sealed partial class ModsForm
         if (_runtimePreparing) SetStatus("Preparing KHARVOX…");
     }
 
+    // Hand Focus and Physical Crouch are always-on, read-only Developer
+    // overrides. They must not be counted as selectable Active VR mods.
     private static bool IsConfirmedMod(string title) =>
         title == "Weapon Wheel Button Remap" ||
-        title == "Hand Focus" ||
         title == "Gunslinger" ||
-        title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
         title == "Weapon Grip Calibration";
 
@@ -119,8 +119,6 @@ internal sealed partial class ModsForm
         {
             new PreviewMod("Weapon Wheel Button Remap",
                 "Standalone remap: tap A to quick-switch, hold A for the weapon wheel. Greyed out while Gunslinger is enabled; disable Gunslinger first.", true),
-            new PreviewMod("Hand Focus",
-                "Weapon-hand focus by default during gameplay, including doors and stations. RS click remains Use and never toggles to head focus. Native Glory Kills, chainsaw executions, ledges and cinematics temporarily use head focus.", true),
             new PreviewMod("Boxing Guard Mode",
                 "Raises both hands to switch focus and apply slight time dilation. Paused."),
             new PreviewMod("Gunslinger",
@@ -130,8 +128,6 @@ internal sealed partial class ModsForm
         }),
         ("➤  Legs & Movement", new[]
         {
-            new PreviewMod("Physical Crouch",
-                "Physical standing and crouching drive the DOOM crouch control.", true),
             new PreviewMod("Directional Dash",
                 "Directional movement dash. Paused due to unsafe physics.")
         }),
@@ -182,6 +178,10 @@ internal sealed partial class ModsForm
     private const string AutoMeleeDevTitle = "Disable RS Melee / Animation (Physical GK)";
     private static readonly PreviewMod[] DevOverrides =
     {
+        new PreviewMod("Hand Focus",
+            "Always ON. Weapon-hand focus in gameplay; native action sequences use head focus.", true),
+        new PreviewMod("Physical Crouch",
+            "Always ON. Calibrate standing and crouch heights in the VR menu.", true),
         new PreviewMod("Disable Glory Kill Highlighting",
             "Remove blue/orange outlines around staggered demons."),
         new PreviewMod("Disable Glory Kill Motion Blur",
@@ -216,7 +216,7 @@ internal sealed partial class ModsForm
     }
 
     private static bool PhysicalGkEnabledInLauncher() => ReadPhysicalGkSettings(
-        Path.Combine(NativeBridgeInstaller.TargetDirectory, "kharvox-launcher-settings.json"));
+        Path.Combine(PortableUserData.Root, "kharvox-launcher-settings.json"));
 
     // Exact same group-box styling as KHARVOX MainForm.MakeGroup().
     private static GroupBox MakeOriginalGroup(string title) => new GroupBox
@@ -533,7 +533,7 @@ internal sealed partial class ModsForm
         var titles = OriginalModGroups.SelectMany(group => group.Mods)
             .Select(mod => mod.Title).ToArray();
         return count == LegacyVrModCount && titles.Distinct(StringComparer.Ordinal).Count() == count
-            && OriginalModGroups.Length == 6 && DevOverrides.Length == 8
+            && OriginalModGroups.Length == 6 && DevOverrides.Length == 10
             && titles.Contains("PAINSAW: RIPSHIFT OVERDRIVE");
     }
 
@@ -623,7 +623,7 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal)).ToArray();
             if (vr.Length != LegacyVrModCount ||
                 vr.Count(check => check.Enabled) !=
-                    6 - (form._modPrefs.Gunslinger ? 1 : 0) ||
+                    4 - (form._modPrefs.Gunslinger ? 1 : 0) ||
                 vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
                 throw new InvalidDataException("Verified mod rows or Gunslinger conflict gating changed.");
             if (!form.Controls.Descendants().OfType<Label>()
@@ -636,6 +636,11 @@ internal sealed partial class ModsForm
                     StringComparison.Ordinal));
             if (dev != DevOverrides.Length)
                 throw new InvalidDataException("Developer overrides missing.");
+            var locked = form.Controls.Descendants().OfType<CheckBox>()
+                .Where(box => box.AccessibleName == "Hand Focus"
+                    || box.AccessibleName == "Physical Crouch").ToArray();
+            if (locked.Length != 2 || locked.Any(box => box.Enabled || !box.Checked))
+                throw new InvalidDataException("Hand Focus and Physical Crouch must be locked ON in Dev.");
             var melee = form.Controls.Descendants().OfType<CheckBox>()
                 .SingleOrDefault(box => box.AccessibleName == AutoMeleeDevTitle);
             if (melee == null || melee.Enabled ||

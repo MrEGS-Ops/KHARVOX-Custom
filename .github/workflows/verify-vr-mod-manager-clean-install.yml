@@ -1,0 +1,52 @@
+name: KHARVOX VR Mod Manager Clean Install Smoke Tests
+
+on:
+  push:
+    branches:
+      - feature/live-vr-mod-calibration-menu
+      - work/manager-187-wheel-holsters
+    paths:
+      - 'launcher/KharvoxMods/**'
+      - 'launcher/KharvoxLauncher/**'
+      - '.github/workflows/verify-vr-mod-manager-clean-install.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-user:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore standalone Mod Manager
+        shell: pwsh
+        run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
+      - name: Generate the pinned embedded MrEGS application icon
+        shell: pwsh
+        run: ./launcher/KharvoxMods/Generate-MrEGSIcon.ps1
+      - name: Fetch and verify the pinned CC0 WAV resource
+        shell: pwsh
+        run: |
+          $file = "launcher/KharvoxMods/twitch-unlock.wav"
+          $source = "https://raw.githubusercontent.com/Beatscribe/homebrew_vgm/5a82f88b87bb442499685c494b7a96278121b4c7/GB/fanfares/wav/treasure.wav"
+          Invoke-WebRequest -Uri $source -OutFile $file -MaximumRedirection 2
+          if ((git hash-object $file).Trim() -ne "a579e15ab70e4e0b8884e7c4504bb6d7cb4fdb64") {
+            throw "Pinned CC0 sound integrity check failed"
+          }
+      - name: Compile portable Mod Manager
+        shell: pwsh
+        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj -c Release --no-restore
+      - name: Validate first-run settings, neutral-fallback rejection and exact factory seeding
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "Fresh-install settings and factory calibration smoke tests failed (exit $($result.ExitCode))" }
+      - name: Validate mod inventory and locked Developer options in actual Windows UI
+        shell: pwsh
+        run: |
+          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
+          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -Wait -PassThru -NoNewWindow
+          if ($result.ExitCode -ne 0) { throw "First-run VR Mod Manager UI self-tests failed (exit $($result.ExitCode))" }

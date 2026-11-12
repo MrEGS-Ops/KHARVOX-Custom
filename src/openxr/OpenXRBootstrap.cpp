@@ -444,6 +444,12 @@ struct State {
     XrQuaternionf primaryVisualLocalOrientation{0,0,0,1};
     kharvox::RightHandGripSettings rightGripSettings{};
     kharvox::VrHandMenuState vrHandMenu{};
+    kharvox::VrLiveSettings vrLiveSettings{};
+    kharvox::CustomModFlags vrDesktopMods{};
+    bool vrDesktopPhysicalGk{},vrDesktopKilltime{};
+    float vrDesktopPunchSpeed{2.8f};
+    int vrDesktopPunchHands{2};
+    bool vrLiveKilltimeEnabled{},vrCrouchReleasePending{};
     XrQuaternionf lastWeaponRenderedTrackingRotation{0,0,0,1};
     XrVector3f lastWeaponRenderedTrackingAnchor{};
     KharvoxWeaponKind lastWeaponRenderedKind{KharvoxWeaponKind::Unknown};
@@ -759,12 +765,18 @@ int actionSpeedEnvironmentHz(const char* name){
         ?static_cast<int>(value):0;
 }
 const kharvox::ActionSpeedTargets& actionSpeedTargets(){
-    static const kharvox::ActionSpeedTargets p{
+    static const kharvox::ActionSpeedTargets defaults{
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_CHAINSAW_HZ"),
         actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ"),
         0 /* DOOM progression owns ledge speed unconditionally */,
         0 /* passive scripted scenes must always remain game-native */};
-    return p;
+    static kharvox::ActionSpeedTargets live{};
+    live=defaults;
+    live.gloryKill=s.vrLiveKilltimeEnabled
+        ?(s.vrLiveSettings.gloryKillHz>0
+            ?s.vrLiveSettings.gloryKillHz : defaults.gloryKill)
+        :0;
+    return live;
 }
 unsigned actionSpeedProbeMask(){
     static const unsigned mask=[]{
@@ -828,8 +840,9 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
     }();
     // The global Target Tick Hz control is retired: action profiles own their
     // own scoped target, and the 1-5 native Sync Action Speed preset remains.
-    constexpr int cinematicFineTuneHz=0;
-    const int hzSpeedLevel=cinematicSpeedLevel;
+    const int cinematicFineTuneHz=s.vrLiveKilltimeEnabled
+        ?s.vrLiveSettings.gloryKillHz:0;
+    const int hzSpeedLevel=s.vrLiveKilltimeEnabled?cinematicSpeedLevel:1;
     const bool fastKillsEnabled=kharvox::nativeFastKillSyncRequested(
         s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
         legacySpeedLevel,cinematicSpeedLevel);
@@ -1668,7 +1681,7 @@ void updateHeadPose(const XrViewState& viewState,XrTime displayTime,bool nativeP
     publishGameCameraHeadPose(physicalHeadYaw,s.head.pitch,s.head.roll,forward,lateral,up,s.headCameraArmed,centeredNativeMenuActive);
 }
 void releaseBackWeaponKeyboardPulse();
-void releaseMovement(){s.handsJump={};const auto oldMovement=virtualMovementAxes.exchange(0,std::memory_order_relaxed);const SHORT oldRightX=virtualRightX.exchange(0,std::memory_order_relaxed),oldRightY=virtualRightY.exchange(0,std::memory_order_relaxed);if(oldMovement||oldRightX||oldRightY)virtualPacket.fetch_add(1,std::memory_order_relaxed);releaseBackWeaponKeyboardPulse();}
+void releaseMovement(bool preserveKeyboardPulse=false){s.handsJump={};const auto oldMovement=virtualMovementAxes.exchange(0,std::memory_order_relaxed);const SHORT oldRightX=virtualRightX.exchange(0,std::memory_order_relaxed),oldRightY=virtualRightY.exchange(0,std::memory_order_relaxed);if(oldMovement||oldRightX||oldRightY)virtualPacket.fetch_add(1,std::memory_order_relaxed);if(!preserveKeyboardPulse)releaseBackWeaponKeyboardPulse();}
 SHORT stickToXInput(float value){return static_cast<SHORT>(std::lround(std::clamp(value,-1.f,1.f)*(value<0.f?32768.f:32767.f)));}
 void updateVirtualLeftStick(XrVector2f stick,bool active){
     const SHORT x=active?stickToXInput(stick.x):0,y=active?stickToXInput(stick.y):0;
@@ -2889,6 +2902,7 @@ void updateWeapon6Dof(){
 }
 // Native VR hand menu input must precede the gameplay input dispatcher.
 // Render-side compositor helper stays in its later Vulkan include.
+#include "VrLiveMenuLogic.inc"
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
@@ -3005,7 +3019,7 @@ void updateGameplayActions(XrTime displayTime){
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
-    if(serviceVrHandMenuInput(gameplay,vrLeftClick,vrRightClick,
+    if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f)){
@@ -3083,11 +3097,8 @@ void updateGameplayActions(XrTime displayTime){
             const float outward=side==0?grip.x-head.x:head.x-grip.x;
             const float vertical=grip.y-head.y;
             const float behind=grip.z-head.z;
-            return active
-                ?(outward>=-.16f&&outward<=.66f&&vertical>=-.35f&&vertical<=.54f
-                    &&behind>=-.13f&&behind<=.86f)
-                :(outward>=-.04f&&outward<=.44f&&vertical>=-.18f&&vertical<=.36f
-                    &&behind>=.015f&&behind<=.60f);
+            return kharvox::vrLiveWheelInside(
+                {outward,vertical,behind},active,s.vrLiveSettings.wheelShift[side]);
         };
         // Independent zone-entry cues for BOTH hands. Wheel-side indices
         // are 0=right,1=left; haptic indices are the inverse.
@@ -3429,8 +3440,10 @@ void updateGameplayActions(XrTime displayTime){
                 const auto p=controllerRelativeToBodyTrackingOrigin(hand).position;
                 const kharvox::BackWeaponVec3 relative{
                     side==0?p.x-head.x:head.x-p.x,p.y-head.y,p.z-head.z};
-                inside=kharvox::quickHipInside(relative,
-                    s.quickHolsters.gestures[side].inside);
+                inside=kharvox::vrLiveHipInside(
+                    {relative.x,relative.y,relative.z},
+                    s.quickHolsters.gestures[side].inside,
+                    s.vrLiveSettings.hipShift[side]);
             }
             const bool held=readFloatAction(side==0
                 ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
@@ -4090,8 +4103,10 @@ void updateGameplayActions(XrTime displayTime){
         &&s.headZeroPositionValid){
         const float heightDelta=s.trackingHeadPosition.y-s.headZeroPosition.y;
         const bool previous=s.physicalCrouchActive;
-        if(!s.physicalCrouchActive&&heightDelta<=-.28f)s.physicalCrouchActive=true;
-        else if(s.physicalCrouchActive&&heightDelta>=-.20f)s.physicalCrouchActive=false;
+        if(!s.physicalCrouchActive&&heightDelta<=kharvox::vrLiveCrouchEntry(s.vrLiveSettings))
+            s.physicalCrouchActive=true;
+        else if(s.physicalCrouchActive&&heightDelta>=kharvox::vrLiveCrouchExit(s.vrLiveSettings))
+            s.physicalCrouchActive=false;
         // DOOM handles crouch as a TOGGLE on the button's rising edge.
         // Holding native B down throughout a real crouch cannot stand the
         // player up; emit one short pulse both going down AND standing up.
@@ -4108,6 +4123,12 @@ void updateGameplayActions(XrTime displayTime){
             log("[INPUT] Physical Crouch OFF — lost HMD position tracking or gameplay");
         s.physicalCrouchActive=false;
         s.physicalCrouchPulseUntil=0;
+    }
+    if(gameplay&&s.vrCrouchReleasePending){
+        // If switched off while physically crouched, issue one native
+        // toggle release only after the VR overlay has closed.
+        s.physicalCrouchPulseUntil=displayTime+90000000;
+        s.vrCrouchReleasePending=false;
     }
     const bool physicalCrouchNativePulse=gameplay
         &&displayTime<s.physicalCrouchPulseUntil;
@@ -4665,7 +4686,19 @@ bool createGameplayActions(){
     XrSessionActionSetsAttachInfo at{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};at.countActionSets=1;at.actionSets=&s.gameplayActionSet;r=s.attachActionSets(s.session,&at);if(XR_FAILED(r)){log("[RIGHT] xrAttachSessionActionSets "+result(r));return false;}
     s.interactionProfilesDirty=true;
     s.interactionProfilesKnown=false;
-    configureTurning();configureMovementDirection();configurePhysicalGlorykill();configureLaserSight();configureMotionWeaponWheel();s.actionsReady=true;
+    configureTurning();configureMovementDirection();configurePhysicalGlorykill();
+    s.vrDesktopPhysicalGk=s.physicalGlorykillEnabled;
+    s.vrDesktopPunchSpeed=s.physicalGlorykillSpeed;
+    s.vrDesktopPunchHands=static_cast<int>(s.physicalGlorykillHands);
+    s.vrDesktopKilltime=actionSpeedEnvironmentHz("KHARVOX_ACTION_SPEED_GLORY_HZ")>0;
+    // Keep the owner's launcher-defined punch values until an explicit
+    // UserData/vr_live_mods_saved.cfg override is present.
+    if(!kharvox::runtimeFileExists(L"vr_live_mods_saved.cfg")){
+        s.vrLiveSettings.punchSpeedMetersPerSec=s.physicalGlorykillSpeed;
+        s.vrLiveSettings.punchHands=static_cast<int>(s.physicalGlorykillHands);
+    }
+    applyVrLiveModRuntimeState();
+    configureLaserSight();configureMotionWeaponWheel();s.actionsReady=true;
     log(std::string("[HAPTICS] OpenXR core rumble ")+(s.hapticActionsReady&&s.hapticBindingsSuggested?"ready":"unavailable; continuing without VR rumble"));
     if(s.hapticActionsReady&&s.hapticBindingsSuggested)
         log("[HAPTICS] weapon-fire fallback armed amplitude="
@@ -5284,7 +5317,13 @@ void traceEye(unsigned kind,int eye,const XrPosef& pose,const XrFovf& fov,
 bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExtent.width==extent.width&&s.stereoCacheExtent.height==extent.height)return true;if(!s.vk.createImage||!s.vk.getImageMemoryRequirements||!s.vk.allocateMemory||!s.vk.bindImageMemory||!s.vk.getPhysicalDeviceMemoryProperties)return false;if(!s.vk.queueWaitIdle||!s.queue||s.vk.queueWaitIdle(s.queue)!=VK_SUCCESS)return false;s.fsr1.releaseAfterCompletion();s.fsr1InitializationAttempted=false;invalidateAlternatingStereoHistory(true);for(int e=0;e<2;e++){if(s.stereoCache[e])s.vk.destroyImage(s.device,s.stereoCache[e],nullptr);if(s.stereoCacheMemory[e])s.vk.freeMemory(s.device,s.stereoCacheMemory[e],nullptr);s.stereoCache[e]=VK_NULL_HANDLE;s.stereoCacheMemory[e]=VK_NULL_HANDLE;}VkPhysicalDeviceMemoryProperties properties{};s.vk.getPhysicalDeviceMemoryProperties(s.physical,&properties);for(int e=0;e<2;e++){VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};ci.imageType=VK_IMAGE_TYPE_2D;ci.format=static_cast<VkFormat>(s.format);ci.extent={extent.width,extent.height,1};ci.mipLevels=1;ci.arrayLayers=1;ci.samples=VK_SAMPLE_COUNT_1_BIT;ci.tiling=VK_IMAGE_TILING_OPTIMAL;ci.usage=VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;ci.sharingMode=VK_SHARING_MODE_EXCLUSIVE;ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;if(s.vk.createImage(s.device,&ci,nullptr,&s.stereoCache[e])!=VK_SUCCESS)return false;VkMemoryRequirements requirements{};s.vk.getImageMemoryRequirements(s.device,s.stereoCache[e],&requirements);uint32_t memoryType=UINT32_MAX;for(uint32_t i=0;i<properties.memoryTypeCount;i++)if((requirements.memoryTypeBits&(1u<<i))&&(properties.memoryTypes[i].propertyFlags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)){memoryType=i;break;}if(memoryType==UINT32_MAX)return false;VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;if(s.vk.allocateMemory(s.device,&ai,nullptr,&s.stereoCacheMemory[e])!=VK_SUCCESS||s.vk.bindImageMemory(s.device,s.stereoCache[e],s.stereoCacheMemory[e],0)!=VK_SUCCESS)return false;}s.stereoCacheExtent=extent;log("Stereo cache ready "+std::to_string(extent.width)+"x"+std::to_string(extent.height)+" format="+std::to_string(s.format));return true;}
 }
 
-static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.twoHandCalibrationTarget=loadTwoHandCalibrationTarget();s.twoHandCalibrationAimMode=loadTwoHandCalibrationAimMode();loadTwoHandCalibrations();if(s.twoHandCalibrationMode){if(auto* calibration=twoHandCalibrationFor(s.twoHandCalibrationTarget))calibration->aimMode=s.twoHandCalibrationAimMode;}log(std::string("[WEAPON] native 6DOF ")+(s.weapon6Dof?"ENABLED":"disabled"));log(std::string("[TWO-HAND] ")+(s.twoHandEnabled?"ENABLED":"disabled")+" mode="+(s.twoHandCalibrationMode?"calibration":"gameplay-test")+" target="+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)+" alignment="+twoHandModeName(s.twoHandCalibrationAimMode)+" virtualGunstock="+(s.virtualGunstockEnabled?"enabled":"disabled")+" savedProfiles="+std::to_string(savedTwoHandCalibrationCount()));if(s.twoHandEnabled)writeTwoHandStatus(s.twoHandCalibrationMode?std::string("CALIBRATION: enter gameplay and equip ")+weaponKindName(s.twoHandCalibrationTarget):"GAMEPLAY TEST: waiting for gameplay weapon data");installXInputHook();s.vkInstance=instance;const auto bundledLoader=kharvox::runtimePath(L"openxr_loader.dll");s.loader=LoadLibraryW(bundledLoader.c_str());if(!s.loader)s.loader=LoadLibraryW(L"openxr_loader.dll");if(!s.loader){log("OpenXR loader not found beside KharvoxLayer.dll or on the system DLL path");return;}s.getProc=reinterpret_cast<PFN_xrGetInstanceProcAddr>(GetProcAddress(s.loader,"xrGetInstanceProcAddr"));s.enumerateExtensions=reinterpret_cast<PFN_xrEnumerateInstanceExtensionProperties>(GetProcAddress(s.loader,"xrEnumerateInstanceExtensionProperties"));s.createInstance=reinterpret_cast<PFN_xrCreateInstance>(GetProcAddress(s.loader,"xrCreateInstance"));if(!s.getProc||!s.enumerateExtensions||!s.createInstance){log("loader exports missing");return;}uint32_t n=0;s.enumerateExtensions(nullptr,0,&n,nullptr);std::vector<XrExtensionProperties> ex(n,{XR_TYPE_EXTENSION_PROPERTIES});s.enumerateExtensions(nullptr,n,&n,ex.data());bool e2=false,e1=false,metaPlusExtensionAvailable=false;for(auto&e:ex){e2|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);e1|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);metaPlusExtensionAvailable|=!strcmp(e.extensionName,"XR_META_touch_controller_plus");}const bool med=GetFileAttributesW(kharvox::runtimePath(L"enable_xr_mediated").c_str())!=INVALID_FILE_ATTRIBUTES;s.runtimeManifest=kharvox::activeOpenXRRuntimeManifest();s.runtimeKind=kharvox::classifyOpenXRRuntime(s.runtimeManifest);s.vulkanPath=kharvox::selectOpenXRVulkanPath(s.runtimeKind,med,e1,e2);s.useEnable2Bridge=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2VirtualDesktopBridge;s.useEnable2RuntimeManaged=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2RuntimeManaged;s.enable2=s.useEnable2Bridge||s.useEnable2RuntimeManaged;const char* ext=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable1Direct?XR_KHR_VULKAN_ENABLE_EXTENSION_NAME:s.enable2?XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME:nullptr;log("OpenXR runtime policy: runtime="+std::string(kharvox::openXRRuntimeKindName(s.runtimeKind))+" manifest="+(s.runtimeManifest.empty()?std::string("<unavailable>"):s.runtimeManifest)+" selected="+kharvox::openXRVulkanPathName(s.vulkanPath)+" supportsEnable1="+(e1?"yes":"no")+" supportsEnable2="+(e2?"yes":"no"));if(!ext){log("No safe Vulkan path exposed by the active OpenXR runtime");return;}XrInstanceCreateInfo ci{XR_TYPE_INSTANCE_CREATE_INFO};strcpy_s(ci.applicationInfo.applicationName,"KHARVOX");strcpy_s(ci.applicationInfo.engineName,"KHARVOX");ci.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);// Optional Meta Touch Plus proximity sensors are used only when advertised.
+static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
+    if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
+        log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
+    log("[VR-GRIP] calibration path="+kharvox::runtimePathA("offhand_right_hand_positions.cfg")+
+        " accepted="+std::to_string(s.rightGripSettings.accepted)+
+        " rejected="+std::to_string(s.rightGripSettings.rejected));
+    s.twoHandCalibrationTarget=loadTwoHandCalibrationTarget();s.twoHandCalibrationAimMode=loadTwoHandCalibrationAimMode();loadTwoHandCalibrations();if(s.twoHandCalibrationMode){if(auto* calibration=twoHandCalibrationFor(s.twoHandCalibrationTarget))calibration->aimMode=s.twoHandCalibrationAimMode;}log(std::string("[WEAPON] native 6DOF ")+(s.weapon6Dof?"ENABLED":"disabled"));log(std::string("[TWO-HAND] ")+(s.twoHandEnabled?"ENABLED":"disabled")+" mode="+(s.twoHandCalibrationMode?"calibration":"gameplay-test")+" target="+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)+" alignment="+twoHandModeName(s.twoHandCalibrationAimMode)+" virtualGunstock="+(s.virtualGunstockEnabled?"enabled":"disabled")+" savedProfiles="+std::to_string(savedTwoHandCalibrationCount()));if(s.twoHandEnabled)writeTwoHandStatus(s.twoHandCalibrationMode?std::string("CALIBRATION: enter gameplay and equip ")+weaponKindName(s.twoHandCalibrationTarget):"GAMEPLAY TEST: waiting for gameplay weapon data");installXInputHook();s.vkInstance=instance;const auto bundledLoader=kharvox::runtimePath(L"openxr_loader.dll");s.loader=LoadLibraryW(bundledLoader.c_str());if(!s.loader)s.loader=LoadLibraryW(L"openxr_loader.dll");if(!s.loader){log("OpenXR loader not found beside KharvoxLayer.dll or on the system DLL path");return;}s.getProc=reinterpret_cast<PFN_xrGetInstanceProcAddr>(GetProcAddress(s.loader,"xrGetInstanceProcAddr"));s.enumerateExtensions=reinterpret_cast<PFN_xrEnumerateInstanceExtensionProperties>(GetProcAddress(s.loader,"xrEnumerateInstanceExtensionProperties"));s.createInstance=reinterpret_cast<PFN_xrCreateInstance>(GetProcAddress(s.loader,"xrCreateInstance"));if(!s.getProc||!s.enumerateExtensions||!s.createInstance){log("loader exports missing");return;}uint32_t n=0;s.enumerateExtensions(nullptr,0,&n,nullptr);std::vector<XrExtensionProperties> ex(n,{XR_TYPE_EXTENSION_PROPERTIES});s.enumerateExtensions(nullptr,n,&n,ex.data());bool e2=false,e1=false,metaPlusExtensionAvailable=false;for(auto&e:ex){e2|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);e1|=!strcmp(e.extensionName,XR_KHR_VULKAN_ENABLE_EXTENSION_NAME);metaPlusExtensionAvailable|=!strcmp(e.extensionName,"XR_META_touch_controller_plus");}const bool med=GetFileAttributesW(kharvox::runtimePath(L"enable_xr_mediated").c_str())!=INVALID_FILE_ATTRIBUTES;s.runtimeManifest=kharvox::activeOpenXRRuntimeManifest();s.runtimeKind=kharvox::classifyOpenXRRuntime(s.runtimeManifest);s.vulkanPath=kharvox::selectOpenXRVulkanPath(s.runtimeKind,med,e1,e2);s.useEnable2Bridge=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2VirtualDesktopBridge;s.useEnable2RuntimeManaged=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable2RuntimeManaged;s.enable2=s.useEnable2Bridge||s.useEnable2RuntimeManaged;const char* ext=s.vulkanPath==kharvox::OpenXRVulkanPath::VulkanEnable1Direct?XR_KHR_VULKAN_ENABLE_EXTENSION_NAME:s.enable2?XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME:nullptr;log("OpenXR runtime policy: runtime="+std::string(kharvox::openXRRuntimeKindName(s.runtimeKind))+" manifest="+(s.runtimeManifest.empty()?std::string("<unavailable>"):s.runtimeManifest)+" selected="+kharvox::openXRVulkanPathName(s.vulkanPath)+" supportsEnable1="+(e1?"yes":"no")+" supportsEnable2="+(e2?"yes":"no"));if(!ext){log("No safe Vulkan path exposed by the active OpenXR runtime");return;}XrInstanceCreateInfo ci{XR_TYPE_INSTANCE_CREATE_INFO};strcpy_s(ci.applicationInfo.applicationName,"KHARVOX");strcpy_s(ci.applicationInfo.engineName,"KHARVOX");ci.applicationInfo.apiVersion=XR_MAKE_VERSION(1,0,0);// Optional Meta Touch Plus proximity sensors are used only when advertised.
     // If the runtime declines this optional extension, retry the ORIGINAL
     // single Vulkan extension to avoid regressing headset initialization.
     const std::array<const char*,2> xrExtensions{ext,"XR_META_touch_controller_plus"};

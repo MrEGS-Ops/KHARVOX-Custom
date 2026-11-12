@@ -156,6 +156,62 @@ void resetVrMenuSelectedWeapon(){
     m.message=std::string("Your factory calibration restored: ")+m.weapon();
     log("[VR-HAND-MENU] "+m.message);
 }
+void startVrSelectedWeaponCalibration(){
+    auto& m=s.vrHandMenu;
+    m.autoSelectingWeapon=false;
+    m.pendingNativeSelection=0;
+    m.mode=kharvox::VrHandMenuMode::Calibrating;
+    m.calibratingWeaponLeft=s.weaponHandLeft;
+    m.previewValid=false;
+    s.primaryVisualLocked=false;
+    s.supportVisualLocked=false;
+    m.message="Live weapon calibration. RIGHT TRIGGER saves.";
+    log(std::string("[VR-MODS] calibrating ")+m.weapon()+
+        (m.rightHand?" RIGHT":" LEFT")+
+        (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
+}
+void requestVrSelectedWeaponCalibration(XrTime displayTime){
+    auto& m=s.vrHandMenu;
+    if(!s.customMods.offHandGripCapture){
+        m.message="Enable Weapon Grip Calibration with VR checkbox first.";
+        return;
+    }
+    const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+    if(weapon==KharvoxWeaponCurrentKind()){
+        startVrSelectedWeaponCalibration();
+        return;
+    }
+    // Never guess ownership or manually select an undiscovered weapon.
+    // Empty ammo is still a discovered gun; unknown/unavailable cannot
+    // be auto-selected safely.
+    const auto ammo=KharvoxWeaponGetAmmoState(weapon);
+    if(ammo==KharvoxWeaponAmmoState::Unknown
+        ||ammo==KharvoxWeaponAmmoState::Unavailable){
+        m.message=std::string("NOT AVAILABLE: ")+m.weapon()+
+            " not discovered. Current weapon unchanged.";
+        return;
+    }
+    const auto slot=backWeaponKindFromActive(weapon);
+    const auto key=kharvox::backWeaponKeyboardVirtualKey(slot);
+    bool sent=false;
+    if(key){
+        sent=startBackWeaponKeyboardPulse(key,displayTime);
+    }else if(slot==kharvox::BackWeaponKind::Bfg
+             ||slot==kharvox::BackWeaponKind::Chainsaw){
+        m.pendingNativeSelection=slot==kharvox::BackWeaponKind::Bfg?1:2;
+        m.nativeSelectionPulseUntil=displayTime+100000000;
+        sent=true;
+    }
+    if(!sent){
+        m.message="Could not select weapon. No calibration started.";
+        return;
+    }
+    m.autoSelectingWeapon=true;
+    m.autoSelectionDeadlineMs=GetTickCount64()+1300ULL;
+    m.message=std::string("Equipping ")+m.weapon()+
+        "... calibration starts after DOOM confirms selection.";
+    log(std::string("[VR-MODS] requested available weapon ")+m.weapon());
+}
 int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelX=pixelY=-1.f;
     if(!s.rightController.valid||!s.rightController.positionTracked
@@ -175,6 +231,20 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelX=(x/1.28f+.5f)*float(vrMenuW);
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
+    if(s.vrHandMenu.page==kharvox::VrMenuPage::Mods){
+        if(pixelX>=38&&pixelX<=493){
+            for(int i=0;i<10;++i)
+                if(pixelY>=136+i*45&&pixelY<176+i*45)
+                    return 1000+s.vrHandMenu.modScroll+i;
+        }
+        if(pixelX>=531&&pixelX<=915){
+            if(pixelY>=150&&pixelY<210)return 110;
+            for(int i=0;i<5;++i)
+                if(pixelY>=248+i*68&&pixelY<306+i*68)return 130+i;
+        }
+        return -1;
+    }
+    if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
     if(pixelX>=38&&pixelX<=493){
         for(int i=0;i<10;++i)
             if(pixelY>=136+i*45&&pixelY<176+i*45)return i;
@@ -190,18 +260,21 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     }
     return -1;
 }
-bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
+bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool rightClick,
                             bool rightTrigger,bool leftTrigger,
                             bool primaryWeaponGripDown){
     auto& m=s.vrHandMenu;
     // A single 1-second RIGHT-stick hold opens/closes this menu.
     // Ordinary RS taps still belong to Hand Focus.
-    const auto shortcut=s.customMods.offHandGripCapture
-        ?kharvox::updateVrMenuHoldShortcut(
-            m.shortcut,rightClick,GetTickCount64())
-        :kharvox::VrMenuShortcutAction::None;
+    // The menu remains accessible when Weapon Grip Calibration is OFF,
+    // otherwise the player could not turn the mod back on from VR.
+    const auto shortcut=kharvox::updateVrMenuHoldShortcut(
+        m.shortcut,rightClick,GetTickCount64());
     if(!gameplay){
         m.mode=kharvox::VrHandMenuMode::Closed;
+        m.autoSelectingWeapon=false;
+        m.pendingNativeSelection=0;
+        m.liveCapture=kharvox::VrLiveCapture::None;
         m.previewValid=false;
         m.shortcut={};
         m.rightTriggerPreviously=rightTrigger;
@@ -216,6 +289,13 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                 return true;
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
+            m.page=kharvox::VrMenuPage::Mods;
+            m.selectedMod=kharvox::VrLiveMod::WeaponGrip;
+            m.selectedRow=0;
+            m.modScroll=0;
+            m.liveCapture=kharvox::VrLiveCapture::None;
+            m.autoSelectingWeapon=false;
+            m.pendingNativeSelection=0;
             m.alternateProfile=false;
             // A left-holster draw means LEFT primary, not "LEFT support".
             m.rightHand=!s.weaponHandLeft;
@@ -223,15 +303,16 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
                     ==equipped)m.selectedWeapon=i;
-            m.message=std::string("Holding in ")+
-                (s.weaponHandLeft?"LEFT":"RIGHT")+
-                " hand. Choose physical hand to calibrate.";
+            m.message="Select a mod LEFT; adjust settings RIGHT. RIGHT TRIGGER confirms.";
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
             m.mode=m.mode==kharvox::VrHandMenuMode::Menu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
+            m.liveCapture=kharvox::VrLiveCapture::None;
+            m.autoSelectingWeapon=false;
+            m.pendingNativeSelection=0;
             s.primaryVisualLocked=false;
             s.supportVisualLocked=false;
             log("[VR-HAND-MENU] RIGHT-stick hold closes/cancels screen");
@@ -253,17 +334,62 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;
     if(m.mode==kharvox::VrHandMenuMode::Calibrating){
-        updateVrMenuPreview();
-        if(triggerEdge)saveVrHandMenuCalibration();
+        if(m.liveCapture!=kharvox::VrLiveCapture::None){
+            if(triggerEdge)captureVrLivePosition();
+        }else{
+            updateVrMenuPreview();
+            if(triggerEdge)saveVrHandMenuCalibration();
+        }
     }else{
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
+        auto rows=activeVrMenuEntries();
+        if(m.page==kharvox::VrMenuPage::Mods){
+            const int n=static_cast<int>(rows.size());
+            if(std::abs(s.leftStick.y)>.75f&&m.leftStickCentered&&n>0){
+                m.selectedRow=(m.selectedRow+(s.leftStick.y<0.f?1:n-1))%n;
+                m.selectedMod=rows[m.selectedRow].mod;
+                m.modScroll=std::clamp(m.modScroll,0,std::max(0,n-10));
+                if(m.selectedRow<m.modScroll)m.modScroll=m.selectedRow;
+                if(m.selectedRow>=m.modScroll+10)m.modScroll=m.selectedRow-9;
+                m.leftStickCentered=false;
+            }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
+            if(triggerEdge){
+                if(m.hovered>=1000&&m.hovered<1000+n){
+                    m.selectedRow=m.hovered-1000;
+                    m.selectedMod=rows[m.selectedRow].mod;
+                    m.message=kharvox::vrLiveModEditable(m.selectedMod)
+                        ?"Live options on the RIGHT.":"Read-only; configured in desktop launcher.";
+                }else if(m.hovered==110
+                    ||(m.hovered>=130&&m.hovered<=134))
+                    handleVrLiveMenuAction(m.hovered);
+            }
+        }else{
+        if(m.autoSelectingWeapon){
+            const auto desired=KharvoxWeaponKindFromKey(m.weapon());
+            if(desired==KharvoxWeaponCurrentKind()){
+                startVrSelectedWeaponCalibration();
+            }else if(GetTickCount64()>=m.autoSelectionDeadlineMs){
+                m.autoSelectingWeapon=false;
+                m.pendingNativeSelection=0;
+                m.message="Weapon unavailable or selection timed out. Not calibrated.";
+            }
+        }
         if(std::abs(s.leftStick.y)>.75f&&m.leftStickCentered){
             m.selectedWeapon=(m.selectedWeapon+(s.leftStick.y<0.f?1:9))%10;
+            m.autoSelectingWeapon=false;
+            m.pendingNativeSelection=0;
             m.leftStickCentered=false;
         }else if(std::abs(s.leftStick.y)<.3f)m.leftStickCentered=true;
         if(triggerEdge){
-            if(m.hovered>=0&&m.hovered<10){
+            if(m.hovered==95){
+                m.page=kharvox::VrMenuPage::Mods;
+                m.autoSelectingWeapon=false;
+                m.pendingNativeSelection=0;
+                m.message="Live VR Mod Settings";
+            }else if(m.hovered>=0&&m.hovered<10){
                 m.selectedWeapon=m.hovered;
+                m.autoSelectingWeapon=false;
+                m.pendingNativeSelection=0;
                 m.alternateProfile=false;
             }
             else if(m.hovered==20)m.rightHand=false;
@@ -277,25 +403,11 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
                     m.message=m.alternateProfile?"Alternate handle selected.":"Normal handle selected.";
                 }
             }
-            else if(m.hovered==30||m.hovered==-1){
-                if(!s.customMods.offHandGripCapture)
-                    m.message="Enable Off-Hand Grip Capture in desktop Mod Manager.";
-                else if(KharvoxWeaponKindFromKey(m.weapon())!=KharvoxWeaponCurrentKind())
-                    m.message="Equip the selected weapon first, then open this menu.";
-                else{
-                    m.mode=kharvox::VrHandMenuMode::Calibrating;
-                    m.calibratingWeaponLeft=s.weaponHandLeft;
-                    m.previewValid=false;
-                    s.primaryVisualLocked=false;s.supportVisualLocked=false;
-                    m.message="Live hand calibration";
-                    log(std::string("[VR-HAND-MENU] calibrating ")+m.weapon()+
-                        (m.rightHand?" RIGHT":" LEFT")+
-                        (m.rightHand!=s.weaponHandLeft
-                            ?" primary pose+rotation":" support position only"));
-                }
-            }
+            else if(m.hovered==30||m.hovered==-1)
+                requestVrSelectedWeaponCalibration(displayTime);
         }
         m.leftTriggerPreviously=leftTrigger;
+        }
     }
     // Keep the ordinary menu entirely input-muted. ONLY during LIVE
     // calibration, pass the CURRENT weapon hand's physical Grip directly to
@@ -310,9 +422,14 @@ bool serviceVrHandMenuInput(bool gameplay,bool leftClick,bool rightClick,
         log(std::string("[VR-HAND-MENU] live calibration native secondary fire ")
             +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
     s.heavyAlternateInputForwarded=liveAltFire;
-    releaseMovement();
-    updateVirtualButtons(false,false,false,liveAltFire,false,false,false,
-        false,false,false,false,false,false,false);
+    releaseMovement(m.autoSelectingWeapon);
+    // Special BFG/Chainsaw auto-equip uses its native selection channel.
+    // Never forward right-trigger FIRE or any melee while this menu owns input.
+    const bool selectionPulse=m.autoSelectingWeapon
+        &&displayTime<m.nativeSelectionPulseUntil;
+    updateVirtualButtons(false,false,false,liveAltFire,false,false,
+        selectionPulse&&m.pendingNativeSelection==2,false,false,false,
+        false,selectionPulse&&m.pendingNativeSelection==1,false,false);
     s.offHandStickInput={};
     s.offHandStickOutput={};
     s.primaryFireDown=false;

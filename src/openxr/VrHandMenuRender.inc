@@ -95,6 +95,118 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
+    if(m.page==kharvox::VrMenuPage::Mods){
+        write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
+        SelectObject(dc,smallFont);
+        write(40,102,"ACTIVE / AVAILABLE MODS",muted);
+        write(535,102,"LIVE SETTINGS",muted);
+        const auto entries=activeVrMenuEntries();
+        const int count=static_cast<int>(entries.size());
+        const int selected=std::clamp(m.selectedRow,0,std::max(0,count-1));
+        for(int shown=0;shown<10;++shown){
+            const int index=shown+m.modScroll;
+            if(index>=count)break;
+            const int y=136+shown*45;
+            const bool active=index==selected;
+            const bool hovered=m.hovered==1000+index;
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hovered?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,smallFont);
+            std::string title=entries[index].title;
+            // The left edge lists ALL enabled mods, but the five supported
+            // adjustable ones remain visible even when switched off.
+            if(title.size()>29)title.resize(29);
+            write(55,y+10,title,entries[index].enabled?white:muted);
+            write(436,y+10,entries[index].enabled?"ON":"OFF",
+                entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
+        }
+        if(count>10){
+            SelectObject(dc,smallFont);
+            write(48,602,"LEFT STICK: scroll  ("+
+                std::to_string(selected+1)+"/"+std::to_string(count)+")",muted);
+        }
+        const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
+        const bool editable=kharvox::vrLiveModEditable(mod);
+        const bool enabled=count>0&&entries[selected].enabled;
+        SelectObject(dc,regular);
+        write(536,126,count>0?entries[selected].title:"No active mods",white);
+        fill(531,159,384,60,editable?RGB(39,49,63):RGB(30,35,44));
+        fill(553,172,36,36,editable?RGB(54,79,91):RGB(45,49,56));
+        if(enabled)fill(562,181,18,18,RGB(76,231,167));
+        SelectObject(dc,regular);
+        write(603,169,editable?(enabled?"ENABLED   (TOGGLE)":"DISABLED   (TOGGLE)")
+            :(enabled?"ENABLED   (READ-ONLY)":"READ-ONLY"),editable?white:muted);
+        SelectObject(dc,smallFont);
+        if(!editable)
+            write(545,251,"Configure in desktop launcher only.",muted);
+        else{
+            write(540,226,"Point with RIGHT hand; trigger to select.",muted);
+            std::array<std::string,5> options{};
+            int optionCount{};
+            switch(mod){
+                case kharvox::VrLiveMod::WeaponGrip:
+                    options[0]="OPEN WEAPON CALIBRATION";
+                    optionCount=1;
+                    break;
+                case kharvox::VrLiveMod::Gunslinger:
+                    options={"SET RIGHT HIP","SET LEFT HIP",
+                             "SET RIGHT WHEEL","SET LEFT WHEEL","RESET ZONES"};
+                    optionCount=5;
+                    break;
+                case kharvox::VrLiveMod::PhysicalCrouch:
+                    options[0]="SET STANDING HEAD HEIGHT";
+                    options[1]="SET CROUCHING HEAD HEIGHT";
+                    options[2]="RESET HEIGHTS";
+                    optionCount=3;
+                    break;
+                case kharvox::VrLiveMod::Killtime:
+                    options[0]="SLOWER (-10 HZ)";
+                    options[1]="FASTER (+10 HZ)";
+                    options[2]="RESET TO DESKTOP PRESET";
+                    optionCount=3;
+                    break;
+                case kharvox::VrLiveMod::PhysicalGloryKills:
+                    options[0]="LOWER PUNCH THRESHOLD";
+                    options[1]="RAISE PUNCH THRESHOLD";
+                    options[2]="CHANGE ACTIVE PUNCH HAND";
+                    options[3]="RESET PUNCH DEFAULTS";
+                    optionCount=4;
+                    break;
+                default:break;
+            }
+            for(int index=0;index<optionCount;++index){
+                const int y=248+68*index;
+                fill(531,y,384,58,m.hovered==130+index
+                     ?RGB(52,83,99):RGB(39,49,63));
+                SelectObject(dc,smallFont);
+                write(548,y+17,options[index],white);
+            }
+            if(mod==kharvox::VrLiveMod::Killtime){
+                write(548,543,"GLORY KILL: "+(s.vrLiveSettings.gloryKillHz>0
+                    ?std::to_string(s.vrLiveSettings.gloryKillHz)+" Hz"
+                    :std::string("desktop preset")),RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::PhysicalGloryKills){
+                std::ostringstream speed;
+                speed<<std::fixed<<std::setprecision(1)
+                    <<s.vrLiveSettings.punchSpeedMetersPerSec;
+                write(548,543,"PUNCH: "+speed.str()+" m/s  HAND: "+
+                    (s.vrLiveSettings.punchHands==0?"RIGHT"
+                        :s.vrLiveSettings.punchHands==1?"LEFT":"BOTH"),
+                    RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::PhysicalCrouch){
+                write(548,543,s.vrLiveSettings.crouchLoweredSaved
+                    ?"CUSTOM HEIGHTS ACTIVE":"DEFAULT CROUCH HEIGHTS",
+                    RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::Gunslinger){
+                write(548,609,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
+            }
+        }
+        SelectObject(dc,smallFont);
+        write(538,623,"Hold RIGHT stick 1s to close",muted);
+        write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
+            :m.message.substr(0,105),RGB(84,233,214));
+    }else{
     write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
     write(40,102,"WEAPON PROFILES",muted);
@@ -163,6 +275,11 @@ void paintVrHandMenu() {
         Ellipse(dc,x-8,y-8,x+8,y+8);
         SelectObject(dc,oldPen);SelectObject(dc,oldBrush);
         DeleteObject(pen);DeleteObject(marker);
+    }
+        // Back to the list of active mods, leaving weapon profiles intact.
+        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
+        SelectObject(dc,smallFont);
+        write(815,30,"BACK",white);
     }
     SelectObject(dc,previous);
     DeleteObject(title);DeleteObject(regular);DeleteObject(smallFont);

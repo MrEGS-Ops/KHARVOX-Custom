@@ -788,9 +788,11 @@ internal sealed partial class ModsForm
         var check = MakePreviewCheck(mod.Title,
             description + Environment.NewLine + statusReason,
             isDev ? "dev-override" : "original-vr-mod");
-        check.Enabled = available;
-        check.Checked = isDev && mod.Title == AutoMeleeDevTitle
-            ? PhysicalGkEnabledInLauncher() : active;
+        check.Enabled = available && !isDev;
+        check.Checked = isDev && (mod.Title == "Hand Focus"
+                || mod.Title == "Physical Crouch")
+            ? true : isDev && mod.Title == AutoMeleeDevTitle
+                ? PhysicalGkEnabledInLauncher() : active;
         if (isDev && mod.Title == AutoMeleeDevTitle)
             _autoMeleeDevIndicator = check;
         check.Text = ""; // Only the checkbox glyph; label renders the name.
@@ -978,7 +980,9 @@ internal sealed partial class ModsForm
     internal static void ValidateActiveVrPolicies()
     {
         var verified = VerifiedVrMods();
-        if (verified.Length != 7 || verified.Distinct().Count() != 7 ||
+        // Hand Focus and Physical Crouch moved to always-on Developer rows,
+        // so the selectable mod count is now five, not seven.
+        if (verified.Length != 5 || verified.Distinct().Count() != 5 ||
             DependenciesFor("Directional Dash").Length != 2 ||
             DependencyLinks("Gunslinger").Length != 2 ||
             DependencyLinks("Weapon Wheel Button Remap").Length != 1 ||
@@ -991,7 +995,7 @@ internal sealed partial class ModsForm
         {
             if (dependencyTest.CanEnableMod("Directional Dash", out _) ||
                 dependencyTest.CanEnableMod("No Weapon Wheel", out _) ||
-                !dependencyTest.CanEnableMod("Hand Focus", out _) ||
+                dependencyTest.CanEnableMod("Hand Focus", out _) ||
                 !dependencyTest.CanEnableMod("Gunslinger", out _))
                 throw new InvalidDataException("Dependency gate allows unsupported mods.");
             // Gunslinger may be selected while the old standalone remap is
@@ -1104,7 +1108,9 @@ internal sealed partial class ModsForm
                 throw new InvalidDataException("Every mod must show an explicit availability status.");
 
             // Standard rows must keep their info/drag columns anchored right.
-            var other = form._visibleModRows["Hand Focus"];
+            // Hand Focus is now a locked Developer row, not an ordinary mod row.
+            // Inspect the always-present paused No HUD row for standard layout.
+            var other = form._visibleModRows["No HUD"];
             var normal = other as TableLayoutPanel;
             var normalInfo = EnumerateRowControls(other).OfType<LinkLabel>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
