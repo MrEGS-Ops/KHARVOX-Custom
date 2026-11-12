@@ -63,6 +63,8 @@ struct VrHandMenuState {
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
+    int pendingNativeSelection{}; // 1=BFG (Y), 2=Chainsaw (X)
+    long long nativeSelectionPulseUntil{};
     int selectedWeapon{1};
     bool rightHand{true};
     // Gauss Siege and Chaingun Turret have separate visual hand profiles.
