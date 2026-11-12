@@ -337,18 +337,12 @@ internal sealed partial class ModsForm : Form
             }
             if (!NativeBridgeInstaller.IsReady())
                 throw new InvalidDataException("Custom KHARVOX runtime did not pass verification.");
-
-            // Install the eight owner-measured supports only once.
-            // One-time migration enables real Off-Hand Grip handling, but a
-            // later manual OFF choice is respected across future launches.
+            // Ready-to-run installs already have the verified bridge and
+            // bypass InstallAsync. Seed first-run factory profiles here too.
+            // Never re-import old one-time 2026-11-01 captures over the
+            // user's newer uploaded calibration defaults.
+            NativeBridgeInstaller.EnsurePortableUserData();
             var gripBackups = Path.Combine(AppContext.BaseDirectory, "Backups", "GripProfiles");
-            CapturedGripProfiles.ApplyOnce(NativeBridgeInstaller.TargetDirectory,
-                Path.Combine(AppContext.BaseDirectory, "Backups"));
-            // Import the latest owner's Gauss/Chaingun RIGHT-hand offsets
-            // once, with a full backup. All other weapons and any subsequent
-            // custom edits are preserved. The source is inside NativeBridge.
-            RightHandGripCaptureImport.ApplyOnce(NativeBridgeInstaller.TargetDirectory,
-                Path.Combine(AppContext.BaseDirectory, "Backups"));
             var gripV2Marker = Path.Combine(gripBackups, "offhand-grip-v2-enabled");
             if (File.Exists(Path.Combine(NativeBridgeInstaller.TargetDirectory,
                     CapturedGripProfiles.SourceName)) && !File.Exists(gripV2Marker))
