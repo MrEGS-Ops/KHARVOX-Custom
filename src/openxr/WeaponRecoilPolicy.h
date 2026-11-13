@@ -1,0 +1,194 @@
+#pragma once
+#include <algorithm>
+#include <array>
+#include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <string>
+
+// One-handed recoil is an additive, controller-local *weapon* rotation.
+// Never move the HMD, physical controller/grip anchor, or saved hand calibration.
+// All values are owned by this opt-in mod and cannot change factory profiles.
+namespace kharvox {
+inline constexpr std::array<const char*,9> kWeaponRecoilKinds{{
+    "pistol","shotgun","heavy_assault_rifle","plasma_rifle",
+    "rocket_launcher","super_shotgun","gauss_cannon","chaingun","bfg"
+}};
+struct WeaponRecoilProfile {
+    float pitchPerShot{},yawPerShot{},maximumPitch{};
+    std::uint32_t automaticIntervalMs{};
+};
+inline constexpr std::array<WeaponRecoilProfile,9> kWeaponRecoilProfiles{{
+    {1.6f,.24f,6.f,0},   // pistol
+    {3.7f,.45f,10.f,0},  // combat shotgun
+    {.65f,.18f,11.f,95}, // heavy assault rifle
+    {.43f,.15f,9.f,90},  // plasma rifle
+    {4.4f,.45f,10.f,0},  // rocket launcher
+    {5.4f,.65f,13.f,0},  // super shotgun
+    {4.2f,.38f,11.f,0},  // gauss cannon
+    {.75f,.24f,15.f,75}, // chaingun
+    {5.0f,.3f,12.f,0}   // BFG
+}};
+inline int weaponRecoilIndex(const char* weapon) noexcept {
+    if(!weapon)return -1;
+    for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
+        if(std::strcmp(weapon,kWeaponRecoilKinds[i])==0)return static_cast<int>(i);
+    return -1;
+}
+struct WeaponRecoilSettings {
+    // Off by default: the accepted KHARVOX baseline is completely unchanged.
+    bool enabled{};
+    std::array<float,9> strength{{1,1,1,1,1,1,1,1,1}};
+    std::array<float,9> recovery{{1,1,1,1,1,1,1,1,1}};
+};
+inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noexcept {
+    for(const float v:settings.strength)
+        if(!std::isfinite(v)||v<.25f||v>2.f)return false;
+    for(const float v:settings.recovery)
+        if(!std::isfinite(v)||v<.5f||v>2.f)return false;
+    return true;
+}
+struct WeaponRecoilState {
+    float fastPitch{},climbPitch{},yaw{};
+    int weapon{-1};
+    bool fireHeld{};
+    std::uint64_t lastTick{},lastShotTick{};
+    std::uint32_t shotNumber{};
+};
+struct WeaponRecoilInput {
+    int weapon{-1};
+    bool fireHeld{},twoHands{},gameplay{};
+    std::uint64_t nowMs{};
+};
+struct WeaponRecoilOutput {
+    float pitchDegrees{},yawDegrees{};
+    bool shotEstimated{};
+};
+// Fire input is a *candidate* shot. Automatic weapons are sampled at a
+// conservative cadence; native shot-event confirmation is still required
+// before claiming 1:1 recoil to actual projectiles in a headset.
+inline WeaponRecoilOutput advanceWeaponRecoil(
+    WeaponRecoilState& state,const WeaponRecoilSettings& settings,
+    WeaponRecoilInput input) noexcept {
+    if(!settings.enabled||!input.gameplay||input.weapon<0
+        ||input.weapon>=static_cast<int>(kWeaponRecoilProfiles.size())
+        ||!validWeaponRecoilSettings(settings)){
+        state={};
+        return {};
+    }
+    if(state.weapon!=input.weapon){
+        state={};state.weapon=input.weapon;state.lastTick=input.nowMs;
+    }
+    const auto rawDelta=input.nowMs>=state.lastTick
+        ?input.nowMs-state.lastTick:0u;
+    const float dt=static_cast<float>(std::min<std::uint64_t>(rawDelta,80u));
+    state.lastTick=input.nowMs;
+    const float recovery=settings.recovery[static_cast<std::size_t>(input.weapon)];
+    const float fastMs=input.twoHands?90.f:105.f/recovery;
+    const float slowMs=input.twoHands?115.f:(input.fireHeld?1300.f:480.f)/recovery;
+    const float yawMs=input.twoHands?95.f:(input.fireHeld?450.f:200.f)/recovery;
+    state.fastPitch*=std::exp(-dt/fastMs);
+    state.climbPitch*=std::exp(-dt/slowMs);
+    state.yaw*=std::exp(-dt/yawMs);
+    if(!input.twoHands&&input.fireHeld){
+        const auto& profile=kWeaponRecoilProfiles[static_cast<std::size_t>(input.weapon)];
+        const bool firstShot=!state.fireHeld;
+        const bool repeated=profile.automaticIntervalMs
+            &&input.nowMs>=state.lastShotTick
+            &&input.nowMs-state.lastShotTick>=profile.automaticIntervalMs;
+        if(firstShot||repeated){
+            state.lastShotTick=input.nowMs;
+            const float scale=settings.strength[static_cast<std::size_t>(input.weapon)];
+            // Hybrid: a quick transient and a longer cumulative barrel climb.
+            state.fastPitch=std::min(profile.maximumPitch*.45f,
+                state.fastPitch+profile.pitchPerShot*.38f*scale);
+            state.climbPitch=std::min(profile.maximumPitch,
+                state.climbPitch+profile.pitchPerShot*.62f*scale);
+            const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
+            state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
+                -profile.maximumPitch*.3f,profile.maximumPitch*.3f);
+            state.fireHeld=input.fireHeld;
+            return {std::min(profile.maximumPitch,
+                state.fastPitch+state.climbPitch),state.yaw,true};
+        }
+    }
+    state.fireHeld=input.fireHeld;
+    const auto& profile=kWeaponRecoilProfiles[static_cast<std::size_t>(input.weapon)];
+    return {std::min(profile.maximumPitch,state.fastPitch+state.climbPitch),state.yaw,false};
+}
+inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSettings& out){
+    namespace fs=std::filesystem;
+    std::error_code ec;
+    if(!fs::exists(path,ec)||ec)return !ec;
+    if(fs::file_size(path,ec)>4096u||ec)return false;
+    std::ifstream file(path);
+    if(!file)return false;
+    WeaponRecoilSettings next{};
+    std::string key,line;
+    int schema{};
+    std::array<bool,9> seen{};
+    bool enabledSeen=false;
+    while(std::getline(file,line)){
+        if(line.empty()||line[0]=='#')continue;
+        std::istringstream row(line);
+        if(!(row>>key))continue;
+        std::string trailing;
+        if(key=="schema"){
+            if(!(row>>schema)||schema!=1||(row>>trailing))return false;
+        }else if(key=="enabled"){
+            int value=-1;
+            if(enabledSeen||!(row>>value)||(value!=0&&value!=1)||(row>>trailing))
+                return false;
+            next.enabled=value==1;enabledSeen=true;
+        }else{
+            const int index=weaponRecoilIndex(key.c_str());
+            if(index<0||seen[static_cast<std::size_t>(index)])return false;
+            float strength{},recovery{};
+            if(!(row>>strength>>recovery)||(row>>trailing))return false;
+            next.strength[static_cast<std::size_t>(index)]=strength;
+            next.recovery[static_cast<std::size_t>(index)]=recovery;
+            seen[static_cast<std::size_t>(index)]=true;
+        }
+    }
+    if(file.bad()||schema!=1||!enabledSeen||!validWeaponRecoilSettings(next))
+        return false;
+    out=next;
+    return true;
+}
+inline bool saveWeaponRecoilSettings(const std::string& path,
+                                     const WeaponRecoilSettings& settings){
+    if(!validWeaponRecoilSettings(settings))return false;
+    namespace fs=std::filesystem;
+    const fs::path dest(path),tmp(path+".tmp");
+    std::error_code ec;
+    if(!dest.parent_path().empty()){
+        fs::create_directories(dest.parent_path(),ec);
+        if(ec)return false;
+    }
+    {
+        std::ofstream file(tmp,std::ios::trunc);
+        if(!file)return false;
+        file<<std::fixed<<std::setprecision(3)
+            <<"schema 1\n"<<"enabled "<<(settings.enabled?1:0)<<'\n';
+        for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
+            file<<kWeaponRecoilKinds[i]<<' '<<settings.strength[i]
+                <<' '<<settings.recovery[i]<<'\n';
+        file.flush();
+        if(!file){file.close();fs::remove(tmp,ec);return false;}
+    }
+#ifdef _WIN32
+    if(!MoveFileExW(tmp.wstring().c_str(),dest.wstring().c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        fs::remove(tmp,ec);return false;
+    }
+#else
+    fs::rename(tmp,dest,ec);
+    if(ec){fs::remove(tmp,ec);return false;}
+#endif
+    return true;
+}
+} // namespace kharvox
