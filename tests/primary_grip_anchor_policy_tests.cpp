@@ -23,9 +23,9 @@ int main(){
     // Physical controller laser is OpenXR AIM, never the tilted GRIP.
     // Grip may differ by 45 degrees but native gun must use the AIM pose.
     struct TrackedPose {bool valid;int source;};
-    const TrackedPose aim{true,1},grip{true,2},lostAim{false,3};
-    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(aim,grip)==&aim);
-    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(lostAim,grip)==&lostAim);
+    const TrackedPose aimTracking{true,1},gripTracking{true,2},lostAim{false,3};
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(aimTracking,gripTracking)==&aimTracking);
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(lostAim,gripTracking)==&lostAim);
     const Quat laser{0,0,0,1},supportTilt{0,.38268343f,0,.92387953f};
     assert(&kharvox::weaponpose::keepWeaponOnPrimaryLaser(laser,supportTilt)==&laser);
     const Vec laserOrigin{0,0,0},glovePreview{1,3,-.3f};
