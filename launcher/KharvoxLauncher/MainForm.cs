@@ -848,8 +848,10 @@ public sealed class MainForm : Form
 
     private void OptionChanged(object? sender, EventArgs e)
     {
-        if (!applyingPreset && Visible && preset.SelectedIndex >= 0 && !IsMrEgsProfileActive)
-            preset.SelectedIndex = LauncherPresetPolicy.MrEgsPresetIndex;
+        // MrEGS_ is a named, fixed profile, not the old automatic Custom
+        // fallback. Editing a different profile must not switch into and
+        // unexpectedly lock the user's controls.
+        // Only direct profile selection enters MrEGS_.
         // Programmatic mod changes must not bypass the selected profile's fixed
         // values, even if a disabled native checkbox gets set internally.
         if (!applyingPreset && IsMrEgsProfileActive)
