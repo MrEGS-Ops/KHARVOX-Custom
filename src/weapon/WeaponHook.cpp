@@ -1477,6 +1477,53 @@ void publishPropLaserMuzzlePose(void* propEntity, const float* propOrigin,
             << " worldOrigin=" << worldOrigin[0] << ',' << worldOrigin[1] << ',' << worldOrigin[2]
             << " worldDirection=" << worldDirection[0] << ',' << worldDirection[1] << ',' << worldDirection[2];
         log(out.str());
+
+        // Read-only muzzle vs ACTUAL native gun root measurement. It is
+        // intentionally NOT an auto-centering correction: the owner reports
+        // the barrel is almost on the Quest controller's AIM laser already.
+        // A screenshot cannot determine centimetres or baked model yaw.
+        // The source-qualified root/prop positions are sampled together by
+        // this render hook. Never touch the now-correct depth/compositing
+        // path or the gun pose based on an unverified visual estimate.
+        if(customHandsRequested()&&controllerRootProbeValid){
+            std::array<float,3> root{},forward{},side{},up{},diff{};
+            for(int c=0;c<3;++c){
+                root[c]=lastControllerRootOrigin[c].load(std::memory_order_relaxed);
+                forward[c]=lastControllerRootAxis[c].load(std::memory_order_relaxed);
+                side[c]=lastControllerRootAxis[3+c].load(std::memory_order_relaxed);
+                up[c]=lastControllerRootAxis[6+c].load(std::memory_order_relaxed);
+                diff[c]=worldOrigin[c]-root[c];
+            }
+            const auto norm=[](const std::array<float,3>&a){
+                return std::sqrt(a[0]*a[0]+a[1]*a[1]+a[2]*a[2]);
+            };
+            const auto dot=[](const std::array<float,3>&a,
+                              const std::array<float,3>&b){
+                return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+            };
+            const float fn=norm(forward),sn=norm(side),un=norm(up);
+            if(std::isfinite(fn)&&std::isfinite(sn)&&std::isfinite(un)
+                &&fn>.001f&&sn>.001f&&un>.001f){
+                const float f=dot(diff,forward)/fn;
+                const float x=dot(diff,side)/sn;
+                const float y=dot(diff,up)/un;
+                const float directionDot=std::clamp(
+                    dot(forward,worldDirection)/fn,-1.f,1.f);
+                const float angle=std::acos(directionDot)*57.2957795f;
+                if(std::isfinite(f)&&std::isfinite(x)&&std::isfinite(y)
+                    &&std::isfinite(angle)){
+                    std::ostringstream bore;
+                    bore<<"[BORE-ALIGN] read-only weapon="
+                        <<KharvoxWeaponKindKey(kind)
+                        <<" rootToMuzzleSideDoom="<<x
+                        <<" rootToMuzzleUpDoom="<<y
+                        <<" rootToMuzzleForwardDoom="<<f
+                        <<" muzzleVsWeaponAxisDegrees="<<angle
+                        <<" (no aim, muzzle, grip, or rendering correction applied)";
+                    log(bore.str());
+                }
+            }
+        }
     }
 }
 
