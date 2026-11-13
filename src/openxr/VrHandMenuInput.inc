@@ -19,11 +19,19 @@ void refreshVrHandMenuSavedStatus(){
 void updateVrMenuPreview(bool primaryWeaponGripHeld){
     auto& m=s.vrHandMenu;
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
-    const auto& placement=s.weaponHandLeft?s.rightGripController:s.leftGripController;
+    const auto& freeGrip=s.weaponHandLeft?s.rightGripController:s.leftGripController;
+    const auto& freeAim=s.weaponHandLeft?s.rightController:s.leftController;
+    const auto& placement=kharvox::vrCalibrationFreeControllerPose(
+        freeGrip,freeAim);
+    // OpenXR POSITION_VALID and POSITION_TRACKED are different flags.
+    // The old hard gate on GRIP.positionTracked rejected valid predicted
+    // positions (notably when the controller AIM laser was still active),
+    // silently discarding the calibration preview and leaving a right glove
+    // rotating about its old saved grip point.
     if(weapon==KharvoxWeaponKind::Unknown||weapon!=KharvoxWeaponCurrentKind()
         ||s.weaponHandLeft!=m.calibratingWeaponLeft
         ||!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=weapon
-        ||!placement.valid||!placement.positionTracked){
+        ||!placement.valid){
         m.previewValid=false;
         m.primaryGripPreviewHeld=false;
         const auto now=GetTickCount64();
@@ -34,21 +42,25 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
                     KharvoxWeaponCurrentKind()))
                 +" sameHand="+(s.weaponHandLeft==m.calibratingWeaponLeft?"1":"0")
                 +" gunPose="+(s.lastWeaponRenderedValid?"1":"0")
-                +" freeController="+(placement.valid?"1":"0")
-                +" tracked="+(placement.positionTracked?"1":"0"));
+                +" freeGrip="+(freeGrip.valid?"1":"0")
+                +" gripTracked="+(freeGrip.positionTracked?"1":"0")
+                +" freeAim="+(freeAim.valid?"1":"0")
+                +" aimTracked="+(freeAim.positionTracked?"1":"0")
+                +" chosenController="+(placement.valid?"1":"0"));
         }
         return;
     }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const bool testAllowed=kharvox::vrPrimaryGripHoldPreviewAllowed(
         m.mode,primaryHand,m.weapon());
-    // BUGFIX: Grip was freezing the preview here, making the live glove
-    // impossible to move using the free controller during weapon fitting.
-    // Always recalculate the primary pose from that controller, EVEN when
-    // the weapon Grip is held to test/nudge the gun. Grip solely gates the
-    // 1cm joystick fine-tune. Trigger remains the only save action.
+    // Free weapon Grip -> live free-controller placement. Held Grip ->
+    // lock a valid preview so the sticks can fine-tune in 1cm increments.
+    // If Grip first goes down before any valid preview, permit one capture
+    // frame so it can subsequently freeze a real position.
     if(!kharvox::vrWeaponManualCalibrationLive(
-            m.mode,primaryWeaponGripHeld))return;
+            m.mode,primaryWeaponGripHeld,
+            testAllowed&&m.primaryGripPreviewHeld&&m.previewValid))
+        return;
     m.primaryGripPreviewHeld=false;
     m.previewValid=false;
     XrVector3f probe=placement.position;
@@ -97,16 +109,24 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         log(std::string("[VR-HAND-CAL] LIVE ") +m.weapon()
             +(primaryHand?" primary":" support")
             +(primaryWeaponGripHeld?" Grip-held":" Grip-released")
-            +" xyz="+std::to_string(m.previewPosition.x)
+            +" poseSource="+(&placement==&freeGrip?"GRIP":"AIM")
+            +" tracked="+(placement.positionTracked?"1":"0")
+            +" freeXYZ="+std::to_string(placement.position.x)
+            +","+std::to_string(placement.position.y)
+            +","+std::to_string(placement.position.z)
+            +" previewXYZ="+std::to_string(m.previewPosition.x)
             +","+std::to_string(m.previewPosition.y)
             +","+std::to_string(m.previewPosition.z)
-            +" valid="+(m.previewValid?"1":"0"));
+            +" valid="+(m.previewValid?"1":"0")
+            +" placementInRange="+(kharvox::validRightHandVisualPlacement(
+                m.previewPosition)?"1":"0"));
     }
 }
 // One 1cm nudge per deliberate stick flick during the existing
 // weapon-GRIP test hold; no stick is forwarded to locomotion/turn while
-// the menu captures gameplay input. The manual pose stays LIVE while
-// Grip is held; right trigger still SAVES the accumulated pose.
+// the menu captures gameplay input. Grip HELD freezes manual placement,
+// while sticks can move the frozen pose in centimeters. Grip RELEASE
+// restores live free-controller Y/Z movement. Right trigger SAVES.
 void serviceVrWeaponFineTune(bool weaponGripDown){
     auto& m=s.vrHandMenu;
     const bool primary=m.mode==kharvox::VrHandMenuMode::Calibrating
