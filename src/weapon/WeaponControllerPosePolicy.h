@@ -96,6 +96,20 @@ inline Position supportOffsetFromControllerAnchor(
         subtract(aimOrigin,physicalHandAnchor)));
 }
 
+// Render the calibrated primary GLOVE quaternion in the same frame as
+// the actual gun. The support hand steers the weapon's final orientation
+// during normal two-hand gameplay; do not use the primary controller AIM
+// quaternion for this visual or the gun spins through a static glove.
+// Preserve the saved, weapon-local wrist angle on either physical side.
+// This affects ONLY the visible glove; the controller-fixed hand attachment
+// position/pivot and native gun orientation remain unchanged.
+template<class Quaternion,class Multiply>
+inline Quaternion weaponLockedPrimaryGloveOrientation(
+    const Quaternion& renderedGunOrientation,
+    const Quaternion& savedGloveLocalOrientation,Multiply multiply) {
+    return multiply(renderedGunOrientation,savedGloveLocalOrientation);
+}
+
 // The primary glove's position is the physical weapon-hand controller GRIP
 // pose, independent of both per-weapon gun offsets and 1cm joystick nudges.
 // Distinct from the gun's AIM pose, so level physical controllers produce
