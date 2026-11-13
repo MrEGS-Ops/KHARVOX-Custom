@@ -2789,6 +2789,15 @@ void updateWeapon6Dof(){
                     &&key!=KharvoxWeaponKindKey(kind))
                     rotationIt=settings.leftVisualRotations.find(KharvoxWeaponKindKey(kind));
                 if(rotationIt!=settings.leftVisualRotations.end())savedRot=rotationIt->second;
+                // The mirrored wrist basis fixes the original upside-down
+                // LEFT GLB. Old left glove saves belong to the previous
+                // coordinate system and rotate the new visual grip wrongly.
+                // Only a fresh in-menu calibration writes this per-weapon
+                // version marker; never discard right-hand calibration.
+                if(settings.leftVisualReflectionV2.count(key)==0){
+                    savedHandValid=false;
+                    savedRot={};
+                }
             }else if(!savedHandValid){
                 const auto key=std::string(KharvoxWeaponKindKey(kind));
                 const auto it=settings.visualPositions.find(key);
