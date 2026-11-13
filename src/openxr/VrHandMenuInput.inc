@@ -26,6 +26,17 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         ||!placement.valid||!placement.positionTracked){
         m.previewValid=false;
         m.primaryGripPreviewHeld=false;
+        const auto now=GetTickCount64();
+        if(now>=m.lastPreviewDiagnosticAt+2000ULL){
+            m.lastPreviewDiagnosticAt=now;
+            log(std::string("[VR-HAND-CAL] PREVIEW BLOCKED weapon=")+m.weapon()
+                +" equipped="+std::string(KharvoxWeaponKindKey(
+                    KharvoxWeaponCurrentKind()))
+                +" sameHand="+(s.weaponHandLeft==m.calibratingWeaponLeft?"1":"0")
+                +" gunPose="+(s.lastWeaponRenderedValid?"1":"0")
+                +" freeController="+(placement.valid?"1":"0")
+                +" tracked="+(placement.positionTracked?"1":"0"));
+        }
         return;
     }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
