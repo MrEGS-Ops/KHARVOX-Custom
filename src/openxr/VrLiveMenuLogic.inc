@@ -321,7 +321,7 @@ bool handleVrLiveMenuAction(int action){
                     s.vrLiveSettings.gloryKillHz,false);
                 changed=true;
             }else if(option==2){
-                s.vrLiveSettings.gloryKillHz=0;changed=true;
+                s.vrLiveSettings.gloryKillHz=60;changed=true; // Reset KILLTIME to factory default.
             }
             break;
         case VrLiveMod::PhysicalGloryKills:
