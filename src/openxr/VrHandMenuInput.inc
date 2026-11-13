@@ -61,7 +61,8 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         ?weaponGrip.orientation:placement.orientation;
     const auto rotation=normalizeQuaternion(multiply(inverted,orientation));
     m.previewPosition={local.x,local.y,
-        primaryHand?s.primaryVisualLocalPosition.z:local.z};
+        kharvox::weaponpose::weaponHandCalibrationZ(
+            primaryHand,local.z,s.primaryVisualLocalPosition.z)};
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
