@@ -54,7 +54,6 @@
 #include "../fsr/Fsr1Upscaler.h"
 #include "../hands/HandRenderer.h"
 #include "../hands/HandDepthPolicy.h"
-#include "../hands/HandAimAlignmentPolicy.h"
 #include "../common/RuntimePaths.h"
 #include "../common/CustomModFlags.h"
 #include "OpenXRRuntimePolicy.h"
@@ -6138,7 +6137,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // previously published controller input. Preserve that input before polling
     // the next prediction; compositing fresh hands onto it creates a time skew.
     const auto sourceLeftGripController=s.leftGripController;
-    const auto sourceLeftAimController=s.leftController;
     const auto sourceRightGripController=s.rightGripController;
     const auto sourceSupportVisualPose=s.supportVisualPose;
     const auto sourcePrimaryVisualPose=s.primaryVisualPose;
@@ -7707,35 +7705,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         nativeRightController.orientation=nativeFrame.pose.controllers[1].orientation;nativeRightController.position=nativeFrame.pose.controllers[1].position;}
     auto currentLeftHandPose=handPose(nativeLeftController);
     auto currentRightHandPose=handPose(nativeRightController);
-    // Fix the left free glove pointing outward when the physical controllers
-    // point forward together. DOOM weapon tracking uses OpenXR AIM, but the
-    // custom free glove historically took GRIP orientation directly. Apply
-    // the source-relative grip->aim rotation to the free LEFT fist only:
-    // keep the actual grip position, right hand, and all weapon-local
-    // calibrated glove pivots/orientations unchanged.
-    auto alignLeftFreeFist=[&](kharvox::hands::HandPose& visual,
-        const ControllerPose& grip,const ControllerPose& aim){
-        if(handVisibility.left!=kharvox::hands::HandModelKind::Fist
-            ||!visual.valid||!grip.valid||!aim.valid)return;
-        kharvox::hands::HandAimQuaternion adjusted{};
-        if(!kharvox::hands::alignFreeHandGripToAim(
-            {visual.orientation[0],visual.orientation[1],
-             visual.orientation[2],visual.orientation[3]},
-            {grip.orientation.x,grip.orientation.y,
-             grip.orientation.z,grip.orientation.w},
-            {aim.orientation.x,aim.orientation.y,
-             aim.orientation.z,aim.orientation.w},adjusted))return;
-        visual.orientation[0]=adjusted.x;visual.orientation[1]=adjusted.y;
-        visual.orientation[2]=adjusted.z;visual.orientation[3]=adjusted.w;
-        static bool once=false;
-        if(!once){log("[HANDS] left free glove oriented to AIM-relative controller forward; grip position and gun calibration untouched");once=true;}
-    };
-    // Native stereo's completed image may be from the previous input frame.
-    // Rotate that saved grip by the matching stored grip->aim offset rather
-    // than substituting a freshly predicted controller orientation.
-    alignLeftFreeFist(currentLeftHandPose,
-        nativeFrameValid?sourceLeftGripController:s.leftGripController,
-        nativeFrameValid?sourceLeftAimController:s.leftController);
+    // Both free fists use their OWN OpenXR GRIP controller pose. Never
+    // apply an AIM-only correction to the left: the mirrored right-fist
+    // model now provides the common forward axis in the renderer.
+    // Paired native/AER source-time poses remain independent per controller.
     auto attachSupportVisual=[](kharvox::hands::HandPose&left,
                                 kharvox::hands::HandPose&right,
                                 const kharvox::hands::HandPose&locked,
@@ -7776,9 +7749,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         ?handPose(aerSourceQualified?aerCapturedInput.left:sourceLeftGripController):currentLeftHandPose;
     auto sourceRightHandPose=alignAerSourceHands
         ?handPose(aerSourceQualified?aerCapturedInput.right:sourceRightGripController):currentRightHandPose;
-    if(alignAerSourceHands)
-        alignLeftFreeFist(sourceLeftHandPose,
-            sourceLeftGripController,sourceLeftAimController);
     if(alignAerSourceHands&&handGameplayActive){
         attachSupportVisual(sourceLeftHandPose,sourceRightHandPose,
             sourceSupportVisualPose,sourceSupportVisualLocked,
