@@ -23,17 +23,17 @@ enum class VrLiveMod : int {
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
-        ||id==VrLiveMod::PhysicalGloryKills;
+        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw;
 }
 inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
     switch(id){
         case VrLiveMod::WeaponGrip:return "Weapon Grip Calibration";
         case VrLiveMod::Gunslinger:return "Gunslinger";
         case VrLiveMod::PhysicalCrouch:return "Physical Crouch";
-        case VrLiveMod::Killtime:return "KILLTIME: RIP & TEAR";
+        case VrLiveMod::Killtime:return "KILLTIME";
         case VrLiveMod::PhysicalGloryKills:return "Physical Glory Kills";
         case VrLiveMod::HandFocus:return "Hand Focus";
-        case VrLiveMod::Painsaw:return "PAINSAW: RIPSHIFT";
+        case VrLiveMod::Painsaw:return "PAINSAW";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
@@ -49,13 +49,15 @@ inline constexpr int vrLiveToggleIndex(VrLiveMod mod) {
         case VrLiveMod::PhysicalCrouch:return 2;
         case VrLiveMod::Killtime:return 3;
         case VrLiveMod::PhysicalGloryKills:return 4;
+        case VrLiveMod::Painsaw:return 5;
         default:return -1;
     }
 }
 struct VrLiveSettings {
     // -1 follows desktop startup status (and preserves existing defaults);
     // 0/1 is an explicit live menu override saved across sessions.
-    std::array<int,5> enabledOverrides{{-1,-1,-1,-1,-1}};
+    // Slot 5 appended for PAINSAW; old five-slot saves still load.
+    std::array<int,6> enabledOverrides{{-1,-1,-1,-1,-1,-1}};
     // Offset from the EXISTING tracking-relative zones. Zero exactly
     // reproduces existing Gunslinger behaviour on a fresh installation.
     std::array<VrLivePoint,2> hipShift{};
@@ -195,8 +197,14 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
             (name=="standing"?next.crouchStandSaved:next.crouchLoweredSaved)=valid!=0;
             (name=="standing"?next.crouchStandDelta:next.crouchLoweredDelta)=value;
         }else if(name=="enabled"){
-            for(int& value:next.enabledOverrides)if(!(row>>value))return false;
-            std::string trailing;if(row>>trailing)return false;
+            // Backward compatible: existing UserData files have 5 toggles;
+            // PAINSAW is appended as a sixth and defaults to desktop state.
+            int value{};size_t count=0;
+            while(row>>value){
+                if(count>=next.enabledOverrides.size())return false;
+                next.enabledOverrides[count++]=value;
+            }
+            if(!row.eof()||(count!=5&&count!=6))return false;
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
