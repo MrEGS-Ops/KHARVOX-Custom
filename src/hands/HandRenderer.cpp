@@ -448,13 +448,27 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     if(reverse)for(int column=0;column<4;column++)
         viewProjection.m[column*4+2]=viewProjection.m[column*4+3]-viewProjection.m[column*4+2];
     auto draw=[&](bool left,HandModelKind kind,const HandPose&pose){
+        // The left fist GLB's baked forward axis differs from the right-hand
+        // reference. Use the KNOWN-GOOD right fist mesh reflected across local
+        // X, and its right-fist calibration rotation. Keep the independent
+        // LEFT controller pose, its positional offset and uniform scale.
+        // This is a mirror of the MODEL, not an illegal cross-hand controller
+        // pose substitution. Weapon-holding gloves keep their own profiles.
+        const bool mirroredRightReference=left&&kind==HandModelKind::Fist;
         const size_t index=left?(kind==HandModelKind::GunHolding?2:0)
                                :(kind==HandModelKind::GunHolding?3:1);
-        auto&asset=assets[index];if(!asset.ready)return;
+        const size_t modelIndex=mirroredRightReference?1:index;
+        auto&asset=assets[modelIndex];if(!asset.ready)return;
         const auto&calibration=renderCalibration(left,kind,gameplay.weapon,
             gameplay.leftHanded);
-        const float xScale=mirrorX[index]?-calibration.scale:calibration.scale;
-        const Mat4 local=multiply(translation(calibration.position[0],calibration.position[1],calibration.position[2]),multiply(rotationDegrees(calibration.rotationDegrees),scaleAxes(xScale,calibration.scale,calibration.scale)));
+        const auto&rotationReference=mirroredRightReference
+            ?rightCalibration:calibration;
+        const float xScale=mirroredRightReference?-calibration.scale
+            :(mirrorX[index]?-calibration.scale:calibration.scale);
+        const Mat4 local=multiply(
+            translation(calibration.position[0],calibration.position[1],calibration.position[2]),
+            multiply(rotationDegrees(rotationReference.rotationDegrees),
+                scaleAxes(xScale,calibration.scale,calibration.scale)));
         struct Push{Mat4 model;Mat4 viewProjection;}push{multiply(poseMatrix(pose),local),viewProjection};
         vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
         vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&asset.descriptor,0,nullptr);
