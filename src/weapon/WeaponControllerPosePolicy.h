@@ -2,24 +2,34 @@
 
 namespace kharvox::weaponpose {
 
-// AIM is for controller rays/UI; GRIP is the physical hand reference.
-// Use exactly one frame for both the held gun and its primary glove.
+// The controller's OpenXR AIM pose is the visual laser ray. The barrel
+// centreline follows that exact pose, never the differently tilted GRIP pose.
+// The physical GRIP remains available independently for glove visuals.
 template<class Controller>
 inline const Controller& trackedPrimaryWeaponPose(
     const Controller& aim, const Controller& grip) noexcept {
-    return grip.valid ? grip : aim;
+    return aim.valid ? aim : grip;
 }
 
-// 6DoF tracked guns with a visible glove must not inherit the original
-// 25-degree native model-yaw tuning (or arbitrary legacy pitch/roll).
+// A second hand must not steer the gun off its physical primary AIM ray.
+// The support hand may attach visually at its calibrated grip point.
+template<class Quaternion>
+inline const Quaternion& keepWeaponOnPrimaryLaser(
+    const Quaternion& primaryAim, const Quaternion&) noexcept {
+    return primaryAim;
+}
+
+// An older generic 25-degree yaw adds an extra rotation even after the
+// native gun is driven by OpenXR AIM; suppress legacy tuning for visible
+// hand/controller-aimed guns without altering hand or depth rendering.
 inline constexpr float weaponEulerOffsetDegrees(
     float legacyDegrees, bool controllerAlignedHands) noexcept {
     return controllerAlignedHands ? 0.f : legacyDegrees;
 }
 
-// The user's primary glove is fitted LEFT/RIGHT and UP/DOWN on the weapon.
-// Forward depth (Z) and its rotation are fixed by the real controller GRIP.
-// The support-hand calibration remains fully 3D.
+// Primary glove calibration is limited to X/Y placement around the gun.
+// Preserve gun-local Z so the controller laser and barrel don't move.
+// Support hand remains 3D adjustable.
 inline constexpr float weaponHandCalibrationZ(
     bool primaryHand, float measuredZ, float existingZ) noexcept {
     return primaryHand ? existingZ : measuredZ;
