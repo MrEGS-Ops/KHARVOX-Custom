@@ -111,6 +111,20 @@ int main(){
     assert(&vrCalibrationFreeControllerPose(unavailable,validPredictedAim)
         ==&validPredictedAim);
     assert(&vrCalibrationFreeControllerPose(unavailable,trackedAim)==&trackedAim);
+    // SUPPORT CALIBRATION is NOT the primary glove's free-controller
+    // rotation probe. It must use the actual support-hand GRIP position,
+    // even if an AIM laser is tracked farther forward.
+    const auto& supportTracked=kharvox::vrSupportCalibrationPhysicalGrip(
+        trackedGrip,trackedAim);
+    assert(&supportTracked==&trackedGrip);
+    const auto& supportPredicted=kharvox::vrSupportCalibrationPhysicalGrip(
+        validPredictedGrip,trackedAim);
+    assert(&supportPredicted==&validPredictedGrip);
+    // No AIM fallback: do not save wrong support position if GRIP is lost.
+    const auto& supportUnavailable=kharvox::vrSupportCalibrationPhysicalGrip(
+        unavailable,trackedAim);
+    assert(&supportUnavailable==&unavailable);
+    assert(!supportUnavailable.valid);
     // Quest can report a valid GRIP rotation with an unchanged/predicted
     // position while its tracked AIM laser translates freely.
     struct FakeController {
