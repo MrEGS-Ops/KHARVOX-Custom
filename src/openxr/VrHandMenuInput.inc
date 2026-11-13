@@ -320,11 +320,9 @@ void startVrSelectedWeaponCalibration(){
     m.lastPreviewDiagnosticAt=0;
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
-    // The saved nudge must stay hand-only even after an application restart.
-    // Initialise separately from the free-controller live Y/Z placement.
+    // Saved fine-tune offsets now belong to the GUN, never the glove.
+    // Free-controller motion in primary calibration adjusts rotation only.
     const bool calibratingPrimary=m.rightHand!=s.weaponHandLeft;
-    // Pin normal free-hand capture to the existing lateral coordinate:
-    // only Grip-held joystick fine-tune may subsequently change X.
     m.primaryLateralBase=0.f;
     const auto kind=KharvoxWeaponKindFromKey(m.weapon());
     const bool alternate=m.alternateProfile
@@ -353,13 +351,43 @@ void startVrSelectedWeaponCalibration(){
     };
     if(!savedX(s.rightGripSettings,m.primaryLateralBase))
         savedX(s.rightGripFactorySettings,m.primaryLateralBase);
-    // The free-controller preview adds the separated fine-tune X below.
-    // Without this subtraction existing X nudges would double every reopen.
-    if(calibratingPrimary)
-        m.primaryLateralBase-=m.fineTuneAccumulated.x;
+    if(calibratingPrimary){
+        // Explicitly seed from this weapon's saved position rather than
+        // the opposite controller: this is a gun-only positional reference.
+        kharvox::RightHandGripOffset savedPosition{};
+        kharvox::RightHandGripRotation unusedRotation{};
+        bool loaded=false;
+        const std::string key=std::string(m.weapon())
+            +(alternate?(kind==KharvoxWeaponKind::GaussCannon
+                ?"_siege":"_turret"):"");
+        if(s.weaponHandLeft){
+            auto it=s.rightGripSettings.leftVisualPositions.find(key);
+            if(it!=s.rightGripSettings.leftVisualPositions.end()){
+                savedPosition=it->second;loaded=true;
+            }
+        }else{
+            loaded=kharvox::rightPrimaryVisualPose(
+                s.rightGripSettings,m.weapon(),alternate,
+                savedPosition,unusedRotation);
+        }
+        if(!loaded){
+            if(s.weaponHandLeft){
+                auto it=s.rightGripFactorySettings.leftVisualPositions.find(key);
+                if(it!=s.rightGripFactorySettings.leftVisualPositions.end()){
+                    savedPosition=it->second;loaded=true;
+                }
+            }else loaded=kharvox::rightPrimaryVisualPose(
+                s.rightGripFactorySettings,m.weapon(),alternate,
+                savedPosition,unusedRotation);
+        }
+        m.previewPosition=loaded?savedPosition:kharvox::RightHandGripOffset{
+            s.primaryVisualLocalPosition.x,
+            s.primaryVisualLocalPosition.y,
+            s.primaryVisualLocalPosition.z};
+    }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Release Grip: rotate glove with free controller. Hold Grip: 1 cm stick nudges adjust hand/anchor only. RIGHT TRIGGER saves.";
+    m.message="Release Grip: rotate glove with free controller. Hold Grip: 1 cm stick nudges move the GUN only. RIGHT TRIGGER saves.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
