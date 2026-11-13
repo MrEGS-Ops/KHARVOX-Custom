@@ -31,12 +31,13 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const bool testAllowed=kharvox::vrPrimaryGripHoldPreviewAllowed(
         m.mode,primaryHand,m.weapon());
-    // While the gun hand holds Grip, leave the current valid preview pose
-    // attached to the weapon. Aiming moves the gun and glove together.
-    // Releasing Grip resumes live placement from the OTHER controller.
-    // This never writes disk; RIGHT TRIGGER remains the only save action.
-    if(testAllowed&&primaryWeaponGripHeld
-        &&m.primaryGripPreviewHeld&&m.previewValid)return;
+    // BUGFIX: Grip was freezing the preview here, making the live glove
+    // impossible to move using the free controller during weapon fitting.
+    // Always recalculate the primary pose from that controller, EVEN when
+    // the weapon Grip is held to test/nudge the gun. Grip solely gates the
+    // 1cm joystick fine-tune. Trigger remains the only save action.
+    if(!kharvox::vrWeaponManualCalibrationLive(
+            m.mode,primaryWeaponGripHeld))return;
     m.primaryGripPreviewHeld=false;
     m.previewValid=false;
     XrVector3f probe=placement.position;
@@ -77,6 +78,19 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         :kharvox::validRightHandPlacement(m.previewPosition))
         &&kharvox::validRightHandRotation(m.previewRotation);
     m.primaryGripPreviewHeld=testAllowed&&primaryWeaponGripHeld&&m.previewValid;
+    // Native log proves live positions/rotation are updating in headset;
+    // throttled to one line every 2 seconds, even if Grip is held.
+    const auto now=GetTickCount64();
+    if(now>=m.lastPreviewDiagnosticAt+2000ULL){
+        m.lastPreviewDiagnosticAt=now;
+        log(std::string("[VR-HAND-CAL] LIVE ") +m.weapon()
+            +(primaryHand?" primary":" support")
+            +(primaryWeaponGripHeld?" Grip-held":" Grip-released")
+            +" xyz="+std::to_string(m.previewPosition.x)
+            +","+std::to_string(m.previewPosition.y)
+            +","+std::to_string(m.previewPosition.z)
+            +" valid="+(m.previewValid?"1":"0"));
+    }
 }
 // One 1cm nudge per deliberate stick flick during the existing
 // weapon-GRIP test hold; no stick is forwarded to locomotion/turn while
@@ -288,6 +302,7 @@ void startVrSelectedWeaponCalibration(){
     m.calibratingWeaponLeft=s.weaponHandLeft;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.lastPreviewDiagnosticAt=0;
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
     // Pin normal free-hand capture to the existing lateral coordinate:
