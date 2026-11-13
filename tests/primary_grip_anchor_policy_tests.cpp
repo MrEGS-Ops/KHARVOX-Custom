@@ -19,6 +19,10 @@ static bool near(Vec a,Vec b){
     return std::abs(a.x-b.x)<.0002f&&std::abs(a.y-b.y)<.0002f
         &&std::abs(a.z-b.z)<.0002f;
 }
+static Vec add(Vec a,Vec b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
+static Vec subtract(Vec a,Vec b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
+static Quat conjugate(Quat q){return {-q.x,-q.y,-q.z,q.w};}
+
 int main(){
     // Physical controller laser is OpenXR AIM, never the tilted GRIP.
     // Grip may differ by 45 degrees but native gun must use the AIM pose.
@@ -58,6 +62,70 @@ int main(){
     // Keep the existing calibration modes unaffected.
     assert(!twoHandGameplaySteeringActive(
         true,true,true,true,true,false,true));
+    // A physical primary controller is the sole authoritative attachment
+    // anchor for glove AND two-hand rotation. Weapon model/root may be
+    // translated and rotated independently without ever moving that anchor.
+    struct ControllerPose {Vec position;Quat orientation;bool valid;};
+    const ControllerPose physicalGrip{{.25f,.62f,-.18f},
+        {0.f,0.f,0.f,1.f},true};
+    const ControllerPose movedGunModel{{.15f,.75f,-.40f},
+        {0.f,.38268343f,0.f,.92387953f},true};
+    const auto& handAnchor=kharvox::weaponpose::
+        controllerFixedPrimaryHandAnchor(physicalGrip,movedGunModel);
+    assert(&handAnchor==&physicalGrip);
+    assert(near(handAnchor.position,physicalGrip.position));
+    const auto gunOriginAtAim=Vec{.20f,.66f,-.22f};
+    const Quat aimOrientation{0.f,0.f,0.f,1.f};
+    const Quat twoHandOrientation{0.f,.38268343f,0.f,.92387953f};
+    const auto modelAtAim=kharvox::weaponpose::
+        gunOriginAboutControllerHandAnchor(physicalGrip.position,
+            gunOriginAtAim,aimOrientation,aimOrientation,
+            subtract,add,rotate,conjugate);
+    assert(near(modelAtAim,gunOriginAtAim));
+    const auto modelTwoHand=kharvox::weaponpose::
+        gunOriginAboutControllerHandAnchor(physicalGrip.position,
+            gunOriginAtAim,aimOrientation,twoHandOrientation,
+            subtract,add,rotate,conjugate);
+    assert(!near(modelTwoHand,modelAtAim));
+    const auto unrotatedGripToGun=subtract(gunOriginAtAim,
+        physicalGrip.position);
+    const auto expectedTwoHand=add(physicalGrip.position,
+        rotate(twoHandOrientation,unrotatedGripToGun));
+    assert(near(modelTwoHand,expectedTwoHand));
+    assert(near(handAnchor.position,physicalGrip.position));
+    // Rebased support offset retains the exact original acquisition point
+    // before the second grip latches, despite changing the solver pivot.
+    const Vec supportLocal{.10f,-.05f,-.32f};
+    const auto controllerLocalSupport=kharvox::weaponpose::
+        supportOffsetFromControllerAnchor(supportLocal,
+            physicalGrip.position,gunOriginAtAim,aimOrientation,
+            subtract,add,rotate,conjugate);
+    assert(near(add(physicalGrip.position,
+          rotate(aimOrientation,controllerLocalSupport)),
+          add(gunOriginAtAim,rotate(aimOrientation,supportLocal))));
+    // This invariant also holds for a rotated tracked controller.
+    const auto yawGripToGun=rotate(twoHandOrientation,
+        unrotatedGripToGun);
+    const auto yawAimOrigin=add(physicalGrip.position,yawGripToGun);
+    const auto yawSupport=kharvox::weaponpose::
+        supportOffsetFromControllerAnchor(supportLocal,
+            physicalGrip.position,yawAimOrigin,twoHandOrientation,
+            subtract,add,rotate,conjugate);
+    assert(near(add(physicalGrip.position,
+        rotate(twoHandOrientation,yawSupport)),
+        add(yawAimOrigin,rotate(twoHandOrientation,supportLocal))));
+    // Fine-tune translates the weapon model, not the fixed hand anchor:
+    // no nudge can affect its position, even while support steers the gun.
+    const Vec centimeters{+.01f,-.02f,-.03f};
+    for(const Quat gunRotation:{aimOrientation,twoHandOrientation}){
+        const Vec gunOnlyNudge=rotate(gunRotation,centimeters);
+        const Vec shiftedGun=add(modelTwoHand,gunOnlyNudge);
+        assert(!near(shiftedGun,modelTwoHand));
+        const auto& stillFixed=kharvox::weaponpose::
+            controllerFixedPrimaryHandAnchor(physicalGrip,movedGunModel);
+        assert(near(stillFixed.position,physicalGrip.position));
+        assert(&stillFixed==&physicalGrip);
+    }
     const Vec laserOrigin{0,0,0},glovePreview{1,3,-.3f};
     assert(&kharvox::weaponpose::keepGunOnPrimaryLaser(laserOrigin,glovePreview)==&laserOrigin);
     // Native extra 25-degree yaw MUST NOT tilt the bore off the laser.

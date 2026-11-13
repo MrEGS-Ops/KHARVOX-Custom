@@ -2607,6 +2607,31 @@ void updateWeapon6Dof(){
     const auto primaryGripBody=primaryHandGripController.valid
         ?controllerRelativeToBodyTrackingOrigin(primaryHandGripController).position
         :current.position;
+    // PHYSICAL hand attachment anchor is independently locked to the
+    // actual weapon-hand controller GRIP. Never derive this anchor from a
+    // translated native gun root or from saved weapon fine-tune values.
+    const auto& primaryHandAnchorController=
+        kharvox::weaponpose::controllerFixedPrimaryHandAnchor(
+            primaryHandGripController,primaryController);
+    const auto primaryHandAnchorBody=primaryHandAnchorController.valid
+        ?primaryGripBody:current.position;
+    const auto primaryHandAnchorTracking=primaryHandAnchorController.valid
+        ?primaryHandAnchorController.position:primaryController.position;
+    const bool controllerFixedHandAnchor=s.showHands
+        &&primaryHandAnchorController.valid;
+    const auto subtractGrip=[](const XrVector3f&a,const XrVector3f&b){
+        return subtractVector(a,b);
+    };
+    const auto addGrip=[](const XrVector3f&a,const XrVector3f&b){
+        return addVector(a,b);
+    };
+    const auto rotateGripVector=[](const XrQuaternionf&q,
+                                   const XrVector3f&v){
+        return rotateVector(q,v);
+    };
+    const auto invertGrip=[](const XrQuaternionf&q){
+        return conjugate(q);
+    };
     const auto gunPivotAt=[&](const XrQuaternionf&rot){
         return kharvox::primarygrip::weaponAnchor(
             current.position,primaryGripBody,rot,pivotLocalOffset,
@@ -2653,9 +2678,25 @@ void updateWeapon6Dof(){
             XrVector3f activeAlternateSupport{};
             if(altHeavySupport(kind,activeAlternateSupport))
                 activeCalibration.supportPosition=activeAlternateSupport;
+            // Existing support grab offsets were captured relative to
+            // controller AIM. Rebase them to the immutable physical GRIP
+            // anchor so the world-space latch target remains the same.
+            auto solverCalibration=activeCalibration;
+            if(controllerFixedHandAnchor)
+                solverCalibration.supportPosition=
+                    kharvox::weaponpose::supportOffsetFromControllerAnchor(
+                        activeCalibration.supportPosition,
+                        primaryHandAnchorBody,current.position,
+                        current.orientation,subtractGrip,addGrip,
+                        rotateGripVector,invertGrip);
             if(!s.twoHandLatched){
-                const auto target=addVector(gunPivotAt(current.orientation),
-                    rotateVector(current.orientation,activeCalibration.supportPosition));
+                const auto target=controllerFixedHandAnchor
+                    ?addVector(primaryHandAnchorBody,
+                        rotateVector(current.orientation,
+                            solverCalibration.supportPosition))
+                    :addVector(gunPivotAt(current.orientation),
+                        rotateVector(current.orientation,
+                            activeCalibration.supportPosition));
                 const float distance=vectorLength(subtractVector(supportGrip.position,target));
                 if(distance<=activeCalibration.captureRadius){
                     s.twoHandLatched=true;
@@ -2677,13 +2718,16 @@ void updateWeapon6Dof(){
                 // Two passes account for the small pivot movement as the gun
                 // rotates; regular guns retain the original one-pass solver.
                 WeaponPose solvePrimary=current;
-                solvePrimary.position=gunPivotAt(rotation);
+                // Two-hand rotation happens about the physical primary
+                // controller hand, not the movable weapon model origin.
+                solvePrimary.position=controllerFixedHandAnchor
+                    ?primaryHandAnchorBody:gunPivotAt(rotation);
                 rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
-                    activeCalibration,useVirtualGunstock,gunstockPosition);
+                    solverCalibration,useVirtualGunstock,gunstockPosition);
                 if(gripPivotEnabled){
                     solvePrimary.position=gunPivotAt(rotation);
                     rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
-                        activeCalibration,useVirtualGunstock,gunstockPosition);
+                        solverCalibration,useVirtualGunstock,gunstockPosition);
                 }
                 writeTwoHandStatus(std::string(weaponKindName(kind))
                     +": TWO-HAND ACTIVE — "+(useVirtualGunstock?"virtual stock / ":"")
@@ -2715,18 +2759,28 @@ void updateWeapon6Dof(){
     const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
         return rotateVector(q,v);
     };
-    auto weaponAnchorBody=s.showHands
-        ?kharvox::weaponpose::keepGunOnPrimaryLaser(
-            current.position,gunPivotAt(rotation))
-        :gunPivotAt(rotation);
-    auto weaponAnchorTracking=s.showHands
-        ?kharvox::weaponpose::keepGunOnPrimaryLaser(
-            primaryController.position,primaryHandGripController.position)
-        :kharvox::primarygrip::weaponAnchor(
-            primaryController.position,
-            primaryHandGripController.valid?primaryHandGripController.position
-                :primaryController.position,
-            renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
+    // Two distinct transforms:
+    // 1) controller-fixed PRIMARY HAND ANCHOR is always the physical GRIP.
+    // 2) native WEAPON MODEL ORIGIN may rotate around that anchor and take
+    //    arbitrary gun-only XYZ fine-tune translation below.
+    // One-handed rotation exactly reproduces the old AIM origin.
+    auto weaponAnchorBody=controllerFixedHandAnchor
+        ?kharvox::weaponpose::gunOriginAboutControllerHandAnchor(
+            primaryHandAnchorBody,current.position,current.orientation,
+            rotation,subtractGrip,addGrip,rotateGripVector,invertGrip)
+        :s.showHands
+            ?current.position:gunPivotAt(rotation);
+    auto weaponAnchorTracking=controllerFixedHandAnchor
+        ?kharvox::weaponpose::gunOriginAboutControllerHandAnchor(
+            primaryHandAnchorTracking,primaryController.position,
+            primaryController.orientation,renderOrientation,
+            subtractGrip,addGrip,rotateGripVector,invertGrip)
+        :s.showHands?primaryController.position
+            :kharvox::primarygrip::weaponAnchor(
+                primaryController.position,
+                primaryHandGripController.valid?primaryHandGripController.position
+                    :primaryController.position,
+                renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
     // Keep the true primary AIM origin as the fixed calibration reference:
     // the later Y/Z anchor correction must never feed back into the probe's
     // inverse local coordinate measurement as the owner moves the glove.
@@ -2881,7 +2935,7 @@ void updateWeapon6Dof(){
         // controller as their positional reference.
         const auto primaryFixed=s.showHands
             ?kharvox::weaponpose::physicalPrimaryGlovePosition(
-                primaryHandGripController.position,weaponAnchorTracking)
+                primaryHandAnchorTracking,weaponAnchorTracking)
             :kharvox::primarygrip::lockedHand(
                 weaponAnchorTracking,renderOrientation,
                 s.primaryVisualLocalPosition,rotateGrip);
