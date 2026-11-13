@@ -105,8 +105,8 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
 }
 // One 1cm nudge per deliberate stick flick during the existing
 // weapon-GRIP test hold; no stick is forwarded to locomotion/turn while
-// this menu captures gameplay input. The live preview remains frozen
-// until Grip is released. Right trigger still SAVES the accumulated pose.
+// the menu captures gameplay input. The manual pose stays LIVE while
+// Grip is held; right trigger still SAVES the accumulated pose.
 void serviceVrWeaponFineTune(bool weaponGripDown){
     auto& m=s.vrHandMenu;
     const bool primary=m.mode==kharvox::VrHandMenuMode::Calibrating
