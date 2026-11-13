@@ -237,77 +237,6 @@ bool installMuzzleFireAxisOverride(unsigned char* image) {
     return true;
 }
 
-bool installFrontPushbackSuppression(unsigned char* image) {
-    // Two independent near-contact traces can set the same hands pushback flag
-    // at state+0x175. The old patch changed only the later trace branch and
-    // jumped to this common block, so a flag set by the earlier/behind-target
-    // path still played "hands_moving_front_pushback_into" and could remain
-    // latched. Clear the common flag and skip only that local hands-animation
-    // block. Player collision, damage, physical knockback and world movement
-    // remain untouched.
-    // The manager may enable tracked custom hands through its launcher
-    // environment while the legacy enable_6dof_weapon marker is absent.
-    // Previously that silently skipped the collision animation fix for
-    // precisely this headset path. Suppress it whenever either controlled
-    // 6DoF mode is requested, never for stock first-person presentation.
-    const bool legacy6DofMarker=
-        GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())
-            !=INVALID_FILE_ATTRIBUTES;
-    const bool customHands=customHandsRequested();
-    if(!legacy6DofMarker&&!customHands){
-        log("[WEAPON-WALL-PUSHBACK] native suppression INACTIVE: "
-            "no tracked custom hands or 6DoF marker");
-        return false;
-    }
-
-    auto target = image + 0x6305B4;
-    constexpr unsigned char signature[]{
-        0x41,0x80,0xBD,0x75,0x01,0x00,0x00,0x00,
-        0x0F,0x84,0xF2,0x00,0x00,0x00
-    };
-    constexpr unsigned char replacement[]{
-        // mov byte ptr [r13+0x175],0
-        0x41,0xC6,0x85,0x75,0x01,0x00,0x00,0x00,
-        // jmp 0x6306B4; nop
-        0xE9,0xF3,0x00,0x00,0x00,0x90
-    };
-    if(!std::memcmp(target,replacement,sizeof(replacement))){
-        log("[WEAPON-WALL-PUSHBACK] native suppression already armed "
-            "at RVA 0x6305B4");
-        return true;
-    }
-    if (std::memcmp(target, signature, sizeof(signature))) {
-        // Preserve unknown executable code (wrong game build / other mod).
-        // No unsafe signature-free memory patch or unverified collision
-        // distance tweaks; tell the owner exactly why suppression was skipped.
-        std::ostringstream info;
-        info<<"[WEAPON-WALL-PUSHBACK] RVA 0x6305B4 signature mismatch; "
-               "visual retreat may remain active. Actual bytes=";
-        for(unsigned index=0;index<sizeof(signature);++index)
-            info<<(index?" ":"")<<std::hex<<std::setw(2)
-                <<std::setfill('0')<<unsigned(target[index]);
-        log(info.str());
-        return false;
-    }
-
-    DWORD oldProtect{};
-    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
-        log("front-pushback target protection failed");
-        return false;
-    }
-    std::memcpy(target, replacement, sizeof(replacement));
-    FlushInstructionCache(GetCurrentProcess(), target, sizeof(replacement));
-    const bool verified=!std::memcmp(target,replacement,sizeof(replacement));
-    DWORD ignored{};
-    VirtualProtect(target, sizeof(signature), oldProtect, &ignored);
-    log(verified
-        ?"[WEAPON-WALL-PUSHBACK] verified native hands front-pushback "
-         "animation suppression at RVA 0x6305B4; player collision unchanged"
-        :"[WEAPON-WALL-PUSHBACK] patch post-write verification FAILED; "
-         "visual retreat may remain active");
-    return verified;
-}
-
 bool armHandsHitReactionSuppression(unsigned char* image) {
     if (GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str()) ==
         INVALID_FILE_ATTRIBUTES) {
@@ -2430,42 +2359,14 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
     std::array<float, 3> desiredLocalOrigin{};
     if (animatedGripPivotValid.load(std::memory_order_acquire)) {
         const auto adjustment = configuredWeaponPivotAdjustment();
-        std::array<float, 3> animated{},neutral{};
-        for (int index = 0; index < 3; ++index){
-            animated[index]=animatedGripPivot[index].load(
-                std::memory_order_relaxed);
-            neutral[index]=neutralGripPivot[index].load(
-                std::memory_order_relaxed);
-        }
-        const bool neutralReady=kharvox::weaponpose::
-            nativeNeutralGripMatchesWeapon(
-                neutralGripPivotValid.load(std::memory_order_acquire),
-                neutralGripPivotGeneration.load(std::memory_order_acquire),
-                input.generation,
-                neutralGripPivotWeapon.load(std::memory_order_acquire),
-                activeWeaponKind.load(std::memory_order_acquire));
-        const bool trackingHands=customHandsRequested();
-        const auto& attachment=kharvox::weaponpose::
-            nativeWeaponGripPivotForPresentation(animated,neutral,
-                trackingHands,neutralReady);
-        // During tracked gameplay, native attachment animations must NEVER
-        // pull the visible gun away from its physical controller. The
-        // neutral pivot is sampled once per controller/weapon generation;
-        // weapon origin/rotation/fine-tune and owner profile data are left
-        // untouched. This is separate from the native pushback branch patch.
-        if(trackingHands&&neutralReady){
-            static std::atomic<unsigned> loggedGeneration{};
-            if(loggedGeneration.exchange(input.generation,
-                    std::memory_order_relaxed)!=input.generation){
-                log("[WEAPON-WALL-PUSHBACK] fixed native righthandattach "
-                    "pivot engaged; hand animation can no longer retreat "
-                    "tracked gun (generation="+
-                    std::to_string(input.generation)+")");
-            }
-        }
+        // The frozen neutral pivot introduced during wall-pushback experiments
+        // can capture an already-displaced DOOM attachment pose and hold that
+        // displacement until the next weapon switch. Restore the actual
+        // animated native attachment, exactly as before the wall experiment.
+        // Do not touch user hand poses, two-hand transitions, or gun fine-tune.
         std::array<float, 3> gripPivot{};
         for (int index = 0; index < 3; ++index)
-            gripPivot[index] = attachment[index] + adjustment[index];
+            gripPivot[index] = animatedGripPivot[index].load(std::memory_order_relaxed) + adjustment[index];
         std::array<float, 3> pivotOffsetBody{};
         for (int component = 0; component < 3; ++component) {
             pivotOffsetBody[component] = weaponScale * (
@@ -2713,7 +2614,9 @@ bool KharvoxWeaponInstallHook() {
     if (!image) return false;
     installWeaponAmmoSnapshot(image);
     installHandsResourceResolverNullGuard(image);
-    installFrontPushbackSuppression(image);
+    // Stock DOOM wall/weapon presentation restored. Do not patch its native
+    // hands front-pushback animation: the attempted suppression caused
+    // persistent gun pose offsets after near-wall contact in Quest testing.
     const bool hitReactionOverrideArmed = armHandsHitReactionSuppression(image);
     // The optional validated CVar profile now owns g_weaponkick. Do not
     // arm the old unconditional integer override when the checkbox is off.

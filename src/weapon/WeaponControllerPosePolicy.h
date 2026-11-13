@@ -47,37 +47,6 @@ inline const Quaternion& gameplayWeaponAim(
     return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
-// A settled native hand-attachment pivot belongs to ONE weapon/generation.
-// Reusing a settled shotgun grip reference for a Gauss or Chaingun changes
-// the native weapon position and invalidates an otherwise perfect visual fit.
-// On weapon changes, wait for that weapon's own sample. Never mutate its
-// independently approved calibrated gun/glove offsets to compensate.
-template<class Weapon>
-inline constexpr bool nativeNeutralGripMatchesWeapon(
-    bool neutralValid,unsigned neutralGeneration,unsigned inputGeneration,
-    Weapon sampledWeapon,Weapon currentWeapon) noexcept {
-    return neutralValid&&neutralGeneration==inputGeneration
-        &&sampledWeapon==currentWeapon;
-}
-
-// DOOM's animated right-hand weapon-attachment locator includes first-
-// person hand animations such as near-wall barrel retreat. Using that
-// ANIMATED locator as the origin pivot moves the weapon away from a wall
-// even after the native front-pushback animation branch is disabled.
-// Tracked custom hands instead reference the already captured neutral
-// weapon-attachment locator: the gun stays aligned to the physical controller
-// while the DOOM animation may advance independently underneath. Do not
-// modify tracking, gun orientation, fine-tune offsets or saved calibrations.
-// In guns-only mode or before the settled reference is valid, preserve the
-// previous native animated locator for compatibility.
-template<class Pivot>
-inline const Pivot& nativeWeaponGripPivotForPresentation(
-    const Pivot& animatedPivot,const Pivot& neutralPivot,
-    bool customTrackedHandMode,bool neutralPivotValid) noexcept {
-    return customTrackedHandMode&&neutralPivotValid
-        ?neutralPivot:animatedPivot;
-}
-
 // Only while a support Grip stays latched in actual gameplay, alternate
 // Gauss Siege / Chaingun Turret grip positions should ease between the two
 // APPROVED, saved profile endpoints instead of jumping instantly. Position
