@@ -2994,8 +2994,22 @@ void updateWeapon6Dof(){
             XrVector3f alternateSupport{};
             if(!menuSupportPreview&&altHeavySupport(kind,alternateSupport))
                 actual.supportPosition=alternateSupport;
-            const auto fixedPosition=addVector(weaponAnchorTracking,
-                rotateVector(renderOrientation,actual.supportPosition));
+            // Support capture stores a local point relative to the
+            // original (pre-fine-tune) weapon AIM origin. Use that SAME
+            // reference both in the live menu preview and normal latched
+            // playback. weaponAnchorTracking has already received gun-only
+            // XYZ fine-tune and cannot be reused for the support glove:
+            // that would shift it again after the user pressed SAVE.
+            const auto fixedPosition=kharvox::weaponpose::
+                supportGloveAtCalibrationReference(
+                    calibrationAimTrackingAnchor,renderOrientation,
+                    actual.supportPosition,
+                    [](const XrVector3f& origin,const XrVector3f& delta){
+                        return addVector(origin,delta);
+                    },
+                    [](const XrQuaternionf& q,const XrVector3f& offset){
+                        return rotateVector(q,offset);
+                    });
             if(menuSupportPreview){
                 // Preview follows the current SUPPORT controller orientation;
                 // it is NEVER written as a fixed support-hand quaternion.
