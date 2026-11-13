@@ -198,7 +198,8 @@ struct VrHandMenuState {
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
-    bool primaryGripPreviewHeld{}; // freeze current tested pose only while Grip held
+    bool primaryGripPreviewHeld{}; // Grip-held enables nudges but NEVER freezes live placement
+    std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
     float primaryLateralBase{}; // pinned X, not sampled from moving preview
