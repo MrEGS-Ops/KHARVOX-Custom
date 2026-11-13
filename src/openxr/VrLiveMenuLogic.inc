@@ -7,6 +7,68 @@ struct VrLiveMenuEntry {
     bool enabled{};
     bool devSection{};  // not a toggle or a gameplay mod
 };
+// Browse first, configure second. These blurbs describe the actual
+// gameplay mod (NOT the calibration screen) while the left list has focus.
+// Keep lines short enough for the 384-pixel right-hand viewport.
+struct VrLiveModOverview {
+    std::array<const char*,7> lines{};
+    int count{};
+};
+VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
+    using kharvox::VrLiveMod;
+    switch(mod){
+        case VrLiveMod::WeaponGrip:return {{
+            "Keeps the weapon glove attached to",
+            "your physical weapon controller.",
+            "Supports either weapon hand and",
+            "two-hand grips on supported guns.",
+            "The gun follows your aiming hand;",
+            "the support hand steers while held.",
+            "Each weapon has its own grip fit."},7};
+        case VrLiveMod::Gunslinger:return {{
+            "Fast physical weapon access using",
+            "left/right hip quick-holster zones.",
+            "Reach into a hip zone and Grip to",
+            "equip its stored weapon instantly.",
+            "Grip release in the appropriate",
+            "zone assigns the held-side weapon.",
+            "Behind-head weapon wheel included."},7};
+        case VrLiveMod::Killtime:return {{
+            "Adjusts Glory Kill action speed,",
+            "giving executions a different",
+            "cinematic rhythm while playing.",
+            "Higher tick Hz = slower action.",
+            "Lower tick Hz = faster action.",
+            "Other normal gameplay keeps its",
+            "regular timing and responsiveness."},7};
+        case VrLiveMod::PhysicalGloryKills:return {{
+            "Use real punching motions to",
+            "perform physical Glory Kills.",
+            "Aim at a vulnerable enemy, then",
+            "drive your fist forward to strike.",
+            "Choose left, right or both hands",
+            "and the required punch speed.",
+            "No artificial glove movement."},7};
+        case VrLiveMod::PhysicalCrouch:return {{
+            "Duck physically to crouch in DOOM.",
+            "Headset height determines when",
+            "you are standing or crouching.",
+            "Custom height thresholds can be",
+            "recorded for your play space.",
+            "When disabled, a thumbstick",
+            "crouch shortcut is available."},7};
+        case VrLiveMod::Painsaw:return {{
+            "Physical chainsaw rev controls",
+            "during a confirmed native kill.",
+            "Release and pull the trigger to",
+            "add up to three speed pulses.",
+            "Includes distinctive haptics.",
+            "Uses original DOOM chainsaw",
+            "audio, not an external sound."},7};
+        default:return {{"Select a configurable mod to",
+                          "read its gameplay description."},2};
+    }
+}
 struct VrDevMenuEntry {
     const char* title;
     const char* why; // explanation displayed by the [i] button, never a toggle
@@ -86,18 +148,18 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.customMods.offHandGripCapture,true);
     add("Gunslinger",VrLiveMod::Gunslinger,
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
-    add("Physical Crouch",VrLiveMod::PhysicalCrouch,
-        s.customMods.physicalCrouch,true);
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
+    // The two real toggles are grouped at the bottom.
+    add("Physical Crouch",VrLiveMod::PhysicalCrouch,
+        s.customMods.physicalCrouch,true);
     add("PAINSAW",VrLiveMod::Painsaw,
         s.customMods.chainsawTriggerThrottle
             ||s.customMods.motionChainsawKillSpeed,true);
-    // Keep the left list strictly configurable. DEV consolidates every
-    // currently active read-only mod and non-configurable developer override.
-    rows.push_back({"DEV",VrLiveMod::Other,true,true});
+    // No DEV category in the in-game window. Desktop diagnostics remain
+    // available separately, without cluttering gameplay configuration.
     return rows;
 }
 void applyVrLiveModRuntimeState(){
