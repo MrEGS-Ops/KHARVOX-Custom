@@ -43,18 +43,17 @@ int main(){
         measured,original);
     assert(near(fitted,Vec{original.x,measured.y,measured.z}));
     const Quat identity{0,0,0,1};
-    // Calibrating a glove Y/Z MUST translate its actual grip anchor as
-    // well, instead of leaving a fixed gun pivot and floating the glove.
-    // The native weapon may shift only along the laser (-Z); it never
-    // shifts sideways/upward relative to the laser or changes its angle.
+    // Gun and primary glove MUST move together in the gun's Y/Z axes.
+    // The controller laser fixes orientation, not the gun's world position.
+    // The barrel may be vertically offset, but must remain PARALLEL.
     const Vec referenceHand{.06f,.04f,.12f};
     const Vec adjustedHand{.06f,-.09f,-.23f};
     const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
         adjustedHand,referenceHand);
     assert(near(anchorPlan.gunTranslationLocal,
-        Vec{0,0,adjustedHand.z-referenceHand.z}));
-    assert(near(anchorPlan.handAttachmentLocal,
-        Vec{adjustedHand.x,adjustedHand.y,referenceHand.z}));
+        Vec{0,adjustedHand.y-referenceHand.y,
+            adjustedHand.z-referenceHand.z}));
+    assert(near(anchorPlan.handAttachmentLocal,referenceHand));
     const Vec laserWorld{.35f,.61f,-.25f};
     for(const Quat orientation:{identity,
         Quat{0,.38268343f,0,.92387953f}}){
@@ -67,11 +66,19 @@ int main(){
         const auto requestedDelta=rotate(orientation,adjustedHand);
         assert(near(gloveWorld,Vec{laserWorld.x+requestedDelta.x,
             laserWorld.y+requestedDelta.y,laserWorld.z+requestedDelta.z}));
-        // Cross(gun displacement, rotated laser direction) must be zero.
-        const auto forward=rotate(orientation,Vec{0,0,-1});
-        assert(std::abs(gunDelta.y*forward.z-gunDelta.z*forward.y)<.0002f);
-        assert(std::abs(gunDelta.z*forward.x-gunDelta.x*forward.z)<.0002f);
-        assert(std::abs(gunDelta.x*forward.y-gunDelta.y*forward.x)<.0002f);
+        // Native gun receives *only translation*: unchanged yaw/pitch/roll.
+        // Local right/lateral displacement stays exactly zero, even when
+        // the controller is rotated 45 degrees in world space.
+        const Vec right=rotate(orientation,Vec{1,0,0});
+        const float lateral=gunDelta.x*right.x+gunDelta.y*right.y+
+            gunDelta.z*right.z;
+        assert(std::abs(lateral)<.0002f);
+        // Vertical displacement is nonzero, intentionally allowing a
+        // centreline OFFSET from (but parallel to) the laser pointer.
+        const Vec up=rotate(orientation,Vec{0,1,0});
+        const float vertical=gunDelta.x*up.x+gunDelta.y*up.y+gunDelta.z*up.z;
+        assert(std::abs(vertical-
+            (adjustedHand.y-referenceHand.y))<.0002f);
     }
     const auto zeroPlan=kharvox::weaponpose::primaryHandAnchorPlan(
         referenceHand,referenceHand);

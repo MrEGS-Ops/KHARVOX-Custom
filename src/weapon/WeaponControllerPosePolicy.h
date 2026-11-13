@@ -45,23 +45,24 @@ inline Offset primaryHandVisualPlacement(
     return measured;
 }
 
-// Two-axis weapon-HAND anchor fitting without breaking the literal laser
-// centreline. A change in local Z slides the native gun ALONG the AIM ray;
-// local Y moves the glove's attachment on that gun. Both effects translate
-// the visible hand anchor in Y/Z. Neither adds lateral (X) gun motion or
-// changes the controller-provided gun orientation. The saved glove quaternion
-// stays independent and is applied after computing its anchor.
+// The weapon and its PRIMARY hand are one rigid pose group. Calibration
+// translates the group's ANCHOR along weapon-local Y (up/down) and Z
+// (forward/back), but NEVER sideways (X). This deliberately allows the
+// gun's centreline to be OFFSET from the controller laser while staying
+// exactly PARALLEL to it. No rotation, pitch/yaw/roll or steering is added.
+// The primary glove's independent local quaternion is retained.
 template<class Offset>
 struct PrimaryHandAnchorPlan {
-    Offset gunTranslationLocal;  // always X=0, Y=0, Z only
-    Offset handAttachmentLocal;  // current X/Y; Z held at factory/reference
+    Offset gunTranslationLocal;  // X locked to zero; Y/Z adjustable
+    Offset handAttachmentLocal;  // original grip on the moving gun
 };
 template<class Offset>
 inline PrimaryHandAnchorPlan<Offset> primaryHandAnchorPlan(
     const Offset& requestedHand, const Offset& referenceHand) noexcept {
     return {
-        Offset{0.f,0.f,requestedHand.z-referenceHand.z},
-        Offset{requestedHand.x,requestedHand.y,referenceHand.z}
+        Offset{0.f,requestedHand.y-referenceHand.y,
+            requestedHand.z-referenceHand.z},
+        referenceHand
     };
 }
 

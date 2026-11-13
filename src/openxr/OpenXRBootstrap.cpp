@@ -2823,12 +2823,11 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalPosition={p.x,p.y,p.z};
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
-        // Apply the same Y/Z calibration to the weapon-hand *anchor*, not
-        // only to a disconnected floating glove. The native gun can slide
-        // forward/back ALONG the exact AIM laser (Z only); vertical fitting
-        // moves the glove attachment relative to the gun (Y). This leaves
-        // the barrel centreline on the controller laser, with no X or
-        // yaw/pitch/roll offsets. The glove keeps its independent rotation.
+        // The primary glove and native gun form one rigid weapon-hand group.
+        // Move the anchor together in gun-local Y (up/down) and Z
+        // (forward/back). Sideways X stays locked; yaw/pitch/roll are NEVER
+        // changed. Barrel may be offset from the AIM laser, but must remain
+        // precisely parallel to it. Glove visual rotation stays independent.
         XrVector3f factoryHand=s.primaryVisualLocalPosition;
         if(s.weaponHandLeft){
             const auto key=std::string(KharvoxWeaponKindKey(kind))
@@ -2852,9 +2851,9 @@ void updateWeapon6Dof(){
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
             s.primaryVisualLocalPosition,factoryHand);
         if(s.showHands){
-            // Deliberately use only the Z component on the native gun.
-            // The barrel CANNOT be offset vertically and still remain
-            // geometrically collinear with the physical AIM laser.
+            // Translate the native gun in local Y and Z ONLY. An upward
+            // offset can move the barrel off the pointer line; its forward
+            // direction nevertheless stays PARALLEL to the AIM laser.
             weaponAnchorBody=addVector(weaponAnchorBody,
                 rotateVector(rotation,anchorPlan.gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,
@@ -2942,7 +2941,7 @@ void updateWeapon6Dof(){
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
     // Calibration probe stays relative to the unshifted AIM origin;
-    // measuring against the moved gun anchor would cause runaway drift.
+    // measuring against the adjusted Y/Z weapon anchor would cause drift.
     s.lastWeaponRenderedTrackingAnchor=calibrationAimTrackingAnchor;
     s.lastWeaponRenderedKind=kind;
     s.lastWeaponRenderedValid=true;
