@@ -230,6 +230,7 @@ void saveVrHandMenuCalibration(){
         (alternate?" ALT":" NORMAL")+" saved for "+m.weapon();
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.rotationEdit={};
     refreshVrHandMenuSavedStatus();
 }
 void resetVrMenuSelectedWeapon(){
@@ -317,6 +318,7 @@ void startVrSelectedWeaponCalibration(){
     m.calibratingWeaponLeft=s.weaponHandLeft;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.rotationEdit={}; // a fresh unsaved rotation draft for this calibration
     m.lastPreviewDiagnosticAt=0;
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
@@ -385,9 +387,21 @@ void startVrSelectedWeaponCalibration(){
             s.primaryVisualLocalPosition.y,
             s.primaryVisualLocalPosition.z};
     }
+    if(calibratingPrimary){
+        // The first frame of calibration, including one entered with
+        // weapon Grip already HELD, must have a real visual wrist pose.
+        // Otherwise an unset quaternion cannot be frozen/saved and the
+        // fine-tune becomes inaccessible until an unrelated grip release.
+        const auto& existing=s.primaryVisualLocalOrientation;
+        m.previewRotation={existing.x,existing.y,existing.z,existing.w,true};
+        if(!kharvox::validRightHandRotation(m.previewRotation))
+            m.previewRotation={0.f,0.f,0.f,1.f,true};
+        m.previewValid=kharvox::validRightHandVisualPlacement(
+            m.previewPosition)&&kharvox::validRightHandRotation(m.previewRotation);
+    }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Release Grip: rotate glove with free controller. Hold Grip: 1 cm stick nudges move the GUN only. RIGHT TRIGGER saves.";
+    m.message="Hold Grip: shift GUN 1cm. Release Grip: keep GUN offset, rotate glove. Trigger saves; B or hold RS cancels.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
@@ -560,6 +574,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.mode=m.mode==kharvox::VrHandMenuMode::Menu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
+            m.rotationEdit={};
+            m.primaryGripPreviewHeld=false;
             m.liveCapture=kharvox::VrLiveCapture::None;
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
@@ -601,6 +617,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.pendingNativeSelection=0;
         m.previewValid=false;
         m.primaryGripPreviewHeld=false;
+        m.rotationEdit={};
         s.primaryVisualLocked=false;
         s.supportVisualLocked=false;
         if(m.mode==kharvox::VrHandMenuMode::Calibrating){
