@@ -80,28 +80,40 @@ int main(){
         assert(std::abs(vertical-
             (adjustedHand.y-referenceHand.y))<.0002f);
     }
-    // Only fine-tune changes the primary glove's saved local X. When it
-    // does, the actual GUN and its anchor must shift the same amount, while
-    // the gun's rotation (and hence laser-parallel barrel direction) stays
-    // precisely unchanged. This also tests a yawed controller reference.
+    // 1cm Grip-held fine tune is ONLY glove + attachment anchor.
+    // The gun must not change position, lateral placement or orientation
+    // even while the hand moves in X, Y, and Z. Verify at two AIM angles.
+    const Vec tune{+.01f,-.02f,-.03f};
     const Vec fineTunedHand{
-        referenceHand.x+.01f,referenceHand.y-.02f,referenceHand.z-.03f};
+        referenceHand.x+tune.x,referenceHand.y+tune.y,
+        referenceHand.z+tune.z};
     const auto finePlan=kharvox::weaponpose::primaryHandAnchorPlan(
-        fineTunedHand,referenceHand);
-    assert(near(finePlan.gunTranslationLocal,
-        Vec{+.01f,-.02f,-.03f}));
-    assert(near(finePlan.handAttachmentLocal,referenceHand));
+        fineTunedHand,referenceHand,tune);
+    assert(near(finePlan.gunTranslationLocal,Vec{0,0,0}));
+    assert(near(finePlan.handAttachmentLocal,fineTunedHand));
     for(const Quat pose:{identity,Quat{0,.38268343f,0,.92387953f}}){
-        const auto delta=rotate(pose,finePlan.gunTranslationLocal);
-        const auto gripLocal=rotate(pose,finePlan.handAttachmentLocal);
+        const auto gunDelta=rotate(pose,finePlan.gunTranslationLocal);
+        const auto handDelta=rotate(pose,finePlan.handAttachmentLocal);
         const auto expected=rotate(pose,fineTunedHand);
-        assert(near(Vec{delta.x+gripLocal.x,delta.y+gripLocal.y,
-            delta.z+gripLocal.z},expected));
-        // This is only an anchor translation; no quaternion is derived
-        // from the fine-tune delta, so the AIM orientation remains pose.
+        assert(near(gunDelta,Vec{0,0,0}));
+        assert(near(handDelta,expected));
         const auto& unchanged=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
             pose,laser);
         assert(&unchanged==&pose);
+    }
+    // Normal calibrated Y/Z and hand-only XYZ fine-tune can coexist.
+    const Vec normalAndFine{referenceHand.x+.01f,
+        referenceHand.y+.08f-.02f,referenceHand.z-.12f-.03f};
+    const auto combined=kharvox::weaponpose::primaryHandAnchorPlan(
+        normalAndFine,referenceHand,tune);
+    assert(near(combined.gunTranslationLocal,Vec{0,+.08f,-.12f}));
+    assert(near(combined.handAttachmentLocal,Vec{
+        referenceHand.x+.01f,referenceHand.y-.02f,referenceHand.z-.03f}));
+    for(const Quat pose:{identity,Quat{0,.38268343f,0,.92387953f}}){
+        const auto g=rotate(pose,combined.gunTranslationLocal);
+        const auto h=rotate(pose,combined.handAttachmentLocal);
+        const auto expected=rotate(pose,normalAndFine);
+        assert(near(Vec{g.x+h.x,g.y+h.y,g.z+h.z},expected));
     }
     const auto zeroPlan=kharvox::weaponpose::primaryHandAnchorPlan(
         referenceHand,referenceHand);

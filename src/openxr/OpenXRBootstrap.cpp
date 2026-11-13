@@ -2823,12 +2823,19 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalPosition={p.x,p.y,p.z};
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
-        // The primary glove and native gun form one rigid weapon-hand group.
-        // Normal calibration moves the anchor in gun-local Y/Z. Only the
-        // Grip-held 1cm joystick fine-tune is allowed to adjust local X,
-        // captured via the saved glove position. No yaw/pitch/roll changes:
-        // barrel remains parallel to the AIM laser; glove visual rotation
-        // remains an entirely independent saved quaternion.
+        // Normal Y/Z calibration may translate the native gun parallel
+        // to the laser. Fine-tune MUST move only the glove and attachment
+        // anchor: never the gun. Keep both offsets independent on reload.
+        const auto selectedWeaponKey=std::string(KharvoxWeaponKindKey(kind));
+        const bool primaryMenuPreview=s.vrHandMenu.mode==
+                kharvox::VrHandMenuMode::Calibrating
+            &&(s.vrHandMenu.rightHand!=s.weaponHandLeft)
+            &&s.vrHandMenu.previewValid
+            &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon());
+        const auto fineTune=primaryMenuPreview
+            ?s.vrHandMenu.fineTuneAccumulated
+            :kharvox::primaryVisualFineTune(s.rightGripSettings,
+                selectedWeaponKey,s.weaponHandLeft,visualAlternate);
         XrVector3f factoryHand=s.primaryVisualLocalPosition;
         if(s.weaponHandLeft){
             const auto key=std::string(KharvoxWeaponKindKey(kind))
@@ -2849,13 +2856,12 @@ void updateWeapon6Dof(){
                     visualAlternate,position,ignored))
                 factoryHand={position.x,position.y,position.z};
         }
+        const XrVector3f fineTuneLocal{fineTune.x,fineTune.y,fineTune.z};
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
-            s.primaryVisualLocalPosition,factoryHand);
+            s.primaryVisualLocalPosition,factoryHand,fineTuneLocal);
         if(s.showHands){
-            // Translate the native gun by the calibrated local XYZ delta.
-            // X is writable ONLY through 1cm Grip-held fine-tune, never
-            // normal free-controller capture. Gun rotation remains parallel
-            // to the controller AIM laser regardless of translation.
+            // The native weapon gets ONLY ordinary Y/Z translation.
+            // Fine-tune XYZ is applied inside handAttachmentLocal below.
             weaponAnchorBody=addVector(weaponAnchorBody,
                 rotateVector(rotation,anchorPlan.gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,

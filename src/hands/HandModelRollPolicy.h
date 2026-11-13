@@ -5,22 +5,16 @@
 
 namespace kharvox::hands {
 
-// The right bare fist and the right equipped glove were confirmed to be
-// upright in the headset. Render the matching LEFT variant from that same
-// baked RIGHT mesh mirrored ONLY in local X. Do NOT also roll it 180 degrees:
-// the extra controller-space half-turn was inverting the left-hand visual
-// orientation despite its otherwise correctly aligned right-hand reference.
-// Mirroring applies only to the visible mesh; the left tracked controller,
-// primary weapon pose, and depth/compositor remain completely untouched.
+// Restore shipped KHARVOX left and right GLBs unmodified.
+// Each physical hand loads its OWN mesh and its own calibration.
 inline constexpr std::size_t handReferenceAssetIndex(
     bool physicalLeft, HandModelKind kind) noexcept {
-    (void)physicalLeft;
-    return kind==HandModelKind::GunHolding?3u:1u;
+    return kind==HandModelKind::GunHolding
+        ?(physicalLeft?2u:3u):(physicalLeft?0u:1u);
 }
 inline constexpr bool handMeshMirroredFromRight(
-    bool physicalLeft, HandModelKind kind) noexcept {
-    return physicalLeft&&(kind==HandModelKind::Fist
-        ||kind==HandModelKind::GunHolding);
+    bool, HandModelKind) noexcept {
+    return false; // use native GLB, no added mirror
 }
 inline constexpr float handModelControllerForwardRollDegrees(
     bool, HandModelKind) noexcept {

@@ -236,6 +236,26 @@ int main(){
      true,true,true,false,true)); // wrong current primary hand
  auto visual=kharvox::readRightHandGripSettings(path);
  assert(visual.visualPositions.count("pistol")==1);
+ // The same atomic position/rotation write also stores the hand-only
+ // fine-tune offset, keeping native gun motion separate after reload.
+ const kharvox::RightHandGripOffset handTune{.01f,-.02f,.03f};
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     {.06f,.00f,-.09f},{0.f,0.f,0.f,1.f,true},
+     &why,false,&handTune));
+ visual=kharvox::readRightHandGripSettings(path);
+ const auto restoredTune=kharvox::primaryVisualFineTune(
+     visual,"pistol",false,false);
+ assert(std::abs(restoredTune.x-.01f)<.00001f);
+ assert(std::abs(restoredTune.y+.02f)<.00001f);
+ assert(std::abs(restoredTune.z-.03f)<.00001f);
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     {.07f,.02f,-.08f},{0.f,0.f,0.f,1.f,true},
+     &why,false,&handTune)); // update must not duplicate the key
+ { std::ifstream f(path);std::string line;int seen=0;
+   while(std::getline(f,line))
+       if(line.find("pistol_finetune_offset")!=std::string::npos)++seen;
+   assert(seen==1);
+ }
  assert(visual.visualRotations.count("pistol")==1);
  assert(visual.visualPositions.count("shotgun")==1);
  // A factory-seeded profile does NOT mean the user calibrated that hand.

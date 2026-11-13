@@ -108,6 +108,10 @@ struct RightHandGripSettings {
     std::map<std::string,RightHandGripRotation> visualRotations;
     std::map<std::string,RightHandGripOffset> leftVisualPositions;
     std::map<std::string,RightHandGripRotation> leftVisualRotations;
+    // Separate hand/attachment-only 1 cm nudges from normal Y/Z gun offset.
+    // Legacy profiles omit these fields and keep their original behaviour.
+    std::map<std::string,RightHandGripOffset> visualFineTuneOffsets;
+    std::map<std::string,RightHandGripOffset> leftVisualFineTuneOffsets;
     std::map<std::string,RightHandGripOffset> leftPrimaryAlternateSupport;
     int accepted{},rejected{};
 };
@@ -195,6 +199,23 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             out.rightHandDropMeters=drop;
             ++out.accepted;
             continue;
+        }
+        const bool leftFineTune=gripKeySuffix(key,"_left_finetune_offset")
+            &&validVrPrimaryProfileKey(
+                key.substr(0,key.size()-std::string("_left_finetune_offset").size()));
+        const bool rightFineTune=!leftFineTune
+            &&gripKeySuffix(key,"_finetune_offset")
+            &&validVrPrimaryProfileKey(
+                key.substr(0,key.size()-std::string("_finetune_offset").size()));
+        if(leftFineTune||rightFineTune){
+            if(!(v>>p.x>>p.y>>p.z)||(v>>extra)
+                ||!validRightHandVisualPlacement(p)){++out.rejected;continue;}
+            const auto profile=key.substr(0,key.size()-
+                std::string(leftFineTune?"_left_finetune_offset"
+                    :"_finetune_offset").size());
+            (leftFineTune?out.leftVisualFineTuneOffsets
+                :out.visualFineTuneOffsets)[profile]=p;
+            ++out.accepted;continue;
         }
         const bool leftHandPosition=gripKeySuffix(key,"_left_hand_position")
             &&validVrPrimaryProfileKey(
@@ -457,23 +478,38 @@ inline bool factoryAlignedRightPrimaryToLeft(const RightHandGripSettings& curren
     leftRotation.z/=norm;leftRotation.w/=norm;
     return true;
 }
-// Atomic single-transaction update of one visual grip pose: both the
-// glove POSITION and ROTATION are saved together, or neither is saved.
+// Native gun translation uses only the non-fine-tune portion. The extra
+// per-weapon fine-tune field persists hand/anchor-only nudges across reload.
+inline RightHandGripOffset primaryVisualFineTune(
+    const RightHandGripSettings& settings,const std::string& weapon,
+    bool leftPrimary,bool alternate) {
+    const auto key=weapon+(alternate
+        ?(weapon=="gauss_cannon"?"_siege"
+            :weapon=="chaingun"?"_turret":""):"");
+    const auto& values=leftPrimary
+        ?settings.leftVisualFineTuneOffsets:settings.visualFineTuneOffsets;
+    const auto it=values.find(key);
+    return it!=values.end()?it->second:RightHandGripOffset{};
+}
+// Atomic single-transaction update of visual position, rotation AND (where
+// provided) the hand-only fine-tune; saves cannot leave them inconsistent.
 // Preserves the native weapon anchor values and all other weapon modes.
 inline bool saveRightHandVisualPose(const std::string&path,
     const std::string&weapon,bool alternate,
     RightHandGripOffset pos,RightHandGripRotation q,std::string*why=nullptr,
-    bool leftPrimary=false){
+    bool leftPrimary=false,const RightHandGripOffset* fineTune=nullptr){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
     if(!validVrCalibrationWeapon(weapon)||
        (alternate&&weapon!="gauss_cannon"&&weapon!="chaingun")||
-       !validRightHandVisualPlacement(pos)||!validRightHandRotation(q))
-        return fail("invalid measured position or orientation");
+       !validRightHandVisualPlacement(pos)||!validRightHandRotation(q)
+       ||(fineTune&&!validRightHandVisualPlacement(*fineTune)))
+        return fail("invalid measured position, rotation or fine tune");
     const std::string prefix=weapon+
         (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"")+
         (leftPrimary?"_left":"");
     const std::string positionKey=prefix+"_hand_position";
     const std::string rotationKey=prefix+"_rotation";
+    const std::string tuneKey=prefix+"_finetune_offset";
     const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
     q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;
     std::ostringstream position,rotation;
@@ -481,6 +517,9 @@ inline bool saveRightHandVisualPose(const std::string&path,
         <<pos.x<<' '<<pos.y<<' '<<pos.z;
     rotation<<rotationKey<<" = "<<std::fixed<<std::setprecision(8)
         <<q.x<<' '<<q.y<<' '<<q.z<<' '<<q.w;
+    std::ostringstream tune;
+    if(fineTune)tune<<tuneKey<<" = "<<std::fixed<<std::setprecision(8)
+        <<fineTune->x<<' '<<fineTune->y<<' '<<fineTune->z;
     namespace fs=std::filesystem;
     const fs::path destination(path),temp(path+".live.tmp");
     std::error_code ec;
@@ -490,7 +529,7 @@ inline bool saveRightHandVisualPose(const std::string&path,
     {std::ifstream input(path);std::string line;
      while(std::getline(input,line))lines.push_back(line);
      if(input.bad())return fail("failed reading existing settings");}
-    bool posFound=false,rotFound=false;
+    bool posFound=false,rotFound=false,tuneFound=false;
     for(auto it=lines.begin();it!=lines.end();){
         auto eq=it->find('=');
         if(eq==std::string::npos){++it;continue;}
@@ -505,11 +544,15 @@ inline bool saveRightHandVisualPose(const std::string&path,
         }else if(key==rotationKey){
             if(rotFound){it=lines.erase(it);continue;}
             *it=rotation.str();rotFound=true;
+        }else if(fineTune&&key==tuneKey){
+            if(tuneFound){it=lines.erase(it);continue;}
+            *it=tune.str();tuneFound=true;
         }
         ++it;
     }
     if(!posFound)lines.push_back(position.str());
     if(!rotFound)lines.push_back(rotation.str());
+    if(fineTune&&!tuneFound)lines.push_back(tune.str());
     if(fs::exists(destination,ec)){
         fs::copy_file(destination,path+".before-live-capture.bak",
             fs::copy_options::overwrite_existing,ec);

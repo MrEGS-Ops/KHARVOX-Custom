@@ -145,6 +145,18 @@ inline const ControllerPose& vrCalibrationFreeControllerPose(
     if(grip.valid)return grip;
     return aim;
 }
+// Native GRIP tracks the wrist orientation, whereas the tracked AIM position
+// follows the visible controller laser reliably. Use AIM for the free-hand
+// calibration TRANSLATION when available; preserve independent GRIP rotation.
+// This avoids stale predicted GRIP positions pivoting the glove in place.
+template<class ControllerPose>
+inline ControllerPose vrCalibrationLivePose(
+    const ControllerPose& grip,const ControllerPose& aim) noexcept {
+    ControllerPose live=vrCalibrationFreeControllerPose(grip,aim);
+    if(aim.valid&&aim.positionTracked)live.position=aim.position;
+    if(grip.valid)live.orientation=grip.orientation;
+    return live;
+}
 // Fine-tune is ONLY active during primary-weapon calibration while its
 // physical weapon-hand GRIP is held to freeze the preview. Each deliberate
 // stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
@@ -347,10 +359,14 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                 if(end!=std::string::npos)key.erase(end+1);
                 matches=key==weapon+"_hand_position"||key==weapon+"_rotation"
                     ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
+                    ||key==weapon+"_finetune_offset"
+                    ||key==weapon+"_left_finetune_offset"
                     ||(!alternate.empty()&&(
                         key==alternate+"_hand_position"||key==alternate+"_rotation"
                         ||key==alternate+"_left_hand_position"
                         ||key==alternate+"_left_rotation"
+                        ||key==alternate+"_finetune_offset"
+                        ||key==alternate+"_left_finetune_offset"
                         ||key==alternate+"_support_position"
                         ||key==alternate+"_left_primary_support_position"));
             }
@@ -410,7 +426,9 @@ inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
             const auto matches=[&](const std::string& name){
                 return key==name+"_hand_position"||key==name+"_rotation"
                     ||key==name+"_left_hand_position"
-                    ||key==name+"_left_rotation";
+                    ||key==name+"_left_rotation"
+                    ||key==name+"_finetune_offset"
+                    ||key==name+"_left_finetune_offset";
             };
             if(matches(weapon))return true;
             return !alternate.empty()
