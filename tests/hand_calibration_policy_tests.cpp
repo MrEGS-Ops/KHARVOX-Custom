@@ -1,10 +1,19 @@
 #include "../src/hands/HandCalibrationPolicy.h"
 #include "../src/hands/HandAimAlignmentPolicy.h"
+#include "../src/hands/HandModelRollPolicy.h"
 
 #include <cassert>
 
 int main() {
     using namespace kharvox::hands;
+
+    // Both physical LEFT variants need an upside-down -> upright roll,
+    // whereas the RIGHT variants and absent hands remain unchanged.
+    assert(handModelControllerForwardRollDegrees(true,HandModelKind::Fist)==180.f);
+    assert(handModelControllerForwardRollDegrees(true,HandModelKind::GunHolding)==180.f);
+    assert(handModelControllerForwardRollDegrees(false,HandModelKind::Fist)==0.f);
+    assert(handModelControllerForwardRollDegrees(false,HandModelKind::GunHolding)==0.f);
+    assert(handModelControllerForwardRollDegrees(true,HandModelKind::None)==0.f);
 
     bool plusWasDown{};
     auto mode=updateHandCalibrationMode(CalibrationMode::Rotation,true,plusWasDown);
