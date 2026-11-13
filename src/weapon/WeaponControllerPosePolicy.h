@@ -54,6 +54,48 @@ inline constexpr float weaponEulerOffsetDegrees(
     return controllerAlignedHands ? 0.f : legacyDegrees;
 }
 
+// A dedicated PRIMARY HAND ATTACHMENT ANCHOR belongs to the physical
+// weapon-hand GRIP controller, not the moving gun root. Return the full
+// tracked controller pose so neither position nor orientation can silently
+// inherit a translated gun pivot. This is separate from native weapon pose.
+template<class Controller>
+inline const Controller& controllerFixedPrimaryHandAnchor(
+    const Controller& physicalGrip,const Controller&) noexcept {
+    return physicalGrip;
+}
+
+// The gun has its own moving RENDER ORIGIN. Rotate the original offset from
+// primary controller GRIP to AIM about the physical grip anchor whenever
+// the existing two-hand solver changes gun orientation. One-hand is exactly
+// the original AIM position; during two-hand aiming the primary hand/pivot
+// stays on the controller and the native gun rotates around it.
+template<class Position,class Quaternion,class Subtract,class Add,
+    class Rotate,class Conjugate>
+inline Position gunOriginAboutControllerHandAnchor(
+    const Position& fixedHandAnchor,const Position& originalAimOrigin,
+    const Quaternion& originalAimOrientation,
+    const Quaternion& solvedGunOrientation,
+    Subtract subtract,Add add,Rotate rotate,Conjugate conjugate) {
+    const auto gripToAimLocal=rotate(conjugate(originalAimOrientation),
+        subtract(originalAimOrigin,fixedHandAnchor));
+    return add(fixedHandAnchor,rotate(solvedGunOrientation,gripToAimLocal));
+}
+
+// Existing support-hand profiles are relative to the original AIM origin.
+// Rebase their local grab point to the physical controller GRIP origin,
+// preserving exactly the same world-space grab target before two-hand
+// steering begins. The steering solver can then use the controller-fixed
+// hand anchor, rather than a gun origin that moves during fine-tuning.
+template<class Position,class Quaternion,class Subtract,class Add,
+    class Rotate,class Conjugate>
+inline Position supportOffsetFromControllerAnchor(
+    const Position& savedSupportOffset,const Position& physicalHandAnchor,
+    const Position& aimOrigin,const Quaternion& primaryAimOrientation,
+    Subtract subtract,Add add,Rotate rotate,Conjugate conjugate) {
+    return add(savedSupportOffset,rotate(conjugate(primaryAimOrientation),
+        subtract(aimOrigin,physicalHandAnchor)));
+}
+
 // The primary glove's position is the physical weapon-hand controller GRIP
 // pose, independent of both per-weapon gun offsets and 1cm joystick nudges.
 // Distinct from the gun's AIM pose, so level physical controllers produce
