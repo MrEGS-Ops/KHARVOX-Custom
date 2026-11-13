@@ -64,6 +64,20 @@ inline const Controller& controllerFixedPrimaryHandAnchor(
     return physicalGrip;
 }
 
+// Weapon-hand attachment must share ONE PHYSICAL ORIGIN with the
+// rendered glove. AIM is the barrel's orientation/ray, but Quest/OpenXR
+// exposes a different AIM POSITION and GRIP POSITION. Starting the gun at
+// AIM while the glove starts at GRIP is a visible positional mismatch even
+// with fine-tune zero. Custom-hands mode uses the physical GRIP position for
+// the gun's base attachment, leaving gun-only fine-tune to shift the model.
+// Without the tracked custom hand, retain the legacy weapon-origin fallback.
+template<class Position>
+inline const Position& sharedPhysicalWeaponGripOrigin(
+    const Position& controllerGrip,const Position& legacyWeaponOrigin,
+    bool customHandGripValid) noexcept {
+    return customHandGripValid?controllerGrip:legacyWeaponOrigin;
+}
+
 // The gun has its own moving RENDER ORIGIN. Rotate the original offset from
 // primary controller GRIP to AIM about the physical grip anchor whenever
 // the existing two-hand solver changes gun orientation. One-hand is exactly

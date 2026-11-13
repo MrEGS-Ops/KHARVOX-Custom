@@ -2759,32 +2759,37 @@ void updateWeapon6Dof(){
     const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
         return rotateVector(q,v);
     };
-    // Two distinct transforms:
-    // 1) controller-fixed PRIMARY HAND ANCHOR is always the physical GRIP.
-    // 2) native WEAPON MODEL ORIGIN may rotate around that anchor and take
-    //    arbitrary gun-only XYZ fine-tune translation below.
-    // One-handed rotation exactly reproduces the old AIM origin.
-    auto weaponAnchorBody=controllerFixedHandAnchor
-        ?kharvox::weaponpose::gunOriginAboutControllerHandAnchor(
-            primaryHandAnchorBody,current.position,current.orientation,
-            rotation,subtractGrip,addGrip,rotateGripVector,invertGrip)
-        :s.showHands
-            ?current.position:gunPivotAt(rotation);
-    auto weaponAnchorTracking=controllerFixedHandAnchor
+    // One physical POSITION reference for the primary hand and the gun:
+    // the tracked OpenXR GRIP. The AIM pose still drives barrel orientation,
+    // but its distinct positional origin must not displace the gun from the
+    // player's actual controller. Only saved gun-local Y/Z and joystick XYZ
+    // fine-tune below can shift the native gun relative to that grip.
+    // Legacy guns-only rendering continues to use its original pivot.
+    const auto legacyWeaponBody=s.showHands
+        ?current.position:gunPivotAt(rotation);
+    const auto legacyWeaponTracking=s.showHands
+        ?primaryController.position
+        :kharvox::primarygrip::weaponAnchor(
+            primaryController.position,
+            primaryHandGripController.valid?primaryHandGripController.position
+                :primaryController.position,
+            renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
+    auto weaponAnchorBody=kharvox::weaponpose::sharedPhysicalWeaponGripOrigin(
+        primaryHandAnchorBody,legacyWeaponBody,controllerFixedHandAnchor);
+    auto weaponAnchorTracking=kharvox::weaponpose::sharedPhysicalWeaponGripOrigin(
+        primaryHandAnchorTracking,legacyWeaponTracking,controllerFixedHandAnchor);
+    // Support profiles still store offsets measured against the pre-fine-tune
+    // AIM origin. Preserve the PREVIOUS support calibration reference exactly
+    // (including the solved two-hand rotation of the grip-to-AIM displacement)
+    // even though the actual native gun now starts from the physical GRIP.
+    // This keeps preview, saved and latched support points consistent instead
+    // of silently migrating the user's support calibration files.
+    const auto calibrationAimTrackingAnchor=controllerFixedHandAnchor
         ?kharvox::weaponpose::gunOriginAboutControllerHandAnchor(
             primaryHandAnchorTracking,primaryController.position,
             primaryController.orientation,renderOrientation,
             subtractGrip,addGrip,rotateGripVector,invertGrip)
-        :s.showHands?primaryController.position
-            :kharvox::primarygrip::weaponAnchor(
-                primaryController.position,
-                primaryHandGripController.valid?primaryHandGripController.position
-                    :primaryController.position,
-                renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
-    // Keep the true primary AIM origin as the fixed calibration reference:
-    // the later Y/Z anchor correction must never feed back into the probe's
-    // inverse local coordinate measurement as the owner moves the glove.
-    const auto calibrationAimTrackingAnchor=weaponAnchorTracking;
+        :weaponAnchorTracking;
     // Native gun follows AIM; primary glove uses GRIP for its *initial*
     // visual pose. Once fitted, the glove's independently calibrated anchor
     // translates only in Y/Z; its quaternion never changes the gun angle.

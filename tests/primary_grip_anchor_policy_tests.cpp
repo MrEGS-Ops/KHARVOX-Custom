@@ -158,6 +158,50 @@ int main(){
         }
     }
 
+    // Quest/OpenXR AIM and GRIP action spaces do not occupy the same
+    // physical position. The gun's BASE attachment and visible hand must
+    // share GRIP, not use AIM for one and GRIP for the other. Fine-tune
+    // remains a separate gun-only translation, never moving the glove.
+    const Vec actualWeaponGrip{.21f,.52f,-.32f};
+    const Vec displacedAimOrigin{.27f,.61f,-.40f};
+    for(const bool showCustomHands:{false,true}){
+        const auto& gunBase=kharvox::weaponpose::sharedPhysicalWeaponGripOrigin(
+            actualWeaponGrip,displacedAimOrigin,showCustomHands);
+        assert(near(gunBase,showCustomHands
+            ?actualWeaponGrip:displacedAimOrigin));
+        if(showCustomHands){
+            assert(&gunBase==&actualWeaponGrip);
+            const Vec savedFineTune{.01f,-.03f,-.02f};
+            for(const Quat gunFrame:{Quat{0.f,0.f,0.f,1.f},
+                    Quat{0.f,.38268343f,0.f,.92387953f}}){
+                const Vec gunAfterFineTune=add(gunBase,
+                    rotate(gunFrame,savedFineTune));
+                assert(near(subtract(gunAfterFineTune,gunBase),
+                    rotate(gunFrame,savedFineTune)));
+                assert(near(gunBase,actualWeaponGrip));
+                const auto& unchangedGlove=
+                    kharvox::weaponpose::physicalPrimaryGlovePosition(
+                        actualWeaponGrip,gunAfterFineTune);
+                assert(&unchangedGlove==&actualWeaponGrip);
+                assert(near(unchangedGlove,actualWeaponGrip));
+            }
+        }else assert(&gunBase==&displacedAimOrigin);
+    }
+    // Keep old support offsets measured from AIM even though the moving
+    // gun now attaches at GRIP. The saved/reloaded support point is not
+    // inadvertently re-based onto GRIP, preserving the prior capture.
+    const Quat neutralAim{0.f,0.f,0.f,1.f};
+    const Vec supportMeasuredLocal{-.17f,.04f,-.28f};
+    const auto oldSupportPoint=kharvox::weaponpose::
+        supportGloveAtCalibrationReference(displacedAimOrigin,
+            neutralAim,supportMeasuredLocal,add,rotate);
+    const auto stillSavedSupport=kharvox::weaponpose::
+        supportGloveAtCalibrationReference(displacedAimOrigin,
+            neutralAim,supportMeasuredLocal,add,rotate);
+    assert(near(oldSupportPoint,stillSavedSupport));
+    assert(!near(stillSavedSupport,add(actualWeaponGrip,
+        supportMeasuredLocal)));
+
     // A physical primary controller is the sole authoritative attachment
     // anchor for glove AND two-hand rotation. Weapon model/root may be
     // translated and rotated independently without ever moving that anchor.
