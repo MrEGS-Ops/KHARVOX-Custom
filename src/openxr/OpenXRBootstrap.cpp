@@ -3005,13 +3005,30 @@ void updateWeapon6Dof(){
         const XrVector3f fineTuneLocal{fineTune.x,fineTune.y,fineTune.z};
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
             s.primaryVisualLocalPosition,factoryHand,fineTuneLocal);
+        // Use the SAME heavy-mode interpolation clock for native gun-only
+        // offsets as for the support grip. The owner's distinct normal and
+        // alternate calibration endpoint offsets are never modified.
+        auto gunTranslationLocal=anchorPlan.gunTranslationLocal;
+        auto& handoff=s.heavyModeHandoff;
+        const bool blendHeavyGun=handoff.initialized
+            &&handoff.weapon==kind
+            &&handoff.leftWeaponHand==s.weaponHandLeft
+            &&s.twoHandLatched&&s.supportGripPressed;
+        if(blendHeavyGun){
+            if(handoff.transition&&handoff.gunValid)
+                gunTranslationLocal=kharvox::weaponpose::heavyGripBlendVector(
+                    handoff.fromGunOffset,gunTranslationLocal,
+                    handoff.progress);
+            handoff.previousGunOffset=gunTranslationLocal;
+            handoff.gunValid=true;
+        }
         if(s.showHands){
             // Gun moves; neither physical controller/glove moves. Preserve
             // the active two-hand orientation solver and unchanged aim angle.
             weaponAnchorBody=addVector(weaponAnchorBody,
-                rotateVector(rotation,anchorPlan.gunTranslationLocal));
+                rotateVector(rotation,gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,
-                rotateVector(renderOrientation,anchorPlan.gunTranslationLocal));
+                rotateVector(renderOrientation,gunTranslationLocal));
         }
         // Rendering the glove from weaponAnchorTracking introduced the
         // unwanted height discrepancy even for level physical controllers.
@@ -3034,9 +3051,31 @@ void updateWeapon6Dof(){
             kharvox::weaponpose::primaryGloveVisualFrame(
                 primaryController.orientation,renderOrientation,
                 s.showHands,gameplayTwoHandSteering);
+        // Keep the visible PRIMARY glove's saved alternate wrist angle
+        // from snapping on the same mode edge. Only this temporary rendered
+        // quaternion is interpolated; the approved profile is immutable.
+        XrQuaternionf displayedWrist=s.primaryVisualLocalOrientation;
+        if(blendHeavyGun){
+            if(handoff.transition&&handoff.wristValid){
+                auto endWrist=displayedWrist;
+                const auto& from=handoff.fromWrist;
+                const float dot=from.x*endWrist.x+from.y*endWrist.y
+                    +from.z*endWrist.z+from.w*endWrist.w;
+                if(dot<0.f){endWrist.x=-endWrist.x;endWrist.y=-endWrist.y;
+                    endWrist.z=-endWrist.z;endWrist.w=-endWrist.w;}
+                const float t=handoff.progress, inv=1.f-t;
+                displayedWrist=normalizeQuaternion(XrQuaternionf{
+                    from.x*inv+endWrist.x*t,
+                    from.y*inv+endWrist.y*t,
+                    from.z*inv+endWrist.z*t,
+                    from.w*inv+endWrist.w*t});
+            }
+            handoff.previousWrist=displayedWrist;
+            handoff.wristValid=true;
+        }
         const auto primaryRotation=normalizeQuaternion(
             kharvox::weaponpose::weaponLockedPrimaryGloveOrientation(
-                primaryGloveFrame,s.primaryVisualLocalOrientation,
+                primaryGloveFrame,displayedWrist,
                 [](const XrQuaternionf& gun,const XrQuaternionf& local){
                     return multiply(gun,local);
                 }));
@@ -3078,6 +3117,14 @@ void updateWeapon6Dof(){
             XrVector3f alternateSupport{};
             if(!menuSupportPreview&&altHeavySupport(kind,alternateSupport))
                 actual.supportPosition=alternateSupport;
+            // During active two-hand heavy mode transition, playback MUST
+            // use the identical blended support grip as the steering solver.
+            // Never force the user to release or reacquire the support grip.
+            if(!menuSupportPreview&&s.heavyModeHandoff.initialized
+                &&s.heavyModeHandoff.weapon==kind
+                &&s.heavyModeHandoff.leftWeaponHand==s.weaponHandLeft
+                &&s.twoHandLatched&&s.heavyModeHandoff.supportValid)
+                actual.supportPosition=s.heavyModeHandoff.previousSupport;
             // Support capture stores a local point relative to the
             // original (pre-fine-tune) weapon AIM origin. Use that SAME
             // reference both in the live menu preview and normal latched
