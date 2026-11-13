@@ -22,6 +22,18 @@ static bool near(Vec a,Vec b){
 static Vec add(Vec a,Vec b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
 static Vec subtract(Vec a,Vec b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
 static Quat conjugate(Quat q){return {-q.x,-q.y,-q.z,q.w};}
+static Quat multiplyQuat(Quat a,Quat b){
+    return {
+        a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+        a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+        a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w,
+        a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z
+    };
+}
+static bool sameOrientation(Quat a,Quat b){
+    const float dot=a.x*b.x+a.y*b.y+a.z*b.z+a.w*b.w;
+    return std::abs(std::abs(dot)-1.f)<.0002f;
+}
 
 int main(){
     // Physical controller laser is OpenXR AIM, never the tilted GRIP.
@@ -62,6 +74,53 @@ int main(){
     // Keep the existing calibration modes unaffected.
     assert(!twoHandGameplaySteeringActive(
         true,true,true,true,true,false,true));
+    // With a second hand LATCHED in NORMAL gameplay, the glove MUST use
+    // the same solved gun quaternion + saved local wrist rotation. Otherwise
+    // it appears that the barrel rotates independently inside the glove.
+    // This is VISUAL ONLY; rotating the physical controller can still
+    // contribute to normal gameplay steering and does not change solver.
+    const Quat rotatedPrimaryController{.38268343f,0,0,.92387953f};
+    const Quat changedPrimaryController{0,0,.25881905f,.96592583f};
+    const Quat savedGloveLocal{0,0,.38268343f,.92387953f};
+    const auto& twoHandGloveFrame=kharvox::weaponpose::
+        primaryGloveVisualFrame(rotatedPrimaryController,supportTilt,
+            true,true);
+    assert(&twoHandGloveFrame==&supportTilt);
+    const auto visibleTwoHandGlove=kharvox::weaponpose::
+        weaponLockedPrimaryGloveOrientation(
+            twoHandGloveFrame,savedGloveLocal,multiplyQuat);
+    // Relative glove-to-weapon angle stays the saved calibration.
+    assert(sameOrientation(
+        multiplyQuat(conjugate(supportTilt),visibleTwoHandGlove),
+        savedGloveLocal));
+    const auto& stillWeaponFrame=kharvox::weaponpose::
+        primaryGloveVisualFrame(changedPrimaryController,supportTilt,
+            true,true);
+    const auto stillWeaponGlove=kharvox::weaponpose::
+        weaponLockedPrimaryGloveOrientation(
+            stillWeaponFrame,savedGloveLocal,multiplyQuat);
+    assert(sameOrientation(stillWeaponGlove,visibleTwoHandGlove));
+    // Once the secondary Grip is released, revert to normal primary
+    // controller visual orientation; keep calibration paths unchanged.
+    const auto& oneHandFrame=kharvox::weaponpose::
+        primaryGloveVisualFrame(rotatedPrimaryController,supportTilt,
+            true,false);
+    assert(&oneHandFrame==&rotatedPrimaryController);
+    const auto visibleOneHandGlove=kharvox::weaponpose::
+        weaponLockedPrimaryGloveOrientation(
+            oneHandFrame,savedGloveLocal,multiplyQuat);
+    assert(sameOrientation(
+        multiplyQuat(conjugate(rotatedPrimaryController),
+            visibleOneHandGlove),savedGloveLocal));
+    const auto& invisibleHandsFrame=kharvox::weaponpose::
+        primaryGloveVisualFrame(rotatedPrimaryController,supportTilt,
+            false,true);
+    assert(&invisibleHandsFrame==&supportTilt);
+    const auto& noSteerFrame=kharvox::weaponpose::
+        primaryGloveVisualFrame(rotatedPrimaryController,
+            rotatedPrimaryController,true,false);
+    assert(&noSteerFrame==&rotatedPrimaryController);
+
     // A physical primary controller is the sole authoritative attachment
     // anchor for glove AND two-hand rotation. Weapon model/root may be
     // translated and rotated independently without ever moving that anchor.
