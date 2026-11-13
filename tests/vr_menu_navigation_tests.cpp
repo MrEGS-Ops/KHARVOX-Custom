@@ -77,6 +77,11 @@ int main(){
     assert(manualStickCrouchAllowed(false,false,true));
     assert(!manualStickCrouchAllowed(true,true,true));
     assert(!manualStickCrouchAllowed(false,false,false));
+    assert(manualStickCrouchDirection(0.f,-1.f));
+    assert(manualStickCrouchDirection(.24f,-.95f));
+    assert(!manualStickCrouchDirection(.7f,-1.f)); // turning diagonally
+    assert(!manualStickCrouchDirection(0.f,-.5f)); // no accidental crouch
+    assert(!manualStickCrouchDirection(0.f,.9f)); // chainsaw UP unchanged
     // No Weapon Wheel cannot resurrect the retired stick-down wheel route.
     assert(!vrScopedWeaponSelectDown(true,true,true,false,true));
     assert(!vrScopedWeaponSelectDown(true,false,true,false,true));
