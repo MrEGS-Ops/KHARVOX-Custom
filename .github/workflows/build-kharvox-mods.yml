@@ -154,6 +154,7 @@ jobs:
           $approvedBranch = "work/manager-187-wheel-holsters"
           $repo = "MrEGS-Ops/KHARVOX-Custom"
           $nativePaths = @("src", "tests", "CMakeLists.txt",
+              "config/user_calibration_defaults",
               "launcher/KharvoxLauncher", "supervisor", "tools", "assets",
               ".github/workflows/build-custom.yml")
           $nativeRun = $null
