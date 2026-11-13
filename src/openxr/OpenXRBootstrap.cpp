@@ -2261,6 +2261,12 @@ XrQuaternionf solveTwoHandOrientation(const WeaponPose& primary,const WeaponPose
     return normalizeQuaternion(multiply(handFrame,conjugate(localSupportFrame)));
 }
 const ControllerPose& weaponController(){return s.weaponHandLeft?s.leftController:s.rightController;}
+// Keep controller-pointer/hand-focus AIM unchanged. Only the *held weapon*
+// and two-hand grip solver use the physical grip pose shared by the glove.
+const ControllerPose& weaponGripTrackingController(){
+    const auto& grip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
+    return grip.valid?grip:weaponController();
+}
 const ControllerPose& supportGripController(){return s.weaponHandLeft?s.rightGripController:s.leftGripController;}
 const char* weaponHandName(){return s.weaponHandLeft?"left":"right";}
 const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
@@ -2393,11 +2399,11 @@ bool captureTwoHandCalibration(bool triggerDown){
                 +", but active weapon is "+weaponKindName(kind)+" — capture rejected");
             log(std::string("[TWO-HAND] calibration capture rejected: selected=")+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)
                 +" active="+KharvoxWeaponKindKey(kind));
-        }else if(!s.headZeroValid||!weaponController().valid||!supportGripController().valid){
+        }else if(!s.headZeroValid||!weaponGripTrackingController().valid||!supportGripController().valid){
             writeTwoHandStatus(std::string("CALIBRATION: ")+weaponHandName()+" aim and "+supportHandName()+" grip poses must be tracked");
             log(std::string("[TWO-HAND] calibration capture rejected: ")+weaponHandName()+" aim/"+supportHandName()+" grip tracking incomplete");
         }else{
-            const auto primary=controllerRelativeToBodyTrackingOrigin(weaponController());
+            const auto primary=controllerRelativeToBodyTrackingOrigin(weaponGripTrackingController());
             const auto support=controllerRelativeToBodyTrackingOrigin(supportGripController());
             auto* calibration=twoHandCalibrationFor(kind);
             calibration->supportPosition=rotateVector(conjugate(primary.orientation),subtractVector(support.position,primary.position));
@@ -2465,7 +2471,7 @@ bool supportGripInCaptureRange(){
     if(!s.twoHandEnabled)return false;
     const auto* calibration=twoHandCalibrationFor(KharvoxWeaponCurrentKind());
     if(!calibration||!calibration->valid)return false;
-    const auto& primary=weaponController();
+    const auto& primary=weaponGripTrackingController();
     const auto& support=supportGripController();
     if(!primary.valid||!support.valid)return true;
     const auto current=controllerRelativeToBodyTrackingOrigin(primary);
@@ -2534,11 +2540,9 @@ void updateWeapon6Dof(){
     // A weapon and its PRIMARY hand must use the SAME tracked GRIP frame.
     // Preserve AIM only as a tracking-loss fallback; free hands and native
     // UI/controller pointers keep their existing independent pose routing.
-    const auto& primaryAimController=weaponController();
     const auto& primaryGripController=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
-    const auto& primaryController=primaryGripController.valid
-        ?primaryGripController:primaryAimController;
+    const auto& primaryController=weaponGripTrackingController();
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
         s.lastWeaponRenderedValid=false;
