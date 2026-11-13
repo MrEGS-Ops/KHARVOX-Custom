@@ -2686,21 +2686,29 @@ void updateWeapon6Dof(){
                         activeCalibration,useVirtualGunstock,gunstockPosition);
                 }
                 writeTwoHandStatus(std::string(weaponKindName(kind))
-                    +": TWO-HAND ACTIVE — "
-                    +(s.showHands?"support attached; barrel stays on controller laser":
-                        (useVirtualGunstock?"virtual stock / ":"")
-                            +std::string(twoHandModeName(activeCalibration.aimMode))+" alignment"));
+                    +": TWO-HAND ACTIVE — "+(useVirtualGunstock?"virtual stock / ":"")
+                    +twoHandModeName(activeCalibration.aimMode)
+                    +" alignment; support hand steers gun");
             }else{
                 writeTwoHandStatus(std::string(weaponKindName(kind))+": "+supportHandName()+" grip held, move support hand onto its calibrated grab point");
             }
         }
     }
-    // Even when a second hand is latched, the gun's longitudinal axis must
-    // remain locked to the physical primary controller AIM laser. Secondary
-    // Grip only attaches the support glove; it cannot steer the gun.
+    // NORMAL GAMEPLAY: do NOT overwrite the successfully solved two-hand
+    // quaternion. Previously this unconditional showHands AIM lock made the
+    // left support hand visually attach yet unable to steer the weapon.
+    // Until the second Grip actually acquires a valid support latch, stay
+    // on the primary controller laser. Calibration screens remain unchanged.
+    const bool gameplayTwoHandSteering=
+        kharvox::weaponpose::twoHandGameplaySteeringActive(
+            s.twoHandEnabled,s.twoHandLatched,
+            s.twoHandLatchedWeapon==kind,s.supportGripPressed,
+            supportController.valid,s.dynamicShoulderHolstered,
+            s.twoHandCalibrationMode||
+                s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating);
     if(s.showHands)
-        rotation=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
-            current.orientation,rotation);
+        rotation=kharvox::weaponpose::gameplayWeaponAim(
+            current.orientation,rotation,gameplayTwoHandSteering);
     const auto renderOrientation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));

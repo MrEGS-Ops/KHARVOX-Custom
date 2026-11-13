@@ -12,8 +12,18 @@ inline const Controller& trackedPrimaryWeaponPose(
     return aim;
 }
 
-// The primary weapon barrel always retains the physical AIM orientation.
-// The support hand may attach visually but must never steer the barrel.
+// During normal single-hand gameplay, keep the physical AIM ray. When a
+// valid support Grip has actually latched, the existing two-hand solver MUST
+// control weapon orientation. Never discard its result after solving.
+// Calibration/menu states are excluded from this gameplay-only restoration.
+inline constexpr bool twoHandGameplaySteeringActive(
+    bool enabled,bool latched,bool sameWeapon,bool supportGripHeld,
+    bool supportTracked,bool holstered,bool calibrating) noexcept {
+    return enabled&&latched&&sameWeapon&&supportGripHeld&&supportTracked
+        &&!holstered&&!calibrating;
+}
+
+// Single-hand laser fallback, not a blanket override of solved two-hand aim.
 template<class Quaternion>
 inline const Quaternion& keepWeaponOnPrimaryLaser(
     const Quaternion& primaryAim, const Quaternion&) noexcept {
@@ -26,6 +36,15 @@ template<class Position>
 inline const Position& keepGunOnPrimaryLaser(
     const Position& primaryAim, const Position&) noexcept {
     return primaryAim;
+}
+
+// Route native aim to the already-computed solver result only while
+// normal gameplay has a confirmed active support grip.
+template<class Quaternion>
+inline const Quaternion& gameplayWeaponAim(
+    const Quaternion& primaryAim,const Quaternion& twoHandSolved,
+    bool twoHandSteeringActive) noexcept {
+    return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
 // The legacy 25-degree gun yaw (and old pitch/roll overrides) must not be

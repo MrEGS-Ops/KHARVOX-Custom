@@ -30,6 +30,34 @@ int main(){
         lostAim,trackedGrip)==&lostAim);
     const Quat laser{0,0,0,1},supportTilt{0,.38268343f,0,.92387953f};
     assert(&kharvox::weaponpose::keepWeaponOnPrimaryLaser(laser,supportTilt)==&laser);
+    // Normal gameplay two-hand support Grip must steer the native weapon.
+    // Former regression solved to supportTilt then unconditionally replaced
+    // it with laser whenever custom hand models were visible.
+    const auto& single=kharvox::weaponpose::gameplayWeaponAim(
+        laser,supportTilt,false);
+    const auto& twoHand=kharvox::weaponpose::gameplayWeaponAim(
+        laser,supportTilt,true);
+    assert(&single==&laser);
+    assert(&twoHand==&supportTilt);
+    using kharvox::weaponpose::twoHandGameplaySteeringActive;
+    assert(twoHandGameplaySteeringActive(
+        true,true,true,true,true,false,false));
+    // Release grip, lose tracking or change guns: single-hand AIM fallback.
+    assert(!twoHandGameplaySteeringActive(
+        true,true,true,false,true,false,false));
+    assert(!twoHandGameplaySteeringActive(
+        true,true,true,true,false,false,false));
+    assert(!twoHandGameplaySteeringActive(
+        true,true,false,true,true,false,false));
+    assert(!twoHandGameplaySteeringActive(
+        true,false,true,true,true,false,false));
+    assert(!twoHandGameplaySteeringActive(
+        false,true,true,true,true,false,false));
+    assert(!twoHandGameplaySteeringActive(
+        true,true,true,true,true,true,false));
+    // Keep the existing calibration modes unaffected.
+    assert(!twoHandGameplaySteeringActive(
+        true,true,true,true,true,false,true));
     const Vec laserOrigin{0,0,0},glovePreview{1,3,-.3f};
     assert(&kharvox::weaponpose::keepGunOnPrimaryLaser(laserOrigin,glovePreview)==&laserOrigin);
     // Native extra 25-degree yaw MUST NOT tilt the bore off the laser.
