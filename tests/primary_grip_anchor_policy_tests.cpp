@@ -121,36 +121,9 @@ int main(){
             rotatedPrimaryController,true,false);
     assert(&noSteerFrame==&rotatedPrimaryController);
 
-    // DOOM native hand animation can move the righthandattach pivot
-    // independently of OpenXR tracking (including wall-pushback). Custom
-    // gameplay must reuse the neutral locator once it is settled; guns-
-    // only and calibration fallback still use the original animated joint.
-    using kharvox::weaponpose::nativeNeutralGripMatchesWeapon;
-    enum class WeaponForTest{Shotgun,Gauss,Chaingun};
-    assert(nativeNeutralGripMatchesWeapon(
-        true,7u,7u,WeaponForTest::Shotgun,WeaponForTest::Shotgun));
-    assert(!nativeNeutralGripMatchesWeapon(
-        true,7u,7u,WeaponForTest::Shotgun,WeaponForTest::Gauss));
-    assert(!nativeNeutralGripMatchesWeapon(
-        true,7u,7u,WeaponForTest::Gauss,WeaponForTest::Chaingun));
-    assert(!nativeNeutralGripMatchesWeapon(
-        true,6u,7u,WeaponForTest::Gauss,WeaponForTest::Gauss));
-    assert(!nativeNeutralGripMatchesWeapon(
-        false,7u,7u,WeaponForTest::Gauss,WeaponForTest::Gauss));
-    const Vec animatedPivot{.04f,.18f,-.31f};
-    const Vec fixedPivot{.01f,.07f,-.18f};
-    const auto& stable=kharvox::weaponpose::
-        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
-            true,true);
-    assert(&stable==&fixedPivot);
-    const auto& fallbackUnready=kharvox::weaponpose::
-        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
-            true,false);
-    assert(&fallbackUnready==&animatedPivot);
-    const auto& legacyPivot=kharvox::weaponpose::
-        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
-            false,true);
-    assert(&legacyPivot==&animatedPivot);
+    // The previous frozen wall-pushback locator was removed after a user-
+    // observed persistent pose offset. Native animated attachment remains
+    // active and user factory profiles are NOT rewritten here.
     // The mode handoff blends POSITION ONLY during normal two-hand play.
     // Factory profiles remain the exact endpoints; no jump at t=0 and no
     // extra interpolation once the 320ms transition has completed.
