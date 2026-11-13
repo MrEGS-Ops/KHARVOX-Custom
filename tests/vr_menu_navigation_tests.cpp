@@ -271,6 +271,30 @@ int main(){
     }
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
+    // Mods page starts in overview mode. Scrolling through the six
+    // configurable entries must NOT enter settings or activate a toggle.
+    VrMenuNavigation browse{};
+    browse.settingsColumn=false;
+    int browsingRow=0;
+    vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+    assert(browsingRow==1&&!browse.settingsColumn);
+    assert(vrMenuModsGamepadTarget(browse,browsingRow,6,5,false)==1001);
+    vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5); // re-arm
+    vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+    assert(browsingRow==2&&!browse.settingsColumn);
+    vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5);
+    for(int i=0;i<4;++i){
+        vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+        vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5);
+    }
+    assert(browsingRow==0&&!browse.settingsColumn);
+    // Only explicit A / CONFIGURE moves focus into live options.
+    browse.settingsColumn=true;
+    browse.actionIndex=0;
+    assert(vrMenuModsGamepadTarget(browse,0,6,5,false)==130);
+    browse.settingsColumn=false; // B: back to overview
+    assert(vrMenuModsGamepadTarget(browse,0,6,5,false)==1000);
+
     // Core mods have settings but no enable checkbox. First action is
     // OPEN CALIBRATION / SET HIP / SLOWER etc, not toggle.
     nav.settingsColumn=true;nav.actionIndex=0;
