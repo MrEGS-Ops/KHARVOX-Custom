@@ -5,75 +5,8 @@ struct VrLiveMenuEntry {
     const char* title;
     kharvox::VrLiveMod mod{kharvox::VrLiveMod::Other};
     bool enabled{};
-    bool devSection{};  // not a toggle or a gameplay mod
+
 };
-struct VrDevMenuEntry {
-    const char* title;
-    const char* why; // explanation displayed by the [i] button, never a toggle
-};
-std::vector<VrDevMenuEntry> devVrMenuEntries(){
-    // Read-only, information-only entries. Only Mods with adjustable live
-    // controls appear on the Configurable side of this in-headset menu.
-    std::vector<VrDevMenuEntry> rows;
-    const auto enabled=[&](const char* label,bool isOn,const char* why){
-        if(isOn)rows.push_back({label,why});
-    };
-    enabled("Hand Focus",s.customMods.handFocusedRs,
-        "Core hand-directed focus; no separate VR settings.");
-    enabled("Hands Jump",s.handsJumpEnabled,
-        "Jump gesture is configured in the desktop launcher.");
-    enabled("Boxing Guard",s.customMods.boxingGuard,
-        "Guard behaviour has no adjustable live menu controls.");
-    enabled("Back-of-Hand HUD",s.customMods.backOfHandHud,
-        "HUD position is configured separately from VR Mods.");
-    enabled("No HUD",s.customMods.disableHud,
-        "HUD visibility is a desktop gameplay option.");
-    enabled("No Weapon Wheel",s.customMods.disableWeaponWheel,
-        "Weapon wheel suppression is a desktop-only setting.");
-    enabled("Directional Dash",s.customMods.directionalDash,
-        "Movement action has no live configuration controls.");
-    enabled("Gauss Charge Slow",s.customMods.gaussChargeSlowMovement,
-        "Siege movement slowdown has no live options.");
-    enabled("Persistent SSG Reload",s.customMods.persistentSuperShotgunReload,
-        "SSG reload persistence has no live options.");
-    enabled("Physical Grenade",s.customMods.physicalGrenadeThrow,
-        "Grenade gesture has no live menu settings.");
-    enabled("Story Skip",s.customMods.storyCinematicSkip,
-        "Cinematic shortcut is fixed by desktop controls.");
-    enabled("Story Free Walk",s.customMods.storyFreeWalk,
-        "Story movement is controlled outside VR Mod Settings.");
-    enabled("Story Camera Focus",s.customMods.storyCameraFocus,
-        "Scripted camera focus is not adjusted live.");
-    enabled("Uninterrupted Story",s.customMods.uninterruptedStory,
-        "Story protection has no user-adjustable live values.");
-    enabled("Revenge Demon",s.customMods.revengeDemon,
-        "Gameplay feature has no live configuration values.");
-    enabled("Haptic Overhaul",s.customMods.hapticOverhaul,
-        "Haptic profiles are selected in the desktop launcher.");
-    enabled("Fast Glory Kills",s.customMods.fastGloryKills,
-        "Fixed execution speed override; no live sliders here.");
-    enabled("Fast Chainsaw Kills",s.customMods.fastChainsawKills,
-        "Fixed chainsaw execution override; no live sliders.");
-    enabled("Cinematic Exit Handoff",s.customMods.cinematicExitHandoff,
-        "Safety handoff is automatic and is not user-tuned.");
-    rows.push_back({"Glory Kill Highlighting",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Glory Kill Motion Blur",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Camera Kicks & Shaking",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Native Weapon Kick",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Hand-Hit Reactions",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Native Ledge Speed",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"Scripted Cinematic Speed",
-        "Developer override: adjust in the desktop launcher."});
-    rows.push_back({"RS Melee / Animation",
-        "Physical GK owns melee input; safety behaviour is automatic."});
-    return rows;
-}
 std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     using kharvox::VrLiveMod;
     std::vector<VrLiveMenuEntry> rows;
@@ -86,19 +19,72 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.customMods.offHandGripCapture,true);
     add("Gunslinger",VrLiveMod::Gunslinger,
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
-    add("Physical Crouch",VrLiveMod::PhysicalCrouch,
-        s.customMods.physicalCrouch,true);
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
+    // Group the two live ON/OFF features together at the bottom.
+    add("Physical Crouch",VrLiveMod::PhysicalCrouch,
+        s.customMods.physicalCrouch,true);
     add("PAINSAW",VrLiveMod::Painsaw,
         s.customMods.chainsawTriggerThrottle
             ||s.customMods.motionChainsawKillSpeed,true);
-    // Keep the left list strictly configurable. DEV consolidates every
-    // currently active read-only mod and non-configurable developer override.
-    rows.push_back({"DEV",VrLiveMod::Other,true,true});
     return rows;
+}
+// This is the PLAYABILITY overview, not a calibration tutorial. It appears
+// immediately as the player scrolls the mods list, before pressing A to
+// open its controls. Keep the text short enough for the in-headset panel.
+struct VrLiveModOverview {
+    std::array<const char*,6> lines{};
+    const char* subtitle{"HOW IT WORKS"};
+};
+VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
+    using kharvox::VrLiveMod;
+    switch(mod){
+        case VrLiveMod::WeaponGrip:return {{{
+            "Physically attach each weapon to your VR hand.",
+            "One-handed aim follows your weapon controller.",
+            "Use your other hand to grab the weapon's grip.",
+            "Both hands steer the weapon naturally together.",
+            "Supports left/right weapon hands and heavy modes.",
+            "A: open weapon-specific grip fitting."}}};
+        case VrLiveMod::Gunslinger:return {{{
+            "Fast weapon swapping with physical hip holsters.",
+            "Place a hand in its side's hip zone and grip.",
+            "A quick grab instantly equips that holstered gun.",
+            "Reach behind your head for the weapon wheel.",
+            "The wheel follows the hand that opened it.",
+            "A: adjust hip zones, wheel zones and resets."}}};
+        case VrLiveMod::Killtime:return {{{
+            "Changes the speed of cinematic Glory Kills.",
+            "Finisher animation speed uses a tick-Hz preset.",
+            "Smaller Hz values finish executions faster.",
+            "Larger Hz values make executions slower.",
+            "Other gameplay remains on native timing.",
+            "A: adjust and reset the Glory Kill speed."}}};
+        case VrLiveMod::PhysicalGloryKills:return {{{
+            "Perform Glory Kills with real forward punches.",
+            "Face an executable demon and strike naturally.",
+            "Tracks physical hand speed for punch detection.",
+            "Adjust the punch threshold to fit your style.",
+            "Choose the active punch hand or use both.",
+            "A: change punch speed and active hand."}}};
+        case VrLiveMod::PhysicalCrouch:return {{{
+            "Crouch by physically lowering your headset.",
+            "Your real head height controls your stance.",
+            "Stand again to rise back up in-game.",
+            "Standing and lowered heights can be fitted.",
+            "Switch OFF to use the alternate crouch input.",
+            "A: toggle and calibrate crouch heights."}}};
+        case VrLiveMod::Painsaw:return {{{
+            "Chainsaw revs controlled with trigger pulls.",
+            "First pull starts a normal chainsaw execution.",
+            "Release and pull for two more speed surges.",
+            "The third pull accelerates the finish.",
+            "Uses DOOM's native chainsaw sound and haptics.",
+            "A: enable or disable PAINSAW."}}};
+        default:return {{{"Select a mod for information."}}};
+    }
 }
 void applyVrLiveModRuntimeState(){
     using kharvox::VrLiveMod;
