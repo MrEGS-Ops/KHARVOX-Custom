@@ -50,9 +50,18 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
     const auto local=rotateVector(inverted,
         subtractVector(probe,s.lastWeaponRenderedTrackingAnchor));
-    const auto rotation=normalizeQuaternion(multiply(
-        inverted,placement.orientation));
-    m.previewPosition={local.x,local.y,local.z};
+    // PRIMARY calibration is intentionally only a lateral/vertical XY
+    // placement of the glove on its gun. Depth (weapon-local Z) remains at
+    // the existing gun grip anchor. The opposite controller cannot change
+    // the weapon hand's rotation: use its OWN tracked GRIP orientation.
+    // Support-hand calibration continues using its original full 3D path.
+    const auto& weaponGrip=s.weaponHandLeft
+        ?s.leftGripController:s.rightGripController;
+    const auto orientation=primaryHand&&weaponGrip.valid
+        ?weaponGrip.orientation:placement.orientation;
+    const auto rotation=normalizeQuaternion(multiply(inverted,orientation));
+    m.previewPosition={local.x,local.y,
+        primaryHand?s.primaryVisualLocalPosition.z:local.z};
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
