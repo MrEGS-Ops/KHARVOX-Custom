@@ -121,6 +121,48 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
+// Fine-tune is ONLY active during primary-weapon calibration while its
+// physical weapon-hand GRIP is held to freeze the preview. Each deliberate
+// stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
+// LEFT stick X = left/right (the ONLY X-calibration input), LEFT stick Y =
+// forward/back along weapon Z, RIGHT stick Y = vertical weapon Y.
+// No thumbstick input ever generates a quaternion or weapon steering.
+struct VrWeaponFineTuneEdges {
+    bool active{},leftArmed{},rightArmed{};
+};
+inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
+    VrWeaponFineTuneEdges& state,bool allowed,bool gripHeld,
+    float leftX,float leftY,float rightY) noexcept {
+    RightHandGripOffset step{};
+    if(!allowed||!gripHeld||!std::isfinite(leftX)
+        ||!std::isfinite(leftY)||!std::isfinite(rightY)){
+        state={};
+        return step;
+    }
+    constexpr float neutral=.28f,activation=.78f,cm=.01f;
+    const bool leftCentered=std::abs(leftX)<neutral&&std::abs(leftY)<neutral;
+    const bool rightCentered=std::abs(rightY)<neutral;
+    if(!state.active){
+        state.active=true;
+        state.leftArmed=leftCentered;
+        state.rightArmed=rightCentered;
+        return step; // first GRIP frame never moves the gun accidentally
+    }
+    if(leftCentered)state.leftArmed=true;
+    else if(state.leftArmed
+        &&std::max(std::abs(leftX),std::abs(leftY))>=activation){
+        state.leftArmed=false;
+        if(std::abs(leftX)>=std::abs(leftY))
+            step.x=std::copysign(cm,leftX);
+        else step.z=-std::copysign(cm,leftY); // OpenXR forward = local -Z
+    }
+    if(rightCentered)state.rightArmed=true;
+    else if(state.rightArmed&&std::abs(rightY)>=activation){
+        state.rightArmed=false;
+        step.y=std::copysign(cm,rightY);
+    }
+    return step;
+}
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     VrMenuPage page{VrMenuPage::Mods};
@@ -149,6 +191,9 @@ struct VrHandMenuState {
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
     bool primaryGripPreviewHeld{}; // freeze current tested pose only while Grip held
+    VrWeaponFineTuneEdges fineTuneEdges{};
+    RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
+    float primaryLateralBase{}; // pinned X, not sampled from moving preview
     RightHandGripOffset previewPosition{};
     RightHandGripRotation previewRotation{};
     std::array<bool,10> rightSaved{},leftSaved{};
