@@ -21,6 +21,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
+    add("Weapon Stability",VrLiveMod::WeaponRecoil,
+        s.recoilSettings.enabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
     // Group the two live ON/OFF features together at the bottom.
@@ -61,6 +63,13 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Only affects the finisher timing.",
             "Normal movement is unchanged.",
             "Choose speed in CONFIGURE."}}};
+        case VrLiveMod::WeaponRecoil:return {{{
+            "One-handed firing kicks the barrel.",
+            "Repeated shots make the muzzle climb.",
+            "Lower your hand to compensate.",
+            "A true support-grip steadies the gun.",
+            "Set strength and recovery per gun.",
+            "Open CONFIGURE to calibrate."}}};
         case VrLiveMod::PhysicalGloryKills:return {{{
             "Trigger Glory Kills with punches.",
             "Strike a staggered demon in VR.",
@@ -188,6 +197,42 @@ void applyVrLiveModRuntimeState(){
     s.physicalGlorykillHands=static_cast<PhysicalGlorykillHands>(
         s.vrLiveSettings.punchHands);
 }
+bool saveVrRecoilSettings(){
+    if(!kharvox::saveWeaponRecoilSettings(
+        kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){
+        s.vrHandMenu.message="Recoil save failed. Existing profile unchanged.";
+        return false;
+    }
+    s.recoilState={};
+    return true;
+}
+bool handleVrRecoilCalibrationAction(int action){
+    if(action<140||action>145)return false;
+    auto& m=s.vrHandMenu;
+    const int index=std::clamp(m.selectedRecoilWeapon,0,8);
+    auto old=s.recoilSettings;
+    const std::size_t at=static_cast<std::size_t>(index);
+    switch(action){
+        case 140:s.recoilSettings.enabled=!s.recoilSettings.enabled;break;
+        case 141:s.recoilSettings.strength[at]=std::max(.25f,
+            s.recoilSettings.strength[at]-.1f);break;
+        case 142:s.recoilSettings.strength[at]=std::min(2.f,
+            s.recoilSettings.strength[at]+.1f);break;
+        case 143:s.recoilSettings.recovery[at]=std::max(.5f,
+            s.recoilSettings.recovery[at]-.1f);break;
+        case 144:s.recoilSettings.recovery[at]=std::min(2.f,
+            s.recoilSettings.recovery[at]+.1f);break;
+        case 145:
+            s.recoilSettings.strength[at]=1.f;
+            s.recoilSettings.recovery[at]=1.f;break;
+    }
+    if(!saveVrRecoilSettings()){
+        s.recoilSettings=old;return true;
+    }
+    m.message=std::string("Recoil ")+(s.recoilSettings.enabled?"ON":"OFF")
+        +" - saved instantly. Close menu to test.";
+    return true;
+}
 bool saveVrLiveSettings(){
     const auto path=kharvox::runtimePathA("vr_live_mods_saved.cfg");
     if(!kharvox::vrLiveSave(path,s.vrLiveSettings)){
@@ -286,6 +331,13 @@ bool handleVrLiveMenuAction(int action){
             if(option==0){
                 m.page=kharvox::VrMenuPage::WeaponGrip;
                 m.message="Select weapon, hand and profile. Trigger calibrates.";
+            }
+            break;
+        case VrLiveMod::WeaponRecoil:
+            if(option==0){
+                m.page=kharvox::VrMenuPage::WeaponRecoil;
+                m.navigation={};
+                m.message="Choose weapon; adjust kick and recovery; B returns.";
             }
             break;
         case VrLiveMod::Gunslinger:
