@@ -8370,9 +8370,26 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         handView.imageRectY=submittedRects[e].offset.y;
         handView.imageRectWidth=uint32_t(submittedRects[e].extent.width);
         handView.imageRectHeight=uint32_t(submittedRects[e].extent.height);
-        if(freshAerHands||!s.stereoCacheHasIntegratedHands[e])
+        const bool handFallbackNeeded=freshAerHands
+            ||!s.stereoCacheHasIntegratedHands[e];
+        if(handFallbackNeeded&&kharvox::hands::allowUnoccludedHandOverlay(
+                s.showHands,handGameplayActive)){
             s.handRenderer.record(s.commandBuffer,e,xi[e],handView,leftHandPose,
                 rightHandPose,handVisibility,currentHandGameplay);
+        }else if(handFallbackNeeded&&s.showHands&&handGameplayActive){
+            // The old overlay fallback has NO DOOM world depth. It draws
+            // gloves on top of walls even when the controller is behind one.
+            // Never draw a through-wall glove: skip just this visual until
+            // scene-integrated depth returns. The gun keeps its own native
+            // world draw/depth and all controller/physics inputs continue.
+            static std::array<bool,2> warned{};
+            if(!warned[e]){
+                warned[e]=true;
+                log("[HAND-WORLD-OCCLUSION] eye="+std::to_string(e)
+                    +" missing DOOM depth; unoccluded glove fallback withheld "
+                    "(controller and gun unchanged)");
+            }
+        }
         eye.initialized[xi[e]]=true;
     }
     if(hudImageAcquired){
