@@ -38,7 +38,12 @@ int main(){
     assert(vrLiveModEditable(VrLiveMod::WeaponGrip));
     assert(vrLiveModEditable(VrLiveMod::PhysicalCrouch));
     assert(!vrLiveModEditable(VrLiveMod::HandFocus));
-    assert(!vrLiveModEditable(VrLiveMod::Painsaw));
+    assert(vrLiveModEditable(VrLiveMod::Painsaw));
+    assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,false));
+    assert(!vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,true));
+    assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,true));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
+    assert(s.enabledOverrides[5]==1);
     // Native action pacing: LOWER Hz means faster, HIGHER Hz means slower.
     assert(vrLiveStepKilltimeHz(0,true)==210); // unset baseline 200
     assert(vrLiveStepKilltimeHz(0,false)==190);
