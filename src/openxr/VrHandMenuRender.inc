@@ -165,15 +165,18 @@ void paintVrHandMenu() {
             if(active)fill(38,y,5,40,RGB(55,209,214));
             SelectObject(dc,smallFont);
             std::string title=entries[index].title;
-            // The left edge lists ALL enabled mods, but the five supported
-            // adjustable ones remain visible even when switched off.
+            // Core features are fixed active; only Physical Crouch and
+            // PAINSAW have an ON/OFF switch. Other rows lead to settings.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].devSection
                 ?RGB(84,233,214):entries[index].enabled?white:muted);
-            write(entries[index].devSection?421:436,y+10,
-                entries[index].devSection?"VIEW":entries[index].enabled?"ON":"OFF",
-                entries[index].devSection?RGB(84,233,214):
-                    entries[index].enabled?RGB(108,235,161):RGB(151,158,171));
+            const bool switchable=kharvox::vrLiveModToggleable(entries[index].mod);
+            write(entries[index].devSection?421:switchable?436:429,y+10,
+                entries[index].devSection?"VIEW"
+                    :switchable?(entries[index].enabled?"ON":"OFF"):"SET",
+                entries[index].devSection?RGB(84,233,214)
+                    :switchable?(entries[index].enabled?RGB(108,235,161)
+                        :RGB(151,158,171)):RGB(84,233,214));
         }
         if(count>10){
             SelectObject(dc,smallFont);
@@ -225,18 +228,23 @@ void paintVrHandMenu() {
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
+        const bool toggleable=kharvox::vrLiveModToggleable(mod);
         const bool enabled=count>0&&entries[selected].enabled;
         SelectObject(dc,regular);
         write(536,126,count>0?entries[selected].title:"No active mods",white);
-        const bool focusToggle=m.navigation.usingStick
-            &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
-        fill(531,159,384,60,focusToggle?RGB(52,83,99):
-            editable?RGB(39,49,63):RGB(30,35,44));
-        fill(553,172,36,36,editable?RGB(54,79,91):RGB(45,49,56));
-        if(enabled)fill(562,181,18,18,RGB(76,231,167));
-        SelectObject(dc,regular);
-        write(603,169,editable?(enabled?"ENABLED   (TOGGLE)":"DISABLED   (TOGGLE)")
-            :(enabled?"ENABLED   (READ-ONLY)":"READ-ONLY"),editable?white:muted);
+        if(toggleable){
+            const bool focusToggle=m.navigation.usingStick
+                &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
+            fill(531,159,384,60,focusToggle?RGB(52,83,99):RGB(39,49,63));
+            fill(553,172,36,36,RGB(54,79,91));
+            if(enabled)fill(562,181,18,18,RGB(76,231,167));
+            SelectObject(dc,regular);
+            write(603,169,enabled?"ENABLED   (TOGGLE)":"DISABLED   (TOGGLE)",white);
+        }else{
+            SelectObject(dc,smallFont);
+            write(538,155,kharvox::vrLiveModAlwaysEnabled(mod)
+                ?"CORE FEATURE - ALWAYS ACTIVE":"SETTINGS - NO LIVE ON/OFF SWITCH",muted);
+        }
         SelectObject(dc,smallFont);
         if(!editable)
             write(545,251,"Configure in desktop launcher only.",muted);
@@ -276,10 +284,10 @@ void paintVrHandMenu() {
                 default:break;
             }
             for(int index=0;index<optionCount;++index){
-                const int y=248+68*index;
+                const int y=(toggleable?248:186)+68*index;
                 const bool focused=m.hovered==130+index
                     ||(m.navigation.usingStick&&m.navigation.settingsColumn
-                        &&m.navigation.actionIndex==index+1);
+                        &&m.navigation.actionIndex==index+(toggleable?1:0));
                 fill(531,y,384,58,focused
                      ?RGB(52,83,99):RGB(39,49,63));
                 SelectObject(dc,smallFont);
@@ -301,6 +309,11 @@ void paintVrHandMenu() {
                 write(548,543,s.vrLiveSettings.crouchLoweredSaved
                     ?"CUSTOM HEIGHTS ACTIVE":"DEFAULT CROUCH HEIGHTS",
                     RGB(84,233,214));
+                if(!enabled)
+                    write(548,575,"RIGHT STICK DOWN: TOGGLE CROUCH",RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::Painsaw){
+                write(548,270,enabled?"PAINSAW CUSTOM SPEED ACTIVE"
+                    :"NATIVE CHAINSAW SPEED",RGB(84,233,214));
             }else if(mod==kharvox::VrLiveMod::Gunslinger){
                 write(548,605,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
