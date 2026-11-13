@@ -141,14 +141,11 @@ void applyVrLiveModRuntimeState(){
     // throttle. OFF disables both, otherwise an existing desktop setup
     // retains its original implementation. New live ON defaults to the
     // modern trigger-throttle mode without enabling two speed controllers.
-    const bool painsawDesktop=s.vrDesktopMods.chainsawTriggerThrottle
-        ||s.vrDesktopMods.motionChainsawKillSpeed;
-    const bool painsaw=enabled(VrLiveMod::Painsaw,painsawDesktop);
-    s.customMods.chainsawTriggerThrottle=painsaw
-        &&(s.vrDesktopMods.chainsawTriggerThrottle
-            ||!s.vrDesktopMods.motionChainsawKillSpeed);
-    s.customMods.motionChainsawKillSpeed=painsaw
-        &&s.vrDesktopMods.motionChainsawKillSpeed;
+    const auto painsaw=kharvox::vrLivePainsawModes(
+        s.vrLiveSettings,s.vrDesktopMods.chainsawTriggerThrottle,
+        s.vrDesktopMods.motionChainsawKillSpeed);
+    s.customMods.chainsawTriggerThrottle=painsaw.triggerThrottle;
+    s.customMods.motionChainsawKillSpeed=painsaw.legacyMotion;
     s.vrLiveKilltimeEnabled=enabled(VrLiveMod::Killtime,s.vrDesktopKilltime);
     const bool physicalGK=enabled(VrLiveMod::PhysicalGloryKills,
         s.vrDesktopPhysicalGk);
