@@ -2062,17 +2062,9 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         &&weaponHolstered.load(std::memory_order_acquire);
     const float submittedModelScale=hideHolsteredPresentation
         ?0.001f:modelScale;
-    // The native first-person weapon's child can retain its own 0.1 depth
-    // factor even after KHARVOX restores world-depth rendering for its
-    // root/prop entities. That draws the gun over an actually nearer glove.
-    // Normalize ONLY this verified gameplay weapon render call; leave all
-    // level geometry, cutscenes and non-weapon rendering untouched. Do not
-    // gate the depth convention on controller pose availability: the independently
-    // composited glove can still be on-screen when native grip input briefly
-    // invalidates weapon placement.
-    const float submittedDepthHack=kharvox::hands::nativeWeaponChildDepth(
-        depthHack,weaponPresentation,
-        customHandsRequested());
+    // Restore the pre-clipping-fix weapon submission depth. DOOM's own
+    // child rendering owns this depthHack; only the separately restored hand
+    // projection uses its previous three-unit near plane.
     // Cache DOOM's original arguments even when a chainsaw kill owns the
     // camera. This is observational only; existing VR transform submission,
     // holster logic and material/lighting behaviour are unchanged.
@@ -2108,15 +2100,14 @@ extern "C" void __fastcall weaponRenderUpdateHook(
             const unsigned bit=1u<<index;
             if(!(depthWeaponsLogged.fetch_or(bit,std::memory_order_relaxed)&bit))
                 log(std::string("[HANDS] native weapon depth weapon=")
-                    +KharvoxWeaponKindKey(kind)+" original="+std::to_string(depthHack)
-                    +" submitted="+std::to_string(submittedDepthHack)
-                    +" expected=1 source=child-render-update");
+                    +KharvoxWeaponKindKey(kind)+" submitted="+std::to_string(depthHack)
+                    +" source=original-child-render-update");
         }
     }
     if (originalWeaponRenderUpdate) {
         originalWeaponRenderUpdate(renderObject, submittedOrigin, submittedAxis, viewOffset,
                                    renderView, frame, time, flags, submittedModelScale,
-                                   submittedDepthHack);
+                                   depthHack);
     }
 }
 
@@ -2510,12 +2501,11 @@ void updateCustomHandsWeaponDepth(unsigned char* entity, bool prop) {
     if (!TryAcquireSRWLockExclusive(&lock)) return;
     float before{}, after{};
     std::memcpy(&before, entity + depthOffset, sizeof(before));
-    // Scene-integrated hands can remain visible while the controller-placement
-    // pose temporarily goes invalid. If we restore native 0.1 viewmodel depth
-    // in that situation, the first-person gun incorrectly wins the scene
-    // depth test against nearer gloves. Ownership is already restricted to
-    // the two verified native weapon-entity hook callers.
-    const bool active = !readCollectibleAnimation(activeHands)
+    // Return to the pre-clipping hand/weapon depth behaviour. This hook
+    // edits only a currently controller-driven weapon entity; preserve its
+    // native value in cinematics, tracking loss and collectible animations.
+    const bool active = controllerPlacementActive()
+        && !readCollectibleAnimation(activeHands)
         && KharvoxCameraGameplayActive() && !KharvoxCameraCutsceneActive();
     const bool changed = overrides.update(reinterpret_cast<uintptr_t>(entity),
                                            before, active, after);
