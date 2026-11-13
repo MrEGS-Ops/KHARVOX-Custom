@@ -543,28 +543,27 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             else if(chosen==32){
                 if(heavyNow){
                     m.alternateProfile=!m.alternateProfile;
-                    m.message=m.alternateProfile?"Alternate handle selected.":"Normal handle selected.";
+                    m.message=m.alternateProfile
+                        ?"Siege/Turret auto-engages while in calibration."
+                        :"Normal profile; automatic alternate fire released.";
                 }
             }else if(chosen==30)requestVrSelectedWeaponCalibration(displayTime);
             m.leftTriggerPreviously=leftTrigger;
         }
     }
-    // Keep the ordinary menu entirely input-muted. ONLY during LIVE
-    // Gauss/Chaingun calibration only: pass the CURRENT weapon-hand Grip
-    // to native alternate fire, allowing Siege / Turret deployment
-    // while the other hand positions the grip. The RIGHT trigger still SAVES
-    // calibration; it never fires the weapon. All other inputs stay muted.
-    // Ordinary weapon Grip is reserved for a visual aiming preview.
-    // Only Gauss Cannon / Chaingun continue to receive native ALT FIRE
-    // during live capture to let their Siege/Turret handles deploy.
+    // Siege/Turret alternate mode engages automatically when selected.
+    // This is confined to the hand-calibration page and its live capture.
+    // The weapon Grip now always controls the preview pose, even on heavies.
+    // Trigger is consumed for SAVE, so it cannot fire the weapon here.
     const auto liveKind=KharvoxWeaponCurrentKind();
     const bool heavyLiveWeapon=liveKind==KharvoxWeaponKind::GaussCannon
         ||liveKind==KharvoxWeaponKind::Chaingun;
-    const bool liveAltFire=heavyLiveWeapon
-        &&kharvox::vrCalibrationNativeAltFireAllowed(
-            m.mode,gameplay,s.customMods.offHandGripCapture,
-            liveKind==KharvoxWeaponKindFromKey(m.weapon()),
-            s.weaponHandLeft==m.calibratingWeaponLeft,primaryWeaponGripDown);
+    const bool liveAltFire=gameplay&&s.customMods.offHandGripCapture
+        &&m.page==kharvox::VrMenuPage::WeaponGrip&&m.alternateProfile
+        &&heavyLiveWeapon&&liveKind==KharvoxWeaponKindFromKey(m.weapon())
+        &&(m.mode==kharvox::VrHandMenuMode::Menu
+            ||(m.mode==kharvox::VrHandMenuMode::Calibrating
+                &&s.weaponHandLeft==m.calibratingWeaponLeft));
     if(s.heavyAlternateInputForwarded!=liveAltFire)
         log(std::string("[VR-HAND-MENU] live calibration native secondary fire ")
             +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
