@@ -47,6 +47,40 @@ inline const Quaternion& gameplayWeaponAim(
     return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
+// Rebase the PRIMARY visual glove's position onto the *physical weapon-hand*
+// controller GRIP origin when fine-tune is first activated. Preserve the
+// previous normal weapon translation exactly: the difference becomes a
+// hand-only fine-tune offset instead of moving the native gun.
+template<class Offset>
+struct GripReferencedFineTune {
+    Offset handPosition;
+    Offset handOnlyFineTune;
+};
+template<class Offset>
+inline GripReferencedFineTune<Offset> rebaseFineTuneToPhysicalGrip(
+    const Offset& trackedGripLocal,const Offset& savedHand,
+    const Offset& savedFineTune) noexcept {
+    const Offset normalBase{
+        savedHand.x-savedFineTune.x,
+        savedHand.y-savedFineTune.y,
+        savedHand.z-savedFineTune.z};
+    return {trackedGripLocal,{
+        trackedGripLocal.x-normalBase.x,
+        trackedGripLocal.y-normalBase.y,
+        trackedGripLocal.z-normalBase.z}};
+}
+
+// A 1cm joystick nudge is a displacement in the physical weapon controller's
+// GRIP axes, not the arbitrarily rotated gun-local frame. Convert to the
+// local gun space used by saved visual hand positions and fine-tune offsets.
+template<class Offset,class Quaternion,class Rotate>
+inline Offset gripFineTuneStepInWeaponLocal(
+    const Offset& stepGripLocal,const Quaternion& gripTrackingRotation,
+    const Quaternion& inverseGunTrackingRotation,Rotate rotate) noexcept {
+    return rotate(inverseGunTrackingRotation,
+        rotate(gripTrackingRotation,stepGripLocal));
+}
+
 // The legacy 25-degree gun yaw (and old pitch/roll overrides) must not be
 // layered onto the native weapon while laser-locked hands are enabled.
 inline constexpr float weaponEulerOffsetDegrees(
