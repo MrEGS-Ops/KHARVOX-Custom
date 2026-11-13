@@ -8,6 +8,7 @@
 #include <iomanip>
 #include <limits>
 #include <map>
+#include <set>
 #ifdef _WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -108,6 +109,10 @@ struct RightHandGripSettings {
     std::map<std::string,RightHandGripRotation> visualRotations;
     std::map<std::string,RightHandGripOffset> leftVisualPositions;
     std::map<std::string,RightHandGripRotation> leftVisualRotations;
+    // Only per-weapon left profiles recaptured AFTER the corrected mirrored
+    // wrist basis may drive the visual glove; historical left quaternions
+    // came from the upside-down model coordinate frame.
+    std::set<std::string> leftVisualReflectionV2;
     std::map<std::string,RightHandGripOffset> leftPrimaryAlternateSupport;
     int accepted{},rejected{};
 };
@@ -161,6 +166,16 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
         key.erase(end+1);
         std::istringstream v(line.substr(split+1));
         RightHandGripOffset p{};std::string extra;
+        constexpr auto leftBasisSuffix="_left_pose_basis_v2";
+        if(gripKeySuffix(key,leftBasisSuffix)){
+            const auto name=key.substr(0,key.size()-std::string(leftBasisSuffix).size());
+            int value{};
+            if(!validVrPrimaryProfileKey(name)||!(v>>value)||
+                (v>>extra)||value!=1){++out.rejected;continue;}
+            out.leftVisualReflectionV2.insert(name);
+            ++out.accepted;
+            continue;
+        }
         const bool leftRotation=gripKeySuffix(key,"_left_rotation")
             &&validVrPrimaryProfileKey(
                 key.substr(0,key.size()-std::string("_left_rotation").size()));
@@ -474,6 +489,7 @@ inline bool saveRightHandVisualPose(const std::string&path,
         (leftPrimary?"_left":"");
     const std::string positionKey=prefix+"_hand_position";
     const std::string rotationKey=prefix+"_rotation";
+    const std::string reflectionKey=prefix+"_pose_basis_v2";
     const float inv=1.f/std::sqrt(q.x*q.x+q.y*q.y+q.z*q.z+q.w*q.w);
     q.x*=inv;q.y*=inv;q.z*=inv;q.w*=inv;
     std::ostringstream position,rotation;
@@ -490,7 +506,7 @@ inline bool saveRightHandVisualPose(const std::string&path,
     {std::ifstream input(path);std::string line;
      while(std::getline(input,line))lines.push_back(line);
      if(input.bad())return fail("failed reading existing settings");}
-    bool posFound=false,rotFound=false;
+    bool posFound=false,rotFound=false,reflectionFound=false;
     for(auto it=lines.begin();it!=lines.end();){
         auto eq=it->find('=');
         if(eq==std::string::npos){++it;continue;}
@@ -505,11 +521,15 @@ inline bool saveRightHandVisualPose(const std::string&path,
         }else if(key==rotationKey){
             if(rotFound){it=lines.erase(it);continue;}
             *it=rotation.str();rotFound=true;
+        }else if(leftPrimary&&key==reflectionKey){
+            if(reflectionFound){it=lines.erase(it);continue;}
+            *it=reflectionKey+" = 1";reflectionFound=true;
         }
         ++it;
     }
     if(!posFound)lines.push_back(position.str());
     if(!rotFound)lines.push_back(rotation.str());
+    if(leftPrimary&&!reflectionFound)lines.push_back(reflectionKey+" = 1");
     if(fs::exists(destination,ec)){
         fs::copy_file(destination,path+".before-live-capture.bak",
             fs::copy_options::overwrite_existing,ec);
