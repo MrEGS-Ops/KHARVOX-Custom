@@ -20,10 +20,21 @@ enum class VrLiveMod : int {
     PhysicalGloryKills, HandFocus, Painsaw,
     HandsJump, BoxingGuard, Other
 };
+// "Has live settings" is NOT the same as "can be enabled/disabled".
+// The three core mods stay available; only Physical Crouch and PAINSAW
+// have ON/OFF checkboxes. Physical Glory Kills retains its desktop state
+// but may still expose punch thresholds/hand controls in this menu.
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
         ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw;
+}
+inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
+    return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
+}
+inline constexpr bool vrLiveModAlwaysEnabled(VrLiveMod id) noexcept {
+    return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
+        ||id==VrLiveMod::Killtime;
 }
 inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
     switch(id){
@@ -89,6 +100,10 @@ inline bool vrLiveValidShift(VrLivePoint p) {
 }
 inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
     VrLiveMod mod,bool desktopStartupEnabled) {
+    // Ignore legacy OFF entries for core features. Keep the old six-field
+    // save format readable instead of silently rewriting UserData.
+    if(vrLiveModAlwaysEnabled(mod))return true;
+    if(!vrLiveModToggleable(mod))return desktopStartupEnabled;
     const int index=vrLiveToggleIndex(mod);
     return index<0 ? desktopStartupEnabled
        :s.enabledOverrides[static_cast<size_t>(index)]<0
@@ -96,8 +111,9 @@ inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
         :s.enabledOverrides[static_cast<size_t>(index)]==1;
 }
 inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
+    if(!vrLiveModToggleable(mod))return false;
     const int index=vrLiveToggleIndex(mod);
-    if(index<0)return false; // read-only entries never toggle.
+    if(index<0)return false;
     s.enabledOverrides[static_cast<size_t>(index)]=on?1:0;
     return true;
 }
