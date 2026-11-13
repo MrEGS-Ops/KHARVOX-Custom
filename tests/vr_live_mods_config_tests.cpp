@@ -44,6 +44,23 @@ int main(){
     assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,true));
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
     assert(s.enabledOverrides[5]==1);
+    // Users with a five-toggle schema-1 save retain their old flags and
+    // inherit PAINSAW from desktop until explicitly changed in VR.
+    {std::ofstream legacy(file,std::ios::trunc);
+     legacy<<"schema 1\n"
+           <<"enabled 1 0 1 -1 0\n"
+           <<"hip_right 0 0 0\nhip_left 0 0 0\n"
+           <<"wheel_right 0 0 0\nwheel_left 0 0 0\n"
+           <<"standing 0 0\nlowered 0 -0.56\n"
+           <<"killtime_hz 0\npunch_speed 2.8\npunch_hands 2\n";}
+    VrLiveSettings old{};
+    assert(vrLiveLoad(file,old));
+    assert(old.enabledOverrides[0]==1);
+    assert(old.enabledOverrides[1]==0);
+    assert(old.enabledOverrides[2]==1);
+    assert(old.enabledOverrides[3]==-1);
+    assert(old.enabledOverrides[4]==0);
+    assert(old.enabledOverrides[5]==-1);
     // Native action pacing: LOWER Hz means faster, HIGHER Hz means slower.
     assert(vrLiveStepKilltimeHz(0,true)==210); // unset baseline 200
     assert(vrLiveStepKilltimeHz(0,false)==190);
