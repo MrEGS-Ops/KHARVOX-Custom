@@ -262,6 +262,10 @@ void paintVrHandMenu() {
                     options[0]="OPEN WEAPON CALIBRATION";
                     optionCount=1;
                     break;
+                case kharvox::VrLiveMod::WeaponRecoil:
+                    options[0]="OPEN RECOIL CALIBRATION";
+                    optionCount=1;
+                    break;
                 case kharvox::VrLiveMod::Gunslinger:
                     options={"SET RIGHT HIP","SET LEFT HIP",
                              "SET RIGHT WHEEL","SET LEFT WHEEL","RESET ZONES"};
@@ -328,6 +332,66 @@ void paintVrHandMenu() {
             write(538,638,"B: BACK TO MODS     A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
+    }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
+        write(38,24,"KHARVOX VR  /  RECOIL CALIBRATION",white);
+        SelectObject(dc,smallFont);
+        write(40,102,"WEAPON PROFILES",muted);
+        write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
+        const int selected=std::clamp(m.selectedRecoilWeapon,0,8);
+        for(int i=0;i<9;++i){
+            const int y=136+i*45;
+            const bool active=i==selected;
+            const bool hover=m.hovered==200+i
+                ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                    &&active);
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hover?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,regular);
+            const auto key=kharvox::kWeaponRecoilKinds[static_cast<std::size_t>(i)];
+            const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
+            write(56,y+6,name&&*name?name:key,white);
+            SelectObject(dc,smallFont);
+            const int strength=static_cast<int>(std::lround(
+                s.recoilSettings.strength[static_cast<std::size_t>(i)]*100.f));
+            write(396,y+9,std::to_string(strength)+"%",active?white:muted);
+        }
+        const auto index=static_cast<std::size_t>(selected);
+        const int strength=static_cast<int>(std::lround(
+            s.recoilSettings.strength[index]*100.f));
+        const int recovery=static_cast<int>(std::lround(
+            s.recoilSettings.recovery[index]*100.f));
+        SelectObject(dc,regular);
+        write(537,126,s.recoilSettings.enabled?"RECOIL ENABLED":"RECOIL DISABLED",
+            s.recoilSettings.enabled?RGB(108,235,161):RGB(239,197,116));
+        const std::array<std::string,6> controls{{
+            s.recoilSettings.enabled?"DISABLE RECOIL":"ENABLE RECOIL",
+            "LESS KICK (-10%)",
+            "MORE KICK (+10%)",
+            "SLOWER RECOVERY (-10%)",
+            "FASTER RECOVERY (+10%)",
+            "RESET THIS WEAPON"
+        }};
+        for(int i=0;i<6;++i){
+            const int y=157+63*i;
+            const bool focus=m.hovered==140+i
+                ||(m.navigation.usingStick&&m.navigation.settingsColumn
+                    &&m.navigation.actionIndex==i);
+            fill(531,y,384,54,focus?RGB(52,83,99):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(548,y+16,controls[static_cast<std::size_t>(i)],white);
+        }
+        SelectObject(dc,smallFont);
+        write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
+            std::to_string(recovery)+"%",RGB(84,233,214));
+        write(539,579,"1 hand: climb  |  2 hands: stable",muted);
+        write(539,614,"Close menu to test. B: BACK",muted);
+        write(40,662,m.message.empty()
+            ?"Recoil changes save separately; no grip calibration changes."
+            :m.message.substr(0,98),RGB(84,233,214));
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
     }else{
     write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
