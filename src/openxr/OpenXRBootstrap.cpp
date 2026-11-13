@@ -2717,6 +2717,68 @@ void updateWeapon6Dof(){
                 }
             }
             if(s.twoHandLatched){
+                // Active Gauss Siege / Chaingun Turret handoff: never discard
+                // the support Grip or jump to a new support target. When the
+                // mode changes, ease the support grab point and gun offset
+                // together over 320ms. This affects normal gameplay ONLY;
+                // primary/support calibration and saved profile values are
+                // never rewritten.
+                auto& handoff=s.heavyModeHandoff;
+                const bool isHeavy=kind==KharvoxWeaponKind::GaussCannon
+                    ||kind==KharvoxWeaponKind::Chaingun;
+                const bool smoothHeavy=isHeavy&&s.showHands
+                    &&s.customMods.offHandGripCapture
+                    &&!s.twoHandCalibrationMode
+                    &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+                if(smoothHeavy){
+                    const bool alt=heavyAltMode(kind);
+                    const auto nowMs=GetTickCount64();
+                    if(!handoff.initialized||handoff.weapon!=kind
+                        ||handoff.leftWeaponHand!=s.weaponHandLeft){
+                        handoff={};
+                        handoff.initialized=true;handoff.weapon=kind;
+                        handoff.leftWeaponHand=s.weaponHandLeft;
+                        handoff.alternate=alt;
+                    }else if(handoff.alternate!=alt){
+                        handoff.alternate=alt;
+                        handoff.startedMs=nowMs;
+                        handoff.fromSupport=handoff.previousSupport;
+                        handoff.fromGunOffset=handoff.previousGunOffset;
+                        handoff.fromWrist=handoff.previousWrist;
+                        handoff.transition=handoff.supportValid;
+                        handoff.progress=0.f;
+                        log(std::string("[HEAVY-GRIP-BLEND] ")
+                            +KharvoxWeaponKindKey(kind)+(alt
+                                ?" normal -> alternate":" alternate -> normal")
+                            +" support grip stays latched; 320ms visual handoff");
+                    }
+                    if(handoff.transition){
+                        const auto elapsed=nowMs>=handoff.startedMs
+                            ?nowMs-handoff.startedMs:0ULL;
+                        handoff.progress=kharvox::weaponpose::
+                            heavyGripTransitionEase(elapsed);
+                        if(handoff.supportValid)
+                            activeCalibration.supportPosition=
+                                kharvox::weaponpose::heavyGripBlendVector(
+                                    handoff.fromSupport,
+                                    activeCalibration.supportPosition,
+                                    handoff.progress);
+                        if(handoff.progress>=1.f)handoff.transition=false;
+                    }
+                    handoff.previousSupport=activeCalibration.supportPosition;
+                    handoff.supportValid=true;
+                    // The two-hand solver's AIM->GRIP rebase must use the
+                    // SAME interpolated support position as the visible
+                    // glove, avoiding any teleport or re-grab on change.
+                    solverCalibration=activeCalibration;
+                    if(controllerFixedHandAnchor)
+                        solverCalibration.supportPosition=
+                            kharvox::weaponpose::supportOffsetFromControllerAnchor(
+                                activeCalibration.supportPosition,
+                                primaryHandAnchorBody,current.position,
+                                current.orientation,subtractGrip,addGrip,
+                                rotateGripVector,invertGrip);
+                }
                 const bool useVirtualGunstock=s.virtualGunstockEnabled
                     &&!s.customMods.offHandGripCapture
                     &&activeCalibration.aimMode==TwoHandAimMode::Barrel
@@ -2749,6 +2811,12 @@ void updateWeapon6Dof(){
             }
         }
     }
+    if(!s.twoHandLatched||!s.supportGripPressed
+        ||(kind!=KharvoxWeaponKind::GaussCannon
+            &&kind!=KharvoxWeaponKind::Chaingun)
+        ||s.twoHandCalibrationMode
+        ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
+        s.heavyModeHandoff={};
     // NORMAL GAMEPLAY: do NOT overwrite the successfully solved two-hand
     // quaternion. Previously this unconditional showHands AIM lock made the
     // left support hand visually attach yet unable to steer the weapon.
