@@ -21,8 +21,8 @@ internal static class UpdateService
         "https://api.github.com/repos/MrEGS-Ops/KHARVOX-Custom/releases/tags/kharvox-mods-standalone-preview";
     private const string AssetPrefix =
         "https://github.com/MrEGS-Ops/KHARVOX-Custom/releases/download/";
-    private const string ZipName = "KHARVOX-VR-Mod-Manager-Standalone.zip";
-    private const string HashName = "KHARVOX-VR-Mod-Manager-Standalone.zip.sha256";
+    private const string ZipName = "KHARVOX-VR-Mod-Manager-ReadyToRun.zip";
+    private const string HashName = "KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256";
     private const long MaxZipBytes = 128L * 1024 * 1024;
     private const long MaxFileBytes = 64L * 1024 * 1024;
     private static readonly string[] ManagedFiles =
@@ -66,7 +66,7 @@ internal static class UpdateService
     {
         var match = Regex.Match(build, @"^#(\d{5,20})$");
         if (!match.Success) throw new InvalidDataException("Build number is invalid.");
-        return "KHARVOX-VR-Mod-Manager-Standalone-" + match.Groups[1].Value + ".zip";
+        return "KHARVOX-VR-Mod-Manager-ReadyToRun-" + match.Groups[1].Value + ".zip";
     }
 
     private static string AssetDigest(ReleaseInfo release, string name)
@@ -95,7 +95,7 @@ internal static class UpdateService
     private static string ParseExpectedHash(string text)
     {
         var match = Regex.Match(text.Trim(),
-            @"\A([A-Fa-f0-9]{64})(?:\s+\*?KHARVOX-VR-Mod-Manager-Standalone\.zip)?\s*\z");
+            @"\A([A-Fa-f0-9]{64})(?:\s+\*?KHARVOX-VR-Mod-Manager-ReadyToRun\.zip)?\s*\z");
         if (!match.Success)
             throw new InvalidDataException("Release SHA-256 manifest is invalid.");
         return match.Groups[1].Value.ToLowerInvariant();
@@ -111,27 +111,7 @@ internal static class UpdateService
 
     private static void ValidateAndExtract(string archivePath, string targetDirectory)
     {
-        Directory.CreateDirectory(targetDirectory);
-        var found = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        using (var archive = ZipFile.OpenRead(archivePath))
-        {
-            foreach (var entry in archive.Entries)
-            {
-                // Flat, explicit allowlist; reject traversal, symlinks, unknown files
-                // and duplicate or unexpectedly large application binaries.
-                var entryName = entry.FullName.Replace('\\', '/');
-                if (entryName.Contains("/") || !ManagedFiles.Contains(entryName,
-                        StringComparer.Ordinal) || !found.Add(entryName) ||
-                    entry.Length > MaxFileBytes)
-                    throw new InvalidDataException("Unexpected file in update archive: " + entryName);
-                var output = Path.Combine(targetDirectory, entryName);
-                using (var source = entry.Open())
-                using (var dest = new FileStream(output, FileMode.CreateNew, FileAccess.Write))
-                    source.CopyTo(dest);
-            }
-        }
-        if (!found.Contains("KharvoxVRModManager.exe"))
-            throw new InvalidDataException("Update archive does not contain the application executable.");
+        IntegratedBundle.ValidateAndExtract(archivePath, targetDirectory);
     }
 
     private static void ReplaceManagedFiles(string root, string stagedDirectory)
@@ -194,6 +174,7 @@ internal static class UpdateService
         if (AppIsRunning())
             throw new InvalidOperationException(
                 "Close KHARVOX VR Mod Manager before restoring a previous build.");
+        IntegratedBundle.EnsureLauncherNotRunning(root);
         var backup = Path.Combine(root, "Backups", "Updater", "previous");
         if (!File.Exists(Path.Combine(backup, "KharvoxVRModManager.exe")))
             throw new InvalidOperationException(
@@ -220,6 +201,7 @@ internal static class UpdateService
                 touched.Add(name);
                 File.Copy(Path.Combine(backup, name), Path.Combine(root, name), true);
             }
+            IntegratedBundle.RestorePreviousNative(root);
             var marker = Path.Combine(root, "updater-state.txt");
             if (File.Exists(marker)) File.Delete(marker);
         }
@@ -450,7 +432,12 @@ internal static class UpdateService
                         "KHARVOX VR Mod Manager was started during the download. Close it before updating.");
 
                 status("Replacing application files; keeping settings and Mods folder…");
-                ReplaceManagedFiles(InstallFolder, extracted);
+                // The updater installs the native runtime and EXE from the
+                // SAME verified ReadyToRun ZIP rather than leaving an old
+                // NativeBridge alongside the new Mod Manager.
+                IntegratedBundle.ReplaceTogether(InstallFolder, extracted,
+                    latestBuild.TrimStart('#'),
+                    () => ReplaceManagedFiles(InstallFolder, extracted));
                 SaveInstalledBuild(latestBuild);
                 // Marker is only a download optimization; failure to write this
                 // should not cause damage to already-committed application files.
@@ -481,7 +468,7 @@ internal static class UpdateService
                 != new string('a', 64))
                 throw new Exception("SHA-256 validation failed.");
             if (VersionedZipName("#41007843137") !=
-                "KHARVOX-VR-Mod-Manager-Standalone-41007843137.zip")
+                "KHARVOX-VR-Mod-Manager-ReadyToRun-41007843137.zip")
                 throw new Exception("Versioned updater filename regression.");
             var versionedRelease = new ReleaseInfo
             {
@@ -489,7 +476,7 @@ internal static class UpdateService
                 {
                     new ReleaseAsset
                     {
-                        name = "KHARVOX-VR-Mod-Manager-Standalone-41007843137.zip",
+                        name = "KHARVOX-VR-Mod-Manager-ReadyToRun-41007843137.zip",
                         size = 123,
                         digest = "sha256:" + new string('a', 64),
                         browser_download_url = AssetPrefix +
@@ -553,23 +540,7 @@ internal static class UpdateService
                 File.ReadAllText(Path.Combine(root, "Mods", "my-mod.txt")) != "keep")
                 throw new Exception("Rollback did not preserve user files or restore build.");
 
-            var archive = Path.Combine(root, "test.zip");
-            using (var zip = ZipFile.Open(archive, ZipArchiveMode.Create))
-            {
-                var entry = zip.CreateEntry("KharvoxVRModManager.exe");
-                using (var writer = new StreamWriter(entry.Open()))
-                    writer.Write("new");
-            }
-            ValidateAndExtract(archive, Path.Combine(root, "extracted"));
-            if (!File.Exists(Path.Combine(root, "extracted", "KharvoxVRModManager.exe")))
-                throw new Exception("Verified update extraction did not work.");
-            var traversal = Path.Combine(root, "traversal.zip");
-            using (var zip = ZipFile.Open(traversal, ZipArchiveMode.Create))
-                zip.CreateEntry("../settings.json");
-            var rejected = false;
-            try { ValidateAndExtract(traversal, Path.Combine(root, "reject")); }
-            catch (InvalidDataException) { rejected = true; }
-            if (!rejected) throw new Exception("Unsafe ZIP entry was accepted.");
+            IntegratedBundle.SelfTest();
             Console.WriteLine("Updater tests passed: portable backup, preserved settings, checksum, ZIP allowlist.");
         }
         finally { try { Directory.Delete(root, true); } catch { } }
