@@ -121,6 +121,14 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
+// Repositioning the glove with the free controller must stay LIVE
+// regardless of whether the primary weapon Grip is held. Grip enables
+// centimeter joystick nudges; it must never freeze manual calibration.
+inline constexpr bool vrWeaponManualCalibrationLive(
+    VrHandMenuMode mode,bool primaryGripHeld) noexcept {
+    (void)primaryGripHeld;
+    return mode==VrHandMenuMode::Calibrating;
+}
 // Fine-tune is ONLY active during primary-weapon calibration while its
 // physical weapon-hand GRIP is held to freeze the preview. Each deliberate
 // stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
