@@ -1,4 +1,5 @@
 #include "../src/openxr/VrHandMenuPolicy.h"
+#include "../src/openxr/ManualCrouchPolicy.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -58,5 +59,30 @@ int main(){
     assert(vrMenuGripGamepadTarget(nav,6,false)==95);
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
+    // Core mods have settings but no enable checkbox. First action is
+    // OPEN CALIBRATION / SET HIP / SLOWER etc, not toggle.
+    nav.settingsColumn=true;nav.actionIndex=0;
+    assert(vrMenuModsGamepadTarget(nav,0,7,5,false)==130);
+    nav.actionIndex=1;
+    assert(vrMenuModsGamepadTarget(nav,0,7,5,false)==131);
+    // Only the Physical Crouch and PAINSAW rows preserve toggle first.
+    nav.actionIndex=0;
+    assert(vrMenuModsGamepadTarget(nav,2,7,4,true)==110);
+    assert(vrMenuModsGamepadTarget(nav,5,7,1,true)==110);
+    nav.actionIndex=1;
+    assert(vrMenuModsGamepadTarget(nav,2,7,4,true)==130);
+    // Legacy wheel remap is retired, but Gunslinger's gesture wheel frees
+    // right-stick DOWN for crouch when Physical Crouch is OFF.
+    assert(manualStickCrouchAllowed(false,true,false));
+    assert(manualStickCrouchAllowed(false,false,true));
+    assert(!manualStickCrouchAllowed(true,true,true));
+    assert(!manualStickCrouchAllowed(false,false,false));
+    // Native 90 ms edge pulse, both on crouch and on stand; never leak a
+    // manual pulse into Physical Crouch, menus or the old remap input path.
+    assert(manualStickCrouchPulseActive(true,false,false,100,100+90000000));
+    assert(!manualStickCrouchPulseActive(true,false,false,100+90000000,100+90000000));
+    assert(!manualStickCrouchPulseActive(false,false,false,100,100+90000000));
+    assert(!manualStickCrouchPulseActive(true,true,false,100,100+90000000));
+    assert(!manualStickCrouchPulseActive(true,false,true,100,100+90000000));
     return 0;
 }
