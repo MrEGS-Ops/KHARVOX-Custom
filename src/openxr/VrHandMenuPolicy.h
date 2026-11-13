@@ -122,13 +122,28 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
-// Repositioning the glove with the free controller must stay LIVE
-// regardless of whether the primary weapon Grip is held. Grip enables
-// centimeter joystick nudges; it must never freeze manual calibration.
+// Grip RELEASED: the opposite controller drives the primary glove's live
+// position/rotation. Grip HELD: the currently valid placement is frozen,
+// enabling isolated 1cm joystick nudges (not free-controller movements).
+// A Grip press with no valid placement may initialize its first frame.
 inline constexpr bool vrWeaponManualCalibrationLive(
-    VrHandMenuMode mode,bool primaryGripHeld) noexcept {
-    (void)primaryGripHeld;
-    return mode==VrHandMenuMode::Calibrating;
+    VrHandMenuMode mode,bool gripHeld,bool frozenPreviewValid) noexcept {
+    return mode==VrHandMenuMode::Calibrating
+        &&(!gripHeld||!frozenPreviewValid);
+}
+
+// OpenXR reports POSITION_VALID even while POSITION_TRACKED is temporarily
+// false (predicted location). Prefer real tracked GRIP; fall back to tracked
+// AIM (the free controller's visible laser), then either valid position.
+// Previously requiring GRIP POSITION_TRACKED made normal calibration reject
+// an otherwise valid moving controller and left the gun glove fixed.
+template<class ControllerPose>
+inline const ControllerPose& vrCalibrationFreeControllerPose(
+    const ControllerPose& grip,const ControllerPose& aim) noexcept {
+    if(grip.valid&&grip.positionTracked)return grip;
+    if(aim.valid&&aim.positionTracked)return aim;
+    if(grip.valid)return grip;
+    return aim;
 }
 // Fine-tune is ONLY active during primary-weapon calibration while its
 // physical weapon-hand GRIP is held to freeze the preview. Each deliberate
@@ -199,7 +214,7 @@ struct VrHandMenuState {
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
-    bool primaryGripPreviewHeld{}; // Grip-held enables nudges but NEVER freezes live placement
+    bool primaryGripPreviewHeld{}; // freezes valid live pose while Grip held, permits 1cm nudges
     std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
