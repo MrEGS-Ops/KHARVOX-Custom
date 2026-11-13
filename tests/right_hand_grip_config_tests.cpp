@@ -201,6 +201,24 @@ int main(){
      {.05f,.02f,-.12f},{0.f,0.f,0.f,1.f,true},&why));
  assert(kharvox::saveRightHandVisualPose(path,"shotgun",false,
      {.07f,.03f,-.15f},{0.f,0.f,0.f,1.f,true},&why));
+ // LEFT pre-fix orientations are still present in uploaded factory CFGs.
+ // They must not be treated as newly captured in the correct mirror basis.
+ const std::string legacyLeft=std::string(path)+".legacy-left";
+ {std::ofstream old(legacyLeft);
+  old<<"shotgun_left_hand_position = 0.0 0.0 0.1\n"
+     <<"shotgun_left_rotation = 0.5 0 0 0.8660254\n";}
+ auto legacy=kharvox::readRightHandGripSettings(legacyLeft);
+ assert(legacy.leftVisualPositions.count("shotgun")==1);
+ assert(legacy.leftVisualRotations.count("shotgun")==1);
+ assert(legacy.leftVisualReflectionV2.count("shotgun")==0);
+ assert(kharvox::saveRightHandVisualPose(legacyLeft,"shotgun",false,
+     {0.f,-.03f,.12f},{0.f,0.f,0.f,1.f,true},&why,true));
+ legacy=kharvox::readRightHandGripSettings(legacyLeft);
+ assert(legacy.leftVisualReflectionV2.count("shotgun")==1);
+ assert(legacy.leftVisualReflectionV2.count("pistol")==0);
+ assert(legacy.leftVisualRotations.at("shotgun").valid);
+ std::remove(legacyLeft.c_str());
+ std::remove((legacyLeft+".before-live-capture.bak").c_str());
  // Ordinary PRIMARY grip may hold an aim-test preview; the two heavy
  // weapon captures retain native alt-fire for Siege/Turret, not this mode.
  using kharvox::VrHandMenuMode;
@@ -303,6 +321,7 @@ int main(){
  assert(visual.visualRotations.count("pistol")==0);
  assert(visual.leftVisualPositions.count("pistol")==0);
  assert(visual.leftVisualRotations.count("pistol")==0);
+ assert(visual.leftVisualReflectionV2.count("pistol")==0);
  assert(!kharvox::hasSavedVrPrimaryPose(visual,"pistol",true));
  assert(visual.visualPositions.count("shotgun")==1);
  assert(visual.leftVisualPositions.count("gauss_cannon_siege")==1);
@@ -361,6 +380,7 @@ int main(){
      path,factoryRight,"gauss_cannon",true,&why));
  visual=kharvox::readRightHandGripSettings(path);
  assert(std::abs(visual.leftVisualPositions["gauss_cannon_siege"].x+.30f)<.0001f);
+ assert(visual.leftVisualReflectionV2.count("gauss_cannon_siege")==0);
  assert(visual.gaussSiegeHandValid);
  assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
