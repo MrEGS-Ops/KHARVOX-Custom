@@ -4,7 +4,7 @@ namespace KharvoxLauncher;
 
 internal sealed class LauncherSettings
 {
-    internal const int CurrentVersion = 35;
+    internal const int CurrentVersion = 36;
 
     public int SettingsVersion { get; set; }
     public int Preset { get; set; }
@@ -166,6 +166,14 @@ internal static class LauncherSettingsStore
             settings.GloryKillSlowmoLevel = 10;
         }
         settings.GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, settings.GloryKillSlowmoLevel));
+        // Slot 3 used to mean freeform Custom. It is now the named MrEGS_
+        // profile. Preserve every other stored setting, but migrate the
+        // former Custom turn controls to the user's new profile defaults.
+        if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.MrEgsPresetIndex)
+        {
+            settings.TurnMode = 0;
+            settings.SmoothSpeed = LauncherPresetPolicy.MrEgsTurnSpeed;
+        }
         // Adopt the release renderer once for existing Custom profiles. Later AER choices remain valid.
         if (settings.SettingsVersion < 33 && settings.Preset == 3
             && string.Equals(settings.RendererMode, "AER", StringComparison.OrdinalIgnoreCase))

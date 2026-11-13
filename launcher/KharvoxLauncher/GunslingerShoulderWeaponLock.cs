@@ -6,9 +6,8 @@ using System.Windows.Forms;
 
 namespace KharvoxLauncher;
 
-// The official Cactus MainForm.cs remains byte-for-byte untouched.
-// Only our bridge-enabled launcher greys out the old Shoulder Weapon picker
-// while Gunslinger owns the physical hip and behind-head weapon selection.
+// This bridge also honours the MrEGS_ profile's permanent Shoulder Weapon
+// lock, independently of the Gunslinger mod state.
 internal static class GunslingerShoulderWeaponLock
 {
     private static readonly BindingFlags PrivateInstance =
@@ -34,13 +33,13 @@ internal static class GunslingerShoulderWeaponLock
     }
 
     private static void SetLocked(ComboBox picker, Label caption,
-        Color defaultCaptionColor, ToolTip help, bool gunslinger)
+        Color defaultCaptionColor, ToolTip help, bool gunslinger, string? reason = null)
     {
         picker.Enabled = !gunslinger;
         caption.ForeColor = gunslinger
             ? Color.FromArgb(123, 130, 142) : defaultCaptionColor;
-        help.SetToolTip(picker, gunslinger ? DisabledHelp : "");
-        help.SetToolTip(caption, gunslinger ? DisabledHelp : "");
+        help.SetToolTip(picker, gunslinger ? reason ?? DisabledHelp : "");
+        help.SetToolTip(caption, gunslinger ? reason ?? DisabledHelp : "");
     }
 
     internal static void Watch(MainForm form)
@@ -63,8 +62,8 @@ internal static class GunslingerShoulderWeaponLock
             bool lockShoulder;
             try
             {
-                lockShoulder = StandaloneModsBridge.LoadFromEnvironment()
-                    ?.EffectiveGunslinger == true;
+                lockShoulder = form.IsMrEgsProfileActive ||
+                    StandaloneModsBridge.LoadFromEnvironment()?.EffectiveGunslinger == true;
             }
             catch (Exception exception) when (
                 exception is IOException ||
@@ -77,7 +76,8 @@ internal static class GunslingerShoulderWeaponLock
             }
 
             if (lastLock == lockShoulder) return;
-            SetLocked(picker, caption, defaultCaptionColor, help, lockShoulder);
+            SetLocked(picker, caption, defaultCaptionColor, help, lockShoulder,
+                form.IsMrEgsProfileActive ? "Locked by the MrEGS_ launch profile." : null);
             lastLock = lockShoulder;
         }
 
@@ -110,6 +110,7 @@ internal static class GunslingerShoulderWeaponLock
             {
                 var picker = FindPicker(form);
                 var caption = FindLabel(form);
+                form.SelectLaunchProfileForSelfTest(0);
                 if (picker == null || caption == null || !picker.Enabled)
                     throw new InvalidDataException("Shoulder Weapon picker missing.");
 
@@ -159,13 +160,13 @@ internal static class VirtualGunstockGripCalibrationLock
             BindingFlags.Instance | BindingFlags.NonPublic)
             ?.GetValue(form) as CheckBox;
 
-    private static void SetLocked(CheckBox toggle, ToolTip help, bool blocked)
+    private static void SetLocked(CheckBox toggle, ToolTip help, bool blocked, string? reason = null)
     {
         // Never restore a previously-checked setting automatically. An old
         // checked gunstock cannot silently reactivate after calibration ends.
         if (blocked) toggle.Checked = false;
         toggle.Enabled = !blocked;
-        help.SetToolTip(toggle, blocked ? DisabledHelp : "");
+        help.SetToolTip(toggle, blocked ? reason ?? DisabledHelp : "");
     }
 
     internal static void Watch(MainForm form)
@@ -181,8 +182,8 @@ internal static class VirtualGunstockGripCalibrationLock
             bool blocked;
             try
             {
-                blocked = StandaloneModsBridge.LoadFromEnvironment()
-                    ?.OffHandGripCapture == true;
+                blocked = form.IsMrEgsProfileActive ||
+                    StandaloneModsBridge.LoadFromEnvironment()?.OffHandGripCapture == true;
             }
             catch (Exception exception) when (
                 exception is IOException ||
@@ -195,7 +196,8 @@ internal static class VirtualGunstockGripCalibrationLock
                 return;
             }
             if (lastLock == blocked) return;
-            SetLocked(toggle, help, blocked);
+            SetLocked(toggle, help, blocked,
+                form.IsMrEgsProfileActive ? "Locked off by the MrEGS_ launch profile." : null);
             lastLock = blocked;
         }
 
@@ -224,6 +226,7 @@ internal static class VirtualGunstockGripCalibrationLock
             using var help = new ToolTip();
             var toggle = FindToggle(form)
                 ?? throw new InvalidDataException("Cactus Virtual Gunstock checkbox missing.");
+            form.SelectLaunchProfileForSelfTest(0);
             toggle.Checked = true;
             SetLocked(toggle, help, true);
             if (toggle.Enabled || toggle.Checked)

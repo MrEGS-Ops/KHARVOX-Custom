@@ -59,6 +59,9 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
+        if (args.Any(argument => string.Equals(argument, "--self-test-mregs-profile",
+                StringComparison.OrdinalIgnoreCase)))
+            return MrEgsProfileSelfTest.Run();
         if (args.Any(argument => string.Equals(argument, "--self-test-shoulder-weapon-lock",
                 StringComparison.OrdinalIgnoreCase)))
             return GunslingerShoulderWeaponLock.RunSelfTest();

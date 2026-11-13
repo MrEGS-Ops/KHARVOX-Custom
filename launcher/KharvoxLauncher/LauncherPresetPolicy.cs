@@ -34,6 +34,9 @@ internal readonly struct LauncherPresetDefinition
 internal static class LauncherPresetPolicy
 {
     internal const bool DefaultEnableHands = true;
+    internal const int MrEgsPresetIndex = 3;
+    internal const int DefaultPresetIndex = MrEgsPresetIndex;
+    internal const int MrEgsTurnSpeed = 387;
     internal static bool TryGet(int presetIndex, out LauncherPresetDefinition definition)
     {
         // Recommended and Intense intentionally share the same high-immersion
