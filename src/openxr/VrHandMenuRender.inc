@@ -167,7 +167,7 @@ void paintVrHandMenu() {
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
         write(40,102,"CONFIGURABLE MODS",muted);
-        write(535,102,"LIVE SETTINGS",muted);
+        write(535,102,m.navigation.settingsColumn?"CONFIG OPTIONS":"MOD OVERVIEW",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
         const int selected=std::clamp(m.selectedRow,0,std::max(0,count-1));
@@ -187,63 +187,40 @@ void paintVrHandMenu() {
             // Core features are fixed active; only Physical Crouch and
             // PAINSAW have an ON/OFF switch. Other rows lead to settings.
             if(title.size()>29)title.resize(29);
-            write(55,y+10,title,entries[index].devSection
-                ?RGB(84,233,214):entries[index].enabled?white:muted);
+            write(55,y+10,title,entries[index].enabled?white:muted);
             const bool switchable=kharvox::vrLiveModToggleable(entries[index].mod);
-            write(entries[index].devSection?421:switchable?436:429,y+10,
-                entries[index].devSection?"VIEW"
-                    :switchable?(entries[index].enabled?"ON":"OFF"):"SET",
-                entries[index].devSection?RGB(84,233,214)
-                    :switchable?(entries[index].enabled?RGB(108,235,161)
-                        :RGB(151,158,171)):RGB(84,233,214));
+            // The four fixed-on gameplay mods have no "SET" labels.
+            // Use a simple disclosure arrow; Crouch/PAINSAW show status.
+            write(switchable?436:458,y+10,
+                switchable?(entries[index].enabled?"ON":"OFF"):">",
+                switchable?(entries[index].enabled?RGB(108,235,161)
+                    :RGB(151,158,171)):RGB(84,233,214));
         }
         if(count>10){
             SelectObject(dc,smallFont);
             write(48,602,"LEFT STICK: scroll  ("+
                 std::to_string(selected+1)+"/"+std::to_string(count)+")",muted);
         }
-        const bool devSelected=count>0&&entries[selected].devSection;
-        if(devSelected){
-            const auto dev=devVrMenuEntries();
-            const int n=static_cast<int>(dev.size());
-            const int focus=std::clamp(m.navigation.actionIndex,0,std::max(0,n-1));
+        // LEFT: browse. RIGHT: meaningful gameplay description until A
+        // explicitly opens configuration for the highlighted mod.
+        if(!m.navigation.settingsColumn){
+            const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
+            const auto overview=vrLiveModOverview(mod);
             SelectObject(dc,regular);
-            write(536,126,"DEV",white);
+            write(536,127,count>0?entries[selected].title:"No available mods",white);
             SelectObject(dc,smallFont);
-            write(538,156,"SELECT [i] TO SEE WHY IT'S IN DEV",muted);
-            for(int shown=0;shown<10;++shown){
-                const int index=shown+m.devScroll;
-                if(index>=n)break;
-                const int y=186+shown*39;
-                const bool selected=m.navigation.settingsColumn&&index==focus;
-                const bool hovered=m.hovered==1200+index
-                    ||(selected&&m.navigation.usingStick);
-                fill(531,y,384,36,hovered?RGB(48,80,92)
-                    :selected?RGB(35,66,79):RGB(27,32,43));
-                std::string label=dev[index].title;
-                if(label.size()>30)label.resize(30);
-                write(545,y+8,label,white);
-                fill(875,y+4,28,28,m.devInfoIndex==index
-                    ?RGB(30,124,131):RGB(50,64,78));
-                write(884,y+8,"i",RGB(84,233,214));
+            write(538,170,"WHAT IT DOES / HOW TO USE IT",RGB(84,233,214));
+            for(int line=0;line<6;++line){
+                const char* text=overview.lines[line];
+                if(text&&*text)
+                    write(540,224+line*49,text,line==5?RGB(84,233,214):white);
             }
-            if(m.devInfoIndex>=0&&m.devInfoIndex<n){
-                const std::string explanation=dev[m.devInfoIndex].why;
-                std::size_t split=std::min<std::size_t>(41,explanation.size());
-                if(split<explanation.size()){
-                    const auto space=explanation.rfind(' ',split);
-                    if(space!=std::string::npos&&space>18)split=space;
-                }
-                write(538,590,"WHY IN DEV:",RGB(84,233,214));
-                write(538,612,explanation.substr(0,split),white);
-                if(split<explanation.size()){
-                    const auto next=explanation.find_first_not_of(' ',split);
-                    if(next!=std::string::npos)
-                        write(538,634,explanation.substr(next,41),white);
-                }
-            }else{
-                write(538,607,"Choose a [i] for details.",muted);
-            }
+            fill(531,550,384,59,m.hovered==115
+                ?RGB(53,95,108):RGB(36,78,92));
+            SelectObject(dc,regular);
+            write(646,563,"CONFIGURE  >",white);
+            SelectObject(dc,smallFont);
+            write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
@@ -339,8 +316,8 @@ void paintVrHandMenu() {
         }
         }
         SelectObject(dc,smallFont);
-        if(!devSelected)
-            write(538,638,"STICK / A / B   OR   POINTER + TRIGGER",muted);
+        if(m.navigation.settingsColumn)
+            write(538,638,"B: BACK TO MODS     A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else{
@@ -405,9 +382,8 @@ void paintVrHandMenu() {
     button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
-    button(531,535,384,58,false,m.hovered==33||gamepadFocus(33));
     SelectObject(dc,smallFont);
-    write(550,551,"APPLY RIGHT -> LEFT (OPTIONAL)",white);
+    write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
     write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
