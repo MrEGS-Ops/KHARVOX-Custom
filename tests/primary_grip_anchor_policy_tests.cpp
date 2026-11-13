@@ -99,7 +99,7 @@ int main(){
             delta.z+gripLocal.z},expected));
         // This is only an anchor translation; no quaternion is derived
         // from the fine-tune delta, so the AIM orientation remains pose.
-        const auto unchanged=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
+        const auto& unchanged=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
             pose,laser);
         assert(&unchanged==&pose);
     }
