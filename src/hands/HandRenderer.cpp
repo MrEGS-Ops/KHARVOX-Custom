@@ -449,30 +449,26 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     if(reverse)for(int column=0;column<4;column++)
         viewProjection.m[column*4+2]=viewProjection.m[column*4+3]-viewProjection.m[column*4+2];
     auto draw=[&](bool left,HandModelKind kind,const HandPose&pose){
-        // Both left-hand models appeared upside-down on the controller.
-        // This is a 180-degree ROLL about the tracked controller's forward
-        // (-Z) axis, not a YAW that points the left gun backward.
-        // Apply it in controller space BEFORE the model's calibration Euler;
-        // leave the right fist/gun pose and independent tracking untouched.
-        // Keep the separate weapon grip calibration (gun pivots) intact.
-        const bool gunHolding=kind==HandModelKind::GunHolding;
-        const bool mirroredRightReference=left&&!gunHolding;
-        const size_t index=left?(gunHolding?2:0):(gunHolding?3:1);
-        const size_t modelIndex=mirroredRightReference?1:index;
+        // Reuse the correctly upright RIGHT fist / gun-holding mesh for
+        // the physical LEFT hand, mirrored in mesh-local X. The previous
+        // extra 180-degree roll changed mirrorX into a vertical mirror,
+        // leaving both left-hand variants upside-down. Tracking is still
+        // obtained independently from the physical LEFT controller; only
+        // the selected visible mesh/baked wrist reference changes.
+        // DO NOT alter weapon pivots, scene depth or near clipping.
+        const size_t index=left?(kind==HandModelKind::GunHolding?2:0)
+            :(kind==HandModelKind::GunHolding?3:1);
+        const size_t modelIndex=handReferenceAssetIndex(left,kind);
+        const bool mirroredRightReference=handMeshMirroredFromRight(left,kind);
         auto&asset=assets[modelIndex];if(!asset.ready)return;
         const auto&calibration=renderCalibration(left,kind,gameplay.weapon,
             gameplay.leftHanded);
-        const auto&rotationReference=(mirroredRightReference||gunHolding)
-            ?rightCalibration:calibration;
         const float xScale=mirroredRightReference?-calibration.scale
             :(mirrorX[index]?-calibration.scale:calibration.scale);
-        const float controllerForwardRoll[3]{
-            0.f,0.f,handModelControllerForwardRollDegrees(left,kind)};
         const Mat4 local=multiply(
             translation(calibration.position[0],calibration.position[1],calibration.position[2]),
-            multiply(rotationDegrees(controllerForwardRoll),
-                multiply(rotationDegrees(rotationReference.rotationDegrees),
-                    scaleAxes(xScale,calibration.scale,calibration.scale))));
+            multiply(rotationDegrees(rightCalibration.rotationDegrees),
+                scaleAxes(xScale,calibration.scale,calibration.scale)));
         struct Push{Mat4 model;Mat4 viewProjection;}push{multiply(poseMatrix(pose),local),viewProjection};
         vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
         vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&asset.descriptor,0,nullptr);
