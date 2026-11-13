@@ -2939,11 +2939,23 @@ void updateWeapon6Dof(){
             :kharvox::primarygrip::lockedHand(
                 weaponAnchorTracking,renderOrientation,
                 s.primaryVisualLocalPosition,rotateGrip);
-        // Retain the existing per-weapon visual rotation adjustment while
-        // preventing two-hand gun steering from rotating the primary glove.
-        const auto primaryRotation=normalizeQuaternion(multiply(
-            s.showHands?primaryController.orientation:renderOrientation,
-            s.primaryVisualLocalOrientation));
+        // Render ONLY: while the support Grip is actually latched in
+        // NORMAL GAMEPLAY, the gun and weapon glove must remain one rigid
+        // visual pair. Otherwise the support-hand solver rotates the barrel
+        // through a static glove. The primary controller still tracks its
+        // full physical rotation for native gameplay and the two-hand solver.
+        // Save/rotate the wrist offset relative to the gun as before;
+        // never move the primary GRIP anchor or change the native gun pose.
+        const auto& primaryGloveFrame=
+            kharvox::weaponpose::primaryGloveVisualFrame(
+                primaryController.orientation,renderOrientation,
+                s.showHands,gameplayTwoHandSteering);
+        const auto primaryRotation=normalizeQuaternion(
+            kharvox::weaponpose::weaponLockedPrimaryGloveOrientation(
+                primaryGloveFrame,s.primaryVisualLocalOrientation,
+                [](const XrQuaternionf& gun,const XrQuaternionf& local){
+                    return multiply(gun,local);
+                }));
         s.primaryVisualPose.position[0]=primaryFixed.x;
         s.primaryVisualPose.position[1]=primaryFixed.y;
         s.primaryVisualPose.position[2]=primaryFixed.z;
