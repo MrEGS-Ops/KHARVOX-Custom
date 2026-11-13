@@ -76,9 +76,18 @@ void paintVrHandMenu() {
         FillRect(dc,&rect,brush);
         DeleteObject(brush);
     };
-    fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
-    fill(0,0,vrMenuW,84,RGB(24,29,40));
-    fill(38,82,884,3,RGB(55,209,214));
+    const bool calibrationView=m.mode==kharvox::VrHandMenuMode::Calibrating;
+    if(calibrationView){
+        // Compact left-anchored help box. Everything outside it is truly
+        // transparent, so the live weapon can be inspected and aimed.
+        fill(22,144,590,432,RGB(15,22,32));
+        fill(22,144,590,58,RGB(27,48,61));
+        fill(22,144,5,432,RGB(55,209,214));
+    }else{
+        fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
+        fill(0,0,vrMenuW,84,RGB(24,29,40));
+        fill(38,82,884,3,RGB(55,209,214));
+    }
     SetBkMode(dc,TRANSPARENT);
     HFONT title=CreateFontA(-34,0,0,0,FW_BOLD,FALSE,FALSE,FALSE,
         DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,
@@ -95,8 +104,8 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(m.mode==kharvox::VrHandMenuMode::Calibrating){
-        write(38,24,"KHARVOX VR  /  LIVE CALIBRATION",white);
+    if(calibrationView){
+        write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
         const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
@@ -105,44 +114,36 @@ void paintVrHandMenu() {
             ||kind==KharvoxWeaponKind::Chaingun;
         if(weaponCapture){
             const auto name=KharvoxWeaponKindDisplayName(kind);
-            write(40,116,std::string("WEAPON: ")+(name&&*name?name:m.weapon()),white);
-            write(40,165,std::string("CALIBRATING: ")+(primary?"PRIMARY":"SUPPORT")
-                +(m.rightHand?" RIGHT HAND":" LEFT HAND"),RGB(84,233,214));
+            write(39,219,std::string(name&&*name?name:m.weapon()),white);
             SelectObject(dc,smallFont);
-            write(40,225,"1. Move the OPPOSITE hand to adjust the grip position.",white);
-            if(primary&&!heavy){
-                write(40,279,"2. HOLD WEAPON GRIP to test the hand position and aim.",white);
-                write(40,326,"3. RELEASE GRIP to return to positioning.",white);
-                fill(38,384,870,70,m.primaryGripPreviewHeld
-                    ?RGB(35,85,72):RGB(36,51,68));
-                write(62,406,m.primaryGripPreviewHeld
-                    ?"TESTING POSITION - grip held"
-                    :"POSITIONING - move opposite controller",RGB(84,233,214));
-            }else if(primary&&heavy){
-                write(40,279,"2. Gauss / Minigun: hold weapon GRIP for native alt fire.",white);
-                write(40,326,"3. Position the primary glove; no grip-test mode yet.",white);
+            write(39,253,std::string(primary?"PRIMARY":"SUPPORT")
+                +(m.rightHand?" RIGHT HAND":" LEFT HAND"),RGB(84,233,214));
+            write(39,297,"Move OPPOSITE controller to position.",white);
+            if(primary){
+                write(39,329,"HOLD weapon Grip = test aim",white);
+                write(39,361,"RELEASE Grip = reposition",white);
+                if(heavy&&m.alternateProfile)
+                    write(39,398,"ALT MODE: auto-engaged while calibrating",RGB(84,233,214));
             }else{
-                write(40,279,"2. Move the support hand; rotation follows the grip.",white);
-                write(40,326,"3. Confirm its position before saving.",white);
+                write(39,329,"Position support hand; rotation on grab.",white);
             }
-            write(40,506,m.previewValid?"TRACKING: valid preview"
-                :"TRACKING: waiting for a valid grip preview",
+            fill(35,423,564,41,m.primaryGripPreviewHeld
+                ?RGB(35,85,72):RGB(36,51,68));
+            write(47,430,m.primaryGripPreviewHeld?"TESTING AIM"
+                :m.previewValid?"POSITION READY":"WAITING FOR TRACKING",
                 m.previewValid?RGB(108,235,161):RGB(239,197,116));
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
                 ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
-            write(40,122,crouch?"PHYSICAL CROUCH - HEIGHT CALIBRATION"
-                :"GUNSLINGER - HAND ZONE CALIBRATION",white);
+            write(39,235,crouch?"PHYSICAL CROUCH":"GUNSLINGER ZONE",white);
             SelectObject(dc,smallFont);
-            write(40,205,crouch
-                ?"Move your HEAD to the requested standing/crouching height."
-                :"Move the specified HAND into the new holster/wheel zone.",white);
-            write(40,262,m.message,RGB(84,233,214));
+            write(39,295,crouch?"Move HEAD to the target height."
+                :"Move the matching HAND into the target zone.",white);
+            write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
         }
-        SelectObject(dc,regular);
-        write(40,588,"RIGHT TRIGGER  /  SAVE AT ANY STAGE",RGB(108,235,161));
         SelectObject(dc,smallFont);
-        write(40,644,"B  /  CANCEL WITHOUT SAVING",muted);
+        write(39,487,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
+        write(39,531,"B: CANCEL WITHOUT SAVING",muted);
     }else if(m.page==kharvox::VrMenuPage::Mods){
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
@@ -369,7 +370,8 @@ void paintVrHandMenu() {
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
-    if(m.cursorX>=0&&m.cursorY>=0&&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
+    if(!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+       &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
         HPEN pen=CreatePen(PS_SOLID,1,RGB(3,35,40));
@@ -387,7 +389,10 @@ void paintVrHandMenu() {
     auto* dst=static_cast<unsigned char*>(vrHandMenuSurface.mapped);
     for(size_t i=0;i<size_t(vrMenuW)*vrMenuH;++i){
         const size_t b=i*4;
-        dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];dst[b+3]=255;
+        dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];
+        const int x=int(i%vrMenuW),y=int(i/vrMenuW);
+        dst[b+3]=(!calibrationView
+            ||(x>=22&&x<612&&y>=144&&y<576))?255:0;
     }
     SelectObject(dc,oldBitmap);
     DeleteObject(dib);
