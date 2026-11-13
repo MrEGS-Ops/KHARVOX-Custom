@@ -7,6 +7,7 @@ on:
       - work/manager-187-wheel-holsters
       - fix/nov12-hud-factory-pointer
       - feature/weapon-rear-proximity-fade-793
+      - feature/nov13-headset-test-polish
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxLauncher/**'
