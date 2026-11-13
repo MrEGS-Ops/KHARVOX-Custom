@@ -9,6 +9,9 @@
 #include <iomanip>
 #include <sstream>
 #include <string>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 // One-handed recoil is an additive, controller-local *weapon* rotation.
 // Never move the HMD, physical controller/grip anchor, or saved hand calibration.
