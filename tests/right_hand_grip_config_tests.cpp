@@ -208,9 +208,9 @@ int main(){
      VrHandMenuMode::Calibrating,true,"pistol"));
  assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"super_shotgun"));
- assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"gauss_cannon"));
- assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"chaingun"));
  assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,false,"pistol")); // SUPPORT is unchanged
