@@ -118,19 +118,38 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             write(39,253,std::string(primary?"PRIMARY":"SUPPORT")
                 +(m.rightHand?" RIGHT HAND":" LEFT HAND"),RGB(84,233,214));
-            write(39,297,"Move OPPOSITE controller to position.",white);
             if(primary){
-                write(39,329,"HOLD weapon Grip = test aim",white);
-                write(39,361,"RELEASE Grip = reposition",white);
+                // Contextual help follows the PHYSICAL weapon Grip, not
+                // previewValid: even with interrupted tracking, the player
+                // must see the actual 1cm fine-tune controls.
+                const bool tuning=m.calibrationGripHeld;
+                fill(35,289,564,151,tuning
+                    ?RGB(24,66,65):RGB(31,43,59));
+                fill(35,289,4,151,tuning
+                    ?RGB(108,235,161):RGB(84,233,214));
+                write(49,296,tuning?"POSITION FINE-TUNE / GRIP HELD"
+                    :"HAND ROTATION / GRIP RELEASED",RGB(84,233,214));
+                if(tuning){
+                    write(49,329,"LEFT STICK L/R: hand left / right (X)",white);
+                    write(49,358,"LEFT STICK U/D: forward / back (Z)",white);
+                    write(49,387,"RIGHT STICK U/D: up / down (Y)",white);
+                    write(49,415,"1 cm per flick; centre stick to repeat.",muted);
+                }else{
+                    write(49,333,"Move free controller to rotate glove.",white);
+                    write(49,369,"Hold weapon Grip for 1 cm position nudges.",white);
+                    write(49,407,"Hand / anchor only; weapon aim unchanged.",muted);
+                }
                 if(heavy&&m.alternateProfile)
-                    write(39,398,"ALT MODE: auto-engaged while calibrating",RGB(84,233,214));
+                    write(39,450,"ALT MODE: active",RGB(84,233,214));
             }else{
+                write(39,297,"Move opposite controller to position.",white);
                 write(39,329,"Position support hand; rotation on grab.",white);
             }
-            fill(35,423,564,41,m.primaryGripPreviewHeld
+            fill(35,473,564,42,primary&&m.calibrationGripHeld
                 ?RGB(35,85,72):RGB(36,51,68));
-            write(47,430,m.primaryGripPreviewHeld?"TESTING AIM"
-                :m.previewValid?"POSITION READY":"WAITING FOR TRACKING",
+            write(47,481,!m.previewValid?"WAITING FOR TRACKING"
+                :primary&&m.calibrationGripHeld?"FINE-TUNE ACTIVE"
+                :primary?"ROTATION MODE":"POSITION READY",
                 m.previewValid?RGB(108,235,161):RGB(239,197,116));
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
@@ -142,8 +161,8 @@ void paintVrHandMenu() {
             write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
         }
         SelectObject(dc,smallFont);
-        write(39,487,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
-        write(39,531,"B: CANCEL WITHOUT SAVING",muted);
+        write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
+        write(39,551,"B: CANCEL WITHOUT SAVING",muted);
     }else if(m.page==kharvox::VrMenuPage::Mods){
         write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
