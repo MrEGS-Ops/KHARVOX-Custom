@@ -9,11 +9,11 @@ using System.Windows.Forms;
 namespace KharvoxMods;
 
 // VR-only standalone layout. The former DOOM Mods panel and its full source
-// are parked outside this build. Four verified VR mod checkboxes plus a
+// are parked outside this build. Two selectable VR mod checkboxes plus three locked core features and a
 // scoped Glory Kill override connect through the optional Native Bridge.
 internal sealed partial class ModsForm
 {
-    private const int LegacyVrModCount = 19;
+    private const int LegacyVrModCount = 20;
     private readonly StandaloneModPreferences _modPrefs = StandaloneModPreferences.Load();
     private bool _runtimePreparing;
     private bool _savingSettings;
@@ -24,10 +24,15 @@ internal sealed partial class ModsForm
         if (_runtimePreparing) SetStatus("Preparing KHARVOX…");
     }
 
-    // Hand Focus and Physical Crouch are always-on, read-only Developer
-    // overrides. They must not be counted as selectable Active VR mods.
+    // The core VR features are always active; only Crouch and PAINSAW
+    // expose a desktop ON/OFF checkbox.
+    private static bool IsFixedCoreMod(string title) =>
+        title == "Gunslinger" ||
+        title == "Weapon Grip Calibration" ||
+        title == "KILLTIME: RIP & TEAR";
     private static bool IsConfirmedMod(string title) =>
         title == "Gunslinger" ||
+        title == "Physical Crouch" ||
         title == "PAINSAW: RIPSHIFT OVERDRIVE" ||
         title == "Weapon Grip Calibration";
 
@@ -43,6 +48,7 @@ internal sealed partial class ModsForm
 
     private void ApplySelection(string name, bool value)
     {
+        if (IsFixedCoreMod(name)) return;
         if (value && !CanEnableMod(name, out var reason))
         {
             MessageBox.Show(this, reason, "KHARVOX VR Mod Manager — Dependency check",
@@ -113,6 +119,8 @@ internal sealed partial class ModsForm
         }),
         ("➤  Legs & Movement", new[]
         {
+            new PreviewMod("Physical Crouch",
+                "Physical crouch can be toggled ON/OFF. When OFF, press the right thumbstick straight DOWN to crouch or stand; diagonal turning and stick-up Chainsaw are independent.", true),
             new PreviewMod("Directional Dash",
                 "Directional movement dash. Paused due to unsafe physics.")
         }),
@@ -165,8 +173,6 @@ internal sealed partial class ModsForm
     {
         new PreviewMod("Hand Focus",
             "Always ON. Weapon-hand focus in gameplay; native action sequences use head focus.", true),
-        new PreviewMod("Physical Crouch",
-            "Always ON. Calibrate standing and crouch heights in the VR menu.", true),
         new PreviewMod("Disable Glory Kill Highlighting",
             "Remove blue/orange outlines around staggered demons."),
         new PreviewMod("Disable Glory Kill Motion Blur",
@@ -518,7 +524,7 @@ internal sealed partial class ModsForm
         var titles = OriginalModGroups.SelectMany(group => group.Mods)
             .Select(mod => mod.Title).ToArray();
         return count == LegacyVrModCount && titles.Distinct(StringComparer.Ordinal).Count() == count
-            && OriginalModGroups.Length == 6 && DevOverrides.Length == 10
+            && OriginalModGroups.Length == 6 && DevOverrides.Length == 9
             && titles.Contains("PAINSAW: RIPSHIFT OVERDRIVE");
     }
 
@@ -606,26 +612,29 @@ internal sealed partial class ModsForm
             var vr = form.Controls.Descendants().OfType<CheckBox>()
                 .Where(check => string.Equals(check.Tag as string, "original-vr-mod",
                     StringComparison.Ordinal)).ToArray();
-            if (vr.Length != LegacyVrModCount ||
-                vr.Count(check => check.Enabled) !=
-                    3 ||
-                vr.Any(check => check.Enabled && !IsConfirmedMod(check.AccessibleName)))
+            if (vr.Length != LegacyVrModCount - 2 ||
+                vr.Count(check => check.Enabled) != 2 ||
+                vr.Any(check => check.Enabled &&
+                    check.AccessibleName != "Physical Crouch" &&
+                    check.AccessibleName != "PAINSAW: RIPSHIFT OVERDRIVE") ||
+                form.Controls.Descendants().OfType<CheckBox>().Any(check =>
+                    IsFixedCoreMod(check.AccessibleName)))
                 throw new InvalidDataException("Verified mod rows or retired remap inventory changed.");
             if (!form.Controls.Descendants().OfType<Label>()
                 .Any(label => label.Text.StartsWith("ACTIVE MODS", StringComparison.Ordinal)))
                 throw new InvalidDataException("Active Mods heading is missing.");
-            if (!form.Controls.Descendants().OfType<TrackBar>().All(slider => !slider.Visible))
-                throw new InvalidDataException("Glory Kill slider is visible while override disabled.");
+            if (!form.Controls.Descendants().OfType<TrackBar>()
+                .Any(slider => (slider.Tag as string) == "glory-speed-slider"))
+                throw new InvalidDataException("Always-on KILLTIME speed slider missing.");
             var dev = form.Controls.Descendants().OfType<CheckBox>()
                 .Count(check => string.Equals(check.Tag as string, "dev-override",
                     StringComparison.Ordinal));
             if (dev != DevOverrides.Length)
                 throw new InvalidDataException("Developer overrides missing.");
             var locked = form.Controls.Descendants().OfType<CheckBox>()
-                .Where(box => box.AccessibleName == "Hand Focus"
-                    || box.AccessibleName == "Physical Crouch").ToArray();
-            if (locked.Length != 2 || locked.Any(box => box.Enabled || !box.Checked))
-                throw new InvalidDataException("Hand Focus and Physical Crouch must be locked ON in Dev.");
+                .Where(box => box.AccessibleName == "Hand Focus").ToArray();
+            if (locked.Length != 1 || locked.Any(box => box.Enabled || !box.Checked))
+                throw new InvalidDataException("Hand Focus must remain locked ON in Dev.");
             var melee = form.Controls.Descendants().OfType<CheckBox>()
                 .SingleOrDefault(box => box.AccessibleName == AutoMeleeDevTitle);
             if (melee == null || melee.Enabled ||
