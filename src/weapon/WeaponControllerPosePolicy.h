@@ -54,6 +54,16 @@ inline constexpr float weaponEulerOffsetDegrees(
     return controllerAlignedHands ? 0.f : legacyDegrees;
 }
 
+// The primary glove's position is the physical weapon-hand controller GRIP
+// pose, independent of both per-weapon gun offsets and 1cm joystick nudges.
+// Distinct from the gun's AIM pose, so level physical controllers produce
+// matching tracked hand origins regardless of weapon size or calibration.
+template<class Position>
+inline const Position& physicalPrimaryGlovePosition(
+    const Position& trackedGrip,const Position&) noexcept {
+    return trackedGrip;
+}
+
 // Primary hand *visual* fitting can adjust only vertical Y and along-barrel Z.
 // Lock lateral X. Does not constrain the visual glove's local quaternion:
 // it can be oriented any way the owner chooses and locked to the gun.
