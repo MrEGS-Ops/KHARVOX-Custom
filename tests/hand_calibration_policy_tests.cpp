@@ -7,15 +7,14 @@
 int main() {
     using namespace kharvox::hands;
 
-    // Both left-hand variants reuse the verified upright right-hand GLB,
-    // mirrored once in local X. Adding a left-only 180-degree roll on top
-    // would turn that into a VERTICAL mirror (the reported upside-down bug).
-    assert(handReferenceAssetIndex(true,HandModelKind::Fist)==1u);
+    // Native KHARVOX keeps each left GLB and wrist calibration, not a
+    // mirrored right-handed model (both fist and weapon-holding glove).
+    assert(handReferenceAssetIndex(true,HandModelKind::Fist)==0u);
     assert(handReferenceAssetIndex(false,HandModelKind::Fist)==1u);
-    assert(handReferenceAssetIndex(true,HandModelKind::GunHolding)==3u);
+    assert(handReferenceAssetIndex(true,HandModelKind::GunHolding)==2u);
     assert(handReferenceAssetIndex(false,HandModelKind::GunHolding)==3u);
-    assert(handMeshMirroredFromRight(true,HandModelKind::Fist));
-    assert(handMeshMirroredFromRight(true,HandModelKind::GunHolding));
+    assert(!handMeshMirroredFromRight(true,HandModelKind::Fist));
+    assert(!handMeshMirroredFromRight(true,HandModelKind::GunHolding));
     assert(!handMeshMirroredFromRight(false,HandModelKind::Fist));
     assert(!handMeshMirroredFromRight(false,HandModelKind::GunHolding));
     assert(handModelControllerForwardRollDegrees(true,HandModelKind::Fist)==0.f);
