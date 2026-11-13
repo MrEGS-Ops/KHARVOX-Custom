@@ -41,19 +41,19 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
     using kharvox::VrLiveMod;
     switch(mod){
         case VrLiveMod::WeaponGrip:return {{{
-            "Guns follow your tracked hands.",
-            "One- and two-hand aiming supported.",
-            "Grab the support handle to steer.",
-            "Each weapon has its own grip fit.",
-            "Left/right and heavy modes work.",
-            "Fit weapon grips in CONFIGURE."}}};
+            "Fit guns to your physical VR hands.",
+            "Equip LEFT-hand gun to fit LEFT.",
+            "Equip RIGHT-hand gun to fit RIGHT.",
+            "Choose a weapon and CALIBRATE.",
+            "Fit primary and support grips.",
+            "Left/right profiles save separately."}}};
         case VrLiveMod::Gunslinger:return {{{
-            "Instant quick-draw hip holsters.",
-            "Release Grip in a hip zone to set.",
-            "Grip that zone to draw instantly.",
-            "Behind-head weapon wheel.",
-            "Wheel follows the opening hand.",
-            "Fit hip and wheel zones below."}}};
+            "LEFT and RIGHT behind-head wheels.",
+            "Put either hand behind your head.",
+            "Exit holding Grip to select a gun.",
+            "Exit without Grip to cancel.",
+            "Left/right hip zones quick-draw guns.",
+            "Release Grip in a hip zone to set."}}};
         case VrLiveMod::Killtime:return {{{
             "Change cinematic Glory Kill speed.",
             "Lower tick Hz = faster execution.",
@@ -80,7 +80,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "First pull starts the native kill.",
             "Release and re-pull up to twice.",
             "Each pull boosts execution speed.",
-            "Native sound and strong haptics.",
+            "Faster revs with each pull.",
             "Toggle mode in CONFIGURE."}}};
         default:return {{{"Select a mod for information."}}};
     }
