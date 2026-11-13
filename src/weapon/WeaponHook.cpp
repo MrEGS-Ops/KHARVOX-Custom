@@ -26,6 +26,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include "../common/RuntimePaths.h"
 
 static DWORD portableGetFileAttributesW(LPCWSTR path) {
