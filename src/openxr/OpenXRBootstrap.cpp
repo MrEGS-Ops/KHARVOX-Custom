@@ -2831,9 +2831,9 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalPosition={p.x,p.y,p.z};
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
-        // Normal Y/Z calibration may translate the native gun parallel
-        // to the laser. Fine-tune MUST move only the glove and attachment
-        // anchor: never the gun. Keep both offsets independent on reload.
+        // Normal Y/Z translation and the 1cm fine-tune now both offset the
+        // NATIVE GUN. The virtual weapon glove stays at the tracked physical
+        // controller GRIP regardless of the new weapon offset.
         const auto selectedWeaponKey=std::string(KharvoxWeaponKindKey(kind));
         const bool primaryMenuPreview=s.vrHandMenu.mode==
                 kharvox::VrHandMenuMode::Calibrating
@@ -2868,19 +2868,28 @@ void updateWeapon6Dof(){
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
             s.primaryVisualLocalPosition,factoryHand,fineTuneLocal);
         if(s.showHands){
-            // The native weapon gets ONLY ordinary Y/Z translation.
-            // Fine-tune XYZ is applied inside handAttachmentLocal below.
+            // Gun moves; neither physical controller/glove moves. Preserve
+            // the active two-hand orientation solver and unchanged aim angle.
             weaponAnchorBody=addVector(weaponAnchorBody,
                 rotateVector(rotation,anchorPlan.gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,
                 rotateVector(renderOrientation,anchorPlan.gunTranslationLocal));
         }
-        const auto primaryFixed=kharvox::primarygrip::lockedHand(
-            weaponAnchorTracking,renderOrientation,
-            s.showHands?anchorPlan.handAttachmentLocal
-                :s.primaryVisualLocalPosition,rotateGrip);
+        // Rendering the glove from weaponAnchorTracking introduced the
+        // unwanted height discrepancy even for level physical controllers.
+        // The weapon glove and free fist now share the physical GRIP
+        // controller as their positional reference.
+        const auto primaryFixed=s.showHands
+            ?kharvox::weaponpose::physicalPrimaryGlovePosition(
+                primaryHandGripController.position,weaponAnchorTracking)
+            :kharvox::primarygrip::lockedHand(
+                weaponAnchorTracking,renderOrientation,
+                s.primaryVisualLocalPosition,rotateGrip);
+        // Retain the existing per-weapon visual rotation adjustment while
+        // preventing two-hand gun steering from rotating the primary glove.
         const auto primaryRotation=normalizeQuaternion(multiply(
-            renderOrientation,s.primaryVisualLocalOrientation));
+            s.showHands?primaryController.orientation:renderOrientation,
+            s.primaryVisualLocalOrientation));
         s.primaryVisualPose.position[0]=primaryFixed.x;
         s.primaryVisualPose.position[1]=primaryFixed.y;
         s.primaryVisualPose.position[2]=primaryFixed.z;

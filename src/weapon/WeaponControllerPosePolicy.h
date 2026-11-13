@@ -54,6 +54,16 @@ inline constexpr float weaponEulerOffsetDegrees(
     return controllerAlignedHands ? 0.f : legacyDegrees;
 }
 
+// The primary glove's position is the physical weapon-hand controller GRIP
+// pose, independent of both per-weapon gun offsets and 1cm joystick nudges.
+// Distinct from the gun's AIM pose, so level physical controllers produce
+// matching tracked hand origins regardless of weapon size or calibration.
+template<class Position>
+inline const Position& physicalPrimaryGlovePosition(
+    const Position& trackedGrip,const Position&) noexcept {
+    return trackedGrip;
+}
+
 // Primary hand *visual* fitting can adjust only vertical Y and along-barrel Z.
 // Lock lateral X. Does not constrain the visual glove's local quaternion:
 // it can be oriented any way the owner chooses and locked to the gun.
@@ -64,26 +74,24 @@ inline Offset primaryHandVisualPlacement(
     return measured;
 }
 
-// Native gun follows only the ordinary Y/Z calibration adjustment.
-// 1cm Grip-held nudges alter the glove's *attachment* (weapon-hand anchor),
-// never the gun. Sideways X belongs ONLY to hand-only fitting, and neither
-// offset ever changes the OpenXR AIM quaternion or barrel direction.
+// Primary glove is anchored to physical controller GRIP, not the gun.
+// Grip-held joystick fine-tune translates ONLY the GUN in X/Y/Z, never
+// the primary glove or its controller pose. No gun rotation is introduced.
 template<class Offset>
 struct PrimaryHandAnchorPlan {
-    Offset gunTranslationLocal;   // normal calibrated Y/Z only, never fine-tune
-    Offset handAttachmentLocal;   // native reference grip + fine-tune
+    Offset gunTranslationLocal;   // calibrated Y/Z plus gun-only XYZ fine-tune
+    Offset handAttachmentLocal;   // legacy reference, glove uses physical GRIP
 };
 template<class Offset>
 inline PrimaryHandAnchorPlan<Offset> primaryHandAnchorPlan(
     const Offset& requestedHand,const Offset& referenceHand,
     const Offset& fineTune=Offset{}) noexcept {
-    // Even legacy saves with a nonzero X must leave the GUN's lateral
-    // translation locked. Preserve the X adjustment on the glove/anchor.
+    // Saved position moves the gun in Y/Z; joystick offsets apply to
+    // the gun in all three axes. The real tracked glove is unchanged.
     return {
-        Offset{0.f,requestedHand.y-referenceHand.y-fineTune.y,
-            requestedHand.z-referenceHand.z-fineTune.z},
-        Offset{requestedHand.x,referenceHand.y+fineTune.y,
-            referenceHand.z+fineTune.z}
+        Offset{fineTune.x,requestedHand.y-referenceHand.y+fineTune.y,
+            requestedHand.z-referenceHand.z+fineTune.z},
+        referenceHand
     };
 }
 
