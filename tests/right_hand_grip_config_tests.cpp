@@ -208,9 +208,9 @@ int main(){
      VrHandMenuMode::Calibrating,true,"pistol"));
  assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"super_shotgun"));
- assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"gauss_cannon"));
- assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
+ assert(kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,true,"chaingun"));
  assert(!kharvox::vrPrimaryGripHoldPreviewAllowed(
      VrHandMenuMode::Calibrating,false,"pistol")); // SUPPORT is unchanged
@@ -364,6 +364,36 @@ int main(){
  assert(visual.gaussSiegeHandValid);
  assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
+ // Optional APPLY RIGHT -> LEFT mirrors BOTH translation and orientation,
+ // never auto-edits left profiles and never changes the right original.
+ kharvox::RightHandGripSettings mirrorSettings{};
+ mirrorSettings.visualPositions["pistol"]={.20f,.03f,-.10f};
+ mirrorSettings.visualRotations["pistol"]={.12f,.22f,.33f,.91f,true};
+ kharvox::RightHandGripOffset mirroredPos{};
+ kharvox::RightHandGripRotation mirroredRotation{};
+ assert(kharvox::mirroredRightPrimaryVisualPose(
+     mirrorSettings,"pistol",false,mirroredPos,mirroredRotation));
+ assert(std::abs(mirroredPos.x+.20f)<.0001f);
+ assert(std::abs(mirroredPos.y-.03f)<.0001f);
+ assert(std::abs(mirroredRotation.x-.12f)<.0001f);
+ assert(std::abs(mirroredRotation.y+.22f)<.0001f);
+ assert(std::abs(mirroredRotation.z+.33f)<.0001f);
+ assert(std::abs(mirroredRotation.w-.91f)<.0001f);
+ assert(mirrorSettings.leftVisualPositions.empty()); // explicit action only
+ assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
+     mirroredPos,mirroredRotation,&why,true));
+ auto mirroredFile=kharvox::readRightHandGripSettings(path);
+ assert(std::abs(mirroredFile.leftVisualPositions["pistol"].x+.20f)<.0001f);
+ assert(std::abs(mirroredFile.visualPositions["pistol"].x-.12f)<.0001f);
+ mirrorSettings.gaussSiegeHandValid=true;
+ mirrorSettings.gaussSiegeHand={.12f,.23f,.34f};
+ mirrorSettings.gaussSiegeRotation={0.f,.5f,0.f,.8660254f,true};
+ assert(kharvox::mirroredRightPrimaryVisualPose(
+     mirrorSettings,"gauss_cannon",true,mirroredPos,mirroredRotation));
+ assert(std::abs(mirroredPos.x+.12f)<.0001f);
+ assert(std::abs(mirroredRotation.y+.5f)<.0001f);
+ assert(!kharvox::mirroredRightPrimaryVisualPose(
+     mirrorSettings,"chaingun",false,mirroredPos,mirroredRotation));
  // No factory available means NO destructive reset.
  assert(!kharvox::restoreVrWeaponCalibrationDefault(
      path,"unavailable-owner-factory.cfg","pistol",true,&why));

@@ -20,20 +20,31 @@ enum class VrLiveMod : int {
     PhysicalGloryKills, HandFocus, Painsaw,
     HandsJump, BoxingGuard, Other
 };
+// "Has live settings" is NOT the same as "can be enabled/disabled".
+// The three core mods stay available; only Physical Crouch and PAINSAW
+// have ON/OFF checkboxes. Physical Glory Kills retains its desktop state
+// but may still expose punch thresholds/hand controls in this menu.
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
-        ||id==VrLiveMod::PhysicalGloryKills;
+        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw;
+}
+inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
+    return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
+}
+inline constexpr bool vrLiveModAlwaysEnabled(VrLiveMod id) noexcept {
+    return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
+        ||id==VrLiveMod::Killtime;
 }
 inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
     switch(id){
         case VrLiveMod::WeaponGrip:return "Weapon Grip Calibration";
         case VrLiveMod::Gunslinger:return "Gunslinger";
         case VrLiveMod::PhysicalCrouch:return "Physical Crouch";
-        case VrLiveMod::Killtime:return "KILLTIME: RIP & TEAR";
+        case VrLiveMod::Killtime:return "KILLTIME";
         case VrLiveMod::PhysicalGloryKills:return "Physical Glory Kills";
         case VrLiveMod::HandFocus:return "Hand Focus";
-        case VrLiveMod::Painsaw:return "PAINSAW: RIPSHIFT";
+        case VrLiveMod::Painsaw:return "PAINSAW";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
@@ -49,13 +60,15 @@ inline constexpr int vrLiveToggleIndex(VrLiveMod mod) {
         case VrLiveMod::PhysicalCrouch:return 2;
         case VrLiveMod::Killtime:return 3;
         case VrLiveMod::PhysicalGloryKills:return 4;
+        case VrLiveMod::Painsaw:return 5;
         default:return -1;
     }
 }
 struct VrLiveSettings {
     // -1 follows desktop startup status (and preserves existing defaults);
     // 0/1 is an explicit live menu override saved across sessions.
-    std::array<int,5> enabledOverrides{{-1,-1,-1,-1,-1}};
+    // Slot 5 appended for PAINSAW; old five-slot saves still load.
+    std::array<int,6> enabledOverrides{{-1,-1,-1,-1,-1,-1}};
     // Offset from the EXISTING tracking-relative zones. Zero exactly
     // reproduces existing Gunslinger behaviour on a fresh installation.
     std::array<VrLivePoint,2> hipShift{};
@@ -87,6 +100,10 @@ inline bool vrLiveValidShift(VrLivePoint p) {
 }
 inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
     VrLiveMod mod,bool desktopStartupEnabled) {
+    // Ignore legacy OFF entries for core features. Keep the old six-field
+    // save format readable instead of silently rewriting UserData.
+    if(vrLiveModAlwaysEnabled(mod))return true;
+    if(!vrLiveModToggleable(mod))return desktopStartupEnabled;
     const int index=vrLiveToggleIndex(mod);
     return index<0 ? desktopStartupEnabled
        :s.enabledOverrides[static_cast<size_t>(index)]<0
@@ -94,10 +111,24 @@ inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
         :s.enabledOverrides[static_cast<size_t>(index)]==1;
 }
 inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
+    if(!vrLiveModToggleable(mod))return false;
     const int index=vrLiveToggleIndex(mod);
-    if(index<0)return false; // read-only entries never toggle.
+    if(index<0)return false;
     s.enabledOverrides[static_cast<size_t>(index)]=on?1:0;
     return true;
+}
+struct VrPainsawModes {
+    bool triggerThrottle{},legacyMotion{};
+};
+// OFF must return to native chainsaw timing: neither the new trigger-based
+// PAINSAW nor the older motion-only modifier may remain active. Respect
+// explicit live OFF even when the desktop setup has either/both enabled.
+inline VrPainsawModes vrLivePainsawModes(
+    const VrLiveSettings& settings,bool desktopTrigger,bool desktopMotion) {
+    const bool enabled=vrLiveEffectiveEnabled(settings,VrLiveMod::Painsaw,
+        desktopTrigger||desktopMotion);
+    return {enabled&&(desktopTrigger||!desktopMotion),
+            enabled&&desktopMotion};
 }
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
@@ -195,8 +226,14 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
             (name=="standing"?next.crouchStandSaved:next.crouchLoweredSaved)=valid!=0;
             (name=="standing"?next.crouchStandDelta:next.crouchLoweredDelta)=value;
         }else if(name=="enabled"){
-            for(int& value:next.enabledOverrides)if(!(row>>value))return false;
-            std::string trailing;if(row>>trailing)return false;
+            // Backward compatible: existing UserData files have 5 toggles;
+            // PAINSAW is appended as a sixth and defaults to desktop state.
+            int value{};size_t count=0;
+            while(row>>value){
+                if(count>=next.enabledOverrides.size())return false;
+                next.enabledOverrides[count++]=value;
+            }
+            if(!row.eof()||(count!=5&&count!=6))return false;
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}

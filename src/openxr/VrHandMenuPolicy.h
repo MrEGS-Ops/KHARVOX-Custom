@@ -19,14 +19,13 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
-// Grip-held aim preview is for ordinary PRIMARY weapon poses only.
-// Gauss Cannon / Chaingun keep their existing Grip -> native alt-fire
-// behaviour while their Siege/Turret calibration is being tested.
+// Grip-held aim preview works on every primary weapon.
+// Siege/Turret is engaged automatically when its mode is selected;
+// Grip itself is reserved for testing position, never alt fire in calibration.
 inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
     bool calibratingPrimary,const std::string& weapon) noexcept {
     return mode==VrHandMenuMode::Calibrating && calibratingPrimary
-        && validVrCalibrationWeapon(weapon)
-        && weapon!="gauss_cannon" && weapon!="chaingun";
+        && validVrCalibrationWeapon(weapon);
 }
 // Only LIVE weapon-pose calibration forwards the physically held PRIMARY
 // weapon Grip to DOOM's native alternate-fire input (XInput left trigger).
@@ -104,19 +103,22 @@ inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
     }
 }
 inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
-    int selectedRow,int count,int actionCount) noexcept {
+    int selectedRow,int count,int actionCount,bool toggleable=true) noexcept {
     if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
         ?1000+selectedRow:-1;
     if(nav.actionIndex<0||nav.actionIndex>=actionCount)return -1;
-    return nav.actionIndex==0?110:130+nav.actionIndex-1;
+    // Only Physical Crouch and PAINSAW have a checkbox. For every other
+    // mod, first gamepad action maps DIRECTLY to its first settings button.
+    return toggleable?(nav.actionIndex==0?110:130+nav.actionIndex-1)
+        :130+nav.actionIndex;
 }
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
-    constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
-    constexpr std::array<int,5> normalActions{20,21,30,31,95};
-    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
+    constexpr std::array<int,7> heavyActions{20,21,32,30,31,33,95};
+    constexpr std::array<int,6> normalActions{20,21,30,31,33,95};
+    return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
 struct VrHandMenuState {
@@ -126,6 +128,7 @@ struct VrHandMenuState {
     int modScroll{};
     int selectedRow{};
     int devScroll{}; // vertical viewport of read-only DEV rows
+    int devInfoIndex{-1}; // [i] selected, never a toggle
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};

@@ -6,6 +6,15 @@
 int main() {
     assert(kharvox::hands::nativeWeaponDepthScale(true) == 1.f);
     assert(kharvox::hands::nativeWeaponDepthScale(false) == 0.f);
+    // The child weapon may still submit DOOM's native depth factor .1.
+    // In verified active gameplay with custom hands, it must match scene
+    // depth=1 so a closer hand can correctly occlude the gun.
+    assert(kharvox::hands::nativeWeaponChildDepth(.1f,true,true)==1.f);
+    assert(kharvox::hands::nativeWeaponChildDepth(.1f,true,false)==.1f);
+    assert(kharvox::hands::nativeWeaponChildDepth(.1f,false,true)==.1f);
+    assert(kharvox::hands::nativeWeaponChildDepth(1.f,true,true)==1.f);
+    assert(kharvox::hands::nativeWeaponChildDepth(NAN,true,true)!=1.f);
+    assert(kharvox::hands::nativeWeaponChildDepth(2.f,true,true)==2.f);
     kharvox::hands::NativeWeaponDepthOverrides<2> overrides;
     float desired{};
     assert(!overrides.update(1, .1f, false, desired) && desired == .1f);

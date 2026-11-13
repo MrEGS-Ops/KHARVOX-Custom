@@ -9,47 +9,69 @@ struct VrLiveMenuEntry {
 };
 struct VrDevMenuEntry {
     const char* title;
-    const char* status; // LOCKED, ON, AUTO or DESKTOP, never an in-headset switch
+    const char* why; // explanation displayed by the [i] button, never a toggle
 };
 std::vector<VrDevMenuEntry> devVrMenuEntries(){
-    // This is a read-only inventory: changing a desktop-only mod in the
-    // headset must never mutate its flags or claim it has been enabled.
+    // Read-only, information-only entries. Only Mods with adjustable live
+    // controls appear on the Configurable side of this in-headset menu.
     std::vector<VrDevMenuEntry> rows;
-    const auto enabled=[&](const char* label,bool isOn){
-        if(isOn)rows.push_back({label,"ON"});
+    const auto enabled=[&](const char* label,bool isOn,const char* why){
+        if(isOn)rows.push_back({label,why});
     };
-    if(s.customMods.handFocusedRs)rows.push_back({"Hand Focus","LOCKED"});
-    enabled("PAINSAW",s.customMods.chainsawTriggerThrottle);
-    enabled("Hands Jump",s.handsJumpEnabled);
-    enabled("Boxing Guard",s.customMods.boxingGuard);
-    enabled("Back-of-Hand HUD",s.customMods.backOfHandHud);
-    enabled("No HUD",s.customMods.disableHud);
-    enabled("No Weapon Wheel",s.customMods.disableWeaponWheel);
-    enabled("Directional Dash",s.customMods.directionalDash);
-    enabled("Gauss Charge Slow",s.customMods.gaussChargeSlowMovement);
-    enabled("Persistent SSG Reload",s.customMods.persistentSuperShotgunReload);
-    enabled("Physical Grenade",s.customMods.physicalGrenadeThrow);
-    enabled("Story Skip",s.customMods.storyCinematicSkip);
-    enabled("Story Free Walk",s.customMods.storyFreeWalk);
-    enabled("Story Camera Focus",s.customMods.storyCameraFocus);
-    enabled("Uninterrupted Story",s.customMods.uninterruptedStory);
-    enabled("Revenge Demon",s.customMods.revengeDemon);
-    enabled("Haptic Overhaul",s.customMods.hapticOverhaul);
-    enabled("Fast Glory Kills",s.customMods.fastGloryKills);
-    enabled("Fast Chainsaw Kills",s.customMods.fastChainsawKills);
-    enabled("Cinematic Exit Handoff",s.customMods.cinematicExitHandoff);
-    // These launcher Developer overrides have no adjustable in-VR settings.
-    // Their desktop selections are not exposed as live flags here; show
-    // DESKTOP instead of inventing an enabled/disabled runtime status.
-    rows.push_back({"DEV: Glory Kill Highlighting","DESKTOP"});
-    rows.push_back({"DEV: Glory Kill Motion Blur","DESKTOP"});
-    rows.push_back({"DEV: Camera Kicks & Shaking","DESKTOP"});
-    rows.push_back({"DEV: Native Weapon Kick","DESKTOP"});
-    rows.push_back({"DEV: Hand-Hit Reactions","DESKTOP"});
-    rows.push_back({"DEV: Native Ledge Speed","DESKTOP"});
-    rows.push_back({"DEV: Scripted Cinematic Speed","DESKTOP"});
-    rows.push_back({"DEV: RS Melee / Animation",
-        s.physicalGlorykillEnabled?"AUTO":"OFF"});
+    enabled("Hand Focus",s.customMods.handFocusedRs,
+        "Core hand-directed focus; no separate VR settings.");
+    enabled("Hands Jump",s.handsJumpEnabled,
+        "Jump gesture is configured in the desktop launcher.");
+    enabled("Boxing Guard",s.customMods.boxingGuard,
+        "Guard behaviour has no adjustable live menu controls.");
+    enabled("Back-of-Hand HUD",s.customMods.backOfHandHud,
+        "HUD position is configured separately from VR Mods.");
+    enabled("No HUD",s.customMods.disableHud,
+        "HUD visibility is a desktop gameplay option.");
+    enabled("No Weapon Wheel",s.customMods.disableWeaponWheel,
+        "Weapon wheel suppression is a desktop-only setting.");
+    enabled("Directional Dash",s.customMods.directionalDash,
+        "Movement action has no live configuration controls.");
+    enabled("Gauss Charge Slow",s.customMods.gaussChargeSlowMovement,
+        "Siege movement slowdown has no live options.");
+    enabled("Persistent SSG Reload",s.customMods.persistentSuperShotgunReload,
+        "SSG reload persistence has no live options.");
+    enabled("Physical Grenade",s.customMods.physicalGrenadeThrow,
+        "Grenade gesture has no live menu settings.");
+    enabled("Story Skip",s.customMods.storyCinematicSkip,
+        "Cinematic shortcut is fixed by desktop controls.");
+    enabled("Story Free Walk",s.customMods.storyFreeWalk,
+        "Story movement is controlled outside VR Mod Settings.");
+    enabled("Story Camera Focus",s.customMods.storyCameraFocus,
+        "Scripted camera focus is not adjusted live.");
+    enabled("Uninterrupted Story",s.customMods.uninterruptedStory,
+        "Story protection has no user-adjustable live values.");
+    enabled("Revenge Demon",s.customMods.revengeDemon,
+        "Gameplay feature has no live configuration values.");
+    enabled("Haptic Overhaul",s.customMods.hapticOverhaul,
+        "Haptic profiles are selected in the desktop launcher.");
+    enabled("Fast Glory Kills",s.customMods.fastGloryKills,
+        "Fixed execution speed override; no live sliders here.");
+    enabled("Fast Chainsaw Kills",s.customMods.fastChainsawKills,
+        "Fixed chainsaw execution override; no live sliders.");
+    enabled("Cinematic Exit Handoff",s.customMods.cinematicExitHandoff,
+        "Safety handoff is automatic and is not user-tuned.");
+    rows.push_back({"Glory Kill Highlighting",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Glory Kill Motion Blur",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Camera Kicks & Shaking",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Native Weapon Kick",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Hand-Hit Reactions",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Native Ledge Speed",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"Scripted Cinematic Speed",
+        "Developer override: adjust in the desktop launcher."});
+    rows.push_back({"RS Melee / Animation",
+        "Physical GK owns melee input; safety behaviour is automatic."});
     return rows;
 }
 std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
@@ -58,17 +80,21 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
         if(on||showEvenIfOff)rows.push_back({title,id,on});
     };
-    // Always show the five editable features so OFF ones can be re-enabled.
+    // Three core features stay on; only Crouch/PAINSAW can be toggled.
+    // Keep Physical Glory Kills settings available without a live checkbox.
     add("Weapon Grip Calibration",VrLiveMod::WeaponGrip,
         s.customMods.offHandGripCapture,true);
     add("Gunslinger",VrLiveMod::Gunslinger,
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
     add("Physical Crouch",VrLiveMod::PhysicalCrouch,
         s.customMods.physicalCrouch,true);
-    add("KILLTIME: RIP & TEAR",VrLiveMod::Killtime,
+    add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
+    add("PAINSAW",VrLiveMod::Painsaw,
+        s.customMods.chainsawTriggerThrottle
+            ||s.customMods.motionChainsawKillSpeed,true);
     // Keep the left list strictly configurable. DEV consolidates every
     // currently active read-only mod and non-configurable developer override.
     rows.push_back({"DEV",VrLiveMod::Other,true,true});
@@ -111,6 +137,15 @@ void applyVrLiveModRuntimeState(){
         KharvoxCameraSetCrouchState(false);
     }
     s.customMods.physicalCrouch=physicalCrouch;
+    // PAINSAW includes legacy motion-only mode as well as current trigger
+    // throttle. OFF disables both, otherwise an existing desktop setup
+    // retains its original implementation. New live ON defaults to the
+    // modern trigger-throttle mode without enabling two speed controllers.
+    const auto painsaw=kharvox::vrLivePainsawModes(
+        s.vrLiveSettings,s.vrDesktopMods.chainsawTriggerThrottle,
+        s.vrDesktopMods.motionChainsawKillSpeed);
+    s.customMods.chainsawTriggerThrottle=painsaw.triggerThrottle;
+    s.customMods.motionChainsawKillSpeed=painsaw.legacyMotion;
     s.vrLiveKilltimeEnabled=enabled(VrLiveMod::Killtime,s.vrDesktopKilltime);
     const bool physicalGK=enabled(VrLiveMod::PhysicalGloryKills,
         s.vrDesktopPhysicalGk);
@@ -186,8 +221,9 @@ bool handleVrLiveMenuAction(int action){
     using kharvox::VrLiveCapture;
     auto& m=s.vrHandMenu;
     if(action==110){
-        if(!kharvox::vrLiveModEditable(m.selectedMod)){
-            m.message="This mod is read-only. Use the desktop launcher.";return true;
+        if(!kharvox::vrLiveModToggleable(m.selectedMod)){
+            m.message="Core settings remain accessible; only Physical Crouch and PAINSAW toggle.";
+            return true;
         }
         if(KharvoxCameraSyncAttackActive()||s.chainsawKillLatched){
             m.message="Finish the execution before changing live mods.";return true;
@@ -200,6 +236,9 @@ bool handleVrLiveMenuAction(int action){
                    ||s.vrDesktopMods.behindHeadWeaponWheel
             :m.selectedMod==VrLiveMod::PhysicalCrouch?s.vrDesktopMods.physicalCrouch
             :m.selectedMod==VrLiveMod::Killtime?s.vrDesktopKilltime
+            :m.selectedMod==VrLiveMod::Painsaw
+                ?s.vrDesktopMods.chainsawTriggerThrottle
+                   ||s.vrDesktopMods.motionChainsawKillSpeed
             :s.vrDesktopPhysicalGk);
         auto previous=s.vrLiveSettings;
         kharvox::vrLiveSetEnabled(s.vrLiveSettings,m.selectedMod,!was);

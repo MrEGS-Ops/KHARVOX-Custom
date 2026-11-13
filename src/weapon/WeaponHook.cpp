@@ -2062,6 +2062,14 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         &&weaponHolstered.load(std::memory_order_acquire);
     const float submittedModelScale=hideHolsteredPresentation
         ?0.001f:modelScale;
+    // The native first-person weapon's child can retain its own 0.1 depth
+    // factor even after KHARVOX restores world-depth rendering for its
+    // root/prop entities. That draws the gun over an actually nearer glove.
+    // Normalize ONLY this verified gameplay weapon render call; leave all
+    // level geometry, cutscenes and non-weapon rendering untouched.
+    const float submittedDepthHack=kharvox::hands::nativeWeaponChildDepth(
+        depthHack,weaponPresentation&&controllerPlacementActive(),
+        customHandsRequested());
     // Cache DOOM's original arguments even when a chainsaw kill owns the
     // camera. This is observational only; existing VR transform submission,
     // holster logic and material/lighting behaviour are unchanged.
@@ -2097,13 +2105,15 @@ extern "C" void __fastcall weaponRenderUpdateHook(
             const unsigned bit=1u<<index;
             if(!(depthWeaponsLogged.fetch_or(bit,std::memory_order_relaxed)&bit))
                 log(std::string("[HANDS] native weapon depth weapon=")
-                    +KharvoxWeaponKindKey(kind)+" submitted="+std::to_string(depthHack)
+                    +KharvoxWeaponKindKey(kind)+" original="+std::to_string(depthHack)
+                    +" submitted="+std::to_string(submittedDepthHack)
                     +" expected=1 source=child-render-update");
         }
     }
     if (originalWeaponRenderUpdate) {
         originalWeaponRenderUpdate(renderObject, submittedOrigin, submittedAxis, viewOffset,
-                                   renderView, frame, time, flags, submittedModelScale, depthHack);
+                                   renderView, frame, time, flags, submittedModelScale,
+                                   submittedDepthHack);
     }
 }
 
