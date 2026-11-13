@@ -175,6 +175,36 @@ void resetVrMenuSelectedWeapon(){
     m.message=std::string("Your factory calibration restored: ")+m.weapon();
     log("[VR-HAND-MENU] "+m.message);
 }
+void applyRightGripToLeft(){
+    auto& m=s.vrHandMenu;
+    const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
+    // Read the saved user values, not a temporary hand-position preview.
+    const auto latest=kharvox::readRightHandGripSettings(rightFile);
+    kharvox::RightHandGripOffset pos{};
+    kharvox::RightHandGripRotation rot{};
+    const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+    const bool alternate=m.alternateProfile
+        &&(weapon==KharvoxWeaponKind::GaussCannon
+            ||weapon==KharvoxWeaponKind::Chaingun);
+    if(!kharvox::mirroredRightPrimaryVisualPose(
+        latest,m.weapon(),alternate,pos,rot)){
+        m.message="No valid saved RIGHT grip to mirror. Save RIGHT first.";
+        return;
+    }
+    std::string why;
+    if(!kharvox::saveRightHandVisualPose(rightFile,m.weapon(),alternate,
+        pos,rot,&why,true)){
+        m.message="MIRROR FAILED: "+why;return;
+    }
+    s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
+    s.primaryVisualLocked=false;
+    s.supportVisualLocked=false;
+    refreshVrHandMenuSavedStatus();
+    m.message=std::string("LEFT primary mirrored from RIGHT: ")
+        +m.weapon()+(alternate?" (alternate mode)":"")
+        +". Adjust LEFT independently whenever needed.";
+    log("[VR-HAND-MENU] "+m.message);
+}
 void startVrSelectedWeaponCalibration(){
     auto& m=s.vrHandMenu;
     m.autoSelectingWeapon=false;
