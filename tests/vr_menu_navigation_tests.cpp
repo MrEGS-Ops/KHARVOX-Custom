@@ -28,13 +28,37 @@ int main(){
     vrMenuNavigateStick(nav,-.90f,0.f,5,selected,2);
     assert(!nav.settingsColumn);
     assert(vrMenuModsGamepadTarget(nav,selected,5,2)==1002);
-    // Grip-held test must NOT freeze the opposite-controller movement.
-    // The actual calibration preview reads fresh controller position on
-    // every frame, both before and during the Grip-held 1cm nudge mode.
-    assert(vrWeaponManualCalibrationLive(VrHandMenuMode::Calibrating,false));
-    assert(vrWeaponManualCalibrationLive(VrHandMenuMode::Calibrating,true));
-    assert(!vrWeaponManualCalibrationLive(VrHandMenuMode::Menu,true));
-    assert(!vrWeaponManualCalibrationLive(VrHandMenuMode::Closed,false));
+    // GRIP RELEASED -> live free controller, every frame.
+    // GRIP HELD -> freeze the valid pose for 1cm fine tune only. If
+    // no preview yet exists, a first held frame can capture the pose.
+    assert(vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Calibrating,false,true));
+    assert(vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Calibrating,false,false));
+    assert(!vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Calibrating,true,true));
+    assert(vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Calibrating,true,false));
+    assert(!vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Menu,true,true));
+    assert(!vrWeaponManualCalibrationLive(
+        VrHandMenuMode::Closed,false,false));
+    // If the Quest runtime provides a valid but non-TRACKED GRIP pose,
+    // use a tracked AIM laser pose. If neither is tracked, POSITION_VALID
+    // still suffices; don't leave the glove stuck at the old saved pose.
+    struct FakeTrackedPose {bool valid,positionTracked;int id;};
+    const FakeTrackedPose trackedGrip{true,true,1};
+    const FakeTrackedPose trackedAim{true,true,2};
+    const FakeTrackedPose validPredictedGrip{true,false,3};
+    const FakeTrackedPose validPredictedAim{true,false,4};
+    const FakeTrackedPose unavailable{false,false,5};
+    assert(&vrCalibrationFreeControllerPose(trackedGrip,trackedAim)==&trackedGrip);
+    assert(&vrCalibrationFreeControllerPose(validPredictedGrip,trackedAim)==&trackedAim);
+    assert(&vrCalibrationFreeControllerPose(validPredictedGrip,validPredictedAim)
+        ==&validPredictedGrip);
+    assert(&vrCalibrationFreeControllerPose(unavailable,validPredictedAim)
+        ==&validPredictedAim);
+    assert(&vrCalibrationFreeControllerPose(unavailable,trackedAim)==&trackedAim);
     // GRIP-held weapon fine-tune: 1 cm PER intentional flick, no auto
     // repeat when held, no steps outside primary calibration or Grip hold.
     VrWeaponFineTuneEdges fine{};
