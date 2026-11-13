@@ -130,14 +130,14 @@ void paintVrHandMenu() {
                 write(49,296,tuning?"POSITION FINE-TUNE / GRIP HELD"
                     :"HAND ROTATION / GRIP RELEASED",RGB(84,233,214));
                 if(tuning){
-                    write(49,329,"LEFT STICK L/R: hand left / right (X)",white);
-                    write(49,358,"LEFT STICK U/D: forward / back (Z)",white);
-                    write(49,387,"RIGHT STICK U/D: up / down (Y)",white);
+                    write(49,329,"LEFT STICK L/R: move GUN left / right",white);
+                    write(49,358,"LEFT STICK U/D: move GUN forward / back",white);
+                    write(49,387,"RIGHT STICK U/D: move GUN up / down",white);
                     write(49,415,"1 cm per flick; centre stick to repeat.",muted);
                 }else{
                     write(49,333,"Move free controller to rotate glove.",white);
-                    write(49,369,"Hold weapon Grip for 1 cm position nudges.",white);
-                    write(49,407,"Hand / anchor only; weapon aim unchanged.",muted);
+                    write(49,369,"Hold Grip: 1 cm GUN-only position nudges.",white);
+                    write(49,407,"Hand fixed to controller; GUN position adjusts.",muted);
                 }
                 if(heavy&&m.alternateProfile)
                     write(39,450,"ALT MODE: active",RGB(84,233,214));
