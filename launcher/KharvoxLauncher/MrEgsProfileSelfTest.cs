@@ -69,6 +69,10 @@ internal static class MrEgsProfileSelfTest
                 || !Control<CheckBox>(form, "handsJump").Enabled
                 || !Control<ComboBox>(form, "backWeapon").Enabled)
                 throw new InvalidDataException("Original profiles were not unlocked.");
+            Control<CheckBox>(form, "laserSight").Checked = true;
+            if (profile.SelectedIndex != 0)
+                throw new InvalidDataException(
+                    "Editing a different profile must not silently select MrEGS_.");
 
             form.SelectLaunchProfileForSelfTest(LauncherPresetPolicy.MrEgsPresetIndex);
             CheckLocks();
