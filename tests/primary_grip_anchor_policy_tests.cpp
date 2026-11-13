@@ -121,6 +121,43 @@ int main(){
             rotatedPrimaryController,true,false);
     assert(&noSteerFrame==&rotatedPrimaryController);
 
+    // Support hand live preview and SAVED playback use the exact SAME
+    // pre-fine-tune weapon AIM reference. Its physical GRIP must stay in
+    // the same place when entering calibration, and after a gun fine-tune
+    // offset is applied. Both physical weapon-hand sides are supported.
+    const Quat identityGrip{0.f,0.f,0.f,1.f};
+    const Quat yawGrip{0.f,.38268343f,0.f,.92387953f};
+    for(const Quat weaponOrientation:{identityGrip,yawGrip}){
+        const Vec actualSupportGrip{-.30f,.45f,-.40f};
+        const Vec actualFreeAim{-.30f,.45f,-.54f};
+        const Vec unadjustedAimAnchor{.11f,.55f,-.05f};
+        const Vec gunTranslationLocal{.04f,-.06f,-.12f};
+        const Vec shiftedGunOrigin=add(unadjustedAimAnchor,
+            rotate(weaponOrientation,gunTranslationLocal));
+        const Vec measuredLocal=rotate(conjugate(weaponOrientation),
+            subtract(actualSupportGrip,unadjustedAimAnchor));
+        const auto preview=kharvox::weaponpose::
+            supportGloveAtCalibrationReference(unadjustedAimAnchor,
+                weaponOrientation,measuredLocal,add,rotate);
+        assert(near(preview,actualSupportGrip));
+        assert(!near(preview,actualFreeAim)); // do not capture AIM offset
+        // 'SAVE' persists measuredLocal. A later gameplay draw/Grip
+        // computes the same physical location, NOT shiftedGunOrigin +
+        // the saved support offset (the old double-translation bug).
+        for(const bool leftPrimary:{false,true}){
+            Vec stored=measuredLocal;
+            if(leftPrimary)stored.x=-stored.x; // existing mirrored file
+            Vec active=stored;
+            if(leftPrimary)active.x=-active.x; // runtime mirrors back
+            const auto reloaded=kharvox::weaponpose::
+                supportGloveAtCalibrationReference(unadjustedAimAnchor,
+                    weaponOrientation,active,add,rotate);
+            assert(near(reloaded,actualSupportGrip));
+            assert(!near(reloaded,add(shiftedGunOrigin,
+                rotate(weaponOrientation,active))));
+        }
+    }
+
     // A physical primary controller is the sole authoritative attachment
     // anchor for glove AND two-hand rotation. Weapon model/root may be
     // translated and rotated independently without ever moving that anchor.
