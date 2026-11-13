@@ -3197,8 +3197,12 @@ void updateGameplayActions(XrTime displayTime){
     const bool triggerDown=s.chainsawTriggerPressure>.55f;
     const bool legacyWeaponSelectDown=s.weaponWheelRemapEnabled
         ?physicalAButtonDown:crouchStickDown;
-    const bool weaponSelectDown=gameplay
-        &&(anyGestureWheelEnabled
+    // Gunslinger owns selection exclusively, including when the separate
+    // No Weapon Wheel option suppresses gesture opening. Never fall through
+    // to the old right-stick-DOWN weapon select: that direction is reserved
+    // as manual crouch when Physical Crouch is disabled.
+    const bool weaponSelectDown=gameplay&&!s.customMods.disableWeaponWheel
+        &&(s.customMods.behindHeadWeaponWheel
             ?behindHeadWheelRequested:legacyWeaponSelectDown);
 
     // When Behind-Head Weapon Wheel owns selection, the old wheel input is
