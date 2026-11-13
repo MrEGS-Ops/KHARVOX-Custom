@@ -4,6 +4,7 @@
 #include "../common/DiagnosticLogging.h"
 #include "../common/PoseTrace.h"
 #include "WeaponHook.h"
+#include "WeaponControllerPosePolicy.h"
 #include "WeaponIdentityPolicy.h"
 #include "AerWeaponPairPolicy.h"
 #include "AerWeaponPoseCache.h"
@@ -2360,18 +2361,18 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
     // physical controller. Restrict legacy free-angle tuning to guns-only
     // mode; never touch projection, scene depth, or hand rendering here.
     const bool controllerAlignedWeapon=customHandsRequested();
-    const float yawHalfRadians = (controllerAlignedWeapon
-        ?0.f:currentWeaponYawOffsetDegrees()) * 0.00872664626f;
+    const float yawHalfRadians = kharvox::weaponpose::weaponEulerOffsetDegrees(
+        currentWeaponYawOffsetDegrees(),controllerAlignedWeapon) * 0.00872664626f;
     const std::array<float, 4> yawCorrection{
         0.0f, std::sin(yawHalfRadians), 0.0f, std::cos(yawHalfRadians)
     };
-    const float pitchHalfRadians = (controllerAlignedWeapon
-        ?0.f:currentWeaponPitchOffsetDegrees()) * 0.00872664626f;
+    const float pitchHalfRadians = kharvox::weaponpose::weaponEulerOffsetDegrees(
+        currentWeaponPitchOffsetDegrees(),controllerAlignedWeapon) * 0.00872664626f;
     const std::array<float, 4> pitchCorrection{
         std::sin(pitchHalfRadians), 0.0f, 0.0f, std::cos(pitchHalfRadians)
     };
-    const float rollHalfRadians = (controllerAlignedWeapon
-        ?0.f:currentWeaponRollOffsetDegrees()) * 0.00872664626f;
+    const float rollHalfRadians = kharvox::weaponpose::weaponEulerOffsetDegrees(
+        currentWeaponRollOffsetDegrees(),controllerAlignedWeapon) * 0.00872664626f;
     const std::array<float, 4> rollCorrection{
         0.0f, 0.0f, std::sin(rollHalfRadians), std::cos(rollHalfRadians)
     };
