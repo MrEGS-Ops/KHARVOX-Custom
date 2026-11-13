@@ -32,6 +32,10 @@ When both hands grip the weapon in normal gameplay, the existing support-hand or
 
 ## Normal gameplay two-hand weapon steering
 
+**Visual weapon-hand lock during two-hand gameplay:** while a valid support-hand Grip is latched and the existing two-hand orientation solver is steering the weapon, the visible PRIMARY weapon glove now uses the weapon's final rendered orientation plus its own saved weapon-local wrist quaternion. The glove no longer appears to twist relative to or let the gun spin inside it. The weapon-hand controller remains physically unconstrained and fully tracked for gameplay and the solver; the controller-fixed GRIP position/attachment anchor is also unchanged. Releasing the support Grip immediately restores the ordinary single-hand visual frame. Calibration menus and Grip-held fine-tune still behave as before; only the glove's rendering changes during active normal two-handed gameplay.
+
+
+
 When Weapon Grip Calibration and custom hand models are active in **normal gameplay**, the gun follows the primary controller's OpenXR AIM orientation until the support hand grips near its saved support position and the existing two-hand system actually latches. The primary-hand attachment pivot remains controller-fixed, not weapon-root-fixed. While held and tracked, **moving the support controller steers the gun** through the existing two-hand orientation solver; the attached support-hand mesh follows the same solved weapon pose. Releasing the support Grip, losing tracking, switching weapons or holstering returns to primary-controller AIM. The normal weapon-hand calibration overlay and the older two-hand calibration mode are deliberately excluded. Saved weapon-hand grip offsets, joystick fine-tune, gun/hand depth and gunstock settings are unchanged.
 
 ## Rotation behaviour
