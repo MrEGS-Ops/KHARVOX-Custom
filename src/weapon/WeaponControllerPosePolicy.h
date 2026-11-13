@@ -65,6 +65,24 @@ inline const Pivot& nativeWeaponGripPivotForPresentation(
         ?neutralPivot:animatedPivot;
 }
 
+// Only while a support Grip stays latched in actual gameplay, alternate
+// Gauss Siege / Chaingun Turret grip positions should ease between the two
+// APPROVED, saved profile endpoints instead of jumping instantly. Position
+// and gun-only offset blend together over 320ms, independent of frame rate.
+inline constexpr unsigned kHeavyGripTransitionMs=320;
+inline float heavyGripTransitionEase(unsigned long long elapsedMs) noexcept {
+    const float t=elapsedMs>=kHeavyGripTransitionMs?1.f
+        :static_cast<float>(elapsedMs)/kHeavyGripTransitionMs;
+    return t*t*(3.f-2.f*t);
+}
+template<class Vector>
+inline Vector heavyGripBlendVector(const Vector& from,const Vector& to,
+    float progress) noexcept {
+    return {from.x+(to.x-from.x)*progress,
+            from.y+(to.y-from.y)*progress,
+            from.z+(to.z-from.z)*progress};
+}
+
 // The legacy 25-degree gun yaw (and old pitch/roll overrides) must not be
 // layered onto the native weapon while laser-locked hands are enabled.
 inline constexpr float weaponEulerOffsetDegrees(
