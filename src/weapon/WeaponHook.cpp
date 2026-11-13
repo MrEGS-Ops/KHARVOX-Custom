@@ -2354,15 +2354,24 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
     const auto deltaQuaternion=input.orientation;
 
     const float weaponScale = configuredWeaponScale();
-    const float yawHalfRadians = currentWeaponYawOffsetDegrees() * 0.00872664626f;
+    // With scene-integrated hands, the native gun and controller now share
+    // an OpenXR GRIP pose. Layering the old 25-degree yaw/default pitch/roll
+    // calibration on this already tracked frame turns the gun away from the
+    // physical controller. Restrict legacy free-angle tuning to guns-only
+    // mode; never touch projection, scene depth, or hand rendering here.
+    const bool controllerAlignedWeapon=customHandsRequested();
+    const float yawHalfRadians = (controllerAlignedWeapon
+        ?0.f:currentWeaponYawOffsetDegrees()) * 0.00872664626f;
     const std::array<float, 4> yawCorrection{
         0.0f, std::sin(yawHalfRadians), 0.0f, std::cos(yawHalfRadians)
     };
-    const float pitchHalfRadians = currentWeaponPitchOffsetDegrees() * 0.00872664626f;
+    const float pitchHalfRadians = (controllerAlignedWeapon
+        ?0.f:currentWeaponPitchOffsetDegrees()) * 0.00872664626f;
     const std::array<float, 4> pitchCorrection{
         std::sin(pitchHalfRadians), 0.0f, 0.0f, std::cos(pitchHalfRadians)
     };
-    const float rollHalfRadians = currentWeaponRollOffsetDegrees() * 0.00872664626f;
+    const float rollHalfRadians = (controllerAlignedWeapon
+        ?0.f:currentWeaponRollOffsetDegrees()) * 0.00872664626f;
     const std::array<float, 4> rollCorrection{
         0.0f, 0.0f, std::sin(rollHalfRadians), std::cos(rollHalfRadians)
     };
