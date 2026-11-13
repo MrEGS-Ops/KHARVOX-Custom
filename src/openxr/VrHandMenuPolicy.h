@@ -125,6 +125,7 @@ struct VrHandMenuState {
     int modScroll{};
     int selectedRow{};
     int devScroll{}; // vertical viewport of read-only DEV rows
+    int devInfoIndex{-1}; // [i] selected, never a toggle
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
