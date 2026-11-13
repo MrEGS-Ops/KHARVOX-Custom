@@ -85,9 +85,6 @@ public sealed class MainForm : Form
     private bool launchOperationInProgress;
     private bool lastKnownDoomRunning;
     private bool applyingPreset;
-    private bool loadingSettings;
-    internal bool IsMrEgsProfileActive => preset.SelectedIndex == LauncherPresetPolicy.MrEgsPresetIndex;
-    internal void SelectLaunchProfileForSelfTest(int index) => preset.SelectedIndex = index;
     private readonly Panel viewport = new() { Dock = DockStyle.Fill, AutoScroll = true };
     private TableLayoutPanel? launcherContent;
     private bool fittingWindow;
@@ -162,7 +159,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.WhiteSmoke
         });
-        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "MrEGS_"]);
+        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "Custom"]);
         preset.Dock = DockStyle.Fill;
         preset.SelectedIndexChanged += (_, _) => ApplyPreset();
         profileRow.Controls.Add(preset);
@@ -738,54 +735,9 @@ public sealed class MainForm : Form
         grid.Controls.Add(control, 1, row);
     }
 
-    // MrEGS_ owns these core settings. The UI remains visible but greyed out;
-    // the values cannot be changed by previous saved choices or mod UI events.
-    // Keep other profile options and all unrelated settings editable.
-    private void ApplyMrEgsProfileValues(bool resetTurnSpeed)
-    {
-        var locked = IsMrEgsProfileActive;
-        if (locked)
-        {
-            intense.Checked = true;
-            cinematicFreelook.Checked = true;
-            otherCinematicsInQuad.Checked = false;
-            cinewindowFollowsHeadset.Checked = false;
-            physicalGlorykill.Checked = true;
-            virtualGunstock.Checked = false;
-            laserSight.Checked = false;
-            showHands.Checked = true;
-            handsJump.Checked = true;
-            leftHanded.Checked = false;
-            if (resetTurnSpeed)
-            {
-                turnMode.SelectedIndex = 0; // Smooth turn: speed slider has an effect.
-                smoothSpeed.Value = LauncherPresetPolicy.MrEgsTurnSpeed;
-            }
-        }
-        intense.Enabled = !locked;
-        cinematicFreelook.Enabled = !locked && intense.Checked;
-        otherCinematicsInQuad.Enabled = !locked && intense.Checked;
-        cinewindowFollowsHeadset.Enabled = !locked;
-        physicalGlorykill.Enabled = !locked;
-        backWeapon.Enabled = !locked;
-        virtualGunstock.Enabled = !locked;
-        laserSight.Enabled = !locked;
-        showHands.Enabled = !locked;
-        handsJump.Enabled = !locked;
-        leftHanded.Enabled = !locked;
-        leftHandSwapMode.Enabled = !locked && leftHanded.Checked;
-    }
-
     private void ApplyPreset()
     {
-        if (preset.SelectedIndex < 0) return;
-        if (IsMrEgsProfileActive)
-        {
-            applyingPreset = true;
-            try { ApplyMrEgsProfileValues(resetTurnSpeed: !loadingSettings); }
-            finally { applyingPreset = false; }
-            return;
-        }
+        if (preset.SelectedIndex < 0 || preset.SelectedIndex == 3) return;
         applyingPreset = true;
         try
         {
@@ -841,25 +793,13 @@ public sealed class MainForm : Form
         finally { applyingPreset = false; }
         cinematicFreelook.Enabled = intense.Checked;
         otherCinematicsInQuad.Enabled = intense.Checked;
-        ApplyMrEgsProfileValues(resetTurnSpeed: false); // Unlock when leaving MrEGS_.
         smoothSpeed.Enabled = turnMode.SelectedIndex == 0;
         snapAngle.Enabled = turnMode.SelectedIndex == 1;
     }
 
     private void OptionChanged(object? sender, EventArgs e)
     {
-        // MrEGS_ is a named, fixed profile, not the old automatic Custom
-        // fallback. Editing a different profile must not switch into and
-        // unexpectedly lock the user's controls.
-        // Only direct profile selection enters MrEGS_.
-        // Programmatic mod changes must not bypass the selected profile's fixed
-        // values, even if a disabled native checkbox gets set internally.
-        if (!applyingPreset && IsMrEgsProfileActive)
-        {
-            applyingPreset = true;
-            try { ApplyMrEgsProfileValues(resetTurnSpeed: false); }
-            finally { applyingPreset = false; }
-        }
+        if (!applyingPreset && Visible && preset.SelectedIndex >= 0 && preset.SelectedIndex != 3) preset.SelectedIndex = 3;
         smoothSpeed.Enabled = turnMode.SelectedIndex == 0;
         snapAngle.Enabled = turnMode.SelectedIndex == 1;
     }
@@ -1063,7 +1003,6 @@ public sealed class MainForm : Form
 
     private void LoadSettings()
     {
-        loadingSettings = true;
         try
         {
             var s = LauncherSettingsStore.Load(SettingsPath);
@@ -1147,13 +1086,10 @@ public sealed class MainForm : Form
             cinematicFreelook.Checked = true;
             otherCinematicsInQuad.Checked = false;
             cinewindowFollowsHeadset.Checked = false;
-            turnMode.SelectedIndex = 0;
-            smoothSpeed.Value = LauncherPresetPolicy.MrEgsTurnSpeed;
-            preset.SelectedIndex = LauncherPresetPolicy.DefaultPresetIndex;
+            preset.SelectedIndex = 0;
         }
         finally
         {
-            loadingSettings = false;
             UpdateWeaponModeDescription();
             cinematicFreelook.Enabled = intense.Checked;
             otherCinematicsInQuad.Enabled = intense.Checked;
@@ -1161,9 +1097,6 @@ public sealed class MainForm : Form
             physicalGlorykillHands.Enabled = physicalGlorykill.Checked;
             leftHandSwapMode.Enabled = leftHanded.Checked;
             useFsrUpscaling.Enabled = true;
-            applyingPreset = true;
-            try { ApplyMrEgsProfileValues(resetTurnSpeed: false); }
-            finally { applyingPreset = false; }
             UpdateSpeedSliderLabels();
         }
     }

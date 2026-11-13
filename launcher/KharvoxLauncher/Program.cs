@@ -122,6 +122,7 @@ internal static class Program
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
                 window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
+                MrEgsLaunchProfileBridge.Watch(window);
                 EmbeddedLauncherLayout.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);
@@ -159,7 +160,10 @@ internal static class Program
         {
             KharvoxLaunchOptions options;
             using (var form = new MainForm())
+            {
+                MrEgsLaunchProfileBridge.Watch(form);
                 options = form.CreateLaunchOptions();
+            }
 
             Log("Loaded existing settings: " + options.DiagnosticSummary());
             // Constructing WinForms controls installs a synchronization context.
