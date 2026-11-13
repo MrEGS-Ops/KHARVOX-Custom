@@ -2066,9 +2066,12 @@ extern "C" void __fastcall weaponRenderUpdateHook(
     // factor even after KHARVOX restores world-depth rendering for its
     // root/prop entities. That draws the gun over an actually nearer glove.
     // Normalize ONLY this verified gameplay weapon render call; leave all
-    // level geometry, cutscenes and non-weapon rendering untouched.
+    // level geometry, cutscenes and non-weapon rendering untouched. Do not
+    // gate the depth convention on controller pose availability: the independently
+    // composited glove can still be on-screen when native grip input briefly
+    // invalidates weapon placement.
     const float submittedDepthHack=kharvox::hands::nativeWeaponChildDepth(
-        depthHack,weaponPresentation&&controllerPlacementActive(),
+        depthHack,weaponPresentation,
         customHandsRequested());
     // Cache DOOM's original arguments even when a chainsaw kill owns the
     // camera. This is observational only; existing VR transform submission,
@@ -2507,8 +2510,12 @@ void updateCustomHandsWeaponDepth(unsigned char* entity, bool prop) {
     if (!TryAcquireSRWLockExclusive(&lock)) return;
     float before{}, after{};
     std::memcpy(&before, entity + depthOffset, sizeof(before));
-    const bool active = controllerPlacementActive()
-        && !readCollectibleAnimation(activeHands)
+    // Scene-integrated hands can remain visible while the controller-placement
+    // pose temporarily goes invalid. If we restore native 0.1 viewmodel depth
+    // in that situation, the first-person gun incorrectly wins the scene
+    // depth test against nearer gloves. Ownership is already restricted to
+    // the two verified native weapon-entity hook callers.
+    const bool active = !readCollectibleAnimation(activeHands)
         && KharvoxCameraGameplayActive() && !KharvoxCameraCutsceneActive();
     const bool changed = overrides.update(reinterpret_cast<uintptr_t>(entity),
                                            before, active, after);
