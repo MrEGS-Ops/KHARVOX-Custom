@@ -28,6 +28,25 @@ int main(){
     vrMenuNavigateStick(nav,-.90f,0.f,5,selected,2);
     assert(!nav.settingsColumn);
     assert(vrMenuModsGamepadTarget(nav,selected,5,2)==1002);
+    // New in-game MODS browse view only feeds vertical navigation to
+    // the generic stick helper. Horizontal drift cannot enter settings:
+    // A (1000+row) or the Configure button must enter explicitly.
+    VrMenuNavigation browsing{};
+    int modRow=0;
+    vrMenuNavigateStick(browsing,0.f,-.91f,6,modRow,0);
+    assert(modRow==1&&!browsing.settingsColumn);
+    vrMenuNavigateStick(browsing,0.f,0.f,6,modRow,0);
+    vrMenuNavigateStick(browsing,0.f,-.91f,6,modRow,0);
+    assert(modRow==2&&!browsing.settingsColumn);
+    assert(vrMenuModsGamepadTarget(browsing,modRow,6,3)==1002);
+    // Only AFTER explicit selection is options-column input meaningful.
+    browsing.settingsColumn=true;
+    browsing.actionIndex=0;
+    assert(vrMenuModsGamepadTarget(browsing,modRow,6,3,false)==130);
+    assert(vrMenuModsGamepadTarget(browsing,modRow,6,4,true)==110);
+    browsing.settingsColumn=false; // Back
+    assert(vrMenuModsGamepadTarget(browsing,modRow,6,4)==1002);
+
     // GRIP RELEASED -> live free controller, every frame.
     // GRIP HELD -> freeze the valid pose for 1cm fine tune only. If
     // no preview yet exists, a first held frame can capture the pose.
