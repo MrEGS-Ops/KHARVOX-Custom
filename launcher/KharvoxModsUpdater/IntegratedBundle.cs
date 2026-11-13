@@ -104,6 +104,13 @@ internal static class IntegratedBundle
         return false;
     }
 
+    internal static void EnsureLauncherNotRunning(string root)
+    {
+        if (NativeLauncherRunning(root))
+            throw new InvalidOperationException(
+                "Close the modified KHARVOX launcher before updating or rolling back its native runtime.");
+    }
+
     private static void PreserveUserData(string original, string staged, string root)
     {
         var user = Path.Combine(root, "UserData");
