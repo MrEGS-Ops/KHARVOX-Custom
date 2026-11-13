@@ -2792,9 +2792,15 @@ void updateWeapon6Dof(){
             if(savedHandValid)
                 s.primaryVisualLocalPosition={
                     savedHand.x,savedHand.y,savedHand.z};
+            // Pre-existing weapon-local glove quaternions were captured
+            // while gun=AIM and glove=GRIP. They belong to mismatched spaces
+            // and must not reintroduce a tilt after controller alignment.
+            // Recalibration now changes only local X/Y position, never the
+            // controller-indexed glove rotation or its forward Z anchor.
             if(savedRot.valid)
-                s.primaryVisualLocalOrientation={
-                    savedRot.x,savedRot.y,savedRot.z,savedRot.w};
+                log(std::string("[WEAPON-GRIP] ignoring legacy rotation for ")
+                    +KharvoxWeaponKindKey(kind)
+                    +" (gun and primary glove now share GRIP orientation)");
             s.primaryVisualAlternate=visualAlternate;
         }
         if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
