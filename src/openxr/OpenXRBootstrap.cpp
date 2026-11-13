@@ -2262,9 +2262,9 @@ XrQuaternionf solveTwoHandOrientation(const WeaponPose& primary,const WeaponPose
     return normalizeQuaternion(multiply(handFrame,conjugate(localSupportFrame)));
 }
 const ControllerPose& weaponController(){return s.weaponHandLeft?s.leftController:s.rightController;}
-// Keep controller-pointer/hand-focus AIM unchanged. Only the *held weapon*
-// and two-hand grip solver use the physical grip pose shared by the glove.
-const ControllerPose& weaponGripTrackingController(){
+// Only equipped-gun motion follows the exact controller AIM laser ray.
+// The independent GRIP controller is still used to locate/rotate its glove.
+const ControllerPose& weaponAimTrackingController(){
     const auto& grip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
     return kharvox::weaponpose::trackedPrimaryWeaponPose(weaponController(),grip);
 }
@@ -2400,11 +2400,11 @@ bool captureTwoHandCalibration(bool triggerDown){
                 +", but active weapon is "+weaponKindName(kind)+" — capture rejected");
             log(std::string("[TWO-HAND] calibration capture rejected: selected=")+KharvoxWeaponKindKey(s.twoHandCalibrationTarget)
                 +" active="+KharvoxWeaponKindKey(kind));
-        }else if(!s.headZeroValid||!weaponGripTrackingController().valid||!supportGripController().valid){
+        }else if(!s.headZeroValid||!weaponAimTrackingController().valid||!supportGripController().valid){
             writeTwoHandStatus(std::string("CALIBRATION: ")+weaponHandName()+" aim and "+supportHandName()+" grip poses must be tracked");
             log(std::string("[TWO-HAND] calibration capture rejected: ")+weaponHandName()+" aim/"+supportHandName()+" grip tracking incomplete");
         }else{
-            const auto primary=controllerRelativeToBodyTrackingOrigin(weaponGripTrackingController());
+            const auto primary=controllerRelativeToBodyTrackingOrigin(weaponAimTrackingController());
             const auto support=controllerRelativeToBodyTrackingOrigin(supportGripController());
             auto* calibration=twoHandCalibrationFor(kind);
             calibration->supportPosition=rotateVector(conjugate(primary.orientation),subtractVector(support.position,primary.position));
@@ -2472,7 +2472,7 @@ bool supportGripInCaptureRange(){
     if(!s.twoHandEnabled)return false;
     const auto* calibration=twoHandCalibrationFor(KharvoxWeaponCurrentKind());
     if(!calibration||!calibration->valid)return false;
-    const auto& primary=weaponGripTrackingController();
+    const auto& primary=weaponAimTrackingController();
     const auto& support=supportGripController();
     if(!primary.valid||!support.valid)return true;
     const auto current=controllerRelativeToBodyTrackingOrigin(primary);
@@ -2535,15 +2535,12 @@ void updateWeapon6Dof(){
     // recentered. Keep the last submitted transform active during that gap;
     // disabling the hook for even one gameplay frame lets the native viewmodel
     // take over and its hit/pushback offset can become the new visible pose.
-    // The native weapon used the OpenXR AIM pose while its physical hand
-    // and grip pivot used GRIP. Quest Touch AIM and GRIP orientations are
-    // different, creating the visible ~45-degree gun/controller mismatch.
-    // A weapon and its PRIMARY hand must use the SAME tracked GRIP frame.
-    // Preserve AIM only as a tracking-loss fallback; free hands and native
-    // UI/controller pointers keep their existing independent pose routing.
+    // The controller's system laser is its OpenXR AIM ray. Drive the native
+    // barrel with that exact orientation; do not silently switch to GRIP or
+    // use the support-hand angle. Weapon-hand visuals use independent GRIP.
     const auto& primaryGripController=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
-    const auto& primaryController=weaponGripTrackingController();
+    const auto& primaryController=weaponAimTrackingController();
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
         s.lastWeaponRenderedValid=false;
@@ -2585,9 +2582,9 @@ void updateWeapon6Dof(){
     }
     const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
-    // The saved primary hand location is now the shared gun pivot for
-    // ALL calibrated weapons, right OR left holster. The grip and gun
-    // rotate as one, with the support-hand solver using that same pivot.
+    // Primary glove offsets are VISUAL ONLY while controller laser aiming
+    // is enabled. Saved glove Y/Z values must not move or tilt the barrel.
+    // Guns-only legacy mode retains the old calibrated primary pivot.
     const auto& primaryHandGripController=primaryGripController;
     const auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
         s.rightGripSettings,KharvoxWeaponKindKey(kind),
@@ -2595,7 +2592,8 @@ void updateWeapon6Dof(){
     const bool heavyFallback=!savedPivot.valid&&!s.weaponHandLeft
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
-    const bool gripPivotEnabled=s.customMods.offHandGripCapture
+    const bool gripPivotEnabled=!s.showHands
+        &&s.customMods.offHandGripCapture
         &&primaryHandGripController.valid&&!s.dynamicShoulderHolstered
         &&(savedPivot.valid||heavyFallback);
     const auto legacy=kind==KharvoxWeaponKind::GaussCannon
@@ -2686,33 +2684,43 @@ void updateWeapon6Dof(){
                     rotation=solveTwoHandOrientation(solvePrimary,supportGrip,
                         activeCalibration,useVirtualGunstock,gunstockPosition);
                 }
-                writeTwoHandStatus(std::string(weaponKindName(kind))+": TWO-HAND ACTIVE — "
-                    +(useVirtualGunstock?"virtual stock / ":"")
-                    +twoHandModeName(activeCalibration.aimMode)+" alignment");
+                writeTwoHandStatus(std::string(weaponKindName(kind))
+                    +": TWO-HAND ACTIVE — "
+                    +(s.showHands?"support attached; barrel stays on controller laser":
+                        (useVirtualGunstock?"virtual stock / ":"")
+                            +std::string(twoHandModeName(activeCalibration.aimMode))+" alignment"));
             }else{
                 writeTwoHandStatus(std::string(weaponKindName(kind))+": "+supportHandName()+" grip held, move support hand onto its calibrated grab point");
             }
         }
     }
-    // Use EXACTLY the same pivot for native gun pose and both hand meshes.
-    // A stored primary glove position makes its grip the rotation centre,
-    // including left-handed holster draws and Gauss/Chaingun alternate modes.
+    // Even when a second hand is latched, the gun's longitudinal axis must
+    // remain locked to the physical primary controller AIM laser. Secondary
+    // Grip only attaches the support glove; it cannot steer the gun.
+    if(s.showHands)
+        rotation=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
+            current.orientation,rotation);
     const auto renderOrientation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
     const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
         return rotateVector(q,v);
     };
-    const auto weaponAnchorBody=gunPivotAt(rotation);
-    const auto weaponAnchorTracking=kharvox::primarygrip::weaponAnchor(
-        primaryController.position,
-        primaryHandGripController.valid?primaryHandGripController.position
-            :primaryController.position,
-        renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
-    // The primary hand (RIGHT or LEFT, selected by the holster/draw) stays
-    // in the SAME OpenXR GRIP space as its native weapon pose. Capture the grip
-    // once per weapon; from then on it has a constant gun-local position and
-    // orientation. This avoids the gun rolling inside the glove.
+    const auto weaponAnchorBody=s.showHands
+        ?kharvox::weaponpose::keepGunOnPrimaryLaser(
+            current.position,gunPivotAt(rotation))
+        :gunPivotAt(rotation);
+    const auto weaponAnchorTracking=s.showHands
+        ?kharvox::weaponpose::keepGunOnPrimaryLaser(
+            primaryController.position,primaryHandGripController.position)
+        :kharvox::primarygrip::weaponAnchor(
+            primaryController.position,
+            primaryHandGripController.valid?primaryHandGripController.position
+                :primaryController.position,
+            renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
+    // Native gun follows AIM; primary glove uses GRIP for its *initial*
+    // visual pose. Once fitted, the glove's independent weapon-local offset
+    // and quaternion are rigidly attached without ever changing gun aim.
     const bool visualAlternate=heavyAltMode(kind);
     const bool primaryVisualNow=s.customMods.offHandGripCapture
         &&primaryHandGripController.valid
@@ -2793,15 +2801,12 @@ void updateWeapon6Dof(){
             if(savedHandValid)
                 s.primaryVisualLocalPosition={
                     savedHand.x,savedHand.y,savedHand.z};
-            // Pre-existing weapon-local glove quaternions were captured
-            // while gun=AIM and glove=GRIP. They belong to mismatched spaces
-            // and must not reintroduce a tilt after controller alignment.
-            // Recalibration now changes only local X/Y position, never the
-            // controller-indexed glove rotation or its forward Z anchor.
+            // The owner can independently rotate the visible primary glove
+            // to fit a grip. A saved quaternion affects ONLY this glove, not
+            // the physical AIM ray or gun rotation.
             if(savedRot.valid)
-                log(std::string("[WEAPON-GRIP] ignoring legacy rotation for ")
-                    +KharvoxWeaponKindKey(kind)
-                    +" (gun and primary glove now share GRIP orientation)");
+                s.primaryVisualLocalOrientation={
+                    savedRot.x,savedRot.y,savedRot.z,savedRot.w};
             s.primaryVisualAlternate=visualAlternate;
         }
         if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
