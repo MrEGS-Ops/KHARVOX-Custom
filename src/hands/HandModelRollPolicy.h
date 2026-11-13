@@ -1,18 +1,31 @@
 #pragma once
 
 #include "HandVisibilityPolicy.h"
+#include <cstddef>
 
 namespace kharvox::hands {
 
-// The left empty-fist and left gun-holding meshes are upside-down relative
-// to their physical controller. Roll their models around the controller's
-// local forward (-Z) axis, not about up (Y), so pointing is unchanged.
-// Applied in controller space before each model's baked/calibrated rotation.
-// Never change the independently tracked controller or right-hand models.
+// The right bare fist and the right equipped glove were confirmed to be
+// upright in the headset. Render the matching LEFT variant from that same
+// baked RIGHT mesh mirrored ONLY in local X. Do NOT also roll it 180 degrees:
+// Rz(180) * mirrorX = mirrorY, which was flipping the left glove vertically.
+// Mirroring applies only to the visible mesh; the left tracked controller,
+// primary weapon pose, and depth/compositor remain completely untouched.
+inline constexpr std::size_t handReferenceAssetIndex(
+    bool physicalLeft, HandModelKind kind) noexcept {
+    (void)physicalLeft;
+    return kind==HandModelKind::GunHolding?3u:1u;
+}
+inline constexpr bool handMeshMirroredFromRight(
+    bool physicalLeft, HandModelKind kind) noexcept {
+    return physicalLeft&&(kind==HandModelKind::Fist
+        ||kind==HandModelKind::GunHolding);
+}
 inline constexpr float handModelControllerForwardRollDegrees(
-    bool physicalLeft, HandModelKind model) noexcept {
-    return physicalLeft&&(model==HandModelKind::Fist||
-        model==HandModelKind::GunHolding) ? 180.f : 0.f;
+    bool, HandModelKind) noexcept {
+    // No second left-only half-turn. The local-X mirror already produces
+    // the anatomically left counterpart of the verified upright right mesh.
+    return 0.f;
 }
 
 } // namespace kharvox::hands
