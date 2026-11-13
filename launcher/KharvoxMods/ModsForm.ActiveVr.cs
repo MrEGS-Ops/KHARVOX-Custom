@@ -1021,7 +1021,11 @@ internal sealed partial class ModsForm
             }
 
             if (form._visibleModRows.Values.OfType<TableLayoutPanel>()
-                    .Where(row => row.ColumnCount == 6 &&
+                    // KILLTIME now uses six columns without a checkbox;
+                    // its speed/Hz label is not an availability status.
+                    .Where(row => !ReferenceEquals(row,
+                        form._visibleModRows[GloryModTitle]) &&
+                        row.ColumnCount == 6 &&
                         row.Controls.OfType<Label>().Any(label =>
                             (label.Tag as string) == "vr-mod-name"))
                     .Any(row => !row.Controls.OfType<Label>()
