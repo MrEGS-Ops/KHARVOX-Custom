@@ -21,11 +21,21 @@ int main(){
     assert(std::abs(vrLiveCrouchEntry(s)+.25f)<.0001f);
     assert(std::abs(vrLiveCrouchExit(s)+.17f)<.0001f);
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::Gunslinger,true));
-    assert(!vrLiveEffectiveEnabled(s,VrLiveMod::Gunslinger,false));
-    assert(vrLiveSetEnabled(s,VrLiveMod::Gunslinger,false));
-    assert(!vrLiveEffectiveEnabled(s,VrLiveMod::Gunslinger,true));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::Gunslinger,false));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::WeaponGrip,false));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::Killtime,false));
+    assert(!vrLiveModToggleable(VrLiveMod::Gunslinger));
+    assert(!vrLiveModToggleable(VrLiveMod::WeaponGrip));
+    assert(!vrLiveModToggleable(VrLiveMod::Killtime));
+    assert(!vrLiveModToggleable(VrLiveMod::PhysicalGloryKills));
+    assert(vrLiveModToggleable(VrLiveMod::PhysicalCrouch));
+    assert(vrLiveModToggleable(VrLiveMod::Painsaw));
+    assert(!vrLiveSetEnabled(s,VrLiveMod::Gunslinger,false));
+    assert(!vrLiveSetEnabled(s,VrLiveMod::WeaponGrip,false));
+    assert(!vrLiveSetEnabled(s,VrLiveMod::Killtime,false));
+    assert(!vrLiveSetEnabled(s,VrLiveMod::PhysicalGloryKills,false));
     assert(!vrLiveSetEnabled(s,VrLiveMod::HandFocus,false));
-    assert(s.enabledOverrides[1]==0);
+    assert(s.enabledOverrides[1]==-1);
     s.gloryKillHz=90;s.punchSpeedMetersPerSec=3.4f;s.punchHands=1;
     const std::string file="vr-live-mod-calibration-test.cfg";
     assert(vrLiveSave(file,s));
@@ -34,7 +44,7 @@ int main(){
     assert(std::abs(read.hipShift[0].x-s.hipShift[0].x)<.00001f);
     assert(std::abs(read.wheelShift[1].x-s.wheelShift[1].x)<.00001f);
     assert(read.gloryKillHz==90&&read.punchHands==1);
-    assert(!vrLiveEffectiveEnabled(read,VrLiveMod::Gunslinger,true));
+    assert(vrLiveEffectiveEnabled(read,VrLiveMod::Gunslinger,true));
     assert(vrLiveModEditable(VrLiveMod::WeaponGrip));
     assert(vrLiveModEditable(VrLiveMod::PhysicalCrouch));
     assert(!vrLiveModEditable(VrLiveMod::HandFocus));
@@ -44,6 +54,22 @@ int main(){
     assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,true));
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
     assert(s.enabledOverrides[5]==1);
+    assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,false));
+    auto nativeSpeed=vrLivePainsawModes(s,true,true);
+    assert(!nativeSpeed.triggerThrottle&&!nativeSpeed.legacyMotion);
+    nativeSpeed=vrLivePainsawModes(s,true,false);
+    assert(!nativeSpeed.triggerThrottle&&!nativeSpeed.legacyMotion);
+    nativeSpeed=vrLivePainsawModes(s,false,true);
+    assert(!nativeSpeed.triggerThrottle&&!nativeSpeed.legacyMotion);
+    assert(vrLiveSetEnabled(s,VrLiveMod::Painsaw,true));
+    auto enabledModes=vrLivePainsawModes(s,false,true);
+    assert(!enabledModes.triggerThrottle&&enabledModes.legacyMotion);
+    enabledModes=vrLivePainsawModes(s,true,false);
+    assert(enabledModes.triggerThrottle&&!enabledModes.legacyMotion);
+    assert(vrLiveSetEnabled(s,VrLiveMod::PhysicalCrouch,false));
+    assert(!vrLiveEffectiveEnabled(s,VrLiveMod::PhysicalCrouch,true));
+    assert(vrLiveSetEnabled(s,VrLiveMod::PhysicalCrouch,true));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::PhysicalCrouch,false));
     // Users with a five-toggle schema-1 save retain their old flags and
     // inherit PAINSAW from desktop until explicitly changed in VR.
     {std::ofstream legacy(file,std::ios::trunc);
@@ -61,6 +87,14 @@ int main(){
     assert(old.enabledOverrides[3]==-1);
     assert(old.enabledOverrides[4]==0);
     assert(old.enabledOverrides[5]==-1);
+    // Previously saved OFF values for locked core mods cannot disable them.
+    assert(vrLiveEffectiveEnabled(old,VrLiveMod::Gunslinger,false));
+    assert(vrLiveEffectiveEnabled(old,VrLiveMod::WeaponGrip,false));
+    assert(vrLiveEffectiveEnabled(old,VrLiveMod::Killtime,false));
+    assert(!vrLiveSetEnabled(old,VrLiveMod::Gunslinger,false));
+    // Physical GK remains desktop-controlled, not a live toggle.
+    assert(vrLiveEffectiveEnabled(old,VrLiveMod::PhysicalGloryKills,true));
+    assert(!vrLiveEffectiveEnabled(old,VrLiveMod::PhysicalGloryKills,false));
     // Native action pacing: LOWER Hz means faster, HIGHER Hz means slower.
     assert(vrLiveStepKilltimeHz(0,true)==210); // unset baseline 200
     assert(vrLiveStepKilltimeHz(0,false)==190);
