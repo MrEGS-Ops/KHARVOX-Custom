@@ -141,49 +141,99 @@ int main(){
     assert(std::abs(live.position.y+.20f)<.00001f);
     assert(std::abs(live.position.z+.32f)<.00001f);
     assert(std::abs(live.orientation.y-.4f)<.00001f);
-    // GRIP-held weapon fine-tune: 1 cm PER intentional flick, no auto
-    // repeat when held, no steps outside primary calibration or Grip hold.
+    // Primary Grip: quick flick is a single 1cm step. Holding the same
+    // direction then auto-repeats in 1cm increments after 340ms, every
+    // 175ms. The speed is clock-driven, not headset frame-rate-driven.
     VrWeaponFineTuneEdges fine{};
-    auto nudge=[&](bool allowed,bool grip,float lx,float ly,float ry){
+    std::uint64_t fineClock=1000;
+    auto nudge=[&](bool allowed,bool grip,float lx,float ly,float ry,
+                   std::uint64_t ms=16){
+        fineClock+=ms;
         return vrWeaponFineTuneCentimeterStep(
-            fine,allowed,grip,lx,ly,ry);
+            fine,allowed,grip,lx,ly,ry,fineClock);
     };
     const auto zeroNudge=[&](RightHandGripOffset p){
         assert(p.x==0.f&&p.y==0.f&&p.z==0.f);
     };
-    zeroNudge(nudge(true,true,0,0,0)); // Grip enters, arms neutral sticks
+    const auto sameCm=[](float got,float expected){
+        return std::abs(got-expected)<1e-6f;
+    };
+    zeroNudge(nudge(true,true,0,0,0)); // Grip enters, arm neutral
     auto move=nudge(true,true,1.f,0.f,0.f);
-    assert(std::abs(move.x-.01f)<1e-6f&&move.y==0&&move.z==0);
-    zeroNudge(nudge(true,true,1.f,0.f,0.f)); // held never repeats
-    zeroNudge(nudge(true,true,0,0,0)); // re-arm only when centered
+    assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
+    const auto firstAt=fineClock;
+    zeroNudge(nudge(true,true,1.f,0.f,0.f,
+        kVrWeaponFineTuneRepeatDelayMs-1)); // not even 1ms early
+    assert(fineClock==firstAt+kVrWeaponFineTuneRepeatDelayMs-1);
+    move=nudge(true,true,1.f,0.f,0.f,1);
+    assert(sameCm(move.x,.01f)); // first held auto-repeat
+    zeroNudge(nudge(true,true,1.f,0.f,0.f,
+        kVrWeaponFineTuneRepeatIntervalMs-1));
+    move=nudge(true,true,1.f,0.f,0.f,1);
+    assert(sameCm(move.x,.01f)); // steady 175ms repeat
+    // A frame stall must emit only ONE step, never a 10cm catch-up jump.
+    move=nudge(true,true,1.f,0.f,0.f,1000);
+    assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
+    // Recenter resets the countdown and permits a new instant 1cm flick.
+    zeroNudge(nudge(true,true,0,0,0));
     move=nudge(true,true,-1.f,0.f,0.f);
-    assert(std::abs(move.x+.01f)<1e-6f&&move.y==0&&move.z==0);
+    assert(sameCm(move.x,-.01f)&&move.y==0&&move.z==0);
     zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0.f,1.f,0.f); // left up = forward = -Z
-    assert(move.x==0&&move.y==0&&std::abs(move.z+.01f)<1e-6f);
+    move=nudge(true,true,0.f,1.f,0.f); // left up -> local -Z
+    assert(move.x==0&&move.y==0&&sameCm(move.z,-.01f));
     zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0.f,-1.f,0.f);
-    assert(move.x==0&&move.y==0&&std::abs(move.z-.01f)<1e-6f);
+    move=nudge(true,true,0.f,-1.f,0.f); // left down -> +Z
+    assert(move.x==0&&move.y==0&&sameCm(move.z,.01f));
     zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,0,1.f); // right up = +Y
-    assert(move.x==0&&std::abs(move.y-.01f)<1e-6f&&move.z==0);
+    move=nudge(true,true,0,0,1.f); // right up -> +Y
+    assert(move.x==0&&sameCm(move.y,.01f)&&move.z==0);
+    const auto rightAt=fineClock;
+    zeroNudge(nudge(true,true,0,0,1.f,
+        kVrWeaponFineTuneRepeatDelayMs-1));
+    move=nudge(true,true,0,0,1.f,1);
+    assert(sameCm(move.y,.01f));
+    assert(fineClock==rightAt+kVrWeaponFineTuneRepeatDelayMs);
     zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,0,-1.f); // right down = -Y
-    assert(move.x==0&&std::abs(move.y+.01f)<1e-6f&&move.z==0);
+    move=nudge(true,true,0,0,-1.f); // right down -> -Y
+    assert(move.x==0&&sameCm(move.y,-.01f)&&move.z==0);
     zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,.9f,.8f,0); // diagonal -> ONE axis, not two
-    assert(std::abs(move.x-.01f)<1e-6f&&move.y==0&&move.z==0);
+    move=nudge(true,true,.9f,.8f,0); // diagonal: one axis
+    assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
+    // No automatic direction reversal (X, Z or sign) while stick
+    // remains displaced: users must recenter between opposing nudges.
+    zeroNudge(nudge(true,true,-1.f,0,0,2000));
+    zeroNudge(nudge(true,true,0,-1.f,0,2000));
     zeroNudge(nudge(true,true,0,0,0));
-    zeroNudge(nudge(true,false,1.f,0,0)); // release disables fine-tune
-    zeroNudge(nudge(true,true,1.f,0,0)); // don't step at grip entry
+    move=nudge(true,true,0,-1.f,0);
+    assert(sameCm(move.z,.01f));
+
+    // Grip RELEASE switches to rotation mode and cancels repeat timers,
+    // but runtime retains the unsaved GUN offset in fineTuneAccumulated.
+    zeroNudge(nudge(true,false,0,0,-1.f,2000));
+    zeroNudge(nudge(true,true,1.f,0,0)); // held at entry: inert
+    zeroNudge(nudge(true,true,1.f,0,0,2000)); // stays inert until centered
     zeroNudge(nudge(true,true,0,0,0));
     move=nudge(true,true,1.f,0,0);
-    assert(std::abs(move.x-.01f)<1e-6f);
-    zeroNudge(nudge(false,true,-1.f,0,0)); // support / menu can't move
-    zeroNudge(nudge(true,true,-1.f,0,0)); // re-enter held deflection inert
+    assert(sameCm(move.x,.01f));
+    zeroNudge(nudge(false,true,-1.f,0,0,2000)); // menu/support: no motion
+    zeroNudge(nudge(true,true,-1.f,0,0)); // no inherited repeat timer
     zeroNudge(nudge(true,true,0,0,0));
     move=nudge(true,true,0,0,-1.f);
-    assert(std::abs(move.y+.01f)<1e-6f);
+    assert(sameCm(move.y,-.01f));
+
+    // Two sticks retain independent repeat clocks; left X and right Y can
+    // both step once in the same frame without rotating the weapon.
+    VrWeaponFineTuneEdges independent{};
+    const auto twoSticks=[&](std::uint64_t at,float lx,float ly,float ry){
+        return vrWeaponFineTuneCentimeterStep(
+            independent,true,true,lx,ly,ry,at);
+    };
+    zeroNudge(twoSticks(100,0,0,0));
+    move=twoSticks(110,1.f,0,1.f);
+    assert(sameCm(move.x,.01f)&&sameCm(move.y,.01f)&&move.z==0);
+    move=twoSticks(110+kVrWeaponFineTuneRepeatDelayMs,1.f,0,1.f);
+    assert(sameCm(move.x,.01f)&&sameCm(move.y,.01f)&&move.z==0);
+
     // A selects exactly once per press, B same, no latent double events.
     bool a=false,b=false;
     assert(vrMenuButtonEdge(true,a));
