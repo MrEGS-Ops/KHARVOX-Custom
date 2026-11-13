@@ -458,6 +458,16 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         }
         return -1;
     }
+    if(s.vrHandMenu.page==kharvox::VrMenuPage::WeaponRecoil){
+        if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
+        if(pixelX>=38&&pixelX<=493)
+            for(int i=0;i<9;++i)
+                if(pixelY>=136+i*45&&pixelY<176+i*45)return 200+i;
+        if(pixelX>=531&&pixelX<=915)
+            for(int i=0;i<6;++i)
+                if(pixelY>=157+i*63&&pixelY<211+i*63)return 140+i;
+        return -1;
+    }
     if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
     if(pixelX>=38&&pixelX<=493){
         for(int i=0;i<10;++i)
@@ -586,7 +596,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.page=wasLiveModCapture?kharvox::VrMenuPage::Mods
                 :kharvox::VrMenuPage::WeaponGrip;
             m.message="Calibration cancelled. No changes saved.";
-        }else if(m.page==kharvox::VrMenuPage::WeaponGrip){
+        }else if(m.page==kharvox::VrMenuPage::WeaponGrip
+            ||m.page==kharvox::VrMenuPage::WeaponRecoil){
             m.page=kharvox::VrMenuPage::Mods;
             m.navigation={};
             m.message="Back to VR Mod Settings.";
@@ -620,6 +631,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
+                    case VrLiveMod::WeaponRecoil:return 1; // dedicated per-gun page
                     case VrLiveMod::Gunslinger:return 5;
                     case VrLiveMod::PhysicalCrouch:return 4; // toggle + 3 heights
                     case VrLiveMod::Killtime:return 3;
@@ -662,12 +674,16 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedMod=rows[newRow].mod;
                 m.navigation.actionIndex=0;
                 if(aEdge){
-                    if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip){
-                        // Direct navigation: the dedicated weapon page IS the
-                        // configuration; no extra "OPEN CALIBRATION" step.
-                        m.page=kharvox::VrMenuPage::WeaponGrip;
+                    if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip
+                        ||m.selectedMod==kharvox::VrLiveMod::WeaponRecoil){
+                        // Both calibration mods have their own complete page.
+                        const bool grip=m.selectedMod==kharvox::VrLiveMod::WeaponGrip;
+                        m.page=grip?kharvox::VrMenuPage::WeaponGrip
+                            :kharvox::VrMenuPage::WeaponRecoil;
                         m.navigation={};
-                        m.message="Select weapon and hand; trigger calibrates.";
+                        m.message=grip
+                            ?"Select weapon and hand; trigger calibrates."
+                            :"Select weapon; tune kick and recovery.";
                     }else{
                         m.navigation.settingsColumn=true;
                         m.navigation.usingStick=true;
@@ -680,10 +696,15 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }
             }else if(chosen==115&&n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
-                if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip){
-                    m.page=kharvox::VrMenuPage::WeaponGrip;
+                if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip
+                    ||m.selectedMod==kharvox::VrLiveMod::WeaponRecoil){
+                    const bool grip=m.selectedMod==kharvox::VrLiveMod::WeaponGrip;
+                    m.page=grip?kharvox::VrMenuPage::WeaponGrip
+                        :kharvox::VrMenuPage::WeaponRecoil;
                     m.navigation={};
-                    m.message="Select weapon and hand; trigger calibrates.";
+                    m.message=grip
+                        ?"Select weapon and hand; trigger calibrates."
+                        :"Select weapon; tune kick and recovery.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -694,7 +715,34 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }else if(m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
                 handleVrLiveMenuAction(chosen);
-                if(m.page==kharvox::VrMenuPage::WeaponGrip)m.navigation={};
+                if(m.page!=kharvox::VrMenuPage::Mods)m.navigation={};
+            }
+        }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
+            const int previous=m.selectedRecoilWeapon;
+            kharvox::vrMenuNavigateStick(m.navigation,
+                s.leftStick.x,s.leftStick.y,9,m.selectedRecoilWeapon,6);
+            if(previous!=m.selectedRecoilWeapon)m.navigation.actionIndex=0;
+            m.selectedRecoilWeapon=std::clamp(m.selectedRecoilWeapon,0,8);
+            const int pointed=triggerEdge?m.hovered:-1;
+            const int chosen=pointed>=0?pointed:
+                aEdge?kharvox::vrMenuRecoilGamepadTarget(
+                    m.navigation,m.selectedRecoilWeapon):-1;
+            if(pointed>=0)m.navigation.usingStick=false;
+            if(chosen==95){
+                m.page=kharvox::VrMenuPage::Mods;
+                m.navigation={};
+                m.message="Back to VR Mod Settings.";
+            }else if(chosen>=200&&chosen<209){
+                m.selectedRecoilWeapon=chosen-200;
+                if(aEdge){
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.navigation.usingStick=true;
+                }else{
+                    m.navigation.settingsColumn=false;
+                }
+            }else if(chosen>=140&&chosen<=145){
+                handleVrRecoilCalibrationAction(chosen);
             }
         }else{
             const auto previousWeapon=m.selectedWeapon;
