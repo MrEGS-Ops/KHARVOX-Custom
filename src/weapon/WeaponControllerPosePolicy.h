@@ -96,6 +96,22 @@ inline Position supportOffsetFromControllerAnchor(
         subtract(aimOrigin,physicalHandAnchor)));
 }
 
+// In normal single-hand gameplay the primary glove still follows the
+// physical primary AIM controller. A truly latched second hand changes
+// the weapon's rendered quaternion; use that same frame for the glove to
+// avoid the gun appearing to twist inside the gripping hand. This selects
+// only a VISUAL reference. Controller tracking / solver input is unchanged.
+template<class Quaternion>
+inline const Quaternion& primaryGloveVisualFrame(
+    const Quaternion& primaryControllerOrientation,
+    const Quaternion& renderedWeaponOrientation,
+    bool customHandsVisible,bool twoHandGameplayLatched) noexcept {
+    return customHandsVisible&&twoHandGameplayLatched
+        ?renderedWeaponOrientation
+        :customHandsVisible?primaryControllerOrientation
+            :renderedWeaponOrientation;
+}
+
 // Render the calibrated primary GLOVE quaternion in the same frame as
 // the actual gun. The support hand steers the weapon's final orientation
 // during normal two-hand gameplay; do not use the primary controller AIM
