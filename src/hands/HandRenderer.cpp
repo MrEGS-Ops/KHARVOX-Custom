@@ -449,13 +449,8 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     if(reverse)for(int column=0;column<4;column++)
         viewProjection.m[column*4+2]=viewProjection.m[column*4+3]-viewProjection.m[column*4+2];
     auto draw=[&](bool left,HandModelKind kind,const HandPose&pose){
-        // Reuse the correctly upright RIGHT fist / gun-holding mesh for
-        // the physical LEFT hand, mirrored in mesh-local X. The previous
-        // extra 180-degree roll changed mirrorX into a vertical mirror,
-        // leaving both left-hand variants upside-down. Tracking is still
-        // obtained independently from the physical LEFT controller; only
-        // the selected visible mesh/baked wrist reference changes.
-        // DO NOT alter weapon pivots, scene depth or near clipping.
+        // Original KHARVOX: physical LEFT uses left GLB and left wrist
+        // calibration. No model mirroring or extra controller rotations.
         const size_t index=left?(kind==HandModelKind::GunHolding?2:0)
             :(kind==HandModelKind::GunHolding?3:1);
         const size_t modelIndex=handReferenceAssetIndex(left,kind);
@@ -463,11 +458,11 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
         auto&asset=assets[modelIndex];if(!asset.ready)return;
         const auto&calibration=renderCalibration(left,kind,gameplay.weapon,
             gameplay.leftHanded);
-        const float xScale=mirroredRightReference?-calibration.scale
-            :(mirrorX[index]?-calibration.scale:calibration.scale);
+        const float xScale=(mirroredRightReference||mirrorX[index])
+            ?-calibration.scale:calibration.scale;
         const Mat4 local=multiply(
             translation(calibration.position[0],calibration.position[1],calibration.position[2]),
-            multiply(rotationDegrees(rightCalibration.rotationDegrees),
+            multiply(rotationDegrees(calibration.rotationDegrees),
                 scaleAxes(xScale,calibration.scale,calibration.scale)));
         struct Push{Mat4 model;Mat4 viewProjection;}push{multiply(poseMatrix(pose),local),viewProjection};
         vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
