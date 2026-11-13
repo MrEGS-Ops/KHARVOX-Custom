@@ -4,6 +4,13 @@
 #include <cmath>
 
 int main() {
+    // In normal gameplay, a controller glove may render only against real
+    // DOOM scene depth. When scene integration fails, it is better to
+    // withhold that glove than show it floating through walls/boxes.
+    assert(!kharvox::hands::allowUnoccludedHandOverlay(true,true));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(true,false));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(false,true));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(false,false));
     assert(kharvox::hands::nativeWeaponDepthScale(true) == 1.f);
     assert(kharvox::hands::nativeWeaponDepthScale(false) == 0.f);
     // Original DOOM depthHack is passed through unchanged; native entity
