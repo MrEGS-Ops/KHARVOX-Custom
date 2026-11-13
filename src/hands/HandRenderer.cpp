@@ -2,6 +2,7 @@
 #include "../hud/HudHook.h"
 #include "HandSceneDepthCopy.h"
 #include "HandCalibrationPolicy.h"
+#include "HandModelRollPolicy.h"
 #include "../openxr/OpenXRBootstrap.h"
 #include <windows.h>
 #include <wincodec.h>
@@ -448,17 +449,12 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     if(reverse)for(int column=0;column<4;column++)
         viewProjection.m[column*4+2]=viewProjection.m[column*4+3]-viewProjection.m[column*4+2];
     auto draw=[&](bool left,HandModelKind kind,const HandPose&pose){
-        // Empty fists already track correctly; do not touch their pipeline.
-        // Both gun-holding hand assets were given separate *per-weapon*
-        // Euler rotations on top of the live calibrated weapon-local grip
-        // orientation. That makes controllers held parallel look skewed on
-        // BOTH sides. Use the visually accepted right free-fist wrist basis
-        // for BOTH gun-holding meshes while preserving the physical hand's
-        // own pose, per-weapon calibrated POSITION, and mesh scale.
-        //
-        // The native left gun-holding L_Pose has an opposite forward axis
-        // from this right-hand reference. Flip ONLY that mesh by 180 degrees
-        // around local up; leave the correctly aligned empty left fist alone.
+        // Both left-hand models appeared upside-down on the controller.
+        // This is a 180-degree ROLL about the tracked controller's forward
+        // (-Z) axis, not a YAW that points the left gun backward.
+        // Apply it in controller space BEFORE the model's calibration Euler;
+        // leave the right fist/gun pose and independent tracking untouched.
+        // Keep the separate weapon grip calibration (gun pivots) intact.
         const bool gunHolding=kind==HandModelKind::GunHolding;
         const bool mirroredRightReference=left&&!gunHolding;
         const size_t index=left?(gunHolding?2:0):(gunHolding?3:1);
@@ -470,13 +466,12 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
             ?rightCalibration:calibration;
         const float xScale=mirroredRightReference?-calibration.scale
             :(mirrorX[index]?-calibration.scale:calibration.scale);
-        const float leftGunHalfTurn[3]{0.f,180.f,0.f};
-        const Mat4 gunRotationCorrection=left&&gunHolding
-            ?rotationDegrees(leftGunHalfTurn):identity();
+        const float controllerForwardRoll[3]{
+            0.f,0.f,handModelControllerForwardRollDegrees(left,kind)};
         const Mat4 local=multiply(
             translation(calibration.position[0],calibration.position[1],calibration.position[2]),
-            multiply(rotationDegrees(rotationReference.rotationDegrees),
-                multiply(gunRotationCorrection,
+            multiply(rotationDegrees(controllerForwardRoll),
+                multiply(rotationDegrees(rotationReference.rotationDegrees),
                     scaleAxes(xScale,calibration.scale,calibration.scale))));
         struct Push{Mat4 model;Mat4 viewProjection;}push{multiply(poseMatrix(pose),local),viewProjection};
         vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
