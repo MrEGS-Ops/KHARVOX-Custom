@@ -320,6 +320,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     if(pixelX>=531&&pixelX<915){
         if(pixelY>=363&&pixelY<432)return 30;
         if(pixelY>=454&&pixelY<523)return 31;
+        if(pixelY>=535&&pixelY<593)return 33; // optional RIGHT -> LEFT
     }
     return -1;
 }
@@ -527,7 +528,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
                 ||selectedKind==KharvoxWeaponKind::Chaingun;
             kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
-                10,m.selectedWeapon,heavy?6:5);
+                10,m.selectedWeapon,heavy?7:6);
             if(previousWeapon!=m.selectedWeapon){
                 m.navigation.actionIndex=0;
                 m.autoSelectingWeapon=false;
@@ -538,7 +539,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool heavyNow=selectedNow==KharvoxWeaponKind::GaussCannon
                 ||selectedNow==KharvoxWeaponKind::Chaingun;
             m.navigation.actionIndex=std::clamp(m.navigation.actionIndex,
-                0,heavyNow?5:4);
+                0,heavyNow?6:5);
             if(m.autoSelectingWeapon){
                 const auto desired=KharvoxWeaponKindFromKey(m.weapon());
                 if(desired==KharvoxWeaponCurrentKind()){
@@ -570,6 +571,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }else if(chosen==20)m.rightHand=false;
             else if(chosen==21)m.rightHand=true;
             else if(chosen==31)resetVrMenuSelectedWeapon();
+            else if(chosen==33)applyRightGripToLeft();
             else if(chosen==32){
                 if(heavyNow){
                     m.alternateProfile=!m.alternateProfile;
