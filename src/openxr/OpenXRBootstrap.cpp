@@ -2837,7 +2837,9 @@ void updateWeapon6Dof(){
         rotation=kharvox::weaponpose::gameplayWeaponAim(
             current.orientation,rotation,gameplayTwoHandSteering);
     // Recoil is applied ONCE to the same weapon quaternion submitted to DOOM
-    // and the native muzzle/laser path. It never rotates the HMD or either
+    // and the native muzzle/laser path. A freshly pressed trigger deliberately
+    // submits a neutral first-shot pose: the estimated kick is delayed until
+    // subsequent frames, rather than moving the muzzle on the firing frame. It never rotates the HMD or either
     // tracked controller; the primary physical grip remains the fixed pivot.
     // Gameplay/firing is strictly gated: no calibration, menus, holsters,
     // executions or unknown weapon profiles can generate a recoil shot.
