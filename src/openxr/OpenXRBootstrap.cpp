@@ -2824,10 +2824,11 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
         // The primary glove and native gun form one rigid weapon-hand group.
-        // Move the anchor together in gun-local Y (up/down) and Z
-        // (forward/back). Sideways X stays locked; yaw/pitch/roll are NEVER
-        // changed. Barrel may be offset from the AIM laser, but must remain
-        // precisely parallel to it. Glove visual rotation stays independent.
+        // Normal calibration moves the anchor in gun-local Y/Z. Only the
+        // Grip-held 1cm joystick fine-tune is allowed to adjust local X,
+        // captured via the saved glove position. No yaw/pitch/roll changes:
+        // barrel remains parallel to the AIM laser; glove visual rotation
+        // remains an entirely independent saved quaternion.
         XrVector3f factoryHand=s.primaryVisualLocalPosition;
         if(s.weaponHandLeft){
             const auto key=std::string(KharvoxWeaponKindKey(kind))
@@ -2851,9 +2852,10 @@ void updateWeapon6Dof(){
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
             s.primaryVisualLocalPosition,factoryHand);
         if(s.showHands){
-            // Translate the native gun in local Y and Z ONLY. An upward
-            // offset can move the barrel off the pointer line; its forward
-            // direction nevertheless stays PARALLEL to the AIM laser.
+            // Translate the native gun by the calibrated local XYZ delta.
+            // X is writable ONLY through 1cm Grip-held fine-tune, never
+            // normal free-controller capture. Gun rotation remains parallel
+            // to the controller AIM laser regardless of translation.
             weaponAnchorBody=addVector(weaponAnchorBody,
                 rotateVector(rotation,anchorPlan.gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,

@@ -45,22 +45,23 @@ inline Offset primaryHandVisualPlacement(
     return measured;
 }
 
-// The weapon and its PRIMARY hand are one rigid pose group. Calibration
-// translates the group's ANCHOR along weapon-local Y (up/down) and Z
-// (forward/back), but NEVER sideways (X). This deliberately allows the
-// gun's centreline to be OFFSET from the controller laser while staying
-// exactly PARALLEL to it. No rotation, pitch/yaw/roll or steering is added.
-// The primary glove's independent local quaternion is retained.
+// Native gun and its primary glove are one rigid pose group. Ordinary
+// free-controller calibration LOCKS local X via primaryHandVisualPlacement;
+// ONLY Grip-held centimeter joystick fine-tune may change saved primary X.
+// Once saved, that lateral offset travels with the gun and its grip anchor.
+// The gun can move in X/Y/Z but remains PARALLEL to OpenXR AIM, with
+// absolutely no position-derived pitch/yaw/roll or quaternion changes.
 template<class Offset>
 struct PrimaryHandAnchorPlan {
-    Offset gunTranslationLocal;  // X locked to zero; Y/Z adjustable
+    Offset gunTranslationLocal;  // local X/Y/Z (X only from fine-tune)
     Offset handAttachmentLocal;  // original grip on the moving gun
 };
 template<class Offset>
 inline PrimaryHandAnchorPlan<Offset> primaryHandAnchorPlan(
     const Offset& requestedHand, const Offset& referenceHand) noexcept {
     return {
-        Offset{0.f,requestedHand.y-referenceHand.y,
+        Offset{requestedHand.x-referenceHand.x,
+            requestedHand.y-referenceHand.y,
             requestedHand.z-referenceHand.z},
         referenceHand
     };

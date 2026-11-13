@@ -57,19 +57,77 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     // SUPPORT hand remains fully three-dimensional as before.
     const auto rotation=normalizeQuaternion(multiply(
         inverted,placement.orientation));
+    // Ordinary live capture CANNOT change sideways X. Hold the true
+    // calibration-start lateral reference steady even when the gun and
+    // glove move as a group. Only the accumulated joystick fine-tune is
+    // allowed to add X; applied Y/Z fine-tune also persists after Grip
+    // release as the user resumes moving the OTHER controller.
     const auto primaryPos=kharvox::weaponpose::primaryHandVisualPlacement(
         kharvox::RightHandGripOffset{local.x,local.y,local.z},
-        kharvox::RightHandGripOffset{
-            s.primaryVisualLocalPosition.x,s.primaryVisualLocalPosition.y,
-            s.primaryVisualLocalPosition.z});
+        kharvox::RightHandGripOffset{m.primaryLateralBase,0.f,0.f});
     m.previewPosition=primaryHand
-        ?primaryPos:kharvox::RightHandGripOffset{local.x,local.y,local.z};
+        ?kharvox::RightHandGripOffset{
+            primaryPos.x+m.fineTuneAccumulated.x,
+            primaryPos.y+m.fineTuneAccumulated.y,
+            primaryPos.z+m.fineTuneAccumulated.z}
+        :kharvox::RightHandGripOffset{local.x,local.y,local.z};
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
         :kharvox::validRightHandPlacement(m.previewPosition))
         &&kharvox::validRightHandRotation(m.previewRotation);
     m.primaryGripPreviewHeld=testAllowed&&primaryWeaponGripHeld&&m.previewValid;
+}
+// One 1cm nudge per deliberate stick flick during the existing
+// weapon-GRIP test hold; no stick is forwarded to locomotion/turn while
+// this menu captures gameplay input. The live preview remains frozen
+// until Grip is released. Right trigger still SAVES the accumulated pose.
+void serviceVrWeaponFineTune(bool weaponGripDown){
+    auto& m=s.vrHandMenu;
+    const bool primary=m.mode==kharvox::VrHandMenuMode::Calibrating
+        &&m.liveCapture==kharvox::VrLiveCapture::None
+        &&m.page==kharvox::VrMenuPage::WeaponGrip
+        &&m.rightHand!=s.weaponHandLeft
+        &&m.calibratingWeaponLeft==s.weaponHandLeft
+        &&m.previewValid&&m.primaryGripPreviewHeld
+        &&m.weapon()==std::string(KharvoxWeaponKindKey(KharvoxWeaponCurrentKind()));
+    XrVector2f rightStick{};
+    if(primary&&weaponGripDown){
+        // The normal right-stick sample is read AFTER menu dispatch.
+        // Fetch it here only for the grip-held fine-tune, never modify
+        // the gameplay mapping or the normal empty-hand control routes.
+        XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};
+        info.action=s.doomTurn;
+        XrActionStateVector2f state{XR_TYPE_ACTION_STATE_VECTOR2F};
+        if(XR_SUCCEEDED(s.getActionStateVector2f(s.session,&info,&state))
+            &&state.isActive)rightStick=state.currentState;
+    }
+    const auto step=kharvox::vrWeaponFineTuneCentimeterStep(
+        m.fineTuneEdges,primary,weaponGripDown,
+        s.leftStick.x,s.leftStick.y,rightStick.y);
+    if(step.x==0.f&&step.y==0.f&&step.z==0.f)return;
+    const auto candidate=kharvox::RightHandGripOffset{
+        m.previewPosition.x+step.x,
+        m.previewPosition.y+step.y,
+        m.previewPosition.z+step.z};
+    if(!kharvox::validRightHandVisualPlacement(candidate)){
+        m.message="Fine-tune reached the safe grip placement limit.";
+        return;
+    }
+    m.previewPosition=candidate;
+    m.fineTuneAccumulated.x+=step.x;
+    m.fineTuneAccumulated.y+=step.y;
+    m.fineTuneAccumulated.z+=step.z;
+    // Deliberately never edit m.previewRotation: fine-tune is translation
+    // only, with the native gun+anchor moving together in weapon-local XYZ.
+    kharvox::queueControllerZoneCue(
+        s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
+            s.weaponHandLeft?1:0)],GetTickCount64(),28,.28f,170.f);
+    log(std::string("[VR-HAND-FINETUNE] 1cm nudge weapon=")+m.weapon()
+        +(s.weaponHandLeft?" left":" right")
+        +" x="+std::to_string(step.x)+" y="+std::to_string(step.y)
+        +" z="+std::to_string(step.z)
+        +" totalX="+std::to_string(m.fineTuneAccumulated.x));
 }
 void saveVrHandMenuCalibration(){
     auto& m=s.vrHandMenu;
@@ -230,9 +288,38 @@ void startVrSelectedWeaponCalibration(){
     m.calibratingWeaponLeft=s.weaponHandLeft;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.fineTuneEdges={};
+    m.fineTuneAccumulated={};
+    // Pin normal free-hand capture to the existing lateral coordinate:
+    // only Grip-held joystick fine-tune may subsequently change X.
+    m.primaryLateralBase=0.f;
+    const auto kind=KharvoxWeaponKindFromKey(m.weapon());
+    const bool alternate=m.alternateProfile
+        &&(kind==KharvoxWeaponKind::GaussCannon
+            ||kind==KharvoxWeaponKind::Chaingun);
+    const auto savedX=[&](const kharvox::RightHandGripSettings& settings,
+                          float& value)->bool {
+        if(s.weaponHandLeft){
+            const auto key=std::string(m.weapon())
+                +(alternate?(kind==KharvoxWeaponKind::GaussCannon
+                    ?"_siege":"_turret"):"");
+            const auto it=settings.leftVisualPositions.find(key);
+            if(it==settings.leftVisualPositions.end())return false;
+            value=it->second.x;
+            return true;
+        }
+        kharvox::RightHandGripOffset position{};
+        kharvox::RightHandGripRotation rotation{};
+        if(!kharvox::rightPrimaryVisualPose(
+                settings,m.weapon(),alternate,position,rotation))return false;
+        value=position.x;
+        return true;
+    };
+    if(!savedX(s.rightGripSettings,m.primaryLateralBase))
+        savedX(s.rightGripFactorySettings,m.primaryLateralBase);
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Live weapon calibration. Move other hand; hold weapon Grip to test; RIGHT TRIGGER saves.";
+    m.message="Move free hand to position. Hold weapon Grip: LEFT stick X/Z and RIGHT stick Y nudge 1cm per flick. RIGHT TRIGGER saves.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
@@ -469,6 +556,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(triggerEdge||aEdge)captureVrLivePosition();
         }else{
             updateVrMenuPreview(primaryWeaponGripDown);
+            serviceVrWeaponFineTune(primaryWeaponGripDown);
             if(triggerEdge)saveVrHandMenuCalibration();
         }
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
