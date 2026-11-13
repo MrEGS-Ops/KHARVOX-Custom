@@ -7,13 +7,21 @@
 int main() {
     using namespace kharvox::hands;
 
-    // Both physical LEFT variants need an upside-down -> upright roll,
-    // whereas the RIGHT variants and absent hands remain unchanged.
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::Fist)==180.f);
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::GunHolding)==180.f);
+    // Both left-hand variants reuse the verified upright right-hand GLB,
+    // mirrored once in local X. Adding a left-only 180-degree roll on top
+    // would turn that into a VERTICAL mirror (the reported upside-down bug).
+    assert(handReferenceAssetIndex(true,HandModelKind::Fist)==1u);
+    assert(handReferenceAssetIndex(false,HandModelKind::Fist)==1u);
+    assert(handReferenceAssetIndex(true,HandModelKind::GunHolding)==3u);
+    assert(handReferenceAssetIndex(false,HandModelKind::GunHolding)==3u);
+    assert(handMeshMirroredFromRight(true,HandModelKind::Fist));
+    assert(handMeshMirroredFromRight(true,HandModelKind::GunHolding));
+    assert(!handMeshMirroredFromRight(false,HandModelKind::Fist));
+    assert(!handMeshMirroredFromRight(false,HandModelKind::GunHolding));
+    assert(handModelControllerForwardRollDegrees(true,HandModelKind::Fist)==0.f);
+    assert(handModelControllerForwardRollDegrees(true,HandModelKind::GunHolding)==0.f);
     assert(handModelControllerForwardRollDegrees(false,HandModelKind::Fist)==0.f);
     assert(handModelControllerForwardRollDegrees(false,HandModelKind::GunHolding)==0.f);
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::None)==0.f);
 
     bool plusWasDown{};
     auto mode=updateHandCalibrationMode(CalibrationMode::Rotation,true,plusWasDown);

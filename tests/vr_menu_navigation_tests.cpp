@@ -28,6 +28,13 @@ int main(){
     vrMenuNavigateStick(nav,-.90f,0.f,5,selected,2);
     assert(!nav.settingsColumn);
     assert(vrMenuModsGamepadTarget(nav,selected,5,2)==1002);
+    // Grip-held test must NOT freeze the opposite-controller movement.
+    // The actual calibration preview reads fresh controller position on
+    // every frame, both before and during the Grip-held 1cm nudge mode.
+    assert(vrWeaponManualCalibrationLive(VrHandMenuMode::Calibrating,false));
+    assert(vrWeaponManualCalibrationLive(VrHandMenuMode::Calibrating,true));
+    assert(!vrWeaponManualCalibrationLive(VrHandMenuMode::Menu,true));
+    assert(!vrWeaponManualCalibrationLive(VrHandMenuMode::Closed,false));
     // GRIP-held weapon fine-tune: 1 cm PER intentional flick, no auto
     // repeat when held, no steps outside primary calibration or Grip hold.
     VrWeaponFineTuneEdges fine{};

@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 // In-headset weapon-hand calibration. Left support hand saves TRANSLATION
 // only. Its orientation is intentionally established anew on every Grip.
@@ -121,6 +122,14 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
+// Repositioning the glove with the free controller must stay LIVE
+// regardless of whether the primary weapon Grip is held. Grip enables
+// centimeter joystick nudges; it must never freeze manual calibration.
+inline constexpr bool vrWeaponManualCalibrationLive(
+    VrHandMenuMode mode,bool primaryGripHeld) noexcept {
+    (void)primaryGripHeld;
+    return mode==VrHandMenuMode::Calibrating;
+}
 // Fine-tune is ONLY active during primary-weapon calibration while its
 // physical weapon-hand GRIP is held to freeze the preview. Each deliberate
 // stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
@@ -190,7 +199,8 @@ struct VrHandMenuState {
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
-    bool primaryGripPreviewHeld{}; // freeze current tested pose only while Grip held
+    bool primaryGripPreviewHeld{}; // Grip-held enables nudges but NEVER freezes live placement
+    std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
     float primaryLateralBase{}; // pinned X, not sampled from moving preview
