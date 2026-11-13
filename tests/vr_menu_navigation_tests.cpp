@@ -48,10 +48,14 @@ int main(){
     nav.actionIndex=2;
     assert(vrMenuGripGamepadTarget(nav,6,true)==32);
     nav.actionIndex=4;
-    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
+    assert(vrMenuGripGamepadTarget(nav,6,false)==33);
     assert(vrMenuGripGamepadTarget(nav,6,true)==31);
     nav.actionIndex=5;
+    assert(vrMenuGripGamepadTarget(nav,6,true)==33);
+    nav.actionIndex=6;
     assert(vrMenuGripGamepadTarget(nav,6,true)==95);
+    nav.actionIndex=5;
+    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
     return 0;
