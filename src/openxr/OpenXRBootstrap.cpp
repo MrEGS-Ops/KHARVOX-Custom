@@ -3251,6 +3251,10 @@ void updateGameplayActions(XrTime displayTime){
     }
     s.crouchStickPressed=crouchStickDown; // fresh DOWN edge required
     if(!gameplay){
+        // DOOM retains its native crouch toggle across a menu transition.
+        // Do not silently discard our latch and strand the player crouched;
+        // one queued native pulse stands them up upon returning to gameplay.
+        if(s.crouchToggleActive)s.vrCrouchReleasePending=true;
         s.crouchToggleActive=false;
         s.manualStickCrouchPulseUntil=0;
     }
