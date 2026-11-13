@@ -1,19 +1,40 @@
 #include "../src/hands/HandCalibrationPolicy.h"
 #include "../src/hands/HandAimAlignmentPolicy.h"
-#include "../src/hands/HandModelRollPolicy.h"
+#include "../src/hands/HandModelReflectionPolicy.h"
 
 #include <cassert>
 
 int main() {
     using namespace kharvox::hands;
 
-    // Both physical LEFT variants need an upside-down -> upright roll,
-    // whereas the RIGHT variants and absent hands remain unchanged.
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::Fist)==180.f);
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::GunHolding)==180.f);
-    assert(handModelControllerForwardRollDegrees(false,HandModelKind::Fist)==0.f);
-    assert(handModelControllerForwardRollDegrees(false,HandModelKind::GunHolding)==0.f);
-    assert(handModelControllerForwardRollDegrees(true,HandModelKind::None)==0.f);
+    // A true left/right mirror flips the wrist's yaw/roll but preserves
+    // the forward axis and produces a determinant +1 rotation. A fixed 180°
+    // roll does NOT mirror an arbitrary 3D wrist and reverses the left palm.
+    struct Mat3 {float m[9];};
+    auto matmul=[](const Mat3&a,const Mat3&b){
+        Mat3 c{};
+        for(int row=0;row<3;++row)
+            for(int col=0;col<3;++col)
+                for(int k=0;k<3;++k)
+                    c.m[row*3+col]+=a.m[row*3+k]*b.m[k*3+col];
+        return c;
+    };
+    const Mat3 mirrorX{{-1,0,0,0,1,0,0,0,1}};
+    const Mat3 yawRight{{0,-1,0,1,0,0,0,0,1}};
+    const Mat3 yawMirrored=handModelReferenceRotation(
+        true,yawRight,mirrorX,matmul);
+    const Mat3 yawUnmodified=handModelReferenceRotation(
+        false,yawRight,mirrorX,matmul);
+    const Mat3 expectedLeft{{0,1,0,-1,0,0,0,0,1}};
+    for(int i=0;i<9;++i){
+        assert(yawMirrored.m[i]==expectedLeft.m[i]);
+        assert(yawUnmodified.m[i]==yawRight.m[i]);
+    }
+    // Mirroring twice returns the original. The mirrored orientation
+    // is shared by the physical left Fist and left GunHolding asset.
+    const Mat3 doubleMirrored=handModelReferenceRotation(
+        true,yawMirrored,mirrorX,matmul);
+    for(int i=0;i<9;++i)assert(doubleMirrored.m[i]==yawRight.m[i]);
 
     bool plusWasDown{};
     auto mode=updateHandCalibrationMode(CalibrationMode::Rotation,true,plusWasDown);
