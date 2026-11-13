@@ -186,9 +186,9 @@ void paintVrHandMenu() {
             const int n=static_cast<int>(dev.size());
             const int focus=std::clamp(m.navigation.actionIndex,0,std::max(0,n-1));
             SelectObject(dc,regular);
-            write(536,126,"DEV  /  READ-ONLY",white);
+            write(536,126,"DEV",white);
             SelectObject(dc,smallFont);
-            write(538,156,"STATUS ONLY - CHANGE IN DESKTOP LAUNCHER",muted);
+            write(538,156,"SELECT [i] TO SEE WHY IT'S IN DEV",muted);
             for(int shown=0;shown<10;++shown){
                 const int index=shown+m.devScroll;
                 if(index>=n)break;
@@ -199,14 +199,29 @@ void paintVrHandMenu() {
                 fill(531,y,384,36,hovered?RGB(48,80,92)
                     :selected?RGB(35,66,79):RGB(27,32,43));
                 std::string label=dev[index].title;
-                if(label.size()>27)label.resize(27);
+                if(label.size()>30)label.resize(30);
                 write(545,y+8,label,white);
-                const std::string status=dev[index].status;
-                write(status=="LOCKED"?837:status=="DESKTOP"?829:856,y+8,
-                    status,status=="LOCKED"?RGB(84,233,214):muted);
+                fill(875,y+4,28,28,m.devInfoIndex==index
+                    ?RGB(30,124,131):RGB(50,64,78));
+                write(884,y+8,"i",RGB(84,233,214));
             }
-            write(544,598,"DEV ITEMS: "+std::to_string(n)
-                +(n>10?"  ("+std::to_string(focus+1)+"/"+std::to_string(n)+")":""),muted);
+            if(m.devInfoIndex>=0&&m.devInfoIndex<n){
+                const std::string explanation=dev[m.devInfoIndex].why;
+                std::size_t split=std::min<std::size_t>(41,explanation.size());
+                if(split<explanation.size()){
+                    const auto space=explanation.rfind(' ',split);
+                    if(space!=std::string::npos&&space>18)split=space;
+                }
+                write(538,590,"WHY IN DEV:",RGB(84,233,214));
+                write(538,612,explanation.substr(0,split),white);
+                if(split<explanation.size()){
+                    const auto next=explanation.find_first_not_of(' ',split);
+                    if(next!=std::string::npos)
+                        write(538,634,explanation.substr(next,41),white);
+                }
+            }else{
+                write(538,607,"Choose a [i] for details.",muted);
+            }
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
@@ -226,7 +241,7 @@ void paintVrHandMenu() {
         if(!editable)
             write(545,251,"Configure in desktop launcher only.",muted);
         else{
-            write(540,226,"Point with RIGHT hand; trigger to select.",muted);
+            // Menu controls are shown once in footer to avoid card overlap.
             std::array<std::string,5> options{};
             int optionCount{};
             switch(mod){
@@ -287,12 +302,13 @@ void paintVrHandMenu() {
                     ?"CUSTOM HEIGHTS ACTIVE":"DEFAULT CROUCH HEIGHTS",
                     RGB(84,233,214));
             }else if(mod==kharvox::VrLiveMod::Gunslinger){
-                write(548,609,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
+                write(548,605,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
         }
         }
         SelectObject(dc,smallFont);
-        write(538,623,"LEFT STICK NAV / A SELECT / B BACK",muted);
+        if(!devSelected)
+            write(538,638,"STICK / A / B   OR   POINTER + TRIGGER",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else{
