@@ -50,19 +50,20 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
     const auto local=rotateVector(inverted,
         subtractVector(probe,s.lastWeaponRenderedTrackingAnchor));
-    // PRIMARY calibration is intentionally only a lateral/vertical XY
-    // placement of the glove on its gun. Depth (weapon-local Z) remains at
-    // the existing gun grip anchor. The opposite controller cannot change
-    // the weapon hand's rotation: use its OWN tracked GRIP orientation.
-    // Support-hand calibration continues using its original full 3D path.
-    const auto& weaponGrip=s.weaponHandLeft
-        ?s.leftGripController:s.rightGripController;
-    const auto orientation=primaryHand&&weaponGrip.valid
-        ?weaponGrip.orientation:placement.orientation;
-    const auto rotation=normalizeQuaternion(multiply(inverted,orientation));
-    m.previewPosition={local.x,local.y,
-        kharvox::weaponpose::weaponHandCalibrationZ(
-            primaryHand,local.z,s.primaryVisualLocalPosition.z)};
+    // PRIMARY glove can move UP/DOWN (Y) and FORWARD/BACK (Z), but NOT
+    // sideways (X). It may rotate independently to fit the gun in the hand.
+    // The opposite controller provides a live visual quaternion only.
+    // Neither of these values can change the *native* weapon AIM pose.
+    // SUPPORT hand remains fully three-dimensional as before.
+    const auto rotation=normalizeQuaternion(multiply(
+        inverted,placement.orientation));
+    const auto primaryPos=kharvox::weaponpose::primaryHandVisualPlacement(
+        kharvox::RightHandGripOffset{local.x,local.y,local.z},
+        kharvox::RightHandGripOffset{
+            s.primaryVisualLocalPosition.x,s.primaryVisualLocalPosition.y,
+            s.primaryVisualLocalPosition.z});
+    m.previewPosition=primaryHand
+        ?primaryPos:kharvox::RightHandGripOffset{local.x,local.y,local.z};
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
