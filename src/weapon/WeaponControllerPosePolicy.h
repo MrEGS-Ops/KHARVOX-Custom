@@ -47,6 +47,24 @@ inline const Quaternion& gameplayWeaponAim(
     return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
+// DOOM's animated right-hand weapon-attachment locator includes first-
+// person hand animations such as near-wall barrel retreat. Using that
+// ANIMATED locator as the origin pivot moves the weapon away from a wall
+// even after the native front-pushback animation branch is disabled.
+// Tracked custom hands instead reference the already captured neutral
+// weapon-attachment locator: the gun stays aligned to the physical controller
+// while the DOOM animation may advance independently underneath. Do not
+// modify tracking, gun orientation, fine-tune offsets or saved calibrations.
+// In guns-only mode or before the settled reference is valid, preserve the
+// previous native animated locator for compatibility.
+template<class Pivot>
+inline const Pivot& nativeWeaponGripPivotForPresentation(
+    const Pivot& animatedPivot,const Pivot& neutralPivot,
+    bool customTrackedHandMode,bool neutralPivotValid) noexcept {
+    return customTrackedHandMode&&neutralPivotValid
+        ?neutralPivot:animatedPivot;
+}
+
 // The legacy 25-degree gun yaw (and old pitch/roll overrides) must not be
 // layered onto the native weapon while laser-locked hands are enabled.
 inline constexpr float weaponEulerOffsetDegrees(
