@@ -484,17 +484,12 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         if(pixelX>=531&&pixelX<=915){
             const auto list=activeVrMenuEntries();
             const int row=s.vrHandMenu.selectedRow;
-            if(row>=0&&row<static_cast<int>(list.size())
-                &&list[row].devSection){
-                const auto dev=devVrMenuEntries();
-                for(int i=0;i<10;++i){
-                    const int index=s.vrHandMenu.devScroll+i;
-                    if(index>=static_cast<int>(dev.size()))break;
-                    if(pixelY>=186+i*39&&pixelY<222+i*39)
-                        return 1200+index;
-                }
-                return -1; // DEV status cannot activate gameplay
+            if(row<0||row>=static_cast<int>(list.size()))return -1;
+            if(!s.vrHandMenu.navigation.settingsColumn){
+                // Browse panel is read-only, except Configure.
+                return pixelY>=548&&pixelY<613?150:-1;
             }
+            if(pixelY>=583&&pixelY<632)return 151;
             const bool toggleable=kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
@@ -575,7 +570,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
                     ==equipped)m.selectedWeapon=i;
-            m.message="LEFT stick navigates; A selects; B backs out. RIGHT pointer + trigger also works.";
+            m.message="Browse mod descriptions with LEFT stick; A opens settings. B goes back.";
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
@@ -663,10 +658,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.page==kharvox::VrMenuPage::Mods){
             const int n=static_cast<int>(rows.size());
             if(n>0)m.selectedRow=std::clamp(m.selectedRow,0,n-1);
-            const auto devEntries=devVrMenuEntries();
             const auto optionCount=[&](const VrLiveMenuEntry& entry)->int{
                 using kharvox::VrLiveMod;
-                if(entry.devSection)return static_cast<int>(devEntries.size());
                 const auto mod=entry.mod;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
@@ -690,17 +683,17 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 if(options>0)m.navigation.actionIndex=std::clamp(
                     m.navigation.actionIndex,0,options-1);
                 else m.navigation.actionIndex=0;
-                if(rows[m.selectedRow].devSection){
-                    const int devN=static_cast<int>(devEntries.size());
-                    m.devScroll=std::clamp(m.devScroll,0,std::max(0,devN-10));
-                    if(m.navigation.actionIndex<m.devScroll)
-                        m.devScroll=m.navigation.actionIndex;
-                    if(m.navigation.actionIndex>=m.devScroll+10)
-                        m.devScroll=m.navigation.actionIndex-9;
-                }
                 m.modScroll=std::clamp(m.modScroll,0,std::max(0,n-10));
                 if(m.selectedRow<m.modScroll)m.modScroll=m.selectedRow;
                 if(m.selectedRow>=m.modScroll+10)m.modScroll=m.selectedRow-9;
+            }
+            // Hovering a row updates its description without a click.
+            if(!m.navigation.settingsColumn
+                &&m.hovered>=1000&&m.hovered<1000+n){
+                m.selectedRow=m.hovered-1000;
+                m.selectedMod=rows[m.selectedRow].mod;
+                m.navigation.actionIndex=0;
+                m.navigation.usingStick=false;
             }
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
@@ -709,24 +702,30 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     n>0&&kharvox::vrLiveModToggleable(rows[m.selectedRow].mod)):-1;
             if(pointed>=0)m.navigation.usingStick=false;
             if(chosen>=1000&&chosen<1000+n){
+                const bool wasInSettings=m.navigation.settingsColumn;
+                const bool alreadySelected=m.selectedRow==chosen-1000;
                 m.selectedRow=chosen-1000;
                 m.selectedMod=rows[m.selectedRow].mod;
                 m.navigation.actionIndex=0;
-                // A on a highlighted mod moves focus to its options.
-                if(aEdge){m.navigation.settingsColumn=true;
-                    m.navigation.usingStick=true;}
-                m.message=rows[m.selectedRow].devSection
-                    ?"DEV: read-only mods and locked launcher overrides."
-                    :kharvox::vrLiveModEditable(m.selectedMod)
-                        ?"Live options on the RIGHT.":"Read-only; desktop launcher only.";
-            }else if(chosen>=1200&&chosen<1200+static_cast<int>(devEntries.size())
-                &&rows[m.selectedRow].devSection){
+                if(aEdge||(pointed>=0&&!wasInSettings&&alreadySelected)){
+                    m.navigation.settingsColumn=true;
+                    m.navigation.usingStick=aEdge;
+                    m.message="Mod settings open. B returns to descriptions.";
+                }else{
+                    m.navigation.settingsColumn=false;
+                    m.message="Read about the mod; press A or CONFIGURE.";
+                }
+            }else if(chosen==150){
                 m.navigation.settingsColumn=true;
-                m.navigation.actionIndex=chosen-1200;
+                m.navigation.actionIndex=0;
                 m.navigation.usingStick=false;
-                m.devInfoIndex=chosen-1200;
-                m.message=devEntries[m.devInfoIndex].why;
-            }else if(!rows[m.selectedRow].devSection
+                m.message="Mod settings open. B returns to descriptions.";
+            }else if(chosen==151){
+                m.navigation.settingsColumn=false;
+                m.navigation.actionIndex=0;
+                m.navigation.usingStick=false;
+                m.message="Back to mod descriptions.";
+            }else if(m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
                 handleVrLiveMenuAction(chosen);
                 if(m.page==kharvox::VrMenuPage::WeaponGrip)m.navigation={};
