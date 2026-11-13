@@ -2420,9 +2420,39 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
     std::array<float, 3> desiredLocalOrigin{};
     if (animatedGripPivotValid.load(std::memory_order_acquire)) {
         const auto adjustment = configuredWeaponPivotAdjustment();
+        std::array<float, 3> animated{},neutral{};
+        for (int index = 0; index < 3; ++index){
+            animated[index]=animatedGripPivot[index].load(
+                std::memory_order_relaxed);
+            neutral[index]=neutralGripPivot[index].load(
+                std::memory_order_relaxed);
+        }
+        const bool neutralReady=neutralGripPivotValid.load(
+            std::memory_order_acquire)
+            &&neutralGripPivotGeneration.load(std::memory_order_acquire)
+                ==input.generation;
+        const bool trackingHands=customHandsRequested();
+        const auto& attachment=kharvox::weaponpose::
+            nativeWeaponGripPivotForPresentation(animated,neutral,
+                trackingHands,neutralReady);
+        // During tracked gameplay, native attachment animations must NEVER
+        // pull the visible gun away from its physical controller. The
+        // neutral pivot is sampled once per controller/weapon generation;
+        // weapon origin/rotation/fine-tune and owner profile data are left
+        // untouched. This is separate from the native pushback branch patch.
+        if(trackingHands&&neutralReady){
+            static std::atomic<unsigned> loggedGeneration{};
+            if(loggedGeneration.exchange(input.generation,
+                    std::memory_order_relaxed)!=input.generation){
+                log("[WEAPON-WALL-PUSHBACK] fixed native righthandattach "
+                    "pivot engaged; hand animation can no longer retreat "
+                    "tracked gun (generation="+
+                    std::to_string(input.generation)+")");
+            }
+        }
         std::array<float, 3> gripPivot{};
         for (int index = 0; index < 3; ++index)
-            gripPivot[index] = animatedGripPivot[index].load(std::memory_order_relaxed) + adjustment[index];
+            gripPivot[index] = attachment[index] + adjustment[index];
         std::array<float, 3> pivotOffsetBody{};
         for (int component = 0; component < 3; ++component) {
             pivotOffsetBody[component] = weaponScale * (

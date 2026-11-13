@@ -41,19 +41,19 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
     using kharvox::VrLiveMod;
     switch(mod){
         case VrLiveMod::WeaponGrip:return {{{
-            "Guns follow your tracked hands.",
-            "One- and two-hand aiming supported.",
-            "Grab the support handle to steer.",
-            "Each weapon has its own grip fit.",
-            "Left/right and heavy modes work.",
-            "Fit weapon grips in CONFIGURE."}}};
+            "Fit guns to your physical VR hands.",
+            "Equip LEFT-hand gun to fit LEFT.",
+            "Equip RIGHT-hand gun to fit RIGHT.",
+            "Choose a weapon and CALIBRATE.",
+            "Fit primary and support grips.",
+            "Left/right profiles save separately."}}};
         case VrLiveMod::Gunslinger:return {{{
-            "Instant quick-draw hip holsters.",
-            "Release Grip in a hip zone to set.",
-            "Grip that zone to draw instantly.",
-            "Behind-head weapon wheel.",
-            "Wheel follows the opening hand.",
-            "Fit hip and wheel zones below."}}};
+            "LEFT and RIGHT behind-head wheels.",
+            "Put either hand behind your head.",
+            "Exit holding Grip to select a gun.",
+            "Exit without Grip to cancel.",
+            "Left/right hip zones quick-draw guns.",
+            "Release Grip in a hip zone to set."}}};
         case VrLiveMod::Killtime:return {{{
             "Change cinematic Glory Kill speed.",
             "Lower tick Hz = faster execution.",
@@ -80,10 +80,55 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "First pull starts the native kill.",
             "Release and re-pull up to twice.",
             "Each pull boosts execution speed.",
-            "Native sound and strong haptics.",
+            "",
             "Toggle mode in CONFIGURE."}}};
         default:return {{{"Select a mod for information."}}};
     }
+}
+// Show the runtime's effective Glory Kill target, not the provenance of
+// the setting. A saved in-headset override wins, then the launcher profile.
+// Without an explicit Hz, a native full-speed bypass has NO fixed target;
+// display that accurately rather than inventing a refresh rate.
+std::string vrLiveGloryKillSpeedText(){
+    // Native full-speed bypass takes precedence over any displayable Hz
+    // profile; the game does not apply that target in this execution path.
+    int legacySpeedLevel=10;
+    char legacyText[16]{};
+    const DWORD legacyLength=GetEnvironmentVariableA(
+        "KHARVOX_GLORY_KILL_SLOWMO_LEVEL",legacyText,
+        sizeof(legacyText));
+    if(legacyLength>0&&legacyLength<sizeof(legacyText)){
+        char* legacyEnd{};
+        const long value=std::strtol(legacyText,&legacyEnd,10);
+        if(legacyEnd!=legacyText&&*legacyEnd=='\0'
+            &&value>=0&&value<=10)
+            legacySpeedLevel=static_cast<int>(value);
+    }
+    if(kharvox::nativeFastKillSyncRequested(
+        s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
+        legacySpeedLevel))
+        return "FULL SPEED (NATIVE)";
+    const int explicitHz=actionSpeedTargets().gloryKill;
+    if(explicitHz>0)return std::to_string(explicitHz)+" Hz";
+    char text[16]{};
+    const DWORD length=GetEnvironmentVariableA(
+        "KHARVOX_MOD_CINEMATIC_KILL_SPEED",text,sizeof(text));
+    int cinematicLevel=1;
+    if(length>0&&length<sizeof(text)){
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        if(end!=text&&*end=='\0'&&value>=1&&value<=5)
+            cinematicLevel=static_cast<int>(value);
+    }
+    const int headsetHz=kharvox::targetGameHzForDisplayPeriod(
+        s.fastestDisplayPeriod);
+    if(headsetHz>0)return std::to_string(
+        kharvox::cinematicKillTargetTickHz(cinematicLevel,headsetHz))
+        +" Hz TARGET";
+    if(cinematicLevel>=2)
+        return std::to_string(kharvox::cinematicKillTargetTickHz(
+            cinematicLevel,120))+" Hz TARGET";
+    return "NATIVE ADAPTIVE";
 }
 void applyVrLiveModRuntimeState(){
     using kharvox::VrLiveMod;

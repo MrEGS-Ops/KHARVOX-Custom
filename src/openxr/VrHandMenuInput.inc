@@ -662,21 +662,35 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedMod=rows[newRow].mod;
                 m.navigation.actionIndex=0;
                 if(aEdge){
-                    m.navigation.settingsColumn=true;
-                    m.navigation.usingStick=aEdge;
-                    m.message="Configuring "+std::string(rows[newRow].title)
-                        +". Press B for mod descriptions.";
+                    if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip){
+                        // Direct navigation: the dedicated weapon page IS the
+                        // configuration; no extra "OPEN CALIBRATION" step.
+                        m.page=kharvox::VrMenuPage::WeaponGrip;
+                        m.navigation={};
+                        m.message="Select weapon and hand; trigger calibrates.";
+                    }else{
+                        m.navigation.settingsColumn=true;
+                        m.navigation.usingStick=true;
+                        m.message="Configuring "+std::string(rows[newRow].title)
+                            +". Press B for mod descriptions.";
+                    }
                 }else{
                     m.navigation.settingsColumn=false;
                     m.message="Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
-                m.navigation.settingsColumn=true;
-                m.navigation.actionIndex=0;
-                m.navigation.usingStick=false;
-                m.message="Configuring "+std::string(rows[m.selectedRow].title)
-                    +". B returns to overview.";
+                if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip){
+                    m.page=kharvox::VrMenuPage::WeaponGrip;
+                    m.navigation={};
+                    m.message="Select weapon and hand; trigger calibrates.";
+                }else{
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.navigation.usingStick=false;
+                    m.message="Configuring "+std::string(rows[m.selectedRow].title)
+                        +". B returns to overview.";
+                }
             }else if(m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
                 handleVrLiveMenuAction(chosen);

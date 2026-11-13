@@ -276,7 +276,7 @@ void paintVrHandMenu() {
                 case kharvox::VrLiveMod::Killtime:
                     options[0]="SLOWER (+10 HZ)";
                     options[1]="FASTER (-10 HZ)";
-                    options[2]="RESET TO DESKTOP PRESET";
+                    options[2]="RESET SPEED";
                     optionCount=3;
                     break;
                 case kharvox::VrLiveMod::PhysicalGloryKills:
@@ -299,9 +299,8 @@ void paintVrHandMenu() {
                 write(548,y+17,options[index],white);
             }
             if(mod==kharvox::VrLiveMod::Killtime){
-                write(548,543,"GLORY KILL: "+(s.vrLiveSettings.gloryKillHz>0
-                    ?std::to_string(s.vrLiveSettings.gloryKillHz)+" Hz"
-                    :std::string("desktop preset")),RGB(84,233,214));
+                write(548,543,"GLORY KILL: "+vrLiveGloryKillSpeedText(),
+                    RGB(84,233,214));
             }else if(mod==kharvox::VrLiveMod::PhysicalGloryKills){
                 std::ostringstream speed;
                 speed<<std::fixed<<std::setprecision(1)

@@ -121,6 +121,53 @@ int main(){
             rotatedPrimaryController,true,false);
     assert(&noSteerFrame==&rotatedPrimaryController);
 
+    // DOOM native hand animation can move the righthandattach pivot
+    // independently of OpenXR tracking (including wall-pushback). Custom
+    // gameplay must reuse the neutral locator once it is settled; guns-
+    // only and calibration fallback still use the original animated joint.
+    const Vec animatedPivot{.04f,.18f,-.31f};
+    const Vec fixedPivot{.01f,.07f,-.18f};
+    const auto& stable=kharvox::weaponpose::
+        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
+            true,true);
+    assert(&stable==&fixedPivot);
+    const auto& fallbackUnready=kharvox::weaponpose::
+        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
+            true,false);
+    assert(&fallbackUnready==&animatedPivot);
+    const auto& legacyPivot=kharvox::weaponpose::
+        nativeWeaponGripPivotForPresentation(animatedPivot,fixedPivot,
+            false,true);
+    assert(&legacyPivot==&animatedPivot);
+    // The mode handoff blends POSITION ONLY during normal two-hand play.
+    // Factory profiles remain the exact endpoints; no jump at t=0 and no
+    // extra interpolation once the 320ms transition has completed.
+    const Vec supportNormal{-.21f,.02f,-.19f};
+    const Vec supportTurret{-.08f,-.07f,-.39f};
+    const float t0=kharvox::weaponpose::heavyGripTransitionEase(0);
+    const float tHalf=kharvox::weaponpose::heavyGripTransitionEase(160);
+    const float tEnd=kharvox::weaponpose::heavyGripTransitionEase(320);
+    const float tBeyond=kharvox::weaponpose::heavyGripTransitionEase(1000);
+    assert(t0==0.f&&std::abs(tHalf-.5f)<.00001f);
+    assert(tEnd==1.f&&tBeyond==1.f);
+    assert(near(kharvox::weaponpose::heavyGripBlendVector(
+        supportNormal,supportTurret,t0),supportNormal));
+    assert(near(kharvox::weaponpose::heavyGripBlendVector(
+        supportNormal,supportTurret,tEnd),supportTurret));
+    const auto intermediate=kharvox::weaponpose::heavyGripBlendVector(
+        supportNormal,supportTurret,tHalf);
+    assert(!near(intermediate,supportNormal)
+        &&!near(intermediate,supportTurret));
+    const auto back=kharvox::weaponpose::heavyGripBlendVector(
+        supportTurret,supportNormal,tHalf);
+    assert(near(back,intermediate)); // reverse transition is symmetrical
+    const Vec gunNormal{.0f,.01f,-.11f};
+    const Vec gunTurret{.02f,-.08f,-.62f};
+    assert(near(kharvox::weaponpose::heavyGripBlendVector(
+        gunNormal,gunTurret,t0),gunNormal));
+    assert(near(kharvox::weaponpose::heavyGripBlendVector(
+        gunNormal,gunTurret,tEnd),gunTurret));
+
     // Support hand live preview and SAVED playback use the exact SAME
     // pre-fine-tune weapon AIM reference. Its physical GRIP must stay in
     // the same place when entering calibration, and after a gun fine-tune

@@ -47,6 +47,42 @@ inline const Quaternion& gameplayWeaponAim(
     return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
+// DOOM's animated right-hand weapon-attachment locator includes first-
+// person hand animations such as near-wall barrel retreat. Using that
+// ANIMATED locator as the origin pivot moves the weapon away from a wall
+// even after the native front-pushback animation branch is disabled.
+// Tracked custom hands instead reference the already captured neutral
+// weapon-attachment locator: the gun stays aligned to the physical controller
+// while the DOOM animation may advance independently underneath. Do not
+// modify tracking, gun orientation, fine-tune offsets or saved calibrations.
+// In guns-only mode or before the settled reference is valid, preserve the
+// previous native animated locator for compatibility.
+template<class Pivot>
+inline const Pivot& nativeWeaponGripPivotForPresentation(
+    const Pivot& animatedPivot,const Pivot& neutralPivot,
+    bool customTrackedHandMode,bool neutralPivotValid) noexcept {
+    return customTrackedHandMode&&neutralPivotValid
+        ?neutralPivot:animatedPivot;
+}
+
+// Only while a support Grip stays latched in actual gameplay, alternate
+// Gauss Siege / Chaingun Turret grip positions should ease between the two
+// APPROVED, saved profile endpoints instead of jumping instantly. Position
+// and gun-only offset blend together over 320ms, independent of frame rate.
+inline constexpr unsigned kHeavyGripTransitionMs=320;
+inline float heavyGripTransitionEase(unsigned long long elapsedMs) noexcept {
+    const float t=elapsedMs>=kHeavyGripTransitionMs?1.f
+        :static_cast<float>(elapsedMs)/kHeavyGripTransitionMs;
+    return t*t*(3.f-2.f*t);
+}
+template<class Vector>
+inline Vector heavyGripBlendVector(const Vector& from,const Vector& to,
+    float progress) noexcept {
+    return {from.x+(to.x-from.x)*progress,
+            from.y+(to.y-from.y)*progress,
+            from.z+(to.z-from.z)*progress};
+}
+
 // The legacy 25-degree gun yaw (and old pitch/roll overrides) must not be
 // layered onto the native weapon while laser-locked hands are enabled.
 inline constexpr float weaponEulerOffsetDegrees(
