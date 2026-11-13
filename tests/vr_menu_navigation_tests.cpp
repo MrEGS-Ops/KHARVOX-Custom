@@ -255,16 +255,46 @@ int main(){
     nav.actionIndex=2;
     assert(vrMenuGripGamepadTarget(nav,6,true)==32);
     nav.actionIndex=4;
-    assert(vrMenuGripGamepadTarget(nav,6,false)==33);
+    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
     assert(vrMenuGripGamepadTarget(nav,6,true)==31);
     nav.actionIndex=5;
-    assert(vrMenuGripGamepadTarget(nav,6,true)==33);
-    nav.actionIndex=6;
     assert(vrMenuGripGamepadTarget(nav,6,true)==95);
-    nav.actionIndex=5;
-    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
+    assert(vrMenuGripGamepadTarget(nav,6,false)==-1);
+    nav.actionIndex=6;
+    assert(vrMenuGripGamepadTarget(nav,6,true)==-1);
+    // Copy RIGHT -> LEFT has been removed: all left-side presets are
+    // calibrated independently. The old button code 33 is unreachable.
+    for(int i=0;i<7;++i){
+        nav.actionIndex=i;
+        assert(vrMenuGripGamepadTarget(nav,6,true)!=33);
+        assert(vrMenuGripGamepadTarget(nav,6,false)!=33);
+    }
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
+    // Mods page starts in overview mode. Scrolling through the six
+    // configurable entries must NOT enter settings or activate a toggle.
+    VrMenuNavigation browse{};
+    browse.settingsColumn=false;
+    int browsingRow=0;
+    vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+    assert(browsingRow==1&&!browse.settingsColumn);
+    assert(vrMenuModsGamepadTarget(browse,browsingRow,6,5,false)==1001);
+    vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5); // re-arm
+    vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+    assert(browsingRow==2&&!browse.settingsColumn);
+    vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5);
+    for(int i=0;i<4;++i){
+        vrMenuNavigateStick(browse,0.f,-.9f,6,browsingRow,5);
+        vrMenuNavigateStick(browse,0.f,0.f,6,browsingRow,5);
+    }
+    assert(browsingRow==0&&!browse.settingsColumn);
+    // Only explicit A / CONFIGURE moves focus into live options.
+    browse.settingsColumn=true;
+    browse.actionIndex=0;
+    assert(vrMenuModsGamepadTarget(browse,0,6,5,false)==130);
+    browse.settingsColumn=false; // B: back to overview
+    assert(vrMenuModsGamepadTarget(browse,0,6,5,false)==1000);
+
     // Core mods have settings but no enable checkbox. First action is
     // OPEN CALIBRATION / SET HIP / SLOWER etc, not toggle.
     nav.settingsColumn=true;nav.actionIndex=0;
