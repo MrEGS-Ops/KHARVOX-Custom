@@ -117,9 +117,11 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
-    constexpr std::array<int,7> heavyActions{20,21,32,30,31,33,95};
-    constexpr std::array<int,6> normalActions{20,21,30,31,33,95};
-    return nav.actionIndex>=0&&nav.actionIndex<(heavy?7:6)
+    // No automatic RIGHT-to-LEFT mirroring: each physical hand is
+    // calibrated independently. Preserve CALIBRATE, RESET and BACK.
+    constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
+    constexpr std::array<int,5> normalActions{20,21,30,31,95};
+    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
         ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
 }
 // Grip RELEASED: the opposite controller drives the primary glove's live
@@ -314,8 +316,6 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
-    int devScroll{}; // vertical viewport of read-only DEV rows
-    int devInfoIndex{-1}; // [i] selected, never a toggle
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
