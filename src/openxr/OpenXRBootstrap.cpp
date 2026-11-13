@@ -8370,9 +8370,26 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         handView.imageRectY=submittedRects[e].offset.y;
         handView.imageRectWidth=uint32_t(submittedRects[e].extent.width);
         handView.imageRectHeight=uint32_t(submittedRects[e].extent.height);
-        if(freshAerHands||!s.stereoCacheHasIntegratedHands[e])
+        const bool noDepthFallback=freshAerHands
+            ||!s.stereoCacheHasIntegratedHands[e];
+        if(noDepthFallback&&kharvox::hands::allowUnoccludedHandOverlay(
+                s.showHands,handGameplayActive)){
             s.handRenderer.record(s.commandBuffer,e,xi[e],handView,leftHandPose,
                 rightHandPose,handVisibility,currentHandGameplay);
+        }else if(noDepthFallback&&s.showHands&&handGameplayActive){
+            // Native guns remain able to approach/penetrate objects without
+            // artificially retreating. Glove models must honor DOOM world
+            // depth. The fallback overlay cannot test against world depth
+            // and would paint hands THROUGH walls; withhold it instead.
+            // This changes visual occlusion only, not physical tracking.
+            static std::array<bool,2> missingWorldDepthLogged{};
+            if(!missingWorldDepthLogged[e]){
+                missingWorldDepthLogged[e]=true;
+                log("[HAND-WORLD-OCCLUSION] eye="+std::to_string(e)
+                    +" scene depth unavailable; unoccluded glove overlay "
+                    "withheld until depth-integrated rendering resumes");
+            }
+        }
         eye.initialized[xi[e]]=true;
     }
     if(hudImageAcquired){
