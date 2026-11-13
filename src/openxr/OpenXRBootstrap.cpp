@@ -431,6 +431,18 @@ struct State {
     std::array<TwoHandCalibration,static_cast<size_t>(KharvoxWeaponKind::Count)> twoHandCalibrationsLeft{};
     KharvoxWeaponKind twoHandCalibrationTarget{KharvoxWeaponKind::Shotgun};
     KharvoxWeaponKind twoHandLatchedWeapon{KharvoxWeaponKind::Unknown};
+    // Render-only heavy-mode handoff while a normal support Grip stays held.
+    // Endpoints remain the owner's SAVED profiles; no capture/Reset changes.
+    struct HeavyModeHandoff {
+        KharvoxWeaponKind weapon{KharvoxWeaponKind::Unknown};
+        bool initialized{},alternate{},leftWeaponHand{},transition{};
+        bool supportValid{},gunValid{},wristValid{};
+        unsigned long long startedMs{};
+        float progress{1.f};
+        XrVector3f previousSupport{},fromSupport{};
+        XrVector3f previousGunOffset{},fromGunOffset{};
+        XrQuaternionf previousWrist{0,0,0,1},fromWrist{0,0,0,1};
+    } heavyModeHandoff{};
     TwoHandAimMode twoHandCalibrationAimMode{TwoHandAimMode::Barrel};
     kharvox::OffHandStickInput offHandStickInput{};
     kharvox::OffHandStickOutput offHandStickOutput{};
