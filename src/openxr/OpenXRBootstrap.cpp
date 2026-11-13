@@ -3082,6 +3082,9 @@ void updateGameplayActions(XrTime displayTime){
     // wheel control for dash without changing jump/double-jump.
     const bool physicalAButtonDown=readBooleanAction(s.doomCrouch);
     const bool crouchStickDown=turnActive&&rightStickY<-.75f;
+    const bool manualCrouchDown=turnActive
+        &&kharvox::manualStickCrouchDirection(
+            s.rightStick.x,rightStickY);
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
     const bool leftWheelEnabled=s.customMods.behindHeadWeaponWheel; // one mod opens BOTH sides
@@ -3239,8 +3242,13 @@ void updateGameplayActions(XrTime displayTime){
     const bool stickCrouchAvailable=kharvox::manualStickCrouchAllowed(
         s.customMods.physicalCrouch,s.customMods.behindHeadWeaponWheel,
         s.weaponWheelRemapEnabled);
+    // No crouch while the gesture wheel is held open, and require a new
+    // DOWN gesture after closing it. Never interpret diagonal turning
+    // as a crouch request.
+    const bool safeManualCrouchDown=manualCrouchDown
+        &&!s.behindHeadWheelActive&&!s.wheelCancelDrain.active();
     if(stickCrouchAvailable&&gameplay
-        &&crouchStickDown&&!s.crouchStickPressed){
+        &&safeManualCrouchDown&&!s.crouchStickPressed){
         s.crouchToggleActive=!s.crouchToggleActive;
         if(!s.weaponWheelRemapEnabled)
             s.manualStickCrouchPulseUntil=displayTime+90000000;
@@ -3254,7 +3262,7 @@ void updateGameplayActions(XrTime displayTime){
         s.vrCrouchReleasePending=true;
         log("[INPUT] manual crouch released for Physical Crouch.");
     }
-    s.crouchStickPressed=crouchStickDown; // fresh DOWN edge required
+    s.crouchStickPressed=manualCrouchDown; // fresh DOWN edge required
     if(!gameplay){
         // DOOM retains its native crouch toggle across a menu transition.
         // Do not silently discard our latch and strand the player crouched;
