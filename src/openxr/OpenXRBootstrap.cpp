@@ -71,6 +71,7 @@
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
+#include "WeaponRecoilPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
@@ -461,6 +462,8 @@ struct State {
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
     kharvox::VrLiveSettings vrLiveSettings{};
+    kharvox::WeaponRecoilSettings recoilSettings{};
+    kharvox::WeaponRecoilState recoilState{};
     kharvox::CustomModFlags vrDesktopMods{};
     bool vrDesktopPhysicalGk{},vrDesktopKilltime{};
     float vrDesktopPunchSpeed{2.8f};
@@ -2529,6 +2532,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.recoilState={};
         s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
         // Melee/Glory Kill gameplay gaps must NOT destroy a saved primary
@@ -2832,6 +2836,32 @@ void updateWeapon6Dof(){
     if(s.showHands)
         rotation=kharvox::weaponpose::gameplayWeaponAim(
             current.orientation,rotation,gameplayTwoHandSteering);
+    // Recoil is applied ONCE to the same weapon quaternion submitted to DOOM
+    // and the native muzzle/laser path. It never rotates the HMD or either
+    // tracked controller; the primary physical grip remains the fixed pivot.
+    // Gameplay/firing is strictly gated: no calibration, menus, holsters,
+    // executions or unknown weapon profiles can generate a recoil shot.
+    const int recoilWeapon=kharvox::weaponRecoilIndex(KharvoxWeaponKindKey(kind));
+    const bool recoilGameplay=gameplay&&s.weapon6Dof
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!s.dynamicShoulderHolstered&&!s.twoHandCalibrationMode
+        &&KharvoxCameraPlayerWeaponControlActive();
+    const auto ammo=KharvoxWeaponGetAmmoState(kind);
+    const bool validAmmo=ammo!=KharvoxWeaponAmmoState::Empty
+        &&ammo!=KharvoxWeaponAmmoState::Unavailable;
+    const auto recoil=kharvox::advanceWeaponRecoil(
+        s.recoilState,s.recoilSettings,
+        {recoilWeapon,s.primaryFireDown&&validAmmo,
+         gameplayTwoHandSteering,recoilGameplay,GetTickCount64()});
+    if(recoil.pitchDegrees>.0001f||std::abs(recoil.yawDegrees)>.0001f){
+        constexpr float radiansPerDegree=0.017453292519943295f;
+        const float pitchHalf=recoil.pitchDegrees*radiansPerDegree*.5f;
+        const float yawHalf=recoil.yawDegrees*radiansPerDegree*.5f;
+        const XrQuaternionf pitch{std::sin(pitchHalf),0.f,0.f,std::cos(pitchHalf)};
+        const XrQuaternionf yaw{0.f,std::sin(yawHalf),0.f,std::cos(yawHalf)};
+        // Local +X tilts the OpenXR -Z muzzle upward; +Y adds side drift.
+        rotation=normalizeQuaternion(multiply(rotation,multiply(yaw,pitch)));
+    }
     const auto renderOrientation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
@@ -5688,6 +5718,14 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
+    if(!kharvox::loadWeaponRecoilSettings(
+        kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){
+        s.recoilSettings={}; // invalid settings must never turn recoil on
+        log("[VR-RECOIL] invalid saved recoil profile; safe OFF defaults restored");
+    }
+    log(std::string("[VR-RECOIL] experimental one-hand recoil ")
+        +(s.recoilSettings.enabled?"ENABLED":"OFF")
+        +"; per-weapon tuning independent of hand calibration");
     log("[VR-GRIP] calibration path="+kharvox::runtimePathA("offhand_right_hand_positions.cfg")+
         " accepted="+std::to_string(s.rightGripSettings.accepted)+
         " rejected="+std::to_string(s.rightGripSettings.rejected));
