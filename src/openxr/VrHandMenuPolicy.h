@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 
 // In-headset weapon-hand calibration. Left support hand saves TRANSLATION
 // only. Its orientation is intentionally established anew on every Grip.
