@@ -361,6 +361,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.selectedRow=0;
             m.modScroll=0;
             m.devScroll=0;
+            m.devInfoIndex=-1;
             m.navigation={};
             m.liveCapture=kharvox::VrLiveCapture::None;
             m.autoSelectingWeapon=false;
@@ -515,8 +516,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation.settingsColumn=true;
                 m.navigation.actionIndex=chosen-1200;
                 m.navigation.usingStick=false;
-                m.message=std::string(devEntries[chosen-1200].title)
-                    +" is read-only in headset.";
+                m.devInfoIndex=chosen-1200;
+                m.message=devEntries[m.devInfoIndex].why;
             }else if(!rows[m.selectedRow].devSection
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
                 handleVrLiveMenuAction(chosen);
