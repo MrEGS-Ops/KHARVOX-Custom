@@ -7,6 +7,17 @@
 
 namespace kharvox::hands {
 
+// Gameplay gloves may only appear when composited against DOOM's actual
+// world depth. The alternative hand overlay has no world occlusion and can
+// make hands show visibly THROUGH walls and boxes. If depth isn't available,
+// skip that visual layer rather than exposing an undepth-tested hand.
+// This policy does not affect gun rendering, controller tracking, physics,
+// body/world collision or saved hand calibration.
+inline bool allowUnoccludedHandOverlay(bool customHandsVisible,
+    bool normalGameplay) noexcept {
+    return !(customHandsVisible&&normalGameplay);
+}
+
 // Preserve the established guns-only CVar value. This CVar alone is NOT
 // sufficient: native render entities cache their own depth scale at +0x14C.
 inline float nativeWeaponDepthScale(bool showHands) {

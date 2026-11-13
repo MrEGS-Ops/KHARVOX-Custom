@@ -4,6 +4,10 @@
 #include <cmath>
 
 int main() {
+    assert(!kharvox::hands::allowUnoccludedHandOverlay(true,true));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(true,false));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(false,true));
+    assert(kharvox::hands::allowUnoccludedHandOverlay(false,false));
     assert(kharvox::hands::nativeWeaponDepthScale(true) == 1.f);
     assert(kharvox::hands::nativeWeaponDepthScale(false) == 0.f);
     // Original DOOM depthHack is passed through unchanged; native entity
