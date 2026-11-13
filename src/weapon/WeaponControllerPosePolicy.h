@@ -45,4 +45,24 @@ inline Offset primaryHandVisualPlacement(
     return measured;
 }
 
+// Two-axis weapon-HAND anchor fitting without breaking the literal laser
+// centreline. A change in local Z slides the native gun ALONG the AIM ray;
+// local Y moves the glove's attachment on that gun. Both effects translate
+// the visible hand anchor in Y/Z. Neither adds lateral (X) gun motion or
+// changes the controller-provided gun orientation. The saved glove quaternion
+// stays independent and is applied after computing its anchor.
+template<class Offset>
+struct PrimaryHandAnchorPlan {
+    Offset gunTranslationLocal;  // always X=0, Y=0, Z only
+    Offset handAttachmentLocal;  // current X/Y; Z held at factory/reference
+};
+template<class Offset>
+inline PrimaryHandAnchorPlan<Offset> primaryHandAnchorPlan(
+    const Offset& requestedHand, const Offset& referenceHand) noexcept {
+    return {
+        Offset{0.f,0.f,requestedHand.z-referenceHand.z},
+        Offset{requestedHand.x,requestedHand.y,referenceHand.z}
+    };
+}
+
 } // namespace kharvox::weaponpose
