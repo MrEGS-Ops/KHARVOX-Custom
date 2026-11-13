@@ -382,7 +382,7 @@ void startVrSelectedWeaponCalibration(){
         m.primaryLateralBase-=m.fineTuneAccumulated.x;
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Move free hand to position. Hold weapon Grip: LEFT stick X/Z and RIGHT stick Y nudge 1cm per flick. RIGHT TRIGGER saves.";
+    m.message="Release Grip: rotate glove with free controller. Hold Grip: 1 cm stick nudges adjust hand/anchor only. RIGHT TRIGGER saves.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
@@ -498,6 +498,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             bool rightTrigger,bool leftTrigger,
                             bool primaryWeaponGripDown,bool menuA,bool menuB){
     auto& m=s.vrHandMenu;
+    // Display-only: reflect actual physical Grip even if the live preview
+    // is invalid. Never gate calibration mechanics or input on this flag.
+    m.calibrationGripHeld=m.mode==kharvox::VrHandMenuMode::Calibrating
+        &&m.liveCapture==kharvox::VrLiveCapture::None
+        &&m.rightHand!=s.weaponHandLeft&&primaryWeaponGripDown;
     // A single 1-second RIGHT-stick hold opens/closes this menu.
     // Ordinary RS taps still belong to Hand Focus.
     // The menu remains accessible when Weapon Grip Calibration is OFF,
