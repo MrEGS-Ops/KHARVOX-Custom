@@ -361,6 +361,42 @@ inline bool saveRightHandGripRotation(const std::string&path,
     return true;
 }
 
+// Mirror a RIGHT primary hand grip over the weapon-local YZ plane to give
+// the LEFT hand a useful first-pass pose. Mirroring a rotation requires
+// M*R*M (M=diag(-1,1,1)), i.e. quaternion (x,-y,-z,w), not just changing X.
+// No existing left-hand data is changed until the user selects APPLY TO LEFT.
+inline bool mirroredRightPrimaryVisualPose(const RightHandGripSettings& settings,
+    const std::string& weapon,bool alternate,
+    RightHandGripOffset& leftPosition,RightHandGripRotation& leftRotation) {
+    if(!validVrCalibrationWeapon(weapon))return false;
+    const std::string key=weapon+
+        (alternate?(weapon=="gauss_cannon"?"_siege"
+          :weapon=="chaingun"?"_turret":""):"");
+    RightHandGripOffset position{};
+    RightHandGripRotation rotation{};
+    bool found=false;
+    if(weapon=="gauss_cannon"){
+        found=alternate?settings.gaussSiegeHandValid:settings.gaussHandValid;
+        position=alternate?settings.gaussSiegeHand:settings.gaussHand;
+        rotation=alternate?settings.gaussSiegeRotation:settings.gaussRotation;
+    }else if(weapon=="chaingun"){
+        found=alternate?settings.chaingunTurretHandValid:settings.chaingunHandValid;
+        position=alternate?settings.chaingunTurretHand:settings.chaingunHand;
+        rotation=alternate?settings.chaingunTurretRotation:settings.chaingunRotation;
+    }else{
+        const auto pos=settings.visualPositions.find(key);
+        const auto rot=settings.visualRotations.find(key);
+        if(pos==settings.visualPositions.end()||rot==settings.visualRotations.end())
+            return false;
+        position=pos->second;rotation=rot->second;found=true;
+    }
+    if(!found||!validRightHandVisualPlacement(position)
+        ||!rotation.valid||!validRightHandRotation(rotation))return false;
+    leftPosition={-position.x,position.y,position.z};
+    leftRotation={rotation.x,-rotation.y,-rotation.z,rotation.w,true};
+    return validRightHandVisualPlacement(leftPosition)
+        &&validRightHandRotation(leftRotation);
+}
 // Atomic single-transaction update of one visual grip pose: both the
 // glove POSITION and ROTATION are saved together, or neither is saved.
 // Preserves the native weapon anchor values and all other weapon modes.
