@@ -80,7 +80,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
         if(on||showEvenIfOff)rows.push_back({title,id,on});
     };
-    // Show all six editable features even when OFF, so they can be re-enabled.
+    // Three core features stay on; only Crouch/PAINSAW can be toggled.
+    // Keep Physical Glory Kills settings available without a live checkbox.
     add("Weapon Grip Calibration",VrLiveMod::WeaponGrip,
         s.customMods.offHandGripCapture,true);
     add("Gunslinger",VrLiveMod::Gunslinger,
@@ -223,8 +224,9 @@ bool handleVrLiveMenuAction(int action){
     using kharvox::VrLiveCapture;
     auto& m=s.vrHandMenu;
     if(action==110){
-        if(!kharvox::vrLiveModEditable(m.selectedMod)){
-            m.message="This mod is read-only. Use the desktop launcher.";return true;
+        if(!kharvox::vrLiveModToggleable(m.selectedMod)){
+            m.message="Core settings remain accessible; only Physical Crouch and PAINSAW toggle.";
+            return true;
         }
         if(KharvoxCameraSyncAttackActive()||s.chainsawKillLatched){
             m.message="Finish the execution before changing live mods.";return true;
