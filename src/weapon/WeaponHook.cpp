@@ -160,6 +160,8 @@ std::atomic<uint64_t> animatedGripPivotTickMs{}; // read-only published timestam
 std::array<std::atomic<float>, 3> neutralGripPivot{};
 std::atomic<bool> neutralGripPivotValid{};
 std::atomic<unsigned> neutralGripPivotGeneration{};
+std::atomic<KharvoxWeaponKind> neutralGripPivotWeapon{
+    KharvoxWeaponKind::Unknown};
 unsigned neutralGripPivotWarmup{};
 unsigned neutralGripPivotSamples{};
 std::array<float, 3> neutralGripPivotSum{};
@@ -611,12 +613,20 @@ void captureAnimatedGripPivot(void* hands) {
     float origin[3]{};
     if(!readAnimatedGripPivot(hands,origin))return;
 
-    const unsigned generation = pose.resetGeneration.load(std::memory_order_acquire);
-    if (neutralGripPivotGeneration.load(std::memory_order_acquire) != generation) {
-        neutralGripPivotValid.store(false, std::memory_order_release);
-        neutralGripPivotGeneration.store(generation, std::memory_order_release);
-        neutralGripPivotWarmup = 0;
-        neutralGripPivotSamples = 0;
+    const unsigned generation=pose.resetGeneration.load(
+        std::memory_order_acquire);
+    const auto currentWeapon=activeWeaponKind.load(
+        std::memory_order_acquire);
+    if(neutralGripPivotGeneration.load(std::memory_order_acquire)!=generation
+        ||neutralGripPivotWeapon.load(std::memory_order_acquire)!=currentWeapon){
+        // Never carry a previous weapon's settled handle point across
+        // inventory switches. Reset only the READ-ONLY neutral sampling;
+        // NEVER reset, rewrite or translate approved calibration profiles.
+        neutralGripPivotValid.store(false,std::memory_order_release);
+        neutralGripPivotGeneration.store(generation,std::memory_order_release);
+        neutralGripPivotWeapon.store(currentWeapon,std::memory_order_release);
+        neutralGripPivotWarmup=0;
+        neutralGripPivotSamples=0;
         neutralGripPivotSum.fill(0.0f);
     }
     // Capture a short settled neutral window after gameplay/cutscene entry.
@@ -2427,10 +2437,13 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
             neutral[index]=neutralGripPivot[index].load(
                 std::memory_order_relaxed);
         }
-        const bool neutralReady=neutralGripPivotValid.load(
-            std::memory_order_acquire)
-            &&neutralGripPivotGeneration.load(std::memory_order_acquire)
-                ==input.generation;
+        const bool neutralReady=kharvox::weaponpose::
+            nativeNeutralGripMatchesWeapon(
+                neutralGripPivotValid.load(std::memory_order_acquire),
+                neutralGripPivotGeneration.load(std::memory_order_acquire),
+                input.generation,
+                neutralGripPivotWeapon.load(std::memory_order_acquire),
+                activeWeaponKind.load(std::memory_order_acquire));
         const bool trackingHands=customHandsRequested();
         const auto& attachment=kharvox::weaponpose::
             nativeWeaponGripPivotForPresentation(animated,neutral,

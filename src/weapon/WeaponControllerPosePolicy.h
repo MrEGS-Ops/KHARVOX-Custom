@@ -47,6 +47,19 @@ inline const Quaternion& gameplayWeaponAim(
     return twoHandSteeringActive?twoHandSolved:primaryAim;
 }
 
+// A settled native hand-attachment pivot belongs to ONE weapon/generation.
+// Reusing a settled shotgun grip reference for a Gauss or Chaingun changes
+// the native weapon position and invalidates an otherwise perfect visual fit.
+// On weapon changes, wait for that weapon's own sample. Never mutate its
+// independently approved calibrated gun/glove offsets to compensate.
+template<class Weapon>
+inline constexpr bool nativeNeutralGripMatchesWeapon(
+    bool neutralValid,unsigned neutralGeneration,unsigned inputGeneration,
+    Weapon sampledWeapon,Weapon currentWeapon) noexcept {
+    return neutralValid&&neutralGeneration==inputGeneration
+        &&sampledWeapon==currentWeapon;
+}
+
 // DOOM's animated right-hand weapon-attachment locator includes first-
 // person hand animations such as near-wall barrel retreat. Using that
 // ANIMATED locator as the origin pivot moves the weapon away from a wall
