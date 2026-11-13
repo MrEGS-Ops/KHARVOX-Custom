@@ -15,6 +15,7 @@ on:
       - 'src/**'
       - 'tests/**'
       - 'CMakeLists.txt'
+      - 'config/user_calibration_defaults/**'
       - 'supervisor/**'
       - 'tools/**'
       - 'assets/**'
