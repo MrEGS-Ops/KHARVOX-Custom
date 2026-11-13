@@ -18,7 +18,7 @@ struct VrLivePoint { float x{},y{},z{}; };
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
-    HandsJump, BoxingGuard, Other
+    HandsJump, BoxingGuard, Other, WeaponRecoil
 };
 // "Has live settings" is NOT the same as "can be enabled/disabled".
 // The three core mods stay available; only Physical Crouch and PAINSAW
@@ -27,7 +27,8 @@ enum class VrLiveMod : int {
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
-        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw;
+        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw
+        ||id==VrLiveMod::WeaponRecoil;
 }
 inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
     return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
@@ -45,6 +46,7 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
         case VrLiveMod::PhysicalGloryKills:return "Physical Glory Kills";
         case VrLiveMod::HandFocus:return "Hand Focus";
         case VrLiveMod::Painsaw:return "PAINSAW";
+        case VrLiveMod::WeaponRecoil:return "Weapon Stability";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
