@@ -1,4 +1,5 @@
 #include "../src/openxr/PrimaryGripAnchorPolicy.h"
+#include "../src/weapon/WeaponControllerPosePolicy.h"
 #include <cassert>
 #include <cmath>
 #include <initializer_list>
@@ -19,6 +20,19 @@ static bool near(Vec a,Vec b){
         &&std::abs(a.z-b.z)<.0002f;
 }
 int main(){
+    // The separate OpenXR AIM and GRIP orientations may diverge by ~45°.
+    // The held gun must take its pose from the SAME GRIP as its glove.
+    struct TrackedPose {bool valid;int source;};
+    const TrackedPose aim{true,1},grip{true,2},lostGrip{false,3};
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(aim,grip)==&grip);
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(aim,lostGrip)==&aim);
+    // Visible hands: no extra legacy yaw/pitch/roll offset in the gun frame.
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(25.f,true)==0.f);
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(-35.f,true)==0.f);
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(25.f,false)==25.f);
+    // Primary fitting is XY-only; support grips are still full-3D.
+    assert(kharvox::weaponpose::weaponHandCalibrationZ(true,-.45f,.09f)==.09f);
+    assert(kharvox::weaponpose::weaponHandCalibrationZ(false,-.45f,.09f)==-.45f);
     const Quat identity{0,0,0,1};
     const Vec aim{.2f,.4f,-.1f},grip{.22f,.35f,-.11f};
     const Vec gauss{-0.09830919f,.17283046f-.08f,.52416211f};
