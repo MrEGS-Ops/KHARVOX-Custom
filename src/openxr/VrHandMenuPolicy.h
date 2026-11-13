@@ -103,11 +103,14 @@ inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
     }
 }
 inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
-    int selectedRow,int count,int actionCount) noexcept {
+    int selectedRow,int count,int actionCount,bool toggleable=true) noexcept {
     if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
         ?1000+selectedRow:-1;
     if(nav.actionIndex<0||nav.actionIndex>=actionCount)return -1;
-    return nav.actionIndex==0?110:130+nav.actionIndex-1;
+    // Only Physical Crouch and PAINSAW have a checkbox. For every other
+    // mod, first gamepad action maps DIRECTLY to its first settings button.
+    return toggleable?(nav.actionIndex==0?110:130+nav.actionIndex-1)
+        :130+nav.actionIndex;
 }
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy) noexcept {
