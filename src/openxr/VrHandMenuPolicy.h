@@ -199,6 +199,54 @@ inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
     }
     return step;
 }
+// One calibration session can alternate Grip-held gun fine-tuning and
+// Grip-released wrist rotation without committing either until SAVE.
+// Every Grip release starts a fresh relative rotation reference, retaining
+// the exact glove rotation from the previous mode with no jump.
+struct VrPrimaryRotationEdit {
+    bool referenceValid{};
+    RightHandGripRotation controllerAtRelease{};
+    RightHandGripRotation gloveAtRelease{};
+};
+inline RightHandGripRotation vrCalibrationMultiplyRotation(
+    const RightHandGripRotation& a,
+    const RightHandGripRotation& b) noexcept {
+    return {
+        a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+        a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+        a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w,
+        a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,true};
+}
+inline RightHandGripRotation vrCalibrationRelativeRotation(
+    VrPrimaryRotationEdit& edit,bool weaponGripHeld,
+    const RightHandGripRotation& freeControllerRotation,
+    const RightHandGripRotation& currentGloveRotation) noexcept {
+    if(weaponGripHeld){
+        edit.referenceValid=false;
+        return currentGloveRotation; // freeze rotation during gun-only nudges
+    }
+    if(!validRightHandRotation(freeControllerRotation)
+        ||!validRightHandRotation(currentGloveRotation))
+        return currentGloveRotation; // tracking gap: keep latest valid draft
+    if(!edit.referenceValid){
+        edit.controllerAtRelease=freeControllerRotation;
+        edit.gloveAtRelease=currentGloveRotation;
+        edit.referenceValid=true;
+        return currentGloveRotation; // transition frame never snaps the glove
+    }
+    const auto& q=edit.controllerAtRelease;
+    const RightHandGripRotation inverse{-q.x,-q.y,-q.z,q.w,true};
+    const auto delta=vrCalibrationMultiplyRotation(freeControllerRotation,inverse);
+    auto result=vrCalibrationMultiplyRotation(delta,edit.gloveAtRelease);
+    const float magnitude=std::sqrt(result.x*result.x+result.y*result.y
+        +result.z*result.z+result.w*result.w);
+    if(!(magnitude>0.00001f)||!std::isfinite(magnitude))
+        return currentGloveRotation;
+    result.x/=magnitude;result.y/=magnitude;result.z/=magnitude;
+    result.w/=magnitude;result.valid=true;
+    return result;
+}
+
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     VrMenuPage page{VrMenuPage::Mods};
@@ -228,6 +276,7 @@ struct VrHandMenuState {
     bool previewValid{};
     bool primaryGripPreviewHeld{}; // freezes valid live pose while Grip held, permits 1cm nudges
     bool calibrationGripHeld{}; // raw physical weapon Grip for contextual VR help, independent of tracking
+    VrPrimaryRotationEdit rotationEdit{}; // resets its free-controller reference whenever Grip is held
     std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres

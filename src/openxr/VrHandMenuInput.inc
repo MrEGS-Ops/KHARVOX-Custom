@@ -19,91 +19,91 @@ void refreshVrHandMenuSavedStatus(){
 void updateVrMenuPreview(bool primaryWeaponGripHeld){
     auto& m=s.vrHandMenu;
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+    const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const auto& freeGrip=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     const auto& freeAim=s.weaponHandLeft?s.rightController:s.leftController;
-    // The free hand must TRANSLATE with actual controller movement, not
-    // merely rotate around the last stored grip point. AIM provides the
-    // currently tracked position, GRIP retains the wrist's orientation.
     const auto placement=kharvox::vrCalibrationLivePose(freeGrip,freeAim);
-    // OpenXR POSITION_VALID and POSITION_TRACKED are different flags.
-    // The old hard gate on GRIP.positionTracked rejected valid predicted
-    // positions (notably when the controller AIM laser was still active),
-    // silently discarding the calibration preview and leaving a right glove
-    // rotating about its old saved grip point.
-    if(weapon==KharvoxWeaponKind::Unknown||weapon!=KharvoxWeaponCurrentKind()
-        ||s.weaponHandLeft!=m.calibratingWeaponLeft
-        ||!s.lastWeaponRenderedValid||s.lastWeaponRenderedKind!=weapon
-        ||!placement.valid){
-        m.previewValid=false;
-        m.primaryGripPreviewHeld=false;
-        const auto now=GetTickCount64();
-        if(now>=m.lastPreviewDiagnosticAt+2000ULL){
-            m.lastPreviewDiagnosticAt=now;
-            log(std::string("[VR-HAND-CAL] PREVIEW BLOCKED weapon=")+m.weapon()
-                +" equipped="+std::string(KharvoxWeaponKindKey(
-                    KharvoxWeaponCurrentKind()))
-                +" sameHand="+(s.weaponHandLeft==m.calibratingWeaponLeft?"1":"0")
-                +" gunPose="+(s.lastWeaponRenderedValid?"1":"0")
-                +" freeGrip="+(freeGrip.valid?"1":"0")
-                +" gripTracked="+(freeGrip.positionTracked?"1":"0")
-                +" freeAim="+(freeAim.valid?"1":"0")
-                +" aimTracked="+(freeAim.positionTracked?"1":"0")
-                +" chosenController="+(placement.valid?"1":"0"));
+    const bool matchingWeapon=weapon!=KharvoxWeaponKind::Unknown
+        &&weapon==KharvoxWeaponCurrentKind()
+        &&s.weaponHandLeft==m.calibratingWeaponLeft;
+    const bool gunTracked=s.lastWeaponRenderedValid
+        &&s.lastWeaponRenderedKind==weapon;
+    const bool canSample=matchingWeapon&&gunTracked&&placement.valid;
+    if(primaryHand){
+        // A primary calibration is a single UNSAVED draft. Losing free-hand
+        // tracking or switching Grip modes must never discard its gun offset
+        // or jump to the previously saved position/rotation.
+        if(!canSample){
+            m.rotationEdit.referenceValid=false;
+            if(!primaryWeaponGripHeld||!gunTracked||!matchingWeapon)
+                m.primaryGripPreviewHeld=false;
+        }else{
+            const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
+            const auto local=normalizeQuaternion(multiply(
+                inverted,placement.orientation));
+            const kharvox::RightHandGripRotation freeRotation{
+                local.x,local.y,local.z,local.w,true};
+            // On release, first sample becomes a reference, not an absolute
+            // glove angle. Subsequent opposite-controller movement changes
+            // the glove relative to its CURRENT rotation. Held Grip freezes
+            // that rotation and re-arms the reference for the next release.
+            m.previewRotation=kharvox::vrCalibrationRelativeRotation(
+                m.rotationEdit,primaryWeaponGripHeld,freeRotation,
+                m.previewRotation);
         }
-        return;
+        if(primaryWeaponGripHeld){
+            // Grip-held does not need the free controller's tracking pose.
+            // The physical controller anchors the glove; only the 1cm
+            // stick nudges move the native gun's draft positional offset.
+            kharvox::vrCalibrationRelativeRotation(
+                m.rotationEdit,true,{},m.previewRotation);
+        }
+        m.previewValid=kharvox::validRightHandVisualPlacement(
+                m.previewPosition)
+            &&m.previewRotation.valid
+            &&kharvox::validRightHandRotation(m.previewRotation);
+        const auto& physicalGrip=s.weaponHandLeft
+            ?s.leftGripController:s.rightGripController;
+        m.primaryGripPreviewHeld=kharvox::vrPrimaryGripHoldPreviewAllowed(
+                m.mode,true,m.weapon())
+            &&primaryWeaponGripHeld&&m.previewValid
+            &&matchingWeapon&&gunTracked&&physicalGrip.valid;
+    }else{
+        // SUPPORT hand continues to use the original three-dimensional
+        // free-controller capture; do not change its grip placement logic.
+        if(!canSample){
+            m.previewValid=false;
+            m.primaryGripPreviewHeld=false;
+        }else if(kharvox::vrWeaponManualCalibrationLive(
+                m.mode,primaryWeaponGripHeld,false)){
+            const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
+            const auto local=rotateVector(inverted,
+                subtractVector(placement.position,
+                    s.lastWeaponRenderedTrackingAnchor));
+            const auto rotation=normalizeQuaternion(multiply(
+                inverted,placement.orientation));
+            m.previewPosition={local.x,local.y,local.z};
+            m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
+            m.previewValid=kharvox::validRightHandPlacement(m.previewPosition)
+                &&kharvox::validRightHandRotation(m.previewRotation);
+            m.primaryGripPreviewHeld=false;
+        }
     }
-    const bool primaryHand=m.rightHand!=s.weaponHandLeft;
-    const bool testAllowed=kharvox::vrPrimaryGripHoldPreviewAllowed(
-        m.mode,primaryHand,m.weapon());
-    // Free Grip: opposite controller adjusts the virtual GLOVE'S rotation,
-    // never its tracked position. Held Grip: freeze that rotation, and
-    // joystick nudges translate the GUN relative to the stationary glove.
-    // Acquire one preview frame on Grip press if necessary.
-    if(!kharvox::vrWeaponManualCalibrationLive(
-            m.mode,primaryWeaponGripHeld,
-            testAllowed&&m.primaryGripPreviewHeld&&m.previewValid))
-        return;
-    m.primaryGripPreviewHeld=false;
-    m.previewValid=false;
-    const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
-    const auto rotation=normalizeQuaternion(multiply(
-        inverted,placement.orientation));
-    // PRIMARY: keep the saved gun profile position unchanged; the free
-    // controller modifies only glove rotation. The physical weapon glove
-    // remains on the tracked GRIP controller. The support-hand calibration
-    // still has normal three-dimensional free-controller placement.
-    if(!primaryHand){
-        const auto local=rotateVector(inverted,
-            subtractVector(placement.position,
-                s.lastWeaponRenderedTrackingAnchor));
-        m.previewPosition={local.x,local.y,local.z};
-    }
-    m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
-    m.previewValid=(primaryHand
-        ?kharvox::validRightHandVisualPlacement(m.previewPosition)
-        :kharvox::validRightHandPlacement(m.previewPosition))
-        &&kharvox::validRightHandRotation(m.previewRotation);
-    m.primaryGripPreviewHeld=testAllowed&&primaryWeaponGripHeld&&m.previewValid;
-    // Native log proves live positions/rotation are updating in headset;
-    // throttled to one line every 2 seconds, even if Grip is held.
     const auto now=GetTickCount64();
     if(now>=m.lastPreviewDiagnosticAt+2000ULL){
         m.lastPreviewDiagnosticAt=now;
-        log(std::string("[VR-HAND-CAL] LIVE ") +m.weapon()
+        log(std::string("[VR-HAND-CAL] ")+m.weapon()
             +(primaryHand?" primary":" support")
-            +(primaryWeaponGripHeld?" Grip-held":" Grip-released")
-            +" positionSource="+(freeAim.valid&&freeAim.positionTracked
-                ?"TRACKED_AIM":"GRIP_OR_VALID_AIM")
-            +" tracked="+(placement.positionTracked?"1":"0")
-            +" freeXYZ="+std::to_string(placement.position.x)
-            +","+std::to_string(placement.position.y)
-            +","+std::to_string(placement.position.z)
-            +" previewXYZ="+std::to_string(m.previewPosition.x)
-            +","+std::to_string(m.previewPosition.y)
-            +","+std::to_string(m.previewPosition.z)
-            +" valid="+(m.previewValid?"1":"0")
-            +" placementInRange="+(kharvox::validRightHandVisualPlacement(
-                m.previewPosition)?"1":"0"));
+            +(primaryWeaponGripHeld?" Grip-held GUN_FINE_TUNE"
+                :" Grip-released GLOVE_ROTATION")
+            +" matched="+(matchingWeapon?"1":"0")
+            +" gunPose="+(gunTracked?"1":"0")
+            +" freePose="+(placement.valid?"1":"0")
+            +" rotationReference="+(m.rotationEdit.referenceValid?"1":"0")
+            +" gunDraftXYZ="+std::to_string(m.fineTuneAccumulated.x)
+            +","+std::to_string(m.fineTuneAccumulated.y)
+            +","+std::to_string(m.fineTuneAccumulated.z)
+            +" valid="+(m.previewValid?"1":"0"));
     }
 }
 // One 1cm nudge per deliberate stick flick during the weapon-GRIP hold.
@@ -230,6 +230,7 @@ void saveVrHandMenuCalibration(){
         (alternate?" ALT":" NORMAL")+" saved for "+m.weapon();
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.rotationEdit={};
     refreshVrHandMenuSavedStatus();
 }
 void resetVrMenuSelectedWeapon(){
@@ -317,6 +318,7 @@ void startVrSelectedWeaponCalibration(){
     m.calibratingWeaponLeft=s.weaponHandLeft;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
+    m.rotationEdit={}; // a fresh unsaved rotation draft for this calibration
     m.lastPreviewDiagnosticAt=0;
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
@@ -385,9 +387,21 @@ void startVrSelectedWeaponCalibration(){
             s.primaryVisualLocalPosition.y,
             s.primaryVisualLocalPosition.z};
     }
+    if(calibratingPrimary){
+        // The first frame of calibration, including one entered with
+        // weapon Grip already HELD, must have a real visual wrist pose.
+        // Otherwise an unset quaternion cannot be frozen/saved and the
+        // fine-tune becomes inaccessible until an unrelated grip release.
+        const auto& existing=s.primaryVisualLocalOrientation;
+        m.previewRotation={existing.x,existing.y,existing.z,existing.w,true};
+        if(!kharvox::validRightHandRotation(m.previewRotation))
+            m.previewRotation={0.f,0.f,0.f,1.f,true};
+        m.previewValid=kharvox::validRightHandVisualPlacement(
+            m.previewPosition)&&kharvox::validRightHandRotation(m.previewRotation);
+    }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Release Grip: rotate glove with free controller. Hold Grip: 1 cm stick nudges move the GUN only. RIGHT TRIGGER saves.";
+    m.message="Hold Grip: shift GUN 1cm. Release Grip: keep GUN offset, rotate glove. Trigger saves; B or hold RS cancels.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
@@ -560,6 +574,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.mode=m.mode==kharvox::VrHandMenuMode::Menu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
+            m.rotationEdit={};
+            m.primaryGripPreviewHeld=false;
             m.liveCapture=kharvox::VrLiveCapture::None;
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
@@ -601,6 +617,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.pendingNativeSelection=0;
         m.previewValid=false;
         m.primaryGripPreviewHeld=false;
+        m.rotationEdit={};
         s.primaryVisualLocked=false;
         s.supportVisualLocked=false;
         if(m.mode==kharvox::VrHandMenuMode::Calibrating){

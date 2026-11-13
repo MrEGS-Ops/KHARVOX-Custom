@@ -133,11 +133,11 @@ void paintVrHandMenu() {
                     write(49,329,"LEFT STICK L/R: move GUN left / right",white);
                     write(49,358,"LEFT STICK U/D: move GUN forward / back",white);
                     write(49,387,"RIGHT STICK U/D: move GUN up / down",white);
-                    write(49,415,"1 cm per flick; centre stick to repeat.",muted);
+                    write(49,415,"1 cm/flick. Release Grip to rotate glove.",muted);
                 }else{
                     write(49,333,"Move free controller to rotate glove.",white);
-                    write(49,369,"Hold Grip: 1 cm GUN-only position nudges.",white);
-                    write(49,407,"Hand fixed to controller; GUN position adjusts.",muted);
+                    write(49,369,"Hold Grip again to fine-tune gun position.",white);
+                    write(49,407,"GUN POSITION HELD; adjust glove rotation.",muted);
                 }
                 if(heavy&&m.alternateProfile)
                     write(39,450,"ALT MODE: active",RGB(84,233,214));

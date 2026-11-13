@@ -43,6 +43,58 @@ int main(){
         VrHandMenuMode::Menu,true,true));
     assert(!vrWeaponManualCalibrationLive(
         VrHandMenuMode::Closed,false,false));
+    // A single unsaved calibration can switch between GUN fine-tune
+    // (Grip held) and GLOVE rotation (Grip released) repeatedly. Each
+    // release starts from the current visual wrist angle WITHOUT a jump.
+    const RightHandGripRotation id{0,0,0,1,true};
+    const RightHandGripRotation yaw90{0,0.707106781f,0,0.707106781f,true};
+    const RightHandGripRotation yaw180{0,1,0,0,true};
+    const auto rotationClose=[](RightHandGripRotation a,
+        RightHandGripRotation b){
+        const float dot=a.x*b.x+a.y*b.y+a.z*b.z+a.w*b.w;
+        return std::abs(std::abs(dot)-1.f)<.0002f;
+    };
+    VrPrimaryRotationEdit edit{};
+    RightHandGripRotation wrist=id;
+    RightHandGripOffset gunDraft{.02f,-.03f,-.04f};
+    const auto originalDraft=gunDraft;
+    // Enter rotation mode from a held Grip: NO jump to free controller.
+    wrist=vrCalibrationRelativeRotation(edit,false,yaw90,wrist);
+    assert(rotationClose(wrist,id)&&edit.referenceValid);
+    // Rotate the free controller another 90 deg: glove rotates, gun holds.
+    wrist=vrCalibrationRelativeRotation(edit,false,yaw180,wrist);
+    assert(rotationClose(wrist,yaw90));
+    assert(gunDraft.x==originalDraft.x
+        &&gunDraft.y==originalDraft.y&&gunDraft.z==originalDraft.z);
+    // Hold Grip: rotation freezes while gun is moved by one centimeter.
+    wrist=vrCalibrationRelativeRotation(edit,true,id,wrist);
+    assert(rotationClose(wrist,yaw90)&&!edit.referenceValid);
+    gunDraft.y+=.01f;
+    // Release Grip with the free controller at an unrelated angle:
+    // the GUN draft and glove rotation stay exactly where they were.
+    wrist=vrCalibrationRelativeRotation(edit,false,id,wrist);
+    assert(rotationClose(wrist,yaw90));
+    assert(std::abs(gunDraft.y+.02f)<.000001f);
+    // Free-hand motion adjusts only the glove's rotation from this point.
+    wrist=vrCalibrationRelativeRotation(edit,false,yaw90,wrist);
+    assert(rotationClose(wrist,yaw180));
+    assert(std::abs(gunDraft.y+.02f)<.000001f);
+    // Re-grip: freeze yaw180 and preserve all positional adjustments.
+    wrist=vrCalibrationRelativeRotation(edit,true,id,wrist);
+    assert(rotationClose(wrist,yaw180)&&!edit.referenceValid);
+    gunDraft.x-=.01f;
+    wrist=vrCalibrationRelativeRotation(edit,false,yaw180,wrist);
+    assert(rotationClose(wrist,yaw180));
+    assert(std::abs(gunDraft.x-.01f)<.000001f);
+    assert(std::abs(gunDraft.y+.02f)<.000001f);
+    assert(std::abs(gunDraft.z+.04f)<.000001f);
+    // Cancel discards unsaved changes by leaving the draft unwritten.
+    const auto storedGun=originalDraft;
+    const auto storedWrist=id;
+    edit={};
+    assert(!edit.referenceValid&&rotationClose(storedWrist,id));
+    assert(std::abs(storedGun.x-.02f)<.000001f);
+
     // If the Quest runtime provides a valid but non-TRACKED GRIP pose,
     // use a tracked AIM laser pose. If neither is tracked, POSITION_VALID
     // still suffices; don't leave the glove stuck at the old saved pose.
