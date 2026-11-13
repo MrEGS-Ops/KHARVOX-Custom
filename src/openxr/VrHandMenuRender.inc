@@ -367,7 +367,7 @@ void paintVrHandMenu() {
         const std::array<std::string,6> controls{{
             s.recoilSettings.enabled?"DISABLE RECOIL":"ENABLE RECOIL",
             "LESS KICK (-10%)",
-            "MORE KICK (+10%)",
+            "MORE KICK (+10%, MAX 900%)",
             "SLOWER RECOVERY (-10%)",
             "FASTER RECOVERY (+10%)",
             "RESET THIS WEAPON"

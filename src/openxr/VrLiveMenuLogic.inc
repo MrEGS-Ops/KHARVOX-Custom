@@ -216,7 +216,7 @@ bool handleVrRecoilCalibrationAction(int action){
         case 140:s.recoilSettings.enabled=!s.recoilSettings.enabled;break;
         case 141:s.recoilSettings.strength[at]=std::max(.25f,
             s.recoilSettings.strength[at]-.1f);break;
-        case 142:s.recoilSettings.strength[at]=std::min(2.f,
+        case 142:s.recoilSettings.strength[at]=std::min(9.f,
             s.recoilSettings.strength[at]+.1f);break;
         case 143:s.recoilSettings.recovery[at]=std::max(.5f,
             s.recoilSettings.recovery[at]-.1f);break;
