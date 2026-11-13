@@ -8,7 +8,8 @@ namespace kharvox::hands {
 // The right bare fist and the right equipped glove were confirmed to be
 // upright in the headset. Render the matching LEFT variant from that same
 // baked RIGHT mesh mirrored ONLY in local X. Do NOT also roll it 180 degrees:
-// Rz(180) * mirrorX = mirrorY, which was flipping the left glove vertically.
+// the extra controller-space half-turn was inverting the left-hand visual
+// orientation despite its otherwise correctly aligned right-hand reference.
 // Mirroring applies only to the visible mesh; the left tracked controller,
 // primary weapon pose, and depth/compositor remain completely untouched.
 inline constexpr std::size_t handReferenceAssetIndex(
