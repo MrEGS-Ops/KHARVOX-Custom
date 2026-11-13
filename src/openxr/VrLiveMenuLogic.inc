@@ -36,53 +36,52 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
 // open its controls. Keep the text short enough for the in-headset panel.
 struct VrLiveModOverview {
     std::array<const char*,6> lines{};
-    const char* subtitle{"HOW IT WORKS"};
 };
 VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
     using kharvox::VrLiveMod;
     switch(mod){
         case VrLiveMod::WeaponGrip:return {{{
-            "Physically attach each weapon to your VR hand.",
-            "One-handed aim follows your weapon controller.",
-            "Use your other hand to grab the weapon's grip.",
-            "Both hands steer the weapon naturally together.",
-            "Supports left/right weapon hands and heavy modes.",
-            "A: open weapon-specific grip fitting."}}};
+            "Guns follow your tracked hands.",
+            "One- and two-hand aiming supported.",
+            "Grab the support handle to steer.",
+            "Each weapon has its own grip fit.",
+            "Left/right and heavy modes work.",
+            "Fit weapon grips in CONFIGURE."}}};
         case VrLiveMod::Gunslinger:return {{{
-            "Fast weapon swapping with physical hip holsters.",
-            "Place a hand in its side's hip zone and grip.",
-            "A quick grab instantly equips that holstered gun.",
-            "Reach behind your head for the weapon wheel.",
-            "The wheel follows the hand that opened it.",
-            "A: adjust hip zones, wheel zones and resets."}}};
+            "Instant quick-draw hip holsters.",
+            "Release Grip in a hip zone to set.",
+            "Grip that zone to draw instantly.",
+            "Behind-head weapon wheel.",
+            "Wheel follows the opening hand.",
+            "Fit hip and wheel zones below."}}};
         case VrLiveMod::Killtime:return {{{
-            "Changes the speed of cinematic Glory Kills.",
-            "Finisher animation speed uses a tick-Hz preset.",
-            "Smaller Hz values finish executions faster.",
-            "Larger Hz values make executions slower.",
-            "Other gameplay remains on native timing.",
-            "A: adjust and reset the Glory Kill speed."}}};
+            "Change cinematic Glory Kill speed.",
+            "Lower tick Hz = faster execution.",
+            "Higher tick Hz = slower execution.",
+            "Only affects the finisher timing.",
+            "Normal movement is unchanged.",
+            "Choose speed in CONFIGURE."}}};
         case VrLiveMod::PhysicalGloryKills:return {{{
-            "Perform Glory Kills with real forward punches.",
-            "Face an executable demon and strike naturally.",
-            "Tracks physical hand speed for punch detection.",
-            "Adjust the punch threshold to fit your style.",
-            "Choose the active punch hand or use both.",
-            "A: change punch speed and active hand."}}};
+            "Trigger Glory Kills with punches.",
+            "Strike a staggered demon in VR.",
+            "Actual hand velocity is measured.",
+            "Choose right, left, or both hands.",
+            "Adjust sensitivity to your swing.",
+            "Set punch options in CONFIGURE."}}};
         case VrLiveMod::PhysicalCrouch:return {{{
-            "Crouch by physically lowering your headset.",
-            "Your real head height controls your stance.",
-            "Stand again to rise back up in-game.",
-            "Standing and lowered heights can be fitted.",
-            "Switch OFF to use the alternate crouch input.",
-            "A: toggle and calibrate crouch heights."}}};
+            "Physically lower your head to duck.",
+            "Stand back up to rise in-game.",
+            "Your headset height is tracked.",
+            "Fit standing and crouching height.",
+            "When OFF, use right-stick crouch.",
+            "Toggle and fit in CONFIGURE."}}};
         case VrLiveMod::Painsaw:return {{{
-            "Chainsaw revs controlled with trigger pulls.",
-            "First pull starts a normal chainsaw execution.",
-            "Release and pull for two more speed surges.",
-            "The third pull accelerates the finish.",
-            "Uses DOOM's native chainsaw sound and haptics.",
-            "A: enable or disable PAINSAW."}}};
+            "Three-pull chainsaw revving mode.",
+            "First pull starts the native kill.",
+            "Release and re-pull up to twice.",
+            "Each pull boosts execution speed.",
+            "Native sound and strong haptics.",
+            "Toggle mode in CONFIGURE."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
