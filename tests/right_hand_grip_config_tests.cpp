@@ -364,36 +364,64 @@ int main(){
  assert(visual.gaussSiegeHandValid);
  assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
- // Optional APPLY RIGHT -> LEFT mirrors BOTH translation and orientation,
- // never auto-edits left profiles and never changes the right original.
- kharvox::RightHandGripSettings mirrorSettings{};
- mirrorSettings.visualPositions["pistol"]={.20f,.03f,-.10f};
- mirrorSettings.visualRotations["pistol"]={.12f,.22f,.33f,.91f,true};
+ // Copy RIGHT to LEFT must preserve each baked glove's own factory
+ // alignment. Absolute mirroring was wrong even when RIGHT was perfect.
+ kharvox::RightHandGripSettings referenceGrip{},adjustedGrip{};
+ referenceGrip.visualPositions["pistol"]={.10f,-.04f,.12f};
+ referenceGrip.visualRotations["pistol"]={0.f,0.f,0.f,1.f,true};
+ referenceGrip.leftVisualPositions["pistol"]={.035f,-.025f,.105f};
+ referenceGrip.leftVisualRotations["pistol"]={
+     0.f,.38268343f,0.f,.92387953f,true}; // 45 degree left reference
+ adjustedGrip=referenceGrip;
  kharvox::RightHandGripOffset mirroredPos{};
  kharvox::RightHandGripRotation mirroredRotation{};
- assert(kharvox::mirroredRightPrimaryVisualPose(
-     mirrorSettings,"pistol",false,mirroredPos,mirroredRotation));
- assert(std::abs(mirroredPos.x+.20f)<.0001f);
- assert(std::abs(mirroredPos.y-.03f)<.0001f);
- assert(std::abs(mirroredRotation.x-.12f)<.0001f);
- assert(std::abs(mirroredRotation.y+.22f)<.0001f);
- assert(std::abs(mirroredRotation.z+.33f)<.0001f);
- assert(std::abs(mirroredRotation.w-.91f)<.0001f);
- assert(mirrorSettings.leftVisualPositions.empty()); // explicit action only
+ assert(kharvox::factoryAlignedRightPrimaryToLeft(
+     adjustedGrip,referenceGrip,"pistol",false,mirroredPos,mirroredRotation));
+ assert(std::abs(mirroredPos.x-.035f)<.0001f);
+ assert(std::abs(mirroredPos.y+.025f)<.0001f);
+ assert(std::abs(mirroredPos.z-.105f)<.0001f);
+ assert(std::abs(mirroredRotation.y-.38268343f)<.0001f);
+ assert(std::abs(mirroredRotation.w-.92387953f)<.0001f);
+ // Move the right-hand grip 3 cm right, 2 cm up, 4 cm forward and yaw +30.
+ // LEFT gets the relative mirrored change, NOT a mirrored absolute pose.
+ adjustedGrip.visualPositions["pistol"]={.13f,-.02f,.08f};
+ adjustedGrip.visualRotations["pistol"]={0.f,.25881905f,0.f,.96592583f,true};
+ assert(kharvox::factoryAlignedRightPrimaryToLeft(
+     adjustedGrip,referenceGrip,"pistol",false,mirroredPos,mirroredRotation));
+ assert(std::abs(mirroredPos.x-.005f)<.0001f);
+ assert(std::abs(mirroredPos.y+.005f)<.0001f);
+ assert(std::abs(mirroredPos.z-.065f)<.0001f);
+ assert(std::abs(mirroredRotation.y-.13052619f)<.0001f); // yaw +15
+ assert(std::abs(mirroredRotation.w-.99144486f)<.0001f);
+ assert(adjustedGrip.leftVisualPositions["pistol"].x==.035f); // no side effects
  assert(kharvox::saveRightHandVisualPose(path,"pistol",false,
      mirroredPos,mirroredRotation,&why,true));
- auto mirroredFile=kharvox::readRightHandGripSettings(path);
- assert(std::abs(mirroredFile.leftVisualPositions["pistol"].x+.20f)<.0001f);
- assert(std::abs(mirroredFile.visualPositions["pistol"].x-.12f)<.0001f);
- mirrorSettings.gaussSiegeHandValid=true;
- mirrorSettings.gaussSiegeHand={.12f,.23f,.34f};
- mirrorSettings.gaussSiegeRotation={0.f,.5f,0.f,.8660254f,true};
- assert(kharvox::mirroredRightPrimaryVisualPose(
-     mirrorSettings,"gauss_cannon",true,mirroredPos,mirroredRotation));
- assert(std::abs(mirroredPos.x+.12f)<.0001f);
- assert(std::abs(mirroredRotation.y+.5f)<.0001f);
- assert(!kharvox::mirroredRightPrimaryVisualPose(
-     mirrorSettings,"chaingun",false,mirroredPos,mirroredRotation));
+ const auto copied=kharvox::readRightHandGripSettings(path);
+ assert(std::abs(copied.leftVisualPositions.at("pistol").x-.005f)<.0001f);
+ assert(std::abs(copied.visualPositions.at("pistol").x-.12f)<.0001f);
+ // Factory left profile missing? Fail safely instead of corrupting an
+ // existing user-calibrated left pose with the old absolute mirror.
+ auto factoryMissing=referenceGrip;
+ factoryMissing.leftVisualRotations.clear();
+ assert(!kharvox::factoryAlignedRightPrimaryToLeft(
+     adjustedGrip,factoryMissing,"pistol",false,mirroredPos,mirroredRotation));
+ // Siege/Turret use independent alternate left reference poses too.
+ referenceGrip.gaussSiegeHandValid=true;
+ referenceGrip.gaussSiegeHand={.12f,.23f,.34f};
+ referenceGrip.gaussSiegeRotation={0.f,0.f,0.f,1.f,true};
+ referenceGrip.leftVisualPositions["gauss_cannon_siege"]={-.08f,.20f,.38f};
+ referenceGrip.leftVisualRotations["gauss_cannon_siege"]={
+     0.f,0.f,0.f,1.f,true};
+ adjustedGrip.gaussSiegeHandValid=true;
+ adjustedGrip.gaussSiegeHand={.15f,.22f,.36f};
+ adjustedGrip.gaussSiegeRotation={0.f,0.f,0.f,1.f,true};
+ assert(kharvox::factoryAlignedRightPrimaryToLeft(
+     adjustedGrip,referenceGrip,"gauss_cannon",true,mirroredPos,mirroredRotation));
+ assert(std::abs(mirroredPos.x+.11f)<.0001f);
+ assert(std::abs(mirroredPos.y-.19f)<.0001f);
+ assert(std::abs(mirroredPos.z-.40f)<.0001f);
+ assert(!kharvox::factoryAlignedRightPrimaryToLeft(
+     adjustedGrip,referenceGrip,"chaingun",false,mirroredPos,mirroredRotation));
  // No factory available means NO destructive reset.
  assert(!kharvox::restoreVrWeaponCalibrationDefault(
      path,"unavailable-owner-factory.cfg","pistol",true,&why));

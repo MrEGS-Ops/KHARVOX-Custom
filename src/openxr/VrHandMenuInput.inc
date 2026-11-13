@@ -186,9 +186,15 @@ void applyRightGripToLeft(){
     const bool alternate=m.alternateProfile
         &&(weapon==KharvoxWeaponKind::GaussCannon
             ||weapon==KharvoxWeaponKind::Chaingun);
-    if(!kharvox::mirroredRightPrimaryVisualPose(
-        latest,m.weapon(),alternate,pos,rot)){
-        m.message="No valid saved RIGHT grip to mirror. Save RIGHT first.";
+    // Transfer relative to the factory grip for EACH hand model. The
+    // physical left model is not a mirrored copy of the right model, so
+    // reflecting the absolute right rotation breaks forward alignment.
+    const auto factory=kharvox::readRightHandGripSettings(
+        kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));
+    if(!kharvox::factoryAlignedRightPrimaryToLeft(
+        latest,factory,m.weapon(),alternate,pos,rot)){
+        m.message="COPY FAILED: missing saved RIGHT or factory LEFT reference.";
+        log("[VR-HAND-MENU] "+m.message);
         return;
     }
     std::string why;
@@ -200,9 +206,9 @@ void applyRightGripToLeft(){
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
     refreshVrHandMenuSavedStatus();
-    m.message=std::string("LEFT primary mirrored from RIGHT: ")
+    m.message=std::string("LEFT grip updated from RIGHT adjustment: ")
         +m.weapon()+(alternate?" (alternate mode)":"")
-        +". Adjust LEFT independently whenever needed.";
+        +". Factory LEFT alignment retained; fine-tune if needed.";
     log("[VR-HAND-MENU] "+m.message);
 }
 void startVrSelectedWeaponCalibration(){
