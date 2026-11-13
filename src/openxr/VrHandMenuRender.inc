@@ -357,10 +357,11 @@ void paintVrHandMenu() {
     button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
+    button(531,535,384,58,false,m.hovered==33||gamepadFocus(33));
     SelectObject(dc,smallFont);
-    write(538,551,"DEFAULT = factory grip",muted);
-    write(538,582,"LEFT / RIGHT / BOTH = custom",muted);
-    write(538,611,"STICK NAV / A SELECT / B BACK",muted);
+    write(550,551,"APPLY RIGHT -> LEFT (OPTIONAL)",white);
+    write(538,609,"DEFAULT: factory   LEFT/RIGHT/BOTH: custom",muted);
+    write(538,640,"LEFT STICK: NAV  /  A: SELECT  /  B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
         fill(797,16,129,57,m.hovered==95||gamepadFocus(95)
