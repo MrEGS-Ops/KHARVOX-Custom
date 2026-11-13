@@ -2880,7 +2880,8 @@ void updateWeapon6Dof(){
         // The weapon glove and free fist now share the physical GRIP
         // controller as their positional reference.
         const auto primaryFixed=s.showHands
-            ?primaryHandGripController.position
+            ?kharvox::weaponpose::physicalPrimaryGlovePosition(
+                primaryHandGripController.position,weaponAnchorTracking)
             :kharvox::primarygrip::lockedHand(
                 weaponAnchorTracking,renderOrientation,
                 s.primaryVisualLocalPosition,rotateGrip);
