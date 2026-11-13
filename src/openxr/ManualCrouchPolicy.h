@@ -11,6 +11,16 @@ inline constexpr bool manualStickCrouchAllowed(
     return !physicalCrouch&&(gunslingerWheel||legacyWheelRemap);
 }
 
+// Gunslinger owns the weapon wheel even if No Weapon Wheel is enabled.
+// Never let a stick-down crouch gesture re-enter the retired weapon-wheel
+// route. A gesture opens the wheel ONLY if selected and allowed.
+inline constexpr bool vrScopedWeaponSelectDown(
+    bool gameplay,bool noWeaponWheel,bool gunslingerWheelEnabled,
+    bool behindHeadGestureRequested,bool legacySelectionPressed) noexcept {
+    return gameplay&&!noWeaponWheel
+        &&(gunslingerWheelEnabled?behindHeadGestureRequested:legacySelectionPressed);
+}
+
 // DOOM treats crouch as a toggle on its native face-button rising edge.
 // For the normal Gunslinger input path, send SHORT native crouch pulses on
 // both stick-toggle transitions rather than holding its button continuously.
