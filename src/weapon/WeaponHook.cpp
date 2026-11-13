@@ -242,8 +242,18 @@ bool installFrontPushbackSuppression(unsigned char* image) {
     // latched. Clear the common flag and skip only that local hands-animation
     // block. Player collision, damage, physical knockback and world movement
     // remain untouched.
-    if (GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str()) ==
-        INVALID_FILE_ATTRIBUTES) {
+    // The manager may enable tracked custom hands through its launcher
+    // environment while the legacy enable_6dof_weapon marker is absent.
+    // Previously that silently skipped the collision animation fix for
+    // precisely this headset path. Suppress it whenever either controlled
+    // 6DoF mode is requested, never for stock first-person presentation.
+    const bool legacy6DofMarker=
+        GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())
+            !=INVALID_FILE_ATTRIBUTES;
+    const bool customHands=customHandsRequested();
+    if(!legacy6DofMarker&&!customHands){
+        log("[WEAPON-WALL-PUSHBACK] native suppression INACTIVE: "
+            "no tracked custom hands or 6DoF marker");
         return false;
     }
 
@@ -258,8 +268,22 @@ bool installFrontPushbackSuppression(unsigned char* image) {
         // jmp 0x6306B4; nop
         0xE9,0xF3,0x00,0x00,0x00,0x90
     };
+    if(!std::memcmp(target,replacement,sizeof(replacement))){
+        log("[WEAPON-WALL-PUSHBACK] native suppression already armed "
+            "at RVA 0x6305B4");
+        return true;
+    }
     if (std::memcmp(target, signature, sizeof(signature))) {
-        log("hands collision-pushback signature mismatch at RVA 0x6305B4; suppression disabled");
+        // Preserve unknown executable code (wrong game build / other mod).
+        // No unsafe signature-free memory patch or unverified collision
+        // distance tweaks; tell the owner exactly why suppression was skipped.
+        std::ostringstream info;
+        info<<"[WEAPON-WALL-PUSHBACK] RVA 0x6305B4 signature mismatch; "
+               "visual retreat may remain active. Actual bytes=";
+        for(unsigned index=0;index<sizeof(signature);++index)
+            info<<(index?" ":"")<<std::hex<<std::setw(2)
+                <<std::setfill('0')<<unsigned(target[index]);
+        log(info.str());
         return false;
     }
 
@@ -270,10 +294,15 @@ bool installFrontPushbackSuppression(unsigned char* image) {
     }
     std::memcpy(target, replacement, sizeof(replacement));
     FlushInstructionCache(GetCurrentProcess(), target, sizeof(replacement));
+    const bool verified=!std::memcmp(target,replacement,sizeof(replacement));
     DWORD ignored{};
     VirtualProtect(target, sizeof(signature), oldProtect, &ignored);
-    log("6DoF hands collision-pushback flag cleared and common animation block skipped at RVA 0x6305B4");
-    return true;
+    log(verified
+        ?"[WEAPON-WALL-PUSHBACK] verified native hands front-pushback "
+         "animation suppression at RVA 0x6305B4; player collision unchanged"
+        :"[WEAPON-WALL-PUSHBACK] patch post-write verification FAILED; "
+         "visual retreat may remain active");
+    return verified;
 }
 
 bool armHandsHitReactionSuppression(unsigned char* image) {
