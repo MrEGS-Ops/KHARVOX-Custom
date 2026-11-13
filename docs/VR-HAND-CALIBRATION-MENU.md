@@ -2,6 +2,22 @@
 
 This is an independent OpenXR compositor overlay in the **mod-enabled NativeBridge**, not a modification to the original DOOM or Cactus launcher's menus.
 
+## In-game VR Mods browser
+
+The in-headset MODS window has a six-entry browse-first layout: **Weapon Grip Calibration**, **Gunslinger**, **KILLTIME**, **Physical Glory Kills**, **Physical Crouch**, **PAINSAW**. The two user-toggleable mods, Physical Crouch and PAINSAW, appear together at the end. The old read-only DEV category is hidden/removed; desktop developer toggles remain untouched.
+
+With the left stick on the mod list, highlighting a mod presents the right-hand **WHAT IT DOES / HOW TO USE IT** overview rather than configuration widgets. Press **A** or point at **CONFIGURE** and pull trigger to enter its existing settings. While configuring, use the left stick and A or the pointer/trigger as before; **B** returns to the overview. On the overview B closes the Mods window. Fixed-on mods use a disclosure arrow instead of "SET"; only Physical Crouch and PAINSAW show their ON/OFF status. Configurable mod overviews describe gameplay, not weapon-hand calibration instructions.
+
+The "APPLY RIGHT -> LEFT" action and its automatic factory-relative mirroring code are removed. Players calibrate LEFT and RIGHT hands independently; individual saved positions and the per-weapon factory Reset remain supported. The active calibration pop-up is smaller and context-sensitive: it names the actual physical RIGHT/LEFT PRIMARY/SUPPORT hand, and shows position/rotation instructions only for the selected hand. The calibration runtime, saved config layout, and 1 cm held-stick fine-tune are unchanged.
+
+**Final factory calibration ZIP:** the user-provided final profile files must be inspected and validated before replacing the shipped `config/user_calibration_defaults/` files. An earlier or guessed profile must never be substituted. This menu-only change does NOT modify the shipped factory presets.
+
+## Gun pass-through versus hand occlusion
+
+DOOM's *first-person gun pushback animation* is separate from the world depth buffer. The signature-verified native wall-pushback suppression installed for tracked 6DoF/hand gameplay attempts to prevent the gun visibly backing off before a wall or box, without changing player collision or gameplay projectiles. The in-scene Vulkan hand renderer uses **the existing DOOM scene depth**: hand pixels that fall behind real world surfaces fail the depth test, giving hand/world **visual occlusion**, while the gun remains native render geometry and may visibly extend into the object when the early retreat is suppressed.
+
+This is visual occlusion, **not actual hand physics**. It does not forcibly stop the physical tracking controller at a wall. The fallback 2D hand overlay has no world-depth information and cannot promise equivalent occlusion. To implement physical hand-surface constraints or remove any remaining native gun retreat paths, a separately verified world-geometry contact query / executable trace is required; do not fake it by perturbing the user-approved grip calibration anchors or disabling world collision.
+
 ## Controls
 
 - **Hold RIGHT thumbstick click for 1 second** during gameplay to open or close the VR calibration panel; another hold during calibration cancels and returns to the panel without saving. A normal short click remains DOOM world Use; it no longer toggles weapon-hand/head focus. Old LEFT Grip + BOTH sticks and RIGHT Grip + RIGHT stick capture shortcuts are gone.
