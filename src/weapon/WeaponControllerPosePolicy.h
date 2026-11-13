@@ -45,25 +45,26 @@ inline Offset primaryHandVisualPlacement(
     return measured;
 }
 
-// Native gun and its primary glove are one rigid pose group. Ordinary
-// free-controller calibration LOCKS local X via primaryHandVisualPlacement;
-// ONLY Grip-held centimeter joystick fine-tune may change saved primary X.
-// Once saved, that lateral offset travels with the gun and its grip anchor.
-// The gun can move in X/Y/Z but remains PARALLEL to OpenXR AIM, with
-// absolutely no position-derived pitch/yaw/roll or quaternion changes.
+// Native gun follows only the ordinary Y/Z calibration adjustment.
+// 1cm Grip-held nudges alter the glove's *attachment* (weapon-hand anchor),
+// never the gun. Sideways X belongs ONLY to hand-only fitting, and neither
+// offset ever changes the OpenXR AIM quaternion or barrel direction.
 template<class Offset>
 struct PrimaryHandAnchorPlan {
-    Offset gunTranslationLocal;  // local X/Y/Z (X only from fine-tune)
-    Offset handAttachmentLocal;  // original grip on the moving gun
+    Offset gunTranslationLocal;   // normal calibrated Y/Z only, never fine-tune
+    Offset handAttachmentLocal;   // native reference grip + fine-tune
 };
 template<class Offset>
 inline PrimaryHandAnchorPlan<Offset> primaryHandAnchorPlan(
-    const Offset& requestedHand, const Offset& referenceHand) noexcept {
+    const Offset& requestedHand,const Offset& referenceHand,
+    const Offset& fineTune=Offset{}) noexcept {
+    // Even legacy saves with a nonzero X must leave the GUN's lateral
+    // translation locked. Preserve the X adjustment on the glove/anchor.
     return {
-        Offset{requestedHand.x-referenceHand.x,
-            requestedHand.y-referenceHand.y,
-            requestedHand.z-referenceHand.z},
-        referenceHand
+        Offset{0.f,requestedHand.y-referenceHand.y-fineTune.y,
+            requestedHand.z-referenceHand.z-fineTune.z},
+        Offset{requestedHand.x,referenceHand.y+fineTune.y,
+            referenceHand.z+fineTune.z}
     };
 }
 
