@@ -34,7 +34,6 @@
 #include "ChainsawMotionSpeedPolicy.h"
 #include "ChainsawStrokePolicy.h"
 #include "ChainsawExperimentalModesPolicy.h"
-#include "PainsawRevAudio.h"
 #include "ChainsawLoopProbePolicy.h"
 #include "ChainsawAnimationInvestigationPolicy.h"
 #include "GripZoneMarkerPolicy.h"
@@ -6545,34 +6544,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         pointerTracked,pointerForward.x,pointerForward.y,pointerForward.z,
         strokeNow,strokeIdleHz,strokeDistanceCm,currentHead,xrYaw,headTracked,
         gazeVector,rightVector,upVector,s.chainsawTriggerPressure);
-    // PAINSAW rev audio is an independent one-shot, not linked to the
-    // slowed/accelerated DOOM tick clock. The first confirmed native kill
-    // and each subsequent valid release/re-pull edge get exactly one sound.
-    // A held trigger NEVER replays audio; ending the execution stops it.
-    const bool painsawSoundActive=experimentActive
-        &&experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses
-        &&s.chainsawExperiment.active;
-    static bool painsawSoundWasActive=false;
-    if(!painsawSoundActive&&painsawSoundWasActive)
-        kharvox::PainsawRevAudio::Stop();
-    painsawSoundWasActive=painsawSoundActive;
-    if(painsawSoundActive
-       &&(experiment.started||s.chainsawExperiment.revPullEdge)){
-        const unsigned pull=experiment.started?1u:
-            std::clamp(s.chainsawExperiment.revCount,1u,3u);
-        static bool firstAudioFailureLogged=false;
-        if(kharvox::PainsawRevAudio::Play(pull)){
-            log("[CHAINSAW-REV-AUDIO] cue="+std::to_string(pull)
-                +(kharvox::PainsawRevAudio::UsingOriginalSamples()
-                    ?" DOOM2016-rev-surge-original"
-                    :" synthetic-fallback")
-                +" (XAudio2, clock-independent, peak-limited)");
-        }else if(!firstAudioFailureLogged){
-            firstAudioFailureLogged=true;
-            log("[CHAINSAW-REV-AUDIO] XAudio2 device unavailable; "
-                "check Windows default output and headset route",true);
-        }
-    }
+    // No parallel KHARVOX chainsaw audio player, owner WAV dependency,
+    // or synthetic fallback. DOOM's own native chainsaw sounds are the
+    // sole audio source during the trigger rev pulses, speed and haptics.
     if(experimentActive
        &&experimentMode==kharvox::ChainsawExperimentalMode::TriggerRevPulses){
         const auto& rev=s.chainsawExperiment;

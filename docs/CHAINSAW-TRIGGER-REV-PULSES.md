@@ -25,6 +25,12 @@ peak for **90–220 ms**, and ease out over **110 ms**. Slow baseline is
 **200 engine tick Hz**. Lower tick Hz makes the observed kill run faster.
 The third pull overrides the normal burst tail with the latched 30 Hz finish.
 
+## Sound: DOOM native chainsaw only
+
+The custom PAINSAW audio overlay has been retired completely. No three-WAV pack, XAudio2 rev sound layer or generated synthetic fallback is loaded or played by this mod. The only chainsaw sound is **DOOM (2016)'s original native audio**, subject to the original game's normal audio mix and headset/game volume. Three-pull action-speed changes and per-pull haptics are unchanged.
+
+No separate, verified native chainsaw-only gain setting was found in this module, so the mod deliberately does **not** raise system volume, adjust other game sounds, or modify the game's audio mixer. A targeted native-only boost requires separately verified DOOM sound event/gain control; removing the unwanted overlay is not dependent on this.
+
 ## Right controller haptics
 
 During a confirmed X6 chainsaw execution, the **right-hand OpenXR Touch

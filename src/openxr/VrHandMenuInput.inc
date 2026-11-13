@@ -113,8 +113,8 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
             +" valid="+(m.previewValid?"1":"0"));
     }
 }
-// One 1cm nudge per deliberate stick flick during the weapon-GRIP hold.
-// Grip HELD freezes glove rotation; joystick steps move the GUN ONLY.
+// A quick stick flick nudges 1 cm; holding a stick repeats 1 cm at a
+// comfortable fixed pace. Grip HELD freezes glove rotation; only GUN moves.
 // Grip RELEASE resumes visual glove rotation. Right trigger SAVES.
 // The calibration menu still suppresses locomotion and firing.
 void serviceVrWeaponFineTune(bool weaponGripDown){
@@ -137,9 +137,10 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
         if(XR_SUCCEEDED(s.getActionStateVector2f(s.session,&info,&state))
             &&state.isActive)rightStick=state.currentState;
     }
+    const auto nowMs=GetTickCount64();
     const auto step=kharvox::vrWeaponFineTuneCentimeterStep(
         m.fineTuneEdges,primary,weaponGripDown,
-        s.leftStick.x,s.leftStick.y,rightStick.y);
+        s.leftStick.x,s.leftStick.y,rightStick.y,nowMs);
     if(step.x==0.f&&step.y==0.f&&step.z==0.f)return;
     const auto candidate=kharvox::RightHandGripOffset{
         m.fineTuneAccumulated.x+step.x,
@@ -154,7 +155,7 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
     m.fineTuneAccumulated=candidate;
     kharvox::queueControllerZoneCue(
         s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
-            s.weaponHandLeft?1:0)],GetTickCount64(),28,.28f,170.f);
+            s.weaponHandLeft?1:0)],nowMs,28,.28f,170.f);
     log(std::string("[VR-HAND-FINETUNE] 1cm nudge weapon=")+m.weapon()
         +(s.weaponHandLeft?" left":" right")
         +" x="+std::to_string(step.x)+" y="+std::to_string(step.y)
