@@ -408,6 +408,16 @@ jobs:
           $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $readyZip).Hash.ToLowerInvariant()
           "$digest *KHARVOX-VR-Mod-Manager-ReadyToRun.zip" |
             Set-Content -LiteralPath ($readyZip + ".sha256") -Encoding ascii
+          # Immutable complete bundle: the updater must never retrieve a
+          # manager-only payload or a recycled/stale native bridge ZIP.
+          $immutableName = "KHARVOX-VR-Mod-Manager-ReadyToRun-${{ github.run_id }}.zip"
+          $immutableZip = Join-Path $PWD ("dist/" + $immutableName)
+          Copy-Item -LiteralPath $readyZip -Destination $immutableZip
+          "$digest *$immutableName" |
+            Set-Content -LiteralPath ($immutableZip + ".sha256") -Encoding ascii
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $immutableZip).Hash.ToLowerInvariant() -ne $digest) {
+            throw "Immutable integrated ReadyToRun checksum mismatch"
+          }
 
       - name: Build verified public updater release ZIP and checksum
         shell: pwsh
@@ -474,6 +484,8 @@ jobs:
           files: |
             dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip
             dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun-*.zip
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun-*.zip.sha256
             dist/KHARVOX-VR-Mod-Manager-Standalone.zip
             dist/KHARVOX-VR-Mod-Manager-Standalone.zip.sha256
             dist/KHARVOX-VR-Mod-Manager-Standalone-*.zip
