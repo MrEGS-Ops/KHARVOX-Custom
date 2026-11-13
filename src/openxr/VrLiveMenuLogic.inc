@@ -92,7 +92,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
     add("PAINSAW",VrLiveMod::Painsaw,
-        s.customMods.chainsawTriggerThrottle,true);
+        s.customMods.chainsawTriggerThrottle
+            ||s.customMods.motionChainsawKillSpeed,true);
     // Keep the left list strictly configurable. DEV consolidates every
     // currently active read-only mod and non-configurable developer override.
     rows.push_back({"DEV",VrLiveMod::Other,true,true});
@@ -135,8 +136,18 @@ void applyVrLiveModRuntimeState(){
         KharvoxCameraSetCrouchState(false);
     }
     s.customMods.physicalCrouch=physicalCrouch;
-    s.customMods.chainsawTriggerThrottle=enabled(VrLiveMod::Painsaw,
-        s.vrDesktopMods.chainsawTriggerThrottle);
+    // PAINSAW includes legacy motion-only mode as well as current trigger
+    // throttle. OFF disables both, otherwise an existing desktop setup
+    // retains its original implementation. New live ON defaults to the
+    // modern trigger-throttle mode without enabling two speed controllers.
+    const bool painsawDesktop=s.vrDesktopMods.chainsawTriggerThrottle
+        ||s.vrDesktopMods.motionChainsawKillSpeed;
+    const bool painsaw=enabled(VrLiveMod::Painsaw,painsawDesktop);
+    s.customMods.chainsawTriggerThrottle=painsaw
+        &&(s.vrDesktopMods.chainsawTriggerThrottle
+            ||!s.vrDesktopMods.motionChainsawKillSpeed);
+    s.customMods.motionChainsawKillSpeed=painsaw
+        &&s.vrDesktopMods.motionChainsawKillSpeed;
     s.vrLiveKilltimeEnabled=enabled(VrLiveMod::Killtime,s.vrDesktopKilltime);
     const bool physicalGK=enabled(VrLiveMod::PhysicalGloryKills,
         s.vrDesktopPhysicalGk);
@@ -226,7 +237,9 @@ bool handleVrLiveMenuAction(int action){
                    ||s.vrDesktopMods.behindHeadWeaponWheel
             :m.selectedMod==VrLiveMod::PhysicalCrouch?s.vrDesktopMods.physicalCrouch
             :m.selectedMod==VrLiveMod::Killtime?s.vrDesktopKilltime
-            :m.selectedMod==VrLiveMod::Painsaw?s.vrDesktopMods.chainsawTriggerThrottle
+            :m.selectedMod==VrLiveMod::Painsaw
+                ?s.vrDesktopMods.chainsawTriggerThrottle
+                   ||s.vrDesktopMods.motionChainsawKillSpeed
             :s.vrDesktopPhysicalGk);
         auto previous=s.vrLiveSettings;
         kharvox::vrLiveSetEnabled(s.vrLiveSettings,m.selectedMod,!was);
