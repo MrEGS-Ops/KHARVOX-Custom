@@ -24,7 +24,7 @@ internal sealed class StandaloneModsBridge
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool OffHandGripCapture { get; set; }
     public bool GloryKillSpeedOverride { get; set; }
-    public int GloryKillHz { get; set; } = 200;
+    public int GloryKillHz { get; set; } = 60; // Fallback when no user bridge preference exists.
     public string RuntimeRevision { get; set; } = "";
     private string _selectedBridgePath = "";
 
@@ -86,6 +86,7 @@ internal sealed class StandaloneModsBridge
     internal static int RunSelfTest()
     {
         var disabled = new StandaloneModsBridge();
+        if (disabled.GloryKillHz != 60) return 1;
         var baseline = new CustomModSettings();
         disabled.ApplyTo(baseline);
         if (baseline.OffHandGripCapture || baseline.BehindHeadWeaponWheel || baseline.LeftWristWeaponWheel ||
