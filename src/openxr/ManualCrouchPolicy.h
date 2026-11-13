@@ -1,6 +1,14 @@
 #pragma once
+#include <cmath>
 
 namespace kharvox {
+// Require a deliberate straight-down stick gesture, not a diagonal while
+// the player is turning. The vertical value has KHARVOX's 0.4 deadzone
+// already removed by the caller.
+inline bool manualStickCrouchDirection(float x,float normalizedY) noexcept {
+    return std::isfinite(x)&&std::isfinite(normalizedY)
+        &&std::abs(x)<.35f&&normalizedY<-.75f;
+}
 
 // Right-stick DOWN is an axial gesture, not a stick CLICK, so RS Use and
 // Hand Focus remain independent. Gunslinger's behind-head wheel owns weapon
