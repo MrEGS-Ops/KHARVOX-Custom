@@ -157,6 +157,18 @@ inline ControllerPose vrCalibrationLivePose(
     if(grip.valid)live.orientation=grip.orientation;
     return live;
 }
+// SUPPORT calibration must sample the physical support controller GRIP
+// position, which is also what renders the ordinary free-hand glove. AIM
+// and GRIP have different origins: copying the AIM translation made the
+// support glove jump forward on entry and saved a mismatched point.
+// No AIM fallback when GRIP is invalid: reject capture rather than write
+// an incorrect profile, even if the AIM ray is still tracked.
+template<class ControllerPose>
+inline const ControllerPose& vrSupportCalibrationPhysicalGrip(
+    const ControllerPose& grip,const ControllerPose&) noexcept {
+    return grip;
+}
+
 // Fine-tune is ONLY active during primary-weapon calibration while its
 // physical weapon-hand GRIP is held to freeze the preview. Each deliberate
 // stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
