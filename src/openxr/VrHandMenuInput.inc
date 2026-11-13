@@ -301,9 +301,12 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 }
                 return -1; // DEV status cannot activate gameplay
             }
-            if(pixelY>=150&&pixelY<210)return 110;
+            const bool toggleable=kharvox::vrLiveModToggleable(list[row].mod);
+            if(toggleable&&pixelY>=159&&pixelY<219)return 110;
+            const int optionY=toggleable?248:186;
             for(int i=0;i<5;++i)
-                if(pixelY>=248+i*68&&pixelY<306+i*68)return 130+i;
+                if(pixelY>=optionY+i*68&&pixelY<optionY+58+i*68)
+                    return 130+i;
         }
         return -1;
     }
@@ -464,11 +467,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
-                    case VrLiveMod::WeaponGrip:return 2; // toggle + open calibration
-                    case VrLiveMod::Gunslinger:return 6;
-                    case VrLiveMod::PhysicalCrouch:return 4;
-                    case VrLiveMod::Killtime:return 4;
-                    case VrLiveMod::PhysicalGloryKills:return 5;
+                    case VrLiveMod::WeaponGrip:return 1; // open calibration
+                    case VrLiveMod::Gunslinger:return 5;
+                    case VrLiveMod::PhysicalCrouch:return 4; // toggle + 3 heights
+                    case VrLiveMod::Killtime:return 3;
+                    case VrLiveMod::PhysicalGloryKills:return 4;
+                    case VrLiveMod::Painsaw:return 1; // toggle only
                     default:return 0;
                 }
             };
@@ -498,7 +502,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
                 aEdge?kharvox::vrMenuModsGamepadTarget(m.navigation,
-                    m.selectedRow,n,n>0?optionCount(rows[m.selectedRow]):0):-1;
+                    m.selectedRow,n,n>0?optionCount(rows[m.selectedRow]):0,
+                    n>0&&kharvox::vrLiveModToggleable(rows[m.selectedRow].mod)):-1;
             if(pointed>=0)m.navigation.usingStick=false;
             if(chosen>=1000&&chosen<1000+n){
                 m.selectedRow=chosen-1000;
