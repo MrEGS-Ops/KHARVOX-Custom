@@ -227,6 +227,7 @@ struct VrHandMenuState {
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
     bool primaryGripPreviewHeld{}; // freezes valid live pose while Grip held, permits 1cm nudges
+    bool calibrationGripHeld{}; // raw physical weapon Grip for contextual VR help, independent of tracking
     std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
