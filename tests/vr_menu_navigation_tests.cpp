@@ -59,6 +59,22 @@ int main(){
     assert(&vrCalibrationFreeControllerPose(unavailable,validPredictedAim)
         ==&validPredictedAim);
     assert(&vrCalibrationFreeControllerPose(unavailable,trackedAim)==&trackedAim);
+    // Quest can report a valid GRIP rotation with an unchanged/predicted
+    // position while its tracked AIM laser translates freely.
+    struct FakeController {
+        bool valid,positionTracked;
+        RightHandGripOffset position;
+        RightHandGripRotation orientation;
+    };
+    const FakeController staticGrip{
+        true,true,{0.f,0.f,0.f},{0.f,.4f,0.f,.9165f,true}};
+    const FakeController movingAim{
+        true,true,{.12f,-.20f,-.32f},{0.f,0.f,0.f,1.f,true}};
+    const auto live=vrCalibrationLivePose(staticGrip,movingAim);
+    assert(std::abs(live.position.x-.12f)<.00001f);
+    assert(std::abs(live.position.y+.20f)<.00001f);
+    assert(std::abs(live.position.z+.32f)<.00001f);
+    assert(std::abs(live.orientation.y-.4f)<.00001f);
     // GRIP-held weapon fine-tune: 1 cm PER intentional flick, no auto
     // repeat when held, no steps outside primary calibration or Grip hold.
     VrWeaponFineTuneEdges fine{};
