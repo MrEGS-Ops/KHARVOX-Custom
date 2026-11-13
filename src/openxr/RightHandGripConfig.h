@@ -361,19 +361,18 @@ inline bool saveRightHandGripRotation(const std::string&path,
     return true;
 }
 
-// Mirror a RIGHT primary hand grip over the weapon-local YZ plane to give
-// the LEFT hand a useful first-pass pose. Mirroring a rotation requires
-// M*R*M (M=diag(-1,1,1)), i.e. quaternion (x,-y,-z,w), not just changing X.
-// No existing left-hand data is changed until the user selects APPLY TO LEFT.
-inline bool mirroredRightPrimaryVisualPose(const RightHandGripSettings& settings,
+// Transferring a right-primary grip to the left must use the DIFFERENT
+// factory reference poses for the two baked hand models. Mirroring the
+// absolute position/quaternion points the left glove in the wrong direction;
+// only the right hand's *adjustment from its own factory pose* is mirrored.
+// The gun-local reference bases and the owner's saved right pose are untouched.
+inline bool rightPrimaryVisualPose(const RightHandGripSettings& settings,
     const std::string& weapon,bool alternate,
-    RightHandGripOffset& leftPosition,RightHandGripRotation& leftRotation) {
+    RightHandGripOffset& position,RightHandGripRotation& rotation) {
     if(!validVrCalibrationWeapon(weapon))return false;
     const std::string key=weapon+
         (alternate?(weapon=="gauss_cannon"?"_siege"
           :weapon=="chaingun"?"_turret":""):"");
-    RightHandGripOffset position{};
-    RightHandGripRotation rotation{};
     bool found=false;
     if(weapon=="gauss_cannon"){
         found=alternate?settings.gaussSiegeHandValid:settings.gaussHandValid;
@@ -390,12 +389,73 @@ inline bool mirroredRightPrimaryVisualPose(const RightHandGripSettings& settings
             return false;
         position=pos->second;rotation=rot->second;found=true;
     }
-    if(!found||!validRightHandVisualPlacement(position)
-        ||!rotation.valid||!validRightHandRotation(rotation))return false;
-    leftPosition={-position.x,position.y,position.z};
-    leftRotation={rotation.x,-rotation.y,-rotation.z,rotation.w,true};
-    return validRightHandVisualPlacement(leftPosition)
-        &&validRightHandRotation(leftRotation);
+    // Historic heavy-weapon saves may have a valid pose under the generic
+    // per-weapon key. The same key is also used by the factory defaults.
+    if(!rotation.valid){
+        const auto fallback=settings.visualRotations.find(key);
+        if(fallback!=settings.visualRotations.end())rotation=fallback->second;
+    }
+    return found&&validRightHandVisualPlacement(position)
+        &&rotation.valid&&validRightHandRotation(rotation);
+}
+
+inline bool factoryAlignedRightPrimaryToLeft(const RightHandGripSettings& current,
+    const RightHandGripSettings& factory,const std::string& weapon,
+    bool alternate,RightHandGripOffset& leftPosition,
+    RightHandGripRotation& leftRotation) {
+    if(!validVrCalibrationWeapon(weapon)||
+       (alternate&&weapon!="gauss_cannon"&&weapon!="chaingun"))
+        return false;
+    const std::string key=weapon+
+        (alternate?(weapon=="gauss_cannon"?"_siege":"_turret"):"");
+    RightHandGripOffset rightNow{},rightFactory{};
+    RightHandGripRotation rightRotation{},rightFactoryRotation{};
+    if(!rightPrimaryVisualPose(current,weapon,alternate,
+            rightNow,rightRotation)
+        ||!rightPrimaryVisualPose(factory,weapon,alternate,
+            rightFactory,rightFactoryRotation))return false;
+    const auto leftPositionIt=factory.leftVisualPositions.find(key);
+    const auto leftRotationIt=factory.leftVisualRotations.find(key);
+    // A missing left-hand reference is unsafe: refuse instead of silently
+    // falling back to the old absolute mirror that generated the bad pose.
+    if(leftPositionIt==factory.leftVisualPositions.end()
+        ||leftRotationIt==factory.leftVisualRotations.end()
+        ||!validRightHandVisualPlacement(leftPositionIt->second)
+        ||!leftRotationIt->second.valid
+        ||!validRightHandRotation(leftRotationIt->second))return false;
+
+    const auto& reference=leftPositionIt->second;
+    // X is weapon-local lateral. Only the delta is mirrored, never the
+    // independent left-hand grip/weapon pivot reference itself.
+    leftPosition={
+        reference.x-(rightNow.x-rightFactory.x),
+        reference.y+(rightNow.y-rightFactory.y),
+        reference.z+(rightNow.z-rightFactory.z)};
+
+    const auto multiply=[](RightHandGripRotation a,RightHandGripRotation b) {
+        return RightHandGripRotation{
+            a.w*b.x+a.x*b.w+a.y*b.z-a.z*b.y,
+            a.w*b.y-a.x*b.z+a.y*b.w+a.z*b.x,
+            a.w*b.z+a.x*b.y-a.y*b.x+a.z*b.w,
+            a.w*b.w-a.x*b.x-a.y*b.y-a.z*b.z,true};
+    };
+    const auto rightInverse=RightHandGripRotation{
+        -rightFactoryRotation.x,-rightFactoryRotation.y,
+        -rightFactoryRotation.z,rightFactoryRotation.w,true};
+    const auto delta=multiply(rightRotation,rightInverse);
+    // M*delta*M, M=diag(-1,1,1). This mirrors only the correction relative
+    // to the right glove's factory orientation.
+    const auto mirroredDelta=RightHandGripRotation{
+        delta.x,-delta.y,-delta.z,delta.w,true};
+    leftRotation=multiply(mirroredDelta,leftRotationIt->second);
+    if(!validRightHandVisualPlacement(leftPosition)||
+       !validRightHandRotation(leftRotation))return false;
+    const float norm=std::sqrt(leftRotation.x*leftRotation.x+
+        leftRotation.y*leftRotation.y+leftRotation.z*leftRotation.z+
+        leftRotation.w*leftRotation.w);
+    leftRotation.x/=norm;leftRotation.y/=norm;
+    leftRotation.z/=norm;leftRotation.w/=norm;
+    return true;
 }
 // Atomic single-transaction update of one visual grip pose: both the
 // glove POSITION and ROTATION are saved together, or neither is saved.
