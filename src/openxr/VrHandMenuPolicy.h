@@ -277,10 +277,12 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                 if(end!=std::string::npos)key.erase(end+1);
                 matches=key==weapon+"_hand_position"||key==weapon+"_rotation"
                     ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
+                    ||key==weapon+"_left_pose_basis_v2"
                     ||(!alternate.empty()&&(
                         key==alternate+"_hand_position"||key==alternate+"_rotation"
                         ||key==alternate+"_left_hand_position"
                         ||key==alternate+"_left_rotation"
+                        ||key==alternate+"_left_pose_basis_v2"
                         ||key==alternate+"_support_position"
                         ||key==alternate+"_left_primary_support_position"));
             }
@@ -340,7 +342,8 @@ inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
             const auto matches=[&](const std::string& name){
                 return key==name+"_hand_position"||key==name+"_rotation"
                     ||key==name+"_left_hand_position"
-                    ||key==name+"_left_rotation";
+                    ||key==name+"_left_rotation"
+                    ||key==name+"_left_pose_basis_v2";
             };
             if(matches(weapon))return true;
             return !alternate.empty()
