@@ -14,6 +14,7 @@ on:
       - feature/userdata-calibration-factory-defaults
       - feature/live-vr-mod-calibration-menu
       - fix/nov12-hud-factory-pointer
+      - feature/nov13-headset-test-polish
     paths:
       - 'src/openxr/RightHandGripConfig.h'
       - 'src/openxr/VrHandMenuPolicy.h'
