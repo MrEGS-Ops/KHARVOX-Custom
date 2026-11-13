@@ -80,7 +80,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "First pull starts the native kill.",
             "Release and re-pull up to twice.",
             "Each pull boosts execution speed.",
-            "Faster revs with each pull.",
+            "",
             "Toggle mode in CONFIGURE."}}};
         default:return {{{"Select a mod for information."}}};
     }
@@ -90,9 +90,26 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
 // Without an explicit Hz, a native full-speed bypass has NO fixed target;
 // display that accurately rather than inventing a refresh rate.
 std::string vrLiveGloryKillSpeedText(){
+    // Native full-speed bypass takes precedence over any displayable Hz
+    // profile; the game does not apply that target in this execution path.
+    int legacySpeedLevel=10;
+    char legacyText[16]{};
+    const DWORD legacyLength=GetEnvironmentVariableA(
+        "KHARVOX_GLORY_KILL_SLOWMO_LEVEL",legacyText,
+        sizeof(legacyText));
+    if(legacyLength>0&&legacyLength<sizeof(legacyText)){
+        char* legacyEnd{};
+        const long value=std::strtol(legacyText,&legacyEnd,10);
+        if(legacyEnd!=legacyText&&*legacyEnd=='\0'
+            &&value>=0&&value<=10)
+            legacySpeedLevel=static_cast<int>(value);
+    }
+    if(kharvox::nativeFastKillSyncRequested(
+        s.customMods.fastGloryKills,s.customMods.fastChainsawKills,
+        legacySpeedLevel))
+        return "FULL SPEED (NATIVE)";
     const int explicitHz=actionSpeedTargets().gloryKill;
     if(explicitHz>0)return std::to_string(explicitHz)+" Hz";
-    if(s.customMods.fastGloryKills)return "FULL SPEED (NATIVE)";
     char text[16]{};
     const DWORD length=GetEnvironmentVariableA(
         "KHARVOX_MOD_CINEMATIC_KILL_SPEED",text,sizeof(text));
