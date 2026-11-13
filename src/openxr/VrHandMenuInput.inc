@@ -630,8 +630,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             };
             const auto before=m.selectedRow;
             const int previousOptions=n>0?optionCount(rows[m.selectedRow]):0;
-            kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
-                n,m.selectedRow,previousOptions);
+            // Overview is browse-only. Stick horizontal cannot silently
+            // open a config or make A adjust a value. A / CONFIGURE enters
+            // the right-side options; B returns to the overview.
+            kharvox::vrMenuNavigateStick(m.navigation,
+                m.navigation.settingsColumn?s.leftStick.x:0.f,
+                s.leftStick.y,n,m.selectedRow,previousOptions);
             if(n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
                 if(before!=m.selectedRow)m.navigation.actionIndex=0;
@@ -654,11 +658,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 // gameplay description until A/CONFIGURE is explicitly
                 // pressed, never an accidental ON/OFF or capture.
                 const int newRow=chosen-1000;
-                const bool sameRow=newRow==m.selectedRow;
                 m.selectedRow=newRow;
                 m.selectedMod=rows[newRow].mod;
                 m.navigation.actionIndex=0;
-                if(aEdge||(pointed>=0&&sameRow)){
+                if(aEdge){
                     m.navigation.settingsColumn=true;
                     m.navigation.usingStick=aEdge;
                     m.message="Configuring "+std::string(rows[newRow].title)
