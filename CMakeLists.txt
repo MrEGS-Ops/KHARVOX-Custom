@@ -245,7 +245,7 @@ if(KHARVOX_BUILD_LAYER)
   endif()
   target_compile_definitions(KharvoxNativeStereo PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX VK_NO_PROTOTYPES VK_USE_PLATFORM_WIN32_KHR DOOMVR_RESEARCH_TOOLS=1)
   target_include_directories(KharvoxNativeStereo PRIVATE src/native/upstream/include third-party/minhook/include third-party/vulkan-headers/include third-party/openxr-sdk/include)
-  add_library(KharvoxLayer SHARED $<TARGET_OBJECTS:KharvoxNativeStereo> src/vulkan/KharvoxLayer.cpp src/openxr/OpenXRBootstrap.cpp src/openxr/PainsawRevAudio.cpp src/bhaptics/BhapticsIpcClient.cpp src/psvr2/Psvr2IpcClient.cpp src/fsr/Fsr1Upscaler.cpp src/hands/HandRenderer.cpp src/hands/HandSceneDepthTracker.cpp src/camera/CameraHook.cpp src/hud/HudHook.cpp src/hud/HudGpuDiagnostic.cpp src/weapon/WeaponHook.cpp src/debug/CameraScanner.cpp src/vulkan/KharvoxLayer.def src/common/Version.rc)
+  add_library(KharvoxLayer SHARED $<TARGET_OBJECTS:KharvoxNativeStereo> src/vulkan/KharvoxLayer.cpp src/openxr/OpenXRBootstrap.cpp src/bhaptics/BhapticsIpcClient.cpp src/psvr2/Psvr2IpcClient.cpp src/fsr/Fsr1Upscaler.cpp src/hands/HandRenderer.cpp src/hands/HandSceneDepthTracker.cpp src/camera/CameraHook.cpp src/hud/HudHook.cpp src/hud/HudGpuDiagnostic.cpp src/weapon/WeaponHook.cpp src/debug/CameraScanner.cpp src/vulkan/KharvoxLayer.def src/common/Version.rc)
   target_compile_features(KharvoxLayer PRIVATE cxx_std_17)
   if(KHARVOX_BUILD_SFS_COMPILER)
     target_sources(KharvoxLayer PRIVATE src/sfs/NativeSfs.cpp)
@@ -277,7 +277,7 @@ if(KHARVOX_BUILD_LAYER)
     "${CMAKE_CURRENT_SOURCE_DIR}/third-party/openxr-sdk/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/third-party/cgltf")
   if(WIN32)
-    target_link_libraries(KharvoxLayer PRIVATE bcrypt minhook user32 gdi32 advapi32 ole32 windowscodecs xaudio2)
+    target_link_libraries(KharvoxLayer PRIVATE bcrypt minhook user32 gdi32 advapi32 ole32 windowscodecs)
   endif()
   set_target_properties(KharvoxLayer PROPERTIES
     OUTPUT_NAME "KharvoxLayer"
