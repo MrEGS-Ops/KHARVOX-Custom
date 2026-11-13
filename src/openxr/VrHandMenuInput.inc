@@ -22,7 +22,13 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const auto& freeGrip=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     const auto& freeAim=s.weaponHandLeft?s.rightController:s.leftController;
-    const auto placement=kharvox::vrCalibrationLivePose(freeGrip,freeAim);
+    // PRIMARY uses the free controller for wrist rotation only.
+    // SUPPORT must position its glove from its own physical GRIP origin,
+    // matching the normal free hand. Its AIM ray is forward-offset and
+    // must not silently replace invalid GRIP tracking during capture.
+    const auto placement=primaryHand
+        ?kharvox::vrCalibrationLivePose(freeGrip,freeAim)
+        :kharvox::vrSupportCalibrationPhysicalGrip(freeGrip,freeAim);
     const bool matchingWeapon=weapon!=KharvoxWeaponKind::Unknown
         &&weapon==KharvoxWeaponCurrentKind()
         &&s.weaponHandLeft==m.calibratingWeaponLeft;
@@ -69,8 +75,9 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
             &&primaryWeaponGripHeld&&m.previewValid
             &&matchingWeapon&&gunTracked&&physicalGrip.valid;
     }else{
-        // SUPPORT hand continues to use the original three-dimensional
-        // free-controller capture; do not change its grip placement logic.
+        // SUPPORT position follows the real free-hand GRIP tracker, not
+        // its displaced AIM laser. The saved local offset and displayed
+        // hand are measured in the exact same weapon reference frame.
         if(!canSample){
             m.previewValid=false;
             m.primaryGripPreviewHeld=false;

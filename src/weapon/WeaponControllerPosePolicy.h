@@ -126,6 +126,23 @@ inline Quaternion weaponLockedPrimaryGloveOrientation(
     return multiply(renderedGunOrientation,savedGloveLocalOrientation);
 }
 
+// Both preview and saved support-grip coordinates are measured relative
+// to the UNADJUSTED AIM reference (saved in lastWeaponRenderedTrackingAnchor).
+// The moving native weapon model receives an additional per-weapon gun-only
+// fine-tune translation AFTER that reference is captured. Re-applying that
+// gun translation to the support hand made a saved grip visibly jump on
+// release/re-equip. Render support using its calibrated reference only.
+// When the gun changes offset, the owner may recalibrate its support handle;
+// NEVER silently translate a recorded support hand by a second offset.
+template<class Position,class Quaternion,class Add,class Rotate>
+inline Position supportGloveAtCalibrationReference(
+    const Position& unadjustedAimAnchor,
+    const Quaternion& renderedWeaponOrientation,
+    const Position& savedSupportLocal,Add add,Rotate rotate) {
+    return add(unadjustedAimAnchor,
+        rotate(renderedWeaponOrientation,savedSupportLocal));
+}
+
 // The primary glove's position is the physical weapon-hand controller GRIP
 // pose, independent of both per-weapon gun offsets and 1cm joystick nudges.
 // Distinct from the gun's AIM pose, so level physical controllers produce
