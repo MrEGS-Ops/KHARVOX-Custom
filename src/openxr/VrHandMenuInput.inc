@@ -55,48 +55,29 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const bool testAllowed=kharvox::vrPrimaryGripHoldPreviewAllowed(
         m.mode,primaryHand,m.weapon());
-    // Free weapon Grip -> live free-controller placement. Held Grip ->
-    // lock a valid preview so the sticks can fine-tune in 1cm increments.
-    // If Grip first goes down before any valid preview, permit one capture
-    // frame so it can subsequently freeze a real position.
+    // Free Grip: opposite controller adjusts the virtual GLOVE'S rotation,
+    // never its tracked position. Held Grip: freeze that rotation, and
+    // joystick nudges translate the GUN relative to the stationary glove.
+    // Acquire one preview frame on Grip press if necessary.
     if(!kharvox::vrWeaponManualCalibrationLive(
             m.mode,primaryWeaponGripHeld,
             testAllowed&&m.primaryGripPreviewHeld&&m.previewValid))
         return;
     m.primaryGripPreviewHeld=false;
     m.previewValid=false;
-    XrVector3f probe=placement.position;
-    if(primaryHand){
-        const auto forward=kharvox::liveHeavyGripProbePoint(
-            {probe.x,probe.y,probe.z},
-            {placement.orientation.x,placement.orientation.y,
-             placement.orientation.z,placement.orientation.w,true});
-        probe={forward.x,forward.y,forward.z};
-    }
     const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
-    const auto local=rotateVector(inverted,
-        subtractVector(probe,s.lastWeaponRenderedTrackingAnchor));
-    // PRIMARY glove can move UP/DOWN (Y) and FORWARD/BACK (Z), but NOT
-    // sideways (X). It may rotate independently to fit the gun in the hand.
-    // The opposite controller provides a live visual quaternion only.
-    // Neither of these values can change the *native* weapon AIM pose.
-    // SUPPORT hand remains fully three-dimensional as before.
     const auto rotation=normalizeQuaternion(multiply(
         inverted,placement.orientation));
-    // Ordinary live capture CANNOT change sideways X. Hold the true
-    // calibration-start lateral reference steady even when the gun and
-    // glove move as a group. Only the accumulated joystick fine-tune is
-    // allowed to add X; applied Y/Z fine-tune also persists after Grip
-    // release as the user resumes moving the OTHER controller.
-    const auto primaryPos=kharvox::weaponpose::primaryHandVisualPlacement(
-        kharvox::RightHandGripOffset{local.x,local.y,local.z},
-        kharvox::RightHandGripOffset{m.primaryLateralBase,0.f,0.f});
-    m.previewPosition=primaryHand
-        ?kharvox::RightHandGripOffset{
-            primaryPos.x+m.fineTuneAccumulated.x,
-            primaryPos.y+m.fineTuneAccumulated.y,
-            primaryPos.z+m.fineTuneAccumulated.z}
-        :kharvox::RightHandGripOffset{local.x,local.y,local.z};
+    // PRIMARY: keep the saved gun profile position unchanged; the free
+    // controller modifies only glove rotation. The physical weapon glove
+    // remains on the tracked GRIP controller. The support-hand calibration
+    // still has normal three-dimensional free-controller placement.
+    if(!primaryHand){
+        const auto local=rotateVector(inverted,
+            subtractVector(placement.position,
+                s.lastWeaponRenderedTrackingAnchor));
+        m.previewPosition={local.x,local.y,local.z};
+    }
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
         ?kharvox::validRightHandVisualPlacement(m.previewPosition)
@@ -125,11 +106,10 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
                 m.previewPosition)?"1":"0"));
     }
 }
-// One 1cm nudge per deliberate stick flick during the existing
-// weapon-GRIP test hold; no stick is forwarded to locomotion/turn while
-// the menu captures gameplay input. Grip HELD freezes manual placement,
-// while sticks can move the frozen pose in centimeters. Grip RELEASE
-// restores live free-controller Y/Z movement. Right trigger SAVES.
+// One 1cm nudge per deliberate stick flick during the weapon-GRIP hold.
+// Grip HELD freezes glove rotation; joystick steps move the GUN ONLY.
+// Grip RELEASE resumes visual glove rotation. Right trigger SAVES.
+// The calibration menu still suppresses locomotion and firing.
 void serviceVrWeaponFineTune(bool weaponGripDown){
     auto& m=s.vrHandMenu;
     const bool primary=m.mode==kharvox::VrHandMenuMode::Calibrating
@@ -155,19 +135,16 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
         s.leftStick.x,s.leftStick.y,rightStick.y);
     if(step.x==0.f&&step.y==0.f&&step.z==0.f)return;
     const auto candidate=kharvox::RightHandGripOffset{
-        m.previewPosition.x+step.x,
-        m.previewPosition.y+step.y,
-        m.previewPosition.z+step.z};
-    if(!kharvox::validRightHandVisualPlacement(candidate)){
-        m.message="Fine-tune reached the safe grip placement limit.";
+        m.fineTuneAccumulated.x+step.x,
+        m.fineTuneAccumulated.y+step.y,
+        m.fineTuneAccumulated.z+step.z};
+    if(!kharvox::validRightHandPlacement(candidate)){
+        m.message="Gun fine-tune reached its safe 85 cm limit.";
         return;
     }
-    m.previewPosition=candidate;
-    m.fineTuneAccumulated.x+=step.x;
-    m.fineTuneAccumulated.y+=step.y;
-    m.fineTuneAccumulated.z+=step.z;
-    // Never edit m.previewRotation or the native gun pose: these 1cm
-    // translations belong exclusively to the glove + its attachment anchor.
+    // Move the gun; the tracked physical glove and its rotation remain
+    // untouched by the nudge. Runtime reads this each preview frame.
+    m.fineTuneAccumulated=candidate;
     kharvox::queueControllerZoneCue(
         s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
             s.weaponHandLeft?1:0)],GetTickCount64(),28,.28f,170.f);
