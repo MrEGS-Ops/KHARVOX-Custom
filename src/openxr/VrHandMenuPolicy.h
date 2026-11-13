@@ -65,7 +65,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
-enum class VrMenuPage {Mods,WeaponGrip};
+enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
 // Independent, edge-triggered left-stick navigation. It never modifies the
 // in-game movement or the right-hand laser/pointer input outside this menu.
 struct VrMenuNavigation {
@@ -112,6 +112,14 @@ inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
     // mod, first gamepad action maps DIRECTLY to its first settings button.
     return toggleable?(nav.actionIndex==0?110:130+nav.actionIndex-1)
         :130+nav.actionIndex;
+}
+// A dedicated recoil calibration page: 9 firearms and 6 tuning actions.
+// Controller settings are independent of the primary/off-hand pose profiles.
+inline int vrMenuRecoilGamepadTarget(const VrMenuNavigation& nav,
+                                    int weapon) noexcept {
+    return nav.settingsColumn
+        ?(nav.actionIndex>=0&&nav.actionIndex<6?140+nav.actionIndex:-1)
+        :(weapon>=0&&weapon<9?200+weapon:-1);
 }
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy) noexcept {
@@ -322,6 +330,7 @@ struct VrHandMenuState {
     int pendingNativeSelection{}; // 1=BFG (Y), 2=Chainsaw (X)
     long long nativeSelectionPulseUntil{};
     int selectedWeapon{1};
+    int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
     // Gauss Siege and Chaingun Turret have separate visual hand profiles.
     bool alternateProfile{};
