@@ -71,9 +71,8 @@ int main(){
         measured,original);
     assert(near(fitted,Vec{original.x,measured.y,measured.z}));
     const Quat identity{0,0,0,1};
-    // Gun and primary glove MUST move together in the gun's Y/Z axes.
-    // The controller laser fixes orientation, not the gun's world position.
-    // The barrel may be vertically offset, but must remain PARALLEL.
+    // Baseline calibrated Y/Z translates only the gun. Its visual glove
+    // is always aligned to physical controller GRIP, never the weapon.
     const Vec referenceHand{.06f,.04f,.12f};
     const Vec adjustedHand{.06f,-.09f,-.23f};
     const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
@@ -83,66 +82,59 @@ int main(){
             adjustedHand.z-referenceHand.z}));
     assert(near(anchorPlan.handAttachmentLocal,referenceHand));
     const Vec laserWorld{.35f,.61f,-.25f};
+    const Vec actualTrackedGrip{.21f,.54f,-.11f};
     for(const Quat orientation:{identity,
         Quat{0,.38268343f,0,.92387953f}}){
         const auto gunDelta=rotate(orientation,anchorPlan.gunTranslationLocal);
         const Vec newGunAnchor{laserWorld.x+gunDelta.x,
             laserWorld.y+gunDelta.y,laserWorld.z+gunDelta.z};
-        const auto handDelta=rotate(orientation,anchorPlan.handAttachmentLocal);
-        const Vec gloveWorld{newGunAnchor.x+handDelta.x,
-            newGunAnchor.y+handDelta.y,newGunAnchor.z+handDelta.z};
-        const auto requestedDelta=rotate(orientation,adjustedHand);
-        assert(near(gloveWorld,Vec{laserWorld.x+requestedDelta.x,
-            laserWorld.y+requestedDelta.y,laserWorld.z+requestedDelta.z}));
-        // Native gun receives *only translation*: unchanged yaw/pitch/roll.
-        // Local right/lateral displacement stays exactly zero, even when
-        // the controller is rotated 45 degrees in world space.
+        assert(near(newGunAnchor,
+            Vec{laserWorld.x+gunDelta.x,laserWorld.y+gunDelta.y,
+                laserWorld.z+gunDelta.z}));
+        const auto& glove=kharvox::weaponpose::physicalPrimaryGlovePosition(
+            actualTrackedGrip,newGunAnchor);
+        assert(&glove==&actualTrackedGrip);
+        assert(near(glove,actualTrackedGrip));
         const Vec right=rotate(orientation,Vec{1,0,0});
         const float lateral=gunDelta.x*right.x+gunDelta.y*right.y+
             gunDelta.z*right.z;
         assert(std::abs(lateral)<.0002f);
-        // Vertical displacement is nonzero, intentionally allowing a
-        // centreline OFFSET from (but parallel to) the laser pointer.
-        const Vec up=rotate(orientation,Vec{0,1,0});
-        const float vertical=gunDelta.x*up.x+gunDelta.y*up.y+gunDelta.z*up.z;
-        assert(std::abs(vertical-
-            (adjustedHand.y-referenceHand.y))<.0002f);
     }
-    // 1cm Grip-held fine tune is ONLY glove + attachment anchor.
-    // The gun must not change position, lateral placement or orientation
-    // even while the hand moves in X, Y, and Z. Verify at two AIM angles.
+
+    // Grip-held fine-tune is a GUN-only translation, 1cm in arbitrary
+    // X/Y/Z combinations. The primary controller glove is invariant.
     const Vec tune{+.01f,-.02f,-.03f};
-    const Vec fineTunedHand{
-        referenceHand.x+tune.x,referenceHand.y+tune.y,
-        referenceHand.z+tune.z};
     const auto finePlan=kharvox::weaponpose::primaryHandAnchorPlan(
-        fineTunedHand,referenceHand,tune);
-    assert(near(finePlan.gunTranslationLocal,Vec{0,0,0}));
-    assert(near(finePlan.handAttachmentLocal,fineTunedHand));
+        referenceHand,referenceHand,tune);
+    assert(near(finePlan.gunTranslationLocal,tune));
+    assert(near(finePlan.handAttachmentLocal,referenceHand));
     for(const Quat pose:{identity,Quat{0,.38268343f,0,.92387953f}}){
         const auto gunDelta=rotate(pose,finePlan.gunTranslationLocal);
-        const auto handDelta=rotate(pose,finePlan.handAttachmentLocal);
-        const auto expected=rotate(pose,fineTunedHand);
-        assert(near(gunDelta,Vec{0,0,0}));
-        assert(near(handDelta,expected));
-        const auto& unchanged=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
+        const auto expected=rotate(pose,tune);
+        assert(near(gunDelta,expected));
+        const Vec shiftedGun{laserWorld.x+gunDelta.x,
+            laserWorld.y+gunDelta.y,laserWorld.z+gunDelta.z};
+        const auto& unchangedGlove=
+            kharvox::weaponpose::physicalPrimaryGlovePosition(
+                actualTrackedGrip,shiftedGun);
+        assert(&unchangedGlove==&actualTrackedGrip);
+        assert(near(unchangedGlove,actualTrackedGrip));
+        const auto& unchangedAim=kharvox::weaponpose::keepWeaponOnPrimaryLaser(
             pose,laser);
-        assert(&unchanged==&pose);
+        assert(&unchangedAim==&pose);
     }
-    // Normal calibrated Y/Z and hand-only XYZ fine-tune can coexist.
-    const Vec normalAndFine{referenceHand.x+.01f,
-        referenceHand.y+.08f-.02f,referenceHand.z-.12f-.03f};
+    // Independent ordinary gun calibration and gun-only XYZ fine-tune.
+    const Vec normalHand{
+        referenceHand.x,referenceHand.y+.08f,referenceHand.z-.12f};
     const auto combined=kharvox::weaponpose::primaryHandAnchorPlan(
-        normalAndFine,referenceHand,tune);
-    assert(near(combined.gunTranslationLocal,Vec{0,+.08f,-.12f}));
-    assert(near(combined.handAttachmentLocal,Vec{
-        referenceHand.x+.01f,referenceHand.y-.02f,referenceHand.z-.03f}));
-    for(const Quat pose:{identity,Quat{0,.38268343f,0,.92387953f}}){
-        const auto g=rotate(pose,combined.gunTranslationLocal);
-        const auto h=rotate(pose,combined.handAttachmentLocal);
-        const auto expected=rotate(pose,normalAndFine);
-        assert(near(Vec{g.x+h.x,g.y+h.y,g.z+h.z},expected));
-    }
+        normalHand,referenceHand,tune);
+    assert(near(combined.gunTranslationLocal,Vec{+.01f,+.06f,-.15f}));
+    assert(near(combined.handAttachmentLocal,referenceHand));
+    const Vec differentGrip{-.31f,.45f,-.20f};
+    const auto& glove=kharvox::weaponpose::physicalPrimaryGlovePosition(
+        differentGrip,combined.gunTranslationLocal);
+    assert(&glove==&differentGrip);
+
     const auto zeroPlan=kharvox::weaponpose::primaryHandAnchorPlan(
         referenceHand,referenceHand);
     assert(near(zeroPlan.gunTranslationLocal,Vec{0,0,0}));
