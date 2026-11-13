@@ -63,8 +63,8 @@ internal static class GunslingerShoulderWeaponLock
             bool lockShoulder;
             try
             {
-                lockShoulder = StandaloneModsBridge.LoadFromEnvironment()
-                    ?.EffectiveGunslinger == true;
+                lockShoulder = form.IsMrEgsProfileActive ||
+                    StandaloneModsBridge.LoadFromEnvironment()?.EffectiveGunslinger == true;
             }
             catch (Exception exception) when (
                 exception is IOException ||
@@ -110,6 +110,7 @@ internal static class GunslingerShoulderWeaponLock
             {
                 var picker = FindPicker(form);
                 var caption = FindLabel(form);
+                form.SelectLaunchProfileForSelfTest(0);
                 if (picker == null || caption == null || !picker.Enabled)
                     throw new InvalidDataException("Shoulder Weapon picker missing.");
 
@@ -181,8 +182,8 @@ internal static class VirtualGunstockGripCalibrationLock
             bool blocked;
             try
             {
-                blocked = StandaloneModsBridge.LoadFromEnvironment()
-                    ?.OffHandGripCapture == true;
+                blocked = form.IsMrEgsProfileActive ||
+                    StandaloneModsBridge.LoadFromEnvironment()?.OffHandGripCapture == true;
             }
             catch (Exception exception) when (
                 exception is IOException ||
@@ -224,6 +225,7 @@ internal static class VirtualGunstockGripCalibrationLock
             using var help = new ToolTip();
             var toggle = FindToggle(form)
                 ?? throw new InvalidDataException("Cactus Virtual Gunstock checkbox missing.");
+            form.SelectLaunchProfileForSelfTest(0);
             toggle.Checked = true;
             SetLocked(toggle, help, true);
             if (toggle.Enabled || toggle.Checked)
