@@ -128,3 +128,14 @@ else()
   target_compile_options(KharvoxPrimaryGripAnchorPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME primary-hand-rigid-gun-anchor COMMAND KharvoxPrimaryGripAnchorPolicyTests)
+
+# Recoil is experimental and MUST NOT alter a first-shot projectile.
+# Keep C assert checks active in Release CI builds.
+add_executable(KharvoxWeaponRecoilPolicyTests ../weapon_recoil_policy_tests.cpp)
+target_compile_features(KharvoxWeaponRecoilPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWeaponRecoilPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWeaponRecoilPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME recoil-first-shot-grace-and-900pct COMMAND KharvoxWeaponRecoilPolicyTests)
