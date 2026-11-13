@@ -28,6 +28,49 @@ int main(){
     vrMenuNavigateStick(nav,-.90f,0.f,5,selected,2);
     assert(!nav.settingsColumn);
     assert(vrMenuModsGamepadTarget(nav,selected,5,2)==1002);
+    // GRIP-held weapon fine-tune: 1 cm PER intentional flick, no auto
+    // repeat when held, no steps outside primary calibration or Grip hold.
+    VrWeaponFineTuneEdges fine{};
+    auto nudge=[&](bool allowed,bool grip,float lx,float ly,float ry){
+        return vrWeaponFineTuneCentimeterStep(
+            fine,allowed,grip,lx,ly,ry);
+    };
+    const auto zeroNudge=[&](RightHandGripOffset p){
+        assert(p.x==0.f&&p.y==0.f&&p.z==0.f);
+    };
+    zeroNudge(nudge(true,true,0,0,0)); // Grip enters, arms neutral sticks
+    auto move=nudge(true,true,1.f,0.f,0.f);
+    assert(std::abs(move.x-.01f)<1e-6f&&move.y==0&&move.z==0);
+    zeroNudge(nudge(true,true,1.f,0.f,0.f)); // held never repeats
+    zeroNudge(nudge(true,true,0,0,0)); // re-arm only when centered
+    move=nudge(true,true,-1.f,0.f,0.f);
+    assert(std::abs(move.x+.01f)<1e-6f&&move.y==0&&move.z==0);
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,0.f,1.f,0.f); // left up = forward = -Z
+    assert(move.x==0&&move.y==0&&std::abs(move.z+.01f)<1e-6f);
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,0.f,-1.f,0.f);
+    assert(move.x==0&&move.y==0&&std::abs(move.z-.01f)<1e-6f);
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,0,0,1.f); // right up = +Y
+    assert(move.x==0&&std::abs(move.y-.01f)<1e-6f&&move.z==0);
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,0,0,-1.f); // right down = -Y
+    assert(move.x==0&&std::abs(move.y+.01f)<1e-6f&&move.z==0);
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,.9f,.8f,0); // diagonal -> ONE axis, not two
+    assert(std::abs(move.x-.01f)<1e-6f&&move.y==0&&move.z==0);
+    zeroNudge(nudge(true,true,0,0,0));
+    zeroNudge(nudge(true,false,1.f,0,0)); // release disables fine-tune
+    zeroNudge(nudge(true,true,1.f,0,0)); // don't step at grip entry
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,1.f,0,0);
+    assert(std::abs(move.x-.01f)<1e-6f);
+    zeroNudge(nudge(false,true,-1.f,0,0)); // support / menu can't move
+    zeroNudge(nudge(true,true,-1.f,0,0)); // re-enter held deflection inert
+    zeroNudge(nudge(true,true,0,0,0));
+    move=nudge(true,true,0,0,-1.f);
+    assert(std::abs(move.y+.01f)<1e-6f);
     // A selects exactly once per press, B same, no latent double events.
     bool a=false,b=false;
     assert(vrMenuButtonEdge(true,a));
