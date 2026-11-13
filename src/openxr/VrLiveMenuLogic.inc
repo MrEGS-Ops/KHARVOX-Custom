@@ -100,7 +100,7 @@ std::string vrLiveGloryKillSpeedText(){
     if(length>0&&length<sizeof(text)){
         char* end{};
         const long value=std::strtol(text,&end,10);
-        if(end!=text&&*end=='\\0'&&value>=1&&value<=5)
+        if(end!=text&&*end=='\0'&&value>=1&&value<=5)
             cinematicLevel=static_cast<int>(value);
     }
     const int headsetHz=kharvox::targetGameHzForDisplayPeriod(
