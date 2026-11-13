@@ -13,19 +13,6 @@ inline float nativeWeaponDepthScale(bool showHands) {
     return showHands ? 1.0f : 0.0f;
 }
 
-// Keep weapon child/FX render depth in the same world-depth convention
-// as the custom hand scene pass. Native DOOM may pass a separate 0.1 depth
-// factor to its animated weapon child even when its main entity has been
-// corrected to 1. Restrict to the verified first-person weapon caller in
-// active gameplay. Do not alter walls, levels, user hand calibration or
-// any non-weapon render object.
-inline float nativeWeaponChildDepth(float original,
-    bool verifiedGameplayWeapon,bool customHandsActive) noexcept {
-    return verifiedGameplayWeapon&&customHandsActive
-        &&std::isfinite(original)&&original>=0.f&&original<=1.f
-        ?1.f:original;
-}
-
 // Own only overrides applied at a recognized native weapon update. Never
 // dereference saved entity keys: restoration happens when that same entity is
 // handed to us again by DOOM. A native rewrite/address reuse replaces the
@@ -65,15 +52,19 @@ struct HandDepthRange {
     float farMeters{100.0f};
 };
 
-// KHARVOX launches DOOM with r_znear=1 (was native 3 units) to preserve
-// weapon surfaces closer to the HMD. Hand geometry is expressed in OpenXR
-// metres: its shared-depth path MUST match that same scene near plane after
-// applying KHARVOX world scale. Do not change this value in isolation.
+// IMPORTANT: DOOM's camera near-clip is intentionally still r_znear=1.
+// The hand compositor's depth projection is NOT the same setting: the
+// previously working hand/weapon depth order used a 3-unit hand projection.
+// Switching this projection to 1 when the camera near-clip changed made
+// the gun win the Vulkan depth test over physically nearer hands.
+// Restore that earlier 3-unit hand projection while KEEPING r_znear=1.
+// Headset verification remains required because the effective idTech weapon
+// depth convention is determined by its final render path, not this CVar.
 // A zero native far plane means infinity; a very distant finite plane gives
 // the same stable Vulkan depth curve without producing infinities in the CPU
 // matrix. The isolated OpenXR overlay deliberately retains its old range.
 inline HandDepthRange doomSceneHandDepthRange(float worldUnitsPerMeter) {
-    constexpr float nativeNearUnits = 1.0f;
+    constexpr float nativeNearUnits = 3.0f;
     constexpr float effectivelyInfiniteFarUnits = 1000000.0f;
     const float scale = std::clamp(worldUnitsPerMeter, 10.0f, 200.0f);
     return {nativeNearUnits / scale, effectivelyInfiniteFarUnits / scale};
