@@ -28,6 +28,7 @@ internal static class MrEgsProfileSelfTest
         try
         {
             using var form = new MainForm(path);
+            MrEgsLaunchProfileBridge.Watch(form);
             var profile = Control<ComboBox>(form, "preset");
             if (profile.SelectedIndex != LauncherPresetPolicy.DefaultPresetIndex
                 || !string.Equals(profile.Text, "MrEGS_", StringComparison.Ordinal))
@@ -64,7 +65,7 @@ internal static class MrEgsProfileSelfTest
                 || !form.CreateLaunchOptions().PhysicalGlorykill)
                 throw new InvalidDataException("Runtime options differ from visible profile locks.");
 
-            form.SelectLaunchProfileForSelfTest(0);
+            MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
             if (!Control<CheckBox>(form, "intense").Enabled
                 || !Control<CheckBox>(form, "handsJump").Enabled
                 || !Control<ComboBox>(form, "backWeapon").Enabled)
@@ -74,7 +75,7 @@ internal static class MrEgsProfileSelfTest
                 throw new InvalidDataException(
                     "Editing a different profile must not silently select MrEGS_.");
 
-            form.SelectLaunchProfileForSelfTest(LauncherPresetPolicy.MrEgsPresetIndex);
+            MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, LauncherPresetPolicy.MrEgsPresetIndex);
             CheckLocks();
             if (turnSpeed.Value != 387)
                 throw new InvalidDataException("Profile switch did not reset smooth turn speed.");
