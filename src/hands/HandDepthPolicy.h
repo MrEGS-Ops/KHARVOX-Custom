@@ -7,6 +7,18 @@
 
 namespace kharvox::hands {
 
+// A controller is not physically constrained by a headset overlay. In
+// normal custom-hand gameplay, world geometry MUST occlude the hand mesh:
+// the undepth-tested overlay fallback would otherwise draw gloves through
+// walls, boxes and windows. If DOOM scene depth is unavailable, fail closed
+// (hide the glove for that frame) rather than rendering through the world.
+// This never constrains controller tracking, gun movement, hand calibration,
+// collisions, damage, or physical world movement.
+inline bool allowUnoccludedHandOverlay(bool customHandsVisible,
+    bool normalGameplay) noexcept {
+    return !(customHandsVisible&&normalGameplay);
+}
+
 // Preserve the established guns-only CVar value. This CVar alone is NOT
 // sufficient: native render entities cache their own depth scale at +0x14C.
 inline float nativeWeaponDepthScale(bool showHands) {
