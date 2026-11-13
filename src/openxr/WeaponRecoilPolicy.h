@@ -50,7 +50,7 @@ struct WeaponRecoilSettings {
 };
 inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noexcept {
     for(const float v:settings.strength)
-        if(!std::isfinite(v)||v<.25f||v>2.f)return false;
+        if(!std::isfinite(v)||v<.25f||v>9.f)return false;
     for(const float v:settings.recovery)
         if(!std::isfinite(v)||v<.5f||v>2.f)return false;
     return true;
@@ -58,8 +58,8 @@ inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noex
 struct WeaponRecoilState {
     float fastPitch{},climbPitch{},yaw{};
     int weapon{-1};
-    bool fireHeld{};
-    std::uint64_t lastTick{},lastShotTick{};
+    bool fireHeld{},pendingShot{};
+    std::uint64_t lastTick{},lastShotTick{},pendingShotTick{};
     std::uint32_t shotNumber{};
 };
 struct WeaponRecoilInput {
@@ -71,9 +71,13 @@ struct WeaponRecoilOutput {
     float pitchDegrees{},yawDegrees{};
     bool shotEstimated{};
 };
-// Fire input is a *candidate* shot. Automatic weapons are sampled at a
-// conservative cadence; native shot-event confirmation is still required
-// before claiming 1:1 recoil to actual projectiles in a headset.
+// A trigger edge is NOT a projectile event. DOOM consumes its native Fire
+// input separately from our OpenXR render update; previously adding kick on
+// that same frame bent the very first shot. Keep the submitted muzzle/weapon
+// pose untouched at first input, then commit each queued kick only AFTER a
+// subsequent gameplay tick and a short native-fire grace period. This is an
+// input-level estimate, not an asserted native shot confirmation.
+inline constexpr std::uint64_t kWeaponRecoilPostFireDelayMs=55;
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
@@ -86,42 +90,66 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     if(state.weapon!=input.weapon){
         state={};state.weapon=input.weapon;state.lastTick=input.nowMs;
     }
+    // Every new trigger pull gets an uncompromised first-shot trajectory.
+    // Recoil can accumulate only from continued hold on an automatic
+    // weapon; a new tap doesn't inherit a stale kick from another tap.
+    const bool triggerEdge=input.fireHeld&&!state.fireHeld;
+    if(triggerEdge){
+        state.fastPitch=0.f;
+        state.climbPitch=0.f;
+        state.yaw=0.f;
+        state.pendingShot=false;
+    }
     const auto rawDelta=input.nowMs>=state.lastTick
         ?input.nowMs-state.lastTick:0u;
     const float dt=static_cast<float>(std::min<std::uint64_t>(rawDelta,80u));
     state.lastTick=input.nowMs;
-    const float recovery=settings.recovery[static_cast<std::size_t>(input.weapon)];
+    const std::size_t index=static_cast<std::size_t>(input.weapon);
+    const float recovery=settings.recovery[index];
     const float fastMs=input.twoHands?90.f:105.f/recovery;
     const float slowMs=input.twoHands?115.f:(input.fireHeld?1300.f:480.f)/recovery;
     const float yawMs=input.twoHands?95.f:(input.fireHeld?450.f:200.f)/recovery;
     state.fastPitch*=std::exp(-dt/fastMs);
     state.climbPitch*=std::exp(-dt/slowMs);
     state.yaw*=std::exp(-dt/yawMs);
+    const auto& profile=kWeaponRecoilProfiles[index];
+    bool kickApplied=false;
+    if(input.twoHands){
+        // A pending one-handed kick must never fire after the second hand
+        // locks on, nor after holstering/weapon switching (handled above).
+        state.pendingShot=false;
+    }else if(state.pendingShot
+        &&input.nowMs>state.pendingShotTick
+        &&input.nowMs-state.pendingShotTick>=kWeaponRecoilPostFireDelayMs){
+        const float scale=settings.strength[index];
+        // 900% scales the actual impulse and kick ceiling, not only the UI.
+        const float maxPitch=profile.maximumPitch*std::max(1.f,scale);
+        state.fastPitch=std::min(maxPitch*.45f,
+            state.fastPitch+profile.pitchPerShot*.38f*scale);
+        state.climbPitch=std::min(maxPitch,
+            state.climbPitch+profile.pitchPerShot*.62f*scale);
+        const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
+        state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
+            -maxPitch*.3f,maxPitch*.3f);
+        state.pendingShot=false;
+        kickApplied=true;
+    }
     if(!input.twoHands&&input.fireHeld){
-        const auto& profile=kWeaponRecoilProfiles[static_cast<std::size_t>(input.weapon)];
-        const bool firstShot=!state.fireHeld;
         const bool repeated=profile.automaticIntervalMs
             &&input.nowMs>=state.lastShotTick
             &&input.nowMs-state.lastShotTick>=profile.automaticIntervalMs;
-        if(firstShot||repeated){
+        if((triggerEdge||repeated)&&!state.pendingShot){
+            // Schedule, don't rotate the muzzle on the fire-input frame.
+            state.pendingShot=true;
+            state.pendingShotTick=input.nowMs;
             state.lastShotTick=input.nowMs;
-            const float scale=settings.strength[static_cast<std::size_t>(input.weapon)];
-            // Hybrid: a quick transient and a longer cumulative barrel climb.
-            state.fastPitch=std::min(profile.maximumPitch*.45f,
-                state.fastPitch+profile.pitchPerShot*.38f*scale);
-            state.climbPitch=std::min(profile.maximumPitch,
-                state.climbPitch+profile.pitchPerShot*.62f*scale);
-            const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
-            state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
-                -profile.maximumPitch*.3f,profile.maximumPitch*.3f);
-            state.fireHeld=input.fireHeld;
-            return {std::min(profile.maximumPitch,
-                state.fastPitch+state.climbPitch),state.yaw,true};
         }
     }
     state.fireHeld=input.fireHeld;
-    const auto& profile=kWeaponRecoilProfiles[static_cast<std::size_t>(input.weapon)];
-    return {std::min(profile.maximumPitch,state.fastPitch+state.climbPitch),state.yaw,false};
+    const float maxPitch=profile.maximumPitch*
+        std::max(1.f,settings.strength[index]);
+    return {std::min(maxPitch,state.fastPitch+state.climbPitch),
+            state.yaw,kickApplied};
 }
 inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSettings& out){
     namespace fs=std::filesystem;
