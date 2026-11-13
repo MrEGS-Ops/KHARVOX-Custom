@@ -175,6 +175,11 @@ void paintVrHandMenu() {
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
         const int selected=std::clamp(m.selectedRow,0,std::max(0,count-1));
+        // Pointer hover previews a mod's details without entering or
+        // selecting its settings; A still applies to the selected row.
+        const int overviewSelected=!m.navigation.settingsColumn
+            &&m.hovered>=1000&&m.hovered<1000+count
+                ?m.hovered-1000:selected;
         for(int shown=0;shown<10;++shown){
             const int index=shown+m.modScroll;
             if(index>=count)break;
@@ -208,10 +213,10 @@ void paintVrHandMenu() {
         // LEFT: browse. RIGHT: meaningful gameplay description until A
         // explicitly opens configuration for the highlighted mod.
         if(!m.navigation.settingsColumn){
-            const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
+            const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
             const auto overview=vrLiveModOverview(mod);
             SelectObject(dc,regular);
-            write(536,127,count>0?entries[selected].title:"No available mods",white);
+            write(536,127,count>0?entries[overviewSelected].title:"No available mods",white);
             SelectObject(dc,smallFont);
             write(538,170,"WHAT IT DOES / HOW TO USE IT",RGB(84,233,214));
             for(int line=0;line<6;++line){
