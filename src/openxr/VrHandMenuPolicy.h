@@ -169,18 +169,24 @@ inline const ControllerPose& vrSupportCalibrationPhysicalGrip(
     return grip;
 }
 
-// Fine-tune is ONLY active during primary-weapon calibration while its
-// physical weapon-hand GRIP is held to freeze the preview. Each deliberate
-// stick flick produces ONE 1 cm offset; both sticks must recenter to re-arm.
-// LEFT stick X = left/right (the ONLY X-calibration input), LEFT stick Y =
-// forward/back along weapon Z, RIGHT stick Y = vertical weapon Y.
-// No thumbstick input ever generates a quaternion or weapon steering.
+// Fine-tune runs ONLY during primary-weapon calibration with the physical
+// weapon-hand GRIP held. Each stick is independent. A quick flick = 1 cm.
+// Holding past 340 ms repeats 1 cm every 175 ms (~5.7 cm/second).
+// LEFT stick X = gun left/right; LEFT stick Y = gun forward/back (local Z);
+// RIGHT stick Y = gun up/down. No controller/glove motion or gun rotation.
+// Sticks must be centred on Grip entry, and between direction reversals;
+// changing grip/mode immediately cancels all held-repeat state. At most one
+// step per stick per frame, even after frame delays or tracking stalls.
+inline constexpr std::uint64_t kVrWeaponFineTuneRepeatDelayMs=340;
+inline constexpr std::uint64_t kVrWeaponFineTuneRepeatIntervalMs=175;
 struct VrWeaponFineTuneEdges {
     bool active{},leftArmed{},rightArmed{};
+    int leftDirection{},rightDirection{};
+    std::uint64_t leftNextStepAt{},rightNextStepAt{};
 };
 inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
     VrWeaponFineTuneEdges& state,bool allowed,bool gripHeld,
-    float leftX,float leftY,float rightY) noexcept {
+    float leftX,float leftY,float rightY,std::uint64_t nowMs) noexcept {
     RightHandGripOffset step{};
     if(!allowed||!gripHeld||!std::isfinite(leftX)
         ||!std::isfinite(leftY)||!std::isfinite(rightY)){
@@ -196,18 +202,61 @@ inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
         state.rightArmed=rightCentered;
         return step; // first GRIP frame never moves the gun accidentally
     }
-    if(leftCentered)state.leftArmed=true;
-    else if(state.leftArmed
-        &&std::max(std::abs(leftX),std::abs(leftY))>=activation){
-        state.leftArmed=false;
-        if(std::abs(leftX)>=std::abs(leftY))
-            step.x=std::copysign(cm,leftX);
-        else step.z=-std::copysign(cm,leftY); // OpenXR forward = local -Z
+
+    const bool leftStrong=std::max(std::abs(leftX),std::abs(leftY))
+        >=activation;
+    const int leftCommand=!leftStrong?0:std::abs(leftX)>=std::abs(leftY)
+        ?(leftX>=0.f?1:-1):(leftY>=0.f?2:-2);
+    if(leftCentered){
+        state.leftArmed=true;
+        state.leftDirection=0;
+        state.leftNextStepAt=0;
+    }else if(leftCommand!=0){
+        bool emit=false;
+        if(state.leftArmed){
+            state.leftArmed=false;
+            state.leftDirection=leftCommand;
+            state.leftNextStepAt=nowMs+kVrWeaponFineTuneRepeatDelayMs;
+            emit=true;
+        }else if(state.leftDirection==leftCommand
+            &&nowMs>=state.leftNextStepAt){
+            state.leftNextStepAt=nowMs+kVrWeaponFineTuneRepeatIntervalMs;
+            emit=true;
+        }else if(state.leftDirection!=leftCommand){
+            // A reversal/axis change requires recenter, not a sudden jump.
+            state.leftDirection=0;
+            state.leftNextStepAt=0;
+        }
+        if(emit){
+            if(leftCommand==1)step.x=cm;
+            else if(leftCommand==-1)step.x=-cm;
+            else if(leftCommand==2)step.z=-cm;
+            else step.z=cm;
+        }
     }
-    if(rightCentered)state.rightArmed=true;
-    else if(state.rightArmed&&std::abs(rightY)>=activation){
-        state.rightArmed=false;
-        step.y=std::copysign(cm,rightY);
+
+    const int rightCommand=std::abs(rightY)>=activation
+        ?(rightY>=0.f?1:-1):0;
+    if(rightCentered){
+        state.rightArmed=true;
+        state.rightDirection=0;
+        state.rightNextStepAt=0;
+    }else if(rightCommand!=0){
+        bool emit=false;
+        if(state.rightArmed){
+            state.rightArmed=false;
+            state.rightDirection=rightCommand;
+            state.rightNextStepAt=nowMs+kVrWeaponFineTuneRepeatDelayMs;
+            emit=true;
+        }else if(state.rightDirection==rightCommand
+            &&nowMs>=state.rightNextStepAt){
+            state.rightNextStepAt=nowMs+kVrWeaponFineTuneRepeatIntervalMs;
+            emit=true;
+        }else if(state.rightDirection!=rightCommand){
+            state.rightDirection=0;
+            state.rightNextStepAt=0;
+        }
+        if(emit)step.y=rightCommand>0?cm:-cm;
     }
     return step;
 }
