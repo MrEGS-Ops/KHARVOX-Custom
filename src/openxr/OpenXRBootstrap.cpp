@@ -47,6 +47,7 @@
 #include "../hud/HudLayoutPolicy.h"
 #include "../hud/HudMenuPolicy.h"
 #include "../weapon/WeaponHook.h"
+#include "../weapon/WeaponControllerPosePolicy.h"
 #include "../weapon/BackWeaponPolicy.h"
 #include "../weapon/QuickHolsterPolicy.h"
 #include "../fsr/Fsr1Policy.h"
@@ -2265,7 +2266,7 @@ const ControllerPose& weaponController(){return s.weaponHandLeft?s.leftControlle
 // and two-hand grip solver use the physical grip pose shared by the glove.
 const ControllerPose& weaponGripTrackingController(){
     const auto& grip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
-    return grip.valid?grip:weaponController();
+    return kharvox::weaponpose::trackedPrimaryWeaponPose(weaponController(),grip);
 }
 const ControllerPose& supportGripController(){return s.weaponHandLeft?s.rightGripController:s.leftGripController;}
 const char* weaponHandName(){return s.weaponHandLeft?"left":"right";}
