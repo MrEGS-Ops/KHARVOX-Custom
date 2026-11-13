@@ -29,9 +29,8 @@ internal sealed partial class ModsForm
         .Where(mod => IsConfirmedMod(mod.Title))
         .Select(mod => mod.Title).Concat(new[] { GloryModTitle }).ToArray();
 
-    private bool IsVrActive(string title) => title == GloryModTitle
-        ? _modPrefs.GloryKillSpeedOverride : IsConfirmedMod(title) &&
-          CurrentSelection(title);
+    private bool IsVrActive(string title) => IsFixedCoreMod(title) ||
+        (IsConfirmedMod(title) && CurrentSelection(title));
 
     private string[] ActiveVrOrder()
     {
@@ -570,21 +569,18 @@ internal sealed partial class ModsForm
     // not appended immediately after the checkbox caption.
     private void AddGlorySpeedRow(TableLayoutPanel list, bool active)
     {
-        // Match ordinary mod rows: number, 23px checkbox, independent title
-        // label and right-aligned icons. The active row alone also contains
-        // the inline slider and Hz. This avoids the old checkbox-caption
-        // offset that caused KILLTIME to sit differently to all other mods.
+        // Locked KILLTIME has no checkbox. Keep its name and speed
+        // controls aligned with other rows, with info and drag on the right.
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 29,
-            ColumnCount = active ? 7 : 6, RowCount = 1,
+            ColumnCount = active ? 6 : 5, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         if (active)
         {
@@ -607,8 +603,8 @@ internal sealed partial class ModsForm
         var check = MakePreviewCheck(GloryModTitle,
             "Only Glory Kill animation speed is affected (30–240 Hz).",
             "glory-kill-speed-preview");
-        check.Enabled = true;
-        check.Checked = active;
+        check.Enabled = false;
+        check.Checked = true;
         check.Text = "";
         check.UseMnemonic = false;
         check.Dock = DockStyle.Fill;
@@ -625,9 +621,8 @@ internal sealed partial class ModsForm
             BackColor = row.BackColor,
             ForeColor = Color.FromArgb(239, 240, 244),
             TextAlign = ContentAlignment.MiddleLeft,
-            AutoEllipsis = true, Cursor = Cursors.Hand
+            AutoEllipsis = true, Cursor = Cursors.Default
         };
-        title.Click += (_, _) => check.Checked = !check.Checked;
         _tooltips.SetToolTip(title,
             "Adjust the speed of Glory Kill animations. Other actions are unaffected.");
 
@@ -655,13 +650,6 @@ internal sealed partial class ModsForm
         };
         _tooltips.SetToolTip(slider,
             "Right is faster (30 Hz); left is slower (240 Hz).");
-        check.CheckedChanged += (_, _) =>
-        {
-            _modPrefs.GloryKillSpeedOverride = check.Checked;
-            slider.Visible = check.Checked;
-            speed.Text = check.Checked ? _modPrefs.GloryKillHz + " Hz" : "ACTIVE";
-            OnVrSelectionChanged(GloryModTitle, check.Checked);
-        };
         slider.ValueChanged += (_, _) =>
         {
             _modPrefs.GloryKillHz = 270 - slider.Value;
@@ -677,21 +665,20 @@ internal sealed partial class ModsForm
         var grip = MakeRowGrip(row.BackColor);
 
         row.Controls.Add(number, 0, 0);
-        row.Controls.Add(check, 1, 0);
-        row.Controls.Add(title, 2, 0);
+        row.Controls.Add(title, 1, 0);
         if (active)
         {
-            row.Controls.Add(slider, 3, 0);
-            row.Controls.Add(speed, 4, 0);
-            row.Controls.Add(info, 5, 0);
-            row.Controls.Add(grip, 6, 0);
+            row.Controls.Add(slider, 2, 0);
+            row.Controls.Add(speed, 3, 0);
+            row.Controls.Add(info, 4, 0);
+            row.Controls.Add(grip, 5, 0);
             AttachActiveRow(row, check, grip, GloryModTitle, "Glory Kill speed override");
         }
         else
         {
-            row.Controls.Add(speed, 3, 0);
-            row.Controls.Add(info, 4, 0);
-            row.Controls.Add(grip, 5, 0);
+            row.Controls.Add(speed, 2, 0);
+            row.Controls.Add(info, 3, 0);
+            row.Controls.Add(grip, 4, 0);
             AttachAvailableRow(row, grip, GloryModTitle);
         }
         AttachDependencyHover(row, GloryModTitle);
@@ -733,17 +720,18 @@ internal sealed partial class ModsForm
 
     private void AppendVrMod(TableLayoutPanel list, PreviewMod mod, bool active, bool isDev = false)
     {
+        var noToggle = IsFixedCoreMod(mod.Title);
         var row = new TableLayoutPanel
         {
             Dock = DockStyle.Fill, Height = 29,
-            ColumnCount = 6, RowCount = 1,
+            ColumnCount = noToggle ? 5 : 6, RowCount = 1,
             BackColor = active ? Color.FromArgb(37, 38, 42) : DarkPanel,
             Margin = Padding.Empty, Padding = Padding.Empty,
             AllowDrop = true,
             Tag = active ? "active-vr-mod" : "available-vr-mod"
         };
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 30));
-        row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
+        if (!noToggle) row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 23));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 58));
         row.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 28));
@@ -769,7 +757,7 @@ internal sealed partial class ModsForm
         var check = MakePreviewCheck(mod.Title,
             description + Environment.NewLine + statusReason,
             isDev ? "dev-override" : "original-vr-mod");
-        check.Enabled = available && !isDev;
+        check.Enabled = available && !isDev && !noToggle;
         check.Checked = isDev && (mod.Title == "Hand Focus"
                 || mod.Title == "Physical Crouch")
             ? true : isDev && mod.Title == AutoMeleeDevTitle
@@ -790,7 +778,7 @@ internal sealed partial class ModsForm
             Text = mod.Title, Dock = DockStyle.Fill,
             UseMnemonic = false, // Mod names are literal, not keyboard shortcuts.
             BackColor = row.BackColor,
-            ForeColor = check.Enabled ? Color.FromArgb(239, 240, 244) :
+            ForeColor = (noToggle || check.Enabled) ? Color.FromArgb(239, 240, 244) :
                 Color.FromArgb(123, 130, 142),
             TextAlign = ContentAlignment.MiddleLeft,
             AutoEllipsis = true, Margin = Padding.Empty,
@@ -826,11 +814,11 @@ internal sealed partial class ModsForm
         var grip = MakeRowGrip(row.BackColor);
 
         row.Controls.Add(number, 0, 0);
-        row.Controls.Add(check, 1, 0);
-        row.Controls.Add(titleLabel, 2, 0);
-        row.Controls.Add(status, 3, 0);
-        row.Controls.Add(info, 4, 0);
-        row.Controls.Add(grip, 5, 0);
+        if (!noToggle) row.Controls.Add(check, 1, 0);
+        row.Controls.Add(titleLabel, noToggle ? 1 : 2, 0);
+        row.Controls.Add(status, noToggle ? 2 : 3, 0);
+        row.Controls.Add(info, noToggle ? 3 : 4, 0);
+        row.Controls.Add(grip, noToggle ? 4 : 5, 0);
         if (active) AttachActiveRow(row, check, grip, mod.Title, description);
         else AttachAvailableRow(row, grip, mod.Title);
         AttachDependencyHover(row, mod.Title);
@@ -959,7 +947,7 @@ internal sealed partial class ModsForm
         // Hand Focus and Physical Crouch are fixed Dev overrides.
         // Weapon Wheel Button Remap was retired: only Gunslinger owns its
         // behind-head wheel; no independent remap checkbox or dependency.
-        if (verified.Length != 4 || verified.Distinct().Count() != 4 ||
+        if (verified.Length != 5 || verified.Distinct().Count() != 5 ||
             DependenciesFor("Directional Dash").Length != 2 ||
             DependencyLinks("Gunslinger").Length != 1 ||
             DependenciesFor("No Weapon Wheel").Length != 2 ||
@@ -998,12 +986,11 @@ internal sealed partial class ModsForm
             var gloryCheckbox = controls.OfType<CheckBox>().SingleOrDefault();
             var gloryTitle = controls.OfType<Label>()
                 .SingleOrDefault(label => (label.Tag as string) == "vr-mod-name");
-            if (gloryCheckbox == null || gloryCheckbox.Text != "" ||
+            if (gloryCheckbox != null ||
                 gloryTitle == null || gloryTitle.Text != "KILLTIME: RIP & TEAR" ||
-                gloryCheckbox.UseMnemonic || gloryTitle.UseMnemonic ||
-                grid.GetColumn(gloryCheckbox) != 1 || grid.GetColumn(gloryTitle) != 2)
+                gloryTitle.UseMnemonic || grid.GetColumn(gloryTitle) != 1)
                 throw new InvalidDataException(
-                    "KILLTIME must use the exact ordinary-row checkbox and text columns.");
+                    "KILLTIME must have no checkbox and keep aligned title columns.");
             var info = controls.OfType<LinkLabel>()
                 .SingleOrDefault(x => (x.Tag as string) == "vr-mod-info");
             var grip = controls.OfType<Label>()
@@ -1011,9 +998,9 @@ internal sealed partial class ModsForm
             var slider = controls.OfType<TrackBar>().SingleOrDefault();
             var activeRow = (grid.Tag as string) == "active-vr-mod";
             if (info == null || grip == null || grip.Text != "" ||
-                grid.GetColumn(info) != (activeRow ? 5 : 4) ||
-                grid.GetColumn(grip) != (activeRow ? 6 : 5) ||
-                (activeRow && (slider == null || grid.GetColumn(slider) != 3)) ||
+                grid.GetColumn(info) != (activeRow ? 4 : 3) ||
+                grid.GetColumn(grip) != (activeRow ? 5 : 4) ||
+                (activeRow && (slider == null || grid.GetColumn(slider) != 2)) ||
                 (!activeRow && slider != null))
                 throw new InvalidDataException(
                     "KILLTIME slider/info columns do not line up with ordinary rows.");
@@ -1077,7 +1064,7 @@ internal sealed partial class ModsForm
                         "Availability status must appear only on supported lower-section mods.");
             }
             var lower = (grid.Tag as string) == "available-vr-mod";
-            var gloryStatus = grid.GetControlFromPosition(lower ? 3 : 4, 0) as Label;
+            var gloryStatus = grid.GetControlFromPosition(lower ? 2 : 3, 0) as Label;
             if (gloryStatus == null ||
                 (lower && gloryStatus.Text != "ACTIVE") ||
                 (!lower && gloryStatus.Text == "ACTIVE"))

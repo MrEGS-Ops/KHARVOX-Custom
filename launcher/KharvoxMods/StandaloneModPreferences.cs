@@ -32,14 +32,14 @@ internal sealed class StandaloneModPreferences
     // It is always FALSE and cannot activate a standalone native remap.
     public bool WeaponWheelRemap { get; set; } = false;
     public bool HandFocus { get; set; } = true;
-    public bool Gunslinger { get; set; }
+    public bool Gunslinger { get; set; } = true;
     // Read old bridge files; these flags are never written as active mods again.
     public bool BehindHeadWeaponWheel { get; set; }
     public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; } = true;
     public bool PainsawRipshiftOverdrive { get; set; }
-    public bool OffHandGripCapture { get; set; } // Diagnostic, OFF by default
-    public bool GloryKillSpeedOverride { get; set; }
+    public bool OffHandGripCapture { get; set; } = true;
+    public bool GloryKillSpeedOverride { get; set; } = true;
     public int GloryKillHz { get; set; } = 200;
     // Presentation order only: the bridge ignores this metadata. Enables
     // original click/drag reorder without changing mod dependencies or timing.
@@ -78,7 +78,11 @@ internal sealed class StandaloneModPreferences
             value.DynamicQuickHolsters = false;
             value.WeaponWheelRemap = false; // discard any legacy on-disk selection
             value.HandFocus = true;
-            value.PhysicalCrouch = true;
+            // Locked core features cannot be disabled by legacy saved OFF flags.
+            value.Gunslinger = true;
+            value.OffHandGripCapture = true;
+            value.GloryKillSpeedOverride = true;
+            // Physical Crouch and PAINSAW remain user-toggleable.
             value.ActiveOrder = Array.ConvertAll(value.ActiveOrder ??
                 Array.Empty<string>(), UpgradeModTitle)
                 .Where(title => title != "Weapon Wheel Button Remap")
@@ -104,7 +108,10 @@ internal sealed class StandaloneModPreferences
         path ??= DefaultPath;
         GloryKillHz = Math.Max(30, Math.Min(240, GloryKillHz));
         HandFocus = true;
-        PhysicalCrouch = true;
+        Gunslinger = true;
+        OffHandGripCapture = true;
+        GloryKillSpeedOverride = true;
+        // Preserve the user's Physical Crouch and PAINSAW choices.
         // Standalone wheel remap was retired; Gunslinger alone owns the wheel.
         WeaponWheelRemap = false;
         BehindHeadWeaponWheel = false;
@@ -140,9 +147,9 @@ internal sealed class StandaloneModPreferences
             var path = Path.Combine(dir, "mods.json");
             var x = Load(path);
             if (x.WeaponWheelRemap || !x.HandFocus ||
-                x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
-                !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || x.OffHandGripCapture ||
-                x.GloryKillSpeedOverride ||
+                !x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
+                !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
+                !x.GloryKillSpeedOverride ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
                 x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )
@@ -179,11 +186,15 @@ internal sealed class StandaloneModPreferences
                 y.RuntimeRevision != "00000000000000000000000000000001")
                 throw new InvalidDataException("Portable bridge setting roundtrip failed.");
             y.Gunslinger = false;
+            y.OffHandGripCapture = false;
+            y.GloryKillSpeedOverride = false;
+            y.PhysicalCrouch = false;
             y.Save(path);
             var disabled = Load(path);
-            if (disabled.Gunslinger || disabled.BehindHeadWeaponWheel ||
-                disabled.DynamicQuickHolsters)
-                throw new InvalidDataException("Gunslinger must remain off when unchecked.");
+            if (!disabled.Gunslinger || !disabled.OffHandGripCapture ||
+                !disabled.GloryKillSpeedOverride || disabled.PhysicalCrouch ||
+                disabled.BehindHeadWeaponWheel || disabled.DynamicQuickHolsters)
+                throw new InvalidDataException("Core mods must remain ON; Physical Crouch OFF must persist.");
             // Old sidecar state merges both legacy rows into one, disabling
             // standalone remap without disturbing the stored ordering.
             File.WriteAllText(path, new JavaScriptSerializer().Serialize(new
