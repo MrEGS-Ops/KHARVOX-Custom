@@ -2851,9 +2851,9 @@ void updateWeapon6Dof(){
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
             s.primaryVisualLocalPosition,factoryHand);
         if(s.showHands){
-            // Deliberately use only the Z component on the native gun.
-            // The barrel is allowed to translate vertically away from the
-            // laser, but always stays exactly PARALLEL to its AIM direction.
+            // Translate the native gun in local Y and Z ONLY. An upward
+            // offset can move the barrel off the pointer line; its forward
+            // direction nevertheless stays PARALLEL to the AIM laser.
             weaponAnchorBody=addVector(weaponAnchorBody,
                 rotateVector(rotation,anchorPlan.gunTranslationLocal));
             weaponAnchorTracking=addVector(weaponAnchorTracking,
