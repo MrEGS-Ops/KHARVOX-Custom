@@ -85,6 +85,34 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
         default:return {{{"Select a mod for information."}}};
     }
 }
+// Show the runtime's effective Glory Kill target, not the provenance of
+// the setting. A saved in-headset override wins, then the launcher profile.
+// Without an explicit Hz, a native full-speed bypass has NO fixed target;
+// display that accurately rather than inventing a refresh rate.
+std::string vrLiveGloryKillSpeedText(){
+    const int explicitHz=actionSpeedTargets().gloryKill;
+    if(explicitHz>0)return std::to_string(explicitHz)+" Hz";
+    if(s.customMods.fastGloryKills)return "FULL SPEED (NATIVE)";
+    char text[16]{};
+    const DWORD length=GetEnvironmentVariableA(
+        "KHARVOX_MOD_CINEMATIC_KILL_SPEED",text,sizeof(text));
+    int cinematicLevel=1;
+    if(length>0&&length<sizeof(text)){
+        char* end{};
+        const long value=std::strtol(text,&end,10);
+        if(end!=text&&*end=='\\0'&&value>=1&&value<=5)
+            cinematicLevel=static_cast<int>(value);
+    }
+    const int headsetHz=kharvox::targetGameHzForDisplayPeriod(
+        s.fastestDisplayPeriod);
+    if(headsetHz>0)return std::to_string(
+        kharvox::cinematicKillTargetTickHz(cinematicLevel,headsetHz))
+        +" Hz TARGET";
+    if(cinematicLevel>=2)
+        return std::to_string(kharvox::cinematicKillTargetTickHz(
+            cinematicLevel,120))+" Hz TARGET";
+    return "NATIVE ADAPTIVE";
+}
 void applyVrLiveModRuntimeState(){
     using kharvox::VrLiveMod;
     const auto enabled=[&](VrLiveMod mod,bool desktop){
