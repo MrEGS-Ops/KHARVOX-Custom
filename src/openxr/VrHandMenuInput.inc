@@ -98,9 +98,10 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     }else{
         // SUPPORT-hand positioning remains its original three-axis
         // free-controller capture: this correction is PRIMARY only.
-        m.previewPosition=rotateVector(inverted,
+        const auto supportLocal=rotateVector(inverted,
             subtractVector(placement.position,
                 s.lastWeaponRenderedTrackingAnchor));
+        m.previewPosition={supportLocal.x,supportLocal.y,supportLocal.z};
     }
     m.previewRotation={rotation.x,rotation.y,rotation.z,rotation.w,true};
     m.previewValid=(primaryHand
