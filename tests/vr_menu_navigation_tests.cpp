@@ -77,6 +77,12 @@ int main(){
     assert(manualStickCrouchAllowed(false,false,true));
     assert(!manualStickCrouchAllowed(true,true,true));
     assert(!manualStickCrouchAllowed(false,false,false));
+    // No Weapon Wheel cannot resurrect the retired stick-down wheel route.
+    assert(!vrScopedWeaponSelectDown(true,true,true,false,true));
+    assert(!vrScopedWeaponSelectDown(true,false,true,false,true));
+    assert(vrScopedWeaponSelectDown(true,false,true,true,true));
+    assert(vrScopedWeaponSelectDown(true,false,false,false,true));
+    assert(!vrScopedWeaponSelectDown(false,false,true,true,true));
     // Native 90 ms edge pulse, both on crouch and on stand; never leak a
     // manual pulse into Physical Crouch, menus or the old remap input path.
     assert(manualStickCrouchPulseActive(true,false,false,100,100+90000000));
