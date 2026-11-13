@@ -2856,8 +2856,9 @@ void updateWeapon6Dof(){
                     visualAlternate,position,ignored))
                 factoryHand={position.x,position.y,position.z};
         }
+        const XrVector3f fineTuneLocal{fineTune.x,fineTune.y,fineTune.z};
         const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
-            s.primaryVisualLocalPosition,factoryHand,fineTune);
+            s.primaryVisualLocalPosition,factoryHand,fineTuneLocal);
         if(s.showHands){
             // The native weapon gets ONLY ordinary Y/Z translation.
             // Fine-tune XYZ is applied inside handAttachmentLocal below.
