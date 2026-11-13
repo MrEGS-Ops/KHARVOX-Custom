@@ -100,6 +100,13 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-settings" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "VR mod settings self-test failed: $($test.ExitCode)" }
 
+      - name: Verify MrEGS_ launch profile defaults and fixed controls
+        shell: powershell
+        run: |
+          $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-mregs-profile" -Wait -PassThru -NoNewWindow
+          if ($test.ExitCode -ne 0) { throw "MrEGS_ launch profile self-test failed: $($test.ExitCode)" }
+
       - name: Test modified launcher Gunslinger Shoulder Weapon UI
         shell: powershell
         run: |
