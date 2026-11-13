@@ -13,6 +13,19 @@ inline float nativeWeaponDepthScale(bool showHands) {
     return showHands ? 1.0f : 0.0f;
 }
 
+// Keep weapon child/FX render depth in the same world-depth convention
+// as the custom hand scene pass. Native DOOM may pass a separate 0.1 depth
+// factor to its animated weapon child even when its main entity has been
+// corrected to 1. Restrict to the verified first-person weapon caller in
+// active gameplay. Do not alter walls, levels, user hand calibration or
+// any non-weapon render object.
+inline float nativeWeaponChildDepth(float original,
+    bool verifiedGameplayWeapon,bool customHandsActive) noexcept {
+    return verifiedGameplayWeapon&&customHandsActive
+        &&std::isfinite(original)&&original>=0.f&&original<=1.f
+        ?1.f:original;
+}
+
 // Own only overrides applied at a recognized native weapon update. Never
 // dereference saved entity keys: restoration happens when that same entity is
 // handed to us again by DOOM. A native rewrite/address reuse replaces the
