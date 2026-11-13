@@ -674,7 +674,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             };
             const auto before=m.selectedRow;
             const int previousOptions=n>0?optionCount(rows[m.selectedRow]):0;
-            kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
+            // In MODS, horizontal stick movement cannot open settings.
+            // Only A or the visible CONFIGURE button enters configuration.
+            // Weapon calibration retains its existing left/right focus.
+            kharvox::vrMenuNavigateStick(m.navigation,0.f,s.leftStick.y,
                 n,m.selectedRow,previousOptions);
             if(n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
