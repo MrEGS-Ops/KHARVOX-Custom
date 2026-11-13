@@ -117,6 +117,19 @@ inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
     s.enabledOverrides[static_cast<size_t>(index)]=on?1:0;
     return true;
 }
+struct VrPainsawModes {
+    bool triggerThrottle{},legacyMotion{};
+};
+// OFF must return to native chainsaw timing: neither the new trigger-based
+// PAINSAW nor the older motion-only modifier may remain active. Respect
+// explicit live OFF even when the desktop setup has either/both enabled.
+inline VrPainsawModes vrLivePainsawModes(
+    const VrLiveSettings& settings,bool desktopTrigger,bool desktopMotion) {
+    const bool enabled=vrLiveEffectiveEnabled(settings,VrLiveMod::Painsaw,
+        desktopTrigger||desktopMotion);
+    return {enabled&&(desktopTrigger||!desktopMotion),
+            enabled&&desktopMotion};
+}
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
     for(const auto& p:s.hipShift)if(!vrLiveValidShift(p))return false;
