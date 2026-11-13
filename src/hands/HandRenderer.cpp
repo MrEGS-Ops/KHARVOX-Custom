@@ -2,7 +2,7 @@
 #include "../hud/HudHook.h"
 #include "HandSceneDepthCopy.h"
 #include "HandCalibrationPolicy.h"
-#include "HandModelRollPolicy.h"
+#include "HandModelReflectionPolicy.h"
 #include "../openxr/OpenXRBootstrap.h"
 #include <windows.h>
 #include <wincodec.h>
@@ -449,12 +449,17 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     if(reverse)for(int column=0;column<4;column++)
         viewProjection.m[column*4+2]=viewProjection.m[column*4+3]-viewProjection.m[column*4+2];
     auto draw=[&](bool left,HandModelKind kind,const HandPose&pose){
-        // Both left-hand models appeared upside-down on the controller.
-        // This is a 180-degree ROLL about the tracked controller's forward
-        // (-Z) axis, not a YAW that points the left gun backward.
-        // Apply it in controller space BEFORE the model's calibration Euler;
-        // leave the right fist/gun pose and independent tracking untouched.
-        // Keep the separate weapon grip calibration (gun pivots) intact.
+        // LEFT and RIGHT wrist models should be anatomically mirrored
+        // in each PHYSICAL controller's own GRIP frame. The previous 180°
+        // Z roll incorrectly turned the left palm/knuckles around, and
+        // reusing an unmirrored RIGHT wrist rotation did not reflect yaw/roll.
+        // R_left = mirrorX * R_right * mirrorX, a proper 3D rotation.
+        //
+        // Use the mirrored RIGHT-fist GLB only for the free LEFT fist.
+        // The native LEFT gun GLB is already mirrored and needs NO scale
+        // reflection; both still receive the mirrored wrist basis.
+        // Do not change the actual OpenXR poses, saved visual grip
+        // quaternions, game weapon pivots, scene depth, or near clipping.
         const bool gunHolding=kind==HandModelKind::GunHolding;
         const bool mirroredRightReference=left&&!gunHolding;
         const size_t index=left?(gunHolding?2:0):(gunHolding?3:1);
@@ -462,17 +467,16 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
         auto&asset=assets[modelIndex];if(!asset.ready)return;
         const auto&calibration=renderCalibration(left,kind,gameplay.weapon,
             gameplay.leftHanded);
-        const auto&rotationReference=(mirroredRightReference||gunHolding)
-            ?rightCalibration:calibration;
         const float xScale=mirroredRightReference?-calibration.scale
             :(mirrorX[index]?-calibration.scale:calibration.scale);
-        const float controllerForwardRoll[3]{
-            0.f,0.f,handModelControllerForwardRollDegrees(left,kind)};
+        const Mat4 localRotation=handModelReferenceRotation(
+            left,rotationDegrees(rightCalibration.rotationDegrees),
+            scaleAxes(-1.f,1.f,1.f),
+            [](const Mat4&a,const Mat4&b){return multiply(a,b);});
         const Mat4 local=multiply(
             translation(calibration.position[0],calibration.position[1],calibration.position[2]),
-            multiply(rotationDegrees(controllerForwardRoll),
-                multiply(rotationDegrees(rotationReference.rotationDegrees),
-                    scaleAxes(xScale,calibration.scale,calibration.scale))));
+            multiply(localRotation,
+                scaleAxes(xScale,calibration.scale,calibration.scale)));
         struct Push{Mat4 model;Mat4 viewProjection;}push{multiply(poseMatrix(pose),local),viewProjection};
         vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
         vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&asset.descriptor,0,nullptr);
