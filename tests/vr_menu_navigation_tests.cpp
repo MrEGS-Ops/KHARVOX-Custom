@@ -255,14 +255,20 @@ int main(){
     nav.actionIndex=2;
     assert(vrMenuGripGamepadTarget(nav,6,true)==32);
     nav.actionIndex=4;
-    assert(vrMenuGripGamepadTarget(nav,6,false)==33);
+    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
     assert(vrMenuGripGamepadTarget(nav,6,true)==31);
     nav.actionIndex=5;
-    assert(vrMenuGripGamepadTarget(nav,6,true)==33);
-    nav.actionIndex=6;
     assert(vrMenuGripGamepadTarget(nav,6,true)==95);
-    nav.actionIndex=5;
-    assert(vrMenuGripGamepadTarget(nav,6,false)==95);
+    assert(vrMenuGripGamepadTarget(nav,6,false)==-1);
+    nav.actionIndex=6;
+    assert(vrMenuGripGamepadTarget(nav,6,true)==-1);
+    // Copy RIGHT -> LEFT has been removed: all left-side presets are
+    // calibrated independently. The old button code 33 is unreachable.
+    for(int i=0;i<7;++i){
+        nav.actionIndex=i;
+        assert(vrMenuGripGamepadTarget(nav,6,true)!=33);
+        assert(vrMenuGripGamepadTarget(nav,6,false)!=33);
+    }
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
     // Core mods have settings but no enable checkbox. First action is
