@@ -1,4 +1,5 @@
 #include "../src/openxr/PrimaryGripAnchorPolicy.h"
+#include "../src/weapon/WeaponControllerPosePolicy.h"
 #include <cassert>
 #include <cmath>
 #include <initializer_list>
@@ -19,6 +20,26 @@ static bool near(Vec a,Vec b){
         &&std::abs(a.z-b.z)<.0002f;
 }
 int main(){
+    // Physical controller laser is OpenXR AIM, never the tilted GRIP.
+    // Grip may differ by 45 degrees but native gun must use the AIM pose.
+    struct TrackedPose {bool valid;int source;};
+    const TrackedPose aim{true,1},grip{true,2},lostAim{false,3};
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(aim,grip)==&aim);
+    assert(&kharvox::weaponpose::trackedPrimaryWeaponPose(lostAim,grip)==&lostAim);
+    const Quat laser{0,0,0,1},supportTilt{0,.38268343f,0,.92387953f};
+    assert(&kharvox::weaponpose::keepWeaponOnPrimaryLaser(laser,supportTilt)==&laser);
+    const Vec laserOrigin{0,0,0},glovePreview{1,3,-.3f};
+    assert(&kharvox::weaponpose::keepGunOnPrimaryLaser(laserOrigin,glovePreview)==&laserOrigin);
+    // Native extra 25-degree yaw MUST NOT tilt the bore off the laser.
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(25.f,true)==0.f);
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(-35.f,true)==0.f);
+    assert(kharvox::weaponpose::weaponEulerOffsetDegrees(25.f,false)==25.f);
+    // Owner can position the visible glove up/down (Y) or along the bore
+    // (Z) and rotate it; its lateral X remains fixed to gun grip profile.
+    const Vec original{.12f,.2f,-.1f},measured{.55f,-.08f,-.55f};
+    const auto fitted=kharvox::weaponpose::primaryHandVisualPlacement(
+        measured,original);
+    assert(near(fitted,Vec{original.x,measured.y,measured.z}));
     const Quat identity{0,0,0,1};
     const Vec aim{.2f,.4f,-.1f},grip{.22f,.35f,-.11f};
     const Vec gauss{-0.09830919f,.17283046f-.08f,.52416211f};

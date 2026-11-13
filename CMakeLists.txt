@@ -532,6 +532,11 @@ if(BUILD_TESTING)
   target_compile_features(KharvoxHandCalibrationPolicyTests PRIVATE cxx_std_17)
   add_test(NAME hand-calibration-policy COMMAND KharvoxHandCalibrationPolicyTests)
 
+  add_executable(KharvoxPrimaryWeaponLaserAlignmentTests
+    tests/primary_grip_anchor_policy_tests.cpp)
+  target_compile_features(KharvoxPrimaryWeaponLaserAlignmentTests PRIVATE cxx_std_17)
+  add_test(NAME primary-weapon-laser-alignment COMMAND KharvoxPrimaryWeaponLaserAlignmentTests)
+
   add_executable(KharvoxHandAssetTests tests/hand_asset_tests.cpp)
   target_compile_features(KharvoxHandAssetTests PRIVATE cxx_std_17)
   target_include_directories(KharvoxHandAssetTests PRIVATE
