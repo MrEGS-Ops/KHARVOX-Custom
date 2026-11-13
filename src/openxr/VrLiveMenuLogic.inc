@@ -19,7 +19,6 @@ std::vector<VrDevMenuEntry> devVrMenuEntries(){
         if(isOn)rows.push_back({label,"ON"});
     };
     if(s.customMods.handFocusedRs)rows.push_back({"Hand Focus","LOCKED"});
-    enabled("PAINSAW",s.customMods.chainsawTriggerThrottle);
     enabled("Hands Jump",s.handsJumpEnabled);
     enabled("Boxing Guard",s.customMods.boxingGuard);
     enabled("Back-of-Hand HUD",s.customMods.backOfHandHud);
@@ -58,17 +57,19 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
         if(on||showEvenIfOff)rows.push_back({title,id,on});
     };
-    // Always show the five editable features so OFF ones can be re-enabled.
+    // Show all six editable features even when OFF, so they can be re-enabled.
     add("Weapon Grip Calibration",VrLiveMod::WeaponGrip,
         s.customMods.offHandGripCapture,true);
     add("Gunslinger",VrLiveMod::Gunslinger,
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
     add("Physical Crouch",VrLiveMod::PhysicalCrouch,
         s.customMods.physicalCrouch,true);
-    add("KILLTIME: RIP & TEAR",VrLiveMod::Killtime,
+    add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
+    add("PAINSAW",VrLiveMod::Painsaw,
+        s.customMods.chainsawTriggerThrottle,true);
     // Keep the left list strictly configurable. DEV consolidates every
     // currently active read-only mod and non-configurable developer override.
     rows.push_back({"DEV",VrLiveMod::Other,true,true});
@@ -111,6 +112,8 @@ void applyVrLiveModRuntimeState(){
         KharvoxCameraSetCrouchState(false);
     }
     s.customMods.physicalCrouch=physicalCrouch;
+    s.customMods.chainsawTriggerThrottle=enabled(VrLiveMod::Painsaw,
+        s.vrDesktopMods.chainsawTriggerThrottle);
     s.vrLiveKilltimeEnabled=enabled(VrLiveMod::Killtime,s.vrDesktopKilltime);
     const bool physicalGK=enabled(VrLiveMod::PhysicalGloryKills,
         s.vrDesktopPhysicalGk);
@@ -200,6 +203,7 @@ bool handleVrLiveMenuAction(int action){
                    ||s.vrDesktopMods.behindHeadWeaponWheel
             :m.selectedMod==VrLiveMod::PhysicalCrouch?s.vrDesktopMods.physicalCrouch
             :m.selectedMod==VrLiveMod::Killtime?s.vrDesktopKilltime
+            :m.selectedMod==VrLiveMod::Painsaw?s.vrDesktopMods.chainsawTriggerThrottle
             :s.vrDesktopPhysicalGk);
         auto previous=s.vrLiveSettings;
         kharvox::vrLiveSetEnabled(s.vrLiveSettings,m.selectedMod,!was);
