@@ -21,8 +21,10 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
     const auto& freeGrip=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     const auto& freeAim=s.weaponHandLeft?s.rightController:s.leftController;
-    const auto& placement=kharvox::vrCalibrationFreeControllerPose(
-        freeGrip,freeAim);
+    // The free hand must TRANSLATE with actual controller movement, not
+    // merely rotate around the last stored grip point. AIM provides the
+    // currently tracked position, GRIP retains the wrist's orientation.
+    const auto placement=kharvox::vrCalibrationLivePose(freeGrip,freeAim);
     // OpenXR POSITION_VALID and POSITION_TRACKED are different flags.
     // The old hard gate on GRIP.positionTracked rejected valid predicted
     // positions (notably when the controller AIM laser was still active),
@@ -109,7 +111,8 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         log(std::string("[VR-HAND-CAL] LIVE ") +m.weapon()
             +(primaryHand?" primary":" support")
             +(primaryWeaponGripHeld?" Grip-held":" Grip-released")
-            +" poseSource="+(&placement==&freeGrip?"GRIP":"AIM")
+            +" positionSource="+(freeAim.valid&&freeAim.positionTracked
+                ?"TRACKED_AIM":"GRIP_OR_VALID_AIM")
             +" tracked="+(placement.positionTracked?"1":"0")
             +" freeXYZ="+std::to_string(placement.position.x)
             +","+std::to_string(placement.position.y)
@@ -163,8 +166,8 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
     m.fineTuneAccumulated.x+=step.x;
     m.fineTuneAccumulated.y+=step.y;
     m.fineTuneAccumulated.z+=step.z;
-    // Deliberately never edit m.previewRotation: fine-tune is translation
-    // only, with the native gun+anchor moving together in weapon-local XYZ.
+    // Never edit m.previewRotation or the native gun pose: these 1cm
+    // translations belong exclusively to the glove + its attachment anchor.
     kharvox::queueControllerZoneCue(
         s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
             s.weaponHandLeft?1:0)],GetTickCount64(),28,.28f,170.f);
@@ -192,7 +195,7 @@ void saveVrHandMenuCalibration(){
         ok=kharvox::saveRightHandVisualPose(
             kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
             m.weapon(),alternate,m.previewPosition,m.previewRotation,
-            &why,s.weaponHandLeft);
+            &why,s.weaponHandLeft,&m.fineTuneAccumulated);
         if(ok){
             s.rightGripSettings=kharvox::readRightHandGripSettings(
                 kharvox::runtimePathA("offhand_right_hand_positions.cfg"));
@@ -312,8 +315,12 @@ void applyRightGripToLeft(){
         return;
     }
     std::string why;
+    const auto rightTune=kharvox::primaryVisualFineTune(
+        latest,m.weapon(),false,alternate);
+    const kharvox::RightHandGripOffset leftTune{
+        -rightTune.x,rightTune.y,rightTune.z};
     if(!kharvox::saveRightHandVisualPose(rightFile,m.weapon(),alternate,
-        pos,rot,&why,true)){
+        pos,rot,&why,true,&leftTune)){
         m.message="MIRROR FAILED: "+why;return;
     }
     s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
@@ -336,6 +343,9 @@ void startVrSelectedWeaponCalibration(){
     m.lastPreviewDiagnosticAt=0;
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
+    // The saved nudge must stay hand-only even after an application restart.
+    // Initialise separately from the free-controller live Y/Z placement.
+    const bool calibratingPrimary=m.rightHand!=s.weaponHandLeft;
     // Pin normal free-hand capture to the existing lateral coordinate:
     // only Grip-held joystick fine-tune may subsequently change X.
     m.primaryLateralBase=0.f;
@@ -343,6 +353,9 @@ void startVrSelectedWeaponCalibration(){
     const bool alternate=m.alternateProfile
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
+    if(calibratingPrimary)
+        m.fineTuneAccumulated=kharvox::primaryVisualFineTune(
+            s.rightGripSettings,m.weapon(),s.weaponHandLeft,alternate);
     const auto savedX=[&](const kharvox::RightHandGripSettings& settings,
                           float& value)->bool {
         if(s.weaponHandLeft){
@@ -363,6 +376,10 @@ void startVrSelectedWeaponCalibration(){
     };
     if(!savedX(s.rightGripSettings,m.primaryLateralBase))
         savedX(s.rightGripFactorySettings,m.primaryLateralBase);
+    // The free-controller preview adds the separated fine-tune X below.
+    // Without this subtraction existing X nudges would double every reopen.
+    if(calibratingPrimary)
+        m.primaryLateralBase-=m.fineTuneAccumulated.x;
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
     m.message="Move free hand to position. Hold weapon Grip: LEFT stick X/Z and RIGHT stick Y nudge 1cm per flick. RIGHT TRIGGER saves.";
