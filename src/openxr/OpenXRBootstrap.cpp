@@ -2528,7 +2528,17 @@ void updateWeapon6Dof(){
     // recentered. Keep the last submitted transform active during that gap;
     // disabling the hook for even one gameplay frame lets the native viewmodel
     // take over and its hit/pushback offset can become the new visible pose.
-    const auto& primaryController=weaponController();
+    // The native weapon used the OpenXR AIM pose while its physical hand
+    // and grip pivot used GRIP. Quest Touch AIM and GRIP orientations are
+    // different, creating the visible ~45-degree gun/controller mismatch.
+    // A weapon and its PRIMARY hand must use the SAME tracked GRIP frame.
+    // Preserve AIM only as a tracking-loss fallback; free hands and native
+    // UI/controller pointers keep their existing independent pose routing.
+    const auto& primaryAimController=weaponController();
+    const auto& primaryGripController=s.weaponHandLeft
+        ?s.leftGripController:s.rightGripController;
+    const auto& primaryController=primaryGripController.valid
+        ?primaryGripController:primaryAimController;
     const auto& supportController=supportGripController();
     if(!primaryController.valid){
         s.lastWeaponRenderedValid=false;
@@ -2573,8 +2583,7 @@ void updateWeapon6Dof(){
     // The saved primary hand location is now the shared gun pivot for
     // ALL calibrated weapons, right OR left holster. The grip and gun
     // rotate as one, with the support-hand solver using that same pivot.
-    const auto& primaryHandGripController=s.weaponHandLeft
-        ?s.leftGripController:s.rightGripController;
+    const auto& primaryHandGripController=primaryGripController;
     const auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
         s.rightGripSettings,KharvoxWeaponKindKey(kind),
         s.weaponHandLeft,heavyAltMode(kind));
@@ -2696,7 +2705,7 @@ void updateWeapon6Dof(){
             :primaryController.position,
         renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
     // The primary hand (RIGHT or LEFT, selected by the holster/draw) stays
-    // in its native KHARVOX grip-space pose. Capture the grip
+    // in the SAME OpenXR GRIP space as its native weapon pose. Capture the grip
     // once per weapon; from then on it has a constant gun-local position and
     // orientation. This avoids the gun rolling inside the glove.
     const bool visualAlternate=heavyAltMode(kind);
