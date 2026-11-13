@@ -11,6 +11,7 @@ on:
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxLauncher/**'
+      - 'config/user_calibration_defaults/**'
       - '.github/workflows/verify-vr-mod-manager-clean-install.yml'
   workflow_dispatch:
 

@@ -7,6 +7,9 @@ on:
     paths:
       - 'src/**'
       - 'CMakeLists.txt'
+      # Owner grip factory defaults are embedded into KharvoxLayer's
+      # CalibrationDefaults directory. Their edits require fresh native build.
+      - 'config/user_calibration_defaults/**'
       - 'tests/**'
       - 'launcher/KharvoxLauncher/**'
       - 'supervisor/**'
