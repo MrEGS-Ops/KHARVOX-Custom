@@ -43,6 +43,39 @@ int main(){
         measured,original);
     assert(near(fitted,Vec{original.x,measured.y,measured.z}));
     const Quat identity{0,0,0,1};
+    // Calibrating a glove Y/Z MUST translate its actual grip anchor as
+    // well, instead of leaving a fixed gun pivot and floating the glove.
+    // The native weapon may shift only along the laser (-Z); it never
+    // shifts sideways/upward relative to the laser or changes its angle.
+    const Vec referenceHand{.06f,.04f,.12f};
+    const Vec adjustedHand{.06f,-.09f,-.23f};
+    const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
+        adjustedHand,referenceHand);
+    assert(near(anchorPlan.gunTranslationLocal,
+        Vec{0,0,adjustedHand.z-referenceHand.z}));
+    assert(near(anchorPlan.handAttachmentLocal,
+        Vec{adjustedHand.x,adjustedHand.y,referenceHand.z}));
+    const Vec laserWorld{.35f,.61f,-.25f};
+    for(const Quat orientation:{identity,
+        Quat{0,.38268343f,0,.92387953f}}){
+        const auto gunDelta=rotate(orientation,anchorPlan.gunTranslationLocal);
+        const Vec newGunAnchor{laserWorld.x+gunDelta.x,
+            laserWorld.y+gunDelta.y,laserWorld.z+gunDelta.z};
+        const auto handDelta=rotate(orientation,anchorPlan.handAttachmentLocal);
+        const Vec gloveWorld{newGunAnchor.x+handDelta.x,
+            newGunAnchor.y+handDelta.y,newGunAnchor.z+handDelta.z};
+        const auto requestedDelta=rotate(orientation,adjustedHand);
+        assert(near(gloveWorld,Vec{laserWorld.x+requestedDelta.x,
+            laserWorld.y+requestedDelta.y,laserWorld.z+requestedDelta.z}));
+        // Cross(gun displacement, rotated laser direction) must be zero.
+        const auto forward=rotate(orientation,Vec{0,0,-1});
+        assert(std::abs(gunDelta.y*forward.z-gunDelta.z*forward.y)<.0002f);
+        assert(std::abs(gunDelta.z*forward.x-gunDelta.x*forward.z)<.0002f);
+        assert(std::abs(gunDelta.x*forward.y-gunDelta.y*forward.x)<.0002f);
+    }
+    const auto zeroPlan=kharvox::weaponpose::primaryHandAnchorPlan(
+        referenceHand,referenceHand);
+    assert(near(zeroPlan.gunTranslationLocal,Vec{0,0,0}));
     const Vec aim{.2f,.4f,-.1f},grip{.22f,.35f,-.11f};
     const Vec gauss{-0.09830919f,.17283046f-.08f,.52416211f};
     const Vec chain{-0.11940779f,.27708763f-.08f,.67574835f};

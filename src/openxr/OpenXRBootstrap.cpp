@@ -447,6 +447,7 @@ struct State {
     XrVector3f primaryVisualLocalPosition{};
     XrQuaternionf primaryVisualLocalOrientation{0,0,0,1};
     kharvox::RightHandGripSettings rightGripSettings{};
+    kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::CustomModFlags vrDesktopMods{};
@@ -2706,11 +2707,11 @@ void updateWeapon6Dof(){
     const auto rotateGrip=[](const XrQuaternionf&q,const XrVector3f&v){
         return rotateVector(q,v);
     };
-    const auto weaponAnchorBody=s.showHands
+    auto weaponAnchorBody=s.showHands
         ?kharvox::weaponpose::keepGunOnPrimaryLaser(
             current.position,gunPivotAt(rotation))
         :gunPivotAt(rotation);
-    const auto weaponAnchorTracking=s.showHands
+    auto weaponAnchorTracking=s.showHands
         ?kharvox::weaponpose::keepGunOnPrimaryLaser(
             primaryController.position,primaryHandGripController.position)
         :kharvox::primarygrip::weaponAnchor(
@@ -2718,9 +2719,13 @@ void updateWeapon6Dof(){
             primaryHandGripController.valid?primaryHandGripController.position
                 :primaryController.position,
             renderOrientation,pivotLocalOffset,gripPivotEnabled,rotateGrip);
+    // Keep the true primary AIM origin as the fixed calibration reference:
+    // the later Y/Z anchor correction must never feed back into the probe's
+    // inverse local coordinate measurement as the owner moves the glove.
+    const auto calibrationAimTrackingAnchor=weaponAnchorTracking;
     // Native gun follows AIM; primary glove uses GRIP for its *initial*
-    // visual pose. Once fitted, the glove's independent weapon-local offset
-    // and quaternion are rigidly attached without ever changing gun aim.
+    // visual pose. Once fitted, the glove's independently calibrated anchor
+    // translates only in Y/Z; its quaternion never changes the gun angle.
     const bool visualAlternate=heavyAltMode(kind);
     const bool primaryVisualNow=s.customMods.offHandGripCapture
         &&primaryHandGripController.valid
@@ -2818,9 +2823,47 @@ void updateWeapon6Dof(){
             s.primaryVisualLocalPosition={p.x,p.y,p.z};
             s.primaryVisualLocalOrientation={q.x,q.y,q.z,q.w};
         }
+        // Apply the same Y/Z calibration to the weapon-hand *anchor*, not
+        // only to a disconnected floating glove. The native gun can slide
+        // forward/back ALONG the exact AIM laser (Z only); vertical fitting
+        // moves the glove attachment relative to the gun (Y). This leaves
+        // the barrel centreline on the controller laser, with no X or
+        // yaw/pitch/roll offsets. The glove keeps its independent rotation.
+        XrVector3f factoryHand=s.primaryVisualLocalPosition;
+        if(s.weaponHandLeft){
+            const auto key=std::string(KharvoxWeaponKindKey(kind))
+                +(visualAlternate&&(kind==KharvoxWeaponKind::GaussCannon||
+                    kind==KharvoxWeaponKind::Chaingun)
+                    ?(kind==KharvoxWeaponKind::GaussCannon?"_siege":"_turret"):"");
+            auto it=s.rightGripFactorySettings.leftVisualPositions.find(key);
+            if(it==s.rightGripFactorySettings.leftVisualPositions.end())
+                it=s.rightGripFactorySettings.leftVisualPositions.find(
+                    KharvoxWeaponKindKey(kind));
+            if(it!=s.rightGripFactorySettings.leftVisualPositions.end())
+                factoryHand={it->second.x,it->second.y,it->second.z};
+        }else{
+            kharvox::RightHandGripOffset position{};
+            kharvox::RightHandGripRotation ignored{};
+            if(kharvox::rightPrimaryVisualPose(
+                    s.rightGripFactorySettings,KharvoxWeaponKindKey(kind),
+                    visualAlternate,position,ignored))
+                factoryHand={position.x,position.y,position.z};
+        }
+        const auto anchorPlan=kharvox::weaponpose::primaryHandAnchorPlan(
+            s.primaryVisualLocalPosition,factoryHand);
+        if(s.showHands){
+            // Deliberately use only the Z component on the native gun.
+            // The barrel CANNOT be offset vertically and still remain
+            // geometrically collinear with the physical AIM laser.
+            weaponAnchorBody=addVector(weaponAnchorBody,
+                rotateVector(rotation,anchorPlan.gunTranslationLocal));
+            weaponAnchorTracking=addVector(weaponAnchorTracking,
+                rotateVector(renderOrientation,anchorPlan.gunTranslationLocal));
+        }
         const auto primaryFixed=kharvox::primarygrip::lockedHand(
             weaponAnchorTracking,renderOrientation,
-            s.primaryVisualLocalPosition,rotateGrip);
+            s.showHands?anchorPlan.handAttachmentLocal
+                :s.primaryVisualLocalPosition,rotateGrip);
         const auto primaryRotation=normalizeQuaternion(multiply(
             renderOrientation,s.primaryVisualLocalOrientation));
         s.primaryVisualPose.position[0]=primaryFixed.x;
@@ -2898,7 +2941,9 @@ void updateWeapon6Dof(){
     s.lastWeaponRenderedTrackingRotation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
-    s.lastWeaponRenderedTrackingAnchor=weaponAnchorTracking;
+    // Calibration probe stays relative to the unshifted AIM origin;
+    // measuring against the moved gun anchor would cause runaway drift.
+    s.lastWeaponRenderedTrackingAnchor=calibrationAimTrackingAnchor;
     s.lastWeaponRenderedKind=kind;
     s.lastWeaponRenderedValid=true;
     // One physical pivot is used by the weapon renderer and both hand meshes.
@@ -5405,7 +5450,7 @@ void traceEye(unsigned kind,int eye,const XrPosef& pose,const XrFovf& fov,
 bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExtent.width==extent.width&&s.stereoCacheExtent.height==extent.height)return true;if(!s.vk.createImage||!s.vk.getImageMemoryRequirements||!s.vk.allocateMemory||!s.vk.bindImageMemory||!s.vk.getPhysicalDeviceMemoryProperties)return false;if(!s.vk.queueWaitIdle||!s.queue||s.vk.queueWaitIdle(s.queue)!=VK_SUCCESS)return false;s.fsr1.releaseAfterCompletion();s.fsr1InitializationAttempted=false;invalidateAlternatingStereoHistory(true);for(int e=0;e<2;e++){if(s.stereoCache[e])s.vk.destroyImage(s.device,s.stereoCache[e],nullptr);if(s.stereoCacheMemory[e])s.vk.freeMemory(s.device,s.stereoCacheMemory[e],nullptr);s.stereoCache[e]=VK_NULL_HANDLE;s.stereoCacheMemory[e]=VK_NULL_HANDLE;}VkPhysicalDeviceMemoryProperties properties{};s.vk.getPhysicalDeviceMemoryProperties(s.physical,&properties);for(int e=0;e<2;e++){VkImageCreateInfo ci{VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};ci.imageType=VK_IMAGE_TYPE_2D;ci.format=static_cast<VkFormat>(s.format);ci.extent={extent.width,extent.height,1};ci.mipLevels=1;ci.arrayLayers=1;ci.samples=VK_SAMPLE_COUNT_1_BIT;ci.tiling=VK_IMAGE_TILING_OPTIMAL;ci.usage=VK_IMAGE_USAGE_TRANSFER_SRC_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT;ci.sharingMode=VK_SHARING_MODE_EXCLUSIVE;ci.initialLayout=VK_IMAGE_LAYOUT_UNDEFINED;if(s.vk.createImage(s.device,&ci,nullptr,&s.stereoCache[e])!=VK_SUCCESS)return false;VkMemoryRequirements requirements{};s.vk.getImageMemoryRequirements(s.device,s.stereoCache[e],&requirements);uint32_t memoryType=UINT32_MAX;for(uint32_t i=0;i<properties.memoryTypeCount;i++)if((requirements.memoryTypeBits&(1u<<i))&&(properties.memoryTypes[i].propertyFlags&VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)){memoryType=i;break;}if(memoryType==UINT32_MAX)return false;VkMemoryAllocateInfo ai{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};ai.allocationSize=requirements.size;ai.memoryTypeIndex=memoryType;if(s.vk.allocateMemory(s.device,&ai,nullptr,&s.stereoCacheMemory[e])!=VK_SUCCESS||s.vk.bindImageMemory(s.device,s.stereoCache[e],s.stereoCacheMemory[e],0)!=VK_SUCCESS)return false;}s.stereoCacheExtent=extent;log("Stereo cache ready "+std::to_string(extent.width)+"x"+std::to_string(extent.height)+" format="+std::to_string(s.format));return true;}
 }
 
-static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
+static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
     log("[VR-GRIP] calibration path="+kharvox::runtimePathA("offhand_right_hand_positions.cfg")+
