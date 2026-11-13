@@ -125,6 +125,18 @@ int main(){
     // independently of OpenXR tracking (including wall-pushback). Custom
     // gameplay must reuse the neutral locator once it is settled; guns-
     // only and calibration fallback still use the original animated joint.
+    using kharvox::weaponpose::nativeNeutralGripMatchesWeapon;
+    enum class WeaponForTest{Shotgun,Gauss,Chaingun};
+    assert(nativeNeutralGripMatchesWeapon(
+        true,7u,7u,WeaponForTest::Shotgun,WeaponForTest::Shotgun));
+    assert(!nativeNeutralGripMatchesWeapon(
+        true,7u,7u,WeaponForTest::Shotgun,WeaponForTest::Gauss));
+    assert(!nativeNeutralGripMatchesWeapon(
+        true,7u,7u,WeaponForTest::Gauss,WeaponForTest::Chaingun));
+    assert(!nativeNeutralGripMatchesWeapon(
+        true,6u,7u,WeaponForTest::Gauss,WeaponForTest::Gauss));
+    assert(!nativeNeutralGripMatchesWeapon(
+        false,7u,7u,WeaponForTest::Gauss,WeaponForTest::Gauss));
     const Vec animatedPivot{.04f,.18f,-.31f};
     const Vec fixedPivot{.01f,.07f,-.18f};
     const auto& stable=kharvox::weaponpose::
