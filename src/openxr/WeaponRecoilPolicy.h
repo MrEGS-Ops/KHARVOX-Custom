@@ -161,17 +161,24 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     }
     const bool triggerEdge=input.fireHeld&&!state.fireHeld;
     const bool triggerRelease=!input.fireHeld&&state.fireHeld;
-    if(triggerEdge){
-        // Every NEW trigger press starts from original aim. No old
-        // recovery or delayed ammo confirmation may bend a first shot.
+    if(triggerEdge&&input.weapon==6){
+        // Gauss is a separate single-shot punch/recovery cycle. Its
+        // charge starts clean; never affect the automatic-weapon state.
         state.fastPitch=state.climbPitch=state.yaw=0.f;
         state.gaussKickTick=0;
         state.gaussKickPitch=state.gaussKickYaw=0.f;
         state.confirmedShotQueued=false;
         state.activeMultiplier=1.f;
-        state.gaussCharging=input.weapon==6&&input.fireOnRelease;
+        state.gaussCharging=input.fireOnRelease;
         state.gaussAmmoSpentDuringCharge=false;
     }
+    // Non-Gauss: DO NOT reset fastPitch/climbPitch/yaw, queued ammo-confirmed
+    // recoil or activeMultiplier on a new trigger press. If the weapon is
+    // halfway through recovering, it must remain at precisely that angle,
+    // including its current multiplier-dependent cap. Repeated presses
+    // cannot cause an instant snap to the original muzzle orientation.
+    // New recoil still needs an actual ammo debit and never applies on
+    // the trigger-edge frame itself.
     if(input.weapon==6&&input.fireHeld&&input.fireOnRelease)
         state.gaussCharging=true;
     if(input.fireHeld)
