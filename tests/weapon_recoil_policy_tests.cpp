@@ -9,163 +9,218 @@ int main(){
     WeaponRecoilSettings settings{};
     WeaponRecoilState state{};
     assert(!anyWeaponRecoilEnabled(settings));
-    for(const bool on:settings.enabled)assert(!on); // no changed default gameplay
-    settings.enabled[7]=true;
-    assert(anyWeaponRecoilEnabled(settings));
-    assert(!settings.enabled[9]); // Normal never enables Turret implicitly
-    settings.enabled[7]=false;
-    assert(!anyWeaponRecoilEnabled(settings));
-    assert(weaponRecoilIndex("shotgun")==1);
-    assert(weaponRecoilIndex("chainsaw")==-1);
     assert(kWeaponRecoilKinds.size()==10);
+    assert(weaponRecoilIndex("shotgun")==1);
     assert(weaponRecoilIndex("chaingun")==7);
     assert(weaponRecoilIndex("chaingun",true)==9);
     assert(weaponRecoilIndex("chaingun_turret")==9);
-    assert(weaponRecoilIndex("gauss_cannon",true)==6);
-    assert(settings.strength[7]==3.0f&&settings.recovery[7]==.45f);
-    assert(settings.strength[9]==1.7f&&settings.recovery[9]==.75f);
-    assert(settings.strength[5]==3.0f&&settings.recovery[5]==.55f);
-    const auto noEffect=advanceWeaponRecoil(state,settings,{1,true,false,true,100});
-    assert(noEffect.pitchDegrees==0.f&&!noEffect.shotEstimated);
-    settings.enabled.fill(true); // individual flags used by existing recoil tests
-    assert(anyWeaponRecoilEnabled(settings));
+    assert(weaponRecoilIndex("chainsaw")==-1);
+    assert(settings.strength[7]==3.f&&settings.strength[9]==1.7f);
+    assert(settings.recovery[7]==.45f&&settings.recovery[9]==.75f);
+    assert(recoilAllowedForWeaponMode(2,false)); // Rifle primary
+    assert(!recoilAllowedForWeaponMode(2,true)); // Rifle alternate
+    assert(recoilAllowedForWeaponMode(6,true)); // Gauss Siege still eligible
+    settings.enabled.fill(true);
+    auto tick=[&](int weapon,std::uint64_t ms,bool fire,int ammo,
+                  bool siege=false,bool support=false,bool gameplay=true){
+        return advanceWeaponRecoil(state,settings,
+            {weapon,fire,support,gameplay,ms,siege,ammo});
+    };
 
-    // First trigger press must NEVER bend the first projectile trajectory.
-    const auto first=advanceWeaponRecoil(state,settings,{1,true,false,true,1000});
-    assert(!first.shotEstimated&&first.pitchDegrees==0.f&&first.yawDegrees==0.f);
-    const auto beforeFireHandoff=advanceWeaponRecoil(state,settings,
-        {1,true,false,true,1000+kWeaponRecoilPostFireDelayMs-1});
-    assert(!beforeFireHandoff.shotEstimated&&beforeFireHandoff.pitchDegrees==0.f);
-    const auto afterFirstShot=advanceWeaponRecoil(state,settings,
-        {1,true,false,true,1000+kWeaponRecoilPostFireDelayMs});
-    assert(afterFirstShot.shotEstimated&&afterFirstShot.pitchDegrees>1.f);
-    const auto held=advanceWeaponRecoil(state,settings,{1,true,false,true,1100});
-    assert(!held.shotEstimated&&held.pitchDegrees>0.f);
-    const auto recovering=advanceWeaponRecoil(state,settings,{1,false,false,true,1220});
-    assert(recovering.pitchDegrees<held.pitchDegrees);
+    // A trigger is only authorization; not a shot. Observed native ammo
+    // decreases are the SOLE source of recoil, with one update of grace.
+    assert(tick(1,1000,false,50).pitchDegrees==0.f);
+    assert(tick(1,1010,true,50).pitchDegrees==0.f);
+    assert(tick(1,1020,true,49).pitchDegrees==0.f); // ammo confirmed
+    const auto firstKick=tick(1,1030,true,49);
+    assert(firstKick.shotEstimated&&firstKick.pitchDegrees>0.f);
+    assert(!tick(1,1050,true,49).shotEstimated);
+    const auto stillRecovering=tick(1,1100,false,49);
+    assert(stillRecovering.pitchDegrees<firstKick.pitchDegrees);
+    const auto cleanPress=tick(1,1110,true,49);
+    assert(cleanPress.pitchDegrees==0.f&&!cleanPress.shotEstimated);
 
-    // A new trigger press gets pristine aim even if earlier recoil lingers.
-    const auto newPress=advanceWeaponRecoil(state,settings,{1,true,false,true,1240});
-    assert(!newPress.shotEstimated&&newPress.pitchDegrees==0.f&&newPress.yawDegrees==0.f);
-    const auto newKick=advanceWeaponRecoil(state,settings,
-        {1,false,false,true,1240+kWeaponRecoilPostFireDelayMs});
-    assert(newKick.shotEstimated&&newKick.pitchDegrees>0.f); // shot fired, trigger already released
-
-    auto twoHands=advanceWeaponRecoil(state,settings,{1,false,true,true,1350});
-    assert(twoHands.pitchDegrees<newKick.pitchDegrees);
-    for(std::uint64_t ms=1400;ms<2300;ms+=50)
-        twoHands=advanceWeaponRecoil(state,settings,{1,false,true,true,ms});
-    assert(twoHands.pitchDegrees<.01f);
-
-    // 900% is valid, persists, and produces a stronger REAL kick than 100%.
-    state={};
+    // Rapid empty/dry presses in an actual cooldown never create fake
+    // recoil, even with maximum kick and slow recovery settings.
     settings.strength[1]=9.f;
-    auto highFirst=advanceWeaponRecoil(state,settings,{1,true,false,true,2400});
-    assert(highFirst.pitchDegrees==0.f&&!highFirst.shotEstimated);
-    auto high=advanceWeaponRecoil(state,settings,
-        {1,true,false,true,2400+kWeaponRecoilPostFireDelayMs});
-    assert(high.shotEstimated&&high.pitchDegrees>afterFirstShot.pitchDegrees*3.f);
+    settings.recovery[1]=.25f;
+    for(std::uint64_t ms=1120;ms<1420;ms+=50){
+        assert(tick(1,ms,false,49).pitchDegrees==0.f);
+        const auto dry=tick(1,ms+10,true,49);
+        assert(dry.pitchDegrees==0.f&&!dry.shotEstimated);
+    }
+    assert(tick(1,1450,false,49).pitchDegrees==0.f);
+    assert(tick(1,1460,true,49).pitchDegrees==0.f);
+    assert(tick(1,1470,true,48).pitchDegrees==0.f);
+    const auto highKick=tick(1,1480,true,48);
+    assert(highKick.shotEstimated&&highKick.pitchDegrees>firstKick.pitchDegrees*3.f);
+
+    // Multiple automatic bullets within a 100ms ammo poll are coalesced
+    // into one recoil impulse. It's better to miss an impulse than invent
+    // recoil every frame. Each NEW observed debit makes one more kick.
+    state={};
+    settings.strength[2]=2.4f;
+    tick(2,2000,false,400);
+    assert(tick(2,2010,true,400).pitchDegrees==0.f);
+    const auto batch=tick(2,2120,true,397);
+    assert(batch.pitchDegrees==0.f&&!batch.shotEstimated);
+    const auto batchKick=tick(2,2130,true,397);
+    assert(batchKick.shotEstimated&&batchKick.pitchDegrees>0.f);
+    assert(!tick(2,2200,true,397).shotEstimated);
+    assert(tick(2,2230,true,395).pitchDegrees>0.f);
+    const auto secondKick=tick(2,2240,true,395);
+    assert(secondKick.shotEstimated&&secondKick.pitchDegrees>batchKick.pitchDegrees);
+
+    // The Heavy Assault Rifle's weapon-mod/alternate firing must not
+    // generate any recoil, even if its ammo pool changes during the mod.
+    const auto alternate=tick(2,2250,true,390,false,false,false);
+    assert(alternate.pitchDegrees==0.f&&!alternate.shotEstimated);
+    assert(tick(2,2260,true,390).pitchDegrees==0.f);
+    assert(tick(2,2270,true,389).pitchDegrees==0.f);
+    assert(tick(2,2280,true,389).shotEstimated);
+
+    // Normal Minigun and Turret retain independent settings and state.
+    state={};
+    settings.strength[7]=3.f;
+    settings.strength[9]=1.7f;
+    tick(7,3000,false,700);
+    tick(7,3010,true,700);
+    assert(tick(7,3020,true,697).pitchDegrees==0.f);
+    const auto normalKick=tick(7,3030,true,697);
+    assert(normalKick.shotEstimated&&normalKick.pitchDegrees>0.f);
+    assert(tick(9,3050,true,697).pitchDegrees==0.f); // mode switch resets
+    assert(tick(9,3150,true,696).pitchDegrees==0.f);
+    const auto turretKick=tick(9,3160,true,696);
+    assert(turretKick.shotEstimated&&turretKick.pitchDegrees>0.f);
+
+    // Two hands suppress recoil without letting pending ammo debits kick
+    // AFTER release. No override to saved grip or controller transforms.
+    state={};
+    tick(3,4000,false,200);
+    tick(3,4010,true,200);
+    assert(tick(3,4020,true,199,false,true).pitchDegrees==0.f);
+    assert(tick(3,4030,true,199,false,false).pitchDegrees==0.f);
+    assert(!tick(3,4040,true,199).shotEstimated);
+
+    // No valid native ammo means NO recoil. When snapshots resume, the
+    // first value is merely a baseline (not a fabricated spend).
+    state={};
+    tick(4,5000,false,30);
+    tick(4,5010,true,-1);
+    tick(4,5100,true,-1);
+    assert(tick(4,5200,true,20).pitchDegrees==0.f);
+    assert(tick(4,5210,true,20).pitchDegrees==0.f);
+    assert(!tick(4,5210,true,20).shotEstimated);
+
+    // Pistol has infinite ammo and is intentionally excluded, regardless
+    // of saved enabled bits. Its first shot and all repeated trigger pulls
+    // are always original KHARVOX behaviour.
+    state={};
+    assert(tick(0,6000,true,-1).pitchDegrees==0.f);
+    assert(tick(0,6010,true,0).pitchDegrees==0.f);
+    assert(tick(0,6020,true,-1).pitchDegrees==0.f);
+
+    // GAUSS: dry trigger spam during its native cooldown must have zero
+    // recoil. The only source is a confirmed ammo debit.
+    state={};
+    settings.strength[6]=9.f;
+    settings.recovery[6]=.25f;
+    tick(6,7000,false,180);
+    tick(6,7010,true,180);
+    tick(6,7100,false,180);
+    for(std::uint64_t ms=7120;ms<7420;ms+=50){
+        assert(tick(6,ms,true,180).pitchDegrees==0.f);
+        assert(tick(6,ms+20,false,180).pitchDegrees==0.f);
+    }
+    tick(6,7430,true,180);
+    assert(tick(6,7500,true,165).pitchDegrees==0.f);
+    const auto gaussPunch=tick(6,7510,true,165);
+    assert(gaussPunch.shotEstimated&&gaussPunch.pitchDegrees>30.f);
+    const auto gaussRecovered=tick(6,8000,true,165);
+    assert(gaussRecovered.pitchDegrees==0.f&&gaussRecovered.yawDegrees==0.f);
+
+    // Gauss recoil returns to EXACT zero even at minimum recovery;
+    // 900% recovery makes the complete cycle much faster.
+    assert(gaussKickCycleMilliseconds(.25f)<=420.f);
+    assert(gaussKickCycleMilliseconds(2.f)>170.f);
+    assert(gaussKickCycleMilliseconds(9.f)<100.f);
+    state={};
+    settings.recovery[6]=9.f;
+    tick(6,8100,false,165);
+    tick(6,8110,true,165);
+    tick(6,8140,true,150);
+    assert(tick(6,8150,true,150).shotEstimated);
+    const auto quickRest=tick(6,8270,true,150);
+    assert(quickRest.pitchDegrees==0.f&&quickRest.yawDegrees==0.f);
+    assert(tick(6,8350,true,150).pitchDegrees==0.f); // no extra shot
+
+    // Long Gauss Siege hold: ammo may decrease during charging, but
+    // the kick must not occur until AFTER trigger release.
+    state={};
+    tick(6,9000,false,150,true);
+    tick(6,9010,true,150,true);
+    assert(tick(6,10700,true,150,true).pitchDegrees==0.f);
+    assert(tick(6,10710,true,135,true).pitchDegrees==0.f);
+    assert(tick(6,10800,true,135,true).pitchDegrees==0.f);
+    const auto released=tick(6,10820,false,135,true);
+    assert(released.pitchDegrees==0.f&&!released.shotEstimated);
+    const auto siegeKick=tick(6,10830,false,135,true);
+    assert(siegeKick.shotEstimated&&siegeKick.pitchDegrees>0.f);
+    assert(tick(6,10950,false,135,true).pitchDegrees==0.f);
+    // Equally valid: ammo debit observed AFTER Siege trigger release.
+    state={};
+    tick(6,11000,false,135,true);
+    tick(6,11010,true,135,true);
+    tick(6,11200,false,135,true);
+    assert(tick(6,11220,false,120,true).pitchDegrees==0.f);
+    assert(tick(6,11230,false,120,true).shotEstimated);
+
+    // Per-weapon enable state and 900% limits remain schema-2 compatible.
+    settings.recovery[6]=9.f;
+    settings.recovery[7]=.25f;
     assert(validWeaponRecoilSettings(settings));
-
-    // Automatic fire: 1st bullet is clean, recoil follows it, subsequent
-    // estimated shots accumulate after their own native-fire grace period.
-    state={};
-    settings.strength[2]=1.f;
-    const auto autoFirst=advanceWeaponRecoil(state,settings,{2,true,false,true,3000});
-    assert(autoFirst.pitchDegrees==0.f&&!autoFirst.shotEstimated);
-    const auto autoKick=advanceWeaponRecoil(state,settings,
-        {2,true,false,true,3000+kWeaponRecoilPostFireDelayMs});
-    assert(autoKick.pitchDegrees>0.f&&autoKick.shotEstimated);
-    const auto autoQueued=advanceWeaponRecoil(state,settings,{2,true,false,true,3100});
-    assert(!autoQueued.shotEstimated);
-    const auto autoAgain=advanceWeaponRecoil(state,settings,
-        {2,true,false,true,3100+kWeaponRecoilPostFireDelayMs});
-    assert(autoAgain.shotEstimated&&autoAgain.pitchDegrees>autoKick.pitchDegrees);
-
-    // Weapon swap, two-hand capture, menu and disable invalidate pending kick.
-    const auto switched=advanceWeaponRecoil(state,settings,{7,false,false,true,3200});
-    assert(switched.pitchDegrees==0.f);
-    const auto menu=advanceWeaponRecoil(state,settings,{7,true,false,false,3300});
-    assert(menu.pitchDegrees==0.f);
-    state={};
-    const auto pending=advanceWeaponRecoil(state,settings,{7,true,false,true,4200});
-    assert(pending.pitchDegrees==0.f);
-    const auto supportGrab=advanceWeaponRecoil(state,settings,{7,true,true,true,4220});
-    const auto stable=advanceWeaponRecoil(state,settings,{7,true,true,true,4300});
-    assert(supportGrab.pitchDegrees==0.f&&stable.pitchDegrees==0.f
-        &&!stable.shotEstimated);
-    const auto invalidSwap=advanceWeaponRecoil(state,settings,{1,false,false,true,4310});
-    assert(invalidSwap.pitchDegrees==0.f);
-
-    // Turret is independent of normal firing: while holding Fire, changing
-    // mode must restart with a clean first-shot pose in the new profile.
-    state={};
-    const auto normalFirst=advanceWeaponRecoil(state,settings,{7,true,false,true,5000});
-    const auto normalKick=advanceWeaponRecoil(state,settings,
-        {7,true,false,true,5000+kWeaponRecoilPostFireDelayMs});
-    const auto turretFirst=advanceWeaponRecoil(state,settings,{9,true,false,true,5100});
-    const auto turretKick=advanceWeaponRecoil(state,settings,
-        {9,true,false,true,5100+kWeaponRecoilPostFireDelayMs});
-    assert(normalFirst.pitchDegrees==0.f&&!normalFirst.shotEstimated);
-    assert(turretFirst.pitchDegrees==0.f&&!turretFirst.shotEstimated);
-    assert(normalKick.pitchDegrees>turretKick.pitchDegrees);
-    assert(turretKick.pitchDegrees>0.f&&turretKick.shotEstimated);
-
-    settings.recovery[7]=.25f; // new minimum must be valid and persisted
-    assert(validWeaponRecoilSettings(settings));
+    settings.recovery[6]=9.01f;
+    assert(!validWeaponRecoilSettings(settings));
+    settings.recovery[6]=9.f;
     settings.recovery[7]=.24f;
     assert(!validWeaponRecoilSettings(settings));
     settings.recovery[7]=.25f;
     settings.strength[1]=9.1f;
     assert(!validWeaponRecoilSettings(settings));
     settings.strength[1]=9.f;
-    const auto path=std::filesystem::temp_directory_path()/"kharvox_recoil_policy_test.cfg";
+
+    const auto path=std::filesystem::temp_directory_path()/
+        "kharvox_recoil_policy_test.cfg";
     std::filesystem::remove(path);
     assert(saveWeaponRecoilSettings(path.string(),settings));
     WeaponRecoilSettings loaded{};
     assert(loadWeaponRecoilSettings(path.string(),loaded));
-    assert(loaded.enabled[1]&&loaded.strength[1]==9.f
-        &&loaded.recovery[7]==.25f);
-    assert(loaded.strength[7]==3.f&&loaded.strength[9]==1.7f);
-    // Per-weapon switches survive save/reload and do not leak to siblings.
+    assert(loaded.recovery[6]==9.f&&loaded.recovery[7]==.25f);
+    assert(loaded.strength[6]==9.f&&loaded.strength[1]==9.f);
+
+    // Independent ON/OFF switches, including Minigun's two modes.
     settings.enabled.fill(false);
-    settings.enabled[1]=true; // shotgun
-    settings.enabled[9]=true; // Minigun Turret but NOT Normal
+    settings.enabled[1]=true;
+    settings.enabled[9]=true;
     assert(saveWeaponRecoilSettings(path.string(),settings));
     WeaponRecoilSettings independent{};
     assert(loadWeaponRecoilSettings(path.string(),independent));
-    for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
+    for(std::size_t i=0;i<10;++i)
         assert(independent.enabled[i]==(i==1||i==9));
     assert(independent.strength[7]==settings.strength[7]);
     assert(independent.strength[9]==settings.strength[9]);
     state={};
-    const auto disabledNormal=advanceWeaponRecoil(state,independent,
-        {7,true,false,true,5500});
-    assert(disabledNormal.pitchDegrees==0.f&&!disabledNormal.shotEstimated);
-    const auto enabledTurret=advanceWeaponRecoil(state,independent,
-        {9,true,false,true,5600});
-    const auto turretShot=advanceWeaponRecoil(state,independent,
-        {9,true,false,true,5600+kWeaponRecoilPostFireDelayMs});
-    assert(enabledTurret.pitchDegrees==0.f&&turretShot.shotEstimated
-        &&turretShot.pitchDegrees>0.f);
-    independent.enabled[9]=false;
-    const auto disabledImmediately=advanceWeaponRecoil(state,independent,
-        {9,true,false,true,5700});
-    assert(disabledImmediately.pitchDegrees==0.f&&!disabledImmediately.shotEstimated);
-    independent.enabled[7]=true;
-    const auto freshlyEnabled=advanceWeaponRecoil(state,independent,
-        {7,true,false,true,5800});
-    assert(freshlyEnabled.pitchDegrees==0.f&&!freshlyEnabled.shotEstimated);
-    // A partially written schema-2 file fails closed: don't discard
-    // the caller's existing settings or clear other weapon ON flags.
+    assert(tick(7,12000,true,20).pitchDegrees==0.f);
+
+    // Truncated schema-2 save must not alter already loaded settings.
     {
         std::ofstream truncated(path,std::ios::trunc);
         truncated<<"schema 2\nshotgun 1 2.500 0.600\n";
     }
     assert(!loadWeaponRecoilSettings(path.string(),independent));
-    assert(independent.enabled[7]&&!independent.enabled[9]);
-    // A pre-Turret save has nine keys. Loading must preserve all those
-    // user-selected values while adding ONLY the new Turret preset.
+    assert(independent.enabled[1]&&independent.enabled[9]);
+
+    // Legacy schema-1 global ON/OFF correctly migrates all ten flags.
     {
         std::ofstream legacy(path,std::ios::trunc);
         legacy<<"schema 1\nenabled 1\n";
@@ -174,12 +229,16 @@ int main(){
     }
     WeaponRecoilSettings migrated{};
     assert(loadWeaponRecoilSettings(path.string(),migrated));
-    for(std::size_t i=0;i<9;++i)
+    for(std::size_t i=0;i<9;++i){
+        assert(migrated.enabled[i]);
         assert(migrated.strength[i]==1.5f&&migrated.recovery[i]==.25f);
+    }
+    assert(migrated.enabled[9]);
     assert(migrated.strength[9]==kWeaponRecoilDefaultStrength[9]);
     assert(migrated.recovery[9]==kWeaponRecoilDefaultRecovery[9]);
-    for(bool on:migrated.enabled)assert(on); // legacy global 1 -> all guns
-    // The legacy global OFF flag must remain OFF for every weapon.
+    assert(saveWeaponRecoilSettings(path.string(),migrated));
+    assert(loadWeaponRecoilSettings(path.string(),loaded));
+    assert(loaded.strength[7]==1.5f&&loaded.strength[9]==1.7f);
     {
         std::ofstream legacyOff(path,std::ios::trunc);
         legacyOff<<"schema 1\nenabled 0\n";
@@ -190,11 +249,6 @@ int main(){
     assert(loadWeaponRecoilSettings(path.string(),legacyDisabled));
     assert(!anyWeaponRecoilEnabled(legacyDisabled));
     assert(legacyDisabled.strength[7]==1.75f);
-    // Continue with the already-loaded legacy enabled migration below.
-    assert(saveWeaponRecoilSettings(path.string(),migrated));
-    assert(loadWeaponRecoilSettings(path.string(),loaded));
-    assert(loaded.strength[7]==1.5f&&loaded.strength[9]==1.7f);
-    for(bool on:loaded.enabled)assert(on);
     {
         std::ofstream bad(path,std::ios::trunc);
         bad<<"schema 1\nenabled 1\nshotgun nan 1.0\n";

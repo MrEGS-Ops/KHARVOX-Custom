@@ -221,7 +221,7 @@ bool handleVrRecoilCalibrationAction(int action){
             s.recoilSettings.strength[at]+.1f);break;
         case 143:s.recoilSettings.recovery[at]=std::max(.25f,
             s.recoilSettings.recovery[at]-.1f);break;
-        case 144:s.recoilSettings.recovery[at]=std::min(2.f,
+        case 144:s.recoilSettings.recovery[at]=std::min(9.f,
             s.recoilSettings.recovery[at]+.1f);break;
         case 145:
             s.recoilSettings.strength[at]=kharvox::kWeaponRecoilDefaultStrength[at];
