@@ -129,8 +129,8 @@ int main(){
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::PhysicalGloryKills,true));
     assert(!vrLiveEffectiveEnabled(old,VrLiveMod::PhysicalGloryKills,false));
     // Native action pacing: LOWER Hz means faster, HIGHER Hz means slower.
-    assert(vrLiveStepKilltimeHz(0,true)==70); // legacy unset uses 60 Hz
-    assert(vrLiveStepKilltimeHz(0,false)==50);
+    assert(vrLiveStepKilltimeHz(0,true)==50); // legacy unset uses 40 Hz
+    assert(vrLiveStepKilltimeHz(0,false)==30);
     assert(vrLiveStepKilltimeHz(150,true)==160);
     assert(vrLiveStepKilltimeHz(150,false)==140);
     assert(vrLiveStepKilltimeHz(240,true)==240);
