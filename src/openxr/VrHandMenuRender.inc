@@ -357,7 +357,10 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             const int strength=static_cast<int>(std::lround(
                 s.recoilSettings.strength[static_cast<std::size_t>(i)]*100.f));
-            write(396,y+9,std::to_string(strength)+"%",active?white:muted);
+            const bool on=s.recoilSettings.enabled[static_cast<std::size_t>(i)];
+            write(372,y+9,(on?"ON ":"OFF ")+std::to_string(strength)+"%",
+                on?(active?RGB(115,246,178):RGB(91,185,134))
+                  :(active?RGB(244,175,125):muted));
         }
         const auto index=static_cast<std::size_t>(selected);
         const int strength=static_cast<int>(std::lround(
@@ -365,10 +368,12 @@ void paintVrHandMenu() {
         const int recovery=static_cast<int>(std::lround(
             s.recoilSettings.recovery[index]*100.f));
         SelectObject(dc,regular);
-        write(537,126,s.recoilSettings.enabled?"RECOIL ENABLED":"RECOIL DISABLED",
-            s.recoilSettings.enabled?RGB(108,235,161):RGB(239,197,116));
+        const bool weaponRecoilOn=s.recoilSettings.enabled[index];
+        write(537,126,weaponRecoilOn?"THIS WEAPON: RECOIL ON"
+            :"THIS WEAPON: RECOIL OFF",
+            weaponRecoilOn?RGB(108,235,161):RGB(239,197,116));
         const std::array<std::string,6> controls{{
-            s.recoilSettings.enabled?"DISABLE RECOIL":"ENABLE RECOIL",
+            weaponRecoilOn?"DISABLE FOR THIS WEAPON":"ENABLE FOR THIS WEAPON",
             "LESS KICK (-10%)",
             "MORE KICK (+10%, MAX 900%)",
             "SLOWER RECOVERY (-10%, MIN 25%)",
@@ -390,7 +395,7 @@ void paintVrHandMenu() {
         write(539,579,"1 hand: heavy recoil  |  2 hands: stable",muted);
         write(539,614,"Close menu to test. B: BACK",muted);
         write(40,662,m.message.empty()
-            ?"Recoil changes save separately; no grip calibration changes."
+            ?"Each weapon has independent recoil ON/OFF; grip settings untouched."
             :m.message.substr(0,98),RGB(84,233,214));
         fill(797,16,129,57,m.hovered==95
             ?RGB(47,95,110):RGB(39,49,63));
