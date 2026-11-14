@@ -47,24 +47,24 @@ inline int weaponRecoilIndex(const char* weapon,bool turretMode=false) noexcept 
         if(std::strcmp(weapon,kWeaponRecoilKinds[i])==0)return static_cast<int>(i);
     return -1;
 }
-// Proposed aggressive-but-controllable initial balance: higher values
-// reward two-handed tracking; none overwrite explicitly saved UserData.
+// Owner-tested 2026-11-14 recoil presets. Existing UserData always wins;
+// Reset returns to these per-weapon values.
 inline constexpr std::array<float,10> kWeaponRecoilDefaultStrength{{
-    2.00f,2.50f,2.40f,2.25f,2.70f,3.00f,2.60f,3.00f,3.20f,1.70f
+    2.00f,2.00f,1.70f,2.45f,2.70f,8.50f,5.00f,1.00f,9.00f,3.00f
 }};
 inline constexpr std::array<float,10> kWeaponRecoilDefaultRecovery{{
-    .70f,.60f,.55f,.60f,.60f,.55f,.60f,.45f,.55f,.75f
+    .70f,.60f,.55f,.60f,.60f,.55f,.25f,.45f,.55f,.75f
 }};
 struct WeaponRecoilSettings {
-    // Independent enable flags. All OFF on fresh installs to preserve
-    // the accepted KHARVOX baseline; normal and Turret are separate slots.
-    std::array<bool,10> enabled{};
+    // Owner's uploaded 2026-11-14 preset; pistol and rocket remain OFF.
+    // Normal and Turret are separate slots. Two hands cancels added recoil.
+    std::array<bool,10> enabled{{false,true,true,true,false,true,true,true,true,true}};
     std::array<float,10> strength=kWeaponRecoilDefaultStrength;
     std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
-    // Optional shared build-up formula; existing configurations remain
-    // unchanged unless the player opts in from the VR calibration page.
-    bool dynamicEnabled{};
-    float dynamicBuildUpPerShot{.20f}; // +20% per confirmed ammo event
+    // Shared dynamic build-up comes from the uploaded user preset;
+    // already-saved UserData continues to override these factory values.
+    bool dynamicEnabled{true};
+    float dynamicBuildUpPerShot{.35f}; // +20% per confirmed ammo event
     float dynamicMaxMultiplier{3.f}; // 300% ceiling over weapon baseline
 };
 // Secondary-fire Grip drives the Heavy Assault Rifle's micro-missiles/scope.
