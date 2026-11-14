@@ -2843,7 +2843,9 @@ void updateWeapon6Dof(){
     // tracked controller; the primary physical grip remains the fixed pivot.
     // Gameplay/firing is strictly gated: no calibration, menus, holsters,
     // executions or unknown weapon profiles can generate a recoil shot.
-    const int recoilWeapon=kharvox::weaponRecoilIndex(KharvoxWeaponKindKey(kind));
+    const int recoilWeapon=kharvox::weaponRecoilIndex(
+        KharvoxWeaponKindKey(kind),
+        kind==KharvoxWeaponKind::Chaingun&&heavyAltMode(kind));
     const bool recoilGameplay=gameplay&&s.weapon6Dof
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!s.dynamicShoulderHolstered&&!s.twoHandCalibrationMode
