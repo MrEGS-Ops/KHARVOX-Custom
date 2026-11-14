@@ -269,8 +269,8 @@ int main(){
     // Schema 3 dynamic tuning must not silently survive malformed saves.
     {
         std::ofstream truncated(path,std::ios::trunc);
-        truncated<<"schema 3\\ndynamic 1 0.200 3.000\\n"
-                 <<"shotgun 1 2.500 0.600\\n";
+        truncated<<"schema 3\ndynamic 1 0.200 3.000\n"
+                 <<"shotgun 1 2.500 0.600\n";
     }
     assert(!loadWeaponRecoilSettings(path.string(),independent));
     assert(independent.enabled[1]&&independent.enabled[9]
@@ -278,10 +278,10 @@ int main(){
     // Old schema 2 profiles migrate with dynamics OFF, preserving gun tune.
     {
         std::ofstream old(path,std::ios::trunc);
-        old<<"schema 2\\n";
+        old<<"schema 2\n";
         for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
             old<<kWeaponRecoilKinds[i]<<" "<<(i==9?1:0)
-               <<" 1.500 0.250\\n";
+               <<" 1.500 0.250\n";
     }
     WeaponRecoilSettings oldProfile{};
     assert(loadWeaponRecoilSettings(path.string(),oldProfile));
