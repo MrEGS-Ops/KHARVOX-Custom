@@ -436,7 +436,7 @@ struct State {
     // Endpoints remain the owner's SAVED profiles; no capture/Reset changes.
     struct HeavyModeHandoff {
         KharvoxWeaponKind weapon{KharvoxWeaponKind::Unknown};
-        bool initialized{},alternate{},rotor{},leftWeaponHand{},transition{};
+        bool initialized{},alternate{},leftWeaponHand{},transition{};
         bool supportValid{},gunValid{},wristValid{};
         unsigned long long startedMs{};
         float progress{1.f};
@@ -452,8 +452,7 @@ struct State {
     XrQuaternionf supportVisualLocalOrientation{0,0,0,1};
     kharvox::hands::HandPose supportVisualPose{};
     kharvox::hands::HandPose primaryVisualPose{};
-    bool primaryVisualLocked{},primaryVisualWeaponLeft{},primaryVisualAlternate{},
-        primaryVisualRotor{};
+    bool primaryVisualLocked{},primaryVisualWeaponLeft{},primaryVisualAlternate{};
     KharvoxWeaponKind primaryVisualWeapon{KharvoxWeaponKind::Unknown};
     // Captured ONCE at the real controller grip on two-hand acquisition.
     // Remains rigid in weapon-local space instead of drifting with the aim pose.
@@ -2290,60 +2289,38 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
-// Native weapon declaration name scans can include BOTH installed
-// Minigun upgrades. Never assume Turret wins; ambiguous modes must not
-// borrow either saved attachment pose during ordinary gameplay.
-kharvox::VrChaingunAttachmentHint chaingunAttachmentHint(){
-    return kharvox::vrChaingunAttachmentHint(
-        KharvoxWeaponChaingunRotorModeActive(),
-        KharvoxWeaponChaingunTurretModeActive());
-}
+// Attachment-neutral secondary-fire calibration for BOTH Gauss and Minigun.
+// Only the actual Grip input or Gauss's ongoing native charge selects Alt Fire.
+// Never infer a deployed attachment from weapon declaration names.
 bool heavyAltMode(KharvoxWeaponKind kind){
     if(kind!=KharvoxWeaponKind::GaussCannon
         &&kind!=KharvoxWeaponKind::Chaingun)return false;
-    // The in-headset menu selection is for PREVIEW/CAPTURE only, not
-    // evidence that DOOM activated a particular attachment. An explicit
-    // physical-attachment confirmation is required before saving.
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
-        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
-        return s.vrHandMenu.alternateProfile;
-    if(!s.heavyAlternateInputForwarded)return false;
-    if(kind==KharvoxWeaponKind::GaussCannon)
-        return KharvoxWeaponGaussSiegeChargeActive();
-    return chaingunAttachmentHint()==
-        kharvox::VrChaingunAttachmentHint::Turret;
-}
-bool chaingunRotorHandMode(KharvoxWeaponKind kind){
-    if(kind!=KharvoxWeaponKind::Chaingun)return false;
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
-        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
-        return s.vrHandMenu.rotorProfile;
-    return s.heavyAlternateInputForwarded
-        &&chaingunAttachmentHint()==
-            kharvox::VrChaingunAttachmentHint::Rotor;
+    const bool menuOpen=s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed;
+    const bool selected=kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon());
+    return kharvox::vrHeavyAlternateGripActive(menuOpen,selected,
+        s.vrHandMenu.alternateProfile,s.heavyAlternateInputForwarded,
+        kind==KharvoxWeaponKind::GaussCannon
+            &&KharvoxWeaponGaussSiegeChargeActive());
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
-    const bool rotor=chaingunRotorHandMode(kind);
-    if(!heavyAltMode(kind)&&!rotor)return false;
+    if(!heavyAltMode(kind))return false;
     if(s.weaponHandLeft){
+        // Keep existing saved _siege/_turret config key names intact for
+        // backwards compatibility: these now mean generic Alt Fire slots.
         const std::string key=kind==KharvoxWeaponKind::GaussCannon
-            ?"gauss_cannon_siege":rotor?"chaingun_rotor":"chaingun_turret";
+            ?"gauss_cannon_siege":"chaingun_turret";
         const auto it=s.rightGripSettings.leftPrimaryAlternateSupport.find(key);
         if(it!=s.rightGripSettings.leftPrimaryAlternateSupport.end()){
             pos={it->second.x,it->second.y,it->second.z};
             return true;
         }
     }
-    if(rotor&&s.rightGripSettings.chaingunRotorSupportValid){
-        const auto v=s.rightGripSettings.chaingunRotorSupport;
-        pos={s.weaponHandLeft?-v.x:v.x,v.y,v.z};return true;
-    }
     if(kind==KharvoxWeaponKind::GaussCannon
         &&s.rightGripSettings.gaussSiegeSupportValid){
         const auto v=s.rightGripSettings.gaussSiegeSupport;
         pos={s.weaponHandLeft?-v.x:v.x,v.y,v.z};return true;
     }
-    if(!rotor&&kind==KharvoxWeaponKind::Chaingun
+    if(kind==KharvoxWeaponKind::Chaingun
         &&s.rightGripSettings.chaingunTurretSupportValid){
         const auto v=s.rightGripSettings.chaingunTurretSupport;
         pos={s.weaponHandLeft?-v.x:v.x,v.y,v.z};return true;
@@ -2524,13 +2501,9 @@ bool supportGripInCaptureRange(){
     const auto& primaryGrip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
     if(s.customMods.offHandGripCapture&&primaryGrip.valid
         &&!s.dynamicShoulderHolstered){
-        const bool rotor=chaingunRotorHandMode(kind);
         auto saved=kharvox::savedPrimaryWeaponGripOffset(
-            s.rightGripSettings,rotor?"chaingun_rotor":KharvoxWeaponKindKey(kind),
+            s.rightGripSettings,KharvoxWeaponKindKey(kind),
             s.weaponHandLeft,heavyAltMode(kind));
-        if(rotor&&!saved.valid)
-            saved=kharvox::savedPrimaryWeaponGripOffset(
-                s.rightGripSettings,"chaingun",s.weaponHandLeft);
         const bool heavyFallback=!saved.valid&&!s.weaponHandLeft
             &&(kind==KharvoxWeaponKind::GaussCannon
                 ||kind==KharvoxWeaponKind::Chaingun);
@@ -2629,13 +2602,9 @@ void updateWeapon6Dof(){
     // is enabled. Saved glove Y/Z values must not move or tilt the barrel.
     // Guns-only legacy mode retains the old calibrated primary pivot.
     const auto& primaryHandGripController=primaryGripController;
-    const bool rotorPivot=chaingunRotorHandMode(kind);
     auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
-        s.rightGripSettings,rotorPivot?"chaingun_rotor":KharvoxWeaponKindKey(kind),
+        s.rightGripSettings,KharvoxWeaponKindKey(kind),
         s.weaponHandLeft,heavyAltMode(kind));
-    if(rotorPivot&&!savedPivot.valid)
-        savedPivot=kharvox::savedPrimaryWeaponGripOffset(
-            s.rightGripSettings,"chaingun",s.weaponHandLeft);
     const bool heavyFallback=!savedPivot.valid&&!s.weaponHandLeft
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
@@ -2767,15 +2736,14 @@ void updateWeapon6Dof(){
                     &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
                 if(smoothHeavy){
                     const bool alt=heavyAltMode(kind);
-                    const bool rotor=chaingunRotorHandMode(kind);
                     const auto nowMs=GetTickCount64();
                     if(!handoff.initialized||handoff.weapon!=kind
                         ||handoff.leftWeaponHand!=s.weaponHandLeft){
                         handoff={};
                         handoff.initialized=true;handoff.weapon=kind;
                         handoff.leftWeaponHand=s.weaponHandLeft;
-                        handoff.alternate=alt;handoff.rotor=rotor;
-                    }else if(handoff.alternate!=alt||handoff.rotor!=rotor){
+                        handoff.alternate=alt;
+                    }else if(handoff.alternate!=alt){
                         handoff.alternate=alt;handoff.rotor=rotor;
                         handoff.startedMs=nowMs;
                         handoff.fromSupport=handoff.previousSupport;
@@ -2953,9 +2921,7 @@ void updateWeapon6Dof(){
     // visual pose. Once fitted, the glove's independently calibrated anchor
     // translates only in Y/Z; its quaternion never changes the gun angle.
     const bool visualAlternate=heavyAltMode(kind);
-    const bool visualRotor=chaingunRotorHandMode(kind);
-    const std::string visualProfileKey=visualRotor?"chaingun_rotor"
-        :KharvoxWeaponKindKey(kind);
+    const std::string visualProfileKey=KharvoxWeaponKindKey(kind);
     const bool primaryVisualNow=s.customMods.offHandGripCapture
         &&primaryHandGripController.valid
         &&kind!=KharvoxWeaponKind::Unknown
@@ -2963,8 +2929,7 @@ void updateWeapon6Dof(){
     if(primaryVisualNow){
         if(!s.primaryVisualLocked||s.primaryVisualWeapon!=kind
             ||s.primaryVisualWeaponLeft!=s.weaponHandLeft
-            ||s.primaryVisualAlternate!=visualAlternate
-            ||s.primaryVisualRotor!=visualRotor){
+            ||s.primaryVisualAlternate!=visualAlternate){
             s.primaryVisualLocalPosition=kharvox::primarygrip::localGrip(
                 weaponAnchorTracking,primaryHandGripController.position,
                 renderOrientation,rotateGrip);
@@ -2994,22 +2959,8 @@ void updateWeapon6Dof(){
                     savedHand=settings.gaussHand;savedHandValid=true;
                 }
             }else if(kind==KharvoxWeaponKind::Chaingun){
-                if(visualRotor){
-                    const auto rotorPos=settings.visualPositions.find(
-                        "chaingun_rotor");
-                    const auto rotorRot=settings.visualRotations.find(
-                        "chaingun_rotor");
-                    if(rotorPos!=settings.visualPositions.end()){
-                        savedHand=rotorPos->second;savedHandValid=true;
-                    }
-                    if(rotorRot!=settings.visualRotations.end()
-                        &&rotorRot->second.valid)
-                        savedRot=rotorRot->second;
-                    // No saved Rotor pose yet? Use normal, never Turret.
-                    if(!savedHandValid&&settings.chaingunHandValid){
-                        savedHand=settings.chaingunHand;savedHandValid=true;
-                    }
-                }else if(visualAlternate&&settings.chaingunTurretHandValid){
+                if(visualAlternate&&settings.chaingunTurretHandValid){
+
                     savedHand=settings.chaingunTurretHand;savedHandValid=true;
                     savedRot=settings.chaingunTurretRotation.valid
                         ?settings.chaingunTurretRotation:savedRot;
@@ -3058,7 +3009,6 @@ void updateWeapon6Dof(){
                 s.primaryVisualLocalOrientation={
                     savedRot.x,savedRot.y,savedRot.z,savedRot.w};
             s.primaryVisualAlternate=visualAlternate;
-            s.primaryVisualRotor=visualRotor;
         }
         if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating
            &&(s.vrHandMenu.rightHand!=s.weaponHandLeft)
@@ -3100,9 +3050,7 @@ void updateWeapon6Dof(){
             if(kharvox::rightPrimaryVisualPose(
                     s.rightGripFactorySettings,visualProfileKey,
                     visualAlternate,position,ignored)
-                ||(visualRotor&&kharvox::rightPrimaryVisualPose(
-                    s.rightGripFactorySettings,"chaingun",false,
-                    position,ignored)))
+                )
                 factoryHand={position.x,position.y,position.z};
         }
         const XrVector3f fineTuneLocal{fineTune.x,fineTune.y,fineTune.z};
