@@ -64,6 +64,10 @@ bool KharvoxWeaponHolstered();
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
 KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind);
+// Read-only current ammo total from the SAME already validated native
+// inventory query as the shoulder-weapon snapshot. Used only to confirm a
+// genuine Gauss ammo spend before adding experimental recoil. No new hook.
+bool KharvoxWeaponGetAmmoTotal(KharvoxWeaponKind kind,int& total);
 // Returns the current rendered weapon muzzle in DOOM world coordinates. The
 // pose is taken from the weapon model's animated joint matrices, not inferred
 // from the controller. Chainsaw/fists and stale weapon frames return false.
