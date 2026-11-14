@@ -3,14 +3,14 @@ using System.IO;
 
 namespace KharvoxLauncher;
 
-// Bridge-enabled custom KHARVOX keeps its own editable settings NEXT TO the
-// standalone Mod Manager, outside the replaceable NativeBridge directory.
-// Direct/original non-bridge launcher storage remains unchanged.
+// Retail KHARVOX stores editable settings beside the launcher in UserData.
+// This is the same portable directory that the retired desktop manager used.
+// Never overwrite an owner's existing settings or calibration.
 internal static class LauncherUserData
 {
-    internal static bool BridgeMode =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-            "KHARVOX_MODS_BRIDGE_FILE"));
+    // Keep the existing portable UserData path even without the retired
+    // KHARVOX_MODS_BRIDGE_FILE environment variable.
+    internal static bool BridgeMode => true;
 
     internal static string Root
     {
@@ -52,6 +52,15 @@ internal static class LauncherUserData
                 if (!File.Exists(legacy)) File.Copy(old, legacy);
             }
         }
+        // Existing standalone KHARVOX installations used AppData for the
+        // original launch profile. Copy it only if portable settings do not
+        // already exist. Never alter the source.
+        var legacySettings = Path.Combine(Environment.GetFolderPath(
+            Environment.SpecialFolder.LocalApplicationData),
+            "KHARVOX", "settings.json");
+        var portableSettings = PathFor("kharvox-launcher-settings.json");
+        if (File.Exists(legacySettings) && !File.Exists(portableSettings))
+            File.Copy(legacySettings, portableSettings, false);
         // Prior config marks were in AppData. Copy the owner's history into
         // portable UserData once but do not modify the original app data.
         var marksSource = Path.Combine(Environment.GetFolderPath(
