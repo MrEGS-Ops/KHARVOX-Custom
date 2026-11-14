@@ -2744,7 +2744,7 @@ void updateWeapon6Dof(){
                         handoff.leftWeaponHand=s.weaponHandLeft;
                         handoff.alternate=alt;
                     }else if(handoff.alternate!=alt){
-                        handoff.alternate=alt;handoff.rotor=rotor;
+                        handoff.alternate=alt;
                         handoff.startedMs=nowMs;
                         handoff.fromSupport=handoff.previousSupport;
                         handoff.fromGunOffset=handoff.previousGunOffset;
@@ -2960,7 +2960,6 @@ void updateWeapon6Dof(){
                 }
             }else if(kind==KharvoxWeaponKind::Chaingun){
                 if(visualAlternate&&settings.chaingunTurretHandValid){
-
                     savedHand=settings.chaingunTurretHand;savedHandValid=true;
                     savedRot=settings.chaingunTurretRotation.valid
                         ?settings.chaingunTurretRotation:savedRot;
