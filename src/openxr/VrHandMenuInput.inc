@@ -170,6 +170,19 @@ void saveVrHandMenuCalibration(){
         ||s.weaponHandLeft!=m.calibratingWeaponLeft){
         m.message="Weapon or holding hand changed; capture not saved.";return;
     }
+    // The chosen save slot must be pinned to the mode the owner visually
+    // confirmed BEFORE entering calibration. A changed selection (or
+    // programmatic entry without confirmation) may never overwrite a
+    // different Minigun attachment profile.
+    if(kind==KharvoxWeaponKind::Chaingun
+        &&(m.calibrationRotorProfile!=m.rotorProfile
+            ||m.calibrationAlternateProfile!=m.alternateProfile
+            ||((m.rotorProfile||m.alternateProfile)
+                &&!m.calibrationProfileConfirmed))){
+        m.message="MINIGUN MODE CHANGED: cancel and verify visible mod.";
+        log("[VR-HAND-MENU] Minigun attachment save rejected: profile not verified");
+        return;
+    }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     std::string why;
     bool ok=false;
@@ -287,6 +300,13 @@ void startVrSelectedWeaponCalibration(){
     m.pendingNativeSelection=0;
     m.mode=kharvox::VrHandMenuMode::Calibrating;
     m.calibratingWeaponLeft=s.weaponHandLeft;
+    m.calibrationRotorProfile=m.rotorProfile;
+    m.calibrationAlternateProfile=m.alternateProfile;
+    m.calibrationProfileConfirmed=
+        (KharvoxWeaponKindFromKey(m.weapon())!=KharvoxWeaponKind::Chaingun
+         ||(!m.rotorProfile&&!m.alternateProfile)
+         ||m.minigunProfileConfirmed);
+    m.minigunProfileConfirmed=false;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
     m.rotationEdit={}; // a fresh unsaved rotation draft for this calibration
@@ -386,6 +406,21 @@ void requestVrSelectedWeaponCalibration(XrTime displayTime){
         return;
     }
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
+    // Native decl string scans DO NOT prove that Rotor or Turret is
+    // deployed (both may be installed). The first CALIBRATE press asks the
+    // player to look at the actual in-game handles; the second confirms
+    // that specific profile and begins capture. Never auto-switch the
+    // engine's selected attachment by changing only the menu label.
+    if(weapon==KharvoxWeaponKind::Chaingun
+        &&(m.rotorProfile||m.alternateProfile)
+        &&!m.minigunProfileConfirmed){
+        m.minigunProfileConfirmed=true;
+        m.message=std::string("CHECK VISIBLE ")
+            +(m.rotorProfile?"ROTOR":"TURRET")
+            +" HANDLES; press CALIBRATE again to confirm.";
+        log("[VR-HAND-MENU] Minigun attachment confirmation requested");
+        return;
+    }
     if(weapon==KharvoxWeaponCurrentKind()){
         startVrSelectedWeaponCalibration();
         return;
@@ -536,6 +571,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.pendingNativeSelection=0;
             m.alternateProfile=false;
             m.rotorProfile=false;
+            m.minigunProfileConfirmed=false;
             // A left-holster draw means LEFT primary, not "LEFT support".
             m.rightHand=!s.weaponHandLeft;
             const auto equipped=KharvoxWeaponCurrentKind();
@@ -586,6 +622,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     // B cancels capture without saving. From weapon profiles B returns to
     // Mods; from the top-level Mods page it closes the overlay.
     if(bEdge){
+        m.minigunProfileConfirmed=false;
         const bool wasLiveModCapture=m.liveCapture!=kharvox::VrLiveCapture::None;
         m.liveCapture=kharvox::VrLiveCapture::None;
         m.autoSelectingWeapon=false;
@@ -766,6 +803,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.pendingNativeSelection=0;
                 m.alternateProfile=false;
                 m.rotorProfile=false;
+                m.minigunProfileConfirmed=false;
             }
             const auto selectedNow=KharvoxWeaponKindFromKey(m.weapon());
             const bool heavyNow=selectedNow==KharvoxWeaponKind::GaussCannon
@@ -792,6 +830,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation={};
                 m.autoSelectingWeapon=false;
                 m.pendingNativeSelection=0;
+                m.minigunProfileConfirmed=false;
                 m.message="Live VR Mod Settings";
             }else if(chosen>=0&&chosen<10){
                 m.selectedWeapon=chosen;
@@ -799,12 +838,17 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.pendingNativeSelection=0;
                 m.alternateProfile=false;
                 m.rotorProfile=false;
+                m.minigunProfileConfirmed=false;
                 if(aEdge){m.navigation.settingsColumn=true;
                     m.navigation.usingStick=true;}
-            }else if(chosen==20)m.rightHand=false;
-            else if(chosen==21)m.rightHand=true;
+            }else if(chosen==20){
+                m.rightHand=false;m.minigunProfileConfirmed=false;
+            }else if(chosen==21){
+                m.rightHand=true;m.minigunProfileConfirmed=false;
+            }
             else if(chosen==31)resetVrMenuSelectedWeapon();
             else if(chosen==32){
+                m.minigunProfileConfirmed=false;
                 if(selectedNow==KharvoxWeaponKind::Chaingun){
                     // Normal -> Rotor -> Turret, three independent saved
                     // primary and support sets for each physical hand.
