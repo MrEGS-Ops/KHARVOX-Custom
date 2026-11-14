@@ -106,11 +106,9 @@ internal sealed class LauncherSettings
 
 internal static class LauncherSettingsStore
 {
+    // No Mod Manager bridge is required; the launcher is portable by default.
     internal static string DefaultPath =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KHARVOX_MODS_BRIDGE_FILE"))
-            ? LauncherUserData.PathFor("kharvox-launcher-settings.json")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "KHARVOX", "settings.json");
+        LauncherUserData.PathFor("kharvox-launcher-settings.json");
 
     internal static LauncherSettings Load(string path)
     {
