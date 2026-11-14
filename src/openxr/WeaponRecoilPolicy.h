@@ -63,6 +63,14 @@ struct WeaponRecoilSettings {
     std::array<float,10> strength=kWeaponRecoilDefaultStrength;
     std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
 };
+// Secondary-fire Grip drives the Heavy Assault Rifle's micro-missiles/scope.
+// Never contaminate that alternate mode with the primary-fire recoil profile.
+// Gauss and Minigun manage their own alternate behaviour separately.
+inline bool recoilAllowedForWeaponMode(int recoilWeapon,
+    bool secondaryFireForwarded) noexcept {
+    return !(recoilWeapon==weaponRecoilIndex("heavy_assault_rifle")
+        &&secondaryFireForwarded);
+}
 inline bool anyWeaponRecoilEnabled(const WeaponRecoilSettings& settings) noexcept {
     return std::any_of(settings.enabled.begin(),settings.enabled.end(),
         [](bool enabled){return enabled;});
