@@ -111,6 +111,97 @@ int main(){
     assert(normalKick.pitchDegrees>turretKick.pitchDegrees);
     assert(turretKick.pitchDegrees>0.f&&turretKick.shotEstimated);
 
+    // Heavy Assault Rifle alternate mode must be exempt from recoil.
+    assert(recoilAllowedForWeaponMode(2,false));
+    assert(!recoilAllowedForWeaponMode(2,true));
+    assert(recoilAllowedForWeaponMode(6,true));
+    assert(recoilAllowedForWeaponMode(9,true));
+
+    // Gauss firing is NOT a trigger-input estimate. Native ammo must
+    // decrease before even a huge 900% kick can be scheduled.
+    state={};
+    settings.strength[6]=9.f;
+    settings.recovery[6]=.25f;
+    auto gauss=[&](std::uint64_t time,bool trigger,int ammo,bool siege=false,
+                   bool twoHands=false){
+        return advanceWeaponRecoil(state,settings,
+            {6,trigger,twoHands,true,time,siege,ammo});
+    };
+    auto idle=gauss(6000,false,180);
+    assert(idle.pitchDegrees==0.f);
+    assert(gauss(6010,true,180).pitchDegrees==0.f);
+    assert(gauss(6200,true,180).pitchDegrees==0.f);
+    assert(gauss(6210,false,180).pitchDegrees==0.f);
+    // Five rapid pulls during cooldown and zero native ammo spent.
+    for(std::uint64_t ms=6240;ms<=6440;ms+=50){
+        assert(gauss(ms,true,180).pitchDegrees==0.f);
+        assert(gauss(ms+20,false,180).pitchDegrees==0.f);
+    }
+    assert(gauss(6450,true,180).pitchDegrees==0.f);
+    const auto spent=gauss(6540,true,165);
+    assert(spent.pitchDegrees==0.f&&!spent.shotEstimated);
+    const auto confirmedKick=gauss(6540+kGaussConfirmedAmmoGraceMs,true,165);
+    assert(confirmedKick.shotEstimated&&confirmedKick.pitchDegrees>30.f);
+    // Even with 25% recovery the gun must completely reset, never leave
+    // an exponential tail that contaminates the following shot.
+    const auto backToNeutral=gauss(6540+kGaussConfirmedAmmoGraceMs+421,true,165);
+    assert(backToNeutral.pitchDegrees==0.f&&backToNeutral.yawDegrees==0.f);
+
+    // 900% recovery is substantially faster, affecting the REAL Gauss
+    // return curve rather than just the value shown in the VR menu.
+    assert(gaussKickCycleMilliseconds(9.f)<100.f);
+    assert(gaussKickCycleMilliseconds(2.f)>170.f);
+    assert(gaussKickCycleMilliseconds(.25f)<=420.f);
+    settings.recovery[6]=9.f;
+    state={};
+    gauss(7500,false,165);
+    gauss(7510,true,165);
+    gauss(7550,true,150);
+    const auto fastKick=gauss(7550+kGaussConfirmedAmmoGraceMs,true,150);
+    assert(fastKick.shotEstimated&&fastKick.pitchDegrees>0.f);
+    const auto fastReset=gauss(7550+kGaussConfirmedAmmoGraceMs+110,true,150);
+    assert(fastReset.pitchDegrees==0.f&&fastReset.yawDegrees==0.f);
+    // No additional kick from trigger spam without another ammo debit.
+    assert(gauss(7700,false,150).pitchDegrees==0.f);
+    assert(gauss(7710,true,150).pitchDegrees==0.f);
+    assert(gauss(7800,true,150).pitchDegrees==0.f);
+    assert(gauss(7900,false,150).pitchDegrees==0.f);
+
+    // Siege charge can stay held for seconds. Even an early ammo spend
+    // must not kick until the shot is released, then ammo-confirmed.
+    state={};
+    settings.recovery[6]=9.f;
+    gauss(9000,false,150,true);
+    gauss(9010,true,150,true);
+    assert(gauss(10700,true,150,true).pitchDegrees==0.f);
+    assert(gauss(10710,true,135,true).pitchDegrees==0.f);
+    assert(gauss(10800,true,135,true).pitchDegrees==0.f);
+    const auto siegeReleased=gauss(10820,false,135,true);
+    assert(siegeReleased.pitchDegrees==0.f&&!siegeReleased.shotEstimated);
+    const auto siegeKick=gauss(10820+kGaussConfirmedAmmoGraceMs,false,135,true);
+    assert(siegeKick.shotEstimated&&siegeKick.pitchDegrees>0.f);
+    assert(gauss(10940,false,135,true).pitchDegrees==0.f);
+    // Also accept an ammo decrease observed only AFTER Siege release.
+    state={};
+    gauss(11000,false,135,true);
+    gauss(11010,true,135,true);
+    gauss(11200,false,135,true);
+    assert(gauss(11220,false,120,true).pitchDegrees==0.f);
+    assert(gauss(11220+kGaussConfirmedAmmoGraceMs,false,120,true).shotEstimated);
+
+    // If native ammo is unavailable, FAIL CLOSED instead of inventing a
+    // Gauss shot. Restart baseline when samples become valid again.
+    state={};
+    gauss(12000,false,120);
+    gauss(12010,true,-1);
+    assert(gauss(12200,true,-1).pitchDegrees==0.f);
+    assert(gauss(12210,true,105).pitchDegrees==0.f);
+    assert(gauss(12250,false,105).pitchDegrees==0.f);
+    settings.recovery[6]=9.1f;
+    assert(!validWeaponRecoilSettings(settings));
+    settings.recovery[6]=9.f;
+    assert(validWeaponRecoilSettings(settings));
+
     settings.recovery[7]=.25f; // new minimum must be valid and persisted
     assert(validWeaponRecoilSettings(settings));
     settings.recovery[7]=.24f;
