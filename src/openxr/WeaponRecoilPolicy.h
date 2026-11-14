@@ -61,6 +61,11 @@ struct WeaponRecoilSettings {
     std::array<bool,10> enabled{};
     std::array<float,10> strength=kWeaponRecoilDefaultStrength;
     std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
+    // Optional shared build-up formula; existing configurations remain
+    // unchanged unless the player opts in from the VR calibration page.
+    bool dynamicEnabled{};
+    float dynamicBuildUpPerShot{.20f}; // +20% per confirmed ammo event
+    float dynamicMaxMultiplier{3.f}; // 300% ceiling over weapon baseline
 };
 // Secondary-fire Grip drives the Heavy Assault Rifle's micro-missiles/scope.
 // Never contaminate that alternate mode with the primary-fire recoil profile.
@@ -75,6 +80,13 @@ inline bool anyWeaponRecoilEnabled(const WeaponRecoilSettings& settings) noexcep
         [](bool enabled){return enabled;});
 }
 inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noexcept {
+    if(!std::isfinite(settings.dynamicBuildUpPerShot)
+        ||settings.dynamicBuildUpPerShot<.1f
+        ||settings.dynamicBuildUpPerShot>.5f
+        ||!std::isfinite(settings.dynamicMaxMultiplier)
+        ||settings.dynamicMaxMultiplier<2.f
+        ||settings.dynamicMaxMultiplier>4.f)
+        return false;
     for(const float v:settings.strength)
         if(!std::isfinite(v)||v<.25f||v>9.f)return false;
     for(const float v:settings.recovery)
@@ -87,8 +99,11 @@ struct WeaponRecoilState {
     bool fireHeld{},confirmedShotQueued{};
     bool gaussCharging{},gaussAmmoSpentDuringCharge{};
     std::uint64_t lastTick{},lastTriggerTick{},gaussKickTick{};
+    std::uint64_t lastConfirmedShotTick{};
     float gaussKickPitch{},gaussKickYaw{};
-    std::uint32_t shotNumber{};
+    float queuedMultiplier{1.f},activeMultiplier{1.f};
+    std::uint32_t shotNumber{},confirmedStreak{};
+
 };
 struct WeaponRecoilInput {
     int weapon{-1};
@@ -114,6 +129,21 @@ inline float gaussKickCycleMilliseconds(float recovery) noexcept {
     // High kick, short return; no exponential tail into the next shot.
     return (std::clamp)(260.f/std::sqrt(recovery),70.f,420.f);
 }
+// Universal build-up: every ammo-confirmed firing event advances the
+// same capped multiplier. No shot timing estimate; 700ms is solely a
+// combo-expiration window, and cannot produce recoil without ammo debit.
+inline constexpr std::uint64_t kRecoilComboResetMs=700;
+inline float recoilDynamicMultiplier(const WeaponRecoilSettings& settings,
+                                     std::uint32_t streak) noexcept {
+    if(!settings.dynamicEnabled||streak==0)return 1.f;
+    return (std::min)(settings.dynamicMaxMultiplier,
+        1.f+(static_cast<float>(streak-1u)*settings.dynamicBuildUpPerShot));
+}
+// Linked recovery grows more gently than kick, so every shot remains
+// stronger but settles faster instead of creating an unbounded offset.
+inline float recoilDynamicRecoveryScale(float multiplier) noexcept {
+    return 1.f+.4f*(multiplier-1.f);
+}
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
@@ -138,6 +168,7 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state.gaussKickTick=0;
         state.gaussKickPitch=state.gaussKickYaw=0.f;
         state.confirmedShotQueued=false;
+        state.activeMultiplier=1.f;
         state.gaussCharging=input.weapon==6&&input.fireOnRelease;
         state.gaussAmmoSpentDuringCharge=false;
     }
@@ -150,7 +181,9 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     const float dt=static_cast<float>((std::min<std::uint64_t>)(rawDelta,80u));
     state.lastTick=input.nowMs;
     const std::size_t index=static_cast<std::size_t>(input.weapon);
-    const float recovery=settings.recovery[index];
+    const float recovery=(std::min)(9.f,
+        settings.recovery[index]*
+        recoilDynamicRecoveryScale(state.activeMultiplier));
     const float fastMs=input.twoHands?90.f:105.f/recovery;
     const float slowMs=input.twoHands?115.f:(input.fireHeld?1300.f:480.f)/recovery;
     const float yawMs=input.twoHands?95.f:(input.fireHeld?450.f:200.f)/recovery;
@@ -161,7 +194,8 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     bool kickApplied=false;
     // Process ONLY a shot confirmed on a previous render update.
     if(state.confirmedShotQueued&&!input.twoHands&&!triggerEdge){
-        const float scale=settings.strength[index];
+        const float scale=settings.strength[index]*state.queuedMultiplier;
+        state.activeMultiplier=state.queuedMultiplier;
         const float maxPitch=profile.maximumPitch*(std::max)(1.f,scale);
         const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
         if(input.weapon==6){
@@ -187,6 +221,9 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state.gaussKickTick=0;
         state.gaussKickPitch=state.gaussKickYaw=0.f;
         state.gaussAmmoSpentDuringCharge=false;
+        state.confirmedStreak=0;
+        state.lastConfirmedShotTick=0;
+        state.activeMultiplier=1.f;
     }
     // Observe native AMMO, not trigger frequency. A missing/stale value
     // breaks the baseline, preventing phantom kicks when it reappears.
@@ -200,18 +237,31 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     const bool recentlyFired=state.lastTriggerTick
         &&input.nowMs>=state.lastTriggerTick
         &&input.nowMs-state.lastTriggerTick<=500u;
+    const auto confirmShot=[&](){
+        // Count observed ammo-debit events rather than bullets, since
+        // rapid automatic fire may batch multiple rounds per snapshot.
+        const bool inCombo=state.lastConfirmedShotTick
+            &&input.nowMs>=state.lastConfirmedShotTick
+            &&input.nowMs-state.lastConfirmedShotTick<=kRecoilComboResetMs;
+        state.confirmedStreak=inCombo
+            ?(std::min)(state.confirmedStreak+1u,1000u):1u;
+        state.lastConfirmedShotTick=input.nowMs;
+        state.queuedMultiplier=recoilDynamicMultiplier(
+            settings,state.confirmedStreak);
+        state.confirmedShotQueued=true;
+    };
     if(ammoDebit&&!input.twoHands&&recentlyFired){
         if(input.weapon==6&&state.gaussCharging&&input.fireHeld){
             // Siege may debit energy while charging, before the projectile.
             state.gaussAmmoSpentDuringCharge=true;
         }else{
-            state.confirmedShotQueued=true;
+            confirmShot();
             state.gaussAmmoSpentDuringCharge=false;
         }
     }
     if(input.weapon==6&&triggerRelease){
         if(state.gaussAmmoSpentDuringCharge&&!input.twoHands)
-            state.confirmedShotQueued=true;
+            confirmShot();
         state.gaussAmmoSpentDuringCharge=false;
         state.gaussCharging=false;
     }
@@ -220,7 +270,9 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         if(!state.gaussKickTick)return {0.f,0.f,kickApplied};
         const float elapsed=static_cast<float>(input.nowMs>=state.gaussKickTick
             ?input.nowMs-state.gaussKickTick:0u);
-        const float t=(std::clamp)(elapsed/gaussKickCycleMilliseconds(recovery),
+        const float gaussRecovery=(std::min)(9.f,settings.recovery[index]*
+            recoilDynamicRecoveryScale(state.activeMultiplier));
+        const float t=(std::clamp)(elapsed/gaussKickCycleMilliseconds(gaussRecovery),
             0.f,1.f);
         const float envelope=1.f-t*t*(3.f-2.f*t);
         if(t>=1.f){
