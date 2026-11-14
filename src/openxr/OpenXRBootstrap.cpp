@@ -4734,9 +4734,9 @@ void updateGameplayActions(XrTime displayTime){
     // Use that wider world context ONLY to publish the controller focus ray.
     // Movement, firing, menus, scripted executions and Boxing Guard continue
     // to obey their existing strict gameplay ownership checks.
-    const bool worldInteractionFocus=KharvoxCameraWorldActive()
-        &&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu
-        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+    const bool worldInteractionFocus=kharvox::worldHandFocusContext(
+        KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
+        deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
         ||(s.customMods.boxingGuard&&gameplay)){
         // Boxing Guard's raised-hands stance still activates its own
