@@ -76,8 +76,13 @@ void paintVrHandMenu() {
         FillRect(dc,&rect,brush);
         DeleteObject(brush);
     };
-    const bool calibrationView=m.mode==kharvox::VrHandMenuMode::Calibrating;
-    if(calibrationView){
+    const bool disconnectView=controllerOnlyLocked.load(std::memory_order_acquire);
+    const bool calibrationView=!disconnectView
+        &&m.mode==kharvox::VrHandMenuMode::Calibrating;
+    if(disconnectView){
+        fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
+        fill(38,82,884,4,RGB(213,143,54));
+    }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
         fill(22,144,590,432,RGB(15,22,32));
@@ -104,7 +109,20 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(calibrationView){
+    if(disconnectView){
+        SelectObject(dc,title);
+        write(92,149,"CONTROLLERS DISCONNECTED",white);
+        SelectObject(dc,regular);
+        write(95,247,"Controller-only gameplay is locked.",RGB(255,204,128));
+        write(95,303,"Wake both physical Quest controllers.",white);
+        write(95,354,"Press BOTH thumbsticks together, then release.",white);
+        SelectObject(dc,smallFont);
+        write(95,423,"Hand-tracking emulation cannot fire, Grip or throw grenades.",muted);
+        write(95,471,"Requires tracked controllers and a real controller profile.",muted);
+        write(95,530,KharvoxHudPauseMenuActive()
+            ?"DOOM PAUSED: after reconnecting, press Pause to resume."
+            :"Native Pause requested. Combat inputs remain blocked.",RGB(84,233,214));
+    }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
@@ -530,7 +548,7 @@ void paintVrHandMenu() {
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
-    if(!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+    if(!disconnectView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -551,7 +569,7 @@ void paintVrHandMenu() {
         const size_t b=i*4;
         dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];
         const int x=int(i%vrMenuW),y=int(i/vrMenuW);
-        dst[b+3]=(!calibrationView
+        dst[b+3]=(disconnectView||!calibrationView
             ||(x>=22&&x<612&&y>=144&&y<576))?255:0;
     }
     SelectObject(dc,oldBitmap);
