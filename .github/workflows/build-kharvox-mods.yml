@@ -119,8 +119,10 @@ jobs:
         run: |
           $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KharvoxLauncher.exe"
           foreach ($test in @("--self-test-retail-mods","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
-            & $exe $test
-            if ($LASTEXITCODE -ne 0) { throw "Retail launcher regression $test failed ($LASTEXITCODE)" }
+            # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
+            # PowerShell 7. This matches the verified native Windows CI tests.
+            $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow
+            if ($process.ExitCode -ne 0) { throw "Retail launcher regression $test failed ($($process.ExitCode))" }
           }
           if ((git hash-object launcher/KharvoxLauncher/MainForm.cs).Trim() -ne "fdfdd46536a68853612b7ce5a0d2418541a60586") { throw "Cactus MainForm.cs must remain byte-for-byte unmodified." }
 
