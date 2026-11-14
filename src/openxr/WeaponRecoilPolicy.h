@@ -123,10 +123,10 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         &&input.nowMs-state.pendingShotTick>=kWeaponRecoilPostFireDelayMs){
         const float scale=settings.strength[index];
         // 900% scales the actual impulse and kick ceiling, not only the UI.
-        const float maxPitch=profile.maximumPitch*std::max(1.f,scale);
-        state.fastPitch=std::min(maxPitch*.45f,
+        const float maxPitch=profile.maximumPitch*(std::max)(1.f,scale);
+        state.fastPitch=(std::min)(maxPitch*.45f,
             state.fastPitch+profile.pitchPerShot*.38f*scale);
-        state.climbPitch=std::min(maxPitch,
+        state.climbPitch=(std::min)(maxPitch,
             state.climbPitch+profile.pitchPerShot*.62f*scale);
         const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
         state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
@@ -147,8 +147,8 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     }
     state.fireHeld=input.fireHeld;
     const float maxPitch=profile.maximumPitch*
-        std::max(1.f,settings.strength[index]);
-    return {std::min(maxPitch,state.fastPitch+state.climbPitch),
+        (std::max)(1.f,settings.strength[index]);
+    return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
             state.yaw,kickApplied};
 }
 inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSettings& out){
