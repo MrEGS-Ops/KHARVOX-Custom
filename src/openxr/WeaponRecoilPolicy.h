@@ -84,13 +84,10 @@ inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noex
 }
 struct WeaponRecoilState {
     float fastPitch{},climbPitch{},yaw{};
-    int weapon{-1};
-    bool fireHeld{},pendingShot{},gaussCharging{};
-    bool gaussAttemptActive{},gaussAmmoDebitedAwaitRelease{};
-    int gaussLastAmmo{-1};
-    std::uint64_t gaussAttemptTick{},gaussReleaseTick{};
-    std::uint64_t lastTick{},lastShotTick{},pendingShotTick{};
-    std::uint64_t gaussKickTick{};
+    int weapon{-1},lastAmmoTotal{-1};
+    bool fireHeld{},confirmedShotQueued{};
+    bool gaussCharging{},gaussAmmoSpentDuringCharge{};
+    std::uint64_t lastTick{},lastTriggerTick{},gaussKickTick{};
     float gaussKickPitch{},gaussKickYaw{};
     std::uint32_t shotNumber{};
 };
@@ -98,38 +95,32 @@ struct WeaponRecoilInput {
     int weapon{-1};
     bool fireHeld{},twoHands{},gameplay{};
     std::uint64_t nowMs{};
-    // Gauss Siege: this trigger hold is a charging shot. Its kick is
-    // scheduled AFTER release; normal Gauss fires on press.
-    // This is only an input/weapon-mode estimate, not a DOOM shot callback.
+    // Native Siege may charge until trigger release. Never kick on a
+    // changing ammo total mid-charge, only after the release is complete.
     bool fireOnRelease{};
-    // Validated DOOM ammo total; -1 when unsupported or stale. A decreasing
-    // total, not trigger spam, is required for Gauss recoil.
+    // Read-only, validated DOOM ammo snapshot. -1 = missing/stale.
     int confirmedAmmoTotal{-1};
 };
 struct WeaponRecoilOutput {
     float pitchDegrees{},yawDegrees{};
-    bool shotEstimated{};
+    bool shotEstimated{}; // historical API name: now means native ammo-confirmed
 };
-// A trigger edge is NOT a projectile event. DOOM consumes its native Fire
-// input separately from our OpenXR render update; previously adding kick on
-// that same frame bent the very first shot. Keep the submitted muzzle/weapon
-// pose untouched at first input, then commit each queued kick only AFTER a
-// subsequent gameplay tick and a short native-fire grace period. This is an
-// input-level estimate, not an asserted native shot confirmation.
-inline constexpr std::uint64_t kWeaponRecoilPostFireDelayMs=55;
-// Gauss is a hard single-shot punch with a guaranteed finite recovery.
-// 25% = 420ms, 100% = 260ms, 200% = 184ms, 900% = 87ms.
-// This is exact return-to-zero, not a lingering exponential tail.
+// The recoil source is an OBSERVED DOOM AMMO DEBIT, never elapsed time after
+// a trigger pull. The native ammo snapshot may coalesce several shots on a
+// fast automatic into one debit; one kick per observed change is deliberate.
+// Defer the recoil just ONE render update after confirming the ammo decrease
+// so no firing frame can have its original muzzle trajectory modified.
 inline float gaussKickCycleMilliseconds(float recovery) noexcept {
+    // Full zero after 420ms at 25%; 260ms at 100%; 87ms at 900%.
+    // High kick, short return; no exponential tail into the next shot.
     return (std::clamp)(260.f/std::sqrt(recovery),70.f,420.f);
 }
-// Ammo decrease is observed AFTER the DOOM native fire path (snapshot polls
-// every 100ms). Keep just one frame of grace; other weapons retain 55ms.
-inline constexpr std::uint64_t kGaussConfirmedAmmoGraceMs=12;
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
-    if(!input.gameplay||input.weapon<0
+    // The pistol is intentionally excluded: its infinite ammo cannot
+    // provide a reliable shot confirmation, and its owner wants no recoil.
+    if(!input.gameplay||input.weapon<=0
         ||input.weapon>=static_cast<int>(kWeaponRecoilProfiles.size())
         ||!validWeaponRecoilSettings(settings)
         ||!settings.enabled[static_cast<std::size_t>(input.weapon)]){
@@ -139,35 +130,25 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     if(state.weapon!=input.weapon){
         state={};state.weapon=input.weapon;state.lastTick=input.nowMs;
     }
-    // Every new trigger pull gets an uncompromised first-shot trajectory.
-    // Recoil can accumulate only from continued hold on an automatic
-    // weapon; a new tap doesn't inherit a stale kick from another tap.
     const bool triggerEdge=input.fireHeld&&!state.fireHeld;
     const bool triggerRelease=!input.fireHeld&&state.fireHeld;
     if(triggerEdge){
-        state.fastPitch=0.f;
-        state.climbPitch=0.f;
-        state.yaw=0.f;
-        state.pendingShot=false;
+        // Every NEW trigger press starts from original aim. No old
+        // recovery or delayed ammo confirmation may bend a first shot.
+        state.fastPitch=state.climbPitch=state.yaw=0.f;
         state.gaussKickTick=0;
         state.gaussKickPitch=state.gaussKickYaw=0.f;
+        state.confirmedShotQueued=false;
         state.gaussCharging=input.weapon==6&&input.fireOnRelease;
-        if(input.weapon==6){
-            state.gaussAttemptActive=true;
-            state.gaussAttemptTick=input.nowMs;
-            state.gaussReleaseTick=0;
-            state.gaussAmmoDebitedAwaitRelease=false;
-        }
+        state.gaussAmmoSpentDuringCharge=false;
     }
-    if(input.weapon==6&&input.fireHeld&&input.fireOnRelease){
-        // Siege may transition into its native charge declaration a frame
-        // AFTER trigger-down. Cancel a queued normal shot before it kicks.
+    if(input.weapon==6&&input.fireHeld&&input.fireOnRelease)
         state.gaussCharging=true;
-        state.pendingShot=false;
-    }
+    if(input.fireHeld)
+        state.lastTriggerTick=input.nowMs;
     const auto rawDelta=input.nowMs>=state.lastTick
         ?input.nowMs-state.lastTick:0u;
-    const float dt=static_cast<float>(std::min<std::uint64_t>(rawDelta,80u));
+    const float dt=static_cast<float>((std::min<std::uint64_t>)(rawDelta,80u));
     state.lastTick=input.nowMs;
     const std::size_t index=static_cast<std::size_t>(input.weapon);
     const float recovery=settings.recovery[index];
@@ -179,68 +160,12 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     state.yaw*=std::exp(-dt/yawMs);
     const auto& profile=kWeaponRecoilProfiles[index];
     bool kickApplied=false;
-    if(input.weapon==6){
-        // A trigger edge is only an ATTEMPT: it may fall in the Gauss
-        // cooldown, or be a lengthy Siege charge. A real ammo decrease is
-        // mandatory before the recoil can kick. No unreliable native pointer
-        // is read here: the input comes from the validated ammo cache.
-        bool ammoSpent=false;
-        if(input.confirmedAmmoTotal>=0){
-            ammoSpent=state.gaussLastAmmo>=0
-                &&input.confirmedAmmoTotal<state.gaussLastAmmo;
-            state.gaussLastAmmo=input.confirmedAmmoTotal;
-        }else{
-            // A stale/unavailable sample cannot confirm a shot and must not
-            // turn a later sample into a false decrement across a long gap.
-            state.gaussLastAmmo=-1;
-        }
-        if(triggerRelease)state.gaussReleaseTick=input.nowMs;
-        // A long Siege charge may be held for many seconds. Expiration is
-        // measured AFTER release, never from the original charge start.
-        if(state.gaussAttemptActive&&!input.fireHeld
-            &&state.gaussReleaseTick
-            &&input.nowMs>=state.gaussReleaseTick
-            &&input.nowMs-state.gaussReleaseTick>900u){
-            state.gaussAttemptActive=false;
-            state.gaussAmmoDebitedAwaitRelease=false;
-        }
-        if(ammoSpent&&state.gaussAttemptActive){
-            if(state.gaussCharging&&input.fireHeld){
-                // If Siege consumes ammo during charge rather than release,
-                // don't recoil until trigger-up confirms charge completion.
-                state.gaussAmmoDebitedAwaitRelease=true;
-            }else{
-                state.pendingShot=true;
-                state.pendingShotTick=input.nowMs;
-                state.gaussAttemptActive=false;
-                state.gaussAmmoDebitedAwaitRelease=false;
-            }
-        }
-        if(triggerRelease&&state.gaussAmmoDebitedAwaitRelease){
-            state.pendingShot=true;
-            state.pendingShotTick=input.nowMs;
-            state.gaussAttemptActive=false;
-            state.gaussAmmoDebitedAwaitRelease=false;
-        }
-    }
-    if(input.twoHands){
-        // A pending one-handed kick must never fire after the second hand
-        // locks on, nor after holstering/weapon switching (handled above).
-        state.pendingShot=false;
-        state.gaussKickTick=0;
-        state.gaussKickPitch=state.gaussKickYaw=0.f;
-    }else if(state.pendingShot
-        &&input.nowMs>state.pendingShotTick
-        &&input.nowMs-state.pendingShotTick>=
-            (input.weapon==6?kGaussConfirmedAmmoGraceMs
-                :kWeaponRecoilPostFireDelayMs)){
+    // Process ONLY a shot confirmed on a previous render update.
+    if(state.confirmedShotQueued&&!input.twoHands&&!triggerEdge){
         const float scale=settings.strength[index];
-        // 900% scales the actual impulse and kick ceiling, not only the UI.
         const float maxPitch=profile.maximumPitch*(std::max)(1.f,scale);
         const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
         if(input.weapon==6){
-            // Big punch, quick *complete* return. Never build slow climb:
-            // no amount of low saved recovery can spoil the next shot.
             state.gaussKickPitch=(std::min)(maxPitch,
                 profile.pitchPerShot*scale*1.65f);
             state.gaussKickYaw=side*profile.yawPerShot*scale;
@@ -251,37 +176,53 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
                 state.fastPitch+profile.pitchPerShot*.38f*scale);
             state.climbPitch=(std::min)(maxPitch,
                 state.climbPitch+profile.pitchPerShot*.62f*scale);
-            state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
+            state.yaw=(std::clamp)(state.yaw+side*profile.yawPerShot*scale,
                 -maxPitch*.3f,maxPitch*.3f);
         }
-        state.pendingShot=false;
         kickApplied=true;
     }
-    if(!input.twoHands){
-        if(input.weapon==6){
-            // Gauss has NO trigger-timer shot estimator. Only the
-            // native ammo-spend confirmation above may schedule recoil.
-        }else if(input.fireHeld){
-            const bool repeated=profile.automaticIntervalMs
-                &&input.nowMs>=state.lastShotTick
-                &&input.nowMs-state.lastShotTick>=profile.automaticIntervalMs;
-            if((triggerEdge||repeated)&&!state.pendingShot){
-                // Schedule, don't rotate the muzzle on the fire-input frame.
-                state.pendingShot=true;
-                state.pendingShotTick=input.nowMs;
-                state.lastShotTick=input.nowMs;
-            }
+    state.confirmedShotQueued=false;
+    if(input.twoHands){
+        // Native two-hand aiming wins, including pending recoil.
+        state.fastPitch=state.climbPitch=state.yaw=0.f;
+        state.gaussKickTick=0;
+        state.gaussKickPitch=state.gaussKickYaw=0.f;
+        state.gaussAmmoSpentDuringCharge=false;
+    }
+    // Observe native AMMO, not trigger frequency. A missing/stale value
+    // breaks the baseline, preventing phantom kicks when it reappears.
+    const bool ammoDebit=input.confirmedAmmoTotal>=0
+        &&state.lastAmmoTotal>=0
+        &&input.confirmedAmmoTotal<state.lastAmmoTotal;
+    state.lastAmmoTotal=input.confirmedAmmoTotal;
+    // Trigger is an *authorization*, not a shot. The short trailing window
+    // accommodates the inventory snapshot's 100ms polling interval AFTER
+    // single-shot trigger release. Elapsed time alone never creates recoil.
+    const bool recentlyFired=state.lastTriggerTick
+        &&input.nowMs>=state.lastTriggerTick
+        &&input.nowMs-state.lastTriggerTick<=500u;
+    if(ammoDebit&&!input.twoHands&&recentlyFired){
+        if(input.weapon==6&&state.gaussCharging&&input.fireHeld){
+            // Siege may debit energy while charging, before the projectile.
+            state.gaussAmmoSpentDuringCharge=true;
+        }else{
+            state.confirmedShotQueued=true;
+            state.gaussAmmoSpentDuringCharge=false;
         }
+    }
+    if(input.weapon==6&&triggerRelease){
+        if(state.gaussAmmoSpentDuringCharge&&!input.twoHands)
+            state.confirmedShotQueued=true;
+        state.gaussAmmoSpentDuringCharge=false;
+        state.gaussCharging=false;
     }
     state.fireHeld=input.fireHeld;
     if(input.weapon==6){
         if(!state.gaussKickTick)return {0.f,0.f,kickApplied};
         const float elapsed=static_cast<float>(input.nowMs>=state.gaussKickTick
-            ?input.nowMs-state.gaussKickTick:0);
+            ?input.nowMs-state.gaussKickTick:0u);
         const float t=(std::clamp)(elapsed/gaussKickCycleMilliseconds(recovery),
             0.f,1.f);
-        // Smoothstep returns the gun exactly to native aim at the end of
-        // its short cycle; there is no exponential tail between shots.
         const float envelope=1.f-t*t*(3.f-2.f*t);
         if(t>=1.f){
             state.gaussKickTick=0;
@@ -295,10 +236,6 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
             state.yaw,kickApplied};
 }
-// schema 2 stores an independent toggle per weapon. Previous schema 1
-// stored a global enable and two tuning columns; migrate the global value
-// to ALL weapons (including a newly introduced Turret profile) on load.
-// The original file is never rewritten until the user saves a setting.
 inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSettings& out){
     namespace fs=std::filesystem;
     std::error_code ec;
