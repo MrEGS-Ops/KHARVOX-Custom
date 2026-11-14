@@ -87,6 +87,7 @@ struct VrLiveSettings {
     float crouchStandDelta{0.f};
     float crouchLoweredDelta{-0.56f};
     bool crouchStandSaved{},crouchLoweredSaved{};
+    bool gaussRequireTwoHandFire{true}; // Gauss trigger needs BOTH physical Grips and an acquired support point
     int gloryKillHz{40}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
     float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
@@ -252,6 +253,10 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
             }
             if(!row.eof()||(count!=5&&count!=6))return false;
             if(count==5)next.enabledOverrides[5]=-1; // preserve legacy desktop PAINSAW selection
+        }else if(name=="gauss_two_hand_fire"){
+            int required{};std::string extra;
+            if(!(row>>required)||(required!=0&&required!=1)||(row>>extra))return false;
+            next.gaussRequireTwoHandFire=required!=0;
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
@@ -281,6 +286,7 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
     };
     point("hip_right",s.hipShift[0]);point("hip_left",s.hipShift[1]);
     point("wheel_right",s.wheelShift[0]);point("wheel_left",s.wheelShift[1]);
+    out<<"gauss_two_hand_fire "<<(s.gaussRequireTwoHandFire?1:0)<<'\n';
     out<<"standing "<<s.crouchStandSaved<<' '<<s.crouchStandDelta<<'\n'
        <<"lowered "<<s.crouchLoweredSaved<<' '<<s.crouchLoweredDelta<<'\n'
        <<"killtime_hz "<<s.gloryKillHz<<'\n'
