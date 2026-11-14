@@ -20,6 +20,27 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// The native Chaingun object can reference both installed mods. Treat
+// those declaration strings as hints, NEVER proof of the displayed mod.
+// No arbitrary Turret-over-Rotor priority when both names occur.
+enum class VrChaingunAttachmentHint { Unknown, Rotor, Turret, Ambiguous };
+inline constexpr VrChaingunAttachmentHint vrChaingunAttachmentHint(
+    bool rotorNameFound,bool turretNameFound) noexcept {
+    return rotorNameFound&&turretNameFound
+        ?VrChaingunAttachmentHint::Ambiguous
+        :rotorNameFound?VrChaingunAttachmentHint::Rotor
+        :turretNameFound?VrChaingunAttachmentHint::Turret
+        :VrChaingunAttachmentHint::Unknown;
+}
+inline constexpr const char* vrChaingunAttachmentHintName(
+    VrChaingunAttachmentHint hint) noexcept {
+    switch(hint){
+        case VrChaingunAttachmentHint::Rotor:return "ROTOR";
+        case VrChaingunAttachmentHint::Turret:return "TURRET";
+        case VrChaingunAttachmentHint::Ambiguous:return "BOTH DECLARED";
+        default:return "UNVERIFIED";
+    }
+}
 // Grip-held aim preview works on every primary weapon.
 // Siege/Turret is engaged automatically when its mode is selected;
 // Grip itself is reserved for testing position, never alt fire in calibration.
@@ -339,6 +360,12 @@ struct VrHandMenuState {
     // independent from both legacy Normal and existing Turret poses.
     bool alternateProfile{};
     bool rotorProfile{};
+    // Armed only by deliberately pressing CALIBRATE after visually
+    // inspecting the deployed Minigun mod. The second press enters
+    // capture. No name scan can silently authorize a wrong profile.
+    bool minigunProfileConfirmed{};
+    bool calibrationProfileConfirmed{},calibrationRotorProfile{},
+        calibrationAlternateProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};

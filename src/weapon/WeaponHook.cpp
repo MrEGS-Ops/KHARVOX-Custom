@@ -1132,10 +1132,11 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
     if(previousTurret!=turretDecl)
         log(std::string("[CHAINGUN] native Turret decl ")
             +(turretDecl?"ACTIVE":"released"));
-    // Rotor/Rotator attachment lives in a separate native declaration.
-    // Only a validated active mod declaration enables its hand pose;
-    // mere attachment ownership is not a mode activation.
-    const bool rotorDecl=kind==KharvoxWeaponKind::Chaingun&&!turretDecl
+    // The active Chaingun object can reference BOTH installed upgrades.
+    // Preserve each discovery flag independently. Never suppress Rotor
+    // merely because the broad scan also finds Turret: both means
+    // AMBIGUOUS, not that Turret is currently deployed.
+    const bool rotorDecl=kind==KharvoxWeaponKind::Chaingun
         &&(weaponObjectContainsAsciiInsensitive(weaponData,"rotator")
             ||weaponObjectContainsAsciiInsensitive(weaponData,"rotor"));
     const bool previousRotor=chaingunRotorModeActive.exchange(
@@ -1143,6 +1144,9 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
     if(previousRotor!=rotorDecl)
         log(std::string("[CHAINGUN] native Rotor decl ")
             +(rotorDecl?"ACTIVE":"released"));
+    if(kind==KharvoxWeaponKind::Chaingun&&turretDecl&&rotorDecl
+       &&(previousTurret!=turretDecl||previousRotor!=rotorDecl))
+        log("[CHAINGUN] BOTH upgrade names present; variant AMBIGUOUS, never assume Turret");
     activeWeaponKind.store(kind, std::memory_order_release);
     activeWeaponData.store(address, std::memory_order_release);
     if (!changed && kind == KharvoxWeaponKind::Unknown) return;

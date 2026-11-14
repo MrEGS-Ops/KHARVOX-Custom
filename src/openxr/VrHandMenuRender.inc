@@ -139,8 +139,12 @@ void paintVrHandMenu() {
                     write(49,373,"Hold "+target+" Grip to move GUN.",white);
                     write(49,411,"Gun offset remains where you left it.",muted);
                 }
-                if(heavy&&m.alternateProfile)
-                    write(39,450,"SIEGE / TURRET PROFILE",RGB(84,233,214));
+                if(kind==KharvoxWeaponKind::Chaingun)
+                    write(39,450,m.rotorProfile?"MINIGUN: ROTOR PROFILE"
+                        :m.alternateProfile?"MINIGUN: TURRET PROFILE"
+                        :"MINIGUN: NORMAL PROFILE",RGB(84,233,214));
+                else if(heavy&&m.alternateProfile)
+                    write(39,450,"GAUSS: SIEGE PROFILE",RGB(84,233,214));
             }else{
                 fill(35,289,564,151,RGB(31,43,59));
                 fill(35,289,4,151,RGB(84,233,214));
@@ -492,7 +496,8 @@ void paintVrHandMenu() {
         ?"PRIMARY: position + rotation"
         :"SUPPORT: position only",muted);
     if(heavy){
-        button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
+        button(531,306,384,49,m.alternateProfile||m.rotorProfile,
+            m.hovered==32||gamepadFocus(32));
         write(550,317,selectedKind==KharvoxWeaponKind::Chaingun
             ?(m.alternateProfile?"PROFILE: TURRET"
                 :m.rotorProfile?"PROFILE: ROTOR":"PROFILE: NORMAL")
@@ -504,15 +509,23 @@ void paintVrHandMenu() {
     }
     button(531,363,384,69,false,m.hovered==30||gamepadFocus(30));
     SelectObject(dc,title);
-    write(568,376,"CALIBRATE",white);
+    write(m.minigunProfileConfirmed?548:568,376,
+        m.minigunProfileConfirmed?"CONFIRM MODE":"CALIBRATE",white);
     button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
-    write(538,609,selectedKind==KharvoxWeaponKind::Chaingun
-        ?"Minigun: NORMAL / ROTOR / TURRET"
-        :"DEFAULT: factory   L/R/B: custom",muted);
+    if(selectedKind==KharvoxWeaponKind::Chaingun){
+        const auto hint=kharvox::vrChaingunAttachmentHint(
+            KharvoxWeaponChaingunRotorModeActive(),
+            KharvoxWeaponChaingunTurretModeActive());
+        write(538,556,std::string("NATIVE NAME HINT: ")
+            +kharvox::vrChaingunAttachmentHintName(hint),muted);
+        write(538,609,"VERIFY VISIBLE MOD BEFORE CAPTURE",muted);
+    }else{
+        write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
+        write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
+    }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.

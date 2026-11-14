@@ -2290,30 +2290,37 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
-// An installed upgrade contains "siege"/"turret" in its native declaration.
-// That name alone does not mean it is deployed. Gate mode selection on the
-// secondary-fire Grip actually being forwarded to the game.
-bool heavyAltMode(KharvoxWeaponKind kind){
-    const bool upgradePresent=kind==KharvoxWeaponKind::GaussCannon
-        ?KharvoxWeaponGaussSiegeChargeActive()
-        :kind==KharvoxWeaponKind::Chaingun
-            &&KharvoxWeaponChaingunTurretModeActive();
-    if(!upgradePresent)return false;
-    // Calibration menu owns Grip; its explicit Normal/Alternate selection wins.
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
-       &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
-        return s.vrHandMenu.alternateProfile;
-    return s.heavyAlternateInputForwarded;
+// Native weapon declaration name scans can include BOTH installed
+// Minigun upgrades. Never assume Turret wins; ambiguous modes must not
+// borrow either saved attachment pose during ordinary gameplay.
+kharvox::VrChaingunAttachmentHint chaingunAttachmentHint(){
+    return kharvox::vrChaingunAttachmentHint(
+        KharvoxWeaponChaingunRotorModeActive(),
+        KharvoxWeaponChaingunTurretModeActive());
 }
-// Rotor/Rotator is the second native Chaingun weapon modification, not a
-// synonym for Turret. Keep the existing Turret boolean and its profiles.
+bool heavyAltMode(KharvoxWeaponKind kind){
+    if(kind!=KharvoxWeaponKind::GaussCannon
+        &&kind!=KharvoxWeaponKind::Chaingun)return false;
+    // The in-headset menu selection is for PREVIEW/CAPTURE only, not
+    // evidence that DOOM activated a particular attachment. An explicit
+    // physical-attachment confirmation is required before saving.
+    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+        &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
+        return s.vrHandMenu.alternateProfile;
+    if(!s.heavyAlternateInputForwarded)return false;
+    if(kind==KharvoxWeaponKind::GaussCannon)
+        return KharvoxWeaponGaussSiegeChargeActive();
+    return chaingunAttachmentHint()==
+        kharvox::VrChaingunAttachmentHint::Turret;
+}
 bool chaingunRotorHandMode(KharvoxWeaponKind kind){
     if(kind!=KharvoxWeaponKind::Chaingun)return false;
     if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
         &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
         return s.vrHandMenu.rotorProfile;
-    return !heavyAltMode(kind)&&s.heavyAlternateInputForwarded
-        &&KharvoxWeaponChaingunRotorModeActive();
+    return s.heavyAlternateInputForwarded
+        &&chaingunAttachmentHint()==
+            kharvox::VrChaingunAttachmentHint::Rotor;
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
     const bool rotor=chaingunRotorHandMode(kind);
