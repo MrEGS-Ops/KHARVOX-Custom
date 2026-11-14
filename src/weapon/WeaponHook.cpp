@@ -111,6 +111,7 @@ LONG weaponKickPreviousValue{};
 std::atomic<KharvoxWeaponKind> activeWeaponKind{KharvoxWeaponKind::Unknown};
 std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<bool> chaingunTurretModeActive{};
+std::atomic<bool> chaingunRotorModeActive{};
 std::atomic<bool> weaponHolstered{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
@@ -1131,6 +1132,17 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
     if(previousTurret!=turretDecl)
         log(std::string("[CHAINGUN] native Turret decl ")
             +(turretDecl?"ACTIVE":"released"));
+    // Rotor/Rotator attachment lives in a separate native declaration.
+    // Only a validated active mod declaration enables its hand pose;
+    // mere attachment ownership is not a mode activation.
+    const bool rotorDecl=kind==KharvoxWeaponKind::Chaingun&&!turretDecl
+        &&(weaponObjectContainsAsciiInsensitive(weaponData,"rotator")
+            ||weaponObjectContainsAsciiInsensitive(weaponData,"rotor"));
+    const bool previousRotor=chaingunRotorModeActive.exchange(
+        rotorDecl,std::memory_order_acq_rel);
+    if(previousRotor!=rotorDecl)
+        log(std::string("[CHAINGUN] native Rotor decl ")
+            +(rotorDecl?"ACTIVE":"released"));
     activeWeaponKind.store(kind, std::memory_order_release);
     activeWeaponData.store(address, std::memory_order_release);
     if (!changed && kind == KharvoxWeaponKind::Unknown) return;
@@ -2771,6 +2783,9 @@ bool KharvoxWeaponGaussSiegeChargeActive() {
 }
 bool KharvoxWeaponChaingunTurretModeActive() {
     return chaingunTurretModeActive.load(std::memory_order_acquire);
+}
+bool KharvoxWeaponChaingunRotorModeActive() {
+    return chaingunRotorModeActive.load(std::memory_order_acquire);
 }
 
 void KharvoxWeaponSetHolstered(bool holstered) {
