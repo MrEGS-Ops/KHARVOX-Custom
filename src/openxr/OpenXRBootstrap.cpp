@@ -2870,9 +2870,6 @@ void updateWeapon6Dof(){
         s.recoilState,s.recoilSettings,
         {recoilWeapon,s.primaryFireDown&&validAmmo,
          gameplayTwoHandSteering,recoilGameplay,GetTickCount64(),
-         kind==KharvoxWeaponKind::GaussCannon
-            &&(s.heavyAlternateInputForwarded
-                ||KharvoxWeaponGaussSiegeChargeActive()),
          nativeAmmoTotal});
     if(recoil.pitchDegrees>.0001f||std::abs(recoil.yawDegrees)>.0001f){
         constexpr float radiansPerDegree=0.017453292519943295f;

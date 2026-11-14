@@ -19,12 +19,12 @@ int main(){
     assert(settings.recovery[7]==.45f&&settings.recovery[9]==.75f);
     assert(recoilAllowedForWeaponMode(2,false)); // Rifle primary
     assert(!recoilAllowedForWeaponMode(2,true)); // Rifle alternate
-    assert(recoilAllowedForWeaponMode(6,true)); // Gauss Siege still eligible
+    assert(recoilAllowedForWeaponMode(6,true)); // Gauss is not the HAR alt
     settings.enabled.fill(true);
     auto tick=[&](int weapon,std::uint64_t ms,bool fire,int ammo,
-                  bool siege=false,bool support=false,bool gameplay=true){
+                  bool support=false,bool gameplay=true){
         return advanceWeaponRecoil(state,settings,
-            {weapon,fire,support,gameplay,ms,siege,ammo});
+            {weapon,fire,support,gameplay,ms,ammo});
     };
 
     // A trigger is only authorization; not a shot. Observed native ammo
@@ -102,7 +102,7 @@ int main(){
         WeaponRecoilState burst{};
         auto minigun=[&](std::uint64_t ms,bool down,int ammo,int mode=7){
             return advanceWeaponRecoil(burst,rapid,
-                {mode,down,false,true,ms,false,ammo});
+                {mode,down,false,true,ms,ammo});
         };
         minigun(2400,false,600);
         assert(minigun(2410,true,600).pitchDegrees==0.f);
@@ -145,7 +145,7 @@ int main(){
 
     // The Heavy Assault Rifle's weapon-mod/alternate firing must not
     // generate any recoil, even if its ammo pool changes during the mod.
-    const auto alternate=tick(2,2250,true,390,false,false,false);
+    const auto alternate=tick(2,2250,true,390,false,false);
     assert(alternate.pitchDegrees==0.f&&!alternate.shotEstimated);
     assert(tick(2,2260,true,390).pitchDegrees==0.f);
     assert(tick(2,2270,true,389).pitchDegrees==0.f);
@@ -170,8 +170,8 @@ int main(){
     state={};
     tick(3,4000,false,200);
     tick(3,4010,true,200);
-    assert(tick(3,4020,true,199,false,true).pitchDegrees==0.f);
-    assert(tick(3,4030,true,199,false,false).pitchDegrees==0.f);
+    assert(tick(3,4020,true,199,true).pitchDegrees==0.f);
+    assert(tick(3,4030,true,199,false).pitchDegrees==0.f);
     assert(!tick(3,4040,true,199).shotEstimated);
 
     // No valid native ammo means NO recoil. When snapshots resume, the
@@ -283,30 +283,39 @@ int main(){
     assert(delivered.shotEstimated&&delivered.pitchDegrees>0.f
         &&!state.confirmedShotQueued);
 
-    // Long Gauss Siege hold: ammo may decrease during charging, but
-    // the kick must not occur until AFTER trigger release.
-    // Restore the original fast 900% test preset after the newly added
-    // 25% slow-recovery tests above; otherwise its original <120ms
-    // return-to-zero assertion incorrectly runs at 25% instead.
+    // Gauss recoil is defined by NORMAL single-shot firing ONLY, not an
+    // attachment declaration, charge flag or trigger-release heuristic.
+    // Holding the trigger through a real ammo debit must kick BEFORE release.
     settings.recovery[6]=9.f;
     state={};
-    tick(6,9000,false,150,true);
-    tick(6,9010,true,150,true);
-    assert(tick(6,10700,true,150,true).pitchDegrees==0.f);
-    assert(tick(6,10710,true,135,true).pitchDegrees==0.f);
-    assert(tick(6,10800,true,135,true).pitchDegrees==0.f);
-    const auto released=tick(6,10820,false,135,true);
-    assert(released.pitchDegrees==0.f&&!released.shotEstimated);
-    const auto siegeKick=tick(6,10830,false,135,true);
-    assert(siegeKick.shotEstimated&&siegeKick.pitchDegrees>0.f);
-    assert(tick(6,10950,false,135,true).pitchDegrees==0.f);
-    // Equally valid: ammo debit observed AFTER Siege trigger release.
+    tick(6,9000,false,150);
+    assert(tick(6,9010,true,150).pitchDegrees==0.f);
+    const auto spentWhileHeld=tick(6,9020,true,135);
+    assert(!spentWhileHeld.shotEstimated
+        &&spentWhileHeld.pitchDegrees==0.f);
+    const auto kickWhileHeld=tick(6,9030,true,135);
+    assert(kickWhileHeld.shotEstimated&&kickWhileHeld.pitchDegrees>0.f);
+    const auto releasedNoShot=tick(6,9040,false,135);
+    assert(!releasedNoShot.shotEstimated
+        &&releasedNoShot.pitchDegrees>0.f
+        &&releasedNoShot.pitchDegrees<kickWhileHeld.pitchDegrees);
+    // Releasing after an unsuccessful trigger pull must NEVER kick.
+    const auto settled=tick(6,9160,false,135);
+    assert(settled.pitchDegrees==0.f);
+    assert(tick(6,9170,true,135).pitchDegrees==0.f);
+    const auto dryRelease=tick(6,9180,false,135);
+    assert(!dryRelease.shotEstimated&&dryRelease.pitchDegrees==0.f);
+    assert(!tick(6,9190,false,135).shotEstimated);
+    // If the native ammo cache reports a real debit only after trigger-up,
+    // THAT AMMO EVENT (not the release) can still confirm an actual shot.
     state={};
-    tick(6,11000,false,135,true);
-    tick(6,11010,true,135,true);
-    tick(6,11200,false,135,true);
-    assert(tick(6,11220,false,120,true).pitchDegrees==0.f);
-    assert(tick(6,11230,false,120,true).shotEstimated);
+    tick(6,9300,false,135);
+    tick(6,9310,true,135);
+    assert(!tick(6,9320,false,135).shotEstimated);
+    const auto lateDebit=tick(6,9330,false,120);
+    assert(!lateDebit.shotEstimated&&lateDebit.pitchDegrees==0.f);
+    const auto lateConfirmed=tick(6,9340,false,120);
+    assert(lateConfirmed.shotEstimated&&lateConfirmed.pitchDegrees>0.f);
 
     // Shared dynamics run on ammo-confirmed events, not trigger counts.
     WeaponRecoilSettings ds{};
@@ -325,7 +334,7 @@ int main(){
     auto shot=[&](std::uint64_t ms,int ammo,bool fire=true,
                   int weapon=3,bool twoHands=false){
         return advanceWeaponRecoil(dyn,ds,
-            {weapon,fire,twoHands,true,ms,false,ammo});
+            {weapon,fire,twoHands,true,ms,ammo});
     };
     shot(13000,100,false);
     shot(13010,100);
