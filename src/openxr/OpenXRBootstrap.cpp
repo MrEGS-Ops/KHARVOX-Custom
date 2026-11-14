@@ -1903,6 +1903,17 @@ void releaseHandFocusUseKeyboardPulse(){
     s.handFocusUseKeyboardReleaseTime=0;
 }
 bool startHandFocusUseKeyboardPulse(XrTime displayTime){
+    // One small snapshot per USE click lets headset tests distinguish
+    // "FocusTracker was using the hand ray" from "this interactive never
+    // queried that tracker". No engine pointers or offsets are modified.
+    unsigned long long total{},hand{},head{};
+    bool handReady{};
+    KharvoxCameraFocusTraceDiagnostics(total,hand,head,handReady);
+    log(std::string("[FOCUS-DIAG] world USE FocusTracker calls=")
+        +std::to_string(total)+" hand="+std::to_string(hand)
+        +" head="+std::to_string(head)
+        +" handPoseValid="+(handReady?"yes":"no")
+        +" (health station/collectible may use another native selection path)");
     releaseHandFocusUseKeyboardPulse();
     focusDoomWindow();
     if(!sendBackWeaponKeyboardKey(kWorldUseDefaultVirtualKey,true))
