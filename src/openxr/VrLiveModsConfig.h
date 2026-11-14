@@ -15,6 +15,14 @@
 // No shipped calibration/default cfg file is mutated.
 namespace kharvox {
 struct VrLivePoint { float x{},y{},z{}; };
+// Owner-calibrated right/left Gunslinger hip zone SHIFT values captured
+// in-headset on 2026-11-14, not controller positions or wheel offsets.
+// Keep existing UserData overrides as-is; these apply on fresh installs
+// and when Gunslinger's in-game Reset is explicitly selected.
+inline constexpr std::array<VrLivePoint,2> kVrLiveFactoryHipShifts{{
+    {-0.0397179f,0.0424916f,-0.0611160f}, // RIGHT hip
+    { 0.0193224f,0.0286265f,-0.1343255f}  // LEFT hip
+}};
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
@@ -71,9 +79,10 @@ struct VrLiveSettings {
     // 0/1 is an explicit live menu override saved across sessions.
     // Slot 5 appended for PAINSAW; old five-slot saves still load.
     std::array<int,6> enabledOverrides{{-1,-1,-1,-1,-1,-1}};
-    // Offset from the EXISTING tracking-relative zones. Zero exactly
-    // reproduces existing Gunslinger behaviour on a fresh installation.
-    std::array<VrLivePoint,2> hipShift{};
+    // Offset from the existing tracking-relative zones. On a fresh
+    // installation inherit the owner's measured right/left hip centres;
+    // an already-saved UserData file (including old zero shifts) wins.
+    std::array<VrLivePoint,2> hipShift{kVrLiveFactoryHipShifts};
     std::array<VrLivePoint,2> wheelShift{};
     float crouchStandDelta{0.f};
     float crouchLoweredDelta{-0.56f};
@@ -131,6 +140,12 @@ inline VrPainsawModes vrLivePainsawModes(
         desktopTrigger||desktopMotion);
     return {enabled&&(desktopTrigger||!desktopMotion),
             enabled&&desktopMotion};
+}
+// Restore ONLY Gunslinger hip/wheel placement, not KILLTIME, crouch,
+// enabled overrides, weapon grip positions or any other saved settings.
+inline void vrLiveResetGunslingerPositions(VrLiveSettings& s) noexcept {
+    s.hipShift=kVrLiveFactoryHipShifts;
+    s.wheelShift={};
 }
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;

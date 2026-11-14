@@ -7,15 +7,40 @@ int main(){
     VrLiveSettings s{};
     assert(vrLiveValidSettings(s));
     assert(s.gloryKillHz==60); // Fresh install and in-headset factory preset.
+    // Exact owner-uploaded factory SHIFT offsets (not absolute hip points).
+    constexpr auto hips=kVrLiveFactoryHipShifts;
+    for(std::size_t side=0;side<2;++side){
+        assert(std::abs(s.hipShift[side].x-hips[side].x)<.0000001f);
+        assert(std::abs(s.hipShift[side].y-hips[side].y)<.0000001f);
+        assert(std::abs(s.hipShift[side].z-hips[side].z)<.0000001f);
+    }
+    assert(std::abs(hips[0].x+.0397179f)<.0000001f);
+    assert(std::abs(hips[0].y-.0424916f)<.0000001f);
+    assert(std::abs(hips[0].z+.0611160f)<.0000001f);
+    assert(std::abs(hips[1].x-.0193224f)<.0000001f);
+    assert(std::abs(hips[1].y-.0286265f)<.0000001f);
+    assert(std::abs(hips[1].z+.1343255f)<.0000001f);
     assert(vrLiveHipInside({.315f,-.76f,.225f},false,s.hipShift[0]));
     assert(vrLiveWheelInside({.20f,.09f,.3075f},false,s.wheelShift[1]));
     assert(vrLiveCapturePoint(s,VrLiveCapture::HipRight,
         {.40f,-.71f,.18f},0));
     assert(vrLiveHipInside({.40f,-.71f,.18f},false,s.hipShift[0]));
-    assert(std::abs(s.hipShift[1].x)<.00001f); // opposite side untouched
+    assert(std::abs(s.hipShift[1].x-hips[1].x)<.00001f);
+    assert(std::abs(s.hipShift[1].z-hips[1].z)<.00001f); // opposite side untouched
     assert(vrLiveCapturePoint(s,VrLiveCapture::WheelLeft,
         {.30f,.10f,.37f},0));
     assert(vrLiveWheelInside({.30f,.10f,.37f},false,s.wheelShift[1]));
+    // Reset command restores BOTH owner hip presets and wheel zero, but
+    // does not copy the uploaded file's unrelated KILLTIME 50 Hz value.
+    vrLiveResetGunslingerPositions(s);
+    for(std::size_t side=0;side<2;++side){
+        assert(std::abs(s.hipShift[side].x-hips[side].x)<.0000001f);
+        assert(std::abs(s.hipShift[side].y-hips[side].y)<.0000001f);
+        assert(std::abs(s.hipShift[side].z-hips[side].z)<.0000001f);
+        assert(s.wheelShift[side].x==0.f&&s.wheelShift[side].y==0.f
+            &&s.wheelShift[side].z==0.f);
+    }
+    assert(s.gloryKillHz==60);
     assert(vrLiveCapturePoint(s,VrLiveCapture::CrouchStanding,{},.03f));
     assert(!vrLiveCapturePoint(s,VrLiveCapture::CrouchLowered,{},-.05f));
     assert(vrLiveCapturePoint(s,VrLiveCapture::CrouchLowered,{},-.53f));
@@ -88,6 +113,13 @@ int main(){
     assert(old.enabledOverrides[3]==-1);
     assert(old.enabledOverrides[4]==0);
     assert(old.enabledOverrides[5]==-1);
+    // Old profiles explicitly containing zero hip shifts retain zero:
+    // loading a UserData save must never overwrite custom legacy values.
+    assert(old.hipShift[0].x==0.f&&old.hipShift[0].y==0.f
+        &&old.hipShift[0].z==0.f);
+    assert(old.hipShift[1].x==0.f&&old.hipShift[1].y==0.f
+        &&old.hipShift[1].z==0.f);
+    assert(old.gloryKillHz==0);
     // Previously saved OFF values for locked core mods cannot disable them.
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::Gunslinger,false));
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::WeaponGrip,false));
@@ -106,6 +138,10 @@ int main(){
     const VrLiveSettings defaults{};
     assert(defaults.gloryKillHz==60);
     assert(defaults.punchSpeedMetersPerSec==2.8f);
+    assert(std::abs(defaults.hipShift[0].x+.0397179f)<.0000001f);
+    assert(std::abs(defaults.hipShift[1].z+.1343255f)<.0000001f);
+    assert(defaults.wheelShift[0].x==0.f
+        &&defaults.wheelShift[1].z==0.f);
     std::remove(file.c_str());
     return 0;
 }
