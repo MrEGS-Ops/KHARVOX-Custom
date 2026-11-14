@@ -1,525 +1,145 @@
-name: KHARVOX VR Mod Manager (Experimental)
+name: KHARVOX Retail Preview (Experimental)
 
 on:
   push:
-    branches:
-      # Stable updater release plus ONE isolated experimental branch.
-      # Only the stable branch may publish the updater-visible release.
-      - work/manager-187-wheel-holsters
-      - feature/onehand-physical-recoil-calibration
+    branches: [feature/onehand-physical-recoil-calibration]
     paths:
-      - 'launcher/KharvoxMods/**'
-      - 'launcher/KharvoxModsUpdater/**'
-      - 'launcher/KharvoxLauncher/**'
-      # Changes to native gameplay require a new native artifact before we
-      # publish an updater-visible Mod Manager release.
       - 'src/**'
       - 'tests/**'
       - 'CMakeLists.txt'
       - 'config/user_calibration_defaults/**'
+      - 'launcher/KharvoxLauncher/**'
+      - 'launcher/KharvoxMods/**'
+      - 'launcher/KharvoxModsUpdater/**'
       - 'supervisor/**'
       - 'tools/**'
       - 'assets/**'
       - '.github/workflows/build-custom.yml'
       - '.github/workflows/build-kharvox-mods.yml'
-      - 'docs/KHARVOX-MODS-STANDALONE.md'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   actions: read
 
 concurrency:
-  group: kharvox-mods-${{ github.ref }}
+  group: kharvox-retail-preview-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  mods-standalone:
+  retail-preview:
     runs-on: windows-latest
+    timeout-minutes: 50
     steps:
-      - name: Checkout standalone integration branch
+      - name: Checkout source and full provenance history
         uses: actions/checkout@v4
         with:
-          # Full history is essential: we must prove that the selected native
-          # artifact was built from identical gameplay/runtime source.
           fetch-depth: 0
 
-      - name: Verify active manager branch and release contract
-        shell: pwsh
-        run: |
-          $stable = "work/manager-187-wheel-holsters"
-          $experiment = "feature/onehand-physical-recoil-calibration"
-          $approved = "${{ github.ref_name }}"
-          if ($approved -ne $stable -and $approved -ne $experiment) {
-            throw "WRONG KHARVOX BUILD TRACK: refusing unapproved standalone branch $approved"
-          }
-          $marker = Get-Content -LiteralPath "docs/KHARVOX-ACTIVE-TRACK.txt" -Raw
-          # The approved stable branch marker stays unchanged. This experiment
-          # may build separately but MUST NOT become the updater release track.
-          if (!$marker.Contains("active_branch=$stable") -or
-              !$marker.Contains("release_workflow=.github/workflows/build-kharvox-mods.yml") -or
-              !$marker.Contains("native_workflow=.github/workflows/build-custom.yml") -or
-              !(Test-Path "launcher/KharvoxMods/NativeBridgeInstaller.cs")) {
-            throw "KHARVOX release track marker missing, invalid or inconsistent"
-          }
-          if ((git rev-parse HEAD).Trim() -ne "${{ github.sha }}") {
-            throw "Ref/SHA mismatch: refusing to release potentially wrong source"
-          }
-
-      - name: Restore KHARVOX VR Mod Manager
-        shell: pwsh
-        run: dotnet restore launcher/KharvoxMods/KharvoxMods.csproj
-
-      - name: Build original MrEGS application icon from embedded PNG
-        shell: pwsh
-        run: ./launcher/KharvoxMods/Generate-MrEGSIcon.ps1
-
-      - name: Fetch and verify CC0 Twitch unlock jingle
-        shell: pwsh
-        run: |
-          $file = "launcher/KharvoxMods/twitch-unlock.wav"
-          $source = "https://raw.githubusercontent.com/Beatscribe/homebrew_vgm/5a82f88b87bb442499685c494b7a96278121b4c7/GB/fanfares/wav/treasure.wav"
-          Invoke-WebRequest -Uri $source -OutFile $file -MaximumRedirection 2
-          if ((git hash-object $file).Trim() -ne "a579e15ab70e4e0b8884e7c4504bb6d7cb4fdb64") {
-            throw "Twitch cue fails pinned CC0 audio integrity check"
-          }
-          $bytes = [System.IO.File]::ReadAllBytes((Join-Path $PWD $file))
-          if ($bytes.Length -lt 44 -or [Text.Encoding]::ASCII.GetString($bytes, 0, 4) -ne "RIFF" -or
-              [Text.Encoding]::ASCII.GetString($bytes, 8, 4) -ne "WAVE") {
-            throw "Twitch cue is not WAV audio"
-          }
-
-      - name: Compile standalone executable (net48 x64)
-        shell: pwsh
-        run: dotnet build launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore -p:InformationalVersion=${{ github.run_id }}
-
-      - name: Restore native-bridge-aware KHARVOX launcher
-        shell: pwsh
-        run: dotnet restore launcher/KharvoxLauncher/KharvoxLauncher.csproj
-
-      - name: Build native-bridge-aware KHARVOX launcher
-        shell: pwsh
-        run: dotnet build launcher/KharvoxLauncher/KharvoxLauncher.csproj --configuration Release --no-restore
-
-      - name: Verify Gunslinger bundled native wheel and hip flags
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-standalone-gestures" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Behind-head wheel and quick holster bridge tests failed" }
-
-      - name: Verify Gunslinger greys out the original Shoulder Weapon UI
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
-          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-shoulder-weapon-lock" -Wait -PassThru -NoNewWindow
-          if ($result.ExitCode -ne 0) { throw "Gunslinger shoulder weapon UI lock regression" }
-
-      - name: Verify calibration greys out Virtual Gunstock without modifying Cactus
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
-          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-virtual-gunstock-lock" -Wait -PassThru -NoNewWindow
-          if ($result.ExitCode -ne 0) { throw "Virtual Gunstock external UI lock regression" }
-
-      - name: Verify embedded launcher scales to avoid scrollbars
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
-          $result = Start-Process -FilePath $exe -ArgumentList "--self-test-embedded-layout" -Wait -PassThru -NoNewWindow
-          if ($result.ExitCode -ne 0) { throw "Embedded viewport fit regression" }
-
-      - name: Verify Cactus v1.1.1 original launcher UI is completely unmodified
-        shell: pwsh
-        run: |
-          $originalSha = "fdfdd46536a68853612b7ce5a0d2418541a60586"
-          $actualSha = (git hash-object "launcher/KharvoxLauncher/MainForm.cs").Trim()
-          if ($actualSha -ne $originalSha) {
-            throw "Cactus original MainForm.cs changed; launcher UI must stay untouched"
-          }
-          $project = Get-Content -LiteralPath "launcher/KharvoxLauncher/KharvoxLauncher.csproj" -Raw
-          if ($project -notmatch 'Compile Remove="MainForm\.\*\.cs"') {
-            throw "Legacy custom Mods partial files may be compiled into launcher"
-          }
-          $launcherExe = Join-Path $PWD "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe"
-          $result = Start-Process -FilePath $launcherExe -ArgumentList "--self-test-cactus-launcher" -Wait -PassThru -NoNewWindow
-          if ($result.ExitCode -ne 0) { throw "Original launcher Mods isolation failed" }
-
-      - name: Assemble optional verified KHARVOX native bridge copy
+      - name: Select latest matching successful native build
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $base = Join-Path $PWD "dist/native-base"
-          New-Item -ItemType Directory -Force -Path $base | Out-Null
-          # Find the newest successful native build on THIS branch whose
-          # runtime-affecting source is identical to the manager checkout.
-          # Manager-only commits may reuse that native build; changed runtime
-          # source must wait for the matching native build to succeed.
-          # Same-branch native provenance is mandatory in BOTH tracks.
-          # Never import a stable native layer into this recoil experiment.
-          $stable = "work/manager-187-wheel-holsters"
-          $experiment = "feature/onehand-physical-recoil-calibration"
-          $approvedBranch = "${{ github.ref_name }}"
-          if ($approvedBranch -ne $stable -and $approvedBranch -ne $experiment) {
-            throw "Unapproved native bridge source branch $approvedBranch"
-          }
-          $repo = "MrEGS-Ops/KHARVOX-Custom"
-          $nativePaths = @("src", "tests", "CMakeLists.txt",
-              "config/user_calibration_defaults",
-              "launcher/KharvoxLauncher", "supervisor", "tools", "assets",
-              ".github/workflows/build-custom.yml")
-          $nativeRun = $null
-          for ($attempt = 0; $attempt -lt 90 -and $null -eq $nativeRun; $attempt++) {
-            $json = gh run list --repo $repo --workflow build-custom.yml `
-              --branch $approvedBranch --limit 100 `
-              --json databaseId,headSha,headBranch,status,conclusion
-            if ($LASTEXITCODE -ne 0) {
-              throw "Could not query same-branch KHARVOX native builds"
-            }
-            foreach ($candidate in @($json | ConvertFrom-Json)) {
-              if ($candidate.headBranch -ne $approvedBranch -or
-                  $candidate.conclusion -ne "success") { continue }
+          $branch = "${{ github.ref_name }}"
+          if ($branch -ne "feature/onehand-physical-recoil-calibration") { throw "Unexpected retail preview source branch." }
+          $repo = "${{ github.repository }}"
+          $nativePaths = @("src","tests","CMakeLists.txt","config/user_calibration_defaults","launcher/KharvoxLauncher","supervisor","tools","assets",".github/workflows/build-custom.yml")
+          $selected = $null
+          for ($attempt = 1; $attempt -le 120 -and $null -eq $selected; $attempt++) {
+            $raw = gh run list --repo $repo --workflow build-custom.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,conclusion,status
+            if ($LASTEXITCODE -ne 0) { throw "Cannot query KHARVOX native builds." }
+            foreach ($candidate in @($raw | ConvertFrom-Json)) {
+              if ($candidate.headBranch -ne $branch -or $candidate.conclusion -ne "success") { continue }
               git merge-base --is-ancestor $candidate.headSha "${{ github.sha }}"
               if ($LASTEXITCODE -ne 0) { continue }
               git diff --quiet $candidate.headSha "${{ github.sha }}" -- $nativePaths
-              if ($LASTEXITCODE -eq 0) {
-                $nativeRun = $candidate
-                break
-              }
+              if ($LASTEXITCODE -eq 0) { $selected = $candidate; break }
             }
-            if ($null -eq $nativeRun) {
-              Write-Host "Waiting for successful same-source native build (attempt $($attempt+1)/90)."
-              Start-Sleep -Seconds 20
-            }
+            if ($null -eq $selected) { Write-Host "Waiting for a green same-source native build: $attempt/120"; Start-Sleep -Seconds 15 }
           }
-          if ($null -eq $nativeRun) {
-            throw "No successful native build matches this branch's gameplay source; not publishing stale code."
+          if ($null -eq $selected) { throw "No successful matching native build; refusing to package stale gameplay." }
+          "NATIVE_RUN_ID=$($selected.databaseId)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVE_COMMIT=$($selected.headSha)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Verified native build $($selected.databaseId) at $($selected.headSha)"
+
+      - name: Assemble single-launcher KHARVOX package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $root = Join-Path $PWD "dist/KHARVOX-Retail-Preview"
+          New-Item -ItemType Directory -Force -Path $root | Out-Null
+          $metadata = gh run view $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --json headSha,headBranch,conclusion | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $metadata.conclusion -ne "success" -or $metadata.headSha -ne $env:NATIVE_COMMIT -or $metadata.headBranch -ne "${{ github.ref_name }}") { throw "Native source verification failed." }
+          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name KHARVOX-Full-Build --dir $root
+          if ($LASTEXITCODE -ne 0) { throw "Verified native runtime download failed." }
+          foreach ($required in @("KharvoxLauncher.exe","KharvoxLayer.dll","KharvoxLayer.json","PATCH-BUILD.txt","PATCH-MANIFEST.json","native_sfs_build.txt","KharvoxSupervisor.exe")) {
+            if (!(Test-Path -LiteralPath (Join-Path $root $required))) { throw "Missing essential native runtime file: $required" }
           }
-          $approvedNativeSha = [string]$nativeRun.headSha
-          $approvedNativeRunId = [string]$nativeRun.databaseId
-          $nativeMetadata = gh run view $approvedNativeRunId --repo $repo `
-            --json headSha,headBranch,conclusion | ConvertFrom-Json
-          if ($LASTEXITCODE -ne 0 -or $nativeMetadata.conclusion -ne "success" -or
-              $nativeMetadata.headSha -ne $approvedNativeSha -or
-              $nativeMetadata.headBranch -ne $approvedBranch) {
-            throw "Selected native build provenance does not match the approved branch and SHA"
+          $stamp = Get-Content -LiteralPath (Join-Path $root "PATCH-BUILD.txt") -Raw
+          $provenance = Get-Content -LiteralPath (Join-Path $root "PATCH-MANIFEST.json") -Raw | ConvertFrom-Json
+          if (!$stamp.Contains("KHARVOX_CUSTOM_WATCHER_1") -or !$stamp.Contains("kind=full") -or !$stamp.Contains("commit=$env:NATIVE_COMMIT") -or $provenance.kind -ne "full" -or $provenance.commit -ne $env:NATIVE_COMMIT -or $provenance.branch -ne "${{ github.ref_name }}") { throw "Native SHA/branch manifest mismatch." }
+          if (Test-Path -LiteralPath (Join-Path $root "UserData")) { throw "Developer UserData was bundled unexpectedly." }
+          if (Test-Path -LiteralPath (Join-Path $root "NativeBridge")) { throw "Legacy manager NativeBridge wrapper was bundled." }
+          $factory = Join-Path $root "CalibrationDefaults"
+          New-Item -ItemType Directory -Force -Path $factory | Out-Null
+          $defaults = @(Get-ChildItem -LiteralPath "config/user_calibration_defaults" -File)
+          if ($defaults.Count -ne 7) { throw "Missing owner-calibrated factory settings." }
+          foreach ($file in $defaults) {
+            $target = Join-Path $factory $file.Name
+            if (Test-Path -LiteralPath $target) {
+              if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash) { throw "Factory file conflict: $($file.Name)" }
+            } else { Copy-Item -LiteralPath $file.FullName -Destination $target }
           }
-          Write-Host "Selected verified native build $approvedNativeRunId at $approvedNativeSha"
-          gh run download $approvedNativeRunId --repo $repo `
-            --name KHARVOX-Full-Build --dir $base
-          if ($LASTEXITCODE -ne 0) {
-            throw "Could not download the verified native artifact from run $approvedNativeRunId"
-          }
-          $manifest = Join-Path $base "PATCH-BUILD.txt"
-          # PATCH-BUILD.txt has kind, run and commit but NO branch.
-          # The complete SHA/branch/kind provenance lives in PATCH-MANIFEST.json.
-          $jsonManifest = Join-Path $base "PATCH-MANIFEST.json"
-          if (!(Test-Path -LiteralPath $manifest) -or
-              !(Test-Path -LiteralPath $jsonManifest)) {
-            throw "Verified native package lacks required build or JSON provenance"
-          }
-          $nativeManifest = Get-Content -LiteralPath $manifest -Raw
-          $nativeProvenance = Get-Content -LiteralPath $jsonManifest -Raw | ConvertFrom-Json
-          if (!$nativeManifest.Contains("KHARVOX_CUSTOM_WATCHER_1") -or
-              !$nativeManifest.Contains("kind=full") -or
-              !$nativeManifest.Contains("commit=$approvedNativeSha") -or
-              $nativeProvenance.kind -ne "full" -or
-              $nativeProvenance.branch -ne $approvedBranch -or
-              $nativeProvenance.commit -ne $approvedNativeSha) {
-            throw "Native package provenance failed: build marker and JSON SHA/branch/kind disagree"
-          }
-          if (!(Test-Path (Join-Path $base "KharvoxLayer.dll"))) {
-            throw "Verified native layer missing"
-          }
-          # Eight owner-recorded, gameplay-only coordinates; NOT retail DOOM audio.
-          $grips = "config/two_hand_weapon_profiles_captured.cfg"
-          if (@(Get-Content -LiteralPath $grips).Count -ne 8) {
-            throw "Owner-recorded two-hand profiles must contain exactly eight lines."
-          }
-          Copy-Item -LiteralPath $grips -Destination (Join-Path $base "two_hand_weapon_profiles_captured.cfg") -Force
-          $rightHand = "config/offhand_right_hand_positions_latest.cfg"
-          if (!(Test-Path $rightHand)) { throw "Latest right-hand Gauss/Chaingun owner capture config missing" }
-          Copy-Item -LiteralPath $rightHand -Destination (Join-Path $base "offhand_right_hand_positions_latest.cfg") -Force
-          Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe" -Destination $base -Force
-          if (Test-Path "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config") {
-            Copy-Item -LiteralPath "launcher/KharvoxLauncher/bin/Release/net48/KharvoxLauncher.exe.config" -Destination $base -Force
+          foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
+            Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
           }
           @(
-            "KHARVOX_MODS_BRIDGE_V1"
-            "baseNativeCommit=$approvedNativeSha"
-            "bridgeLauncherCommit=${{ github.sha }}"
-            "managerBuild=${{ github.run_id }}"
-            "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"
-          ) | Set-Content -LiteralPath (Join-Path $base "KharvoxModsBridge.v1") -Encoding ascii
-          $zip = Join-Path $PWD "dist/KHARVOX-Mods-NativeBridge.zip"
-          Compress-Archive -Path (Join-Path $base "*") -DestinationPath $zip -CompressionLevel Optimal -Force
-          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash *KHARVOX-Mods-NativeBridge.zip" |
-            Set-Content -LiteralPath ($zip + ".sha256") -Encoding ascii
+            "KHARVOX VR - RETAIL PREVIEW (EXPERIMENTAL)"
+            "Source: ${{ github.sha }}"
+            "Native commit: $env:NATIVE_COMMIT"
+            "Native workflow run: $env:NATIVE_RUN_ID"
+            "Original KHARVOX by CactusVRStudios: https://github.com/CactusVRStudios/KHARVOX"
+            "VR modifications: MrEGS_"
+            ""
+            "Run KharvoxLauncher.exe and select your DOOM (2016) installation."
+            "All VR mod controls and calibration are inside the headset."
+            "The desktop Mod Manager, updater and automatic patcher are retired."
+            "Keep existing UserData when upgrading; do not overwrite it."
+            "Experimental build; headset verification is required before release."
+          ) | Set-Content -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt") -Encoding UTF8
+          @("KHARVOX_RETAIL_PREVIEW_1","commit=${{ github.sha }}","nativeCommit=$env:NATIVE_COMMIT","nativeRun=$env:NATIVE_RUN_ID") | Set-Content -LiteralPath (Join-Path $root "RETAIL-BUILD.txt") -Encoding ASCII
+          foreach ($forbidden in @("KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","Get-KHARVOX-Custom-Watcher.ps1")) {
+            if (Get-ChildItem -LiteralPath $root -Filter $forbidden -File -Recurse) { throw "Forbidden updater/mod executable included: $forbidden" }
+          }
 
-      - name: Restore portable updater
-        shell: pwsh
-        run: dotnet restore launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj
-
-      - name: Build portable updater EXE
-        shell: pwsh
-        run: dotnet build launcher/KharvoxModsUpdater/KharvoxModsUpdater.csproj --configuration Release --no-restore
-
-      - name: Verify original MrEGS icon in Mods and Updater executables
+      - name: Regression-test launcher, profile and preserved mod defaults
         shell: pwsh
         run: |
-          Add-Type -AssemblyName System.Drawing
-          $sourceSha = (git hash-object launcher/KharvoxMods/mregs-logo.png).Trim()
-          if ($sourceSha -ne "46d1856bbec1e8d65f9965a96f9a72c1dba4588c") {
-            throw "MrEGS logo asset changed unexpectedly"
+          $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KharvoxLauncher.exe"
+          foreach ($test in @("--self-test-retail-mods","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
+            & $exe $test
+            if ($LASTEXITCODE -ne 0) { throw "Retail launcher regression $test failed ($LASTEXITCODE)" }
           }
-          $paths = @(
-            "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe",
-            "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
-          )
-          $digests = @()
-          foreach ($path in $paths) {
-            $icon = [System.Drawing.Icon]::ExtractAssociatedIcon((Join-Path $PWD $path))
-            if ($null -eq $icon) { throw "Missing MrEGS icon: $path" }
-            try {
-              $bitmap = $icon.ToBitmap()
-              try {
-                $red = 0
-                $pixels = New-Object byte[] ($bitmap.Width * $bitmap.Height * 4)
-                for ($y=0; $y -lt $bitmap.Height; $y++) {
-                  for ($x=0; $x -lt $bitmap.Width; $x++) {
-                    $color = $bitmap.GetPixel($x,$y)
-                    [BitConverter]::GetBytes($color.ToArgb()).CopyTo(
-                      $pixels, 4 * ($y * $bitmap.Width + $x))
-                    if ($color.R -gt 130 -and $color.R -gt ($color.G * 1.6) -and $color.R -gt ($color.B * 1.4)) { $red++ }
-                  }
-                }
-                if ($red -lt 1) { throw "MrEGS red accent missing: $path" }
-                $sha = [System.Security.Cryptography.SHA256]::Create()
-                try { $digests += [Convert]::ToBase64String($sha.ComputeHash($pixels)) }
-                finally { $sha.Dispose() }
-              } finally { $bitmap.Dispose() }
-            } finally { $icon.Dispose() }
-          }
-          if ($digests[0] -ne $digests[1]) { throw "Mods and Updater icons differ" }
+          if ((git hash-object launcher/KharvoxLauncher/MainForm.cs).Trim() -ne "fdfdd46536a68853612b7ce5a0d2418541a60586") { throw "Cactus MainForm.cs must remain byte-for-byte unmodified." }
 
-      - name: Test portable updater without network or live installation
+      - name: Zip the KHARVOX-only install
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
-          if (!(Test-Path $exe)) { throw "Updater executable missing" }
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Portable updater self-test failed: $($test.ExitCode)" }
+          $root = Join-Path $PWD "dist/KHARVOX-Retail-Preview"
+          $zip = Join-Path $PWD "dist/KHARVOX-Retail-Preview.zip"
+          Compress-Archive -Path (Join-Path $root "*") -DestinationPath $zip -CompressionLevel Optimal
+          $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          "$sha *KHARVOX-Retail-Preview.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ASCII
+          "Single KHARVOX launcher, native VR runtime, no manager or updater." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Verify four-digit updater window layout
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Compact updater window regression: $($test.ExitCode)" }
-
-      - name: Verify fresh install and fail-closed attachment consent
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
-          if (!(Test-Path $exe)) { throw "Standalone KHARVOX Mods executable missing" }
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Standalone app self-test failed: $($test.ExitCode)" }
-
-      - name: Verify bridge auto-refresh version policy
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Versioned bridge refresh policy failed." }
-
-      - name: Verify original Custom Mods layout and all 22 rows
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ui" -PassThru -Wait -NoNewWindow
-          if ($test.ExitCode -ne 0) { throw "Legacy two-panel layout regression: $($test.ExitCode)" }
-
-      - name: Stamp current successful build identifier
-        shell: pwsh
-        run: |
-          Set-Content -LiteralPath "launcher/KharvoxMods/bin/Release/net48/build-info.txt" -Value "${{ github.run_id }}" -Encoding ASCII
-
-      - name: Assemble isolated standalone package
-        shell: pwsh
-        run: |
-          $inputDir = Join-Path $PWD "launcher/KharvoxMods/bin/Release/net48"
-          $destination = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
-          New-Item -ItemType Directory -Force -Path $destination | Out-Null
-          Copy-Item (Join-Path $inputDir "KharvoxVRModManager.exe") $destination
-          Copy-Item (Join-Path $inputDir "build-info.txt") $destination
-          $updater = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
-          Copy-Item $updater $destination
-          if (Test-Path (Join-Path $inputDir "KharvoxVRModManager.exe.config")) {
-            Copy-Item (Join-Path $inputDir "KharvoxVRModManager.exe.config") $destination
-          }
-          Copy-Item "docs/KHARVOX-MODS-STANDALONE.md" (Join-Path $destination "README.md")
-          # The verified custom KHARVOX is ready to run on first launch.
-          $bundledRuntime = Join-Path $destination "NativeBridge"
-          Copy-Item -LiteralPath (Join-Path $PWD "dist/native-base") -Destination $bundledRuntime -Recurse -Force
-          foreach ($required in @("KharvoxLauncher.exe", "KharvoxLayer.dll", "KharvoxModsBridge.v1")) {
-            if (!(Test-Path (Join-Path $bundledRuntime $required))) {
-              throw "Ready-to-run custom KHARVOX payload missing: $required"
-            }
-          }
-          if (Test-Path (Join-Path $destination "KharvoxLauncher.exe")) {
-            throw "Standalone package must not bundle or overwrite the KHARVOX launcher"
-          }
-          if (Test-Path (Join-Path $destination "KharvoxLayer.dll")) {
-            throw "Standalone package must not contain a patched KHARVOX runtime"
-          }
-          # A fresh user installs the manager from this READY-TO-RUN ZIP.
-          # All mutable settings start in its visible top-level UserData,
-          # never as stale developer saves inside NativeBridge.
-          $userData = Join-Path $destination "UserData"
-          New-Item -Path $userData -ItemType Directory -Force | Out-Null
-          if ((Get-ChildItem -Path $userData -File -Recurse | Measure-Object).Count -gt 0) {
-            throw "CLEAN INSTALL VIOLATION: developer UserData bundled in release"
-          }
-          $factoryDir = Join-Path $bundledRuntime "CalibrationDefaults"
-          foreach ($name in @(
-              "offhand_right_hand_positions.cfg",
-              "two_hand_weapon_profiles_saved.cfg",
-              "two_hand_weapon_profiles_left_primary_saved.cfg",
-              "offhand_hud.cfg",
-              "vr_live_mods_saved.cfg",
-              "weapon_recoil_saved.cfg",
-              "kharvox-launcher-settings.json")) {
-            $expected = Join-Path $PWD ("config/user_calibration_defaults/" + $name)
-            $actual = Join-Path $factoryDir $name
-            if (!(Test-Path -LiteralPath $actual)) {
-              throw "CLEAN INSTALL VIOLATION: uploaded factory calibration missing: $name"
-            }
-            $sourceHash = (Get-FileHash -LiteralPath $expected -Algorithm SHA256).Hash
-            $installedHash = (Get-FileHash -LiteralPath $actual -Algorithm SHA256).Hash
-            if ($sourceHash -ne $installedHash) {
-              throw "CLEAN INSTALL VIOLATION: factory file differs from owner's saved calibration: $name"
-            }
-            if (Test-Path -LiteralPath (Join-Path $bundledRuntime $name)) {
-              throw "CLEAN INSTALL VIOLATION: stale editable calibration in NativeBridge: $name"
-            }
-          }
-          foreach ($legacy in @(
-              "hand_models_calibration_saved.cfg", "offhand_hud.cfg",
-              "two_hand_shotgun_saved.cfg", "vr_live_mods_saved.cfg",
-              "weapon_recoil_saved.cfg")) {
-            if (Test-Path -LiteralPath (Join-Path $bundledRuntime $legacy)) {
-              throw "CLEAN INSTALL VIOLATION: user profile bundled in NativeBridge: $legacy"
-            }
-          }
-          if (!(Test-Path -LiteralPath (Join-Path $bundledRuntime "hand_models_calibration_default.cfg"))) {
-            throw "CLEAN INSTALL VIOLATION: required hand-model baseline missing"
-          }
-          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all seven uploaded calibration, HUD, KILLTIME, recoil and launcher presets"
-
-      - name: Package ready-to-run standalone with bundled custom KHARVOX
-        shell: pwsh
-        run: |
-          $packageDir = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
-          $readyZip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip"
-          Compress-Archive -Path (Join-Path $packageDir "*") -DestinationPath $readyZip -CompressionLevel Optimal -Force
-          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $readyZip).Hash.ToLowerInvariant()
-          "$digest *KHARVOX-VR-Mod-Manager-ReadyToRun.zip" |
-            Set-Content -LiteralPath ($readyZip + ".sha256") -Encoding ascii
-          # Immutable complete bundle: the updater must never retrieve a
-          # manager-only payload or a recycled/stale native bridge ZIP.
-          $immutableName = "KHARVOX-VR-Mod-Manager-ReadyToRun-${{ github.run_id }}.zip"
-          $immutableZip = Join-Path $PWD ("dist/" + $immutableName)
-          Copy-Item -LiteralPath $readyZip -Destination $immutableZip
-          "$digest *$immutableName" |
-            Set-Content -LiteralPath ($immutableZip + ".sha256") -Encoding ascii
-          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $immutableZip).Hash.ToLowerInvariant() -ne $digest) {
-            throw "Immutable integrated ReadyToRun checksum mismatch"
-          }
-
-      - name: Build verified public updater release ZIP and checksum
-        shell: pwsh
-        run: |
-          $packageDir = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone"
-          $releaseZip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Standalone.zip"
-          # Include only managed application files and preserve portable settings.
-          # The new EXE embeds the build ID and stamps build-info.txt on launch.
-          $releaseFiles = @("KharvoxVRModManager.exe", "README.md")
-          if (Test-Path (Join-Path $packageDir "KharvoxVRModManager.exe.config")) {
-            $releaseFiles += "KharvoxVRModManager.exe.config"
-          }
-          # Updater EXE is not self-updated while running.
-          $paths = @($releaseFiles | ForEach-Object { Join-Path $packageDir $_ })
-          Compress-Archive -LiteralPath $paths -DestinationPath $releaseZip -CompressionLevel Optimal -Force
-          $digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $releaseZip).Hash.ToLowerInvariant()
-          "$digest *KHARVOX-VR-Mod-Manager-Standalone.zip" |
-            Set-Content -LiteralPath ($releaseZip + ".sha256") -Encoding ascii
-          # Permanent versioned asset filenames avoid old ZIP vs new checksum
-          # being served by GitHub's CDN at the same mutable download URL.
-          $versionedName = "KHARVOX-VR-Mod-Manager-Standalone-${{ github.run_id }}.zip"
-          $versionedZip = Join-Path $PWD ("dist/" + $versionedName)
-          Copy-Item -LiteralPath $releaseZip -Destination $versionedZip
-          "$digest *$versionedName" |
-            Set-Content -LiteralPath ($versionedZip + ".sha256") -Encoding ascii
-          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $versionedZip).Hash.ToLowerInvariant() -ne $digest) {
-            throw "Immutable updater ZIP checksum changed before publishing"
-          }
-
-      - name: Create separately verified updater self-refresh package
-        shell: pwsh
-        run: |
-          $exe = Join-Path $PWD "launcher/KharvoxModsUpdater/bin/Release/net48/KharvoxVRModManagerUpdater.exe"
-          $zip = Join-Path $PWD "dist/KHARVOX-VR-Mod-Manager-Updater.zip"
-          Compress-Archive -LiteralPath $exe -DestinationPath $zip -CompressionLevel Optimal -Force
-          $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$hash *KHARVOX-VR-Mod-Manager-Updater.zip" |
-            Set-Content -LiteralPath ($zip + ".sha256") -Encoding ascii
-
-      - name: Upload KHARVOX VR Mod Manager preview
+      - name: Upload experimental KHARVOX retail preview
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-VR-Mod-Manager-Preview
-          path: dist/KHARVOX-VR-Mod-Manager-Standalone
-          retention-days: 14
-
-      - name: Upload ready-to-run experimental manager ZIP
-        if: github.ref == 'refs/heads/feature/onehand-physical-recoil-calibration'
-        uses: actions/upload-artifact@v4
-        with:
-          name: KHARVOX-Mods-Standalone-Experimental-Recoil
+          name: KHARVOX-Retail-Preview-Experimental
           path: |
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256
-          retention-days: 14
-
-      - name: Publish verified ZIP for automatic download
-        # Publish successful, fully tested manager builds through the existing
-        # stable preview tag so the existing updater can discover them.
-        if: github.ref == 'refs/heads/work/manager-187-wheel-holsters'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: kharvox-mods-standalone-preview
-          name: "KHARVOX VR Mod Manager — Build #${{ github.run_id }}"
-          prerelease: true
-          make_latest: false
-          overwrite_files: true
-          body: |
-            KHARVOX VR Mod Manager — An Unofficial VR Mod Manager for KHARVOX.
-            Independent mod manager by MrEGS; original KHARVOX launcher by CactusVRStudios.
-            Download KHARVOX-VR-Mod-Manager-ReadyToRun.zip, extract and run KharvoxVRModManager.exe.
-            Updates: run KharvoxVRModManagerUpdater.exe with the manager closed.
-            This release uses only the new executable names. Original KHARVOX files are not overwritten.
-          files: |
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun-*.zip
-            dist/KHARVOX-VR-Mod-Manager-ReadyToRun-*.zip.sha256
-            dist/KHARVOX-VR-Mod-Manager-Standalone.zip
-            dist/KHARVOX-VR-Mod-Manager-Standalone.zip.sha256
-            dist/KHARVOX-VR-Mod-Manager-Standalone-*.zip
-            dist/KHARVOX-VR-Mod-Manager-Standalone-*.zip.sha256
-            dist/KHARVOX-Mods-NativeBridge.zip
-            dist/KHARVOX-Mods-NativeBridge.zip.sha256
-            dist/KHARVOX-VR-Mod-Manager-Updater.zip
-            dist/KHARVOX-VR-Mod-Manager-Updater.zip.sha256
+            dist/KHARVOX-Retail-Preview.zip
+            dist/KHARVOX-Retail-Preview.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
