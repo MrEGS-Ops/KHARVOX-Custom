@@ -87,15 +87,15 @@ struct VrLiveSettings {
     float crouchStandDelta{0.f};
     float crouchLoweredDelta{-0.56f};
     bool crouchStandSaved{},crouchLoweredSaved{};
-    int gloryKillHz{60}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
+    int gloryKillHz{40}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
     float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
-// Legacy unset (0) starts at the new 60-Hz factory default.
+// Legacy unset (0) starts at the new 40-Hz factory default.
 inline int vrLiveStepKilltimeHz(int currentHz,bool slower) noexcept {
-    const int current=currentHz==0?60:currentHz;
+    const int current=currentHz==0?40:currentHz;
     return std::clamp(current+(slower?10:-10),30,240);
 }
 inline constexpr VrLivePoint vrLiveHipDefaultCenter() { return {.315f,-.76f,.225f}; }
