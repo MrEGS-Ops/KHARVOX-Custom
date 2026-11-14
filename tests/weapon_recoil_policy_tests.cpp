@@ -8,14 +8,19 @@ int main(){
     using namespace kharvox;
     WeaponRecoilSettings settings{};
     WeaponRecoilState state{};
-    assert(!anyWeaponRecoilEnabled(settings));
+    assert(anyWeaponRecoilEnabled(settings));
+    assert(!settings.enabled[0]&&!settings.enabled[4]&&settings.enabled[1]
+        &&settings.enabled[2]&&settings.enabled[3]&&settings.enabled[5]
+        &&settings.enabled[6]&&settings.enabled[7]&&settings.enabled[8]
+        &&settings.enabled[9]);
+    assert(settings.dynamicEnabled&&std::abs(settings.dynamicBuildUpPerShot-.35f)<.0001f);
     assert(kWeaponRecoilKinds.size()==10);
     assert(weaponRecoilIndex("shotgun")==1);
     assert(weaponRecoilIndex("chaingun")==7);
     assert(weaponRecoilIndex("chaingun",true)==9);
     assert(weaponRecoilIndex("chaingun_turret")==9);
     assert(weaponRecoilIndex("chainsaw")==-1);
-    assert(settings.strength[7]==3.f&&settings.strength[9]==1.7f);
+    assert(settings.strength[7]==1.f&&settings.strength[9]==3.f);
     assert(settings.recovery[7]==.45f&&settings.recovery[9]==.75f);
     assert(recoilAllowedForWeaponMode(2,false)); // Rifle primary
     assert(!recoilAllowedForWeaponMode(2,true)); // Rifle alternate
@@ -452,7 +457,7 @@ int main(){
     assert(migrated.recovery[9]==kWeaponRecoilDefaultRecovery[9]);
     assert(saveWeaponRecoilSettings(path.string(),migrated));
     assert(loadWeaponRecoilSettings(path.string(),loaded));
-    assert(loaded.strength[7]==1.5f&&loaded.strength[9]==1.7f);
+    assert(loaded.strength[7]==1.5f&&loaded.strength[9]==3.f);
     {
         std::ofstream legacyOff(path,std::ios::trunc);
         legacyOff<<"schema 1\nenabled 0\n";
