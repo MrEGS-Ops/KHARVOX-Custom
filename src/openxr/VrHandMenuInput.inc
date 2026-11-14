@@ -461,7 +461,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     if(s.vrHandMenu.page==kharvox::VrMenuPage::WeaponRecoil){
         if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
         if(pixelX>=38&&pixelX<=493)
-            for(int i=0;i<static_cast<int>(kharvox::kWeaponRecoilKinds.size());++i)
+            for(int i=0;i<kharvox::kVrRecoilMenuEntryCount;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)return 200+i;
         if(pixelX>=531&&pixelX<=915)
             for(int i=0;i<6;++i)
@@ -721,11 +721,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int previous=m.selectedRecoilWeapon;
             kharvox::vrMenuNavigateStick(m.navigation,
                 s.leftStick.x,s.leftStick.y,
-                static_cast<int>(kharvox::kWeaponRecoilKinds.size()),
+                kharvox::kVrRecoilMenuEntryCount,
                 m.selectedRecoilWeapon,6);
             if(previous!=m.selectedRecoilWeapon)m.navigation.actionIndex=0;
             m.selectedRecoilWeapon=std::clamp(m.selectedRecoilWeapon,0,
-                static_cast<int>(kharvox::kWeaponRecoilKinds.size())-1);
+                kharvox::kVrRecoilMenuEntryCount-1);
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
                 aEdge?kharvox::vrMenuRecoilGamepadTarget(
@@ -735,7 +735,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.page=kharvox::VrMenuPage::Mods;
                 m.navigation={};
                 m.message="Back to VR Mod Settings.";
-            }else if(chosen>=200&&chosen<200+static_cast<int>(kharvox::kWeaponRecoilKinds.size())){
+            }else if(chosen>=200&&chosen<200+kharvox::kVrRecoilMenuEntryCount){
                 m.selectedRecoilWeapon=chosen-200;
                 if(aEdge){
                     m.navigation.settingsColumn=true;
