@@ -337,8 +337,9 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(40,102,"WEAPON PROFILES",muted);
         write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
-        const int selected=std::clamp(m.selectedRecoilWeapon,0,8);
-        for(int i=0;i<9;++i){
+        const int selected=std::clamp(m.selectedRecoilWeapon,0,
+            static_cast<int>(kharvox::kWeaponRecoilKinds.size())-1);
+        for(int i=0;i<static_cast<int>(kharvox::kWeaponRecoilKinds.size());++i){
             const int y=136+i*45;
             const bool active=i==selected;
             const bool hover=m.hovered==200+i
@@ -350,7 +351,9 @@ void paintVrHandMenu() {
             SelectObject(dc,regular);
             const auto key=kharvox::kWeaponRecoilKinds[static_cast<std::size_t>(i)];
             const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
-            write(56,y+6,name&&*name?name:key,white);
+            const char* label=i==7?"Minigun (Normal)"
+                :i==9?"Minigun (Turret)":(name&&*name?name:key);
+            write(56,y+6,label,white);
             SelectObject(dc,smallFont);
             const int strength=static_cast<int>(std::lround(
                 s.recoilSettings.strength[static_cast<std::size_t>(i)]*100.f));
@@ -368,7 +371,7 @@ void paintVrHandMenu() {
             s.recoilSettings.enabled?"DISABLE RECOIL":"ENABLE RECOIL",
             "LESS KICK (-10%)",
             "MORE KICK (+10%, MAX 900%)",
-            "SLOWER RECOVERY (-10%)",
+            "SLOWER RECOVERY (-10%, MIN 25%)",
             "FASTER RECOVERY (+10%)",
             "RESET THIS WEAPON"
         }};
@@ -384,7 +387,7 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
             std::to_string(recovery)+"%",RGB(84,233,214));
-        write(539,579,"1 hand: climb  |  2 hands: stable",muted);
+        write(539,579,"1 hand: heavy recoil  |  2 hands: stable",muted);
         write(539,614,"Close menu to test. B: BACK",muted);
         write(40,662,m.message.empty()
             ?"Recoil changes save separately; no grip calibration changes."
