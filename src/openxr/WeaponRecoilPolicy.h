@@ -124,9 +124,14 @@ struct WeaponRecoilOutput {
 // Defer the recoil just ONE render update after confirming the ammo decrease
 // so no firing frame can have its original muzzle trajectory modified.
 inline float gaussKickCycleMilliseconds(float recovery) noexcept {
-    // Full zero after 420ms at 25%; 260ms at 100%; 87ms at 900%.
-    // High kick, short return; no exponential tail into the next shot.
-    return (std::clamp)(260.f/std::sqrt(recovery),70.f,420.f);
+    // Gauss uses its OWN recovery knob, not shared dynamic build-up.
+    // Every setting in the full 25..900% range must produce a distinct
+    // duration. The old 420ms cap made 25..38% nearly identical.
+    // 25%=745ms, 50%=468ms, 100%=260ms, 200%=184ms, 900%=87ms.
+    // The extra low-speed term tapers smoothly to zero at 100%.
+    const float r=(std::clamp)(recovery,.25f,9.f);
+    const float slow=(std::max)(0.f,1.f-r);
+    return 260.f/std::sqrt(r)+400.f*slow*slow;
 }
 // Shared build-up applies to finite-ammo guns EXCEPT Gauss (its single-shot
 // charge, punch and fast-return remain independently tuned per weapon).
@@ -162,13 +167,10 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     const bool triggerEdge=input.fireHeld&&!state.fireHeld;
     const bool triggerRelease=!input.fireHeld&&state.fireHeld;
     if(triggerEdge&&input.weapon==6){
-        // Gauss is a separate single-shot punch/recovery cycle. Its
-        // charge starts clean; never affect the automatic-weapon state.
-        state.fastPitch=state.climbPitch=state.yaw=0.f;
-        state.gaussKickTick=0;
-        state.gaussKickPitch=state.gaussKickYaw=0.f;
-        state.confirmedShotQueued=false;
-        state.activeMultiplier=1.f;
+        // A Gauss trigger edge might be a DRY PRESS during native cooldown.
+        // It must never cancel a recoil already recovering, and it must
+        // never erase a shot already confirmed by a native ammo decrease.
+        // Only initialize the next potential charged-shot input state.
         state.gaussCharging=input.fireOnRelease;
         state.gaussAmmoSpentDuringCharge=false;
     }
@@ -226,7 +228,11 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         }
         kickApplied=true;
     }
-    state.confirmedShotQueued=false;
+    // If a confirmed ammo debit is waiting and the trigger was pressed
+    // again on this exact frame, keep the kick queued until a later
+    // update. This avoids bending the new shot's original muzzle aim
+    // without silently dropping an actual previously confirmed shot.
+    if(!triggerEdge)state.confirmedShotQueued=false;
     if(input.twoHands){
         // Native two-hand aiming wins, including pending recoil.
         state.fastPitch=state.climbPitch=state.yaw=0.f;

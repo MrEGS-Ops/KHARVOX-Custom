@@ -208,14 +208,23 @@ int main(){
     assert(tick(6,7500,true,165).pitchDegrees==0.f);
     const auto gaussPunch=tick(6,7510,true,165);
     assert(gaussPunch.shotEstimated&&gaussPunch.pitchDegrees>30.f);
-    const auto gaussRecovered=tick(6,8000,true,165);
+    const auto gaussStillRecovering=tick(6,8000,true,165);
+    assert(gaussStillRecovering.pitchDegrees>0.f);
+    const auto gaussRecovered=tick(6,8300,true,165);
     assert(gaussRecovered.pitchDegrees==0.f&&gaussRecovered.yawDegrees==0.f);
 
-    // Gauss recoil returns to EXACT zero even at minimum recovery;
-    // 900% recovery makes the complete cycle much faster.
-    assert(gaussKickCycleMilliseconds(.25f)<=420.f);
-    assert(gaussKickCycleMilliseconds(2.f)>170.f);
-    assert(gaussKickCycleMilliseconds(9.f)<100.f);
+    // Recovery has NO 420ms low-speed saturation: settings 25% through
+    // 900% all give different durations. Gauss is not shared scaling.
+    const float quarter=gaussKickCycleMilliseconds(.25f);
+    const float half=gaussKickCycleMilliseconds(.5f);
+    const float normal=gaussKickCycleMilliseconds(1.f);
+    const float doubled=gaussKickCycleMilliseconds(2.f);
+    const float quadrupled=gaussKickCycleMilliseconds(4.f);
+    const float maximum=gaussKickCycleMilliseconds(9.f);
+    assert(quarter>700.f&&quarter>half&&half>normal
+        &&normal>doubled&&doubled>quadrupled&&quadrupled>maximum);
+    assert(std::abs(normal-260.f)<.001f);
+    assert(maximum>80.f&&maximum<100.f);
     state={};
     settings.recovery[6]=9.f;
     tick(6,8100,false,165);
@@ -225,6 +234,54 @@ int main(){
     const auto quickRest=tick(6,8270,true,150);
     assert(quickRest.pitchDegrees==0.f&&quickRest.yawDegrees==0.f);
     assert(tick(6,8350,true,150).pitchDegrees==0.f); // no extra shot
+
+    // Gauss MUST keep its existing recovery motion through trigger
+    // pulls that spend NO ammo. Previously each press cleared the active
+    // kick to zero, making 25% and 900% feel nearly indistinguishable.
+    state={};
+    settings.recovery[6]=.25f;
+    settings.strength[6]=9.f;
+    tick(6,16000,false,150);
+    assert(tick(6,16010,true,150).pitchDegrees==0.f);
+    assert(tick(6,16020,true,135).pitchDegrees==0.f);
+    const auto heavyShot=tick(6,16030,true,135);
+    assert(heavyShot.shotEstimated&&heavyShot.pitchDegrees>30.f);
+    const auto partial=tick(6,16120,false,135);
+    assert(partial.pitchDegrees>0.f
+        &&partial.pitchDegrees<heavyShot.pitchDegrees);
+    const auto dryPress=tick(6,16130,true,135);
+    assert(dryPress.pitchDegrees>0.f
+        &&dryPress.pitchDegrees<partial.pitchDegrees
+        &&!dryPress.shotEstimated);
+    const auto dryHold=tick(6,16180,true,135);
+    assert(dryHold.pitchDegrees>0.f
+        &&dryHold.pitchDegrees<dryPress.pitchDegrees
+        &&!dryHold.shotEstimated);
+    const auto dryReleased=tick(6,16200,false,135);
+    assert(dryReleased.pitchDegrees>0.f
+        &&dryReleased.pitchDegrees<dryHold.pitchDegrees);
+    const auto dryAgain=tick(6,16210,true,135);
+    assert(dryAgain.pitchDegrees>0.f
+        &&dryAgain.pitchDegrees<dryReleased.pitchDegrees
+        &&!dryAgain.shotEstimated);
+    assert(tick(6,16800,false,135).pitchDegrees==0.f);
+
+    // An ammo-confirmed shot queued on RELEASE must survive an immediate
+    // next trigger press without bending that fresh firing frame.
+    state={};
+    tick(6,17000,false,135);
+    tick(6,17010,true,135);
+    const auto queuedOnRelease=tick(6,17020,false,120);
+    assert(!queuedOnRelease.shotEstimated
+        &&queuedOnRelease.pitchDegrees==0.f
+        &&state.confirmedShotQueued);
+    const auto quickRepress=tick(6,17030,true,120);
+    assert(!quickRepress.shotEstimated
+        &&quickRepress.pitchDegrees==0.f
+        &&state.confirmedShotQueued);
+    const auto delivered=tick(6,17040,true,120);
+    assert(delivered.shotEstimated&&delivered.pitchDegrees>0.f
+        &&!state.confirmedShotQueued);
 
     // Long Gauss Siege hold: ammo may decrease during charging, but
     // the kick must not occur until AFTER trigger release.
