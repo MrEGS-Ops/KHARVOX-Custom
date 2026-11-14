@@ -6,6 +6,9 @@ int main(){
     using namespace kharvox;
     VrLiveSettings s{};
     assert(vrLiveValidSettings(s));
+    assert(s.enabledOverrides[2]==1&&s.enabledOverrides[5]==1);
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::PhysicalCrouch,false));
+    assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
     assert(s.gloryKillHz==40); // Fresh install and in-headset factory preset.
     // Exact owner-uploaded factory SHIFT offsets (not absolute hip points).
     constexpr auto hips=kVrLiveFactoryHipShifts;
