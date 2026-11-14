@@ -5728,8 +5728,9 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
         log("[VR-RECOIL] invalid saved recoil profile; safe OFF defaults restored");
     }
     log(std::string("[VR-RECOIL] experimental one-hand recoil ")
-        +(s.recoilSettings.enabled?"ENABLED":"OFF")
-        +"; per-weapon tuning independent of hand calibration");
+        +std::to_string(std::count(s.recoilSettings.enabled.begin(),
+            s.recoilSettings.enabled.end(),true))
+        +" of 10 weapon profiles enabled; grip calibration independent");
     log("[VR-GRIP] calibration path="+kharvox::runtimePathA("offhand_right_hand_positions.cfg")+
         " accepted="+std::to_string(s.rightGripSettings.accepted)+
         " rejected="+std::to_string(s.rightGripSettings.rejected));
