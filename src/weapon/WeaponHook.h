@@ -56,6 +56,7 @@ bool KharvoxWeaponGaussSiegeChargeActive();
 // Only a native Turret-tagged Chaingun declaration counts as alternate.
 // If DOOM does not expose such a declaration, this safely stays false.
 bool KharvoxWeaponChaingunTurretModeActive();
+bool KharvoxWeaponChaingunRotorModeActive();
 // Presentation-only holster state: keeps DOOM's selected weapon alive while
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
