@@ -37,21 +37,37 @@ int main(){
     assert(!tick(1,1050,true,49).shotEstimated);
     const auto stillRecovering=tick(1,1100,false,49);
     assert(stillRecovering.pitchDegrees<firstKick.pitchDegrees);
+    // Re-pressing before recoil has settled must NEVER snap the gun
+    // to neutral. It continues recovering from its current offset.
     const auto cleanPress=tick(1,1110,true,49);
-    assert(cleanPress.pitchDegrees==0.f&&!cleanPress.shotEstimated);
+    assert(cleanPress.pitchDegrees>0.f
+        &&cleanPress.pitchDegrees<stillRecovering.pitchDegrees
+        &&!cleanPress.shotEstimated);
 
-    // Rapid empty/dry presses in an actual cooldown never create fake
-    // recoil, even with maximum kick and slow recovery settings.
+    // Rapid empty/dry presses during cooldown must neither produce new
+    // recoil nor erase the leftover pitch. Even changing the player's
+    // saved strength/recovery does not force an instant aim reset.
     settings.strength[1]=9.f;
     settings.recovery[1]=.25f;
+    float previous=cleanPress.pitchDegrees;
     for(std::uint64_t ms=1120;ms<1420;ms+=50){
-        assert(tick(1,ms,false,49).pitchDegrees==0.f);
+        const auto released=tick(1,ms,false,49);
+        assert(released.pitchDegrees>0.f
+            &&released.pitchDegrees<previous
+            &&!released.shotEstimated);
         const auto dry=tick(1,ms+10,true,49);
-        assert(dry.pitchDegrees==0.f&&!dry.shotEstimated);
+        assert(dry.pitchDegrees>0.f
+            &&dry.pitchDegrees<released.pitchDegrees
+            &&!dry.shotEstimated);
+        previous=dry.pitchDegrees;
     }
-    assert(tick(1,1450,false,49).pitchDegrees==0.f);
-    assert(tick(1,1460,true,49).pitchDegrees==0.f);
-    assert(tick(1,1470,true,48).pitchDegrees==0.f);
+    const auto finalRelease=tick(1,1450,false,49);
+    const auto nextPress=tick(1,1460,true,49);
+    assert(nextPress.pitchDegrees>0.f
+        &&nextPress.pitchDegrees<finalRelease.pitchDegrees
+        &&!nextPress.shotEstimated);
+    const auto confirmed=tick(1,1470,true,48);
+    assert(confirmed.pitchDegrees>0.f&&!confirmed.shotEstimated);
     const auto highKick=tick(1,1480,true,48);
     assert(highKick.shotEstimated&&highKick.pitchDegrees>firstKick.pitchDegrees*3.f);
 
@@ -70,6 +86,56 @@ int main(){
     assert(tick(2,2230,true,395).pitchDegrees>0.f);
     const auto secondKick=tick(2,2240,true,395);
     assert(secondKick.shotEstimated&&secondKick.pitchDegrees>batchKick.pitchDegrees);
+
+    // Minigun: sustained fire raises pitch; releasing the trigger must
+    // smoothly recover, and pressing it again halfway through MUST NOT
+    // teleport to zero or shrink its dynamic recoil ceiling.
+    {
+        WeaponRecoilSettings rapid{};
+        rapid.enabled[7]=true;
+        rapid.enabled[9]=true;
+        rapid.strength[7]=9.f;
+        rapid.recovery[7]=.25f;
+        rapid.dynamicEnabled=true;
+        rapid.dynamicBuildUpPerShot=.5f;
+        rapid.dynamicMaxMultiplier=4.f;
+        WeaponRecoilState burst{};
+        auto minigun=[&](std::uint64_t ms,bool down,int ammo,int mode=7){
+            return advanceWeaponRecoil(burst,rapid,
+                {mode,down,false,true,ms,false,ammo});
+        };
+        minigun(2400,false,600);
+        assert(minigun(2410,true,600).pitchDegrees==0.f);
+        for(int n=1;n<=7;++n){
+            const auto changed=minigun(2410+100u*n,true,600-n);
+            assert(!changed.shotEstimated);
+            const auto applied=minigun(2420+100u*n,true,600-n);
+            assert(applied.shotEstimated&&applied.pitchDegrees>0.f);
+        }
+        const float activeCapMultiplier=burst.activeMultiplier;
+        const float heldPeak=minigun(3190,true,593).pitchDegrees;
+        assert(activeCapMultiplier>1.f&&heldPeak>0.f);
+        const auto halfRecovered=minigun(3270,false,593);
+        assert(halfRecovered.pitchDegrees>0.f
+            &&halfRecovered.pitchDegrees<heldPeak);
+        const auto pressedAgain=minigun(3280,true,593);
+        // No native ammo decrease: not a shot. No reset of pitch or
+        // active dynamic cap. The only change is smooth recovery.
+        assert(!pressedAgain.shotEstimated
+            &&pressedAgain.pitchDegrees>0.f
+            &&pressedAgain.pitchDegrees<halfRecovered.pitchDegrees);
+        assert(burst.activeMultiplier==activeCapMultiplier);
+        const auto stillAiming=minigun(3300,true,593);
+        assert(!stillAiming.shotEstimated
+            &&stillAiming.pitchDegrees>0.f
+            &&stillAiming.pitchDegrees<pressedAgain.pitchDegrees);
+        const auto newAmmo=minigun(3400,true,592);
+        assert(!newAmmo.shotEstimated&&newAmmo.pitchDegrees>0.f);
+        const auto nextRecoil=minigun(3410,true,592);
+        assert(nextRecoil.shotEstimated&&nextRecoil.pitchDegrees>0.f);
+        // A real weapon-mode switch still resets (separate recoil profile).
+        assert(minigun(3420,true,592,9).pitchDegrees==0.f);
+    }
 
     // The Heavy Assault Rifle's weapon-mod/alternate firing must not
     // generate any recoil, even if its ammo pool changes during the mod.
