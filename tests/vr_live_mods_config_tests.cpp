@@ -6,7 +6,7 @@ int main(){
     using namespace kharvox;
     VrLiveSettings s{};
     assert(vrLiveValidSettings(s));
-    assert(s.gloryKillHz==60); // Fresh install and in-headset factory preset.
+    assert(s.gloryKillHz==40); // Fresh install and in-headset factory preset.
     // Exact owner-uploaded factory SHIFT offsets (not absolute hip points).
     constexpr auto hips=kVrLiveFactoryHipShifts;
     for(std::size_t side=0;side<2;++side){
@@ -31,7 +31,7 @@ int main(){
         {.30f,.10f,.37f},0));
     assert(vrLiveWheelInside({.30f,.10f,.37f},false,s.wheelShift[1]));
     // Reset command restores BOTH owner hip presets and wheel zero, but
-    // does not copy the uploaded file's unrelated KILLTIME 50 Hz value.
+    // does not change the separately configured KILLTIME 40 Hz value.
     vrLiveResetGunslingerPositions(s);
     for(std::size_t side=0;side<2;++side){
         assert(std::abs(s.hipShift[side].x-hips[side].x)<.0000001f);
@@ -40,7 +40,7 @@ int main(){
         assert(s.wheelShift[side].x==0.f&&s.wheelShift[side].y==0.f
             &&s.wheelShift[side].z==0.f);
     }
-    assert(s.gloryKillHz==60);
+    assert(s.gloryKillHz==40);
     assert(vrLiveCapturePoint(s,VrLiveCapture::CrouchStanding,{},.03f));
     assert(!vrLiveCapturePoint(s,VrLiveCapture::CrouchLowered,{},-.05f));
     assert(vrLiveCapturePoint(s,VrLiveCapture::CrouchLowered,{},-.53f));
@@ -136,7 +136,7 @@ int main(){
     assert(vrLiveStepKilltimeHz(240,true)==240);
     assert(vrLiveStepKilltimeHz(30,false)==30);
     const VrLiveSettings defaults{};
-    assert(defaults.gloryKillHz==60);
+    assert(defaults.gloryKillHz==40);
     assert(defaults.punchSpeedMetersPerSec==2.8f);
     assert(std::abs(defaults.hipShift[0].x+.0397179f)<.0000001f);
     assert(std::abs(defaults.hipShift[1].z+.1343255f)<.0000001f);
