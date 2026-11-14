@@ -20,29 +20,16 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
-// The native Chaingun object can reference both installed mods. Treat
-// those declaration strings as hints, NEVER proof of the displayed mod.
-// No arbitrary Turret-over-Rotor priority when both names occur.
-enum class VrChaingunAttachmentHint { Unknown, Rotor, Turret, Ambiguous };
-inline constexpr VrChaingunAttachmentHint vrChaingunAttachmentHint(
-    bool rotorNameFound,bool turretNameFound) noexcept {
-    return rotorNameFound&&turretNameFound
-        ?VrChaingunAttachmentHint::Ambiguous
-        :rotorNameFound?VrChaingunAttachmentHint::Rotor
-        :turretNameFound?VrChaingunAttachmentHint::Turret
-        :VrChaingunAttachmentHint::Unknown;
-}
-inline constexpr const char* vrChaingunAttachmentHintName(
-    VrChaingunAttachmentHint hint) noexcept {
-    switch(hint){
-        case VrChaingunAttachmentHint::Rotor:return "ROTOR";
-        case VrChaingunAttachmentHint::Turret:return "TURRET";
-        case VrChaingunAttachmentHint::Ambiguous:return "BOTH DECLARED";
-        default:return "UNVERIFIED";
-    }
+// One calibration slot per firing state. Neither mode is bound to a
+// particular equipped Gauss or Chaingun attachment.
+inline constexpr bool vrHeavyAlternateGripActive(
+    bool menuOpen,bool matchingSelectedWeapon,bool selectedAlternate,
+    bool nativeSecondaryGrip,bool gaussChargeStillActive) noexcept {
+    if(menuOpen&&matchingSelectedWeapon)return selectedAlternate;
+    return nativeSecondaryGrip||gaussChargeStillActive;
 }
 // Grip-held aim preview works on every primary weapon.
-// Siege/Turret is engaged automatically when its mode is selected;
+// Alt Fire is engaged automatically when its mode is selected;
 // Grip itself is reserved for testing position, never alt fire in calibration.
 inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
     bool calibratingPrimary,const std::string& weapon) noexcept {
@@ -356,16 +343,9 @@ struct VrHandMenuState {
     int selectedWeapon{1};
     int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
-    // Gauss: Normal/Siege. Chaingun: Normal/Rotor/Turret. Rotor is
-    // independent from both legacy Normal and existing Turret poses.
-    bool alternateProfile{};
-    bool rotorProfile{};
-    // Armed only by deliberately pressing CALIBRATE after visually
-    // inspecting the deployed Minigun mod. The second press enters
-    // capture. No name scan can silently authorize a wrong profile.
-    bool minigunProfileConfirmed{};
-    bool calibrationProfileConfirmed{},calibrationRotorProfile{},
-        calibrationAlternateProfile{};
+    // Both Gauss and Chaingun: NORMAL / ALT FIRE. The latter is a
+    // generic secondary-fire grip slot, regardless of installed attachment.
+    bool alternateProfile{},calibrationAlternateProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
