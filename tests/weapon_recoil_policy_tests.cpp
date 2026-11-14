@@ -8,7 +8,13 @@ int main(){
     using namespace kharvox;
     WeaponRecoilSettings settings{};
     WeaponRecoilState state{};
-    assert(!settings.enabled);
+    assert(!anyWeaponRecoilEnabled(settings));
+    for(const bool on:settings.enabled)assert(!on); // no changed default gameplay
+    settings.enabled[7]=true;
+    assert(anyWeaponRecoilEnabled(settings));
+    assert(!settings.enabled[9]); // Normal never enables Turret implicitly
+    settings.enabled[7]=false;
+    assert(!anyWeaponRecoilEnabled(settings));
     assert(weaponRecoilIndex("shotgun")==1);
     assert(weaponRecoilIndex("chainsaw")==-1);
     assert(kWeaponRecoilKinds.size()==10);
@@ -21,7 +27,8 @@ int main(){
     assert(settings.strength[5]==3.0f&&settings.recovery[5]==.55f);
     const auto noEffect=advanceWeaponRecoil(state,settings,{1,true,false,true,100});
     assert(noEffect.pitchDegrees==0.f&&!noEffect.shotEstimated);
-    settings.enabled=true;
+    settings.enabled.fill(true); // individual flags used by existing recoil tests
+    assert(anyWeaponRecoilEnabled(settings));
 
     // First trigger press must NEVER bend the first projectile trajectory.
     const auto first=advanceWeaponRecoil(state,settings,{1,true,false,true,1000});
@@ -117,9 +124,46 @@ int main(){
     assert(saveWeaponRecoilSettings(path.string(),settings));
     WeaponRecoilSettings loaded{};
     assert(loadWeaponRecoilSettings(path.string(),loaded));
-    assert(loaded.enabled&&loaded.strength[1]==9.f
+    assert(loaded.enabled[1]&&loaded.strength[1]==9.f
         &&loaded.recovery[7]==.25f);
     assert(loaded.strength[7]==3.f&&loaded.strength[9]==1.7f);
+    // Per-weapon switches survive save/reload and do not leak to siblings.
+    settings.enabled.fill(false);
+    settings.enabled[1]=true; // shotgun
+    settings.enabled[9]=true; // Minigun Turret but NOT Normal
+    assert(saveWeaponRecoilSettings(path.string(),settings));
+    WeaponRecoilSettings independent{};
+    assert(loadWeaponRecoilSettings(path.string(),independent));
+    for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
+        assert(independent.enabled[i]==(i==1||i==9));
+    assert(independent.strength[7]==settings.strength[7]);
+    assert(independent.strength[9]==settings.strength[9]);
+    state={};
+    const auto disabledNormal=advanceWeaponRecoil(state,independent,
+        {7,true,false,true,5500});
+    assert(disabledNormal.pitchDegrees==0.f&&!disabledNormal.shotEstimated);
+    const auto enabledTurret=advanceWeaponRecoil(state,independent,
+        {9,true,false,true,5600});
+    const auto turretShot=advanceWeaponRecoil(state,independent,
+        {9,true,false,true,5600+kWeaponRecoilPostFireDelayMs});
+    assert(enabledTurret.pitchDegrees==0.f&&turretShot.shotEstimated
+        &&turretShot.pitchDegrees>0.f);
+    independent.enabled[9]=false;
+    const auto disabledImmediately=advanceWeaponRecoil(state,independent,
+        {9,true,false,true,5700});
+    assert(disabledImmediately.pitchDegrees==0.f&&!disabledImmediately.shotEstimated);
+    independent.enabled[7]=true;
+    const auto freshlyEnabled=advanceWeaponRecoil(state,independent,
+        {7,true,false,true,5800});
+    assert(freshlyEnabled.pitchDegrees==0.f&&!freshlyEnabled.shotEstimated);
+    // A partially written schema-2 file fails closed: don't discard
+    // the caller's existing settings or clear other weapon ON flags.
+    {
+        std::ofstream truncated(path,std::ios::trunc);
+        truncated<<"schema 2\nshotgun 1 2.500 0.600\n";
+    }
+    assert(!loadWeaponRecoilSettings(path.string(),independent));
+    assert(independent.enabled[7]&&!independent.enabled[9]);
     // A pre-Turret save has nine keys. Loading must preserve all those
     // user-selected values while adding ONLY the new Turret preset.
     {
@@ -134,9 +178,23 @@ int main(){
         assert(migrated.strength[i]==1.5f&&migrated.recovery[i]==.25f);
     assert(migrated.strength[9]==kWeaponRecoilDefaultStrength[9]);
     assert(migrated.recovery[9]==kWeaponRecoilDefaultRecovery[9]);
+    for(bool on:migrated.enabled)assert(on); // legacy global 1 -> all guns
+    // The legacy global OFF flag must remain OFF for every weapon.
+    {
+        std::ofstream legacyOff(path,std::ios::trunc);
+        legacyOff<<"schema 1\nenabled 0\n";
+        for(std::size_t i=0;i<9;++i)
+            legacyOff<<kWeaponRecoilKinds[i]<<" 1.750 0.300\n";
+    }
+    WeaponRecoilSettings legacyDisabled{};
+    assert(loadWeaponRecoilSettings(path.string(),legacyDisabled));
+    assert(!anyWeaponRecoilEnabled(legacyDisabled));
+    assert(legacyDisabled.strength[7]==1.75f);
+    // Continue with the already-loaded legacy enabled migration below.
     assert(saveWeaponRecoilSettings(path.string(),migrated));
     assert(loadWeaponRecoilSettings(path.string(),loaded));
     assert(loaded.strength[7]==1.5f&&loaded.strength[9]==1.7f);
+    for(bool on:loaded.enabled)assert(on);
     {
         std::ofstream bad(path,std::ios::trunc);
         bad<<"schema 1\nenabled 1\nshotgun nan 1.0\n";
