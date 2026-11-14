@@ -103,7 +103,6 @@ struct WeaponRecoilState {
     float gaussKickPitch{},gaussKickYaw{};
     float queuedMultiplier{1.f},activeMultiplier{1.f};
     std::uint32_t shotNumber{},confirmedStreak{};
-
 };
 struct WeaponRecoilInput {
     int weapon{-1};
@@ -129,13 +128,14 @@ inline float gaussKickCycleMilliseconds(float recovery) noexcept {
     // High kick, short return; no exponential tail into the next shot.
     return (std::clamp)(260.f/std::sqrt(recovery),70.f,420.f);
 }
-// Universal build-up: every ammo-confirmed firing event advances the
-// same capped multiplier. No shot timing estimate; 700ms is solely a
-// combo-expiration window, and cannot produce recoil without ammo debit.
+// Shared build-up applies to finite-ammo guns EXCEPT Gauss (its single-shot
+// charge, punch and fast-return remain independently tuned per weapon).
+// No shot timer: 700ms only expires a streak; ammunition debit alone kicks.
 inline constexpr std::uint64_t kRecoilComboResetMs=700;
 inline float recoilDynamicMultiplier(const WeaponRecoilSettings& settings,
-                                     std::uint32_t streak) noexcept {
-    if(!settings.dynamicEnabled||streak==0)return 1.f;
+                                     std::uint32_t streak,
+                                     int weapon) noexcept {
+    if(!settings.dynamicEnabled||weapon==6||streak==0)return 1.f;
     return (std::min)(settings.dynamicMaxMultiplier,
         1.f+(static_cast<float>(streak-1u)*settings.dynamicBuildUpPerShot));
 }
@@ -247,7 +247,7 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
             ?(std::min)(state.confirmedStreak+1u,1000u):1u;
         state.lastConfirmedShotTick=input.nowMs;
         state.queuedMultiplier=recoilDynamicMultiplier(
-            settings,state.confirmedStreak);
+            settings,state.confirmedStreak,input.weapon);
         state.confirmedShotQueued=true;
     };
     if(ammoDebit&&!input.twoHands&&recentlyFired){
@@ -283,7 +283,8 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
                 state.gaussKickYaw*envelope,kickApplied};
     }
     const float maxPitch=profile.maximumPitch*
-        (std::max)(1.f,settings.strength[index]);
+        (std::max)(1.f,settings.strength[index]*
+                   state.activeMultiplier);
     return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
             state.yaw,kickApplied};
 }
