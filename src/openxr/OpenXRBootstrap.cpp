@@ -294,6 +294,10 @@ struct State {
     XrAction leftHaptic{XR_NULL_HANDLE}; XrAction rightHaptic{XR_NULL_HANDLE};
     XrSpace rightAimSpace{XR_NULL_HANDLE}; XrSpace leftAimSpace{XR_NULL_HANDLE}; XrSpace rightGripSpace{XR_NULL_HANDLE}; XrSpace leftGripSpace{XR_NULL_HANDLE}; ControllerPose rightController{}; ControllerPose leftController{}; ControllerPose rightGripController{}; ControllerPose leftGripController{}; XrVector2f leftStick{}; XrVector2f rightStick{};
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
+    XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
+    kharvox::ControllerOnlySafetyState controllerOnlySafety{};
+    bool controllerDisconnectWasLocked{true},controllerPauseAttempted{};
+    unsigned long long controllerPauseUntilMs{};
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
     bool leftHanded{},leftHandSwapSticks{},swapJumpCrouch{};
     bool weaponHandLeft{}; // Live weapon/grenade owner, independent of fixed controller layout.
@@ -488,7 +492,7 @@ alignas(4) volatile LONG immersiveAdaptiveParticipantBypass{};
 alignas(4) volatile LONG nativeAdaptiveParticipantObserved{};
 using XInputGetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_STATE*);
 using XInputSetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_VIBRATION*);
-XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
+XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<bool> controllerOnlyLocked{true},controllerOnlyPausePulse{};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
 PFN_vkGetInstanceProcAddr bridgeNextGipa=nullptr;
 thread_local bool bridgeSessionTrace=false;
 // Meta may invoke the XR_KHR_vulkan_enable2 callbacks from one of its own
@@ -1071,7 +1075,30 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
     ++hold.presents;
     if(hold.lastAction!=kharvox::ActionSpeedKind::None)++hold.actionPresents;
 }
-DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){DWORD result=originalXInputGetState?originalXInputGetState(userIndex,state):ERROR_DEVICE_NOT_CONNECTED;if(userIndex!=0||!state)return result;if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);const auto movement=virtualMovementAxes.load(std::memory_order_relaxed);state->Gamepad.sThumbLX=kharvox::movementAxisX(movement);state->Gamepad.sThumbLY=kharvox::movementAxisY(movement);state->Gamepad.sThumbRX=virtualRightX.load(std::memory_order_relaxed);state->Gamepad.sThumbRY=virtualRightY.load(std::memory_order_relaxed);state->Gamepad.bLeftTrigger=std::max(state->Gamepad.bLeftTrigger,virtualLeftTrigger.load(std::memory_order_relaxed));state->Gamepad.bRightTrigger=std::max(state->Gamepad.bRightTrigger,virtualRightTrigger.load(std::memory_order_relaxed));state->Gamepad.wButtons|=virtualButtons.load(std::memory_order_relaxed);return ERROR_SUCCESS;}
+DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){
+    DWORD result=originalXInputGetState?originalXInputGetState(userIndex,state):ERROR_DEVICE_NOT_CONNECTED;
+    if(userIndex!=0||!state)return result;
+    if(controllerOnlyLocked.load(std::memory_order_acquire)){
+        // The original XInput device can also be a Virtual Desktop emulation
+        // source. Neutralize BOTH original and synthetic combat inputs.
+        ZeroMemory(&state->Gamepad,sizeof(state->Gamepad));
+        state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
+        if(controllerOnlyPausePulse.load(std::memory_order_acquire))
+            state->Gamepad.wButtons=XINPUT_GAMEPAD_START;
+        return ERROR_SUCCESS;
+    }
+    if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));
+    state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
+    const auto movement=virtualMovementAxes.load(std::memory_order_relaxed);
+    state->Gamepad.sThumbLX=kharvox::movementAxisX(movement);
+    state->Gamepad.sThumbLY=kharvox::movementAxisY(movement);
+    state->Gamepad.sThumbRX=virtualRightX.load(std::memory_order_relaxed);
+    state->Gamepad.sThumbRY=virtualRightY.load(std::memory_order_relaxed);
+    state->Gamepad.bLeftTrigger=std::max(state->Gamepad.bLeftTrigger,virtualLeftTrigger.load(std::memory_order_relaxed));
+    state->Gamepad.bRightTrigger=std::max(state->Gamepad.bRightTrigger,virtualRightTrigger.load(std::memory_order_relaxed));
+    state->Gamepad.wButtons|=virtualButtons.load(std::memory_order_relaxed);
+    return ERROR_SUCCESS;
+}
 void retainPendingXInputRumblePeak(uint32_t packed){
     if(!packed)return;
     auto observed=pendingXInputRumblePeaks.load(std::memory_order_relaxed);
