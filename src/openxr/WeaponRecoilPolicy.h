@@ -351,6 +351,12 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
     if(file.bad()||!schemaSeen||(schema==3&&!dynamicSeen)
         ||!validWeaponRecoilSettings(next))
         return false;
+    if(schema!=3){
+        // Legacy saves predate dynamic recoil and must remain explicitly OFF.
+        next.dynamicEnabled=false;
+        next.dynamicBuildUpPerShot=.20f;
+        next.dynamicMaxMultiplier=3.f;
+    }
     if(schema==1){
         if(!legacyEnabledSeen)return false;
         next.enabled.fill(legacyEnabled);
