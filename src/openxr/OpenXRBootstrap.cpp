@@ -2836,11 +2836,10 @@ void updateWeapon6Dof(){
     if(s.showHands)
         rotation=kharvox::weaponpose::gameplayWeaponAim(
             current.orientation,rotation,gameplayTwoHandSteering);
-    // Recoil is applied ONCE to the same weapon quaternion submitted to DOOM
-    // and the native muzzle/laser path. A freshly pressed trigger deliberately
-    // submits a neutral first-shot pose: the estimated kick is delayed until
-    // subsequent frames, rather than moving the muzzle on the firing frame. It never rotates the HMD or either
-    // tracked controller; the primary physical grip remains the fixed pivot.
+    // Native ammo spending, not a post-trigger timer, confirms recoil for
+    // each finite-ammo gun. An observed debit queues the kick for the NEXT
+    // render update so the projectile's first muzzle orientation remains
+    // unchanged. The HMD, controllers and physical grip stay fixed.
     // Gameplay/firing is strictly gated: no calibration, menus, holsters,
     // executions or unknown weapon profiles can generate a recoil shot.
     const int recoilWeapon=kharvox::weaponRecoilIndex(
@@ -2858,12 +2857,14 @@ void updateWeapon6Dof(){
     const auto ammo=KharvoxWeaponGetAmmoState(kind);
     const bool validAmmo=ammo!=KharvoxWeaponAmmoState::Empty
         &&ammo!=KharvoxWeaponAmmoState::Unavailable;
-    int gaussNativeAmmoTotal=-1;
-    if(kind==KharvoxWeaponKind::GaussCannon){
-        // The read-only, version-validated inventory query confirms an
-        // actual ammo spend. Trigger pulls during the Gauss cooldown must
-        // NEVER generate recoil on their own.
-        KharvoxWeaponGetAmmoTotal(kind,gaussNativeAmmoTotal);
+    int nativeAmmoTotal=-1;
+    if(recoilWeapon>0){
+        // Confirm each recoil impulse from the existing validated native
+        // ammo snapshot for ALL finite-ammo weapons. One observed debit
+        // produces one kick (high-rate fire may coalesce several bullets).
+        // Pistol has unlimited ammo and deliberately remains recoil-free.
+        // Unsupported/stale native inventories fail closed: no guessed kick.
+        KharvoxWeaponGetAmmoTotal(kind,nativeAmmoTotal);
     }
     const auto recoil=kharvox::advanceWeaponRecoil(
         s.recoilState,s.recoilSettings,
@@ -2872,7 +2873,7 @@ void updateWeapon6Dof(){
          kind==KharvoxWeaponKind::GaussCannon
             &&(s.heavyAlternateInputForwarded
                 ||KharvoxWeaponGaussSiegeChargeActive()),
-         gaussNativeAmmoTotal});
+         nativeAmmoTotal});
     if(recoil.pitchDegrees>.0001f||std::abs(recoil.yawDegrees)>.0001f){
         constexpr float radiansPerDegree=0.017453292519943295f;
         const float pitchHalf=recoil.pitchDegrees*radiansPerDegree*.5f;
