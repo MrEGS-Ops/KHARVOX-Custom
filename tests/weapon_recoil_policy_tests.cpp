@@ -25,6 +25,9 @@ int main(){
     assert(recoilAllowedForWeaponMode(2,false)); // Rifle primary
     assert(!recoilAllowedForWeaponMode(2,true)); // Rifle alternate
     assert(recoilAllowedForWeaponMode(6,true)); // Gauss is not the HAR alt
+    // Remaining legacy impulse tests use deterministic non-dynamic tuning;
+    // factory dynamic mode is tested separately above and below.
+    settings.dynamicEnabled=false;
     settings.enabled.fill(true);
     auto tick=[&](int weapon,std::uint64_t ms,bool fire,int ammo,
                   bool support=false,bool gameplay=true){
