@@ -216,23 +216,18 @@ int main(){
  // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
  // support stores only a point; its quaternion remains a grab-time snapshot.
  auto menu=kharvox::VrHandMenuState{};
- // A shared native object can mention both installed modifications:
- // never silently choose Turret over Rotor or vice versa.
- using Hint=kharvox::VrChaingunAttachmentHint;
- assert(kharvox::vrChaingunAttachmentHint(false,false)==Hint::Unknown);
- assert(kharvox::vrChaingunAttachmentHint(true,false)==Hint::Rotor);
- assert(kharvox::vrChaingunAttachmentHint(false,true)==Hint::Turret);
- assert(kharvox::vrChaingunAttachmentHint(true,true)==Hint::Ambiguous);
- assert(std::string(kharvox::vrChaingunAttachmentHintName(
-     Hint::Ambiguous))=="BOTH DECLARED");
- assert(!menu.minigunProfileConfirmed&&!menu.calibrationProfileConfirmed);
- assert(!menu.calibrationRotorProfile&&!menu.calibrationAlternateProfile);
- assert(!menu.alternateProfile&&!menu.rotorProfile);
- menu.rotorProfile=true;
- assert(menu.rotorProfile&&!menu.alternateProfile);
- menu.rotorProfile=false;
+ // Gauss and Minigun present only NORMAL and generic ALT FIRE.
+ // Attachment names never select the active grip profile.
+ assert(!menu.alternateProfile);
  menu.alternateProfile=true;
- assert(menu.alternateProfile); // Alternate heavy profile is a menu option, not a chord.
+ assert(menu.alternateProfile);
+ using kharvox::vrHeavyAlternateGripActive;
+ assert(vrHeavyAlternateGripActive(true,true,true,false,false));
+ assert(!vrHeavyAlternateGripActive(true,true,false,true,false));
+ assert(vrHeavyAlternateGripActive(false,false,false,true,false));
+ assert(vrHeavyAlternateGripActive(false,false,false,false,true)); // Gauss charge
+ assert(!vrHeavyAlternateGripActive(false,false,false,false,false));
+ assert(!vrHeavyAlternateGripActive(true,true,false,false,false));
  using kharvox::VrMenuShortcutAction;
  auto hold=kharvox::VrMenuHoldShortcut{};
  // Short taps are left alone for Hand Focus.
