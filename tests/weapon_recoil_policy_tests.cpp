@@ -115,26 +115,32 @@ int main(){
         const float activeCapMultiplier=burst.activeMultiplier;
         const float heldPeak=minigun(3190,true,593).pitchDegrees;
         assert(activeCapMultiplier>1.f&&heldPeak>0.f);
-        const auto halfRecovered=minigun(3270,false,593);
+        // At the 65-degree cap, the visible pitch may briefly plateau
+        // while fastPitch+climbPitch still exceeds that ceiling. Do not
+        // mistake the capped plateau for a recovery or trigger snap.
+        const auto firstRelease=minigun(3270,false,593);
+        assert(firstRelease.pitchDegrees>0.f
+            &&firstRelease.pitchDegrees<=heldPeak);
+        const auto halfRecovered=minigun(3350,false,593);
         assert(halfRecovered.pitchDegrees>0.f
             &&halfRecovered.pitchDegrees<heldPeak);
-        const auto pressedAgain=minigun(3280,true,593);
+        const auto pressedAgain=minigun(3360,true,593);
         // No native ammo decrease: not a shot. No reset of pitch or
         // active dynamic cap. The only change is smooth recovery.
         assert(!pressedAgain.shotEstimated
             &&pressedAgain.pitchDegrees>0.f
             &&pressedAgain.pitchDegrees<halfRecovered.pitchDegrees);
         assert(burst.activeMultiplier==activeCapMultiplier);
-        const auto stillAiming=minigun(3300,true,593);
+        const auto stillAiming=minigun(3380,true,593);
         assert(!stillAiming.shotEstimated
             &&stillAiming.pitchDegrees>0.f
             &&stillAiming.pitchDegrees<pressedAgain.pitchDegrees);
-        const auto newAmmo=minigun(3400,true,592);
+        const auto newAmmo=minigun(3440,true,592);
         assert(!newAmmo.shotEstimated&&newAmmo.pitchDegrees>0.f);
-        const auto nextRecoil=minigun(3410,true,592);
+        const auto nextRecoil=minigun(3450,true,592);
         assert(nextRecoil.shotEstimated&&nextRecoil.pitchDegrees>0.f);
         // A real weapon-mode switch still resets (separate recoil profile).
-        assert(minigun(3420,true,592,9).pitchDegrees==0.f);
+        assert(minigun(3460,true,592,9).pitchDegrees==0.f);
     }
 
     // The Heavy Assault Rifle's weapon-mod/alternate firing must not
