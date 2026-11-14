@@ -85,6 +85,10 @@ struct WeaponRecoilInput {
     int weapon{-1};
     bool fireHeld{},twoHands{},gameplay{};
     std::uint64_t nowMs{};
+    // Charging weapons such as Gauss should not start an input-estimated
+    // kick while their trigger is still held and the shot is not confirmed.
+    // Wait for the release edge, then the normal post-fire grace interval.
+    bool fireOnRelease{};
 };
 struct WeaponRecoilOutput {
     float pitchDegrees{},yawDegrees{};
@@ -114,6 +118,7 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     // Recoil can accumulate only from continued hold on an automatic
     // weapon; a new tap doesn't inherit a stale kick from another tap.
     const bool triggerEdge=input.fireHeld&&!state.fireHeld;
+    const bool triggerRelease=!input.fireHeld&&state.fireHeld;
     if(triggerEdge){
         state.fastPitch=0.f;
         state.climbPitch=0.f;
@@ -154,15 +159,27 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state.pendingShot=false;
         kickApplied=true;
     }
-    if(!input.twoHands&&input.fireHeld){
-        const bool repeated=profile.automaticIntervalMs
-            &&input.nowMs>=state.lastShotTick
-            &&input.nowMs-state.lastShotTick>=profile.automaticIntervalMs;
-        if((triggerEdge||repeated)&&!state.pendingShot){
-            // Schedule, don't rotate the muzzle on the fire-input frame.
-            state.pendingShot=true;
-            state.pendingShotTick=input.nowMs;
-            state.lastShotTick=input.nowMs;
+    if(!input.twoHands){
+        if(input.fireOnRelease){
+            // Gauss primary and Siege can spend time charging before the
+            // projectile fires. An arbitrary trigger-down delay causes the
+            // gun to climb BEFORE a charged shot. Schedule only after release
+            // instead: no recoil can begin during a long held charge.
+            if(triggerRelease&&!state.pendingShot){
+                state.pendingShot=true;
+                state.pendingShotTick=input.nowMs;
+                state.lastShotTick=input.nowMs;
+            }
+        }else if(input.fireHeld){
+            const bool repeated=profile.automaticIntervalMs
+                &&input.nowMs>=state.lastShotTick
+                &&input.nowMs-state.lastShotTick>=profile.automaticIntervalMs;
+            if((triggerEdge||repeated)&&!state.pendingShot){
+                // Schedule, don't rotate the muzzle on the fire-input frame.
+                state.pendingShot=true;
+                state.pendingShotTick=input.nowMs;
+                state.lastShotTick=input.nowMs;
+            }
         }
     }
     state.fireHeld=input.fireHeld;
