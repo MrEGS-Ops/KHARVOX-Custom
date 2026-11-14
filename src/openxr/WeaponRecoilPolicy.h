@@ -77,17 +77,19 @@ inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noex
 struct WeaponRecoilState {
     float fastPitch{},climbPitch{},yaw{};
     int weapon{-1};
-    bool fireHeld{},pendingShot{};
+    bool fireHeld{},pendingShot{},gaussCharging{};
     std::uint64_t lastTick{},lastShotTick{},pendingShotTick{};
+    std::uint64_t gaussKickTick{};
+    float gaussKickPitch{},gaussKickYaw{};
     std::uint32_t shotNumber{};
 };
 struct WeaponRecoilInput {
     int weapon{-1};
     bool fireHeld{},twoHands{},gameplay{};
     std::uint64_t nowMs{};
-    // Charging weapons such as Gauss should not start an input-estimated
-    // kick while their trigger is still held and the shot is not confirmed.
-    // Wait for the release edge, then the normal post-fire grace interval.
+    // Gauss Siege: this trigger hold is a charging shot. Its kick is
+    // scheduled AFTER release; normal Gauss fires on press.
+    // This is only an input/weapon-mode estimate, not a DOOM shot callback.
     bool fireOnRelease{};
 };
 struct WeaponRecoilOutput {
@@ -101,6 +103,12 @@ struct WeaponRecoilOutput {
 // subsequent gameplay tick and a short native-fire grace period. This is an
 // input-level estimate, not an asserted native shot confirmation.
 inline constexpr std::uint64_t kWeaponRecoilPostFireDelayMs=55;
+// Gauss is a hard single-shot punch, never an additive slow-climb weapon.
+// Even with Recovery at 25% the recoil is completely neutral after at most
+// 318ms (at 200%, 160ms). There is no residual into the next shot.
+inline float gaussKickCycleMilliseconds(float recovery) noexcept {
+    return (std::clamp)(340.f-90.f*recovery,160.f,320.f);
+}
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
@@ -124,6 +132,15 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state.climbPitch=0.f;
         state.yaw=0.f;
         state.pendingShot=false;
+        state.gaussKickTick=0;
+        state.gaussKickPitch=state.gaussKickYaw=0.f;
+        state.gaussCharging=input.weapon==6&&input.fireOnRelease;
+    }
+    if(input.weapon==6&&input.fireHeld&&input.fireOnRelease){
+        // Siege may transition into its native charge declaration a frame
+        // AFTER trigger-down. Cancel a queued normal shot before it kicks.
+        state.gaussCharging=true;
+        state.pendingShot=false;
     }
     const auto rawDelta=input.nowMs>=state.lastTick
         ?input.nowMs-state.lastTick:0u;
@@ -143,29 +160,47 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         // A pending one-handed kick must never fire after the second hand
         // locks on, nor after holstering/weapon switching (handled above).
         state.pendingShot=false;
+        state.gaussKickTick=0;
+        state.gaussKickPitch=state.gaussKickYaw=0.f;
     }else if(state.pendingShot
         &&input.nowMs>state.pendingShotTick
         &&input.nowMs-state.pendingShotTick>=kWeaponRecoilPostFireDelayMs){
         const float scale=settings.strength[index];
         // 900% scales the actual impulse and kick ceiling, not only the UI.
         const float maxPitch=profile.maximumPitch*(std::max)(1.f,scale);
-        state.fastPitch=(std::min)(maxPitch*.45f,
-            state.fastPitch+profile.pitchPerShot*.38f*scale);
-        state.climbPitch=(std::min)(maxPitch,
-            state.climbPitch+profile.pitchPerShot*.62f*scale);
         const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
-        state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
-            -maxPitch*.3f,maxPitch*.3f);
+        if(input.weapon==6){
+            // Big punch, quick *complete* return. Never build slow climb:
+            // no amount of low saved recovery can spoil the next shot.
+            state.gaussKickPitch=(std::min)(maxPitch,
+                profile.pitchPerShot*scale*1.65f);
+            state.gaussKickYaw=side*profile.yawPerShot*scale;
+            state.gaussKickTick=input.nowMs;
+            state.fastPitch=state.climbPitch=state.yaw=0.f;
+        }else{
+            state.fastPitch=(std::min)(maxPitch*.45f,
+                state.fastPitch+profile.pitchPerShot*.38f*scale);
+            state.climbPitch=(std::min)(maxPitch,
+                state.climbPitch+profile.pitchPerShot*.62f*scale);
+            state.yaw=std::clamp(state.yaw+side*profile.yawPerShot*scale,
+                -maxPitch*.3f,maxPitch*.3f);
+        }
         state.pendingShot=false;
         kickApplied=true;
     }
     if(!input.twoHands){
-        if(input.fireOnRelease){
-            // Gauss primary and Siege can spend time charging before the
-            // projectile fires. An arbitrary trigger-down delay causes the
-            // gun to climb BEFORE a charged shot. Schedule only after release
-            // instead: no recoil can begin during a long held charge.
-            if(triggerRelease&&!state.pendingShot){
+        if(input.weapon==6){
+            // Normal Gauss fires on trigger-down; charged Siege fires on
+            // trigger release. Preserve the charging identity across frames
+            // even if its mod Grip is released before the trigger.
+            if(state.gaussCharging){
+                if(triggerRelease&&!state.pendingShot){
+                    state.pendingShot=true;
+                    state.pendingShotTick=input.nowMs;
+                    state.lastShotTick=input.nowMs;
+                    state.gaussCharging=false;
+                }
+            }else if(triggerEdge&&!state.pendingShot){
                 state.pendingShot=true;
                 state.pendingShotTick=input.nowMs;
                 state.lastShotTick=input.nowMs;
@@ -183,6 +218,22 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         }
     }
     state.fireHeld=input.fireHeld;
+    if(input.weapon==6){
+        if(!state.gaussKickTick)return {0.f,0.f,kickApplied};
+        const float elapsed=static_cast<float>(input.nowMs>=state.gaussKickTick
+            ?input.nowMs-state.gaussKickTick:0);
+        const float t=(std::clamp)(elapsed/gaussKickCycleMilliseconds(recovery),
+            0.f,1.f);
+        // Smoothstep returns the gun exactly to native aim at the end of
+        // its short cycle; there is no exponential tail between shots.
+        const float envelope=1.f-t*t*(3.f-2.f*t);
+        if(t>=1.f){
+            state.gaussKickTick=0;
+            state.gaussKickPitch=state.gaussKickYaw=0.f;
+        }
+        return {state.gaussKickPitch*envelope,
+                state.gaussKickYaw*envelope,kickApplied};
+    }
     const float maxPitch=profile.maximumPitch*
         (std::max)(1.f,settings.strength[index]);
     return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
