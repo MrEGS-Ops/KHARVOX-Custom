@@ -69,6 +69,21 @@ internal static class LauncherUserData
             "CalibrationDefaults", "kharvox-launcher-settings.json");
         if (File.Exists(factorySettings) && !File.Exists(portableSettings))
             File.Copy(factorySettings, portableSettings, false);
+        // The legacy desktop wrapper seeded these seven owner-calibrated
+        // defaults. Direct KHARVOX must do that on fresh installs instead.
+        // Native RuntimePaths.h reads editable *.cfg from UserData, not from
+        // CalibrationDefaults. Never overwrite a user's saved calibration.
+        var defaultsDirectory = Path.Combine(AppContext.BaseDirectory,
+            "CalibrationDefaults");
+        if (Directory.Exists(defaultsDirectory))
+        {
+            foreach (var factory in Directory.GetFiles(defaultsDirectory, "*.cfg"))
+            {
+                var editable = PathFor(Path.GetFileName(factory));
+                if (!File.Exists(editable))
+                    File.Copy(factory, editable, false);
+            }
+        }
         // Prior config marks were in AppData. Copy the owner's history into
         // portable UserData once but do not modify the original app data.
         var marksSource = Path.Combine(Environment.GetFolderPath(
