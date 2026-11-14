@@ -374,8 +374,7 @@ bool handleVrLiveMenuAction(int action){
             else if(option==2)openVrLiveCapture(VrLiveCapture::WheelRight);
             else if(option==3)openVrLiveCapture(VrLiveCapture::WheelLeft);
             else if(option==4){
-                s.vrLiveSettings.hipShift={};
-                s.vrLiveSettings.wheelShift={};
+                kharvox::vrLiveResetGunslingerPositions(s.vrLiveSettings);
                 changed=true;
             }
             break;
