@@ -389,7 +389,8 @@ jobs:
               "two_hand_weapon_profiles_left_primary_saved.cfg",
               "offhand_hud.cfg",
               "vr_live_mods_saved.cfg",
-              "weapon_recoil_saved.cfg")) {
+              "weapon_recoil_saved.cfg",
+              "kharvox-launcher-settings.json")) {
             $expected = Join-Path $PWD ("config/user_calibration_defaults/" + $name)
             $actual = Join-Path $factoryDir $name
             if (!(Test-Path -LiteralPath $actual)) {
@@ -415,7 +416,7 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $bundledRuntime "hand_models_calibration_default.cfg"))) {
             throw "CLEAN INSTALL VIOLATION: required hand-model baseline missing"
           }
-          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all six uploaded calibration/HUD/KILLTIME/recoil presets"
+          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all seven uploaded calibration, HUD, KILLTIME, recoil and launcher presets"
 
       - name: Package ready-to-run standalone with bundled custom KHARVOX
         shell: pwsh
