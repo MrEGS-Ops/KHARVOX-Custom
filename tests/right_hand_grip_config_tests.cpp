@@ -216,6 +216,17 @@ int main(){
  // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
  // support stores only a point; its quaternion remains a grab-time snapshot.
  auto menu=kharvox::VrHandMenuState{};
+ // A shared native object can mention both installed modifications:
+ // never silently choose Turret over Rotor or vice versa.
+ using Hint=kharvox::VrChaingunAttachmentHint;
+ assert(kharvox::vrChaingunAttachmentHint(false,false)==Hint::Unknown);
+ assert(kharvox::vrChaingunAttachmentHint(true,false)==Hint::Rotor);
+ assert(kharvox::vrChaingunAttachmentHint(false,true)==Hint::Turret);
+ assert(kharvox::vrChaingunAttachmentHint(true,true)==Hint::Ambiguous);
+ assert(std::string(kharvox::vrChaingunAttachmentHintName(
+     Hint::Ambiguous))=="BOTH DECLARED");
+ assert(!menu.minigunProfileConfirmed&&!menu.calibrationProfileConfirmed);
+ assert(!menu.calibrationRotorProfile&&!menu.calibrationAlternateProfile);
  assert(!menu.alternateProfile&&!menu.rotorProfile);
  menu.rotorProfile=true;
  assert(menu.rotorProfile&&!menu.alternateProfile);
