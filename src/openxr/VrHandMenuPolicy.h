@@ -364,7 +364,8 @@ struct VrHandMenuState {
     // inspecting the deployed Minigun mod. The second press enters
     // capture. No name scan can silently authorize a wrong profile.
     bool minigunProfileConfirmed{};
-    bool calibrationRotorProfile{},calibrationAlternateProfile{};
+    bool calibrationProfileConfirmed{},calibrationRotorProfile{},
+        calibrationAlternateProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
