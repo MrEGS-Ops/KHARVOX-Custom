@@ -22,7 +22,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
     add("Weapon Stability",VrLiveMod::WeaponRecoil,
-        s.recoilSettings.enabled,true);
+        kharvox::anyWeaponRecoilEnabled(s.recoilSettings),true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
     // Group the two live ON/OFF features together at the bottom.
@@ -214,7 +214,7 @@ bool handleVrRecoilCalibrationAction(int action){
     auto old=s.recoilSettings;
     const std::size_t at=static_cast<std::size_t>(index);
     switch(action){
-        case 140:s.recoilSettings.enabled=!s.recoilSettings.enabled;break;
+        case 140:s.recoilSettings.enabled[at]=!s.recoilSettings.enabled[at];break;
         case 141:s.recoilSettings.strength[at]=std::max(.25f,
             s.recoilSettings.strength[at]-.1f);break;
         case 142:s.recoilSettings.strength[at]=std::min(9.f,
@@ -230,7 +230,8 @@ bool handleVrRecoilCalibrationAction(int action){
     if(!saveVrRecoilSettings()){
         s.recoilSettings=old;return true;
     }
-    m.message=std::string("Recoil ")+(s.recoilSettings.enabled?"ON":"OFF")
+    m.message=std::string(kharvox::kWeaponRecoilKinds[at])+" recoil "
+        +(s.recoilSettings.enabled[at]?"ON":"OFF")
         +" - saved instantly. Close menu to test.";
     return true;
 }
