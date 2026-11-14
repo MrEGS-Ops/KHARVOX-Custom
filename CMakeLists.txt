@@ -302,7 +302,8 @@ if(KHARVOX_BUILD_LAYER)
     "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_hud.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/vr_live_mods_saved.cfg"
-    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/weapon_recoil_saved.cfg")
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/weapon_recoil_saved.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/kharvox-launcher-settings.json")
   add_custom_command(TARGET KharvoxLayer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan/KharvoxLayer.json"
@@ -405,7 +406,10 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/vr_live_mods_saved.cfg"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/weapon_recoil_saved.cfg"
-      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/weapon_recoil_saved.cfg")
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/weapon_recoil_saved.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/kharvox-launcher-settings.json"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/kharvox-launcher-settings.json")
 endif()
 
 if(WIN32)
