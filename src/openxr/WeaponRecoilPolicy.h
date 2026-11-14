@@ -24,19 +24,18 @@ inline constexpr std::array<const char*,10> kWeaponRecoilKinds{{
 }};
 struct WeaponRecoilProfile {
     float pitchPerShot{},yawPerShot{},maximumPitch{};
-    std::uint32_t automaticIntervalMs{};
 };
 inline constexpr std::array<WeaponRecoilProfile,10> kWeaponRecoilProfiles{{
-    {1.6f,.24f,6.f,0},   // pistol
-    {3.7f,.45f,10.f,0},  // combat shotgun
-    {.65f,.18f,11.f,95}, // heavy assault rifle
-    {.43f,.15f,9.f,90},  // plasma rifle
-    {4.4f,.45f,10.f,0},  // rocket launcher
-    {5.4f,.65f,13.f,0},  // super shotgun
-    {4.2f,.38f,11.f,0},  // gauss cannon
-    {.75f,.24f,15.f,75}, // chaingun
-    {5.0f,.3f,12.f,0},  // BFG
-    {.55f,.15f,11.f,75}  // Minigun Turret (one-handed only)
+    {1.6f,.24f,6.f},   // pistol
+    {3.7f,.45f,10.f},  // combat shotgun
+    {.65f,.18f,11.f}, // heavy assault rifle
+    {.43f,.15f,9.f},  // plasma rifle
+    {4.4f,.45f,10.f},  // rocket launcher
+    {5.4f,.65f,13.f},  // super shotgun
+    {4.2f,.38f,11.f},  // gauss cannon
+    {.75f,.24f,15.f}, // chaingun
+    {5.0f,.3f,12.f},  // BFG
+    {.55f,.15f,11.f}  // Minigun Turret (one-handed only)
 }};
 // A separate native recoil identity for deployed Minigun Turret mode.
  // Normal Minigun retains its original array index and saved profile.
