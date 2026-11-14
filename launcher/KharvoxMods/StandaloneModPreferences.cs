@@ -45,7 +45,19 @@ internal sealed class StandaloneModPreferences
     // original click/drag reorder without changing mod dependencies or timing.
     public string[] ActiveOrder { get; set; } = new[] { "PAINSAW: RIPSHIFT OVERDRIVE" };
     // UI-only order for inactive and paused mods; does not enable anything.
-    public string[] AvailableOrder { get; set; } = Array.Empty<string>();
+    public string[] AvailableOrder { get; set; } = new[] {
+        "Boxing Guard Mode", "Directional Dash", "Physical Grenade Throw",
+        "Gauss Charge Slow Movement", "Persistent Super Shotgun Reload",
+        "Back of Hand HUD", "Story Cinematic Skip (RS)",
+        "Story Free Walk (RS)", "Story Camera Focus: Major Scenes Only",
+        "Uninterrupted Story", "Action Exit Handoff", "No HUD",
+        "No Weapon Wheel", "Revenge Demon", "Chainsaw Animation Investigator",
+        "Haptic Overhaul", "Hand Focus", "Disable Glory Kill Highlighting",
+        "Disable Glory Kill Motion Blur", "Disable Camera Kicks & Shaking",
+        "Disable Native Weapon Kick", "Disable Hand-Hit Reactions",
+        "Protect Native Ledge Speed", "Protect Scripted Cinematic Speed",
+        "Disable RS Melee / Animation (Physical GK)"
+    };
     // UI-only; keys are A:category or V:category. No native dependency impact.
     // First run: available categories collapsed; selected Active Mods stays open.
     // A saved preference array (even empty) always overrides this default.
