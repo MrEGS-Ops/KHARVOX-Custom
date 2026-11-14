@@ -4376,8 +4376,26 @@ void updateGameplayActions(XrTime displayTime){
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     s.heavyAlternateInputForwarded=weaponModDown;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
+    // Only Gauss primary FIRE is gated. Its weapon-hand Grip still flows to
+    // DOOM's native Alt Fire / Siege charge, even with a free support hand.
+    // Never use visual proximity as evidence of a grip: a valid two-hand
+    // support LATCH and both physical Grip inputs are mandatory.
+    const bool gaussFireAllowed=kharvox::vrGaussPrimaryFireAllowed(
+        s.vrLiveSettings.gaussRequireTwoHandFire,
+        activeWeaponKind==KharvoxWeaponKind::GaussCannon,
+        secondaryFireGripDown,s.supportGripPressed,
+        s.twoHandLatched,s.twoHandLatchedWeapon==KharvoxWeaponKind::GaussCannon,
+        weaponController().valid,supportGripController().valid);
+    const bool gaussFireBlocked=gameplay&&triggerDown&&!gaussFireAllowed;
+    static bool gaussFirePreviouslyBlocked=false;
+    if(gaussFireBlocked!=gaussFirePreviouslyBlocked){
+        gaussFirePreviouslyBlocked=gaussFireBlocked;
+        log(gaussFireBlocked
+            ?"[GAUSS-FIRE-GRIP] trigger BLOCKED: both Grips + calibrated support latch required"
+            :"[GAUSS-FIRE-GRIP] trigger lock released");
+    }
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
-        &&!weaponWheelActive&&!calibrationFireBlocked;
+        &&!weaponWheelActive&&!calibrationFireBlocked&&gaussFireAllowed;
 
     // Separate opt-in VR mod: the Super Shotgun's uncompleted reload time is
     // stored by weapon type and ONLY advances while held/equipped in gameplay.
