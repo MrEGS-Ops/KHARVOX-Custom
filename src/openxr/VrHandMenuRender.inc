@@ -493,10 +493,10 @@ void paintVrHandMenu() {
         :"SUPPORT: position only",muted);
     if(heavy){
         button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
-        write(550,317,m.alternateProfile
-            ?(selectedKind==KharvoxWeaponKind::GaussCannon
-                ?"PROFILE: SIEGE":"PROFILE: TURRET")
-            :"PROFILE: NORMAL",white);
+        write(550,317,selectedKind==KharvoxWeaponKind::Chaingun
+            ?(m.alternateProfile?"PROFILE: TURRET"
+                :m.rotorProfile?"PROFILE: ROTOR":"PROFILE: NORMAL")
+            :m.alternateProfile?"PROFILE: SIEGE":"PROFILE: NORMAL",white);
     }else{
         write(538,306,primarySelected
             ?"Hand locked to gun"
@@ -510,7 +510,9 @@ void paintVrHandMenu() {
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
     write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
-    write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
+    write(538,609,selectedKind==KharvoxWeaponKind::Chaingun
+        ?"Minigun: NORMAL / ROTOR / TURRET"
+        :"DEFAULT: factory   L/R/B: custom",muted);
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
