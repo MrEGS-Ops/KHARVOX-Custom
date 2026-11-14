@@ -3378,6 +3378,87 @@ void updateGameplayActions(XrTime displayTime){
     locateGameplayControllerPoses(displayTime);
     auto readFloatAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};return XR_SUCCEEDED(s.getActionStateFloat(s.session,&info,&state))&&state.isActive?state.currentState:0.f;};
     auto readBooleanAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};return XR_SUCCEEDED(s.getActionStateBoolean(s.session,&info,&state))&&state.isActive&&state.currentState;};
+    // Physical-controller-only mode: both Touch/Touch Plus/Index profiles and
+    // both tracked AIM+GRIP poses must exist. A hand-emulated profile, sleeping
+    // controller or tracking gap immediately locks ALL gameplay actions.
+    XrInteractionProfileState leftProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
+    XrInteractionProfileState rightProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
+    const bool profileQueriesValid=s.getCurrentInteractionProfile
+        &&s.leftHandUserPath!=XR_NULL_PATH&&s.rightHandUserPath!=XR_NULL_PATH
+        &&XR_SUCCEEDED(s.getCurrentInteractionProfile(
+            s.session,s.leftHandUserPath,&leftProfile))
+        &&XR_SUCCEEDED(s.getCurrentInteractionProfile(
+            s.session,s.rightHandUserPath,&rightProfile));
+    const auto physicalProfile=[&](XrPath path){
+        return path!=XR_NULL_PATH
+            &&(path==s.questTouchProfilePath
+                ||path==s.questTouchPlusProfilePath
+                ||path==s.valveIndexProfilePath);
+    };
+    const bool bothProfiles=profileQueriesValid
+        &&physicalProfile(leftProfile.interactionProfile)
+        &&physicalProfile(rightProfile.interactionProfile);
+    const bool bothTracked=s.leftController.valid&&s.leftController.positionTracked
+        &&s.rightController.valid&&s.rightController.positionTracked
+        &&s.leftGripController.valid&&s.leftGripController.positionTracked
+        &&s.rightGripController.valid&&s.rightGripController.positionTracked;
+    const bool leftStickClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
+    const bool rightStickClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
+    const bool bothClicks=leftStickClick&&rightStickClick;
+    const bool bothReleased=!leftStickClick&&!rightStickClick;
+    const bool combatNeutral=readFloatAction(s.rightWeaponTrigger)<.10f
+        &&readFloatAction(s.leftWeaponTrigger)<.10f
+        &&readFloatAction(s.rightWeaponGrip)<.10f
+        &&readFloatAction(s.leftWeaponGrip)<.10f;
+    const bool previousArmed=s.controllerOnlySafety.armed;
+    const bool armed=kharvox::updateControllerOnlySafety(
+        s.controllerOnlySafety,bothProfiles,bothTracked,
+        bothClicks,bothReleased,combatNeutral);
+    controllerOnlyLocked.store(!armed,std::memory_order_release);
+    if(!armed){
+        if(previousArmed){
+            log("[CONTROLLER-ONLY] controller tracking/profile LOST; gameplay blocked, no hand emulation");
+            s.controllerPauseAttempted=false;
+        }
+        if(!s.controllerPauseAttempted&&KharvoxCameraGameplayActive()
+            &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+            &&!KharvoxHudDeathMenuActive()&&!KharvoxCameraCutsceneActive()){
+            // Request native pause ONCE, but never toggle an already paused
+            // game. Controller safety lock stays engaged regardless of whether
+            // DOOM accepts this optional START pulse.
+            s.controllerPauseUntilMs=GetTickCount64()+180ULL;
+            s.controllerPauseAttempted=true;
+            log("[CONTROLLER-ONLY] native Pause requested; headset reconnect overlay remains active");
+        }
+        controllerOnlyPausePulse.store(s.controllerPauseAttempted
+            &&!KharvoxHudPauseMenuActive()
+            &&GetTickCount64()<s.controllerPauseUntilMs,
+            std::memory_order_release);
+        releaseHandFocusUseKeyboardPulse();
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        s.primaryFireDown=false;s.firePressed=false;
+        s.secondaryFireGripPressed=false;s.supportGripPressed=false;
+        s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+        s.grenadeGesture={};s.equipmentGrip.cancel();
+        s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
+        s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
+        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
+        s.backWeaponPulseUntil=0;s.weaponSwitchPulseUntil=0;
+        s.motionWheelState={};s.behindHeadWheelActive=false;
+        s.behindHeadWheelSide=-1;s.wheelWeaponGripSuppressedUntilRelease=true;
+        s.wheelSupportGripSuppressedUntilRelease=true;
+        releaseMovement();
+        updateVirtualButtons(false,false,false,false,false,false,false,false,
+            false,false,false,false,false);
+        KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
+        return;
+    }
+    controllerOnlyPausePulse.store(false,std::memory_order_release);
+    if(!previousArmed){
+        log("[CONTROLLER-ONLY] both tracked controllers confirmed with BOTH thumbstick clicks; player can resume native Pause");
+        s.controllerPauseAttempted=false;
+        s.controllerPauseUntilMs=0;
+    }
     // -1 = input unavailable. An unbound proximity sensor is NOT an open finger.
     auto readTouchAction=[](XrAction action)->int {
         if(action==XR_NULL_HANDLE)return -1;
@@ -4986,6 +5067,10 @@ bool createGameplayActions(){
         XR_SUCCEEDED(stringToPath(s.instance,"/user/hand/left",&s.leftHandUserPath))
         &&XR_SUCCEEDED(stringToPath(s.instance,"/user/hand/right",&s.rightHandUserPath))
         &&XR_SUCCEEDED(stringToPath(s.instance,"/interaction_profiles/valve/index_controller",&s.valveIndexProfilePath));
+    // Physical Touch/Touch Plus and Index are the only supported combat
+    // input profiles. Hand-interaction / emulation profile changes fail closed.
+    stringToPath(s.instance,"/interaction_profiles/oculus/touch_controller",&s.questTouchProfilePath);
+    stringToPath(s.instance,"/interaction_profiles/meta/touch_controller_plus",&s.questTouchPlusProfilePath);
     if(!gripProfilePathsReady){
         s.leftHandUserPath=XR_NULL_PATH;
         s.rightHandUserPath=XR_NULL_PATH;
