@@ -535,6 +535,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
             m.alternateProfile=false;
+            m.rotorProfile=false;
             // A left-holster draw means LEFT primary, not "LEFT support".
             m.rightHand=!s.weaponHandLeft;
             const auto equipped=KharvoxWeaponCurrentKind();
