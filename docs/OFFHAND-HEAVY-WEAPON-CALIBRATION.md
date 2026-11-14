@@ -4,7 +4,7 @@ Active branch: `work/manager-187-wheel-holsters`. Applies to the Mod Manager's N
 ## In-headset controls
 1. During gameplay, **hold RIGHT thumbstick click for 1 second** to open the VR hand calibration panel. Short click still toggles Hand Focus.
 2. Select **Gauss Cannon** or **Chaingun**; the menu detects which physical hand holds the gun. The hand selector chooses the physical glove to calibrate: the holding hand is PRIMARY and the other is SUPPORT.
-3. Select **PROFILE: NORMAL** or **PROFILE: SIEGE/TURRET** to keep ordinary and alternate hand positions separate.
+3. Select **PROFILE: NORMAL** or **PROFILE: ALT FIRE** for both Gauss Cannon and Minigun, keeping primary and secondary-fire grip positions separate regardless of the equipped attachment.
 4. Press **CALIBRATE**; the panel closes for live placement using the LEFT controller.
 5. For the RIGHT hand, a virtual point **15 cm forward** of the LEFT controller prevents physical controller collisions. Position and rotation are saved together.
 6. For the LEFT support hand, only the weapon-local position is saved. Rotation is sampled afresh at the moment of every normal grip.
