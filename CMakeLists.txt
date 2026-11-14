@@ -299,7 +299,10 @@ if(KHARVOX_BUILD_LAYER)
     "${CMAKE_CURRENT_SOURCE_DIR}/config/hud_quad_scale_default.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_right_hand_positions.cfg"
     "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_saved.cfg"
-    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg")
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_hud.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/vr_live_mods_saved.cfg"
+    "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/weapon_recoil_saved.cfg")
   add_custom_command(TARGET KharvoxLayer POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/src/vulkan/KharvoxLayer.json"
@@ -382,6 +385,7 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_roll.cfg"
       "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_yaw.cfg"
       "$<TARGET_FILE_DIR:KharvoxLayer>/vr_live_mods_saved.cfg"
+       "$<TARGET_FILE_DIR:KharvoxLayer>/weapon_recoil_saved.cfg"
     COMMAND ${CMAKE_COMMAND} -E make_directory
       "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -392,7 +396,16 @@ if(KHARVOX_BUILD_LAYER)
       "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/two_hand_weapon_profiles_saved.cfg"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
       "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/two_hand_weapon_profiles_left_primary_saved.cfg"
-      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/two_hand_weapon_profiles_left_primary_saved.cfg")
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/two_hand_weapon_profiles_left_primary_saved.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/offhand_hud.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/offhand_hud.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/vr_live_mods_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/vr_live_mods_saved.cfg"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+      "${CMAKE_CURRENT_SOURCE_DIR}/config/user_calibration_defaults/weapon_recoil_saved.cfg"
+      "$<TARGET_FILE_DIR:KharvoxLayer>/CalibrationDefaults/weapon_recoil_saved.cfg")
 endif()
 
 if(WIN32)
