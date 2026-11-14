@@ -57,11 +57,16 @@ inline constexpr std::array<float,10> kWeaponRecoilDefaultRecovery{{
     .70f,.60f,.55f,.60f,.60f,.55f,.60f,.45f,.55f,.75f
 }};
 struct WeaponRecoilSettings {
-    // Off by default: the accepted KHARVOX baseline is completely unchanged.
-    bool enabled{};
+    // Independent enable flags. All OFF on fresh installs to preserve
+    // the accepted KHARVOX baseline; normal and Turret are separate slots.
+    std::array<bool,10> enabled{};
     std::array<float,10> strength=kWeaponRecoilDefaultStrength;
     std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
 };
+inline bool anyWeaponRecoilEnabled(const WeaponRecoilSettings& settings) noexcept {
+    return std::any_of(settings.enabled.begin(),settings.enabled.end(),
+        [](bool enabled){return enabled;});
+}
 inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noexcept {
     for(const float v:settings.strength)
         if(!std::isfinite(v)||v<.25f||v>9.f)return false;
@@ -95,9 +100,10 @@ inline constexpr std::uint64_t kWeaponRecoilPostFireDelayMs=55;
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
-    if(!settings.enabled||!input.gameplay||input.weapon<0
+    if(!input.gameplay||input.weapon<0
         ||input.weapon>=static_cast<int>(kWeaponRecoilProfiles.size())
-        ||!validWeaponRecoilSettings(settings)){
+        ||!validWeaponRecoilSettings(settings)
+        ||!settings.enabled[static_cast<std::size_t>(input.weapon)]){
         state={};
         return {};
     }
@@ -165,6 +171,10 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
             state.yaw,kickApplied};
 }
+// schema 2 stores an independent toggle per weapon. Previous schema 1
+// stored a global enable and two tuning columns; migrate the global value
+// to ALL weapons (including a newly introduced Turret profile) on load.
+// The original file is never rewritten until the user saves a setting.
 inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSettings& out){
     namespace fs=std::filesystem;
     std::error_code ec;
@@ -175,32 +185,58 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
     WeaponRecoilSettings next{};
     std::string key,line;
     int schema{};
+    bool schemaSeen=false,legacyEnabledSeen=false,readWeapon=false;
+    bool legacyEnabled=false;
     std::array<bool,kWeaponRecoilKinds.size()> seen{};
-    bool enabledSeen=false;
     while(std::getline(file,line)){
         if(line.empty()||line[0]=='#')continue;
         std::istringstream row(line);
         if(!(row>>key))continue;
         std::string trailing;
         if(key=="schema"){
-            if(!(row>>schema)||schema!=1||(row>>trailing))return false;
-        }else if(key=="enabled"){
-            int value=-1;
-            if(enabledSeen||!(row>>value)||(value!=0&&value!=1)||(row>>trailing))
+            if(schemaSeen||readWeapon||legacyEnabledSeen
+                ||!(row>>schema)||(schema!=1&&schema!=2)||(row>>trailing))
                 return false;
-            next.enabled=value==1;enabledSeen=true;
+            schemaSeen=true;
+        }else if(key=="enabled"){
+            if(!schemaSeen||schema!=1)return false;
+            int value=-1;
+            if(legacyEnabledSeen||readWeapon||!(row>>value)
+                ||(value!=0&&value!=1)||(row>>trailing))
+                return false;
+            legacyEnabled=value==1;legacyEnabledSeen=true;
         }else{
+            if(!schemaSeen)return false;
             const int index=weaponRecoilIndex(key.c_str());
             if(index<0||seen[static_cast<std::size_t>(index)])return false;
+            const auto at=static_cast<std::size_t>(index);
             float strength{},recovery{};
-            if(!(row>>strength>>recovery)||(row>>trailing))return false;
-            next.strength[static_cast<std::size_t>(index)]=strength;
-            next.recovery[static_cast<std::size_t>(index)]=recovery;
-            seen[static_cast<std::size_t>(index)]=true;
+            if(schema==2){
+                int on=-1;
+                if(!(row>>on)||(on!=0&&on!=1)
+                    ||!(row>>strength>>recovery)||(row>>trailing))
+                    return false;
+                next.enabled[at]=on==1;
+            }else{
+                if(!legacyEnabledSeen||!(row>>strength>>recovery)
+                    ||(row>>trailing))return false;
+            }
+            next.strength[at]=strength;
+            next.recovery[at]=recovery;
+            seen[at]=true;readWeapon=true;
         }
     }
-    if(file.bad()||schema!=1||!enabledSeen||!validWeaponRecoilSettings(next))
+    if(file.bad()||!schemaSeen||!validWeaponRecoilSettings(next))
         return false;
+    if(schema==1){
+        if(!legacyEnabledSeen)return false;
+        next.enabled.fill(legacyEnabled);
+    }else if(!std::all_of(seen.begin(),seen.end(),
+        [](bool present){return present;})){
+        // No partial schema-2 files: a truncated write must never silently
+        // turn off previously enabled guns or discard their tuning.
+        return false;
+    }
     out=next;
     return true;
 }
@@ -218,10 +254,10 @@ inline bool saveWeaponRecoilSettings(const std::string& path,
         std::ofstream file(tmp,std::ios::trunc);
         if(!file)return false;
         file<<std::fixed<<std::setprecision(3)
-            <<"schema 1\n"<<"enabled "<<(settings.enabled?1:0)<<'\n';
+            <<"schema 2\n";
         for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
-            file<<kWeaponRecoilKinds[i]<<' '<<settings.strength[i]
-                <<' '<<settings.recovery[i]<<'\n';
+            file<<kWeaponRecoilKinds[i]<<' '<<(settings.enabled[i]?1:0)
+                <<' '<<settings.strength[i]<<' '<<settings.recovery[i]<<'\n';
         file.flush();
         if(!file){file.close();fs::remove(tmp,ec);return false;}
     }
