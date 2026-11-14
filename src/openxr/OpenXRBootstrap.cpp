@@ -2846,17 +2846,25 @@ void updateWeapon6Dof(){
     const int recoilWeapon=kharvox::weaponRecoilIndex(
         KharvoxWeaponKindKey(kind),
         kind==KharvoxWeaponKind::Chaingun&&heavyAltMode(kind));
+    // Secondary fire on the Heavy Assault Rifle is not its ordinary
+    // bullet stream. While native weapon-mod Grip is forwarded, preserve
+    // the unmodified muzzle and clear any stale primary-fire kick.
     const bool recoilGameplay=gameplay&&s.weapon6Dof
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!s.dynamicShoulderHolstered&&!s.twoHandCalibrationMode
-        &&KharvoxCameraPlayerWeaponControlActive();
+        &&KharvoxCameraPlayerWeaponControlActive()
+        &&kharvox::recoilAllowedForWeaponMode(
+            recoilWeapon,s.heavyAlternateInputForwarded);
     const auto ammo=KharvoxWeaponGetAmmoState(kind);
     const bool validAmmo=ammo!=KharvoxWeaponAmmoState::Empty
         &&ammo!=KharvoxWeaponAmmoState::Unavailable;
     const auto recoil=kharvox::advanceWeaponRecoil(
         s.recoilState,s.recoilSettings,
         {recoilWeapon,s.primaryFireDown&&validAmmo,
-         gameplayTwoHandSteering,recoilGameplay,GetTickCount64()});
+         gameplayTwoHandSteering,recoilGameplay,GetTickCount64(),
+         kind==KharvoxWeaponKind::GaussCannon
+            &&(s.heavyAlternateInputForwarded
+                ||KharvoxWeaponGaussSiegeChargeActive())});
     if(recoil.pitchDegrees>.0001f||std::abs(recoil.yawDegrees)>.0001f){
         constexpr float radiansPerDegree=0.017453292519943295f;
         const float pitchHalf=recoil.pitchDegrees*radiansPerDegree*.5f;
