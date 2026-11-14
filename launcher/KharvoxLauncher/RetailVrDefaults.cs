@@ -8,17 +8,20 @@ namespace KharvoxLauncher;
 // Keep this policy independent of any sidecar/updater installation.
 internal static class RetailVrDefaults
 {
+    internal const bool GunslingerAlwaysOn = true;
+    internal const bool WeaponGripAlwaysOn = true;
+
     internal static void Apply(CustomModSettings mods)
     {
         if (mods == null) throw new ArgumentNullException(nameof(mods));
         // The former standalone manager forced these five core capabilities
         // on every launch. The in-game menu provides their configuration.
         mods.HandFocusedRs = true;
-        mods.BehindHeadWeaponWheel = true;
+        mods.BehindHeadWeaponWheel = GunslingerAlwaysOn;
         mods.LeftWristWeaponWheel = true;
         mods.BehindHeadWheelHandSelection = true;
         mods.DynamicShoulderHolster = true;
-        mods.OffHandGripCapture = true;
+        mods.OffHandGripCapture = WeaponGripAlwaysOn;
         // Remain individually toggleable from the in-headset MODS page. The
         // native UserData/vr_live_mods_saved.cfg overrides can still set 0.
         mods.PhysicalCrouch = true;
