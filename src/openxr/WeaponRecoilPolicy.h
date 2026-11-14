@@ -17,15 +17,16 @@
 // Never move the HMD, physical controller/grip anchor, or saved hand calibration.
 // All values are owned by this opt-in mod and cannot change factory profiles.
 namespace kharvox {
-inline constexpr std::array<const char*,9> kWeaponRecoilKinds{{
+inline constexpr std::array<const char*,10> kWeaponRecoilKinds{{
     "pistol","shotgun","heavy_assault_rifle","plasma_rifle",
-    "rocket_launcher","super_shotgun","gauss_cannon","chaingun","bfg"
+    "rocket_launcher","super_shotgun","gauss_cannon","chaingun","bfg",
+    "chaingun_turret" // appended: preserves the 9 legacy saved profile keys
 }};
 struct WeaponRecoilProfile {
     float pitchPerShot{},yawPerShot{},maximumPitch{};
     std::uint32_t automaticIntervalMs{};
 };
-inline constexpr std::array<WeaponRecoilProfile,9> kWeaponRecoilProfiles{{
+inline constexpr std::array<WeaponRecoilProfile,10> kWeaponRecoilProfiles{{
     {1.6f,.24f,6.f,0},   // pistol
     {3.7f,.45f,10.f,0},  // combat shotgun
     {.65f,.18f,11.f,95}, // heavy assault rifle
@@ -34,25 +35,38 @@ inline constexpr std::array<WeaponRecoilProfile,9> kWeaponRecoilProfiles{{
     {5.4f,.65f,13.f,0},  // super shotgun
     {4.2f,.38f,11.f,0},  // gauss cannon
     {.75f,.24f,15.f,75}, // chaingun
-    {5.0f,.3f,12.f,0}   // BFG
+    {5.0f,.3f,12.f,0},  // BFG
+    {.55f,.15f,11.f,75}  // Minigun Turret (one-handed only)
 }};
-inline int weaponRecoilIndex(const char* weapon) noexcept {
+// A separate native recoil identity for deployed Minigun Turret mode.
+ // Normal Minigun retains its original array index and saved profile.
+inline int weaponRecoilIndex(const char* weapon,bool turretMode=false) noexcept {
     if(!weapon)return -1;
+    if(turretMode && std::strcmp(weapon,"chaingun")==0)
+        return static_cast<int>(kWeaponRecoilKinds.size()-1);
     for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
         if(std::strcmp(weapon,kWeaponRecoilKinds[i])==0)return static_cast<int>(i);
     return -1;
 }
+// Proposed aggressive-but-controllable initial balance: higher values
+// reward two-handed tracking; none overwrite explicitly saved UserData.
+inline constexpr std::array<float,10> kWeaponRecoilDefaultStrength{{
+    2.00f,2.50f,2.40f,2.25f,2.70f,3.00f,2.60f,3.00f,3.20f,1.70f
+}};
+inline constexpr std::array<float,10> kWeaponRecoilDefaultRecovery{{
+    .70f,.60f,.55f,.60f,.60f,.55f,.60f,.45f,.55f,.75f
+}};
 struct WeaponRecoilSettings {
     // Off by default: the accepted KHARVOX baseline is completely unchanged.
     bool enabled{};
-    std::array<float,9> strength{{1,1,1,1,1,1,1,1,1}};
-    std::array<float,9> recovery{{1,1,1,1,1,1,1,1,1}};
+    std::array<float,10> strength=kWeaponRecoilDefaultStrength;
+    std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
 };
 inline bool validWeaponRecoilSettings(const WeaponRecoilSettings& settings) noexcept {
     for(const float v:settings.strength)
         if(!std::isfinite(v)||v<.25f||v>9.f)return false;
     for(const float v:settings.recovery)
-        if(!std::isfinite(v)||v<.5f||v>2.f)return false;
+        if(!std::isfinite(v)||v<.25f||v>2.f)return false;
     return true;
 }
 struct WeaponRecoilState {
@@ -161,7 +175,7 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
     WeaponRecoilSettings next{};
     std::string key,line;
     int schema{};
-    std::array<bool,9> seen{};
+    std::array<bool,kWeaponRecoilKinds.size()> seen{};
     bool enabledSeen=false;
     while(std::getline(file,line)){
         if(line.empty()||line[0]=='#')continue;
