@@ -61,6 +61,14 @@ internal static class LauncherUserData
         var portableSettings = PathFor("kharvox-launcher-settings.json");
         if (File.Exists(legacySettings) && !File.Exists(portableSettings))
             File.Copy(legacySettings, portableSettings, false);
+        // The retired manager previously copied the owner-calibrated
+        // launcher profile on the first run. Preserve that exact first-run
+        // behaviour without a manager/updater and only after checking for
+        // user data from previous installations.
+        var factorySettings = Path.Combine(AppContext.BaseDirectory,
+            "CalibrationDefaults", "kharvox-launcher-settings.json");
+        if (File.Exists(factorySettings) && !File.Exists(portableSettings))
+            File.Copy(factorySettings, portableSettings, false);
         // Prior config marks were in AppData. Copy the owner's history into
         // portable UserData once but do not modify the original app data.
         var marksSource = Path.Combine(Environment.GetFolderPath(
