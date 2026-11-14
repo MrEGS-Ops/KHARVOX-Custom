@@ -11,4 +11,18 @@ inline constexpr bool useWeaponHandFocus(bool handFocusEnabled,
         && !syncGloryKill && !chainsawExecution
         && !ledgeTransition && !bossSequence;
 }
+
+// Native FocusTracker works in all playable WORLD views, including
+// first-person interactable transitions whose player-physics snapshot can be
+// older than a render frame. Prefer a valid controller ray without requiring
+// an HMD render-pose sample first. Scripted executions remain fully native.
+enum class WorldFocusRaySource { Native, Hand, Head };
+inline constexpr WorldFocusRaySource chooseWorldFocusRaySource(
+    bool worldActive,bool cinematic,bool bossSequence,
+    bool handRayValid,bool headRayValid) noexcept {
+    if(!worldActive||cinematic||bossSequence)
+        return WorldFocusRaySource::Native;
+    if(handRayValid)return WorldFocusRaySource::Hand;
+    return headRayValid?WorldFocusRaySource::Head:WorldFocusRaySource::Native;
+}
 } // namespace kharvox
