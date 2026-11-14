@@ -299,6 +299,7 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
     std::string key,line;
     int schema{};
     bool schemaSeen=false,legacyEnabledSeen=false,readWeapon=false;
+    bool dynamicSeen=false;
     bool legacyEnabled=false;
     std::array<bool,kWeaponRecoilKinds.size()> seen{};
     while(std::getline(file,line)){
@@ -308,7 +309,7 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
         std::string trailing;
         if(key=="schema"){
             if(schemaSeen||readWeapon||legacyEnabledSeen
-                ||!(row>>schema)||(schema!=1&&schema!=2)||(row>>trailing))
+                ||!(row>>schema)||(schema!=1&&schema!=2&&schema!=3)||(row>>trailing))
                 return false;
             schemaSeen=true;
         }else if(key=="enabled"){
@@ -318,13 +319,23 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
                 ||(value!=0&&value!=1)||(row>>trailing))
                 return false;
             legacyEnabled=value==1;legacyEnabledSeen=true;
+        }else if(key=="dynamic"){
+            int enabled=-1;float increment{},cap{};
+            if(!schemaSeen||schema!=3||dynamicSeen||readWeapon
+                ||!(row>>enabled)||(enabled!=0&&enabled!=1)
+                ||!(row>>increment>>cap)||(row>>trailing))
+                return false;
+            next.dynamicEnabled=enabled==1;
+            next.dynamicBuildUpPerShot=increment;
+            next.dynamicMaxMultiplier=cap;
+            dynamicSeen=true;
         }else{
-            if(!schemaSeen)return false;
+            if(!schemaSeen||(schema==3&&!dynamicSeen))return false;
             const int index=weaponRecoilIndex(key.c_str());
             if(index<0||seen[static_cast<std::size_t>(index)])return false;
             const auto at=static_cast<std::size_t>(index);
             float strength{},recovery{};
-            if(schema==2){
+            if(schema>=2){
                 int on=-1;
                 if(!(row>>on)||(on!=0&&on!=1)
                     ||!(row>>strength>>recovery)||(row>>trailing))
@@ -339,14 +350,15 @@ inline bool loadWeaponRecoilSettings(const std::string& path,WeaponRecoilSetting
             seen[at]=true;readWeapon=true;
         }
     }
-    if(file.bad()||!schemaSeen||!validWeaponRecoilSettings(next))
+    if(file.bad()||!schemaSeen||(schema==3&&!dynamicSeen)
+        ||!validWeaponRecoilSettings(next))
         return false;
     if(schema==1){
         if(!legacyEnabledSeen)return false;
         next.enabled.fill(legacyEnabled);
     }else if(!std::all_of(seen.begin(),seen.end(),
         [](bool present){return present;})){
-        // No partial schema-2 files: a truncated write must never silently
+        // No partial schema-2/3 files: a truncated write must never silently
         // turn off previously enabled guns or discard their tuning.
         return false;
     }
@@ -367,7 +379,10 @@ inline bool saveWeaponRecoilSettings(const std::string& path,
         std::ofstream file(tmp,std::ios::trunc);
         if(!file)return false;
         file<<std::fixed<<std::setprecision(3)
-            <<"schema 2\n";
+            <<"schema 3\n"
+            <<"dynamic "<<(settings.dynamicEnabled?1:0)
+                <<' '<<settings.dynamicBuildUpPerShot
+                <<' '<<settings.dynamicMaxMultiplier<<'\n';
         for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
             file<<kWeaponRecoilKinds[i]<<' '<<(settings.enabled[i]?1:0)
                 <<' '<<settings.strength[i]<<' '<<settings.recovery[i]<<'\n';
