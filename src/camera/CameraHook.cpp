@@ -102,6 +102,7 @@ std::atomic<bool> crouchRequested{};
 std::array<std::atomic<float>,3> focusHandOrigin{};
 std::array<std::atomic<float>,3> focusHandDirection{};
 std::atomic<bool> focusHandValid{};
+std::atomic<unsigned long long> focusTraceCalls{},focusTraceHandCalls{},focusTraceHeadCalls{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -295,6 +296,7 @@ void emit64(unsigned char*& p, unsigned long long value) {
 
 extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     if(!rawFocusTrace)return;
+    focusTraceCalls.fetch_add(1,std::memory_order_relaxed);
     // World interactions can run when the native player-physics snapshot is
     // not refreshed this render frame. Don't require the stricter "gameplay"
     // freshness test or an available HMD sample before using the hand ray.
@@ -309,6 +311,10 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     const auto source=kharvox::chooseWorldFocusRaySource(
         world,cinematic,boss,handValid,headValid);
     if(source==kharvox::WorldFocusRaySource::Native)return;
+    if(source==kharvox::WorldFocusRaySource::Hand)
+        focusTraceHandCalls.fetch_add(1,std::memory_order_relaxed);
+    else
+        focusTraceHeadCalls.fetch_add(1,std::memory_order_relaxed);
 
     float focusOrigin[3]{};
     float focusDirection[3]{};
@@ -2669,6 +2675,14 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
+void KharvoxCameraFocusTraceDiagnostics(
+    unsigned long long& allTraces,unsigned long long& handTraces,
+    unsigned long long& headTraces,bool& handPoseReady){
+    allTraces=focusTraceCalls.load(std::memory_order_relaxed);
+    handTraces=focusTraceHandCalls.load(std::memory_order_relaxed);
+    headTraces=focusTraceHeadCalls.load(std::memory_order_relaxed);
+    handPoseReady=focusHandValid.load(std::memory_order_acquire);
+}
 void KharvoxCameraSetFocusHandPose(
     const float origin[3], const float direction[3], bool valid) {
     if(!valid||!origin||!direction){
