@@ -480,7 +480,8 @@ void paintVrHandMenu() {
     const auto gamepadFocus=[&](int action){
         return m.navigation.usingStick&&m.navigation.settingsColumn
             &&kharvox::vrMenuGripGamepadTarget(m.navigation,
-                m.selectedWeapon,heavy)==action;
+                m.selectedWeapon,heavy,
+                selectedKind==KharvoxWeaponKind::GaussCannon)==action;
     };
     button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
     button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
@@ -509,8 +510,16 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
-    write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
+    if(selectedKind==KharvoxWeaponKind::GaussCannon){
+        button(531,540,384,50,s.vrLiveSettings.gaussRequireTwoHandFire,
+            m.hovered==33||gamepadFocus(33));
+        write(549,552,s.vrLiveSettings.gaussRequireTwoHandFire
+            ?"TWO-HAND FIRE: ON":"TWO-HAND FIRE: OFF",white);
+        write(538,614,"Grip charges; both hands required to fire.",muted);
+    }else{
+        write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
+        write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
+    }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
