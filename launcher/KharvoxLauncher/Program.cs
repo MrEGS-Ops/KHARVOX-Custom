@@ -22,9 +22,9 @@ internal static class Program
             Console.WriteLine("Native DOOM Glory Kill Highlight startup policy passed.");
             return 0;
         }
-        if (args.Any(argument => string.Equals(argument, "--self-test-standalone-gestures",
+        if (args.Any(argument => string.Equals(argument, "--self-test-retail-mods",
                 StringComparison.OrdinalIgnoreCase)))
-            return StandaloneModsBridge.RunSelfTest();
+            return RetailVrDefaults.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
@@ -69,10 +69,6 @@ internal static class Program
                 StringComparison.OrdinalIgnoreCase)))
             return VirtualGunstockGripCalibrationLock.RunSelfTest();
 
-        if (args.Any(argument => string.Equals(argument, "--self-test-embedded-layout",
-                StringComparison.OrdinalIgnoreCase)))
-            return EmbeddedLauncherLayout.SelfTest() ? 0 : 1;
-
         if (args.Any(argument => string.Equals(argument, "--self-test-cactus-launcher",
                 StringComparison.OrdinalIgnoreCase)))
             return typeof(MainForm).GetMethod("ShowCustomOptions",
@@ -108,9 +104,8 @@ internal static class Program
 
         try
         {
-            // This executable is the separately packaged, bridge-enabled
-            // derivative. Keep CactusVRStudios' MainForm.cs byte-for-byte
-            // unchanged; identify this modified build at runtime instead.
+            // Direct KHARVOX launcher: no external Mod Manager or updater.
+            // Preserve CactusVRStudios' original MainForm.cs unchanged.
             LauncherStartupTrace.Mark("MainForm construction begins");
             using (var window = new MainForm())
             {
@@ -121,12 +116,11 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Load event complete");
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
-                window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
+                window.Text = "KHARVOX — VR Launcher";
                 MrEgsLaunchProfileBridge.Watch(window);
-                EmbeddedLauncherLayout.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);
-                LauncherStartupTrace.Mark("Embedding, Gunslinger and gunstock UI watchers installed");
+                LauncherStartupTrace.Mark("Original launcher, MrEGS_ defaults and gunstock lock ready");
                 Application.Run(window);
             }
             return 0;
