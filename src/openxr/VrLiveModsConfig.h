@@ -251,6 +251,7 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
                 next.enabledOverrides[count++]=value;
             }
             if(!row.eof()||(count!=5&&count!=6))return false;
+            if(count==5)next.enabledOverrides[5]=-1; // preserve legacy desktop PAINSAW selection
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
