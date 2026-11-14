@@ -196,7 +196,12 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
     if(state.confirmedShotQueued&&!input.twoHands&&!triggerEdge){
         const float scale=settings.strength[index]*state.queuedMultiplier;
         state.activeMultiplier=state.queuedMultiplier;
-        const float maxPitch=profile.maximumPitch*(std::max)(1.f,scale);
+        // Shared mode gets a second physical safety ceiling so a saved
+        // 900% base multiplied by 400% build-up cannot turn the muzzle
+        // several revolutions. Legacy/manual presets remain unchanged.
+        const float rawMaxPitch=profile.maximumPitch*(std::max)(1.f,scale);
+        const float maxPitch=settings.dynamicEnabled&&input.weapon!=6
+            ?(std::min)(rawMaxPitch,65.f):rawMaxPitch;
         const float side=(state.shotNumber++%4u<2u)?1.f:-1.f;
         if(input.weapon==6){
             state.gaussKickPitch=(std::min)(maxPitch,
@@ -282,9 +287,11 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         return {state.gaussKickPitch*envelope,
                 state.gaussKickYaw*envelope,kickApplied};
     }
-    const float maxPitch=profile.maximumPitch*
+    const float rawMaxPitch=profile.maximumPitch*
         (std::max)(1.f,settings.strength[index]*
                    state.activeMultiplier);
+    const float maxPitch=settings.dynamicEnabled&&input.weapon!=6
+        ?(std::min)(rawMaxPitch,65.f):rawMaxPitch;
     return {(std::min)(maxPitch,state.fastPitch+state.climbPitch),
             state.yaw,kickApplied};
 }
