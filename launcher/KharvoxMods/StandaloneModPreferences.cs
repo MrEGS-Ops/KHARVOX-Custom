@@ -40,7 +40,7 @@ internal sealed class StandaloneModPreferences
     public bool PainsawRipshiftOverdrive { get; set; }
     public bool OffHandGripCapture { get; set; } = true;
     public bool GloryKillSpeedOverride { get; set; } = true;
-    public int GloryKillHz { get; set; } = 60; // New installs default KILLTIME to 60 Hz.
+    public int GloryKillHz { get; set; } = 40; // New installs default KILLTIME to 40 Hz.
     // Presentation order only: the bridge ignores this metadata. Enables
     // original click/drag reorder without changing mod dependencies or timing.
     public string[] ActiveOrder { get; set; } = Array.Empty<string>();
@@ -149,7 +149,7 @@ internal sealed class StandaloneModPreferences
             if (x.WeaponWheelRemap || !x.HandFocus ||
                 !x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
                 !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
-                !x.GloryKillSpeedOverride || x.GloryKillHz != 60 ||
+                !x.GloryKillSpeedOverride || x.GloryKillHz != 40 ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
                 x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )
