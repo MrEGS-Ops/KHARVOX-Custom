@@ -285,6 +285,10 @@ int main(){
 
     // Long Gauss Siege hold: ammo may decrease during charging, but
     // the kick must not occur until AFTER trigger release.
+    // Restore the original fast 900% test preset after the newly added
+    // 25% slow-recovery tests above; otherwise its original <120ms
+    // return-to-zero assertion incorrectly runs at 25% instead.
+    settings.recovery[6]=9.f;
     state={};
     tick(6,9000,false,150,true);
     tick(6,9010,true,150,true);
