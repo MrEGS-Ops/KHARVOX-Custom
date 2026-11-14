@@ -377,7 +377,7 @@ void paintVrHandMenu() {
             "LESS KICK (-10%)",
             "MORE KICK (+10%, MAX 900%)",
             "SLOWER RECOVERY (-10%, MIN 25%)",
-            "FASTER RECOVERY (+10%)",
+            "FASTER RECOVERY (+10%, MAX 900%)",
             "RESET THIS WEAPON"
         }};
         for(int i=0;i<6;++i){
