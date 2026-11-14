@@ -13,7 +13,7 @@ internal static class GunslingerShoulderWeaponLock
     private static readonly BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic;
     private const string DisabledHelp =
-        "Unavailable while Gunslinger is enabled in KHARVOX VR Mod Manager.";
+        "Gunslinger is built into KHARVOX. Configure it from the in-headset MODS menu.";
 
     private static ComboBox? FindPicker(MainForm form) =>
         typeof(MainForm).GetField("backWeapon", PrivateInstance)
@@ -56,24 +56,10 @@ internal static class GunslingerShoulderWeaponLock
 
         void Refresh()
         {
-            // Mod choices are written beside the manager, never to AppData or
-            // the user-selected original KHARVOX installation. An incomplete
-            // concurrent JSON save is retried at the next tick.
-            bool lockShoulder;
-            try
-            {
-                lockShoulder = MrEgsLaunchProfileBridge.IsActive(form) ||
-                    StandaloneModsBridge.LoadFromEnvironment()?.EffectiveGunslinger == true;
-            }
-            catch (Exception exception) when (
-                exception is IOException ||
-                exception is UnauthorizedAccessException ||
-                exception is InvalidDataException ||
-                exception is InvalidOperationException ||
-                exception is ArgumentException)
-            {
-                return;
-            }
+            // Core Gunslinger is always enabled by the retail launcher.
+            // Never query the removed Mod Manager bridge or its JSON.
+            bool lockShoulder = MrEgsLaunchProfileBridge.IsActive(form) ||
+                RetailVrDefaults.GunslingerAlwaysOn;
 
             if (lastLock == lockShoulder) return;
             SetLocked(picker, caption, defaultCaptionColor, help, lockShoulder,
@@ -81,8 +67,8 @@ internal static class GunslingerShoulderWeaponLock
             lastLock = lockShoulder;
         }
 
-        // Apply before the first display, then update when the user changes
-        // Gunslinger in the adjacent manager window, without relaunching.
+        // Apply before the launcher appears. The in-game configuration never
+        // needs to re-enable this original desktop Shoulder Weapon picker.
         Refresh();
         var poll = new System.Windows.Forms.Timer { Interval = 500 };
         poll.Tick += (_, _) =>
@@ -125,14 +111,12 @@ internal static class GunslingerShoulderWeaponLock
                     throw new InvalidDataException(
                         "Turning Gunslinger off did not restore Shoulder Weapon.");
 
-                // Either old individual physical gesture still maps to the
-                // combo, preserving compatibility with pre-merge profiles.
-                var older = new StandaloneModsBridge
-                {
-                    DynamicQuickHolsters = true
-                };
-                if (!older.EffectiveGunslinger)
-                    throw new InvalidDataException("Legacy holster bridge not recognised.");
+                var retail = new CustomModSettings();
+                RetailVrDefaults.Apply(retail);
+                if (!retail.BehindHeadWeaponWheel ||
+                    !retail.DynamicShoulderHolster ||
+                    !RetailVrDefaults.GunslingerAlwaysOn)
+                    throw new InvalidDataException("Built-in Gunslinger policy is inactive.");
             }
 
             Console.WriteLine(
@@ -147,13 +131,13 @@ internal static class GunslingerShoulderWeaponLock
     }
 }
 
-// Keep the upstream Cactus MainForm exactly unmodified. A separately packaged
-// bridge helper greys the existing Virtual Gunstock control when physical grip
-// calibration is enabled, and the runtime independently forces gunstock OFF.
+// Keep the upstream Cactus MainForm exactly unmodified. Physical grip
+// calibration is built in, so the old Virtual Gunstock option remains locked
+// and the runtime independently forces gunstock OFF.
 internal static class VirtualGunstockGripCalibrationLock
 {
     private const string DisabledHelp =
-        "Disabled by Weapon Grip Calibration. Turn that mod off in VR Mod Manager to re-enable Virtual Gunstock.";
+        "Weapon Grip Calibration is built in. Virtual Gunstock is disabled.";
 
     private static CheckBox? FindToggle(MainForm form) =>
         typeof(MainForm).GetField("virtualGunstock",
@@ -179,22 +163,8 @@ internal static class VirtualGunstockGripCalibrationLock
         bool? lastLock = null;
         void Refresh()
         {
-            bool blocked;
-            try
-            {
-                blocked = MrEgsLaunchProfileBridge.IsActive(form) ||
-                    StandaloneModsBridge.LoadFromEnvironment()?.OffHandGripCapture == true;
-            }
-            catch (Exception exception) when (
-                exception is IOException ||
-                exception is UnauthorizedAccessException ||
-                exception is InvalidDataException ||
-                exception is InvalidOperationException ||
-                exception is ArgumentException)
-            {
-                // Retry after a concurrent mod-manager config update.
-                return;
-            }
+            bool blocked = MrEgsLaunchProfileBridge.IsActive(form) ||
+                RetailVrDefaults.WeaponGripAlwaysOn;
             if (lastLock == blocked) return;
             SetLocked(toggle, help, blocked,
                 MrEgsLaunchProfileBridge.IsActive(form) ? "Locked off by the MrEGS_ launch profile." : null);
@@ -237,7 +207,7 @@ internal static class VirtualGunstockGripCalibrationLock
                 throw new InvalidDataException(
                     "Turning calibration off must not silently reactivate gunstock.");
             Console.WriteLine(
-                "Bridge-managed Virtual Gunstock control disabled/restored; Cactus MainForm unchanged.");
+                "Built-in Weapon Grip Calibration locks Virtual Gunstock; Cactus MainForm unchanged.");
             return 0;
         }
         catch (Exception error)
