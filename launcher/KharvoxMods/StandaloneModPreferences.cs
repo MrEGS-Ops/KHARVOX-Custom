@@ -37,13 +37,13 @@ internal sealed class StandaloneModPreferences
     public bool BehindHeadWeaponWheel { get; set; }
     public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; } = true;
-    public bool PainsawRipshiftOverdrive { get; set; }
+    public bool PainsawRipshiftOverdrive { get; set; } = true; // Owner's exported default, still user-toggleable.
     public bool OffHandGripCapture { get; set; } = true;
     public bool GloryKillSpeedOverride { get; set; } = true;
     public int GloryKillHz { get; set; } = 40; // New installs default KILLTIME to 40 Hz.
     // Presentation order only: the bridge ignores this metadata. Enables
     // original click/drag reorder without changing mod dependencies or timing.
-    public string[] ActiveOrder { get; set; } = Array.Empty<string>();
+    public string[] ActiveOrder { get; set; } = new[] { "PAINSAW: RIPSHIFT OVERDRIVE" };
     // UI-only order for inactive and paused mods; does not enable anything.
     public string[] AvailableOrder { get; set; } = Array.Empty<string>();
     // UI-only; keys are A:category or V:category. No native dependency impact.
@@ -148,7 +148,7 @@ internal sealed class StandaloneModPreferences
             var x = Load(path);
             if (x.WeaponWheelRemap || !x.HandFocus ||
                 !x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
-                !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
+                !x.PhysicalCrouch || !x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
                 !x.GloryKillSpeedOverride || x.GloryKillHz != 40 ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
