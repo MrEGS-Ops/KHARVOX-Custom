@@ -88,7 +88,7 @@ struct WeaponRecoilState {
     bool fireHeld{},pendingShot{},gaussCharging{};
     bool gaussAttemptActive{},gaussAmmoDebitedAwaitRelease{};
     int gaussLastAmmo{-1};
-    std::uint64_t gaussAttemptTick{};
+    std::uint64_t gaussAttemptTick{},gaussReleaseTick{};
     std::uint64_t lastTick{},lastShotTick{},pendingShotTick{};
     std::uint64_t gaussKickTick{};
     float gaussKickPitch{},gaussKickYaw{};
@@ -155,6 +155,7 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         if(input.weapon==6){
             state.gaussAttemptActive=true;
             state.gaussAttemptTick=input.nowMs;
+            state.gaussReleaseTick=0;
             state.gaussAmmoDebitedAwaitRelease=false;
         }
     }
@@ -193,10 +194,13 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
             // turn a later sample into a false decrement across a long gap.
             state.gaussLastAmmo=-1;
         }
-        if(state.gaussAttemptActive
-            &&!input.fireHeld
-            &&input.nowMs>=state.gaussAttemptTick
-            &&input.nowMs-state.gaussAttemptTick>900u){
+        if(triggerRelease)state.gaussReleaseTick=input.nowMs;
+        // A long Siege charge may be held for many seconds. Expiration is
+        // measured AFTER release, never from the original charge start.
+        if(state.gaussAttemptActive&&!input.fireHeld
+            &&state.gaussReleaseTick
+            &&input.nowMs>=state.gaussReleaseTick
+            &&input.nowMs-state.gaussReleaseTick>900u){
             state.gaussAttemptActive=false;
             state.gaussAmmoDebitedAwaitRelease=false;
         }
