@@ -216,17 +216,19 @@ int main(){
  // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
  // support stores only a point; its quaternion remains a grab-time snapshot.
  auto menu=kharvox::VrHandMenuState{};
- // Two-handed firing lock requires BOTH actual Grips and a latch to
- // the current Gauss weapon, not just a visually close support hand.
+ // Normal Gauss fire remains one-handed regardless of support Grip.
+ // Only the observable active Alt Fire/charge Grip can lock a shot.
  using kharvox::vrGaussPrimaryFireAllowed;
- assert(!vrGaussPrimaryFireAllowed(true,true,false,false,false,false,true,true));
- assert(!vrGaussPrimaryFireAllowed(true,true,true,false,false,false,true,true));
- assert(!vrGaussPrimaryFireAllowed(true,true,true,true,false,false,true,true));
- assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,false,true,true));
- assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,false));
- assert(vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,true));
- assert(vrGaussPrimaryFireAllowed(false,true,false,false,false,false,false,false));
- assert(vrGaussPrimaryFireAllowed(true,false,false,false,false,false,false,false));
+ assert(vrGaussPrimaryFireAllowed(true,true,false,false,false,false,false,false,false));
+ assert(vrGaussPrimaryFireAllowed(true,true,false,true,false,false,false,true,false));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,false,false,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,false,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,true,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,true,false));
+ assert(vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,true,true));
+ assert(vrGaussPrimaryFireAllowed(false,true,true,false,false,false,false,false,false));
+ assert(vrGaussPrimaryFireAllowed(true,false,true,false,false,false,false,false,false));
  // Gauss and Minigun present only NORMAL and generic ALT FIRE.
  // Attachment names never select the active grip profile.
  assert(!menu.alternateProfile);
