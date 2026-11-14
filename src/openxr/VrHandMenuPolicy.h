@@ -28,15 +28,17 @@ inline constexpr bool vrHeavyAlternateGripActive(
     if(menuOpen&&matchingSelectedWeapon)return selectedAlternate;
     return nativeSecondaryGrip||gaussChargeStillActive;
 }
-// Gauss only: charging via primary Grip remains native. The fire trigger is
-// suppressed unless BOTH physical Grips are down and the off-hand has acquired
-// its calibrated support point for the currently equipped Gauss Cannon.
-// Other guns, including Chaingun, are entirely unaffected.
+// Gauss only: NORMAL trigger shots are ALWAYS allowed with one hand.
+// The two-hand interlock applies ONLY when the alternate-fire Grip is
+// actively forwarded to DOOM (the observable charge input). An installed
+// Siege upgrade or its declaration string is NOT evidence of charging.
+// Releasing alternate-fire Grip restores normal one-handed shots.
 inline constexpr bool vrGaussPrimaryFireAllowed(
-    bool requireTwoHands,bool gaussEquipped,bool primaryGripDown,
-    bool supportGripDown,bool supportLatched,bool supportLatchedToGauss,
+    bool requireTwoHands,bool gaussEquipped,bool alternateChargeGripActive,
+    bool primaryGripDown,bool supportGripDown,
+    bool supportLatched,bool supportLatchedToGauss,
     bool primaryTracked,bool supportTracked) noexcept {
-    if(!requireTwoHands||!gaussEquipped)return true;
+    if(!requireTwoHands||!gaussEquipped||!alternateChargeGripActive)return true;
     return primaryGripDown&&supportGripDown&&supportLatched
         &&supportLatchedToGauss&&primaryTracked&&supportTracked;
 }
