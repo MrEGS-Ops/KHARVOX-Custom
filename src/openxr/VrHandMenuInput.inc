@@ -490,6 +490,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         if(pixelX>=715&&pixelX<917)return 21;
     }
     if(pixelX>=531&&pixelX<915&&pixelY>=306&&pixelY<355)return 32;
+    if(pixelX>=531&&pixelX<915&&pixelY>=540&&pixelY<590
+        &&KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())
+            ==KharvoxWeaponKind::GaussCannon)return 33;
     if(pixelX>=531&&pixelX<915){
         if(pixelY>=363&&pixelY<432)return 30;
         if(pixelY>=454&&pixelY<523)return 31;
@@ -765,7 +768,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool heavy=selectedKind==KharvoxWeaponKind::GaussCannon
                 ||selectedKind==KharvoxWeaponKind::Chaingun;
             kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
-                10,m.selectedWeapon,heavy?6:5);
+                10,m.selectedWeapon,selectedKind==KharvoxWeaponKind::GaussCannon
+                    ?7:heavy?6:5);
             if(previousWeapon!=m.selectedWeapon){
                 m.navigation.actionIndex=0;
                 m.autoSelectingWeapon=false;
@@ -776,7 +780,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool heavyNow=selectedNow==KharvoxWeaponKind::GaussCannon
                 ||selectedNow==KharvoxWeaponKind::Chaingun;
             m.navigation.actionIndex=std::clamp(m.navigation.actionIndex,
-                0,heavyNow?5:4);
+                0,selectedNow==KharvoxWeaponKind::GaussCannon
+                    ?6:heavyNow?5:4);
             if(m.autoSelectingWeapon){
                 const auto desired=KharvoxWeaponKindFromKey(m.weapon());
                 if(desired==KharvoxWeaponCurrentKind()){
@@ -790,7 +795,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
                 aEdge?kharvox::vrMenuGripGamepadTarget(m.navigation,
-                    m.selectedWeapon,heavyNow):-1;
+                    m.selectedWeapon,heavyNow,
+                    selectedNow==KharvoxWeaponKind::GaussCannon):-1;
             if(pointed>=0)m.navigation.usingStick=false;
             if(chosen==95){
                 m.page=kharvox::VrMenuPage::Mods;
@@ -817,6 +823,20 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.message=m.alternateProfile
                         ?"Alt Fire profile selected; configure your equipped attachment."
                         :"Normal weapon profile selected.";
+                }
+            }else if(chosen==33
+                &&selectedNow==KharvoxWeaponKind::GaussCannon){
+                const bool prior=s.vrLiveSettings.gaussRequireTwoHandFire;
+                s.vrLiveSettings.gaussRequireTwoHandFire=!prior;
+                if(!kharvox::vrLiveSave(kharvox::runtimePathA(
+                        "vr_live_mods_saved.cfg"),s.vrLiveSettings)){
+                    s.vrLiveSettings.gaussRequireTwoHandFire=prior;
+                    m.message="Gauss two-hand firing setting could not be saved.";
+                }else{
+                    m.message=s.vrLiveSettings.gaussRequireTwoHandFire
+                        ?"Gauss: both Grips must hold the weapon before firing."
+                        :"Gauss: normal trigger firing restored.";
+                    log("[GAUSS-FIRE-GRIP] "+m.message);
                 }
             }else if(chosen==30)requestVrSelectedWeaponCalibration(displayTime);
             m.leftTriggerPreviously=leftTrigger;
