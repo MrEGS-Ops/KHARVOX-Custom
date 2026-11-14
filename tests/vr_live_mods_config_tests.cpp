@@ -9,6 +9,7 @@ int main(){
     assert(s.enabledOverrides[2]==1&&s.enabledOverrides[5]==1);
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::PhysicalCrouch,false));
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
+    assert(s.gaussRequireTwoHandFire); // Default Gauss fire safety is ON.
     assert(s.gloryKillHz==40); // Fresh install and in-headset factory preset.
     // Exact owner-uploaded factory SHIFT offsets (not absolute hip points).
     constexpr auto hips=kVrLiveFactoryHipShifts;
@@ -65,6 +66,7 @@ int main(){
     assert(!vrLiveSetEnabled(s,VrLiveMod::PhysicalGloryKills,false));
     assert(!vrLiveSetEnabled(s,VrLiveMod::HandFocus,false));
     assert(s.enabledOverrides[1]==-1);
+    s.gaussRequireTwoHandFire=false;
     s.gloryKillHz=90;s.punchSpeedMetersPerSec=3.4f;s.punchHands=1;
     const std::string file="vr-live-mod-calibration-test.cfg";
     assert(vrLiveSave(file,s));
@@ -73,6 +75,7 @@ int main(){
     assert(std::abs(read.hipShift[0].x-s.hipShift[0].x)<.00001f);
     assert(std::abs(read.wheelShift[1].x-s.wheelShift[1].x)<.00001f);
     assert(read.gloryKillHz==90&&read.punchHands==1);
+    assert(!read.gaussRequireTwoHandFire); // Saved toggle survives restart.
     assert(vrLiveEffectiveEnabled(read,VrLiveMod::Gunslinger,true));
     assert(vrLiveModEditable(VrLiveMod::WeaponGrip));
     assert(vrLiveModEditable(VrLiveMod::PhysicalCrouch));
@@ -123,6 +126,7 @@ int main(){
     assert(old.hipShift[1].x==0.f&&old.hipShift[1].y==0.f
         &&old.hipShift[1].z==0.f);
     assert(old.gloryKillHz==0);
+    assert(old.gaussRequireTwoHandFire); // Legacy saves inherit safe default.
     // Previously saved OFF values for locked core mods cannot disable them.
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::Gunslinger,false));
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::WeaponGrip,false));
