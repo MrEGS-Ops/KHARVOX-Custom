@@ -115,11 +115,13 @@ inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
 }
 // Dedicated recoil tuning: 9 firearms + separate Minigun Turret mode (10 rows).
 // Controller settings are independent of the primary/off-hand pose profiles.
+// The policy header intentionally has no OpenXR/weapon recoil runtime dependency.
+inline constexpr int kVrRecoilMenuProfileCount=10;
 inline int vrMenuRecoilGamepadTarget(const VrMenuNavigation& nav,
                                     int weapon) noexcept {
     return nav.settingsColumn
         ?(nav.actionIndex>=0&&nav.actionIndex<6?140+nav.actionIndex:-1)
-        :(weapon>=0&&weapon<static_cast<int>(kWeaponRecoilKinds.size())?200+weapon:-1);
+        :(weapon>=0&&weapon<kVrRecoilMenuProfileCount?200+weapon:-1);
 }
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy) noexcept {
