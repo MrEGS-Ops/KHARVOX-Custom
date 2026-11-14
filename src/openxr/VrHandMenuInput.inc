@@ -170,17 +170,10 @@ void saveVrHandMenuCalibration(){
         ||s.weaponHandLeft!=m.calibratingWeaponLeft){
         m.message="Weapon or holding hand changed; capture not saved.";return;
     }
-    // The chosen save slot must be pinned to the mode the owner visually
-    // confirmed BEFORE entering calibration. A changed selection (or
-    // programmatic entry without confirmation) may never overwrite a
-    // different Minigun attachment profile.
-    if(kind==KharvoxWeaponKind::Chaingun
-        &&(m.calibrationRotorProfile!=m.rotorProfile
-            ||m.calibrationAlternateProfile!=m.alternateProfile
-            ||((m.rotorProfile||m.alternateProfile)
-                &&!m.calibrationProfileConfirmed))){
-        m.message="MINIGUN MODE CHANGED: cancel and verify visible mod.";
-        log("[VR-HAND-MENU] Minigun attachment save rejected: profile not verified");
+    // Keep the chosen NORMAL / ALT FIRE slot stable for this capture.
+    // No attachment-name scan or separate Rotor/Turret confirmation.
+    if(m.calibrationAlternateProfile!=m.alternateProfile){
+        m.message="MODE CHANGED: cancel and select Normal or Alt Fire again.";
         return;
     }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
@@ -189,8 +182,7 @@ void saveVrHandMenuCalibration(){
     const bool alternate=m.alternateProfile
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
-    const bool rotor=m.rotorProfile&&kind==KharvoxWeaponKind::Chaingun;
-    const std::string profileKey=rotor?"chaingun_rotor":m.weapon();
+    const std::string profileKey=m.weapon();
     if(primaryHand){
         ok=kharvox::saveRightHandVisualPose(
             kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
@@ -201,9 +193,9 @@ void saveVrHandMenuCalibration(){
                 kharvox::runtimePathA("offhand_right_hand_positions.cfg"));
             s.primaryVisualLocked=false;
         }
-    }else if(alternate||rotor){
-        // Both Chaingun attachments have separate support-hand profiles.
-        // Older Turret saves remain completely untouched by Rotor capture.
+    }else if(alternate){
+        // One alternate support-hand profile, regardless of the attachment.
+        // Legacy _siege / _turret filenames remain compatible on disk.
         const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
         ok=kharvox::saveHeavyAlternativeSupport(
             rightFile,profileKey,m.previewPosition,&why,s.weaponHandLeft);
@@ -242,7 +234,7 @@ void saveVrHandMenuCalibration(){
         return;
     }
     log(std::string("[VR-HAND-MENU] saved ")+m.weapon()+
-        (rotor?" ROTOR":alternate?" ALTERNATE":" NORMAL")+
+        (alternate?" ALT FIRE":" NORMAL")+
         (m.rightHand?" RIGHT":" LEFT")+
         (primaryHand?" primary pose+rotation":" support position (grab rotation preserved)"));
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
@@ -250,7 +242,7 @@ void saveVrHandMenuCalibration(){
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.message=std::string(m.rightHand?"RIGHT":"LEFT")+
         (primaryHand?" PRIMARY":" SUPPORT")+
-        (rotor?" ROTOR":alternate?" ALT":" NORMAL")
+        (alternate?" ALT FIRE":" NORMAL")
         +" saved for "+m.weapon();
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
@@ -300,13 +292,7 @@ void startVrSelectedWeaponCalibration(){
     m.pendingNativeSelection=0;
     m.mode=kharvox::VrHandMenuMode::Calibrating;
     m.calibratingWeaponLeft=s.weaponHandLeft;
-    m.calibrationRotorProfile=m.rotorProfile;
     m.calibrationAlternateProfile=m.alternateProfile;
-    m.calibrationProfileConfirmed=
-        (KharvoxWeaponKindFromKey(m.weapon())!=KharvoxWeaponKind::Chaingun
-         ||(!m.rotorProfile&&!m.alternateProfile)
-         ||m.minigunProfileConfirmed);
-    m.minigunProfileConfirmed=false;
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
     m.rotationEdit={}; // a fresh unsaved rotation draft for this calibration
@@ -321,8 +307,7 @@ void startVrSelectedWeaponCalibration(){
     const bool alternate=m.alternateProfile
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
-    const bool rotor=m.rotorProfile&&kind==KharvoxWeaponKind::Chaingun;
-    const std::string profileKey=rotor?"chaingun_rotor":m.weapon();
+    const std::string profileKey=m.weapon();
     if(calibratingPrimary)
         m.fineTuneAccumulated=kharvox::primaryVisualFineTune(
             s.rightGripSettings,profileKey,s.weaponHandLeft,alternate);
@@ -406,21 +391,8 @@ void requestVrSelectedWeaponCalibration(XrTime displayTime){
         return;
     }
     const auto weapon=KharvoxWeaponKindFromKey(m.weapon());
-    // Native decl string scans DO NOT prove that Rotor or Turret is
-    // deployed (both may be installed). The first CALIBRATE press asks the
-    // player to look at the actual in-game handles; the second confirms
-    // that specific profile and begins capture. Never auto-switch the
-    // engine's selected attachment by changing only the menu label.
-    if(weapon==KharvoxWeaponKind::Chaingun
-        &&(m.rotorProfile||m.alternateProfile)
-        &&!m.minigunProfileConfirmed){
-        m.minigunProfileConfirmed=true;
-        m.message=std::string("CHECK VISIBLE ")
-            +(m.rotorProfile?"ROTOR":"TURRET")
-            +" HANDLES; press CALIBRATE again to confirm.";
-        log("[VR-HAND-MENU] Minigun attachment confirmation requested");
-        return;
-    }
+    // The owner decides which in-game attachment is fitted. Selecting the
+    // generic Alt Fire profile needs only one CALIBRATE press.
     if(weapon==KharvoxWeaponCurrentKind()){
         startVrSelectedWeaponCalibration();
         return;
@@ -570,9 +542,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
             m.alternateProfile=false;
-            m.rotorProfile=false;
-            m.minigunProfileConfirmed=false;
-            // A left-holster draw means LEFT primary, not "LEFT support".
+                // A left-holster draw means LEFT primary, not "LEFT support".
             m.rightHand=!s.weaponHandLeft;
             const auto equipped=KharvoxWeaponCurrentKind();
             for(int i=0;i<10;++i)
@@ -622,7 +592,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     // B cancels capture without saving. From weapon profiles B returns to
     // Mods; from the top-level Mods page it closes the overlay.
     if(bEdge){
-        m.minigunProfileConfirmed=false;
         const bool wasLiveModCapture=m.liveCapture!=kharvox::VrLiveCapture::None;
         m.liveCapture=kharvox::VrLiveCapture::None;
         m.autoSelectingWeapon=false;
@@ -802,9 +771,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.autoSelectingWeapon=false;
                 m.pendingNativeSelection=0;
                 m.alternateProfile=false;
-                m.rotorProfile=false;
-                m.minigunProfileConfirmed=false;
-            }
+                        }
             const auto selectedNow=KharvoxWeaponKindFromKey(m.weapon());
             const bool heavyNow=selectedNow==KharvoxWeaponKind::GaussCannon
                 ||selectedNow==KharvoxWeaponKind::Chaingun;
@@ -830,49 +797,32 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation={};
                 m.autoSelectingWeapon=false;
                 m.pendingNativeSelection=0;
-                m.minigunProfileConfirmed=false;
-                m.message="Live VR Mod Settings";
+                        m.message="Live VR Mod Settings";
             }else if(chosen>=0&&chosen<10){
                 m.selectedWeapon=chosen;
                 m.autoSelectingWeapon=false;
                 m.pendingNativeSelection=0;
                 m.alternateProfile=false;
-                m.rotorProfile=false;
-                m.minigunProfileConfirmed=false;
-                if(aEdge){m.navigation.settingsColumn=true;
+                            if(aEdge){m.navigation.settingsColumn=true;
                     m.navigation.usingStick=true;}
             }else if(chosen==20){
-                m.rightHand=false;m.minigunProfileConfirmed=false;
+                m.rightHand=false;
             }else if(chosen==21){
-                m.rightHand=true;m.minigunProfileConfirmed=false;
+                m.rightHand=true;
             }
             else if(chosen==31)resetVrMenuSelectedWeapon();
             else if(chosen==32){
-                m.minigunProfileConfirmed=false;
-                if(selectedNow==KharvoxWeaponKind::Chaingun){
-                    // Normal -> Rotor -> Turret, three independent saved
-                    // primary and support sets for each physical hand.
-                    if(!m.alternateProfile&&!m.rotorProfile)
-                        m.rotorProfile=true;
-                    else if(m.rotorProfile){
-                        m.rotorProfile=false;
-                        m.alternateProfile=true;
-                    }else m.alternateProfile=false;
-                    m.message=m.rotorProfile?"Rotor hand profile selected."
-                        :m.alternateProfile?"Turret hand profile selected."
-                        :"Normal minigun profile selected.";
-                }else if(heavyNow){
+                if(heavyNow){
                     m.alternateProfile=!m.alternateProfile;
-                    m.rotorProfile=false;
                     m.message=m.alternateProfile
-                        ?"Siege auto-engages while in calibration."
-                        :"Normal profile; alternate fire released.";
+                        ?"Alt Fire profile selected; configure your equipped attachment."
+                        :"Normal weapon profile selected.";
                 }
             }else if(chosen==30)requestVrSelectedWeaponCalibration(displayTime);
             m.leftTriggerPreviously=leftTrigger;
         }
     }
-    // Siege/Turret alternate mode engages automatically when selected.
+    // Generic Alt Fire input engages automatically when selected.
     // This is confined to the hand-calibration page and its live capture.
     // The weapon Grip now always controls the preview pose, even on heavies.
     // Trigger is consumed for SAVE, so it cannot fire the weapon here.
@@ -881,8 +831,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         ||liveKind==KharvoxWeaponKind::Chaingun;
     const bool liveAltFire=gameplay&&s.customMods.offHandGripCapture
         &&m.page==kharvox::VrMenuPage::WeaponGrip
-        &&(m.alternateProfile||(m.rotorProfile&&
-            liveKind==KharvoxWeaponKind::Chaingun))
+        &&m.alternateProfile
         &&heavyLiveWeapon&&liveKind==KharvoxWeaponKindFromKey(m.weapon())
         &&(m.mode==kharvox::VrHandMenuMode::Menu
             ||(m.mode==kharvox::VrHandMenuMode::Calibrating
