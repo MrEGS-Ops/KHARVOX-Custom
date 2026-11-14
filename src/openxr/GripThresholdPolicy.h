@@ -42,4 +42,37 @@ inline bool updateGripPressed(
     return value > (wasPressed ? thresholds.release : thresholds.press);
 }
 
+// Controller-only safety latch. The runtime can report a valid "controller"
+// pose even while tracking bare hands, so we also require a fresh, deliberate
+// two-stick acknowledgement after losing a controller or its input profile.
+// The lock starts engaged; it never auto-rearms when emulated inputs appear.
+struct ControllerOnlySafetyState {
+    bool armed{},bothSticksAcknowledged{};
+    unsigned stableFrames{};
+};
+inline constexpr bool updateControllerOnlySafety(
+    ControllerOnlySafetyState& state,
+    bool bothPhysicalControllerProfiles,
+    bool bothControllerPosesTracked,
+    bool bothSticksPressed,
+    bool bothSticksReleased,
+    bool triggerAndGripNeutral) noexcept {
+    if(!bothPhysicalControllerProfiles||!bothControllerPosesTracked){
+        state={};
+        return false;
+    }
+    if(state.armed)return true;
+    if(state.stableFrames<12)++state.stableFrames;
+    if(state.stableFrames<12||!triggerAndGripNeutral){
+        state.bothSticksAcknowledged=false;
+        return false;
+    }
+    if(bothSticksPressed)state.bothSticksAcknowledged=true;
+    if(state.bothSticksAcknowledged&&bothSticksReleased){
+        state.armed=true;
+        return true;
+    }
+    return false;
+}
+
 } // namespace kharvox
