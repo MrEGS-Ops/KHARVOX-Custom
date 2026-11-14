@@ -159,7 +159,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.WhiteSmoke
         });
-        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "MrEGS_"]);
+        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "Custom"]);
         preset.Dock = DockStyle.Fill;
         preset.SelectedIndexChanged += (_, _) => ApplyPreset();
         profileRow.Controls.Add(preset);
@@ -1086,27 +1086,7 @@ public sealed class MainForm : Form
             cinematicFreelook.Checked = true;
             otherCinematicsInQuad.Checked = false;
             cinewindowFollowsHeadset.Checked = false;
-            // The bridge's first-run profile matches the owner's uploaded
-            // KHARVOX Launcher preferences without shipping a personal DOOM path.
-            // Direct/original KHARVOX settings are unchanged.
-            if (LauncherUserData.BridgeMode)
-            {
-                preset.SelectedIndex = LauncherPresetPolicy.MrEgsPresetIndex;
-                intense.Checked = true;
-                cinematicFreelook.Checked = true;
-                otherCinematicsInQuad.Checked = false;
-                cinewindowFollowsHeadset.Checked = false;
-                turnMode.SelectedIndex = 0; // Smooth turning
-                smoothSpeed.Value = 400;
-                physicalGlorykill.Checked = true;
-                physicalGlorykillSpeed.Value = GloryKillSpeedToSliderValue(2.8m);
-                physicalGlorykillHands.SelectedIndex = 2;
-                backWeapon.SelectedIndex = 3;
-                virtualGunstock.Checked = false; // Grip Calibration is primary
-                disableVrIntro.Checked = true;
-            }
-            else
-                preset.SelectedIndex = 0;
+            preset.SelectedIndex = 0;
         }
         finally
         {
