@@ -210,8 +210,34 @@ bool handleVrRecoilCalibrationAction(int action){
     if(action<140||action>145)return false;
     auto& m=s.vrHandMenu;
     const int index=std::clamp(m.selectedRecoilWeapon,0,
-        static_cast<int>(kharvox::kWeaponRecoilKinds.size())-1);
+        kharvox::kVrRecoilMenuEntryCount-1);
     auto old=s.recoilSettings;
+    if(index==kharvox::kVrRecoilMenuProfileCount){
+        // One shared formula for all finite-ammo guns except Gauss.
+        // Buttons are reused by the extra GLOBAL DYNAMICS list row.
+        switch(action){
+            case 140:s.recoilSettings.dynamicEnabled=
+                !s.recoilSettings.dynamicEnabled;break;
+            case 141:s.recoilSettings.dynamicBuildUpPerShot=std::max(.1f,
+                s.recoilSettings.dynamicBuildUpPerShot-.05f);break;
+            case 142:s.recoilSettings.dynamicBuildUpPerShot=std::min(.5f,
+                s.recoilSettings.dynamicBuildUpPerShot+.05f);break;
+            case 143:s.recoilSettings.dynamicMaxMultiplier=std::max(2.f,
+                s.recoilSettings.dynamicMaxMultiplier-.25f);break;
+            case 144:s.recoilSettings.dynamicMaxMultiplier=std::min(4.f,
+                s.recoilSettings.dynamicMaxMultiplier+.25f);break;
+            case 145:s.recoilSettings.dynamicEnabled=false;
+                s.recoilSettings.dynamicBuildUpPerShot=.20f;
+                s.recoilSettings.dynamicMaxMultiplier=3.f;break;
+        }
+        if(!saveVrRecoilSettings()){
+            s.recoilSettings=old;return true;
+        }
+        m.message=std::string("Dynamic recoil ")+
+            (s.recoilSettings.dynamicEnabled?"ON":"OFF")+
+            " | Gauss remains independently tuned.";
+        return true;
+    }
     const std::size_t at=static_cast<std::size_t>(index);
     switch(action){
         case 140:s.recoilSettings.enabled[at]=!s.recoilSettings.enabled[at];break;

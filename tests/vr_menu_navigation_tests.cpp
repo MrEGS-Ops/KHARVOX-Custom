@@ -13,7 +13,8 @@ int main(){
     VrMenuNavigation recoilNav{};
     assert(vrMenuRecoilGamepadTarget(recoilNav,7)==207); // normal
     assert(vrMenuRecoilGamepadTarget(recoilNav,9)==209); // turret
-    assert(vrMenuRecoilGamepadTarget(recoilNav,10)==-1);
+    assert(vrMenuRecoilGamepadTarget(recoilNav,10)==210); // shared dynamic
+    assert(vrMenuRecoilGamepadTarget(recoilNav,11)==-1);
     recoilNav.settingsColumn=true;
     recoilNav.actionIndex=5;
     assert(vrMenuRecoilGamepadTarget(recoilNav,9)==145); // reset turret only

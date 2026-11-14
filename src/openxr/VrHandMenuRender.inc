@@ -338,7 +338,7 @@ void paintVrHandMenu() {
         write(40,102,"WEAPON PROFILES",muted);
         write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
         const int selected=std::clamp(m.selectedRecoilWeapon,0,
-            static_cast<int>(kharvox::kWeaponRecoilKinds.size())-1);
+            kharvox::kVrRecoilMenuEntryCount-1);
         for(int i=0;i<static_cast<int>(kharvox::kWeaponRecoilKinds.size());++i){
             const int y=136+i*45;
             const bool active=i==selected;
@@ -362,24 +362,58 @@ void paintVrHandMenu() {
                 on?(active?RGB(115,246,178):RGB(91,185,134))
                   :(active?RGB(244,175,125):muted));
         }
-        const auto index=static_cast<std::size_t>(selected);
+        // An extra row below the ten weapon profiles configures the
+        // SHARED build-up. Gauss is excluded and retains manual tuning.
+        const int dynamicY=136+kharvox::kVrRecoilMenuProfileCount*45;
+        const bool dynamicSelected=selected==kharvox::kVrRecoilMenuProfileCount;
+        const bool dynamicHover=m.hovered==210
+            ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                &&dynamicSelected);
+        fill(38,dynamicY,455,40,dynamicSelected?RGB(32,89,104):
+            dynamicHover?RGB(44,54,71):RGB(27,32,43));
+        if(dynamicSelected)fill(38,dynamicY,5,40,RGB(55,209,214));
+        SelectObject(dc,regular);
+        write(56,dynamicY+6,"SHARED DYNAMIC BUILD-UP",white);
+        SelectObject(dc,smallFont);
+        write(372,dynamicY+9,s.recoilSettings.dynamicEnabled?"ON":"OFF",
+            s.recoilSettings.dynamicEnabled?RGB(115,246,178):muted);
+
+        const std::size_t index=dynamicSelected?0u:
+            static_cast<std::size_t>(selected);
         const int strength=static_cast<int>(std::lround(
             s.recoilSettings.strength[index]*100.f));
         const int recovery=static_cast<int>(std::lround(
             s.recoilSettings.recovery[index]*100.f));
         SelectObject(dc,regular);
         const bool weaponRecoilOn=s.recoilSettings.enabled[index];
-        write(537,126,weaponRecoilOn?"THIS WEAPON: RECOIL ON"
-            :"THIS WEAPON: RECOIL OFF",
-            weaponRecoilOn?RGB(108,235,161):RGB(239,197,116));
-        const std::array<std::string,6> controls{{
-            weaponRecoilOn?"DISABLE FOR THIS WEAPON":"ENABLE FOR THIS WEAPON",
-            "LESS KICK (-10%)",
-            "MORE KICK (+10%, MAX 900%)",
-            "SLOWER RECOVERY (-10%, MIN 25%)",
-            "FASTER RECOVERY (+10%, MAX 900%)",
-            "RESET THIS WEAPON"
-        }};
+        std::array<std::string,6> controls{};
+        if(dynamicSelected){
+            write(537,126,s.recoilSettings.dynamicEnabled
+                ?"SHARED DYNAMIC: ON":"SHARED DYNAMIC: OFF",
+                s.recoilSettings.dynamicEnabled?
+                    RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                s.recoilSettings.dynamicEnabled
+                    ?"DISABLE SHARED BUILD-UP":"ENABLE SHARED BUILD-UP",
+                "LESS BUILD-UP (-5% PER SHOT)",
+                "MORE BUILD-UP (+5% PER SHOT)",
+                "LOWER MAX MULTIPLIER (-25%)",
+                "HIGHER MAX MULTIPLIER (+25%)",
+                "RESET SHARED DYNAMICS"
+            }};
+        }else{
+            write(537,126,weaponRecoilOn?"THIS WEAPON: RECOIL ON"
+                :"THIS WEAPON: RECOIL OFF",
+                weaponRecoilOn?RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                weaponRecoilOn?"DISABLE FOR THIS WEAPON":"ENABLE FOR THIS WEAPON",
+                "LESS KICK (-10%)",
+                "MORE KICK (+10%, MAX 900%)",
+                "SLOWER RECOVERY (-10%, MIN 25%)",
+                "FASTER RECOVERY (+10%, MAX 900%)",
+                "RESET THIS WEAPON"
+            }};
+        }
         for(int i=0;i<6;++i){
             const int y=157+63*i;
             const bool focus=m.hovered==140+i
@@ -390,12 +424,24 @@ void paintVrHandMenu() {
             write(548,y+16,controls[static_cast<std::size_t>(i)],white);
         }
         SelectObject(dc,smallFont);
-        write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
-            std::to_string(recovery)+"%",RGB(84,233,214));
-        write(539,579,"1 hand: heavy recoil  |  2 hands: stable",muted);
+        if(dynamicSelected){
+            const int gain=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicBuildUpPerShot*100.f));
+            const int cap=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicMaxMultiplier*100.f));
+            write(539,548,"+ "+std::to_string(gain)+"% PER SHOT  /  CAP "
+                +std::to_string(cap)+"%",RGB(84,233,214));
+            write(539,579,"Gauss: separate kick/recovery | 2 hands stable",muted);
+        }else{
+            write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
+                std::to_string(recovery)+"%",RGB(84,233,214));
+            write(539,579,selected==6
+                ?"Gauss: independently tuned short punch + full return"
+                :"1 hand: heavy recoil  |  2 hands: stable",muted);
+        }
         write(539,614,"Close menu to test. B: BACK",muted);
         write(40,662,m.message.empty()
-            ?"Each weapon has independent recoil ON/OFF; grip settings untouched."
+            ?"Dynamic build-up uses ammo-confirmed shots; Gauss tuned separately."
             :m.message.substr(0,98),RGB(84,233,214));
         fill(797,16,129,57,m.hovered==95
             ?RGB(47,95,110):RGB(39,49,63));
