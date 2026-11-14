@@ -2552,7 +2552,8 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
-    const bool gameplay=KharvoxCameraGameplayActive()
+    const bool gameplay=!controllerOnlyLocked.load(std::memory_order_acquire)
+        &&KharvoxCameraGameplayActive()
         &&!KharvoxWeaponCollectibleAnimationActive()
         &&!KharvoxCameraCutsceneActive()&&!KharvoxHudPauseMenuActive()
         &&!KharvoxHudDeathMenuActive()
@@ -5503,6 +5504,9 @@ void pollEvents(){
             if(c.state!=XR_SESSION_STATE_FOCUSED){
                 // A headset put on later must not inherit the earlier menu height.
                 resetCinewindowAnchorState();
+                s.controllerOnlySafety={};
+                controllerOnlyLocked.store(true,std::memory_order_release);
+                controllerOnlyPausePulse.store(false,std::memory_order_release);
                 const auto reason=(c.state==XR_SESSION_STATE_STOPPING
                     ||c.state==XR_SESSION_STATE_EXITING
                     ||c.state==XR_SESSION_STATE_LOSS_PENDING)
@@ -5548,7 +5552,12 @@ void pollEvents(){
                 resetCinewindowAnchorState();
             }
         }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED){
+            // Even if Virtual Desktop keeps advertising a Touch profile while
+            // swapping to bare hands, force fresh physical acknowledgement.
             s.interactionProfilesDirty=true;
+            s.controllerOnlySafety={};
+            controllerOnlyLocked.store(true,std::memory_order_release);
+            log("[CONTROLLER-ONLY] OpenXR interaction profile changed: controller-only lock engaged");
         }else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
             clearXInputHapticState();
             KharvoxPsvr2SubmitTrigger(kharvox::psvr2::offCommand(
@@ -8132,7 +8141,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
 
     bool vrMenuImageAcquired=false;
     uint32_t vrMenuImageIndex{};
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed&&vrHandMenuSurface.ready){
+    if((controllerOnlyLocked.load(std::memory_order_acquire)
+            ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
+        &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         r=s.acquireImage(vrHandMenuSurface.target.handle,&acquire,&vrMenuImageIndex);
         if(XR_SUCCEEDED(r)&&vrMenuImageIndex<vrHandMenuSurface.target.images.size()){
