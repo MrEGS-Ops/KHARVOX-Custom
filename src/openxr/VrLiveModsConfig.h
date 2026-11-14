@@ -78,7 +78,7 @@ struct VrLiveSettings {
     // -1 follows desktop startup status (and preserves existing defaults);
     // 0/1 is an explicit live menu override saved across sessions.
     // Slot 5 appended for PAINSAW; old five-slot saves still load.
-    std::array<int,6> enabledOverrides{{-1,-1,-1,-1,-1,-1}};
+    std::array<int,6> enabledOverrides{{-1,-1,1,-1,-1,1}}; // crouch + PAINSAW ON on fresh installs
     // Offset from the existing tracking-relative zones. On a fresh
     // installation inherit the owner's measured right/left hip centres;
     // an already-saved UserData file (including old zero shifts) wins.
