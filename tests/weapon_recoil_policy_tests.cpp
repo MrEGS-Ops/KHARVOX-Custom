@@ -175,6 +175,54 @@ int main(){
     assert(tick(6,11220,false,120,true).pitchDegrees==0.f);
     assert(tick(6,11230,false,120,true).shotEstimated);
 
+    // Shared dynamics run on ammo-confirmed events, not trigger counts.
+    WeaponRecoilSettings ds{};
+    assert(!ds.dynamicEnabled);
+    assert(recoilDynamicMultiplier(ds,4,3)==1.f);
+    ds.dynamicEnabled=true;
+    ds.enabled[3]=true; // Plasma
+    ds.enabled[6]=true; // Gauss
+    assert(recoilDynamicMultiplier(ds,1,3)==1.f);
+    assert(std::abs(recoilDynamicMultiplier(ds,2,3)-1.2f)<.0001f);
+    assert(std::abs(recoilDynamicMultiplier(ds,3,3)-1.4f)<.0001f);
+    assert(recoilDynamicMultiplier(ds,999,3)==3.f);
+    assert(recoilDynamicMultiplier(ds,999,6)==1.f); // Gauss independent
+    assert(std::abs(recoilDynamicRecoveryScale(1.5f)-1.2f)<.0001f);
+    WeaponRecoilState dyn{};
+    auto shot=[&](std::uint64_t ms,int ammo,bool fire=true,
+                  int weapon=3,bool twoHands=false){
+        return advanceWeaponRecoil(dyn,ds,
+            {weapon,fire,twoHands,true,ms,false,ammo});
+    };
+    shot(13000,100,false);
+    shot(13010,100);
+    assert(!shot(13020,99).shotEstimated);
+    assert(shot(13030,99).shotEstimated);
+    assert(dyn.confirmedStreak==1u&&dyn.activeMultiplier==1.f);
+    assert(!shot(13120,98).shotEstimated);
+    assert(shot(13130,98).shotEstimated);
+    assert(dyn.confirmedStreak==2u);
+    assert(std::abs(dyn.activeMultiplier-1.2f)<.0001f);
+    shot(13220,97);
+    assert(shot(13230,97).shotEstimated);
+    assert(std::abs(dyn.activeMultiplier-1.4f)<.0001f);
+    shot(13300,97,false);shot(13310,97);
+    assert(!shot(13350,97).shotEstimated);
+    assert(dyn.confirmedStreak==3u); // no phantom extra count
+    assert(!shot(14200,97).shotEstimated);
+    assert(!shot(14210,96).shotEstimated);
+    assert(shot(14220,96).shotEstimated);
+    assert(dyn.confirmedStreak==1u); // streak expiration only
+    shot(14230,95,true,3,true);
+    assert(dyn.confirmedStreak==0u); // two hands cancel streak
+    assert(!shot(14240,95).shotEstimated);
+    dyn={};
+    shot(15000,180,false,6);
+    shot(15010,180,true,6);
+    shot(15020,165,true,6);
+    assert(shot(15030,165,true,6).shotEstimated);
+    assert(dyn.activeMultiplier==1.f); // Gauss still its own tune
+
     // Per-weapon enable state and 900% limits remain schema-2 compatible.
     settings.recovery[6]=9.f;
     settings.recovery[7]=.25f;
@@ -192,11 +240,17 @@ int main(){
     const auto path=std::filesystem::temp_directory_path()/
         "kharvox_recoil_policy_test.cfg";
     std::filesystem::remove(path);
+    settings.dynamicEnabled=true;
+    settings.dynamicBuildUpPerShot=.35f;
+    settings.dynamicMaxMultiplier=3.5f;
     assert(saveWeaponRecoilSettings(path.string(),settings));
     WeaponRecoilSettings loaded{};
     assert(loadWeaponRecoilSettings(path.string(),loaded));
     assert(loaded.recovery[6]==9.f&&loaded.recovery[7]==.25f);
     assert(loaded.strength[6]==9.f&&loaded.strength[1]==9.f);
+    assert(loaded.dynamicEnabled);
+    assert(std::abs(loaded.dynamicBuildUpPerShot-.35f)<.0001f);
+    assert(std::abs(loaded.dynamicMaxMultiplier-3.5f)<.0001f);
 
     // Independent ON/OFF switches, including Minigun's two modes.
     settings.enabled.fill(false);
@@ -212,13 +266,30 @@ int main(){
     state={};
     assert(tick(7,12000,true,20).pitchDegrees==0.f);
 
-    // Truncated schema-2 save must not alter already loaded settings.
+    // Schema 3 dynamic tuning must not silently survive malformed saves.
     {
         std::ofstream truncated(path,std::ios::trunc);
-        truncated<<"schema 2\nshotgun 1 2.500 0.600\n";
+        truncated<<"schema 3\\ndynamic 1 0.200 3.000\\n"
+                 <<"shotgun 1 2.500 0.600\\n";
     }
     assert(!loadWeaponRecoilSettings(path.string(),independent));
-    assert(independent.enabled[1]&&independent.enabled[9]);
+    assert(independent.enabled[1]&&independent.enabled[9]
+        &&independent.dynamicEnabled);
+    // Old schema 2 profiles migrate with dynamics OFF, preserving gun tune.
+    {
+        std::ofstream old(path,std::ios::trunc);
+        old<<"schema 2\\n";
+        for(std::size_t i=0;i<kWeaponRecoilKinds.size();++i)
+            old<<kWeaponRecoilKinds[i]<<" "<<(i==9?1:0)
+               <<" 1.500 0.250\\n";
+    }
+    WeaponRecoilSettings oldProfile{};
+    assert(loadWeaponRecoilSettings(path.string(),oldProfile));
+    assert(!oldProfile.dynamicEnabled
+        &&oldProfile.dynamicBuildUpPerShot==.20f
+        &&oldProfile.dynamicMaxMultiplier==3.f);
+    assert(oldProfile.enabled[9]&&!oldProfile.enabled[7]
+        &&oldProfile.strength[9]==1.5f);
 
     // Legacy schema-1 global ON/OFF correctly migrates all ten flags.
     {
@@ -234,6 +305,7 @@ int main(){
         assert(migrated.strength[i]==1.5f&&migrated.recovery[i]==.25f);
     }
     assert(migrated.enabled[9]);
+    assert(!migrated.dynamicEnabled);
     assert(migrated.strength[9]==kWeaponRecoilDefaultStrength[9]);
     assert(migrated.recovery[9]==kWeaponRecoilDefaultRecovery[9]);
     assert(saveWeaponRecoilSettings(path.string(),migrated));
@@ -248,6 +320,7 @@ int main(){
     WeaponRecoilSettings legacyDisabled{};
     assert(loadWeaponRecoilSettings(path.string(),legacyDisabled));
     assert(!anyWeaponRecoilEnabled(legacyDisabled));
+    assert(!legacyDisabled.dynamicEnabled);
     assert(legacyDisabled.strength[7]==1.75f);
     {
         std::ofstream bad(path,std::ios::trunc);
