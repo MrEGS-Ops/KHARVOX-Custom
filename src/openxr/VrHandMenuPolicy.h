@@ -335,8 +335,10 @@ struct VrHandMenuState {
     int selectedWeapon{1};
     int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
-    // Gauss Siege and Chaingun Turret have separate visual hand profiles.
+    // Gauss: Normal/Siege. Chaingun: Normal/Rotor/Turret. Rotor is
+    // independent from both legacy Normal and existing Turret poses.
     bool alternateProfile{};
+    bool rotorProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
@@ -409,6 +411,8 @@ inline bool vrPrimaryPoseChangedFromFactory(
     // the primary hand appear calibrated.
     if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
     if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    if(weapon=="chaingun"&&(positionChanged("chaingun_rotor")
+        ||rotationChanged("chaingun_rotor")))return true;
     const std::string alternate=weapon=="gauss_cannon"
         ?"gauss_cannon_siege":weapon=="chaingun"
             ?"chaingun_turret":"";
@@ -484,6 +488,15 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                     ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
                     ||key==weapon+"_finetune_offset"
                     ||key==weapon+"_left_finetune_offset"
+                    ||(weapon=="chaingun"&&(
+                        key=="chaingun_rotor_hand_position"
+                        ||key=="chaingun_rotor_rotation"
+                        ||key=="chaingun_rotor_left_hand_position"
+                        ||key=="chaingun_rotor_left_rotation"
+                        ||key=="chaingun_rotor_finetune_offset"
+                        ||key=="chaingun_rotor_left_finetune_offset"
+                        ||key=="chaingun_rotor_support_position"
+                        ||key=="chaingun_rotor_left_primary_support_position"))
                     ||(!alternate.empty()&&(
                         key==alternate+"_hand_position"||key==alternate+"_rotation"
                         ||key==alternate+"_left_hand_position"
@@ -554,6 +567,10 @@ inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
                     ||key==name+"_left_finetune_offset";
             };
             if(matches(weapon))return true;
+            if(weapon=="chaingun"&&(matches("chaingun_rotor")
+                ||key=="chaingun_rotor_support_position"
+                ||key=="chaingun_rotor_left_primary_support_position"))
+                return true;
             return !alternate.empty()
                 &&(matches(alternate)||key==alternate+"_support_position"
                    ||key==alternate+"_left_primary_support_position");
