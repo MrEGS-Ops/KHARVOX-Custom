@@ -4728,7 +4728,17 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(true,s.rightGripController);
     publishHudHandPose(false,s.leftGripController);
 
-    if((s.customMods.handFocusedRs||s.customMods.boxingGuard)&&gameplay){
+    // The native FocusTracker can inspect health stations and collectible
+    // interactions during a playable world frame even if the player-physics
+    // snapshot has not been captured in the last two render presents.
+    // Use that wider world context ONLY to publish the controller focus ray.
+    // Movement, firing, menus, scripted executions and Boxing Guard continue
+    // to obey their existing strict gameplay ownership checks.
+    const bool worldInteractionFocus=KharvoxCameraWorldActive()
+        &&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+    if((s.customMods.handFocusedRs&&worldInteractionFocus)
+        ||(s.customMods.boxingGuard&&gameplay)){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -4774,7 +4784,8 @@ void updateGameplayActions(XrTime displayTime){
         // executions. Otherwise always use the current physical weapon
         // controller (left or right), no persistent toggle/RS dependency.
         if(kharvox::useWeaponHandFocus(
-                s.customMods.handFocusedRs,gameplay,syncAttackActive,
+                s.customMods.handFocusedRs,worldInteractionFocus,
+                syncAttackActive,
                 s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
                 KharvoxCameraBossSequenceActive())
             &&controller.valid&&s.headZeroValid
