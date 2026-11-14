@@ -324,6 +324,8 @@ int main(){
 
     // Shared dynamics run on ammo-confirmed events, not trigger counts.
     WeaponRecoilSettings ds{};
+    ds.dynamicEnabled=false; // explicit legacy/off mode for this regression
+    ds.dynamicBuildUpPerShot=.20f; // independent test curve, not factory .35
     assert(!ds.dynamicEnabled);
     assert(recoilDynamicMultiplier(ds,4,3)==1.f);
     ds.dynamicEnabled=true;
