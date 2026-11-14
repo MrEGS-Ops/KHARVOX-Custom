@@ -97,7 +97,6 @@ struct WeaponRecoilState {
     float fastPitch{},climbPitch{},yaw{};
     int weapon{-1},lastAmmoTotal{-1};
     bool fireHeld{},confirmedShotQueued{};
-    bool gaussCharging{},gaussAmmoSpentDuringCharge{};
     std::uint64_t lastTick{},lastTriggerTick{},gaussKickTick{};
     std::uint64_t lastConfirmedShotTick{};
     float gaussKickPitch{},gaussKickYaw{};
@@ -108,9 +107,6 @@ struct WeaponRecoilInput {
     int weapon{-1};
     bool fireHeld{},twoHands{},gameplay{};
     std::uint64_t nowMs{};
-    // Native Siege may charge until trigger release. Never kick on a
-    // changing ammo total mid-charge, only after the release is complete.
-    bool fireOnRelease{};
     // Read-only, validated DOOM ammo snapshot. -1 = missing/stale.
     int confirmedAmmoTotal{-1};
 };
@@ -165,24 +161,16 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state={};state.weapon=input.weapon;state.lastTick=input.nowMs;
     }
     const bool triggerEdge=input.fireHeld&&!state.fireHeld;
-    const bool triggerRelease=!input.fireHeld&&state.fireHeld;
-    if(triggerEdge&&input.weapon==6){
-        // A Gauss trigger edge might be a DRY PRESS during native cooldown.
-        // It must never cancel a recoil already recovering, and it must
-        // never erase a shot already confirmed by a native ammo decrease.
-        // Only initialize the next potential charged-shot input state.
-        state.gaussCharging=input.fireOnRelease;
-        state.gaussAmmoSpentDuringCharge=false;
-    }
-    // Non-Gauss: DO NOT reset fastPitch/climbPitch/yaw, queued ammo-confirmed
+    // Do not reset active or queued recoil on a Gauss trigger pull either:
+    // dry presses cannot fire a projectile and must not cancel recovery.
+    // All finite-ammo weapons preserve the current accumulated recoil.
+    // DO NOT reset fastPitch/climbPitch/yaw, queued ammo-confirmed
     // recoil or activeMultiplier on a new trigger press. If the weapon is
     // halfway through recovering, it must remain at precisely that angle,
     // including its current multiplier-dependent cap. Repeated presses
     // cannot cause an instant snap to the original muzzle orientation.
     // New recoil still needs an actual ammo debit and never applies on
     // the trigger-edge frame itself.
-    if(input.weapon==6&&input.fireHeld&&input.fireOnRelease)
-        state.gaussCharging=true;
     if(input.fireHeld)
         state.lastTriggerTick=input.nowMs;
     const auto rawDelta=input.nowMs>=state.lastTick
@@ -238,7 +226,6 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
         state.fastPitch=state.climbPitch=state.yaw=0.f;
         state.gaussKickTick=0;
         state.gaussKickPitch=state.gaussKickYaw=0.f;
-        state.gaussAmmoSpentDuringCharge=false;
         state.confirmedStreak=0;
         state.lastConfirmedShotTick=0;
         state.activeMultiplier=1.f;
@@ -268,21 +255,12 @@ inline WeaponRecoilOutput advanceWeaponRecoil(
             settings,state.confirmedStreak,input.weapon);
         state.confirmedShotQueued=true;
     };
-    if(ammoDebit&&!input.twoHands&&recentlyFired){
-        if(input.weapon==6&&state.gaussCharging&&input.fireHeld){
-            // Siege may debit energy while charging, before the projectile.
-            state.gaussAmmoSpentDuringCharge=true;
-        }else{
-            confirmShot();
-            state.gaussAmmoSpentDuringCharge=false;
-        }
-    }
-    if(input.weapon==6&&triggerRelease){
-        if(state.gaussAmmoSpentDuringCharge&&!input.twoHands)
-            confirmShot();
-        state.gaussAmmoSpentDuringCharge=false;
-        state.gaussCharging=false;
-    }
+    // Gauss NORMAL one-handed firing follows the same rule as all guns:
+    // an observed ammo decrease queues a kick for the next render update.
+    // No recoil-mode test, attachment check, or trigger-release hook.
+    // Release without an ammo decrease NEVER queues a new recoil impulse.
+    if(ammoDebit&&!input.twoHands&&recentlyFired)
+        confirmShot();
     state.fireHeld=input.fireHeld;
     if(input.weapon==6){
         if(!state.gaussKickTick)return {0.f,0.f,kickApplied};
