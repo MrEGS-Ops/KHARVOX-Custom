@@ -216,7 +216,7 @@ int main(){
     WeaponRecoilSettings loaded{};
     assert(loadWeaponRecoilSettings(path.string(),loaded));
     assert(loaded.enabled[1]&&loaded.strength[1]==9.f
-        &&loaded.recovery[7]==.25f);
+        &&loaded.recovery[7]==.25f&&loaded.recovery[6]==9.f);
     assert(loaded.strength[7]==3.f&&loaded.strength[9]==1.7f);
     // Per-weapon switches survive save/reload and do not leak to siblings.
     settings.enabled.fill(false);
