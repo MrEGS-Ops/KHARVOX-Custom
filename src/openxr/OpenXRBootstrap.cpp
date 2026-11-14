@@ -71,6 +71,7 @@
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
+#include "WeaponRecoilPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
@@ -293,6 +294,10 @@ struct State {
     XrAction leftHaptic{XR_NULL_HANDLE}; XrAction rightHaptic{XR_NULL_HANDLE};
     XrSpace rightAimSpace{XR_NULL_HANDLE}; XrSpace leftAimSpace{XR_NULL_HANDLE}; XrSpace rightGripSpace{XR_NULL_HANDLE}; XrSpace leftGripSpace{XR_NULL_HANDLE}; ControllerPose rightController{}; ControllerPose leftController{}; ControllerPose rightGripController{}; ControllerPose leftGripController{}; XrVector2f leftStick{}; XrVector2f rightStick{};
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
+    XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
+    kharvox::ControllerOnlySafetyState controllerOnlySafety{};
+    bool controllerDisconnectWasLocked{true},controllerPauseAttempted{};
+    unsigned long long controllerPauseUntilMs{};
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
     bool leftHanded{},leftHandSwapSticks{},swapJumpCrouch{};
     bool weaponHandLeft{}; // Live weapon/grenade owner, independent of fixed controller layout.
@@ -461,6 +466,8 @@ struct State {
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
     kharvox::VrLiveSettings vrLiveSettings{};
+    kharvox::WeaponRecoilSettings recoilSettings{};
+    kharvox::WeaponRecoilState recoilState{};
     kharvox::CustomModFlags vrDesktopMods{};
     bool vrDesktopPhysicalGk{},vrDesktopKilltime{};
     float vrDesktopPunchSpeed{2.8f};
@@ -485,7 +492,7 @@ alignas(4) volatile LONG immersiveAdaptiveParticipantBypass{};
 alignas(4) volatile LONG nativeAdaptiveParticipantObserved{};
 using XInputGetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_STATE*);
 using XInputSetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_VIBRATION*);
-XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
+XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<bool> controllerOnlyLocked{true},controllerOnlyPausePulse{};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
 PFN_vkGetInstanceProcAddr bridgeNextGipa=nullptr;
 thread_local bool bridgeSessionTrace=false;
 // Meta may invoke the XR_KHR_vulkan_enable2 callbacks from one of its own
@@ -1068,7 +1075,30 @@ void updateImmersiveCinematicRefresh(bool active,XrDuration displayPeriod,
     ++hold.presents;
     if(hold.lastAction!=kharvox::ActionSpeedKind::None)++hold.actionPresents;
 }
-DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){DWORD result=originalXInputGetState?originalXInputGetState(userIndex,state):ERROR_DEVICE_NOT_CONNECTED;if(userIndex!=0||!state)return result;if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);const auto movement=virtualMovementAxes.load(std::memory_order_relaxed);state->Gamepad.sThumbLX=kharvox::movementAxisX(movement);state->Gamepad.sThumbLY=kharvox::movementAxisY(movement);state->Gamepad.sThumbRX=virtualRightX.load(std::memory_order_relaxed);state->Gamepad.sThumbRY=virtualRightY.load(std::memory_order_relaxed);state->Gamepad.bLeftTrigger=std::max(state->Gamepad.bLeftTrigger,virtualLeftTrigger.load(std::memory_order_relaxed));state->Gamepad.bRightTrigger=std::max(state->Gamepad.bRightTrigger,virtualRightTrigger.load(std::memory_order_relaxed));state->Gamepad.wButtons|=virtualButtons.load(std::memory_order_relaxed);return ERROR_SUCCESS;}
+DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){
+    DWORD result=originalXInputGetState?originalXInputGetState(userIndex,state):ERROR_DEVICE_NOT_CONNECTED;
+    if(userIndex!=0||!state)return result;
+    if(controllerOnlyLocked.load(std::memory_order_acquire)){
+        // The original XInput device can also be a Virtual Desktop emulation
+        // source. Neutralize BOTH original and synthetic combat inputs.
+        ZeroMemory(&state->Gamepad,sizeof(state->Gamepad));
+        state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
+        if(controllerOnlyPausePulse.load(std::memory_order_acquire))
+            state->Gamepad.wButtons=XINPUT_GAMEPAD_START;
+        return ERROR_SUCCESS;
+    }
+    if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));
+    state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
+    const auto movement=virtualMovementAxes.load(std::memory_order_relaxed);
+    state->Gamepad.sThumbLX=kharvox::movementAxisX(movement);
+    state->Gamepad.sThumbLY=kharvox::movementAxisY(movement);
+    state->Gamepad.sThumbRX=virtualRightX.load(std::memory_order_relaxed);
+    state->Gamepad.sThumbRY=virtualRightY.load(std::memory_order_relaxed);
+    state->Gamepad.bLeftTrigger=std::max(state->Gamepad.bLeftTrigger,virtualLeftTrigger.load(std::memory_order_relaxed));
+    state->Gamepad.bRightTrigger=std::max(state->Gamepad.bRightTrigger,virtualRightTrigger.load(std::memory_order_relaxed));
+    state->Gamepad.wButtons|=virtualButtons.load(std::memory_order_relaxed);
+    return ERROR_SUCCESS;
+}
 void retainPendingXInputRumblePeak(uint32_t packed){
     if(!packed)return;
     auto observed=pendingXInputRumblePeaks.load(std::memory_order_relaxed);
@@ -1873,6 +1903,17 @@ void releaseHandFocusUseKeyboardPulse(){
     s.handFocusUseKeyboardReleaseTime=0;
 }
 bool startHandFocusUseKeyboardPulse(XrTime displayTime){
+    // One small snapshot per USE click lets headset tests distinguish
+    // "FocusTracker was using the hand ray" from "this interactive never
+    // queried that tracker". No engine pointers or offsets are modified.
+    unsigned long long total{},hand{},head{};
+    bool handReady{};
+    KharvoxCameraFocusTraceDiagnostics(total,hand,head,handReady);
+    log(std::string("[FOCUS-DIAG] world USE FocusTracker calls=")
+        +std::to_string(total)+" hand="+std::to_string(hand)
+        +" head="+std::to_string(head)
+        +" handPoseValid="+(handReady?"yes":"no")
+        +" (health station/collectible may use another native selection path)");
     releaseHandFocusUseKeyboardPulse();
     focusDoomWindow();
     if(!sendBackWeaponKeyboardKey(kWorldUseDefaultVirtualKey,true))
@@ -2286,24 +2327,24 @@ const char* supportHandName(){return s.weaponHandLeft?"right":"left";}
 const char* weaponTriggerName(){return s.weaponHandLeft?"LEFT TRIGGER":"RIGHT TRIGGER";}
 const char* weaponGripName(){return s.weaponHandLeft?"LEFT GRIP":"RIGHT GRIP";}
 const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
-// An installed upgrade contains "siege"/"turret" in its native declaration.
-// That name alone does not mean it is deployed. Gate mode selection on the
-// secondary-fire Grip actually being forwarded to the game.
+// Attachment-neutral secondary-fire calibration for BOTH Gauss and Minigun.
+// Only the actual Grip input or Gauss's ongoing native charge selects Alt Fire.
+// Never infer a deployed attachment from weapon declaration names.
 bool heavyAltMode(KharvoxWeaponKind kind){
-    const bool upgradePresent=kind==KharvoxWeaponKind::GaussCannon
-        ?KharvoxWeaponGaussSiegeChargeActive()
-        :kind==KharvoxWeaponKind::Chaingun
-            &&KharvoxWeaponChaingunTurretModeActive();
-    if(!upgradePresent)return false;
-    // Calibration menu owns Grip; its explicit Normal/Alternate selection wins.
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
-       &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
-        return s.vrHandMenu.alternateProfile;
-    return s.heavyAlternateInputForwarded;
+    if(kind!=KharvoxWeaponKind::GaussCannon
+        &&kind!=KharvoxWeaponKind::Chaingun)return false;
+    const bool menuOpen=s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed;
+    const bool selected=kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon());
+    return kharvox::vrHeavyAlternateGripActive(menuOpen,selected,
+        s.vrHandMenu.alternateProfile,s.heavyAlternateInputForwarded,
+        kind==KharvoxWeaponKind::GaussCannon
+            &&KharvoxWeaponGaussSiegeChargeActive());
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
     if(!heavyAltMode(kind))return false;
     if(s.weaponHandLeft){
+        // Keep existing saved _siege/_turret config key names intact for
+        // backwards compatibility: these now mean generic Alt Fire slots.
         const std::string key=kind==KharvoxWeaponKind::GaussCannon
             ?"gauss_cannon_siege":"chaingun_turret";
         const auto it=s.rightGripSettings.leftPrimaryAlternateSupport.find(key);
@@ -2498,7 +2539,7 @@ bool supportGripInCaptureRange(){
     const auto& primaryGrip=s.weaponHandLeft?s.leftGripController:s.rightGripController;
     if(s.customMods.offHandGripCapture&&primaryGrip.valid
         &&!s.dynamicShoulderHolstered){
-        const auto saved=kharvox::savedPrimaryWeaponGripOffset(
+        auto saved=kharvox::savedPrimaryWeaponGripOffset(
             s.rightGripSettings,KharvoxWeaponKindKey(kind),
             s.weaponHandLeft,heavyAltMode(kind));
         const bool heavyFallback=!saved.valid&&!s.weaponHandLeft
@@ -2522,13 +2563,15 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
-    const bool gameplay=KharvoxCameraGameplayActive()
+    const bool gameplay=!controllerOnlyLocked.load(std::memory_order_acquire)
+        &&KharvoxCameraGameplayActive()
         &&!KharvoxWeaponCollectibleAnimationActive()
         &&!KharvoxCameraCutsceneActive()&&!KharvoxHudPauseMenuActive()
         &&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.recoilState={};
         s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
         // Melee/Glory Kill gameplay gaps must NOT destroy a saved primary
@@ -2598,7 +2641,7 @@ void updateWeapon6Dof(){
     // is enabled. Saved glove Y/Z values must not move or tilt the barrel.
     // Guns-only legacy mode retains the old calibrated primary pivot.
     const auto& primaryHandGripController=primaryGripController;
-    const auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
+    auto savedPivot=kharvox::savedPrimaryWeaponGripOffset(
         s.rightGripSettings,KharvoxWeaponKindKey(kind),
         s.weaponHandLeft,heavyAltMode(kind));
     const bool heavyFallback=!savedPivot.valid&&!s.weaponHandLeft
@@ -2832,6 +2875,50 @@ void updateWeapon6Dof(){
     if(s.showHands)
         rotation=kharvox::weaponpose::gameplayWeaponAim(
             current.orientation,rotation,gameplayTwoHandSteering);
+    // Native ammo spending, not a post-trigger timer, confirms recoil for
+    // each finite-ammo gun. An observed debit queues the kick for the NEXT
+    // render update so the projectile's first muzzle orientation remains
+    // unchanged. The HMD, controllers and physical grip stay fixed.
+    // Gameplay/firing is strictly gated: no calibration, menus, holsters,
+    // executions or unknown weapon profiles can generate a recoil shot.
+    const int recoilWeapon=kharvox::weaponRecoilIndex(
+        KharvoxWeaponKindKey(kind),
+        kind==KharvoxWeaponKind::Chaingun&&heavyAltMode(kind));
+    // Secondary fire on the Heavy Assault Rifle is not its ordinary
+    // bullet stream. While native weapon-mod Grip is forwarded, preserve
+    // the unmodified muzzle and clear any stale primary-fire kick.
+    const bool recoilGameplay=gameplay&&s.weapon6Dof
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!s.dynamicShoulderHolstered&&!s.twoHandCalibrationMode
+        &&KharvoxCameraPlayerWeaponControlActive()
+        &&kharvox::recoilAllowedForWeaponMode(
+            recoilWeapon,s.heavyAlternateInputForwarded);
+    const auto ammo=KharvoxWeaponGetAmmoState(kind);
+    const bool validAmmo=ammo!=KharvoxWeaponAmmoState::Empty
+        &&ammo!=KharvoxWeaponAmmoState::Unavailable;
+    int nativeAmmoTotal=-1;
+    if(recoilWeapon>0){
+        // Confirm each recoil impulse from the existing validated native
+        // ammo snapshot for ALL finite-ammo weapons. One observed debit
+        // produces one kick (high-rate fire may coalesce several bullets).
+        // Pistol has unlimited ammo and deliberately remains recoil-free.
+        // Unsupported/stale native inventories fail closed: no guessed kick.
+        KharvoxWeaponGetAmmoTotal(kind,nativeAmmoTotal);
+    }
+    const auto recoil=kharvox::advanceWeaponRecoil(
+        s.recoilState,s.recoilSettings,
+        {recoilWeapon,s.primaryFireDown&&validAmmo,
+         gameplayTwoHandSteering,recoilGameplay,GetTickCount64(),
+         nativeAmmoTotal});
+    if(recoil.pitchDegrees>.0001f||std::abs(recoil.yawDegrees)>.0001f){
+        constexpr float radiansPerDegree=0.017453292519943295f;
+        const float pitchHalf=recoil.pitchDegrees*radiansPerDegree*.5f;
+        const float yawHalf=recoil.yawDegrees*radiansPerDegree*.5f;
+        const XrQuaternionf pitch{std::sin(pitchHalf),0.f,0.f,std::cos(pitchHalf)};
+        const XrQuaternionf yaw{0.f,std::sin(yawHalf),0.f,std::cos(yawHalf)};
+        // Local +X tilts the OpenXR -Z muzzle upward; +Y adds side drift.
+        rotation=normalizeQuaternion(multiply(rotation,multiply(yaw,pitch)));
+    }
     const auto renderOrientation=normalizeQuaternion(multiply(
         primaryController.orientation,
         multiply(conjugate(current.orientation),rotation)));
@@ -2873,6 +2960,7 @@ void updateWeapon6Dof(){
     // visual pose. Once fitted, the glove's independently calibrated anchor
     // translates only in Y/Z; its quaternion never changes the gun angle.
     const bool visualAlternate=heavyAltMode(kind);
+    const std::string visualProfileKey=KharvoxWeaponKindKey(kind);
     const bool primaryVisualNow=s.customMods.offHandGripCapture
         &&primaryHandGripController.valid
         &&kind!=KharvoxWeaponKind::Unknown
@@ -2925,7 +3013,7 @@ void updateWeapon6Dof(){
                 // the old right-hand Gauss/Chaingun glove coordinates.
                 savedHandValid=false;
                 savedRot={};
-                const auto key=std::string(KharvoxWeaponKindKey(kind))
+                const auto key=visualProfileKey
                     +(visualAlternate&&(kind==KharvoxWeaponKind::GaussCannon
                       ||kind==KharvoxWeaponKind::Chaingun)
                         ?(kind==KharvoxWeaponKind::GaussCannon?"_siege":"_turret"):"");
@@ -2972,7 +3060,7 @@ void updateWeapon6Dof(){
         // Normal Y/Z translation and the 1cm fine-tune now both offset the
         // NATIVE GUN. The virtual weapon glove stays at the tracked physical
         // controller GRIP regardless of the new weapon offset.
-        const auto selectedWeaponKey=std::string(KharvoxWeaponKindKey(kind));
+        const auto selectedWeaponKey=visualProfileKey;
         const bool primaryMenuPreview=s.vrHandMenu.mode==
                 kharvox::VrHandMenuMode::Calibrating
             &&(s.vrHandMenu.rightHand!=s.weaponHandLeft)
@@ -2984,7 +3072,7 @@ void updateWeapon6Dof(){
                 selectedWeaponKey,s.weaponHandLeft,visualAlternate);
         XrVector3f factoryHand=s.primaryVisualLocalPosition;
         if(s.weaponHandLeft){
-            const auto key=std::string(KharvoxWeaponKindKey(kind))
+            const auto key=visualProfileKey
                 +(visualAlternate&&(kind==KharvoxWeaponKind::GaussCannon||
                     kind==KharvoxWeaponKind::Chaingun)
                     ?(kind==KharvoxWeaponKind::GaussCannon?"_siege":"_turret"):"");
@@ -2998,8 +3086,9 @@ void updateWeapon6Dof(){
             kharvox::RightHandGripOffset position{};
             kharvox::RightHandGripRotation ignored{};
             if(kharvox::rightPrimaryVisualPose(
-                    s.rightGripFactorySettings,KharvoxWeaponKindKey(kind),
-                    visualAlternate,position,ignored))
+                    s.rightGripFactorySettings,visualProfileKey,
+                    visualAlternate,position,ignored)
+                )
                 factoryHand={position.x,position.y,position.z};
         }
         const XrVector3f fineTuneLocal{fineTune.x,fineTune.y,fineTune.z};
@@ -3301,6 +3390,87 @@ void updateGameplayActions(XrTime displayTime){
     locateGameplayControllerPoses(displayTime);
     auto readFloatAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};return XR_SUCCEEDED(s.getActionStateFloat(s.session,&info,&state))&&state.isActive?state.currentState:0.f;};
     auto readBooleanAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};return XR_SUCCEEDED(s.getActionStateBoolean(s.session,&info,&state))&&state.isActive&&state.currentState;};
+    // Physical-controller-only mode: both Touch/Touch Plus/Index profiles and
+    // both tracked AIM+GRIP poses must exist. A hand-emulated profile, sleeping
+    // controller or tracking gap immediately locks ALL gameplay actions.
+    XrInteractionProfileState leftProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
+    XrInteractionProfileState rightProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
+    const bool profileQueriesValid=s.getCurrentInteractionProfile
+        &&s.leftHandUserPath!=XR_NULL_PATH&&s.rightHandUserPath!=XR_NULL_PATH
+        &&XR_SUCCEEDED(s.getCurrentInteractionProfile(
+            s.session,s.leftHandUserPath,&leftProfile))
+        &&XR_SUCCEEDED(s.getCurrentInteractionProfile(
+            s.session,s.rightHandUserPath,&rightProfile));
+    const auto physicalProfile=[&](XrPath path){
+        return path!=XR_NULL_PATH
+            &&(path==s.questTouchProfilePath
+                ||path==s.questTouchPlusProfilePath
+                ||path==s.valveIndexProfilePath);
+    };
+    const bool bothProfiles=profileQueriesValid
+        &&physicalProfile(leftProfile.interactionProfile)
+        &&physicalProfile(rightProfile.interactionProfile);
+    const bool bothTracked=s.leftController.valid&&s.leftController.positionTracked
+        &&s.rightController.valid&&s.rightController.positionTracked
+        &&s.leftGripController.valid&&s.leftGripController.positionTracked
+        &&s.rightGripController.valid&&s.rightGripController.positionTracked;
+    const bool leftStickClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
+    const bool rightStickClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
+    const bool bothClicks=leftStickClick&&rightStickClick;
+    const bool bothReleased=!leftStickClick&&!rightStickClick;
+    const bool combatNeutral=readFloatAction(s.rightWeaponTrigger)<.10f
+        &&readFloatAction(s.leftWeaponTrigger)<.10f
+        &&readFloatAction(s.rightWeaponGrip)<.10f
+        &&readFloatAction(s.leftWeaponGrip)<.10f;
+    const bool previousArmed=s.controllerOnlySafety.armed;
+    const bool armed=kharvox::updateControllerOnlySafety(
+        s.controllerOnlySafety,bothProfiles,bothTracked,
+        bothClicks,bothReleased,combatNeutral);
+    controllerOnlyLocked.store(!armed,std::memory_order_release);
+    if(!armed){
+        if(previousArmed){
+            log("[CONTROLLER-ONLY] controller tracking/profile LOST; gameplay blocked, no hand emulation");
+            s.controllerPauseAttempted=false;
+        }
+        if(!s.controllerPauseAttempted&&KharvoxCameraGameplayActive()
+            &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+            &&!KharvoxHudDeathMenuActive()&&!KharvoxCameraCutsceneActive()){
+            // Request native pause ONCE, but never toggle an already paused
+            // game. Controller safety lock stays engaged regardless of whether
+            // DOOM accepts this optional START pulse.
+            s.controllerPauseUntilMs=GetTickCount64()+180ULL;
+            s.controllerPauseAttempted=true;
+            log("[CONTROLLER-ONLY] native Pause requested; headset reconnect overlay remains active");
+        }
+        controllerOnlyPausePulse.store(s.controllerPauseAttempted
+            &&!KharvoxHudPauseMenuActive()
+            &&GetTickCount64()<s.controllerPauseUntilMs,
+            std::memory_order_release);
+        releaseHandFocusUseKeyboardPulse();
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        s.primaryFireDown=false;s.firePressed=false;
+        s.secondaryFireGripPressed=false;s.supportGripPressed=false;
+        s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+        s.grenadeGesture={};s.equipmentGrip.cancel();
+        s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
+        s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
+        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
+        s.backWeaponPulseUntil=0;s.weaponSwitchPulseUntil=0;
+        s.motionWheelState={};s.behindHeadWheelActive=false;
+        s.behindHeadWheelSide=-1;s.wheelWeaponGripSuppressedUntilRelease=true;
+        s.wheelSupportGripSuppressedUntilRelease=true;
+        releaseMovement();
+        updateVirtualButtons(false,false,false,false,false,false,false,false,
+            false,false,false,false,false);
+        KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
+        return;
+    }
+    controllerOnlyPausePulse.store(false,std::memory_order_release);
+    if(!previousArmed){
+        log("[CONTROLLER-ONLY] both tracked controllers confirmed with BOTH thumbstick clicks; player can resume native Pause");
+        s.controllerPauseAttempted=false;
+        s.controllerPauseUntilMs=0;
+    }
     // -1 = input unavailable. An unbound proximity sensor is NOT an open finger.
     auto readTouchAction=[](XrAction action)->int {
         if(action==XR_NULL_HANDLE)return -1;
@@ -4326,8 +4496,27 @@ void updateGameplayActions(XrTime displayTime){
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     s.heavyAlternateInputForwarded=weaponModDown;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
+    // NORMAL Gauss fire stays one-handed. The interlock only applies while
+    // the native Alt Fire Grip input is actively forwarded to DOOM, not just
+    // because the user owns a Siege attachment. Grip/charging stays native.
+    // Never use visual proximity as evidence of a grip: a valid two-hand
+    // support LATCH and both physical Grip inputs are mandatory.
+    const bool gaussFireAllowed=kharvox::vrGaussPrimaryFireAllowed(
+        s.vrLiveSettings.gaussRequireTwoHandFire,
+        activeWeaponKind==KharvoxWeaponKind::GaussCannon,
+        weaponModDown,secondaryFireGripDown,s.supportGripPressed,
+        s.twoHandLatched,s.twoHandLatchedWeapon==KharvoxWeaponKind::GaussCannon,
+        weaponController().valid,supportGripController().valid);
+    const bool gaussFireBlocked=gameplay&&triggerDown&&!gaussFireAllowed;
+    static bool gaussFirePreviouslyBlocked=false;
+    if(gaussFireBlocked!=gaussFirePreviouslyBlocked){
+        gaussFirePreviouslyBlocked=gaussFireBlocked;
+        log(gaussFireBlocked
+            ?"[GAUSS-FIRE-GRIP] trigger BLOCKED: both Grips + calibrated support latch required"
+            :"[GAUSS-FIRE-GRIP] trigger lock released");
+    }
     const bool fireDown=triggerDown&&!s.dynamicShoulderHolstered
-        &&!weaponWheelActive&&!calibrationFireBlocked;
+        &&!weaponWheelActive&&!calibrationFireBlocked&&gaussFireAllowed;
 
     // Separate opt-in VR mod: the Super Shotgun's uncompleted reload time is
     // stored by weapon type and ONLY advances while held/equipped in gameplay.
@@ -4660,7 +4849,17 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(true,s.rightGripController);
     publishHudHandPose(false,s.leftGripController);
 
-    if((s.customMods.handFocusedRs||s.customMods.boxingGuard)&&gameplay){
+    // The native FocusTracker can inspect health stations and collectible
+    // interactions during a playable world frame even if the player-physics
+    // snapshot has not been captured in the last two render presents.
+    // Use that wider world context ONLY to publish the controller focus ray.
+    // Movement, firing, menus, scripted executions and Boxing Guard continue
+    // to obey their existing strict gameplay ownership checks.
+    const bool worldInteractionFocus=kharvox::worldHandFocusContext(
+        KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
+        deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
+    if((s.customMods.handFocusedRs&&worldInteractionFocus)
+        ||(s.customMods.boxingGuard&&gameplay)){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -4706,7 +4905,8 @@ void updateGameplayActions(XrTime displayTime){
         // executions. Otherwise always use the current physical weapon
         // controller (left or right), no persistent toggle/RS dependency.
         if(kharvox::useWeaponHandFocus(
-                s.customMods.handFocusedRs,gameplay,syncAttackActive,
+                s.customMods.handFocusedRs,worldInteractionFocus,
+                syncAttackActive,
                 s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
                 KharvoxCameraBossSequenceActive())
             &&controller.valid&&s.headZeroValid
@@ -4879,6 +5079,10 @@ bool createGameplayActions(){
         XR_SUCCEEDED(stringToPath(s.instance,"/user/hand/left",&s.leftHandUserPath))
         &&XR_SUCCEEDED(stringToPath(s.instance,"/user/hand/right",&s.rightHandUserPath))
         &&XR_SUCCEEDED(stringToPath(s.instance,"/interaction_profiles/valve/index_controller",&s.valveIndexProfilePath));
+    // Physical Touch/Touch Plus and Index are the only supported combat
+    // input profiles. Hand-interaction / emulation profile changes fail closed.
+    stringToPath(s.instance,"/interaction_profiles/oculus/touch_controller",&s.questTouchProfilePath);
+    stringToPath(s.instance,"/interaction_profiles/meta/touch_controller_plus",&s.questTouchPlusProfilePath);
     if(!gripProfilePathsReady){
         s.leftHandUserPath=XR_NULL_PATH;
         s.rightHandUserPath=XR_NULL_PATH;
@@ -5311,6 +5515,9 @@ void pollEvents(){
             if(c.state!=XR_SESSION_STATE_FOCUSED){
                 // A headset put on later must not inherit the earlier menu height.
                 resetCinewindowAnchorState();
+                s.controllerOnlySafety={};
+                controllerOnlyLocked.store(true,std::memory_order_release);
+                controllerOnlyPausePulse.store(false,std::memory_order_release);
                 const auto reason=(c.state==XR_SESSION_STATE_STOPPING
                     ||c.state==XR_SESSION_STATE_EXITING
                     ||c.state==XR_SESSION_STATE_LOSS_PENDING)
@@ -5356,7 +5563,12 @@ void pollEvents(){
                 resetCinewindowAnchorState();
             }
         }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED){
+            // Even if Virtual Desktop keeps advertising a Touch profile while
+            // swapping to bare hands, force fresh physical acknowledgement.
             s.interactionProfilesDirty=true;
+            s.controllerOnlySafety={};
+            controllerOnlyLocked.store(true,std::memory_order_release);
+            log("[CONTROLLER-ONLY] OpenXR interaction profile changed: controller-only lock engaged");
         }else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
             clearXInputHapticState();
             KharvoxPsvr2SubmitTrigger(kharvox::psvr2::offCommand(
@@ -5688,6 +5900,15 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
+    if(!kharvox::loadWeaponRecoilSettings(
+        kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){
+        s.recoilSettings={}; // invalid settings must never turn recoil on
+        log("[VR-RECOIL] invalid saved recoil profile; safe OFF defaults restored");
+    }
+    log(std::string("[VR-RECOIL] experimental one-hand recoil ")
+        +std::to_string(std::count(s.recoilSettings.enabled.begin(),
+            s.recoilSettings.enabled.end(),true))
+        +" of 10 weapon profiles enabled; grip calibration independent");
     log("[VR-GRIP] calibration path="+kharvox::runtimePathA("offhand_right_hand_positions.cfg")+
         " accepted="+std::to_string(s.rightGripSettings.accepted)+
         " rejected="+std::to_string(s.rightGripSettings.rejected));
@@ -7931,7 +8152,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
 
     bool vrMenuImageAcquired=false;
     uint32_t vrMenuImageIndex{};
-    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed&&vrHandMenuSurface.ready){
+    if((controllerOnlyLocked.load(std::memory_order_acquire)
+            ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
+        &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         r=s.acquireImage(vrHandMenuSurface.target.handle,&acquire,&vrMenuImageIndex);
         if(XR_SUCCEEDED(r)&&vrMenuImageIndex<vrHandMenuSurface.target.images.size()){

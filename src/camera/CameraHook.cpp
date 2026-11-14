@@ -22,6 +22,7 @@
 #include "MajorStoryFocusPolicy.h"
 #include "../hud/HudHook.h"
 #include "../weapon/WeaponHook.h"
+#include "../openxr/HandFocusPolicy.h"
 
 #include <windows.h>
 #include <intrin.h>
@@ -101,6 +102,7 @@ std::atomic<bool> crouchRequested{};
 std::array<std::atomic<float>,3> focusHandOrigin{};
 std::array<std::atomic<float>,3> focusHandDirection{};
 std::atomic<bool> focusHandValid{};
+std::atomic<unsigned long long> focusTraceCalls{},focusTraceHandCalls{},focusTraceHeadCalls{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -293,21 +295,49 @@ void emit64(unsigned char*& p, unsigned long long value) {
 }
 
 extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
-    if (!rawFocusTrace || !KharvoxCameraGameplayActive()
-        || KharvoxCameraCutsceneActive() || KharvoxCameraBossSequenceActive()) return;
+    if(!rawFocusTrace)return;
+    focusTraceCalls.fetch_add(1,std::memory_order_relaxed);
+    // World interactions can run when the native player-physics snapshot is
+    // not refreshed this render frame. Don't require the stricter "gameplay"
+    // freshness test or an available HMD sample before using the hand ray.
+    // Authored cinematics/boss actions are explicitly exempt.
+    const bool world=KharvoxCameraWorldActive();
+    const bool cinematic=KharvoxCameraCutsceneActive();
+    const bool boss=KharvoxCameraBossSequenceActive();
+    const bool handValid=focusHandValid.load(std::memory_order_acquire);
+    float hmdOrigin[3]{},hmdAxis[9]{};
+    const bool headValid=!handValid && world && !cinematic && !boss
+        && KharvoxCameraGetHeadRenderPose(hmdOrigin,hmdAxis);
+    const auto source=kharvox::chooseWorldFocusRaySource(
+        world,cinematic,boss,handValid,headValid);
+    if(source==kharvox::WorldFocusRaySource::Native)return;
+    if(source==kharvox::WorldFocusRaySource::Hand)
+        focusTraceHandCalls.fetch_add(1,std::memory_order_relaxed);
+    else
+        focusTraceHeadCalls.fetch_add(1,std::memory_order_relaxed);
 
-    float hmdOrigin[3]{};
-    float hmdAxis[9]{};
-    if (!KharvoxCameraGetHeadRenderPose(hmdOrigin, hmdAxis)) return;
-
-    float focusOrigin[3]{hmdOrigin[0],hmdOrigin[1],hmdOrigin[2]};
-    float focusDirection[3]{hmdAxis[0],hmdAxis[1],hmdAxis[2]};
-    if(focusHandValid.load(std::memory_order_acquire)){
+    float focusOrigin[3]{};
+    float focusDirection[3]{};
+    if(source==kharvox::WorldFocusRaySource::Hand){
         for(int axis=0;axis<3;++axis){
             focusOrigin[axis]=focusHandOrigin[axis].load(std::memory_order_relaxed);
             focusDirection[axis]=focusHandDirection[axis].load(std::memory_order_relaxed);
         }
+    }else{
+        for(int axis=0;axis<3;++axis){
+            focusOrigin[axis]=hmdOrigin[axis];
+            focusDirection[axis]=hmdAxis[axis];
+        }
     }
+    // Only log changes in active native focus targeting, never every frame.
+    // If a station/collectible still responds to gaze after this reports
+    // HAND, its interactable uses a separate engine query to investigate.
+    static std::atomic<int> lastRaySource{-1};
+    const int ray=source==kharvox::WorldFocusRaySource::Hand?1:0;
+    if(lastRaySource.exchange(ray,std::memory_order_acq_rel)!=ray)
+        log(ray==1?"[FOCUS] world interaction native trace -> HAND"
+                  :"[FOCUS] world interaction native trace -> HEAD (hand unavailable)");
+
 
     auto bytes = static_cast<unsigned char*>(rawFocusTrace);
     auto start = reinterpret_cast<float*>(bytes + 0xB0);
@@ -326,10 +356,9 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
         || nearDistance < 0.01f || farDistance < 0.01f
         || nearDistance > 10000.0f || farDistance > 10000.0f) return;
 
-    // Interaction focus traces from the last view origin along
-    // lastViewAxis[0]. Do the equivalent at DOOM 2016's FocusTracker seam:
-    // retain both native trace lengths, but replace the body-view origin and
-    // direction with the HMD render pose. This never changes player/view yaw.
+    // Keep DOOM's original near/far reach and collision validation.
+    // Only world-interaction ray origin/direction change; player view,
+    // weapon aim, execution targeting, and camera yaw are untouched.
     for (int axis = 0; axis < 3; ++axis) {
         start[axis] = focusOrigin[axis];
         nearEnd[axis] = focusOrigin[axis] + focusDirection[axis] * nearDistance;
@@ -403,7 +432,7 @@ bool installPlayerFocusTraceHook(unsigned char* image) {
     std::memcpy(target, jump, sizeof(jump));
     FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
     VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
-    log("[FOCUS] native FocusTracker HMD view-axis hook installed RVA=0xD48938");
+    log("[FOCUS] native FocusTracker world-interaction HAND/HEAD ray hook installed RVA=0xD48938");
     return true;
 }
 
@@ -2646,6 +2675,14 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
+void KharvoxCameraFocusTraceDiagnostics(
+    unsigned long long& allTraces,unsigned long long& handTraces,
+    unsigned long long& headTraces,bool& handPoseReady){
+    allTraces=focusTraceCalls.load(std::memory_order_relaxed);
+    handTraces=focusTraceHandCalls.load(std::memory_order_relaxed);
+    headTraces=focusTraceHeadCalls.load(std::memory_order_relaxed);
+    handPoseReady=focusHandValid.load(std::memory_order_acquire);
+}
 void KharvoxCameraSetFocusHandPose(
     const float origin[3], const float direction[3], bool valid) {
     if(!valid||!origin||!direction){

@@ -26,6 +26,11 @@ void KharvoxCameraRecordAerWorldSource(const kharvox::AerWorldView& source);
 bool KharvoxCameraUsesAerGameplaySource();
 kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
+// Debug native focus processing when an in-world interactable still
+// follows the headset (health station, collectible, etc.).
+void KharvoxCameraFocusTraceDiagnostics(
+    unsigned long long& allTraces,unsigned long long& handTraces,
+    unsigned long long& headTraces,bool& handPoseReady);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
 void KharvoxCameraSetImmersiveCinematicFov(

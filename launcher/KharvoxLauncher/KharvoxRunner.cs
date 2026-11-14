@@ -275,11 +275,10 @@ internal static class KharvoxRunner
         var loaderLogPath = RuntimeStorage.LogPath("KHARVOX-vulkan-loader-v1.0.log");
         var gameExe = Path.Combine(options.GameDirectory ?? string.Empty, "DOOMx64vk.exe");
         var customMods = CustomModSettingsStore.Load();
-        // Custom native mod controls come from the portable sidecar only
-        // when KHARVOX was started by a bridge-aware Mods application.
-        // No local bridge file = original KHARVOX selections unchanged.
-        var standaloneMods = StandaloneModsBridge.LoadFromEnvironment();
-        standaloneMods?.ApplyTo(customMods);
+        // KHARVOX now runs directly, without the removed desktop Mod Manager
+        // or its updater. Keep the proven core VR mods ON and let the native
+        // in-headset settings handle user-configurable calibrations/toggles.
+        RetailVrDefaults.Apply(customMods);
         // Force the runtime setting off even if saved launcher settings,
         // presets or a direct caller request Virtual Gunstock.
         var effectiveVirtualGunstock =
@@ -583,8 +582,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
             // Legacy Wheel Remap checkbox no longer activates any input
             // route. The merged Gunslinger owns this button behaviour.
-            var wheelRemap = standaloneMods?.EffectiveGunslinger
-                ?? customMods.BehindHeadWeaponWheel;
+            var wheelRemap = customMods.BehindHeadWeaponWheel;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] =
                 (wheelRemap || customMods.BehindHeadWeaponWheel) ? "1" : "0";
@@ -715,7 +713,7 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
-                " gunslingerWheelButtons=" + ((standaloneMods?.EffectiveGunslinger ?? customMods.BehindHeadWeaponWheel) ? "enabled" : "native") +
+                " gunslingerWheelButtons=" + (customMods.BehindHeadWeaponWheel ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (effectiveVirtualGunstock ? "enabled" : "disabled") +
@@ -841,7 +839,6 @@ internal static class KharvoxRunner
             currentGame?.Dispose();
             currentGame = game;
             await FocusDoomOnceWhenWindowReadyAsync(game, logPath);
-            standaloneMods?.MarkDoomLaunched();
             statusUpdate?.Invoke("DOOM started. Verifying the VR image …");
 
             var startup = await Task.Run(() =>

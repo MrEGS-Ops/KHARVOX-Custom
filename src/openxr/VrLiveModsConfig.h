@@ -15,10 +15,18 @@
 // No shipped calibration/default cfg file is mutated.
 namespace kharvox {
 struct VrLivePoint { float x{},y{},z{}; };
+// Owner-calibrated right/left Gunslinger hip zone SHIFT values captured
+// in-headset on 2026-11-14, not controller positions or wheel offsets.
+// Keep existing UserData overrides as-is; these apply on fresh installs
+// and when Gunslinger's in-game Reset is explicitly selected.
+inline constexpr std::array<VrLivePoint,2> kVrLiveFactoryHipShifts{{
+    {-0.0397179f,0.0424916f,-0.0611160f}, // RIGHT hip
+    { 0.0193224f,0.0286265f,-0.1343255f}  // LEFT hip
+}};
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
-    HandsJump, BoxingGuard, Other
+    HandsJump, BoxingGuard, Other, WeaponRecoil
 };
 // "Has live settings" is NOT the same as "can be enabled/disabled".
 // The three core mods stay available; only Physical Crouch and PAINSAW
@@ -27,7 +35,8 @@ enum class VrLiveMod : int {
 inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
-        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw;
+        ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw
+        ||id==VrLiveMod::WeaponRecoil;
 }
 inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
     return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
@@ -45,6 +54,7 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
         case VrLiveMod::PhysicalGloryKills:return "Physical Glory Kills";
         case VrLiveMod::HandFocus:return "Hand Focus";
         case VrLiveMod::Painsaw:return "PAINSAW";
+        case VrLiveMod::WeaponRecoil:return "Weapon Stability";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
@@ -68,23 +78,25 @@ struct VrLiveSettings {
     // -1 follows desktop startup status (and preserves existing defaults);
     // 0/1 is an explicit live menu override saved across sessions.
     // Slot 5 appended for PAINSAW; old five-slot saves still load.
-    std::array<int,6> enabledOverrides{{-1,-1,-1,-1,-1,-1}};
-    // Offset from the EXISTING tracking-relative zones. Zero exactly
-    // reproduces existing Gunslinger behaviour on a fresh installation.
-    std::array<VrLivePoint,2> hipShift{};
+    std::array<int,6> enabledOverrides{{-1,-1,1,-1,-1,1}}; // crouch + PAINSAW ON on fresh installs
+    // Offset from the existing tracking-relative zones. On a fresh
+    // installation inherit the owner's measured right/left hip centres;
+    // an already-saved UserData file (including old zero shifts) wins.
+    std::array<VrLivePoint,2> hipShift{kVrLiveFactoryHipShifts};
     std::array<VrLivePoint,2> wheelShift{};
     float crouchStandDelta{0.f};
     float crouchLoweredDelta{-0.56f};
     bool crouchStandSaved{},crouchLoweredSaved{};
-    int gloryKillHz{60}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
+    bool gaussRequireTwoHandFire{true}; // Gauss trigger needs BOTH physical Grips and an acquired support point
+    int gloryKillHz{40}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
     float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
-// Legacy unset (0) starts at the new 60-Hz factory default.
+// Legacy unset (0) starts at the new 40-Hz factory default.
 inline int vrLiveStepKilltimeHz(int currentHz,bool slower) noexcept {
-    const int current=currentHz==0?60:currentHz;
+    const int current=currentHz==0?40:currentHz;
     return std::clamp(current+(slower?10:-10),30,240);
 }
 inline constexpr VrLivePoint vrLiveHipDefaultCenter() { return {.315f,-.76f,.225f}; }
@@ -129,6 +141,12 @@ inline VrPainsawModes vrLivePainsawModes(
         desktopTrigger||desktopMotion);
     return {enabled&&(desktopTrigger||!desktopMotion),
             enabled&&desktopMotion};
+}
+// Restore ONLY Gunslinger hip/wheel placement, not KILLTIME, crouch,
+// enabled overrides, weapon grip positions or any other saved settings.
+inline void vrLiveResetGunslingerPositions(VrLiveSettings& s) noexcept {
+    s.hipShift=kVrLiveFactoryHipShifts;
+    s.wheelShift={};
 }
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
@@ -234,6 +252,11 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
                 next.enabledOverrides[count++]=value;
             }
             if(!row.eof()||(count!=5&&count!=6))return false;
+            if(count==5)next.enabledOverrides[5]=-1; // preserve legacy desktop PAINSAW selection
+        }else if(name=="gauss_two_hand_fire"){
+            int required{};std::string extra;
+            if(!(row>>required)||(required!=0&&required!=1)||(row>>extra))return false;
+            next.gaussRequireTwoHandFire=required!=0;
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
@@ -263,6 +286,7 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
     };
     point("hip_right",s.hipShift[0]);point("hip_left",s.hipShift[1]);
     point("wheel_right",s.wheelShift[0]);point("wheel_left",s.wheelShift[1]);
+    out<<"gauss_two_hand_fire "<<(s.gaussRequireTwoHandFire?1:0)<<'\n';
     out<<"standing "<<s.crouchStandSaved<<' '<<s.crouchStandDelta<<'\n'
        <<"lowered "<<s.crouchLoweredSaved<<' '<<s.crouchLoweredDelta<<'\n'
        <<"killtime_hz "<<s.gloryKillHz<<'\n'

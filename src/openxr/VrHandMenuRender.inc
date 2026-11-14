@@ -76,8 +76,13 @@ void paintVrHandMenu() {
         FillRect(dc,&rect,brush);
         DeleteObject(brush);
     };
-    const bool calibrationView=m.mode==kharvox::VrHandMenuMode::Calibrating;
-    if(calibrationView){
+    const bool disconnectView=controllerOnlyLocked.load(std::memory_order_acquire);
+    const bool calibrationView=!disconnectView
+        &&m.mode==kharvox::VrHandMenuMode::Calibrating;
+    if(disconnectView){
+        fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
+        fill(38,82,884,4,RGB(213,143,54));
+    }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
         fill(22,144,590,432,RGB(15,22,32));
@@ -104,7 +109,20 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(calibrationView){
+    if(disconnectView){
+        SelectObject(dc,title);
+        write(92,149,"CONTROLLERS DISCONNECTED",white);
+        SelectObject(dc,regular);
+        write(95,247,"Controller-only gameplay is locked.",RGB(255,204,128));
+        write(95,303,"Wake both physical Quest controllers.",white);
+        write(95,354,"Press BOTH thumbsticks together, then release.",white);
+        SelectObject(dc,smallFont);
+        write(95,423,"Hand-tracking emulation cannot fire, Grip or throw grenades.",muted);
+        write(95,471,"Requires tracked controllers and a real controller profile.",muted);
+        write(95,530,KharvoxHudPauseMenuActive()
+            ?"DOOM PAUSED: after reconnecting, press Pause to resume."
+            :"Native Pause requested. Combat inputs remain blocked.",RGB(84,233,214));
+    }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
@@ -139,8 +157,9 @@ void paintVrHandMenu() {
                     write(49,373,"Hold "+target+" Grip to move GUN.",white);
                     write(49,411,"Gun offset remains where you left it.",muted);
                 }
-                if(heavy&&m.alternateProfile)
-                    write(39,450,"SIEGE / TURRET PROFILE",RGB(84,233,214));
+                if(heavy)
+                    write(39,450,m.alternateProfile
+                        ?"ALT FIRE PROFILE":"NORMAL PROFILE",RGB(84,233,214));
             }else{
                 fill(35,289,564,151,RGB(31,43,59));
                 fill(35,289,4,151,RGB(84,233,214));
@@ -262,6 +281,10 @@ void paintVrHandMenu() {
                     options[0]="OPEN WEAPON CALIBRATION";
                     optionCount=1;
                     break;
+                case kharvox::VrLiveMod::WeaponRecoil:
+                    options[0]="OPEN RECOIL CALIBRATION";
+                    optionCount=1;
+                    break;
                 case kharvox::VrLiveMod::Gunslinger:
                     options={"SET RIGHT HIP","SET LEFT HIP",
                              "SET RIGHT WHEEL","SET LEFT WHEEL","RESET ZONES"};
@@ -328,6 +351,120 @@ void paintVrHandMenu() {
             write(538,638,"B: BACK TO MODS     A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
+    }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
+        write(38,24,"KHARVOX VR  /  RECOIL CALIBRATION",white);
+        SelectObject(dc,smallFont);
+        write(40,102,"WEAPON PROFILES",muted);
+        write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
+        const int selected=std::clamp(m.selectedRecoilWeapon,0,
+            kharvox::kVrRecoilMenuEntryCount-1);
+        for(int i=0;i<static_cast<int>(kharvox::kWeaponRecoilKinds.size());++i){
+            const int y=136+i*45;
+            const bool active=i==selected;
+            const bool hover=m.hovered==200+i
+                ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                    &&active);
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hover?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,regular);
+            const auto key=kharvox::kWeaponRecoilKinds[static_cast<std::size_t>(i)];
+            const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
+            const char* label=i==7?"Minigun (Normal)"
+                :i==9?"Minigun (Turret)":(name&&*name?name:key);
+            write(56,y+6,label,white);
+            SelectObject(dc,smallFont);
+            const int strength=static_cast<int>(std::lround(
+                s.recoilSettings.strength[static_cast<std::size_t>(i)]*100.f));
+            const bool on=s.recoilSettings.enabled[static_cast<std::size_t>(i)];
+            write(372,y+9,(on?"ON ":"OFF ")+std::to_string(strength)+"%",
+                on?(active?RGB(115,246,178):RGB(91,185,134))
+                  :(active?RGB(244,175,125):muted));
+        }
+        // An extra row below the ten weapon profiles configures the
+        // SHARED build-up. Gauss is excluded and retains manual tuning.
+        const int dynamicY=136+kharvox::kVrRecoilMenuProfileCount*45;
+        const bool dynamicSelected=selected==kharvox::kVrRecoilMenuProfileCount;
+        const bool dynamicHover=m.hovered==210
+            ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                &&dynamicSelected);
+        fill(38,dynamicY,455,40,dynamicSelected?RGB(32,89,104):
+            dynamicHover?RGB(44,54,71):RGB(27,32,43));
+        if(dynamicSelected)fill(38,dynamicY,5,40,RGB(55,209,214));
+        SelectObject(dc,regular);
+        write(56,dynamicY+6,"SHARED DYNAMIC BUILD-UP",white);
+        SelectObject(dc,smallFont);
+        write(372,dynamicY+9,s.recoilSettings.dynamicEnabled?"ON":"OFF",
+            s.recoilSettings.dynamicEnabled?RGB(115,246,178):muted);
+
+        const std::size_t index=dynamicSelected?0u:
+            static_cast<std::size_t>(selected);
+        const int strength=static_cast<int>(std::lround(
+            s.recoilSettings.strength[index]*100.f));
+        const int recovery=static_cast<int>(std::lround(
+            s.recoilSettings.recovery[index]*100.f));
+        SelectObject(dc,regular);
+        const bool weaponRecoilOn=s.recoilSettings.enabled[index];
+        std::array<std::string,6> controls{};
+        if(dynamicSelected){
+            write(537,126,s.recoilSettings.dynamicEnabled
+                ?"SHARED DYNAMIC: ON":"SHARED DYNAMIC: OFF",
+                s.recoilSettings.dynamicEnabled?
+                    RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                s.recoilSettings.dynamicEnabled
+                    ?"DISABLE SHARED BUILD-UP":"ENABLE SHARED BUILD-UP",
+                "LESS BUILD-UP (-5% PER SHOT)",
+                "MORE BUILD-UP (+5% PER SHOT)",
+                "LOWER MAX MULTIPLIER (-25%)",
+                "HIGHER MAX MULTIPLIER (+25%)",
+                "RESET SHARED DYNAMICS"
+            }};
+        }else{
+            write(537,126,weaponRecoilOn?"THIS WEAPON: RECOIL ON"
+                :"THIS WEAPON: RECOIL OFF",
+                weaponRecoilOn?RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                weaponRecoilOn?"DISABLE FOR THIS WEAPON":"ENABLE FOR THIS WEAPON",
+                "LESS KICK (-10%)",
+                "MORE KICK (+10%, MAX 900%)",
+                "SLOWER RECOVERY (-10%, MIN 25%)",
+                "FASTER RECOVERY (+10%, MAX 900%)",
+                "RESET THIS WEAPON"
+            }};
+        }
+        for(int i=0;i<6;++i){
+            const int y=157+63*i;
+            const bool focus=m.hovered==140+i
+                ||(m.navigation.usingStick&&m.navigation.settingsColumn
+                    &&m.navigation.actionIndex==i);
+            fill(531,y,384,54,focus?RGB(52,83,99):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(548,y+16,controls[static_cast<std::size_t>(i)],white);
+        }
+        SelectObject(dc,smallFont);
+        if(dynamicSelected){
+            const int gain=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicBuildUpPerShot*100.f));
+            const int cap=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicMaxMultiplier*100.f));
+            write(539,548,"+ "+std::to_string(gain)+"% PER SHOT  /  CAP "
+                +std::to_string(cap)+"%",RGB(84,233,214));
+            write(539,579,"Gauss: separate kick/recovery | 2 hands stable",muted);
+        }else{
+            write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
+                std::to_string(recovery)+"%",RGB(84,233,214));
+            write(539,579,selected==6
+                ?"Gauss: independently tuned short punch + full return"
+                :"1 hand: heavy recoil  |  2 hands: stable",muted);
+        }
+        write(539,614,"Close menu to test. B: BACK",muted);
+        write(40,662,m.message.empty()
+            ?"Dynamic build-up uses ammo-confirmed shots; Gauss tuned separately."
+            :m.message.substr(0,98),RGB(84,233,214));
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
     }else{
     write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
@@ -361,7 +498,8 @@ void paintVrHandMenu() {
     const auto gamepadFocus=[&](int action){
         return m.navigation.usingStick&&m.navigation.settingsColumn
             &&kharvox::vrMenuGripGamepadTarget(m.navigation,
-                m.selectedWeapon,heavy)==action;
+                m.selectedWeapon,heavy,
+                selectedKind==KharvoxWeaponKind::GaussCannon)==action;
     };
     button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
     button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
@@ -374,10 +512,9 @@ void paintVrHandMenu() {
         ?"PRIMARY: position + rotation"
         :"SUPPORT: position only",muted);
     if(heavy){
-        button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
-        write(550,317,m.alternateProfile
-            ?(selectedKind==KharvoxWeaponKind::GaussCannon
-                ?"PROFILE: SIEGE":"PROFILE: TURRET")
+        button(531,306,384,49,m.alternateProfile,
+            m.hovered==32||gamepadFocus(32));
+        write(550,317,m.alternateProfile?"PROFILE: ALT FIRE"
             :"PROFILE: NORMAL",white);
     }else{
         write(538,306,primarySelected
@@ -391,8 +528,16 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
-    write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
+    if(selectedKind==KharvoxWeaponKind::GaussCannon){
+        button(531,540,384,50,s.vrLiveSettings.gaussRequireTwoHandFire,
+            m.hovered==33||gamepadFocus(33));
+        write(549,552,s.vrLiveSettings.gaussRequireTwoHandFire
+            ?"TWO-HAND FIRE: ON":"TWO-HAND FIRE: OFF",white);
+        write(538,614,"Grip charges; both hands required to fire.",muted);
+    }else{
+        write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
+        write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
+    }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
@@ -403,7 +548,7 @@ void paintVrHandMenu() {
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
-    if(!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+    if(!disconnectView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -424,7 +569,7 @@ void paintVrHandMenu() {
         const size_t b=i*4;
         dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];
         const int x=int(i%vrMenuW),y=int(i/vrMenuW);
-        dst[b+3]=(!calibrationView
+        dst[b+3]=(disconnectView||!calibrationView
             ||(x>=22&&x<612&&y>=144&&y<576))?255:0;
     }
     SelectObject(dc,oldBitmap);

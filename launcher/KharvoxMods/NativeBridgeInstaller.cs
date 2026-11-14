@@ -289,7 +289,11 @@ internal static class NativeBridgeInstaller
     private static readonly string[] OwnerFactoryNames = {
         "offhand_right_hand_positions.cfg",
         "two_hand_weapon_profiles_saved.cfg",
-        "two_hand_weapon_profiles_left_primary_saved.cfg"
+        "two_hand_weapon_profiles_left_primary_saved.cfg",
+        "offhand_hud.cfg",
+        "vr_live_mods_saved.cfg",
+        "weapon_recoil_saved.cfg",
+        "kharvox-launcher-settings.json"
     };
 
     internal static void EnsurePortableUserData(string? factoryBridge = null) =>
@@ -343,7 +347,16 @@ internal static class NativeBridgeInstaller
                 File.Copy(source, dest, false);
             }
         }
-        // The three actual uploaded November calibration files are shipped
+        // Existing native bridge launcher settings take priority over a new
+        // packaged factory profile; copy them BEFORE first-run factory seeding.
+        var previousLauncher = Path.Combine(existingBridge,
+            "kharvox-launcher-settings.json");
+        var portableLauncher = Path.Combine(folder,
+            "kharvox-launcher-settings.json");
+        if (!File.Exists(portableLauncher) && File.Exists(previousLauncher)
+            && new FileInfo(previousLauncher).Length <= 65536)
+            File.Copy(previousLauncher, portableLauncher, false);
+        // The owner-uploaded calibration, HUD, KILLTIME and recoil presets are shipped
         // read-only in CalibrationDefaults. First-run gets exact saved values;
         // all subsequent user edits always take precedence.
         var packaged = Path.Combine(packagedBridge, "CalibrationDefaults");

@@ -111,6 +111,7 @@ LONG weaponKickPreviousValue{};
 std::atomic<KharvoxWeaponKind> activeWeaponKind{KharvoxWeaponKind::Unknown};
 std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<bool> chaingunTurretModeActive{};
+std::atomic<bool> chaingunRotorModeActive{};
 std::atomic<bool> weaponHolstered{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
@@ -122,6 +123,10 @@ WeaponAmmoTotalFn weaponAmmoTotalNative{};
 std::atomic<bool> weaponAmmoSnapshotSupported{};
 std::array<std::atomic<KharvoxWeaponAmmoState>,
     static_cast<size_t>(KharvoxWeaponKind::Count)> weaponAmmoStates{};
+// Published alongside the existing read-only inventory state snapshot.
+// -1 means unavailable (unverified native code / stale / not owned).
+std::array<std::atomic<int>,
+    static_cast<size_t>(KharvoxWeaponKind::Count)> weaponAmmoTotals{};
 std::atomic<uintptr_t> weaponAmmoSnapshotPlayer{};
 std::atomic<unsigned long long> weaponAmmoSnapshotTick{};
 std::atomic<unsigned> unknownWeaponRescanCalls{};
@@ -1127,6 +1132,21 @@ void observeActiveWeaponData(void* owner, void* weaponData) {
     if(previousTurret!=turretDecl)
         log(std::string("[CHAINGUN] native Turret decl ")
             +(turretDecl?"ACTIVE":"released"));
+    // The active Chaingun object can reference BOTH installed upgrades.
+    // Preserve each discovery flag independently. Never suppress Rotor
+    // merely because the broad scan also finds Turret: both means
+    // AMBIGUOUS, not that Turret is currently deployed.
+    const bool rotorDecl=kind==KharvoxWeaponKind::Chaingun
+        &&(weaponObjectContainsAsciiInsensitive(weaponData,"rotator")
+            ||weaponObjectContainsAsciiInsensitive(weaponData,"rotor"));
+    const bool previousRotor=chaingunRotorModeActive.exchange(
+        rotorDecl,std::memory_order_acq_rel);
+    if(previousRotor!=rotorDecl)
+        log(std::string("[CHAINGUN] native Rotor decl ")
+            +(rotorDecl?"ACTIVE":"released"));
+    if(kind==KharvoxWeaponKind::Chaingun&&turretDecl&&rotorDecl
+       &&(previousTurret!=turretDecl||previousRotor!=rotorDecl))
+        log("[CHAINGUN] BOTH upgrade names present; variant AMBIGUOUS, never assume Turret");
     activeWeaponKind.store(kind, std::memory_order_release);
     activeWeaponData.store(address, std::memory_order_release);
     if (!changed && kind == KharvoxWeaponKind::Unknown) return;
@@ -2768,6 +2788,9 @@ bool KharvoxWeaponGaussSiegeChargeActive() {
 bool KharvoxWeaponChaingunTurretModeActive() {
     return chaingunTurretModeActive.load(std::memory_order_acquire);
 }
+bool KharvoxWeaponChaingunRotorModeActive() {
+    return chaingunRotorModeActive.load(std::memory_order_acquire);
+}
 
 void KharvoxWeaponSetHolstered(bool holstered) {
     const bool previous = weaponHolstered.exchange(holstered, std::memory_order_acq_rel);
@@ -2851,6 +2874,8 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
     std::array<KharvoxWeaponAmmoState,
         static_cast<size_t>(KharvoxWeaponKind::Count)> snapshot{};
     snapshot.fill(KharvoxWeaponAmmoState::Unknown);
+    std::array<int,static_cast<size_t>(KharvoxWeaponKind::Count)> totals{};
+    totals.fill(-1);
     for (size_t index = 0; index < snapshot.size(); ++index) {
         const auto kind = static_cast<KharvoxWeaponKind>(index);
         if (shoulderSelectableAmmoKind(kind))
@@ -2886,7 +2911,9 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
             continue;
         }
         int total{};
-        snapshot[kindIndex] = queryWeaponAmmoTotalSafely(item, inventory, total)
+        const bool totalValid=queryWeaponAmmoTotalSafely(item, inventory, total);
+        totals[kindIndex]=totalValid?total:-1;
+        snapshot[kindIndex]=totalValid
             ? (total > 0 ? KharvoxWeaponAmmoState::Usable : KharvoxWeaponAmmoState::Empty)
             : KharvoxWeaponAmmoState::Unknown;
     }
@@ -2897,6 +2924,7 @@ void KharvoxWeaponCaptureAmmoSnapshot(void* player) {
         if (!shoulderSelectableAmmoKind(kind)) continue;
         const auto previous = weaponAmmoStates[index].exchange(
             snapshot[index], std::memory_order_acq_rel);
+        weaponAmmoTotals[index].store(totals[index],std::memory_order_release);
         changed |= previous != snapshot[index];
     }
     weaponAmmoSnapshotPlayer.store(reinterpret_cast<uintptr_t>(player), std::memory_order_release);
@@ -2922,6 +2950,19 @@ KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind) {
     const auto tick = weaponAmmoSnapshotTick.load(std::memory_order_acquire);
     if (!tick || GetTickCount64() - tick > 500) return KharvoxWeaponAmmoState::Unknown;
     return weaponAmmoStates[index].load(std::memory_order_acquire);
+}
+
+bool KharvoxWeaponGetAmmoTotal(KharvoxWeaponKind kind,int& total) {
+    total=-1;
+    const auto index=static_cast<size_t>(kind);
+    if(!weaponAmmoSnapshotSupported.load(std::memory_order_acquire)
+        ||index>=weaponAmmoTotals.size())return false;
+    const auto tick=weaponAmmoSnapshotTick.load(std::memory_order_acquire);
+    if(!tick||GetTickCount64()-tick>250)return false;
+    const auto amount=weaponAmmoTotals[index].load(std::memory_order_acquire);
+    if(amount<0)return false;
+    total=amount;
+    return true;
 }
 
 bool KharvoxWeaponGetLaserMuzzlePose(float origin[3], float direction[3],

@@ -3,9 +3,10 @@ name: KHARVOX VR Mod Manager (Experimental)
 on:
   push:
     branches:
-      # Single active standalone release branch. Older KHARVOX tracks are not
-      # permitted to publish an updater-visible Mod Manager release.
+      # Stable updater release plus ONE isolated experimental branch.
+      # Only the stable branch may publish the updater-visible release.
       - work/manager-187-wheel-holsters
+      - feature/onehand-physical-recoil-calibration
     paths:
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxModsUpdater/**'
@@ -46,12 +47,16 @@ jobs:
       - name: Verify active manager branch and release contract
         shell: pwsh
         run: |
-          $approved = "work/manager-187-wheel-holsters"
-          if ("${{ github.ref_name }}" -ne $approved) {
-            throw "WRONG KHARVOX BUILD TRACK: only $approved may build the standalone VR Mod Manager"
+          $stable = "work/manager-187-wheel-holsters"
+          $experiment = "feature/onehand-physical-recoil-calibration"
+          $approved = "${{ github.ref_name }}"
+          if ($approved -ne $stable -and $approved -ne $experiment) {
+            throw "WRONG KHARVOX BUILD TRACK: refusing unapproved standalone branch $approved"
           }
           $marker = Get-Content -LiteralPath "docs/KHARVOX-ACTIVE-TRACK.txt" -Raw
-          if (!$marker.Contains("active_branch=$approved") -or
+          # The approved stable branch marker stays unchanged. This experiment
+          # may build separately but MUST NOT become the updater release track.
+          if (!$marker.Contains("active_branch=$stable") -or
               !$marker.Contains("release_workflow=.github/workflows/build-kharvox-mods.yml") -or
               !$marker.Contains("native_workflow=.github/workflows/build-custom.yml") -or
               !(Test-Path "launcher/KharvoxMods/NativeBridgeInstaller.cs")) {
@@ -151,7 +156,14 @@ jobs:
           # runtime-affecting source is identical to the manager checkout.
           # Manager-only commits may reuse that native build; changed runtime
           # source must wait for the matching native build to succeed.
-          $approvedBranch = "work/manager-187-wheel-holsters"
+          # Same-branch native provenance is mandatory in BOTH tracks.
+          # Never import a stable native layer into this recoil experiment.
+          $stable = "work/manager-187-wheel-holsters"
+          $experiment = "feature/onehand-physical-recoil-calibration"
+          $approvedBranch = "${{ github.ref_name }}"
+          if ($approvedBranch -ne $stable -and $approvedBranch -ne $experiment) {
+            throw "Unapproved native bridge source branch $approvedBranch"
+          }
           $repo = "MrEGS-Ops/KHARVOX-Custom"
           $nativePaths = @("src", "tests", "CMakeLists.txt",
               "config/user_calibration_defaults",
@@ -374,7 +386,11 @@ jobs:
           foreach ($name in @(
               "offhand_right_hand_positions.cfg",
               "two_hand_weapon_profiles_saved.cfg",
-              "two_hand_weapon_profiles_left_primary_saved.cfg")) {
+              "two_hand_weapon_profiles_left_primary_saved.cfg",
+              "offhand_hud.cfg",
+              "vr_live_mods_saved.cfg",
+              "weapon_recoil_saved.cfg",
+              "kharvox-launcher-settings.json")) {
             $expected = Join-Path $PWD ("config/user_calibration_defaults/" + $name)
             $actual = Join-Path $factoryDir $name
             if (!(Test-Path -LiteralPath $actual)) {
@@ -391,7 +407,8 @@ jobs:
           }
           foreach ($legacy in @(
               "hand_models_calibration_saved.cfg", "offhand_hud.cfg",
-              "two_hand_shotgun_saved.cfg", "vr_live_mods_saved.cfg")) {
+              "two_hand_shotgun_saved.cfg", "vr_live_mods_saved.cfg",
+              "weapon_recoil_saved.cfg")) {
             if (Test-Path -LiteralPath (Join-Path $bundledRuntime $legacy)) {
               throw "CLEAN INSTALL VIOLATION: user profile bundled in NativeBridge: $legacy"
             }
@@ -399,7 +416,7 @@ jobs:
           if (!(Test-Path -LiteralPath (Join-Path $bundledRuntime "hand_models_calibration_default.cfg"))) {
             throw "CLEAN INSTALL VIOLATION: required hand-model baseline missing"
           }
-          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all three exact uploaded calibration presets"
+          Write-Host "CLEAN INSTALL PASS: empty portable UserData and all seven uploaded calibration, HUD, KILLTIME, recoil and launcher presets"
 
       - name: Package ready-to-run standalone with bundled custom KHARVOX
         shell: pwsh
@@ -464,6 +481,16 @@ jobs:
         with:
           name: KHARVOX-VR-Mod-Manager-Preview
           path: dist/KHARVOX-VR-Mod-Manager-Standalone
+          retention-days: 14
+
+      - name: Upload ready-to-run experimental manager ZIP
+        if: github.ref == 'refs/heads/feature/onehand-physical-recoil-calibration'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Mods-Standalone-Experimental-Recoil
+          path: |
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip
+            dist/KHARVOX-VR-Mod-Manager-ReadyToRun.zip.sha256
           retention-days: 14
 
       - name: Publish verified ZIP for automatic download

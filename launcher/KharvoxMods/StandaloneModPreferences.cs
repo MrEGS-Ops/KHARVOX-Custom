@@ -37,15 +37,27 @@ internal sealed class StandaloneModPreferences
     public bool BehindHeadWeaponWheel { get; set; }
     public bool DynamicQuickHolsters { get; set; }
     public bool PhysicalCrouch { get; set; } = true;
-    public bool PainsawRipshiftOverdrive { get; set; }
+    public bool PainsawRipshiftOverdrive { get; set; } = true; // Owner's exported default, still user-toggleable.
     public bool OffHandGripCapture { get; set; } = true;
     public bool GloryKillSpeedOverride { get; set; } = true;
-    public int GloryKillHz { get; set; } = 60; // New installs default KILLTIME to 60 Hz.
+    public int GloryKillHz { get; set; } = 40; // New installs default KILLTIME to 40 Hz.
     // Presentation order only: the bridge ignores this metadata. Enables
     // original click/drag reorder without changing mod dependencies or timing.
-    public string[] ActiveOrder { get; set; } = Array.Empty<string>();
+    public string[] ActiveOrder { get; set; } = new[] { "PAINSAW: RIPSHIFT OVERDRIVE" };
     // UI-only order for inactive and paused mods; does not enable anything.
-    public string[] AvailableOrder { get; set; } = Array.Empty<string>();
+    public string[] AvailableOrder { get; set; } = new[] {
+        "Boxing Guard Mode", "Directional Dash", "Physical Grenade Throw",
+        "Gauss Charge Slow Movement", "Persistent Super Shotgun Reload",
+        "Back of Hand HUD", "Story Cinematic Skip (RS)",
+        "Story Free Walk (RS)", "Story Camera Focus: Major Scenes Only",
+        "Uninterrupted Story", "Action Exit Handoff", "No HUD",
+        "No Weapon Wheel", "Revenge Demon", "Chainsaw Animation Investigator",
+        "Haptic Overhaul", "Hand Focus", "Disable Glory Kill Highlighting",
+        "Disable Glory Kill Motion Blur", "Disable Camera Kicks & Shaking",
+        "Disable Native Weapon Kick", "Disable Hand-Hit Reactions",
+        "Protect Native Ledge Speed", "Protect Scripted Cinematic Speed",
+        "Disable RS Melee / Animation (Physical GK)"
+    };
     // UI-only; keys are A:category or V:category. No native dependency impact.
     // First run: available categories collapsed; selected Active Mods stays open.
     // A saved preference array (even empty) always overrides this default.
@@ -148,8 +160,8 @@ internal sealed class StandaloneModPreferences
             var x = Load(path);
             if (x.WeaponWheelRemap || !x.HandFocus ||
                 !x.Gunslinger || x.BehindHeadWeaponWheel || x.DynamicQuickHolsters ||
-                !x.PhysicalCrouch || x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
-                !x.GloryKillSpeedOverride || x.GloryKillHz != 60 ||
+                !x.PhysicalCrouch || !x.PainsawRipshiftOverdrive || !x.OffHandGripCapture ||
+                !x.GloryKillSpeedOverride || x.GloryKillHz != 40 ||
                 x.CollapsedCategories.Length !=
                     ModsForm.DefaultCollapsedAvailableCategories().Length ||
                 x.CollapsedCategories.Any(category => !category.StartsWith("V:")) )

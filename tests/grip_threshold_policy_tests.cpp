@@ -27,5 +27,21 @@ int main() {
     if (updateGripPressed(NAN, false, GripControllerProfile::ValveIndex)) return 10;
     if (updateGripPressed(NAN, true, GripControllerProfile::ValveIndex)) return 11;
 
+    // Emulated hands must never rearm inputs just because tracking returns.
+    ControllerOnlySafetyState safety{};
+    if(updateControllerOnlySafety(safety,false,false,false,true,true))return 12;
+    for(int i=0;i<15;++i)
+        if(updateControllerOnlySafety(safety,true,true,false,true,true))return 13;
+    if(updateControllerOnlySafety(safety,true,true,true,false,false))return 14; // held trigger
+    if(updateControllerOnlySafety(safety,true,true,false,true,true))return 15; // no acknowledge
+    if(updateControllerOnlySafety(safety,true,true,true,false,true))return 16; // press BOTH sticks
+    if(!updateControllerOnlySafety(safety,true,true,false,true,true))return 17; // release to arm
+    if(!updateControllerOnlySafety(safety,true,true,false,true,true))return 18;
+    if(updateControllerOnlySafety(safety,true,false,true,false,true))return 19; // tracking lost
+    for(int i=0;i<15;++i)
+        if(updateControllerOnlySafety(safety,true,true,false,true,true))return 20; // NO auto-rearm
+    if(updateControllerOnlySafety(safety,true,true,true,false,true))return 21;
+    if(!updateControllerOnlySafety(safety,true,true,false,true,true))return 22;
+    if(updateControllerOnlySafety(safety,false,true,false,true,true))return 23; // profile switch
     return 0;
 }

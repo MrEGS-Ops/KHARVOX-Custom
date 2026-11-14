@@ -20,8 +20,30 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// One calibration slot per firing state. Neither mode is bound to a
+// particular equipped Gauss or Chaingun attachment.
+inline constexpr bool vrHeavyAlternateGripActive(
+    bool menuOpen,bool matchingSelectedWeapon,bool selectedAlternate,
+    bool nativeSecondaryGrip,bool gaussChargeStillActive) noexcept {
+    if(menuOpen&&matchingSelectedWeapon)return selectedAlternate;
+    return nativeSecondaryGrip||gaussChargeStillActive;
+}
+// Gauss only: NORMAL trigger shots are ALWAYS allowed with one hand.
+// The two-hand interlock applies ONLY when the alternate-fire Grip is
+// actively forwarded to DOOM (the observable charge input). An installed
+// Siege upgrade or its declaration string is NOT evidence of charging.
+// Releasing alternate-fire Grip restores normal one-handed shots.
+inline constexpr bool vrGaussPrimaryFireAllowed(
+    bool requireTwoHands,bool gaussEquipped,bool alternateChargeGripActive,
+    bool primaryGripDown,bool supportGripDown,
+    bool supportLatched,bool supportLatchedToGauss,
+    bool primaryTracked,bool supportTracked) noexcept {
+    if(!requireTwoHands||!gaussEquipped||!alternateChargeGripActive)return true;
+    return primaryGripDown&&supportGripDown&&supportLatched
+        &&supportLatchedToGauss&&primaryTracked&&supportTracked;
+}
 // Grip-held aim preview works on every primary weapon.
-// Siege/Turret is engaged automatically when its mode is selected;
+// Alt Fire is engaged automatically when its mode is selected;
 // Grip itself is reserved for testing position, never alt fire in calibration.
 inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
     bool calibratingPrimary,const std::string& weapon) noexcept {
@@ -65,7 +87,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
-enum class VrMenuPage {Mods,WeaponGrip};
+enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
 // Independent, edge-triggered left-stick navigation. It never modifies the
 // in-game movement or the right-hand laser/pointer input outside this menu.
 struct VrMenuNavigation {
@@ -113,16 +135,32 @@ inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
     return toggleable?(nav.actionIndex==0?110:130+nav.actionIndex-1)
         :130+nav.actionIndex;
 }
+// Dedicated recoil tuning: 9 firearms + separate Minigun Turret mode (10 rows).
+// Controller settings are independent of the primary/off-hand pose profiles.
+// The policy header intentionally has no OpenXR/weapon recoil runtime dependency.
+inline constexpr int kVrRecoilMenuProfileCount=10;
+inline constexpr int kVrRecoilMenuEntryCount=11; // final row: shared dynamics
+inline int vrMenuRecoilGamepadTarget(const VrMenuNavigation& nav,
+                                    int weapon) noexcept {
+    return nav.settingsColumn
+        ?(nav.actionIndex>=0&&nav.actionIndex<6?140+nav.actionIndex:-1)
+        :(weapon>=0&&weapon<kVrRecoilMenuEntryCount?200+weapon:-1);
+}
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
-    int selectedWeapon,bool heavy) noexcept {
+    int selectedWeapon,bool heavy,bool gauss=false) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
     // No automatic RIGHT-to-LEFT mirroring: each physical hand is
     // calibrated independently. Preserve CALIBRATE, RESET and BACK.
+    constexpr std::array<int,7> gaussActions{20,21,32,30,31,33,95};
     constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
     constexpr std::array<int,5> normalActions{20,21,30,31,95};
-    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
-        ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
+    const int count=gauss?7:heavy?6:5;
+    return nav.actionIndex>=0&&nav.actionIndex<count
+        ?gauss?gaussActions[nav.actionIndex]
+              :heavy?heavyActions[nav.actionIndex]
+                    :normalActions[nav.actionIndex]
+        :-1;
 }
 // Grip RELEASED: the opposite controller drives the primary glove's live
 // position/rotation. Grip HELD: the currently valid placement is frozen,
@@ -322,9 +360,11 @@ struct VrHandMenuState {
     int pendingNativeSelection{}; // 1=BFG (Y), 2=Chainsaw (X)
     long long nativeSelectionPulseUntil{};
     int selectedWeapon{1};
+    int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
-    // Gauss Siege and Chaingun Turret have separate visual hand profiles.
-    bool alternateProfile{};
+    // Both Gauss and Chaingun: NORMAL / ALT FIRE. The latter is a
+    // generic secondary-fire grip slot, regardless of installed attachment.
+    bool alternateProfile{},calibrationAlternateProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
@@ -397,6 +437,8 @@ inline bool vrPrimaryPoseChangedFromFactory(
     // the primary hand appear calibrated.
     if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
     if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    if(weapon=="chaingun"&&(positionChanged("chaingun_rotor")
+        ||rotationChanged("chaingun_rotor")))return true;
     const std::string alternate=weapon=="gauss_cannon"
         ?"gauss_cannon_siege":weapon=="chaingun"
             ?"chaingun_turret":"";
@@ -472,6 +514,15 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                     ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
                     ||key==weapon+"_finetune_offset"
                     ||key==weapon+"_left_finetune_offset"
+                    ||(weapon=="chaingun"&&(
+                        key=="chaingun_rotor_hand_position"
+                        ||key=="chaingun_rotor_rotation"
+                        ||key=="chaingun_rotor_left_hand_position"
+                        ||key=="chaingun_rotor_left_rotation"
+                        ||key=="chaingun_rotor_finetune_offset"
+                        ||key=="chaingun_rotor_left_finetune_offset"
+                        ||key=="chaingun_rotor_support_position"
+                        ||key=="chaingun_rotor_left_primary_support_position"))
                     ||(!alternate.empty()&&(
                         key==alternate+"_hand_position"||key==alternate+"_rotation"
                         ||key==alternate+"_left_hand_position"
@@ -542,6 +593,10 @@ inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
                     ||key==name+"_left_finetune_offset";
             };
             if(matches(weapon))return true;
+            if(weapon=="chaingun"&&(matches("chaingun_rotor")
+                ||key=="chaingun_rotor_support_position"
+                ||key=="chaingun_rotor_left_primary_support_position"))
+                return true;
             return !alternate.empty()
                 &&(matches(alternate)||key==alternate+"_support_position"
                    ||key==alternate+"_left_primary_support_position");
