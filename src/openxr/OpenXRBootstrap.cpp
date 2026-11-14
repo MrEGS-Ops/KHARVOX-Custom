@@ -4376,14 +4376,15 @@ void updateGameplayActions(XrTime displayTime){
         &&secondaryFireGripDown&&!backWeaponOutput.gripConsumed;
     s.heavyAlternateInputForwarded=weaponModDown;
     const bool calibrationFireBlocked=captureTwoHandCalibration(gameplay&&triggerDown);
-    // Only Gauss primary FIRE is gated. Its weapon-hand Grip still flows to
-    // DOOM's native Alt Fire / Siege charge, even with a free support hand.
+    // NORMAL Gauss fire stays one-handed. The interlock only applies while
+    // the native Alt Fire Grip input is actively forwarded to DOOM, not just
+    // because the user owns a Siege attachment. Grip/charging stays native.
     // Never use visual proximity as evidence of a grip: a valid two-hand
     // support LATCH and both physical Grip inputs are mandatory.
     const bool gaussFireAllowed=kharvox::vrGaussPrimaryFireAllowed(
         s.vrLiveSettings.gaussRequireTwoHandFire,
         activeWeaponKind==KharvoxWeaponKind::GaussCannon,
-        secondaryFireGripDown,s.supportGripPressed,
+        weaponModDown,secondaryFireGripDown,s.supportGripPressed,
         s.twoHandLatched,s.twoHandLatchedWeapon==KharvoxWeaponKind::GaussCannon,
         weaponController().valid,supportGripController().valid);
     const bool gaussFireBlocked=gameplay&&triggerDown&&!gaussFireAllowed;
