@@ -209,7 +209,8 @@ bool saveVrRecoilSettings(){
 bool handleVrRecoilCalibrationAction(int action){
     if(action<140||action>145)return false;
     auto& m=s.vrHandMenu;
-    const int index=std::clamp(m.selectedRecoilWeapon,0,8);
+    const int index=std::clamp(m.selectedRecoilWeapon,0,
+        static_cast<int>(kharvox::kWeaponRecoilKinds.size())-1);
     auto old=s.recoilSettings;
     const std::size_t at=static_cast<std::size_t>(index);
     switch(action){
@@ -218,13 +219,13 @@ bool handleVrRecoilCalibrationAction(int action){
             s.recoilSettings.strength[at]-.1f);break;
         case 142:s.recoilSettings.strength[at]=std::min(9.f,
             s.recoilSettings.strength[at]+.1f);break;
-        case 143:s.recoilSettings.recovery[at]=std::max(.5f,
+        case 143:s.recoilSettings.recovery[at]=std::max(.25f,
             s.recoilSettings.recovery[at]-.1f);break;
         case 144:s.recoilSettings.recovery[at]=std::min(2.f,
             s.recoilSettings.recovery[at]+.1f);break;
         case 145:
-            s.recoilSettings.strength[at]=1.f;
-            s.recoilSettings.recovery[at]=1.f;break;
+            s.recoilSettings.strength[at]=kharvox::kWeaponRecoilDefaultStrength[at];
+            s.recoilSettings.recovery[at]=kharvox::kWeaponRecoilDefaultRecovery[at];break;
     }
     if(!saveVrRecoilSettings()){
         s.recoilSettings=old;return true;
