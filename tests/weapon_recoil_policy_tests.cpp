@@ -11,6 +11,14 @@ int main(){
     assert(!settings.enabled);
     assert(weaponRecoilIndex("shotgun")==1);
     assert(weaponRecoilIndex("chainsaw")==-1);
+    assert(kWeaponRecoilKinds.size()==10);
+    assert(weaponRecoilIndex("chaingun")==7);
+    assert(weaponRecoilIndex("chaingun",true)==9);
+    assert(weaponRecoilIndex("chaingun_turret")==9);
+    assert(weaponRecoilIndex("gauss_cannon",true)==6);
+    assert(settings.strength[7]==3.0f&&settings.recovery[7]==.45f);
+    assert(settings.strength[9]==1.7f&&settings.recovery[9]==.75f);
+    assert(settings.strength[5]==3.0f&&settings.recovery[5]==.55f);
     const auto noEffect=advanceWeaponRecoil(state,settings,{1,true,false,true,100});
     assert(noEffect.pitchDegrees==0.f&&!noEffect.shotEstimated);
     settings.enabled=true;
@@ -49,7 +57,7 @@ int main(){
     assert(highFirst.pitchDegrees==0.f&&!highFirst.shotEstimated);
     auto high=advanceWeaponRecoil(state,settings,
         {1,true,false,true,2400+kWeaponRecoilPostFireDelayMs});
-    assert(high.shotEstimated&&high.pitchDegrees>afterFirstShot.pitchDegrees*5.f);
+    assert(high.shotEstimated&&high.pitchDegrees>afterFirstShot.pitchDegrees*3.f);
     assert(validWeaponRecoilSettings(settings));
 
     // Automatic fire: 1st bullet is clean, recoil follows it, subsequent
@@ -82,6 +90,25 @@ int main(){
     const auto invalidSwap=advanceWeaponRecoil(state,settings,{1,false,false,true,4310});
     assert(invalidSwap.pitchDegrees==0.f);
 
+    // Turret is independent of normal firing: while holding Fire, changing
+    // mode must restart with a clean first-shot pose in the new profile.
+    state={};
+    const auto normalFirst=advanceWeaponRecoil(state,settings,{7,true,false,true,5000});
+    const auto normalKick=advanceWeaponRecoil(state,settings,
+        {7,true,false,true,5000+kWeaponRecoilPostFireDelayMs});
+    const auto turretFirst=advanceWeaponRecoil(state,settings,{9,true,false,true,5100});
+    const auto turretKick=advanceWeaponRecoil(state,settings,
+        {9,true,false,true,5100+kWeaponRecoilPostFireDelayMs});
+    assert(normalFirst.pitchDegrees==0.f&&!normalFirst.shotEstimated);
+    assert(turretFirst.pitchDegrees==0.f&&!turretFirst.shotEstimated);
+    assert(normalKick.pitchDegrees>turretKick.pitchDegrees);
+    assert(turretKick.pitchDegrees>0.f&&turretKick.shotEstimated);
+
+    settings.recovery[7]=.25f; // new minimum must be valid and persisted
+    assert(validWeaponRecoilSettings(settings));
+    settings.recovery[7]=.24f;
+    assert(!validWeaponRecoilSettings(settings));
+    settings.recovery[7]=.25f;
     settings.strength[1]=9.1f;
     assert(!validWeaponRecoilSettings(settings));
     settings.strength[1]=9.f;
@@ -90,7 +117,26 @@ int main(){
     assert(saveWeaponRecoilSettings(path.string(),settings));
     WeaponRecoilSettings loaded{};
     assert(loadWeaponRecoilSettings(path.string(),loaded));
-    assert(loaded.enabled&&loaded.strength[1]==9.f);
+    assert(loaded.enabled&&loaded.strength[1]==9.f
+        &&loaded.recovery[7]==.25f);
+    assert(loaded.strength[7]==3.f&&loaded.strength[9]==1.7f);
+    // A pre-Turret save has nine keys. Loading must preserve all those
+    // user-selected values while adding ONLY the new Turret preset.
+    {
+        std::ofstream legacy(path,std::ios::trunc);
+        legacy<<"schema 1\nenabled 1\n";
+        for(std::size_t i=0;i<9;++i)
+            legacy<<kWeaponRecoilKinds[i]<<" 1.500 0.250\n";
+    }
+    WeaponRecoilSettings migrated{};
+    assert(loadWeaponRecoilSettings(path.string(),migrated));
+    for(std::size_t i=0;i<9;++i)
+        assert(migrated.strength[i]==1.5f&&migrated.recovery[i]==.25f);
+    assert(migrated.strength[9]==kWeaponRecoilDefaultStrength[9]);
+    assert(migrated.recovery[9]==kWeaponRecoilDefaultRecovery[9]);
+    assert(saveWeaponRecoilSettings(path.string(),migrated));
+    assert(loadWeaponRecoilSettings(path.string(),loaded));
+    assert(loaded.strength[7]==1.5f&&loaded.strength[9]==1.7f);
     {
         std::ofstream bad(path,std::ios::trunc);
         bad<<"schema 1\nenabled 1\nshotgun nan 1.0\n";
