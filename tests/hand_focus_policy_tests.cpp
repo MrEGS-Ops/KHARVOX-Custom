@@ -19,6 +19,24 @@ int main(){
     assert(!useWeaponHandFocus(true,true,false,false,false,true));
     assert(!useWeaponHandFocus(true,false,false,false,false,false));
     assert(!useWeaponHandFocus(false,true,false,false,false,false));
+    // World interaction focus prioritizes the tracked hand even with no
+    // HMD render-pose sample, such as during a first-person pickup/station.
+    using kharvox::WorldFocusRaySource;
+    using kharvox::chooseWorldFocusRaySource;
+    assert(chooseWorldFocusRaySource(true,false,false,true,false)
+        ==WorldFocusRaySource::Hand);
+    assert(chooseWorldFocusRaySource(true,false,false,true,true)
+        ==WorldFocusRaySource::Hand);
+    assert(chooseWorldFocusRaySource(true,false,false,false,true)
+        ==WorldFocusRaySource::Head);
+    assert(chooseWorldFocusRaySource(true,false,false,false,false)
+        ==WorldFocusRaySource::Native);
+    assert(chooseWorldFocusRaySource(false,false,false,true,true)
+        ==WorldFocusRaySource::Native);
+    assert(chooseWorldFocusRaySource(true,true,false,true,true)
+        ==WorldFocusRaySource::Native);
+    assert(chooseWorldFocusRaySource(true,false,true,true,true)
+        ==WorldFocusRaySource::Native);
     // When an execution ends, HAND focus comes back automatically.
     assert(useWeaponHandFocus(true,true,false,false,false,false));
     return 0;
