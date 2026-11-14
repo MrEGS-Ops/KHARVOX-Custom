@@ -8,6 +8,15 @@ int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
     int selected=0;
+    // Both minigun recoil profiles must be reachable by controller navigation.
+    assert(kVrRecoilMenuProfileCount==10);
+    VrMenuNavigation recoilNav{};
+    assert(vrMenuRecoilGamepadTarget(recoilNav,7)==207); // normal
+    assert(vrMenuRecoilGamepadTarget(recoilNav,9)==209); // turret
+    assert(vrMenuRecoilGamepadTarget(recoilNav,10)==-1);
+    recoilNav.settingsColumn=true;
+    recoilNav.actionIndex=5;
+    assert(vrMenuRecoilGamepadTarget(recoilNav,9)==145); // reset turret only
     // LEFT stick moves through rows only on a deliberate edge.
     vrMenuNavigateStick(nav,0.f,-.90f,5,selected,2);
     assert(selected==1&&nav.usingStick&&!nav.settingsColumn);
