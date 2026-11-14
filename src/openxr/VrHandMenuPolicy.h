@@ -28,6 +28,18 @@ inline constexpr bool vrHeavyAlternateGripActive(
     if(menuOpen&&matchingSelectedWeapon)return selectedAlternate;
     return nativeSecondaryGrip||gaussChargeStillActive;
 }
+// Gauss only: charging via primary Grip remains native. The fire trigger is
+// suppressed unless BOTH physical Grips are down and the off-hand has acquired
+// its calibrated support point for the currently equipped Gauss Cannon.
+// Other guns, including Chaingun, are entirely unaffected.
+inline constexpr bool vrGaussPrimaryFireAllowed(
+    bool requireTwoHands,bool gaussEquipped,bool primaryGripDown,
+    bool supportGripDown,bool supportLatched,bool supportLatchedToGauss,
+    bool primaryTracked,bool supportTracked) noexcept {
+    if(!requireTwoHands||!gaussEquipped)return true;
+    return primaryGripDown&&supportGripDown&&supportLatched
+        &&supportLatchedToGauss&&primaryTracked&&supportTracked;
+}
 // Grip-held aim preview works on every primary weapon.
 // Alt Fire is engaged automatically when its mode is selected;
 // Grip itself is reserved for testing position, never alt fire in calibration.
@@ -133,15 +145,20 @@ inline int vrMenuRecoilGamepadTarget(const VrMenuNavigation& nav,
         :(weapon>=0&&weapon<kVrRecoilMenuEntryCount?200+weapon:-1);
 }
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
-    int selectedWeapon,bool heavy) noexcept {
+    int selectedWeapon,bool heavy,bool gauss=false) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
     // No automatic RIGHT-to-LEFT mirroring: each physical hand is
     // calibrated independently. Preserve CALIBRATE, RESET and BACK.
+    constexpr std::array<int,7> gaussActions{20,21,32,30,31,33,95};
     constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
     constexpr std::array<int,5> normalActions{20,21,30,31,95};
-    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
-        ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
+    const int count=gauss?7:heavy?6:5;
+    return nav.actionIndex>=0&&nav.actionIndex<count
+        ?gauss?gaussActions[nav.actionIndex]
+              :heavy?heavyActions[nav.actionIndex]
+                    :normalActions[nav.actionIndex]
+        :-1;
 }
 // Grip RELEASED: the opposite controller drives the primary glove's live
 // position/rotation. Grip HELD: the currently valid placement is frozen,
