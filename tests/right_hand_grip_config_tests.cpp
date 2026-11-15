@@ -318,6 +318,15 @@ int main(){
  }
  assert(visual.visualRotations.count("shotgun")==1);
  assert(visual.visualPositions.count("shotgun")==1);
+ // Reload the file through the real gameplay parser, not the in-memory
+ // draft, so a regression in key naming/serialization fails the build.
+ const auto shotgunReload=kharvox::readRightHandGripSettings(path);
+ assert(kharvox::vrPrimarySaveMatchesReload(
+     shotgunReload,"shotgun",false,false,
+     {.07f,.02f,-.08f},{0.f,0.f,0.f,1.f,true},handTune));
+ assert(!kharvox::vrPrimarySaveMatchesReload(
+     shotgunReload,"shotgun",false,false,
+     {.08f,.02f,-.08f},{0.f,0.f,0.f,1.f,true},handTune));
  // A factory-seeded profile does NOT mean the user calibrated that hand.
  // LEFT/RIGHT/BOTH only reflect actual overrides relative to factory values.
  kharvox::RightHandGripSettings factoryStatus{};
@@ -330,6 +339,19 @@ int main(){
      userStatus,factoryStatus,"pistol",false));
  assert(!kharvox::vrPrimaryPoseChangedFromFactory(
      userStatus,factoryStatus,"pistol",true)); // DEFAULT, not BOTH
+ // Fine-tune is a persisted gun-position change and must not read DEFAULT.
+ userStatus.visualFineTuneOffsets["pistol"]={.01f,.02f,-.03f};
+ assert(kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",false));
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true));
+ factoryStatus.visualFineTuneOffsets["pistol"]={.01f,.02f,-.03f};
+ assert(!kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",false));
+ userStatus.leftVisualFineTuneOffsets["pistol"]={-.02f,.01f,.03f};
+ assert(kharvox::vrPrimaryPoseChangedFromFactory(
+     userStatus,factoryStatus,"pistol",true));
+ userStatus.leftVisualFineTuneOffsets.clear();
  userStatus.visualPositions["pistol"].x+=.02f;
  assert(kharvox::vrPrimaryPoseChangedFromFactory(
      userStatus,factoryStatus,"pistol",false));

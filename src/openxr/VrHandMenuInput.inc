@@ -7,9 +7,9 @@ void refreshVrHandMenuSavedStatus(){
         kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const std::string key=kharvox::kVrCalibrationWeapons[i];
-        // Factory profiles are shipped into UserData on first run, so they
-        // should display DEFAULT, NOT BOTH. Only modifications to PRIMARY
-        // position/rotation get a left or right custom marker.
+        // Factory profiles are shipped into UserData on first run.
+        // Compare editable primary pose AND 1 cm positional fine-tune
+        // against the original factory values, including heavy alt modes.
         m.rightSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
             s.rightGripSettings,factory,key,false);
         m.leftSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
@@ -184,14 +184,22 @@ void saveVrHandMenuCalibration(){
             ||kind==KharvoxWeaponKind::Chaingun);
     const std::string profileKey=m.weapon();
     if(primaryHand){
+        const auto livePath=kharvox::runtimePathA(
+            "offhand_right_hand_positions.cfg");
         ok=kharvox::saveRightHandVisualPose(
-            kharvox::runtimePathA("offhand_right_hand_positions.cfg"),
-            profileKey,alternate,m.previewPosition,m.previewRotation,
+            livePath,profileKey,alternate,m.previewPosition,m.previewRotation,
             &why,s.weaponHandLeft,&m.fineTuneAccumulated);
         if(ok){
-            s.rightGripSettings=kharvox::readRightHandGripSettings(
-                kharvox::runtimePathA("offhand_right_hand_positions.cfg"));
-            s.primaryVisualLocked=false;
+            const auto reloaded=kharvox::readRightHandGripSettings(livePath);
+            if(!kharvox::vrPrimarySaveMatchesReload(
+                reloaded,profileKey,s.weaponHandLeft,alternate,
+                m.previewPosition,m.previewRotation,m.fineTuneAccumulated)){
+                ok=false;
+                why="saved calibration failed read-back verification";
+            }else{
+                s.rightGripSettings=reloaded;
+                s.primaryVisualLocked=false;
+            }
         }
     }else if(alternate){
         // One alternate support-hand profile, regardless of the attachment.

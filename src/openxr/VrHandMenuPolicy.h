@@ -409,6 +409,25 @@ inline bool vrPrimaryPoseChangedFromFactory(
     const auto& rotations=leftHand?current.leftVisualRotations:current.visualRotations;
     const auto& basePositions=leftHand?factory.leftVisualPositions:factory.visualPositions;
     const auto& baseRotations=leftHand?factory.leftVisualRotations:factory.visualRotations;
+    const auto& fineTunes=leftHand?current.leftVisualFineTuneOffsets
+        :current.visualFineTuneOffsets;
+    const auto& baseFineTunes=leftHand?factory.leftVisualFineTuneOffsets
+        :factory.visualFineTuneOffsets;
+    // 1 cm joystick nudges are saved separately from primary hand position.
+    // A changed nudge must count as CUSTOM, not silently display DEFAULT.
+    const auto fineTuneChanged=[&](const std::string& key) {
+        const auto currentIt=fineTunes.find(key);
+        const auto factoryIt=baseFineTunes.find(key);
+        if(currentIt==fineTunes.end()&&factoryIt==baseFineTunes.end())
+            return false;
+        if(currentIt==fineTunes.end()||factoryIt==baseFineTunes.end())
+            return true;
+        const auto& a=currentIt->second;
+        const auto& b=factoryIt->second;
+        return std::abs(a.x-b.x)>.0001f
+            ||std::abs(a.y-b.y)>.0001f
+            ||std::abs(a.z-b.z)>.0001f;
+    };
     const auto positionChanged=[&](const std::string& key) {
         const auto found=positions.find(key);
         if(found==positions.end())return false; // no user grip data at all
@@ -436,14 +455,18 @@ inline bool vrPrimaryPoseChangedFromFactory(
     // Require a complete primary profile; support-only writes must not make
     // the primary hand appear calibrated.
     if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
-    if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    if(positionChanged(weapon)||rotationChanged(weapon)
+        ||fineTuneChanged(weapon))return true;
     if(weapon=="chaingun"&&(positionChanged("chaingun_rotor")
-        ||rotationChanged("chaingun_rotor")))return true;
+        ||rotationChanged("chaingun_rotor")
+        ||fineTuneChanged("chaingun_rotor")))return true;
     const std::string alternate=weapon=="gauss_cannon"
         ?"gauss_cannon_siege":weapon=="chaingun"
             ?"chaingun_turret":"";
     if(alternate.empty())return false;
-    if(leftHand)return positionChanged(alternate)||rotationChanged(alternate);
+    if(leftHand)return positionChanged(alternate)
+        ||rotationChanged(alternate)||fineTuneChanged(alternate);
+    if(fineTuneChanged(alternate))return true;
     // Right-heavy alternate values live in dedicated fields rather than the
     // generic profile map. Compare those as well.
     if(weapon=="gauss_cannon"){
@@ -472,6 +495,48 @@ inline bool vrPrimaryPoseChangedFromFactory(
             ||std::abs(current.chaingunTurretRotation.y-factory.chaingunTurretRotation.y)>.0001f
             ||std::abs(current.chaingunTurretRotation.z-factory.chaingunTurretRotation.z)>.0001f
             ||std::abs(current.chaingunTurretRotation.w-factory.chaingunTurretRotation.w)>.0001f);
+}
+// The low-level atomic writer can return success even if the resulting
+// profile is unreadable (or overwritten by another process). Verify that
+// all three saved values are visible to the same parser used by gameplay.
+inline bool vrPrimarySaveMatchesReload(
+    const RightHandGripSettings& reloaded,const std::string& weapon,
+    bool leftPrimary,bool alternate,RightHandGripOffset expectedPosition,
+    RightHandGripRotation expectedRotation,RightHandGripOffset expectedTune) {
+    const std::string key=weapon+
+        (alternate?(weapon=="gauss_cannon"?"_siege"
+            :weapon=="chaingun"?"_turret":""):"");
+    RightHandGripOffset actualPosition{};
+    RightHandGripRotation actualRotation{};
+    if(leftPrimary){
+        const auto p=reloaded.leftVisualPositions.find(key);
+        const auto q=reloaded.leftVisualRotations.find(key);
+        if(p==reloaded.leftVisualPositions.end()
+            ||q==reloaded.leftVisualRotations.end())return false;
+        actualPosition=p->second;
+        actualRotation=q->second;
+    }else if(!rightPrimaryVisualPose(reloaded,weapon,alternate,
+        actualPosition,actualRotation))return false;
+    if(!actualRotation.valid)return false;
+    const auto actualTune=primaryVisualFineTune(
+        reloaded,weapon,leftPrimary,alternate);
+    const auto equalPosition=[](RightHandGripOffset a,RightHandGripOffset b){
+        return std::abs(a.x-b.x)<.0001f&&std::abs(a.y-b.y)<.0001f
+            &&std::abs(a.z-b.z)<.0001f;
+    };
+    const float len=std::sqrt(expectedRotation.x*expectedRotation.x
+        +expectedRotation.y*expectedRotation.y
+        +expectedRotation.z*expectedRotation.z
+        +expectedRotation.w*expectedRotation.w);
+    if(!(len>.0001f))return false;
+    const float dot=(
+        actualRotation.x*expectedRotation.x+
+        actualRotation.y*expectedRotation.y+
+        actualRotation.z*expectedRotation.z+
+        actualRotation.w*expectedRotation.w)/len;
+    return equalPosition(actualPosition,expectedPosition)
+        &&std::abs(std::abs(dot)-1.f)<.0001f
+        &&equalPosition(actualTune,expectedTune);
 }
 inline bool hasSavedVrSupport(const std::string&path,const std::string&weapon){
     std::ifstream input(path);std::string row;
