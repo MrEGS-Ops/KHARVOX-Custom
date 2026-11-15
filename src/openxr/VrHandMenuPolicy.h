@@ -409,25 +409,6 @@ inline bool vrPrimaryPoseChangedFromFactory(
     const auto& rotations=leftHand?current.leftVisualRotations:current.visualRotations;
     const auto& basePositions=leftHand?factory.leftVisualPositions:factory.visualPositions;
     const auto& baseRotations=leftHand?factory.leftVisualRotations:factory.visualRotations;
-    const auto& fineTunes=leftHand?current.leftVisualFineTuneOffsets
-        :current.visualFineTuneOffsets;
-    const auto& baseFineTunes=leftHand?factory.leftVisualFineTuneOffsets
-        :factory.visualFineTuneOffsets;
-    // 1 cm joystick nudges are saved separately from primary hand position.
-    // A changed nudge must count as CUSTOM, not silently display DEFAULT.
-    const auto fineTuneChanged=[&](const std::string& key) {
-        const auto currentIt=fineTunes.find(key);
-        const auto factoryIt=baseFineTunes.find(key);
-        if(currentIt==fineTunes.end()&&factoryIt==baseFineTunes.end())
-            return false;
-        if(currentIt==fineTunes.end()||factoryIt==baseFineTunes.end())
-            return true;
-        const auto& a=currentIt->second;
-        const auto& b=factoryIt->second;
-        return std::abs(a.x-b.x)>.0001f
-            ||std::abs(a.y-b.y)>.0001f
-            ||std::abs(a.z-b.z)>.0001f;
-    };
     const auto positionChanged=[&](const std::string& key) {
         const auto found=positions.find(key);
         if(found==positions.end())return false; // no user grip data at all
@@ -455,18 +436,14 @@ inline bool vrPrimaryPoseChangedFromFactory(
     // Require a complete primary profile; support-only writes must not make
     // the primary hand appear calibrated.
     if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
-    if(positionChanged(weapon)||rotationChanged(weapon)
-        ||fineTuneChanged(weapon))return true;
+    if(positionChanged(weapon)||rotationChanged(weapon))return true;
     if(weapon=="chaingun"&&(positionChanged("chaingun_rotor")
-        ||rotationChanged("chaingun_rotor")
-        ||fineTuneChanged("chaingun_rotor")))return true;
+        ||rotationChanged("chaingun_rotor")))return true;
     const std::string alternate=weapon=="gauss_cannon"
         ?"gauss_cannon_siege":weapon=="chaingun"
             ?"chaingun_turret":"";
     if(alternate.empty())return false;
-    if(leftHand)return positionChanged(alternate)
-        ||rotationChanged(alternate)||fineTuneChanged(alternate);
-    if(fineTuneChanged(alternate))return true;
+    if(leftHand)return positionChanged(alternate)||rotationChanged(alternate);
     // Right-heavy alternate values live in dedicated fields rather than the
     // generic profile map. Compare those as well.
     if(weapon=="gauss_cannon"){
@@ -495,146 +472,6 @@ inline bool vrPrimaryPoseChangedFromFactory(
             ||std::abs(current.chaingunTurretRotation.y-factory.chaingunTurretRotation.y)>.0001f
             ||std::abs(current.chaingunTurretRotation.z-factory.chaingunTurretRotation.z)>.0001f
             ||std::abs(current.chaingunTurretRotation.w-factory.chaingunTurretRotation.w)>.0001f);
-}
-// The low-level atomic writer can return success even if the resulting
-// profile is unreadable (or overwritten by another process). Verify that
-// all three saved values are visible to the same parser used by gameplay.
-inline bool vrPrimarySaveMatchesReload(
-    const RightHandGripSettings& reloaded,const std::string& weapon,
-    bool leftPrimary,bool alternate,RightHandGripOffset expectedPosition,
-    RightHandGripRotation expectedRotation,RightHandGripOffset expectedTune) {
-    const std::string key=weapon+
-        (alternate?(weapon=="gauss_cannon"?"_siege"
-            :weapon=="chaingun"?"_turret":""):"");
-    RightHandGripOffset actualPosition{};
-    RightHandGripRotation actualRotation{};
-    if(leftPrimary){
-        const auto p=reloaded.leftVisualPositions.find(key);
-        const auto q=reloaded.leftVisualRotations.find(key);
-        if(p==reloaded.leftVisualPositions.end()
-            ||q==reloaded.leftVisualRotations.end())return false;
-        actualPosition=p->second;
-        actualRotation=q->second;
-    }else if(!rightPrimaryVisualPose(reloaded,weapon,alternate,
-        actualPosition,actualRotation))return false;
-    if(!actualRotation.valid)return false;
-    const auto actualTune=primaryVisualFineTune(
-        reloaded,weapon,leftPrimary,alternate);
-    const auto equalPosition=[](RightHandGripOffset a,RightHandGripOffset b){
-        return std::abs(a.x-b.x)<.0001f&&std::abs(a.y-b.y)<.0001f
-            &&std::abs(a.z-b.z)<.0001f;
-    };
-    const float len=std::sqrt(expectedRotation.x*expectedRotation.x
-        +expectedRotation.y*expectedRotation.y
-        +expectedRotation.z*expectedRotation.z
-        +expectedRotation.w*expectedRotation.w);
-    if(!(len>.0001f))return false;
-    const float dot=(
-        actualRotation.x*expectedRotation.x+
-        actualRotation.y*expectedRotation.y+
-        actualRotation.z*expectedRotation.z+
-        actualRotation.w*expectedRotation.w)/len;
-    return equalPosition(actualPosition,expectedPosition)
-        &&std::abs(std::abs(dot)-1.f)<.0001f
-        &&equalPosition(actualTune,expectedTune);
-}
-// Support grip profiles are stored in independent UserData files. The old
-// calibration status only checked primary glove positions, so a successfully
-// saved LEFT/RIGHT support grip still appeared as DEFAULT in the VR menu.
-struct VrSupportProfileRecord {
-    RightHandGripOffset position{};
-    std::string aimMode;
-    float radius{},weight{};
-};
-inline bool vrReadSupportProfile(const std::string& path,const std::string& weapon,
-                                VrSupportProfileRecord& result) {
-    std::ifstream input(path);
-    std::string line;
-    while(std::getline(input,line)) {
-        std::istringstream record(line);
-        std::string ver,key,mode,extra;
-        VrSupportProfileRecord found{};
-        if(!(record>>ver>>key>>mode>>found.position.x>>
-            found.position.y>>found.position.z>>found.radius>>
-            found.weight)||ver!="2"||key!=weapon||(record>>extra))
-            continue;
-        if(!validRightHandPlacement(found.position)
-            ||(mode!="barrel"&&mode!="side-grip")
-            ||found.radius<.08f||found.radius>.40f
-            ||found.weight<0.f||found.weight>1.f)
-            continue;
-        found.aimMode=mode;
-        result=found;
-        return true;
-    }
-    return false;
-}
-inline bool vrSupportProfileChangedFromFactory(
-    const std::string& currentPath,const std::string& factoryPath,
-    const std::string& weapon) {
-    VrSupportProfileRecord current{},factory{};
-    if(!vrReadSupportProfile(currentPath,weapon,current))return false;
-    if(!vrReadSupportProfile(factoryPath,weapon,factory))return true;
-    return current.aimMode!=factory.aimMode
-        ||std::abs(current.position.x-factory.position.x)>.0001f
-        ||std::abs(current.position.y-factory.position.y)>.0001f
-        ||std::abs(current.position.z-factory.position.z)>.0001f
-        ||std::abs(current.radius-factory.radius)>.0001f
-        ||std::abs(current.weight-factory.weight)>.0001f;
-}
-inline bool vrSupportSaveMatchesReload(
-    const std::string& path,const std::string& weapon,
-    RightHandGripOffset position,bool sideGrip,float radius,float weight) {
-    VrSupportProfileRecord actual{};
-    if(!vrReadSupportProfile(path,weapon,actual))return false;
-    return actual.aimMode==(sideGrip?"side-grip":"barrel")
-        &&std::abs(actual.position.x-position.x)<.0001f
-        &&std::abs(actual.position.y-position.y)<.0001f
-        &&std::abs(actual.position.z-position.z)<.0001f
-        &&std::abs(actual.radius-radius)<.0001f
-        &&std::abs(actual.weight-weight)<.0001f;
-}
-inline bool vrAlternateSupportPosition(
-    const RightHandGripSettings& settings,const std::string& weapon,
-    bool leftPrimary,RightHandGripOffset& out) {
-    if(weapon!="gauss_cannon"&&weapon!="chaingun")return false;
-    if(leftPrimary){
-        const auto key=weapon+(weapon=="gauss_cannon"?"_siege":"_turret");
-        const auto it=settings.leftPrimaryAlternateSupport.find(key);
-        if(it==settings.leftPrimaryAlternateSupport.end())return false;
-        out=it->second;
-        return true;
-    }
-    if(weapon=="gauss_cannon"){
-        if(!settings.gaussSiegeSupportValid)return false;
-        out=settings.gaussSiegeSupport;
-    }else{
-        if(!settings.chaingunTurretSupportValid)return false;
-        out=settings.chaingunTurretSupport;
-    }
-    return true;
-}
-inline bool vrAlternateSupportChangedFromFactory(
-    const RightHandGripSettings& current,
-    const RightHandGripSettings& factory,
-    const std::string& weapon,bool leftPrimary) {
-    RightHandGripOffset actual{},original{};
-    if(!vrAlternateSupportPosition(current,weapon,leftPrimary,actual))
-        return false;
-    if(!vrAlternateSupportPosition(factory,weapon,leftPrimary,original))
-        return true;
-    return std::abs(actual.x-original.x)>.0001f
-        ||std::abs(actual.y-original.y)>.0001f
-        ||std::abs(actual.z-original.z)>.0001f;
-}
-inline bool vrAlternateSupportMatchesReload(
-    const RightHandGripSettings& settings,const std::string& weapon,
-    bool leftPrimary,RightHandGripOffset expected) {
-    RightHandGripOffset actual{};
-    return vrAlternateSupportPosition(settings,weapon,leftPrimary,actual)
-        &&std::abs(actual.x-expected.x)<.0001f
-        &&std::abs(actual.y-expected.y)<.0001f
-        &&std::abs(actual.z-expected.z)<.0001f;
 }
 inline bool hasSavedVrSupport(const std::string&path,const std::string&weapon){
     std::ifstream input(path);std::string row;
