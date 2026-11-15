@@ -445,11 +445,23 @@ void paintVrHandMenu() {
                     :opt==D::HandFocus
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
+                    :opt==D::GloryKillHighlight
+                        ?(KharvoxCameraGloryKillHighlightRequested()
+                            ?"REQUEST HIGHLIGHT OFF":"REQUEST HIGHLIGHT ON")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else write(538,248,"New features will appear here.",muted);
-            write(538,332,"Enabled tools only show in the matching",muted);
-            write(538,361,"calibration screen.",muted);
+            if(opt==D::GloryKillHighlight){
+                write(538,332,KharvoxCameraGloryKillHighlightStatus()==1
+                    ?"NATIVE SETTING VERIFIED":"NATIVE SETTING UNVERIFIED",
+                    KharvoxCameraGloryKillHighlightStatus()==1
+                        ?RGB(84,233,214):RGB(240,169,115));
+                write(538,361,KharvoxCameraGloryKillHighlightStatus()==1
+                    ?"Requested value applied.":"DOOM may ignore this request.",muted);
+            }else{
+                write(538,332,"Enabled tools only show in the matching",muted);
+                write(538,361,"calibration screen.",muted);
+            }
         }else if(toggleable){
             const bool focusToggle=m.navigation.usingStick
                 &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
@@ -499,6 +511,12 @@ void paintVrHandMenu() {
                     options[2]="RESET SPEED";
                     optionCount=3;
                     break;
+                case kharvox::VrLiveMod::TurnSpeed:
+                    options[0]="SLOWER (-25 DEG/S)";
+                    options[1]="FASTER (+25 DEG/S)";
+                    options[2]="USE LAUNCHER SPEED";
+                    optionCount=3;
+                    break;
                 case kharvox::VrLiveMod::PhysicalGloryKills:
                     options[0]="LOWER PUNCH THRESHOLD";
                     options[1]="RAISE PUNCH THRESHOLD";
@@ -521,6 +539,11 @@ void paintVrHandMenu() {
             if(mod==kharvox::VrLiveMod::Killtime){
                 write(548,543,"GLORY KILL: "+vrLiveGloryKillSpeedText(),
                     RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::TurnSpeed){
+                write(548,543,"SMOOTH TURN: "+std::to_string(static_cast<int>(
+                    std::lround(s.smoothTurnDegreesPerSecond)))+" DEG/S",
+                    RGB(84,233,214));
+                write(548,576,"SNAP ANGLE UNCHANGED",muted);
             }else if(mod==kharvox::VrLiveMod::PhysicalGloryKills){
                 std::ostringstream speed;
                 speed<<std::fixed<<std::setprecision(1)

@@ -106,7 +106,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    HolsterZones,ControllerMonitor,Experimental
+    HolsterZones,ControllerMonitor,Experimental,GloryKillHighlight
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -133,7 +133,8 @@ inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept
     return option==VrMenuDevOption::WeaponAlignment
         ||option==VrMenuDevOption::HandFocus
         ||option==VrMenuDevOption::HolsterZones
-        ||option==VrMenuDevOption::ControllerMonitor;
+        ||option==VrMenuDevOption::ControllerMonitor
+        ||option==VrMenuDevOption::GloryKillHighlight;
 }
 // One-time, non-blocking main-menu tip. Wait for an actual button release
 // before treating a new press as dismissal; never reappear this process.

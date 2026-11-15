@@ -676,6 +676,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     case VrLiveMod::Gunslinger:return 5;
                     case VrLiveMod::PhysicalCrouch:return 4; // toggle + 3 heights
                     case VrLiveMod::Killtime:return 3;
+                    case VrLiveMod::TurnSpeed:return 3;
                     case VrLiveMod::PhysicalGloryKills:return 4;
                     case VrLiveMod::Painsaw:return 1; // toggle only
                     default:return 0;
@@ -812,6 +813,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::HolsterZones){
                     m.devHolsterZones=!m.devHolsterZones;
                     m.message=m.devHolsterZones?"Gunslinger zone visualiser ON.":"Gunslinger zone visualiser OFF.";
+                }else if(kind==D::GloryKillHighlight){
+                    KharvoxCameraSetGloryKillHighlightEnabled(
+                        !KharvoxCameraGloryKillHighlightRequested());
+                    m.message=std::string("GK Highlight ")
+                        +(KharvoxCameraGloryKillHighlightRequested()?"ON":"OFF")
+                        +" requested; check native verification status.";
+                    log("[VR-DEV] "+m.message);
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";

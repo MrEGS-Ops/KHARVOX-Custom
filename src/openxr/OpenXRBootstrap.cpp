@@ -477,6 +477,7 @@ struct State {
     kharvox::WeaponRecoilState recoilState{};
     kharvox::CustomModFlags vrDesktopMods{};
     bool vrDesktopPhysicalGk{},vrDesktopKilltime{};
+    float vrDesktopSmoothTurnSpeed{230.f};
     float vrDesktopPunchSpeed{2.8f};
     int vrDesktopPunchHands{2};
     bool vrLiveKilltimeEnabled{},vrCrouchReleasePending{};
@@ -5411,7 +5412,8 @@ bool createGameplayActions(){
     XrSessionActionSetsAttachInfo at{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};at.countActionSets=1;at.actionSets=&s.gameplayActionSet;r=s.attachActionSets(s.session,&at);if(XR_FAILED(r)){log("[RIGHT] xrAttachSessionActionSets "+result(r));return false;}
     s.interactionProfilesDirty=true;
     s.interactionProfilesKnown=false;
-    configureTurning();configureMovementDirection();configurePhysicalGlorykill();
+    configureTurning();s.vrDesktopSmoothTurnSpeed=s.smoothTurnDegreesPerSecond;
+    configureMovementDirection();configurePhysicalGlorykill();
     s.vrDesktopPhysicalGk=s.physicalGlorykillEnabled;
     s.vrDesktopPunchSpeed=s.physicalGlorykillSpeed;
     s.vrDesktopPunchHands=static_cast<int>(s.physicalGlorykillHands);

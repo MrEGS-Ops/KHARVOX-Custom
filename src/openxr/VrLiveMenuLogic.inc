@@ -24,6 +24,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devHolsterZones,D::HolsterZones});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
+        rows.push_back({"Glory Kill Highlight",VrLiveMod::Other,
+            KharvoxCameraGloryKillHighlightRequested(),D::GloryKillHighlight});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             false,D::Experimental});
         return rows;
@@ -42,6 +44,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     // The heading gesture reveals one DEV folder, never loose DEV mods.
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
+    add("Smooth Turn Speed",VrLiveMod::TurnSpeed,true,true);
     // Group the two live ON/OFF features together at the bottom.
     add("Physical Crouch",VrLiveMod::PhysicalCrouch,
         s.customMods.physicalCrouch,true);
@@ -82,6 +85,13 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Higher Hz means slower executions.",
             "Normal movement speed is unchanged.",
             "",
+            ""}}};
+        case VrLiveMod::TurnSpeed:return {{{
+            "Tune SMOOTH right-stick turning in VR.",
+            "Adjust in 25 degree/second steps.",
+            "Changes apply instantly and are saved.",
+            "Snap turn angle stays unchanged.",
+            "Reset inherits the desktop launch speed.",
             ""}}};
         case VrLiveMod::WeaponRecoil:return {{{
             "One-handed fire adds physical recoil.",
@@ -138,6 +148,13 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
+        case D::GloryKillHighlight:return {{{
+            "Request DOOM Glory Kill highlighting.",
+            "OFF is the default for RIPSHIFT.",
+            "Only confirmed native CVar writes apply.",
+            "If unavailable, DEV shows UNVERIFIED.",
+            "Never enters DOOM console DEV mode.",
+            ""}}};
         case D::Experimental:return {{{"Future experimental features belong",
             "in this section once implemented.",
             "No hidden prototype is active.","","",""}}};
@@ -246,6 +263,9 @@ void applyVrLiveModRuntimeState(){
     s.physicalGlorykillSpeed=s.vrLiveSettings.punchSpeedMetersPerSec;
     s.physicalGlorykillHands=static_cast<PhysicalGlorykillHands>(
         s.vrLiveSettings.punchHands);
+    s.smoothTurnDegreesPerSecond=s.vrLiveSettings.smoothTurnSpeedDegreesPerSec>0.f
+        ?s.vrLiveSettings.smoothTurnSpeedDegreesPerSec
+        :s.vrDesktopSmoothTurnSpeed;
 }
 bool saveVrRecoilSettings(){
     if(!kharvox::saveWeaponRecoilSettings(
@@ -450,7 +470,20 @@ bool handleVrLiveMenuAction(int action){
                     s.vrLiveSettings.gloryKillHz,false);
                 changed=true;
             }else if(option==2){
-                s.vrLiveSettings.gloryKillHz=60;changed=true; // Reset KILLTIME to factory default.
+                s.vrLiveSettings.gloryKillHz=40;changed=true; // Owner-approved factory default.
+            }
+            break;
+        case VrLiveMod::TurnSpeed:
+            if(option==0){
+                s.vrLiveSettings.smoothTurnSpeedDegreesPerSec=kharvox::vrLiveStepTurnSpeed(
+                    s.vrLiveSettings.smoothTurnSpeedDegreesPerSec,
+                    s.vrDesktopSmoothTurnSpeed,-1);changed=true;
+            }else if(option==1){
+                s.vrLiveSettings.smoothTurnSpeedDegreesPerSec=kharvox::vrLiveStepTurnSpeed(
+                    s.vrLiveSettings.smoothTurnSpeedDegreesPerSec,
+                    s.vrDesktopSmoothTurnSpeed,1);changed=true;
+            }else if(option==2){
+                s.vrLiveSettings.smoothTurnSpeedDegreesPerSec=0.f;changed=true;
             }
             break;
         case VrLiveMod::PhysicalGloryKills:

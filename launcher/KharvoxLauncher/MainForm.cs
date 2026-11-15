@@ -56,7 +56,7 @@ public sealed class MainForm : Form
     private readonly CheckBox leftHanded = MakeCheck("Left Hand mode", false);
     private readonly CheckBox swapJumpCrouch = MakeCheck("Swap Jump/Crouch", false);
     private readonly CheckBox hudDebugging = MakeCheck("Enable HUD debugging / calibration", false);
-    private readonly CheckBox extendedLogging = MakeCheck("Extended Logging", false);
+    private readonly CheckBox extendedLogging = MakeCheck("Extended Logging (debug only)", false);
     private readonly CheckBox captureEyes = MakeCheck("Eye capture: Ctrl+Shift+P (next launch)", false);
     private readonly CheckBox disableAa = MakeCheck("Disable AA (both renderers, next launch)", false);
     private readonly CheckBox gloryKillHighlight = MakeCheck("Glory Kill Highlight (next launch; default Off)", false);
@@ -372,6 +372,8 @@ public sealed class MainForm : Form
         gripAlignment.SelectedIndexChanged += WeaponModeChanged;
         hudDebugging.CheckedChanged += OptionChanged;
         extendedLogging.CheckedChanged += OptionChanged;
+        statusToolTip.SetToolTip(extendedLogging,
+            "Extra diagnostic capture and log file writes may affect VR frame times. Leave OFF for normal play.");
         disableAa.CheckedChanged += OptionChanged;
         gloryKillHighlight.CheckedChanged += OptionChanged;
         captureEyes.CheckedChanged += OptionChanged;

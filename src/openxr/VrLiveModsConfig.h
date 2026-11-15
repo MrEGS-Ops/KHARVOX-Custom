@@ -26,7 +26,7 @@ inline constexpr std::array<VrLivePoint,2> kVrLiveFactoryHipShifts{{
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
-    HandsJump, BoxingGuard, Other, WeaponRecoil
+    HandsJump, BoxingGuard, Other, WeaponRecoil, TurnSpeed
 };
 // "Has live settings" is NOT the same as "can be enabled/disabled".
 // The three core mods stay available; only Physical Crouch and PAINSAW
@@ -36,14 +36,14 @@ inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
         ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw
-        ||id==VrLiveMod::WeaponRecoil;
+        ||id==VrLiveMod::WeaponRecoil||id==VrLiveMod::TurnSpeed;
 }
 inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
     return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
 }
 inline constexpr bool vrLiveModAlwaysEnabled(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
-        ||id==VrLiveMod::Killtime;
+        ||id==VrLiveMod::Killtime||id==VrLiveMod::TurnSpeed;
 }
 inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
     switch(id){
@@ -55,6 +55,7 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
         case VrLiveMod::HandFocus:return "Hand Focus";
         case VrLiveMod::Painsaw:return "PAINSAW";
         case VrLiveMod::WeaponRecoil:return "Weapon Stability";
+case VrLiveMod::TurnSpeed:return "Smooth Turn Speed";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         default:return "Other active mod";
@@ -89,7 +90,8 @@ struct VrLiveSettings {
     bool crouchStandSaved{},crouchLoweredSaved{};
     bool gaussRequireTwoHandFire{true}; // Gauss trigger needs BOTH physical Grips and an acquired support point
     int gloryKillHz{40}; // KILLTIME factory default; 0 in legacy saves still inherits launcher Hz
-    float punchSpeedMetersPerSec{2.8f};
+    float smoothTurnSpeedDegreesPerSec{0.f}; // 0 inherits the desktop launcher speed
+float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
@@ -98,6 +100,12 @@ struct VrLiveSettings {
 inline int vrLiveStepKilltimeHz(int currentHz,bool slower) noexcept {
     const int current=currentHz==0?40:currentHz;
     return std::clamp(current+(slower?10:-10),30,240);
+}
+// Smooth turning is an OpenXR setting and changes immediately in VR.
+// Zero means inherit the desktop launch value. Native snap angle is unaffected.
+inline float vrLiveStepTurnSpeed(float saved,float desktop,int direction) noexcept {
+    const float current=saved>0.f?saved:std::clamp(desktop,150.f,400.f);
+    return std::clamp(current+(direction>0?25.f:-25.f),150.f,400.f);
 }
 inline constexpr VrLivePoint vrLiveHipDefaultCenter() { return {.315f,-.76f,.225f}; }
 inline constexpr VrLivePoint vrLiveWheelDefaultCenter() { return {.20f,.09f,.3075f}; }
@@ -161,7 +169,10 @@ inline bool vrLiveValidSettings(const VrLiveSettings& s) {
         &&(s.gloryKillHz==0||(s.gloryKillHz>=30&&s.gloryKillHz<=240))
         &&std::isfinite(s.punchSpeedMetersPerSec)
         &&s.punchSpeedMetersPerSec>=.5f&&s.punchSpeedMetersPerSec<=5.f
-        &&s.punchHands>=0&&s.punchHands<=2;
+        &&s.punchHands>=0&&s.punchHands<=2
+        &&std::isfinite(s.smoothTurnSpeedDegreesPerSec)
+        &&(s.smoothTurnSpeedDegreesPerSec==0.f
+            ||(s.smoothTurnSpeedDegreesPerSec>=150.f&&s.smoothTurnSpeedDegreesPerSec<=400.f));
 }
 inline VrLivePoint vrLiveShiftedPoint(VrLivePoint p,VrLivePoint shift) {
     return {p.x+shift.x,p.y+shift.y,p.z+shift.z};
@@ -260,6 +271,7 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
         }else if(name=="killtime_hz"){if(!(row>>next.gloryKillHz))return false;}
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
+        else if(name=="smooth_turn_speed"){if(!(row>>next.smoothTurnSpeedDegreesPerSec))return false;}
         else return false;
     }
     if(f.bad()||schema!=1||!vrLiveValidSettings(next))return false;
@@ -291,7 +303,8 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
        <<"lowered "<<s.crouchLoweredSaved<<' '<<s.crouchLoweredDelta<<'\n'
        <<"killtime_hz "<<s.gloryKillHz<<'\n'
        <<"punch_speed "<<s.punchSpeedMetersPerSec<<'\n'
-       <<"punch_hands "<<s.punchHands<<'\n';
+       <<"punch_hands "<<s.punchHands<<'\n'
+       <<"smooth_turn_speed "<<s.smoothTurnSpeedDegreesPerSec<<'\n';
     out.flush();
     if(!out){out.close();fs::remove(tmp,ec);return false;}
     out.close();

@@ -11,6 +11,13 @@ int main(){
     assert(vrLiveEffectiveEnabled(s,VrLiveMod::Painsaw,false));
     assert(s.gaussRequireTwoHandFire); // Default Gauss fire safety is ON.
     assert(s.gloryKillHz==40); // Fresh install and in-headset factory preset.
+    assert(s.smoothTurnSpeedDegreesPerSec==0.f); // Inherit launcher until changed.
+    assert(vrLiveModEditable(VrLiveMod::TurnSpeed));
+    assert(!vrLiveModToggleable(VrLiveMod::TurnSpeed));
+    assert(vrLiveStepTurnSpeed(0.f,230.f,1)==255.f);
+    assert(vrLiveStepTurnSpeed(0.f,230.f,-1)==205.f);
+    assert(vrLiveStepTurnSpeed(400.f,230.f,1)==400.f);
+    assert(vrLiveStepTurnSpeed(150.f,230.f,-1)==150.f);
     // Exact owner-uploaded factory SHIFT offsets (not absolute hip points).
     constexpr auto hips=kVrLiveFactoryHipShifts;
     for(std::size_t side=0;side<2;++side){
@@ -68,6 +75,7 @@ int main(){
     assert(s.enabledOverrides[1]==-1);
     s.gaussRequireTwoHandFire=false;
     s.gloryKillHz=90;s.punchSpeedMetersPerSec=3.4f;s.punchHands=1;
+    s.smoothTurnSpeedDegreesPerSec=305.f;
     const std::string file="vr-live-mod-calibration-test.cfg";
     assert(vrLiveSave(file,s));
     VrLiveSettings read{};
@@ -75,6 +83,7 @@ int main(){
     assert(std::abs(read.hipShift[0].x-s.hipShift[0].x)<.00001f);
     assert(std::abs(read.wheelShift[1].x-s.wheelShift[1].x)<.00001f);
     assert(read.gloryKillHz==90&&read.punchHands==1);
+    assert(read.smoothTurnSpeedDegreesPerSec==305.f);
     assert(!read.gaussRequireTwoHandFire); // Saved toggle survives restart.
     assert(vrLiveEffectiveEnabled(read,VrLiveMod::Gunslinger,true));
     assert(vrLiveModEditable(VrLiveMod::WeaponGrip));
@@ -126,6 +135,7 @@ int main(){
     assert(old.hipShift[1].x==0.f&&old.hipShift[1].y==0.f
         &&old.hipShift[1].z==0.f);
     assert(old.gloryKillHz==0);
+    assert(old.smoothTurnSpeedDegreesPerSec==0.f);
     assert(old.gaussRequireTwoHandFire); // Legacy saves inherit safe default.
     // Previously saved OFF values for locked core mods cannot disable them.
     assert(vrLiveEffectiveEnabled(old,VrLiveMod::Gunslinger,false));

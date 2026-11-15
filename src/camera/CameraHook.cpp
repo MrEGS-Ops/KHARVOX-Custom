@@ -3251,16 +3251,36 @@ BossObservation readCurrentBossSequenceAt(uintptr_t owner,uintptr_t referenceOff
         ?BossObservation::Active:BossObservation::Inactive;
 }
 }
+namespace {
+std::atomic<LONG>& gloryKillHighlightDesired() {
+    static std::atomic<LONG> desired{[] {
+        char value[8]{};
+        return GetEnvironmentVariableA("KHARVOX_GK_HIGHLIGHT_ENABLED",
+            value,sizeof(value))==1 && value[0]=='1'?1L:0L;
+    }()};
+    return desired;
+}
+std::atomic<int>& gloryKillHighlightApplied() {
+    static std::atomic<int> verified{0};
+    return verified;
+}
+}
+void KharvoxCameraSetGloryKillHighlightEnabled(bool enabled) {
+    gloryKillHighlightDesired().store(enabled?1L:0L,std::memory_order_release);
+    gloryKillHighlightApplied().store(0,std::memory_order_release);
+}
+bool KharvoxCameraGloryKillHighlightRequested() {
+    return gloryKillHighlightDesired().load(std::memory_order_acquire)!=0;
+}
+int KharvoxCameraGloryKillHighlightStatus() {
+    return gloryKillHighlightApplied().load(std::memory_order_acquire);
+}
 void KharvoxCameraEnforceGloryKillHighlightSetting() {
     // Launch arguments alone are not persistent: DOOM can apply new campaign
     // settings after the process starts. Reassert the selected native setting.
     // The developer toggle is opt-in, default OFF for all existing profiles.
     if (!KharvoxCameraWorldActive() || KharvoxCameraCutsceneActive()) return;
-    static const LONG selected = [] {
-        char value[8]{};
-        return GetEnvironmentVariableA("KHARVOX_GK_HIGHLIGHT_ENABLED",value,sizeof(value))==1
-            && value[0]=='1' ? 1L : 0L;
-    }();
+    const LONG selected=gloryKillHighlightDesired().load(std::memory_order_acquire);
     static volatile LONG* highlightValue{};
     static unsigned long long nextResolveTick{};
     static bool unavailableLogged{};
@@ -3282,11 +3302,14 @@ void KharvoxCameraEnforceGloryKillHighlightSetting() {
             +(selected ? "ON (Dev Mode)" : "OFF (default)"));
     }
     const LONG observed=InterlockedCompareExchange(highlightValue,0,0);
-    if ((observed==0 || observed==1) && observed!=selected) {
-        InterlockedExchange(highlightValue,selected);
-        logGlorySlowmo(std::string("new-game/settings reload: GK Highlight reset ")
-            +(selected ? "ON" : "OFF"));
-    }
+    if (observed==0 || observed==1) {
+        if(observed!=selected) {
+            InterlockedExchange(highlightValue,selected);
+            logGlorySlowmo(std::string("new-game/settings reload: GK Highlight reset ")
+                +(selected ? "ON" : "OFF"));
+        }
+        gloryKillHighlightApplied().store(1,std::memory_order_release);
+    }else gloryKillHighlightApplied().store(0,std::memory_order_release);
 }
 
 bool KharvoxCameraBossSequenceActive(){
