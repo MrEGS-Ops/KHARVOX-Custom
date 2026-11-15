@@ -446,8 +446,10 @@ void paintVrHandMenu() {
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
                     :opt==D::GloryKillHighlight
-                        ?(KharvoxCameraGloryKillHighlightRequested()
-                            ?"REQUEST HIGHLIGHT OFF":"REQUEST HIGHLIGHT ON")
+                        ?(KharvoxCameraGloryKillHighlightStatus()!=1
+                            ?"NATIVE CONTROL UNAVAILABLE"
+                            :KharvoxCameraGloryKillHighlightRequested()
+                                ?"HIGHLIGHT OFF":"HIGHLIGHT ON")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else write(538,248,"New features will appear here.",muted);
@@ -457,7 +459,7 @@ void paintVrHandMenu() {
                     KharvoxCameraGloryKillHighlightStatus()==1
                         ?RGB(84,233,214):RGB(240,169,115));
                 write(538,361,KharvoxCameraGloryKillHighlightStatus()==1
-                    ?"Requested value applied.":"DOOM may ignore this request.",muted);
+                    ?"Native value observed.":"Use DOOM Game Settings to change.",muted);
             }else{
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);

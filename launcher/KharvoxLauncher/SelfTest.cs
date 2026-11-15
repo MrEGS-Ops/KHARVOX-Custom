@@ -43,6 +43,27 @@ internal static class SelfTest
             Require(!KharvoxRunner.ShouldDisableNativeSyncSlowmo(10, false),
                 "both fast-kill mods off must preserve native slow motion");
             VerifyProcessStatusPreservesExitCode();
+            // Saved DOOM settings (CRLF, LF, existing entries and absent keys):
+            // only the two requested values may change.
+            const string doomProfile = "bindset 0\r\nbind \"JOY10\" \"_inventory\"\r\n"
+                + "g_setting_tutorials \"1\"\r\nseta g_setting_gk_highlight \"1\"\r\n";
+            var revised = DoomGameSettingsOverride.UpdatedContent(doomProfile, false);
+            Require(revised.Contains("g_setting_tutorials \"0\"\r\n"), "tutorials forced off in saved game settings");
+            Require(revised.Contains("seta g_setting_gk_highlight \"0\"\r\n"), "GK highlighting forced off in saved game settings");
+            Require(revised.Contains("bind \"JOY10\" \"_inventory\""), "controller binds untouched");
+            Require(DoomGameSettingsOverride.UpdatedContent(revised, false) == revised, "game-settings patch is idempotent");
+            var plain = DoomGameSettingsOverride.UpdatedContent("bindset 0\n", false);
+            Require(plain.Contains("g_setting_tutorials \"0\"") && plain.Contains("g_setting_gk_highlight \"0\""),
+                "missing options added without rewriting other controls");
+            var simulatedCfg = Path.Combine(testRoot, "DOOMConfig.cfg");
+            File.WriteAllText(simulatedCfg, doomProfile);
+            Require(DoomGameSettingsOverride.TryApply(simulatedCfg, false, out _), "safe DOOM settings patch");
+            Require(File.ReadAllText(simulatedCfg + ".ripshift-settings-original.bak") == doomProfile,
+                "original DOOM settings backed up before changes");
+            Require(DoomGameSettingsOverride.TryApply(simulatedCfg, false, out _),
+                "relaunch applies settings idempotently");
+            Require(File.ReadAllText(simulatedCfg + ".ripshift-settings-original.bak") == doomProfile,
+                "original backup never overwritten");
             bool sfsBlocked=false;
             try { VulkanSfs.EnsureAvailable(testRoot); }
             catch (InvalidOperationException e) { sfsBlocked=e.Message==VulkanSfs.Blocker; }

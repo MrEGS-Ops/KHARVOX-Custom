@@ -814,11 +814,15 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.devHolsterZones=!m.devHolsterZones;
                     m.message=m.devHolsterZones?"Gunslinger zone visualiser ON.":"Gunslinger zone visualiser OFF.";
                 }else if(kind==D::GloryKillHighlight){
-                    KharvoxCameraSetGloryKillHighlightEnabled(
-                        !KharvoxCameraGloryKillHighlightRequested());
-                    m.message=std::string("GK Highlight ")
-                        +(KharvoxCameraGloryKillHighlightRequested()?"ON":"OFF")
-                        +" requested; check native verification status.";
+                    // A queued preference without a resolved native CVar
+                    // does NOTHING in-game. Never advertise an inert toggle.
+                    if(KharvoxCameraGloryKillHighlightStatus()!=1){
+                        m.message="Live GK Highlight unavailable. Change DOOM Game Settings.";
+                    }else{
+                        KharvoxCameraSetGloryKillHighlightEnabled(
+                            !KharvoxCameraGloryKillHighlightRequested());
+                        m.message="GK Highlight change sent to verified native setting.";
+                    }
                     log("[VR-DEV] "+m.message);
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;

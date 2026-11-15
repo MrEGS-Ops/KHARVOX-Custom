@@ -151,9 +151,9 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
         case D::GloryKillHighlight:return {{{
             "Request DOOM Glory Kill highlighting.",
             "OFF is the default for RIPSHIFT.",
-            "Only confirmed native CVar writes apply.",
-            "If unavailable, DEV shows UNVERIFIED.",
-            "Never enters DOOM console DEV mode.",
+            "Direct setting control needs a verified CVar.",
+            "If unavailable, use DOOM Game Settings.",
+            "RIPSHIFT also requests OFF on launch.",
             ""}}};
         case D::Experimental:return {{{"Future experimental features belong",
             "in this section once implemented.",

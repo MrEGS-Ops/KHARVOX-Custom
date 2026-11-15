@@ -349,7 +349,7 @@ internal static class KharvoxRunner
 
         using var gameIntro = await VrGameIntroSession.StartAsync(runtimeDir, statusUpdate, disableVrIntro: options.DisableVrIntro).ConfigureAwait(false);
         WriteManifest(manifestPath, dllPath);
-        EnsureNativeControllerBindings(options.BackWeapon);
+        EnsureNativeControllerBindings(options.BackWeapon, options.GloryKillHighlightEnabled, statusUpdate);
         await StopBhapticsAsync().ConfigureAwait(false);
         await StopPsvr2Async().ConfigureAwait(false);
         var bhaptics = BhapticsBridgeSession.TryStart(
@@ -2081,7 +2081,7 @@ internal static class KharvoxRunner
         finally { foreach (var process in processes) process.Dispose(); }
     }
 
-    private static void EnsureNativeControllerBindings(string backWeapon)
+    private static void EnsureNativeControllerBindings(string backWeapon, bool gloryHighlightEnabled, Action<string>? statusUpdate)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -2099,9 +2099,23 @@ internal static class KharvoxRunner
         }
         catch { }
 
+        // The controller patch and cosmetic game settings target the same
+        // existing DOOMConfig.cfg files. Never touch the encrypted savegame.
+        // Game code can reload settings later, so record FILE status rather
+        // than claiming live success without observing the native value.
+        var discovered = 0;
         foreach (var root in roots.Where(Directory.Exists))
         foreach (var config in Directory.EnumerateFiles(root, "DOOMConfig.cfg", SearchOption.AllDirectories))
+        {
+            discovered++;
             PatchCampaignControllerBindings(config, backWeapon);
+            if (DoomGameSettingsOverride.TryApply(config, gloryHighlightEnabled, out var result))
+                statusUpdate?.Invoke("DOOM settings profile: " + result);
+            else
+                statusUpdate?.Invoke("DOOM settings profile unavailable: " + result);
+        }
+        if (discovered == 0)
+            statusUpdate?.Invoke("DOOMConfig.cfg not found; game settings will use launch requests only.");
     }
 
     internal static void PatchCampaignControllerBindings(string configPath, string backWeapon)
