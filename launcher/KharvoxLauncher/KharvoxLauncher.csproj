@@ -33,9 +33,6 @@
     <EmbeddedResource Include="..\..\assets\ui\fluent-question.png"><LogicalName>Kharvox.Icons.Question</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\ui\fluent-check.png"><LogicalName>Kharvox.Icons.Check</LogicalName></EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\ui\fluent-cross.png"><LogicalName>Kharvox.Icons.Cross</LogicalName></EmbeddedResource>
-    <EmbeddedResource Include="..\..\assets\branding\kharvox-logo-dark.png">
-      <LogicalName>Kharvox.Branding.Logo</LogicalName>
-    </EmbeddedResource>
     <EmbeddedResource Include="..\..\assets\branding\kharvox-blood-splatter-round.png">
       <LogicalName>Kharvox.Branding.BloodSplatter</LogicalName>
     </EmbeddedResource>

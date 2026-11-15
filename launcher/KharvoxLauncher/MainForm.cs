@@ -137,15 +137,28 @@ public sealed class MainForm : Form
         Controls.Add(viewport);
         viewport.ClientSizeChanged += (_, _) => LayoutViewport();
 
-        var banner = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black };
-        using (var bannerStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Kharvox.Branding.Logo"))
-        {
-            if (bannerStream is not null)
-            {
-                using var embeddedImage = Image.FromStream(bannerStream);
-                banner.Image = new Bitmap(embeddedImage);
-            }
-        }
+        // RIPSHIFT is the add-on. Original KHARVOX continues to provide
+        // the independent, required VR conversion and runtime components.
+        var banner = new TableLayoutPanel {
+            Dock = DockStyle.Fill, BackColor = Color.Black,
+            ColumnCount = 1, RowCount = 2,
+            Padding = new Padding(12, 16, 12, 10)
+        };
+        banner.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
+        banner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        banner.Controls.Add(new Label {
+            Text = "RIPSHIFT VR",
+            Dock = DockStyle.Fill, ForeColor = Color.White,
+            Font = new Font("Segoe UI Semibold", 30f, FontStyle.Bold),
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 0);
+        banner.Controls.Add(new Label {
+            Text = "A gameplay enhancement for KHARVOX  |  By MrEGS_",
+            Dock = DockStyle.Fill,
+            ForeColor = Color.FromArgb(172, 183, 192),
+            Font = new Font("Segoe UI", 9f),
+            TextAlign = ContentAlignment.TopLeft
+        }, 0, 1);
         root.Controls.Add(banner);
 
         var profileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Padding = new Padding(8, 2, 8, 2) };
@@ -159,7 +172,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.WhiteSmoke
         });
-        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "Custom"]);
+        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "RIPSHIFT"]);
         preset.Dock = DockStyle.Fill;
         preset.SelectedIndexChanged += (_, _) => ApplyPreset();
         profileRow.Controls.Add(preset);
