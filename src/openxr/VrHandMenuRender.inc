@@ -304,7 +304,11 @@ void paintVrHandMenu() {
             fill(531,550,384,59,m.hovered==115
                 ?RGB(53,95,108):RGB(36,78,92));
             SelectObject(dc,regular);
-            write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
+            const bool experimentalRow=devPage
+                &&entries[overviewSelected].developer
+                    ==kharvox::VrMenuDevOption::Experimental;
+            write(624,563,experimentalRow?"COMING SOON"
+                :devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
             SelectObject(dc,smallFont);
             write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
@@ -346,6 +350,9 @@ void paintVrHandMenu() {
             write(538,155,kharvox::vrLiveModAlwaysEnabled(mod)
                 ?"CORE FEATURE - ALWAYS ACTIVE":"SETTINGS - NO LIVE ON/OFF SWITCH",muted);
         }
+        // DEV settings own their right pane; do not draw the ordinary
+        // mod controls over the diagnostic switches.
+        if(!devPage){
         SelectObject(dc,smallFont);
         if(!editable)
             write(545,251,"Configure in desktop launcher only.",muted);
@@ -422,6 +429,7 @@ void paintVrHandMenu() {
                 write(548,605,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
         }
+        } // !devPage: prevent normal mod settings drawing over DEV
         }
         SelectObject(dc,smallFont);
         if(devPage){
