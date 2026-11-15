@@ -185,7 +185,7 @@ void paintVrHandMenu() {
         write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
         write(39,551,"B: CANCEL",muted);
     }else if(m.page==kharvox::VrMenuPage::Mods){
-        write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
+        write(38,24,"RIPSHIFT VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
         write(40,102,"CONFIGURABLE MODS",muted);
         write(535,102,m.navigation.settingsColumn?"CONFIG OPTIONS":"MOD OVERVIEW",muted);
@@ -350,7 +350,7 @@ void paintVrHandMenu() {
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
-        write(38,24,"KHARVOX VR  /  RECOIL CALIBRATION",white);
+        write(38,24,"RIPSHIFT VR  /  RECOIL CALIBRATION",white);
         SelectObject(dc,smallFont);
         write(40,102,"WEAPON PROFILES",muted);
         write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
@@ -464,7 +464,7 @@ void paintVrHandMenu() {
             ?RGB(47,95,110):RGB(39,49,63));
         write(815,30,"BACK",white);
     }else{
-    write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
+    write(38,24,"RIPSHIFT VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
     write(40,102,"WEAPON PROFILES",muted);
     write(536,102,"SELECT HAND",muted);

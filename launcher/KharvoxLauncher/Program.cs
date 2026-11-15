@@ -62,9 +62,9 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        if (args.Any(argument => string.Equals(argument, "--self-test-mregs-profile",
+        if (args.Any(argument => string.Equals(argument, "--self-test-ripshift-profile",
                 StringComparison.OrdinalIgnoreCase)))
-            return MrEgsProfileSelfTest.Run();
+            return RipshiftProfileSelfTest.Run();
         if (args.Any(argument => string.Equals(argument, "--self-test-shoulder-weapon-lock",
                 StringComparison.OrdinalIgnoreCase)))
             return GunslingerShoulderWeaponLock.RunSelfTest();
@@ -110,7 +110,7 @@ internal static class Program
             // Restore the original first-run installation picker, but keep
             // all regular gameplay configuration in KHARVOX VR itself.
             if (!OriginalKharvoxSetup.EnsureSelected()) return 0;
-            // Direct KHARVOX launcher: no external Mod Manager or updater.
+            // Direct RIPSHIFT VR launcher: no external Mod Manager or updater.
             // Preserve CactusVRStudios' original MainForm.cs unchanged.
             LauncherStartupTrace.Mark("MainForm construction begins");
             using (var window = new MainForm())
@@ -122,18 +122,18 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Load event complete");
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
-                window.Text = "KHARVOX — MrEGS_ Edition";
-                MrEgsLaunchProfileBridge.Watch(window);
+                window.Text = "RIPSHIFT VR";
+                RipshiftLaunchProfileBridge.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);
-                LauncherStartupTrace.Mark("Original launcher, MrEGS_ defaults and gunstock lock ready");
+                LauncherStartupTrace.Mark("RIPSHIFT VR profile and gunstock lock ready");
                 Application.Run(window);
             }
             return 0;
         }
         catch (InvalidDataException ex)
         {
-            MessageBox.Show(ex.Message, "KHARVOX — Settings need repair",
+            MessageBox.Show(ex.Message, "RIPSHIFT VR — Settings need repair",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 2;
         }
@@ -161,7 +161,7 @@ internal static class Program
             KharvoxLaunchOptions options;
             using (var form = new MainForm())
             {
-                MrEgsLaunchProfileBridge.Watch(form);
+                RipshiftLaunchProfileBridge.Watch(form);
                 options = form.CreateLaunchOptions();
             }
 

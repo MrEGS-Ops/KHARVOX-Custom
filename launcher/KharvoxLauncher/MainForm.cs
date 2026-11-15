@@ -105,7 +105,7 @@ public sealed class MainForm : Form
     internal MainForm(string settingsPath)
     {
         SettingsPath = settingsPath;
-        Text = "KHARVOX Launcher";
+        Text = "RIPSHIFT VR";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(548, 904);
@@ -432,7 +432,7 @@ public sealed class MainForm : Form
 
         var footerLabel = new Label
         {
-            Text = "Made by Cactus",
+            Text = "RIPSHIFT VR · MrEGS_",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,

@@ -69,7 +69,7 @@ internal static class OriginalKharvoxSetup
 
     internal static string RequireSelectedOriginal() =>
         SavedOriginalDirectory() ?? throw new InvalidDataException(
-            "Original CactusVRStudios KHARVOX is required. Open the KHARVOX Custom launcher and select the original KharvoxLauncher.exe from its separately installed folder.");
+            "Original CactusVRStudios KHARVOX is required. Open RIPSHIFT VR and select the original KharvoxLauncher.exe from its separately installed folder.");
 
     private static void SaveOriginalFile(string originalLauncherFile)
     {
@@ -94,7 +94,7 @@ internal static class OriginalKharvoxSetup
 
         using var setup = new Form
         {
-            Text = "KHARVOX — MrEGS_ Edition | First Run",
+            Text = "RIPSHIFT VR | First-Time Setup",
             ClientSize = new Size(498, 205),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
@@ -109,22 +109,22 @@ internal static class OriginalKharvoxSetup
         try { setup.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch (ArgumentException) { }
         setup.Controls.Add(new Label {
-            Text = "Locate your original KHARVOX",
+            Text = "Locate Original KHARVOX",
             Location = new Point(18, 17), Size = new Size(455, 27),
             Font = new Font("Segoe UI", 11f, FontStyle.Bold)
         });
         setup.Controls.Add(new Label {
-            Text = "This MrEGS_ edition runs alongside CactusVRStudios' KHARVOX.",
+            Text = "This add-on requires an existing installation of KHARVOX by CactusVRStudios.",
             Location = new Point(18, 52), Size = new Size(460, 28)
         });
         setup.Controls.Add(new Label {
-            Text = "Browse to KharvoxLauncher.exe in your original KHARVOX folder. We use its shader files without changing your installation.",
+            Text = "Select the original KharvoxLauncher.exe to continue. Your existing installation will remain unchanged.",
             Location = new Point(18, 83), Size = new Size(460, 52),
             ForeColor = Color.Gainsboro
         });
 
         var link = new LinkLabel {
-            Text = "Get original KHARVOX on GitHub",
+            Text = "Get KHARVOX on GitHub",
             Location = new Point(18, 151), Size = new Size(304, 33),
             LinkColor = Color.LightSkyBlue, ActiveLinkColor = Color.White,
             BackColor = setup.BackColor
@@ -141,7 +141,7 @@ internal static class OriginalKharvoxSetup
         setup.Controls.Add(link);
 
         var select = new Button {
-            Text = "Browse original…", Size = new Size(141, 32),
+            Text = "Browse…", Size = new Size(141, 32),
             Location = new Point(338, 151),
             BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.WhiteSmoke,
             FlatStyle = FlatStyle.Flat
@@ -156,7 +156,7 @@ internal static class OriginalKharvoxSetup
             if (Validate(chooser.FileName) == null) {
                 MessageBox.Show(setup,
                     "That is not the original KHARVOX installation. Select its KharvoxLauncher.exe from the folder containing the original SFS shader profile.",
-                    "KHARVOX Custom — Original installation required",
+                    "RIPSHIFT VR — Original KHARVOX required",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -170,7 +170,7 @@ internal static class OriginalKharvoxSetup
                 error is InvalidDataException || error is ArgumentException) {
                 MessageBox.Show(setup,
                     "Unable to save the original KHARVOX location: " + error.Message,
-                    "KHARVOX Custom — Setup",
+                    "RIPSHIFT VR — Setup",
                     MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         };

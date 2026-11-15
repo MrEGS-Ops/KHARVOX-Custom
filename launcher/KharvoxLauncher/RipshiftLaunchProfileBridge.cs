@@ -6,16 +6,16 @@ using System.Windows.Forms;
 
 namespace KharvoxLauncher;
 
-// Launcher-specific profile overlay. Cactus's original MainForm.cs is kept
-// byte-for-byte unchanged; the modified launcher adds behaviour at runtime.
-internal static class MrEgsLaunchProfileBridge
+// Launcher-specific profile overlay. The RIPSHIFT launcher adds its own locked profile while preserving the
+// original KHARVOX runtime compatibility.
+internal static class RipshiftLaunchProfileBridge
 {
     private const BindingFlags PrivateInstance =
         BindingFlags.Instance | BindingFlags.NonPublic;
     private static readonly Color DisabledCaptionColor =
         Color.FromArgb(123, 130, 142);
     private const string LockedHelp =
-        "Fixed by the MrEGS_ launch profile.";
+        "Fixed by the RIPSHIFT launch profile.";
 
     private static T Get<T>(MainForm form, string field) where T : Control =>
         typeof(MainForm).GetField(field, PrivateInstance)
@@ -23,7 +23,7 @@ internal static class MrEgsLaunchProfileBridge
         ?? throw new InvalidDataException("KHARVOX launcher profile control missing: " + field);
 
     internal static bool IsActive(MainForm form) =>
-        Get<ComboBox>(form, "preset").SelectedIndex == LauncherPresetPolicy.MrEgsPresetIndex;
+        Get<ComboBox>(form, "preset").SelectedIndex == LauncherPresetPolicy.RipshiftPresetIndex;
 
     internal static void SelectProfileForSelfTest(MainForm form, int index) =>
         Get<ComboBox>(form, "preset").SelectedIndex = index;
@@ -48,7 +48,7 @@ internal static class MrEgsLaunchProfileBridge
             throw new InvalidDataException("KHARVOX launch profile count changed unexpectedly.");
 
         // The fourth slot retains its old numeric ID for existing settings.
-        preset.Items[LauncherPresetPolicy.MrEgsPresetIndex] = "MrEGS_";
+        preset.Items[LauncherPresetPolicy.RipshiftPresetIndex] = "RIPSHIFT";
 
         var immersive = Get<CheckBox>(form, "intense");
         var freelook = Get<CheckBox>(form, "cinematicFreelook");
@@ -99,7 +99,7 @@ internal static class MrEgsLaunchProfileBridge
                     if (resetTurnSpeed)
                     {
                         turnMode.SelectedIndex = 0; // Smooth turn, not snap.
-                        turnSpeed.Value = LauncherPresetPolicy.MrEgsTurnSpeed;
+                        turnSpeed.Value = LauncherPresetPolicy.RipshiftTurnSpeed;
                     }
                 }
                 immersive.Enabled = !locked;
@@ -147,7 +147,7 @@ internal static class MrEgsLaunchProfileBridge
         };
 
         // The original launcher selects Recommended when no JSON exists.
-        // Select MrEGS_ on first run; retain the actual selected preset when
+        // Select RIPSHIFT on first run; retain the actual selected preset when
         // existing user settings are loaded, to avoid losing preferences.
         var settingsPath = typeof(MainForm).GetField("SettingsPath", PrivateInstance)
             ?.GetValue(form) as string;

@@ -6,7 +6,7 @@ using System.Windows.Forms;
 namespace KharvoxLauncher;
 
 // Windows-only UI regression: no headset, DOOM install, or VR mods required.
-internal static class MrEgsProfileSelfTest
+internal static class RipshiftProfileSelfTest
 {
     private static T Control<T>(MainForm form, string name) where T : Control =>
         typeof(MainForm).GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
@@ -17,22 +17,22 @@ internal static class MrEgsProfileSelfTest
     {
         if (box.Checked != expected || box.Enabled)
             throw new InvalidDataException(
-                "MrEGS_ lock mismatch: " + box.Text + " checked=" + box.Checked
+                "RIPSHIFT lock mismatch: " + box.Text + " checked=" + box.Checked
                 + " enabled=" + box.Enabled);
     }
 
     internal static int Run()
     {
         var path = Path.Combine(Path.GetTempPath(),
-            "KHARVOX-mregs-profile-" + Guid.NewGuid().ToString("N") + ".json");
+            "RIPSHIFT-profile-" + Guid.NewGuid().ToString("N") + ".json");
         try
         {
             using var form = new MainForm(path);
-            MrEgsLaunchProfileBridge.Watch(form);
+            RipshiftLaunchProfileBridge.Watch(form);
             var profile = Control<ComboBox>(form, "preset");
             if (profile.SelectedIndex != LauncherPresetPolicy.DefaultPresetIndex
-                || !string.Equals(profile.Text, "MrEGS_", StringComparison.Ordinal))
-                throw new InvalidDataException("MrEGS_ must be the fresh-install default.");
+                || !string.Equals(profile.Text, "RIPSHIFT", StringComparison.Ordinal))
+                throw new InvalidDataException("RIPSHIFT must be the fresh-install default.");
 
             void CheckLocks()
             {
@@ -53,7 +53,7 @@ internal static class MrEgsProfileSelfTest
             CheckLocks();
             // Owner factory presets must not lock or impose render resolution
             // or FSR. The ordinary launcher baseline stays 100% / unchecked,
-            // and the user can override each setting under MrEGS_.
+            // and the user can override each setting under RIPSHIFT.
             var renderScale = Control<NumericUpDown>(form, "renderScale");
             var useFsr = Control<CheckBox>(form, "useFsrUpscaling");
             if (renderScale.Value != 100m || useFsr.Checked
@@ -65,7 +65,7 @@ internal static class MrEgsProfileSelfTest
             CheckLocks();
             if (renderScale.Value != 125m || !useFsr.Checked)
                 throw new InvalidDataException(
-                    "MrEGS_ must not override explicitly selected RenderScale or FSR.");
+                    "RIPSHIFT must not override explicitly selected RenderScale or FSR.");
             if (Control<CheckBox>(form, "swapJumpCrouch").Checked)
                 throw new InvalidDataException("Jump/Crouch swap must default to OFF.");
             // A saved v36 override used to keep this switch on unexpectedly.
@@ -97,7 +97,7 @@ internal static class MrEgsProfileSelfTest
                 || !form.CreateLaunchOptions().PhysicalGlorykill)
                 throw new InvalidDataException("Runtime options differ from visible profile locks.");
 
-            MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
+            RipshiftLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
             if (!Control<CheckBox>(form, "intense").Enabled
                 || !Control<CheckBox>(form, "handsJump").Enabled
                 || !Control<ComboBox>(form, "backWeapon").Enabled)
@@ -105,18 +105,18 @@ internal static class MrEgsProfileSelfTest
             Control<CheckBox>(form, "laserSight").Checked = true;
             if (profile.SelectedIndex != 0)
                 throw new InvalidDataException(
-                    "Editing a different profile must not silently select MrEGS_.");
+                    "Editing a different profile must not silently select RIPSHIFT.");
 
-            // Switching to MrEGS_ from another profile must NOT enforce a
+            // Switching to RIPSHIFT from another profile must NOT enforce a
             // saved owner's render scale or Use FSR preference.
             renderScale.Value = 135m;
             useFsr.Checked = true;
-            MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, LauncherPresetPolicy.MrEgsPresetIndex);
+            RipshiftLaunchProfileBridge.SelectProfileForSelfTest(form, LauncherPresetPolicy.RipshiftPresetIndex);
             CheckLocks();
             if (renderScale.Value != 135m || !useFsr.Checked
                 || !renderScale.Enabled || !useFsr.Enabled)
                 throw new InvalidDataException(
-                    "Choosing MrEGS_ unexpectedly changed render scale or FSR.");
+                    "Choosing RIPSHIFT unexpectedly changed render scale or FSR.");
             if (turnSpeed.Value != 387)
                 throw new InvalidDataException("Profile switch did not reset smooth turn speed.");
             turnSpeed.Value = 390;
@@ -125,7 +125,7 @@ internal static class MrEgsProfileSelfTest
             if (turnSpeed.Value != 390)
                 throw new InvalidDataException("Turn speed must remain user-adjustable.");
 
-            Console.WriteLine("MrEGS_ default profile, locked values, mod-conflict recovery and switching passed.");
+            Console.WriteLine("RIPSHIFT default profile, locked values, mod-conflict recovery and switching passed.");
             return 0;
         }
         catch (Exception error)
