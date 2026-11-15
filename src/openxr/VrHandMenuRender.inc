@@ -371,7 +371,7 @@ void paintVrHandMenu() {
             const auto key=kharvox::kWeaponRecoilKinds[static_cast<std::size_t>(i)];
             const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
             const char* label=i==7?"Minigun (Normal)"
-                :i==9?"Minigun (Turret)":(name&&*name?name:key);
+                :i==9?"Minigun (Alt Fire)":(name&&*name?name:key);
             write(56,y+6,label,white);
             SelectObject(dc,smallFont);
             const int strength=static_cast<int>(std::lround(
@@ -514,7 +514,9 @@ void paintVrHandMenu() {
     if(heavy){
         button(531,306,384,49,m.alternateProfile,
             m.hovered==32||gamepadFocus(32));
-        write(550,317,m.alternateProfile?"PROFILE: ALT FIRE"
+        write(550,317,m.alternateProfile
+            ?(selectedKind==KharvoxWeaponKind::GaussCannon
+                ?"GAUSS CANNON: ALT FIRE":"MINIGUN: ALT FIRE")
             :"PROFILE: NORMAL",white);
     }else{
         write(538,306,primarySelected
