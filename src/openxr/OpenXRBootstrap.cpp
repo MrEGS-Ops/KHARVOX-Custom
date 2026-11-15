@@ -296,6 +296,12 @@ struct State {
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
     XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
     kharvox::ControllerOnlySafetyState controllerOnlySafety{};
+    // Primary-hand calibration only: freeze the NATIVE GUN's physical pose
+    // while Grip is held, but sample the live weapon-hand rotation separately
+    // for its independently editable glove. Never persisted.
+    bool calibrationFrozenGunValid{},calibrationFrozenWeaponLeft{};
+    KharvoxWeaponKind calibrationFrozenKind{KharvoxWeaponKind::Unknown};
+    ControllerPose calibrationFrozenAim{},calibrationFrozenGrip{};
     bool controllerDisconnectWasLocked{true},controllerPauseAttempted{};
     unsigned long long controllerPauseUntilMs{};
     bool interactionProfilesDirty{true}; bool interactionProfilesKnown{}; bool interactionProfileQueryFailureLogged{}; bool primaryGripUsesValveIndex{}; bool supportGripUsesValveIndex{};
@@ -2574,6 +2580,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
+        s.calibrationFrozenGunValid=false;
         s.recoilState={};
         s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
@@ -2596,11 +2603,11 @@ void updateWeapon6Dof(){
     // The controller's system laser is its OpenXR AIM ray. Drive the native
     // barrel with that exact orientation; do not silently switch to GRIP or
     // use the support-hand angle. Weapon-hand visuals use independent GRIP.
-    const auto& primaryGripController=s.weaponHandLeft
+    const auto& livePrimaryGripController=s.weaponHandLeft
         ?s.leftGripController:s.rightGripController;
-    const auto& primaryController=weaponAimTrackingController();
+    const auto& livePrimaryController=weaponAimTrackingController();
     const auto& supportController=supportGripController();
-    if(!primaryController.valid){
+    if(!livePrimaryController.valid){
         s.lastWeaponRenderedValid=false;
         s.supportVisualLocked=false;
         s.primaryVisualLocked=false;
@@ -2619,6 +2626,36 @@ void updateWeapon6Dof(){
         s.weaponTrackingHeld=false;
     }
 
+    // Hold weapon-hand Grip during PRIMARY calibration to freeze the real
+    // gun while the LIVE physical weapon hand rotates the visual glove.
+    // Snapshot AIM + GRIP positions/orientations exactly once on Grip press.
+    // Releasing Grip discards the snapshot and resumes native gun tracking.
+    const auto kind=KharvoxWeaponCurrentKind();
+    const auto& menu=s.vrHandMenu;
+    const bool freezeGunForWrist=menu.mode==kharvox::VrHandMenuMode::Calibrating
+        &&menu.liveCapture==kharvox::VrLiveCapture::None
+        &&menu.page==kharvox::VrMenuPage::WeaponGrip
+        &&menu.rightHand!=s.weaponHandLeft
+        &&menu.calibratingWeaponLeft==s.weaponHandLeft
+        &&menu.primaryGripPreviewHeld&&menu.previewValid
+        &&kind==KharvoxWeaponKindFromKey(menu.weapon())
+        &&livePrimaryGripController.valid;
+    if(!freezeGunForWrist){
+        s.calibrationFrozenGunValid=false;
+    }else if(!s.calibrationFrozenGunValid
+        ||s.calibrationFrozenKind!=kind
+        ||s.calibrationFrozenWeaponLeft!=s.weaponHandLeft){
+        s.calibrationFrozenAim=livePrimaryController;
+        s.calibrationFrozenGrip=livePrimaryGripController;
+        s.calibrationFrozenKind=kind;
+        s.calibrationFrozenWeaponLeft=s.weaponHandLeft;
+        s.calibrationFrozenGunValid=true;
+        log("[VR-HAND-CAL] weapon-hand Grip held: native gun frozen; rotate live glove");
+    }
+    const auto& primaryController=freezeGunForWrist
+        ?s.calibrationFrozenAim:livePrimaryController;
+    const auto& primaryGripController=freezeGunForWrist
+        ?s.calibrationFrozenGrip:livePrimaryGripController;
     // Hip holsters hold weapon IDs, not objects or even virtual 6DoF props.
     // Never relocate the actual native weapon pose into a hip. The same
     // normal hand-tracked pose advances beneath the presentation-only hide.
@@ -2638,7 +2675,6 @@ void updateWeapon6Dof(){
         setWeaponCvars(0,0,0,0,0,0);
         log("[WEAPON] gameplay activated with body-relative controller pose; no startup rotation baseline");
     }
-    const auto kind=KharvoxWeaponCurrentKind();
     auto rotation=current.orientation;
     // Primary glove offsets are VISUAL ONLY while controller laser aiming
     // is enabled. Saved glove Y/Z values must not move or tilt the barrel.

@@ -149,9 +149,9 @@ int main(){
         VrHandMenuMode::Menu,true,true));
     assert(!vrWeaponManualCalibrationLive(
         VrHandMenuMode::Closed,false,false));
-    // A single unsaved calibration can switch between GUN fine-tune
-    // (Grip held) and GLOVE rotation (Grip released) repeatedly. Each
-    // release starts from the current visual wrist angle WITHOUT a jump.
+    // Invert PRIMARY editing: NO Grip moves the native gun in 1 cm steps;
+    // HOLD weapon-hand Grip freezes the gun and rotates the visual glove.
+    // Only the equipped weapon hand supplies the rotation probe.
     const RightHandGripRotation id{0,0,0,1,true};
     const RightHandGripRotation yaw90{0,0.707106781f,0,0.707106781f,true};
     const RightHandGripRotation yaw180{0,1,0,0,true};
@@ -164,42 +164,33 @@ int main(){
     RightHandGripRotation wrist=id;
     RightHandGripOffset gunDraft{.02f,-.03f,-.04f};
     const auto originalDraft=gunDraft;
-    // Enter rotation mode from a held Grip: NO jump to free controller.
+    // No Grip: regardless of controller orientation, glove angle is locked.
     wrist=vrCalibrationRelativeRotation(edit,false,yaw90,wrist);
+    assert(rotationClose(wrist,id)&&!edit.referenceValid);
+    gunDraft.y+=.01f; // free 1 cm Y nudge
+    // Weapon hand Grip starts rotation: zero jump on the first frame,
+    // even when the weapon hand was already turned on entry.
+    wrist=vrCalibrationRelativeRotation(edit,true,yaw90,wrist);
     assert(rotationClose(wrist,id)&&edit.referenceValid);
-    // Rotate the free controller another 90 deg: glove rotates, gun holds.
-    wrist=vrCalibrationRelativeRotation(edit,false,yaw180,wrist);
-    assert(rotationClose(wrist,yaw90));
+    wrist=vrCalibrationRelativeRotation(edit,true,yaw180,wrist);
+    assert(rotationClose(wrist,yaw90)); // 90 degree weapon-hand movement
     assert(gunDraft.x==originalDraft.x
-        &&gunDraft.y==originalDraft.y&&gunDraft.z==originalDraft.z);
-    // Hold Grip: rotation freezes while gun is moved by one centimeter.
-    wrist=vrCalibrationRelativeRotation(edit,true,id,wrist);
-    assert(rotationClose(wrist,yaw90)&&!edit.referenceValid);
-    gunDraft.y+=.01f;
-    // Release Grip with the free controller at an unrelated angle:
-    // the GUN draft and glove rotation stay exactly where they were.
+        &&std::abs(gunDraft.y+.02f)<1e-6f
+        &&gunDraft.z==originalDraft.z); // gun fine-tune untouched
+    // Release locks the last visual glove orientation.
     wrist=vrCalibrationRelativeRotation(edit,false,id,wrist);
-    assert(rotationClose(wrist,yaw90));
-    assert(std::abs(gunDraft.y+.02f)<.000001f);
-    // Free-hand motion adjusts only the glove's rotation from this point.
-    wrist=vrCalibrationRelativeRotation(edit,false,yaw90,wrist);
-    assert(rotationClose(wrist,yaw180));
-    assert(std::abs(gunDraft.y+.02f)<.000001f);
-    // Re-grip: freeze yaw180 and preserve all positional adjustments.
+    assert(rotationClose(wrist,yaw90)&&!edit.referenceValid);
+    // Regrip at unrelated orientation: again NO glove jump.
     wrist=vrCalibrationRelativeRotation(edit,true,id,wrist);
-    assert(rotationClose(wrist,yaw180)&&!edit.referenceValid);
-    gunDraft.x-=.01f;
-    wrist=vrCalibrationRelativeRotation(edit,false,yaw180,wrist);
+    assert(rotationClose(wrist,yaw90)&&edit.referenceValid);
+    wrist=vrCalibrationRelativeRotation(edit,true,yaw90,wrist);
     assert(rotationClose(wrist,yaw180));
-    assert(std::abs(gunDraft.x-.01f)<.000001f);
-    assert(std::abs(gunDraft.y+.02f)<.000001f);
-    assert(std::abs(gunDraft.z+.04f)<.000001f);
-    // Cancel discards unsaved changes by leaving the draft unwritten.
+    // Edit cancellation leaves the saved profile unchanged.
     const auto storedGun=originalDraft;
     const auto storedWrist=id;
     edit={};
     assert(!edit.referenceValid&&rotationClose(storedWrist,id));
-    assert(std::abs(storedGun.x-.02f)<.000001f);
+    assert(std::abs(storedGun.x-.02f)<1e-6f);
 
     // If the Quest runtime provides a valid but non-TRACKED GRIP pose,
     // use a tracked AIM laser pose. If neither is tracked, POSITION_VALID
@@ -264,67 +255,67 @@ int main(){
     const auto sameCm=[](float got,float expected){
         return std::abs(got-expected)<1e-6f;
     };
-    zeroNudge(nudge(true,true,0,0,0)); // Grip enters, arm neutral
-    auto move=nudge(true,true,1.f,0.f,0.f);
+    zeroNudge(nudge(true,false,0,0,0)); // Default fine-tune enters, arm neutral
+    auto move=nudge(true,false,1.f,0.f,0.f);
     assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
     const auto firstAt=fineClock;
-    zeroNudge(nudge(true,true,1.f,0.f,0.f,
+    zeroNudge(nudge(true,false,1.f,0.f,0.f,
         kVrWeaponFineTuneRepeatDelayMs-1)); // not even 1ms early
     assert(fineClock==firstAt+kVrWeaponFineTuneRepeatDelayMs-1);
-    move=nudge(true,true,1.f,0.f,0.f,1);
+    move=nudge(true,false,1.f,0.f,0.f,1);
     assert(sameCm(move.x,.01f)); // first held auto-repeat
-    zeroNudge(nudge(true,true,1.f,0.f,0.f,
+    zeroNudge(nudge(true,false,1.f,0.f,0.f,
         kVrWeaponFineTuneRepeatIntervalMs-1));
-    move=nudge(true,true,1.f,0.f,0.f,1);
+    move=nudge(true,false,1.f,0.f,0.f,1);
     assert(sameCm(move.x,.01f)); // steady 175ms repeat
     // A frame stall must emit only ONE step, never a 10cm catch-up jump.
-    move=nudge(true,true,1.f,0.f,0.f,1000);
+    move=nudge(true,false,1.f,0.f,0.f,1000);
     assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
     // Recenter resets the countdown and permits a new instant 1cm flick.
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,-1.f,0.f,0.f);
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,-1.f,0.f,0.f);
     assert(sameCm(move.x,-.01f)&&move.y==0&&move.z==0);
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0.f,1.f,0.f); // left up -> local -Z
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0.f,1.f,0.f); // left up -> local -Z
     assert(move.x==0&&move.y==0&&sameCm(move.z,-.01f));
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0.f,-1.f,0.f); // left down -> +Z
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0.f,-1.f,0.f); // left down -> +Z
     assert(move.x==0&&move.y==0&&sameCm(move.z,.01f));
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,0,1.f); // right up -> +Y
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0,0,1.f); // right up -> +Y
     assert(move.x==0&&sameCm(move.y,.01f)&&move.z==0);
     const auto rightAt=fineClock;
-    zeroNudge(nudge(true,true,0,0,1.f,
+    zeroNudge(nudge(true,false,0,0,1.f,
         kVrWeaponFineTuneRepeatDelayMs-1));
-    move=nudge(true,true,0,0,1.f,1);
+    move=nudge(true,false,0,0,1.f,1);
     assert(sameCm(move.y,.01f));
     assert(fineClock==rightAt+kVrWeaponFineTuneRepeatDelayMs);
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,0,-1.f); // right down -> -Y
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0,0,-1.f); // right down -> -Y
     assert(move.x==0&&sameCm(move.y,-.01f)&&move.z==0);
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,.9f,.8f,0); // diagonal: one axis
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,.9f,.8f,0); // diagonal: one axis
     assert(sameCm(move.x,.01f)&&move.y==0&&move.z==0);
     // No automatic direction reversal (X, Z or sign) while stick
     // remains displaced: users must recenter between opposing nudges.
-    zeroNudge(nudge(true,true,-1.f,0,0,2000));
-    zeroNudge(nudge(true,true,0,-1.f,0,2000));
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,-1.f,0);
+    zeroNudge(nudge(true,false,-1.f,0,0,2000));
+    zeroNudge(nudge(true,false,0,-1.f,0,2000));
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0,-1.f,0);
     assert(sameCm(move.z,.01f));
 
-    // Grip RELEASE switches to rotation mode and cancels repeat timers,
-    // but runtime retains the unsaved GUN offset in fineTuneAccumulated.
-    zeroNudge(nudge(true,false,0,0,-1.f,2000));
-    zeroNudge(nudge(true,true,1.f,0,0)); // held at entry: inert
-    zeroNudge(nudge(true,true,1.f,0,0,2000)); // stays inert until centered
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,1.f,0,0);
+    // Grip HELD switches to rotation mode and cancels repeat timers.
+    // Release Grip while a stick is held: still inert until recentered.
+    zeroNudge(nudge(true,true,0,0,-1.f,2000));
+    zeroNudge(nudge(true,false,1.f,0,0)); // released at entry: inert
+    zeroNudge(nudge(true,false,1.f,0,0,2000)); // stays inert until centered
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,1.f,0,0);
     assert(sameCm(move.x,.01f));
-    zeroNudge(nudge(false,true,-1.f,0,0,2000)); // menu/support: no motion
-    zeroNudge(nudge(true,true,-1.f,0,0)); // no inherited repeat timer
-    zeroNudge(nudge(true,true,0,0,0));
-    move=nudge(true,true,0,0,-1.f);
+    zeroNudge(nudge(false,false,-1.f,0,0,2000)); // menu/support: no motion
+    zeroNudge(nudge(true,false,-1.f,0,0)); // no inherited repeat timer
+    zeroNudge(nudge(true,false,0,0,0));
+    move=nudge(true,false,0,0,-1.f);
     assert(sameCm(move.y,-.01f));
 
     // Two sticks retain independent repeat clocks; left X and right Y can
@@ -332,7 +323,7 @@ int main(){
     VrWeaponFineTuneEdges independent{};
     const auto twoSticks=[&](std::uint64_t at,float lx,float ly,float ry){
         return vrWeaponFineTuneCentimeterStep(
-            independent,true,true,lx,ly,ry,at);
+            independent,true,false,lx,ly,ry,at);
     };
     zeroNudge(twoSticks(100,0,0,0));
     move=twoSticks(110,1.f,0,1.f);

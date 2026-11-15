@@ -22,7 +22,9 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
     const auto& freeGrip=s.weaponHandLeft?s.rightGripController:s.leftGripController;
     const auto& freeAim=s.weaponHandLeft?s.rightController:s.leftController;
-    // PRIMARY uses the free controller for wrist rotation only.
+    // PRIMARY rotation uses the tracked WEAPON-HAND GRIP controller while
+    // the native gun pose is temporarily frozen. The opposite controller
+    // does not influence primary calibration.
     // SUPPORT must position its glove from its own physical GRIP origin,
     // matching the normal free hand. Its AIM ray is forward-offset and
     // must not silently replace invalid GRIP tracking during capture.
@@ -36,44 +38,33 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         &&s.lastWeaponRenderedKind==weapon;
     const bool canSample=matchingWeapon&&gunTracked&&placement.valid;
     if(primaryHand){
-        // A primary calibration is a single UNSAVED draft. Losing free-hand
-        // tracking or switching Grip modes must never discard its gun offset
-        // or jump to the previously saved position/rotation.
-        if(!canSample){
-            m.rotationEdit.referenceValid=false;
-            if(!primaryWeaponGripHeld||!gunTracked||!matchingWeapon)
-                m.primaryGripPreviewHeld=false;
-        }else{
+        const auto& weaponGrip=s.weaponHandLeft
+            ?s.leftGripController:s.rightGripController;
+        // Single unsaved draft: Grip release holds the latest glove angle;
+        // default sticks can nudge the gun without touching that angle.
+        // On Grip press, seed the rotation delta from the ACTUAL weapon
+        // controller in the current (soon frozen) gun-local frame.
+        if(primaryWeaponGripHeld&&matchingWeapon&&gunTracked
+            &&weaponGrip.valid){
             const auto inverted=conjugate(s.lastWeaponRenderedTrackingRotation);
             const auto local=normalizeQuaternion(multiply(
-                inverted,placement.orientation));
-            const kharvox::RightHandGripRotation freeRotation{
+                inverted,weaponGrip.orientation));
+            const kharvox::RightHandGripRotation weaponRotation{
                 local.x,local.y,local.z,local.w,true};
-            // On release, first sample becomes a reference, not an absolute
-            // glove angle. Subsequent opposite-controller movement changes
-            // the glove relative to its CURRENT rotation. Held Grip freezes
-            // that rotation and re-arms the reference for the next release.
             m.previewRotation=kharvox::vrCalibrationRelativeRotation(
-                m.rotationEdit,primaryWeaponGripHeld,freeRotation,
-                m.previewRotation);
-        }
-        if(primaryWeaponGripHeld){
-            // Grip-held does not need the free controller's tracking pose.
-            // The physical controller anchors the glove; only the 1cm
-            // stick nudges move the native gun's draft positional offset.
-            kharvox::vrCalibrationRelativeRotation(
-                m.rotationEdit,true,{},m.previewRotation);
+                m.rotationEdit,true,weaponRotation,m.previewRotation);
+        }else{
+            m.previewRotation=kharvox::vrCalibrationRelativeRotation(
+                m.rotationEdit,false,{},m.previewRotation);
         }
         m.previewValid=kharvox::validRightHandVisualPlacement(
                 m.previewPosition)
             &&m.previewRotation.valid
             &&kharvox::validRightHandRotation(m.previewRotation);
-        const auto& physicalGrip=s.weaponHandLeft
-            ?s.leftGripController:s.rightGripController;
         m.primaryGripPreviewHeld=kharvox::vrPrimaryGripHoldPreviewAllowed(
                 m.mode,true,m.weapon())
             &&primaryWeaponGripHeld&&m.previewValid
-            &&matchingWeapon&&gunTracked&&physicalGrip.valid;
+            &&matchingWeapon&&gunTracked&&weaponGrip.valid;
     }else{
         // SUPPORT position follows the real free-hand GRIP tracker, not
         // its displaced AIM laser. The saved local offset and displayed
@@ -101,8 +92,11 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
         m.lastPreviewDiagnosticAt=now;
         log(std::string("[VR-HAND-CAL] ")+m.weapon()
             +(primaryHand?" primary":" support")
-            +(primaryWeaponGripHeld?" Grip-held GUN_FINE_TUNE"
-                :" Grip-released GLOVE_ROTATION")
+            +(primaryHand
+                ?(primaryWeaponGripHeld?" Grip-held WEAPON_HAND_GLOVE_ROTATION"
+                    :" Grip-released GUN_FINE_TUNE")
+                :(primaryWeaponGripHeld?" support Grip held"
+                    :" support Grip released"))
             +" matched="+(matchingWeapon?"1":"0")
             +" gunPose="+(gunTracked?"1":"0")
             +" freePose="+(placement.valid?"1":"0")
@@ -114,8 +108,9 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
     }
 }
 // A quick stick flick nudges 1 cm; holding a stick repeats 1 cm at a
-// comfortable fixed pace. Grip HELD freezes glove rotation; only GUN moves.
-// Grip RELEASE resumes visual glove rotation. Right trigger SAVES.
+// comfortable fixed pace. DEFAULT no Grip adjusts the GUN only.
+// Grip HELD freezes native gun pose and the weapon hand rotates its GLOVE.
+// Release Grip locks glove angle. Right trigger SAVES.
 // The calibration menu still suppresses locomotion and firing.
 void serviceVrWeaponFineTune(bool weaponGripDown){
     auto& m=s.vrHandMenu;
@@ -124,12 +119,13 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
         &&m.page==kharvox::VrMenuPage::WeaponGrip
         &&m.rightHand!=s.weaponHandLeft
         &&m.calibratingWeaponLeft==s.weaponHandLeft
-        &&m.previewValid&&m.primaryGripPreviewHeld
+        &&m.previewValid&&!weaponGripDown&&s.lastWeaponRenderedValid
+        &&s.lastWeaponRenderedKind==KharvoxWeaponCurrentKind()
         &&m.weapon()==std::string(KharvoxWeaponKindKey(KharvoxWeaponCurrentKind()));
     XrVector2f rightStick{};
-    if(primary&&weaponGripDown){
+    if(primary){
         // The normal right-stick sample is read AFTER menu dispatch.
-        // Fetch it here only for the grip-held fine-tune, never modify
+        // Fetch it here for the default (NO Grip) fine-tune; never modify
         // the gameplay mapping or the normal empty-hand control routes.
         XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};
         info.action=s.doomTurn;
@@ -300,7 +296,8 @@ void startVrSelectedWeaponCalibration(){
     m.fineTuneEdges={};
     m.fineTuneAccumulated={};
     // Saved fine-tune offsets now belong to the GUN, never the glove.
-    // Free-controller motion in primary calibration adjusts rotation only.
+    // Primary rotation belongs to the weapon hand; default fine-tune
+    // uses the joysticks without requiring Grip. Support placement unchanged.
     const bool calibratingPrimary=m.rightHand!=s.weaponHandLeft;
     m.primaryLateralBase=0.f;
     const auto kind=KharvoxWeaponKindFromKey(m.weapon());
@@ -379,7 +376,8 @@ void startVrSelectedWeaponCalibration(){
     }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="Hold Grip: shift GUN 1cm. Release Grip: keep GUN offset, rotate glove. Trigger saves; B or hold RS cancels.";
+    m.message="NO GRIP: sticks move gun 1cm. HOLD "+std::string(m.rightHand?"RIGHT":"LEFT")
+        +" GRIP: gun freezes; rotate weapon hand. TRIGGER: SAVE.";
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));

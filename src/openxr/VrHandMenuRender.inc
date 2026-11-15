@@ -151,23 +151,22 @@ void paintVrHandMenu() {
             write(39,253,target+(primary?" PRIMARY HAND":" SUPPORT HAND"),
                 RGB(84,233,214));
             if(primary){
-                // Use exactly the physical sides selected in the menu.
-                // Position/rotation algorithms are unchanged, only the
-                // pop-up wording is simplified and context-sensitive.
-                const bool tuning=m.calibrationGripHeld;
-                fill(35,289,564,151,tuning?RGB(24,66,65):RGB(31,43,59));
-                fill(35,289,4,151,tuning
+                // Default = 1cm gun fine-tune. Grip temporarily freezes
+                // the gun; the WEAPON hand rotates the visible glove.
+                const bool rotating=m.calibrationGripHeld;
+                fill(35,289,564,151,rotating?RGB(24,66,65):RGB(31,43,59));
+                fill(35,289,4,151,rotating
                     ?RGB(108,235,161):RGB(84,233,214));
-                write(49,298,tuning?"GUN POSITION":"GLOVE ROTATION",
-                    RGB(84,233,214));
-                if(tuning){
-                    write(49,337,"LEFT STICK: move gun left/right/forward",white);
-                    write(49,373,"RIGHT STICK: move gun up/down",white);
-                    write(49,411,"Hold sticks: 1 cm repeating steps",muted);
+                write(49,298,rotating?"GLOVE ROTATION (HOLD GRIP)"
+                    :"GUN FINE-TUNE (NO GRIP)",RGB(84,233,214));
+                if(rotating){
+                    write(49,337,"GUN FROZEN: rotate "+target+" controller.",white);
+                    write(49,373,"Your weapon hand adjusts glove angle.",white);
+                    write(49,411,"Release Grip to lock glove rotation.",muted);
                 }else{
-                    write(49,337,"Move "+other+" controller to rotate glove.",white);
-                    write(49,373,"Hold "+target+" Grip to move GUN.",white);
-                    write(49,411,"Gun offset remains where you left it.",muted);
+                    write(49,337,"LEFT STICK: gun left/right/forward/back",white);
+                    write(49,373,"RIGHT STICK: gun up/down (1 cm)",white);
+                    write(49,411,"Hold "+target+" Grip to rotate glove.",muted);
                 }
                 if(heavy)
                     write(39,450,m.alternateProfile
@@ -183,8 +182,8 @@ void paintVrHandMenu() {
             fill(35,473,564,42,primary&&m.calibrationGripHeld
                 ?RGB(35,85,72):RGB(36,51,68));
             write(47,481,!m.previewValid?"WAITING FOR TRACKING"
-                :primary&&m.calibrationGripHeld?"GUN POSITION ACTIVE"
-                :primary?"GLOVE ROTATION ACTIVE":"SUPPORT POSITION READY",
+                :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
+                :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
                 m.previewValid?RGB(108,235,161):RGB(239,197,116));
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
