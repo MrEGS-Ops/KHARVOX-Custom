@@ -598,13 +598,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
     m.rightTriggerPreviously=rightTrigger;
-    // Session-only diagnostics. The readout appears only during a
-    // Gunslinger zone capture when explicitly enabled in DEV.
-    m.devControllerInputReadout=std::string("R TRIG:")
-        +(rightTrigger?"ON":"off")+" L TRIG:"+(leftTrigger?"ON":"off")
-        +"  R GRIP:"+(primaryWeaponGripDown?"ON":"off")
-        +"  L3:"+(leftClick?"ON":"off")
-        +" R3:"+(rightClick?"ON":"off");
+    // Sample real menu inputs on EVERY frame, including live Gunslinger
+    // captures. The DEV monitor renders each bit separately and never
+    // rewires gameplay bindings or commits this information to UserData.
+    m.devInput={rightTrigger,leftTrigger,leftClick,rightClick,
+        primaryWeaponGripDown,menuA,menuB,s.leftStick.x,s.leftStick.y};
     const bool aEdge=kharvox::vrMenuButtonEdge(menuA,m.menuAPreviously);
     const bool bEdge=kharvox::vrMenuButtonEdge(menuB,m.menuBPreviously);
     // B cancels capture without saving. From weapon profiles B returns to

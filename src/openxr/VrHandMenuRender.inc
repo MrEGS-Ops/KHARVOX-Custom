@@ -87,6 +87,9 @@ void paintVrHandMenu() {
     constexpr int tipX=bannerX,tipY=bannerY,tipW=bannerW,tipH=bannerH;
     const bool calibrationView=!disconnectView&&!startupTipView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
+    const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
+        m.mode,m.liveCapture,m.devWeaponAlignment,
+        m.devHolsterZones,m.devControllerInputs);
     if(disconnectView){
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
@@ -101,6 +104,11 @@ void paintVrHandMenu() {
         fill(22,144,590,432,RGB(15,22,32));
         fill(22,144,590,58,RGB(27,48,61));
         fill(22,144,5,432,RGB(55,209,214));
+        if(devPanel){
+            fill(630,144,308,432,RGB(18,29,41));
+            fill(630,144,5,432,RGB(55,209,214));
+            fill(630,198,308,2,RGB(76,88,99));
+        }
     }else{
         fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
         fill(0,0,vrMenuW,84,RGB(24,29,40));
@@ -195,47 +203,153 @@ void paintVrHandMenu() {
             write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
         }
         SelectObject(dc,smallFont);
-        const bool gunslingerCapture=m.liveCapture!=kharvox::VrLiveCapture::None
-            &&m.liveCapture!=kharvox::VrLiveCapture::CrouchStanding
-            &&m.liveCapture!=kharvox::VrLiveCapture::CrouchLowered;
-        if(gunslingerCapture&&m.devHolsterZones
-            &&s.trackingHeadPositionValid&&s.headZeroPositionValid){
-            using C=kharvox::VrLiveCapture;
-            const bool hip=m.liveCapture==C::HipRight||m.liveCapture==C::HipLeft;
-            const bool right=m.liveCapture==C::HipRight||m.liveCapture==C::WheelRight;
-            const int side=right?0:1;
-            const auto& grip=right?s.rightGripController:s.leftGripController;
-            if(grip.valid&&grip.positionTracked){
-                const auto hand=controllerRelativeToBodyTrackingOrigin(grip).position;
-                const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-                const kharvox::VrLivePoint relative{
-                    right?hand.x-head.x:head.x-hand.x,
-                    hand.y-head.y,hand.z-head.z};
-                const bool inside=hip
-                    ?kharvox::vrLiveHipInside(relative,false,
-                        s.vrLiveSettings.hipShift[side])
-                    :kharvox::vrLiveWheelInside(relative,false,
-                        s.vrLiveSettings.wheelShift[side]);
-                write(39,390,std::string(hip?"HIP ZONE ":"WHEEL ZONE ")
-                    +(right?"RIGHT: ":"LEFT: ")
-                    +(inside?"INSIDE":"OUTSIDE"),inside
-                        ?RGB(108,235,161):RGB(239,197,116));
-                write(39,425,"Live detection: actual Gunslinger bounds.",muted);
+        write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
+        write(39,551,"B: CANCEL",muted);
+        if(devPanel){
+            // The original diagnostics were only a few words on the
+            // instruction strip. A transparent-alpha mask clipped them,
+            // and a head-zero condition silently suppressed zone status.
+            // Draw an actual independent diagnostic panel on the right.
+            constexpr int dx=632,dy=144,dw=306,dh=432;
+            SelectObject(dc,regular);
+            write(dx+18,dy+14,"DEV DIAGNOSTICS",white);
+            SelectObject(dc,smallFont);
+            if(m.liveCapture==kharvox::VrLiveCapture::None){
+                write(dx+18,dy+69,"WEAPON / HAND ANCHOR",RGB(84,233,214));
+                const auto& hand=s.weaponHandLeft
+                    ?s.leftGripController:s.rightGripController;
+                const bool tracked=hand.valid&&hand.positionTracked
+                    &&s.lastWeaponRenderedValid;
+                write(dx+18,dy+101,tracked
+                    ?"TRACKING: LIVE":"TRACKING: WAITING",tracked
+                        ?RGB(108,235,161):RGB(255,204,128));
+                if(tracked){
+                    // Both coordinates are in OpenXR tracking space.
+                    // The unshifted gun anchor and controller grip remain
+                    // separate even when a 1cm gun fine-tune is applied.
+                    const auto diff=subtractVector(hand.position,
+                        s.lastWeaponRenderedTrackingAnchor);
+                    auto format=[&](const char* label,float value){
+                        std::ostringstream out;
+                        out<<label<<std::fixed<<std::setprecision(3)<<value;
+                        return out.str();
+                    };
+                    write(dx+18,dy+136,format("HAND -> GUN X: ",diff.x),white);
+                    write(dx+18,dy+169,format("HAND -> GUN Y: ",diff.y),white);
+                    write(dx+18,dy+202,format("HAND -> GUN Z: ",diff.z),white);
+                    write(dx+18,dy+251,"TOP VIEW / X-Z",muted);
+                    fill(dx+17,dy+294,270,1,RGB(90,111,130));
+                    fill(dx+152,dy+264,1,108,RGB(90,111,130));
+                    const int hx=dx+152+static_cast<int>(std::clamp(
+                        diff.x*380.f,-119.f,119.f));
+                    const int hz=dy+294+static_cast<int>(std::clamp(
+                        diff.z*280.f,-43.f,43.f));
+                    fill(dx+146,dy+288,13,13,RGB(55,209,214));
+                    fill(hx-5,hz-5,11,11,RGB(255,204,128));
+                    write(dx+18,dy+389,"CYAN gun  /  GOLD controller",muted);
+                }else{
+                    write(dx+18,dy+182,
+                        "Equip the selected weapon and",white);
+                    write(dx+18,dy+213,"keep its hand tracked.",white);
+                }
+            }else{
+                using C=kharvox::VrLiveCapture;
+                const bool hip=m.liveCapture==C::HipRight
+                    ||m.liveCapture==C::HipLeft;
+                const bool right=m.liveCapture==C::HipRight
+                    ||m.liveCapture==C::WheelRight;
+                const int side=right?0:1;
+                const auto& grip=right?s.rightGripController
+                    :s.leftGripController;
+                const bool tracked=s.trackingHeadPositionValid
+                    &&grip.valid&&grip.positionTracked;
+                write(dx+18,dy+64,hip?"HIP ZONE":"HEAD / WHEEL ZONE",
+                    RGB(84,233,214));
+                write(dx+18,dy+94,right?"RIGHT CONTROLLER"
+                    :"LEFT CONTROLLER",muted);
+                if(m.devHolsterZones){
+                    // Draw an X/Y cross section of the LIVE, shifted
+                    // Gunslinger volume and the actual controller point.
+                    // A separate depth check ensures the indicator reflects
+                    // all THREE axes, not just a misleading 2D box.
+                    if(tracked){
+                        const auto hand=controllerRelativeToBodyTrackingOrigin(
+                            grip).position;
+                        const auto head=positionRelativeToBodyTrackingOrigin(
+                            s.trackingHeadPosition);
+                        const kharvox::VrLivePoint point{
+                            right?hand.x-head.x:head.x-hand.x,
+                            hand.y-head.y,hand.z-head.z};
+                        const auto shift=hip?s.vrLiveSettings.hipShift[side]
+                            :s.vrLiveSettings.wheelShift[side];
+                        const auto lo=hip
+                            ?kharvox::VrLivePoint{.12f,-1.04f,.02f}
+                            :kharvox::VrLivePoint{-.04f,-.18f,.015f};
+                        const auto hi=hip
+                            ?kharvox::VrLivePoint{.51f,-.48f,.43f}
+                            :kharvox::VrLivePoint{.44f,.36f,.60f};
+                        const bool inside=kharvox::vrLiveInsideBounds(
+                            point,lo,hi,shift);
+                        const bool depth=point.z>=lo.z+shift.z
+                            &&point.z<=hi.z+shift.z;
+                        write(dx+18,dy+124,inside?"INSIDE ZONE"
+                            :"OUTSIDE ZONE",inside
+                                ?RGB(108,235,161):RGB(255,204,128));
+                        const float centerX=(lo.x+hi.x)*.5f+shift.x;
+                        const float centerY=(lo.y+hi.y)*.5f+shift.y;
+                        const int x0=dx+152+static_cast<int>(
+                            (lo.x+shift.x-centerX)*230.f);
+                        const int x1=dx+152+static_cast<int>(
+                            (hi.x+shift.x-centerX)*230.f);
+                        const int y0=dy+228-static_cast<int>(
+                            (hi.y+shift.y-centerY)*180.f);
+                        const int y1=dy+228-static_cast<int>(
+                            (lo.y+shift.y-centerY)*180.f);
+                        fill(x0,y0,x1-x0,3,RGB(84,233,214));
+                        fill(x0,y1-3,x1-x0,3,RGB(84,233,214));
+                        fill(x0,y0,3,y1-y0,RGB(84,233,214));
+                        fill(x1-3,y0,3,y1-y0,RGB(84,233,214));
+                        const int px=std::clamp(dx+152+static_cast<int>(
+                            (point.x-centerX)*230.f),dx+19,dx+dw-19);
+                        const int py=std::clamp(dy+228-static_cast<int>(
+                            (point.y-centerY)*180.f),dy+154,dy+312);
+                        fill(px-6,py-6,13,13,inside
+                            ?RGB(108,235,161):RGB(255,204,128));
+                        write(dx+18,dy+325,depth?"DEPTH (Z): IN RANGE"
+                            :"DEPTH (Z): OUT OF RANGE",depth
+                                ?RGB(108,235,161):RGB(255,204,128));
+                        std::ostringstream z;
+                        z<<std::fixed<<std::setprecision(2)
+                            <<"Z "<<point.z<<"m   ["
+                            <<lo.z+shift.z<<", "<<hi.z+shift.z<<"]";
+                        write(dx+18,dy+354,z.str(),muted);
+                    }else{
+                        write(dx+18,dy+147,"WAITING FOR TRACKING",RGB(255,204,128));
+                        write(dx+18,dy+183,"Keep the matching controller",white);
+                        write(dx+18,dy+216,"and headset tracked.",white);
+                    }
+                }
+                if(m.devControllerInputs){
+                    const auto& sample=m.devInput;
+                    auto on=[](bool value){return value?"ON":"off";};
+                    const int top=m.devHolsterZones?dy+382:dy+155;
+                    write(dx+18,top,"R TRIGGER: "+std::string(on(sample.rightTrigger))
+                        +"   L: "+on(sample.leftTrigger),RGB(84,233,214));
+                    write(dx+18,top+27,"GRIP: "+std::string(on(sample.weaponGrip))
+                        +"   L3: "+on(sample.leftClick)
+                        +"   R3: "+on(sample.rightClick),white);
+                    if(!m.devHolsterZones){
+                        write(dx+18,top+57,"A: "+std::string(on(sample.select))
+                            +"   B: "+on(sample.back),white);
+                        std::ostringstream sticks;
+                        sticks<<std::fixed<<std::setprecision(2)
+                            <<"LEFT STICK "<<sample.leftStickX<<", "
+                            <<sample.leftStickY;
+                        write(dx+18,top+90,sticks.str(),muted);
+                        write(dx+18,top+138,"Input is sampled live.",muted);
+                    }
+                }
             }
-        }
-        if(gunslingerCapture&&m.devControllerInputs)
-            write(39,473,m.devControllerInputReadout,RGB(84,233,214));
-        if(!gunslingerCapture&&m.liveCapture==kharvox::VrLiveCapture::None
-            &&m.devWeaponAlignment){
-            std::ostringstream debug;
-            debug<<std::fixed<<std::setprecision(2)
-                <<"ANCHOR XYZ: "<<m.previewPosition.x<<", "
-                <<m.previewPosition.y<<", "<<m.previewPosition.z;
-            write(39,523,debug.str(),RGB(84,233,214));
-            write(39,551,"RIGHT TRIGGER: SAVE    B: CANCEL",muted);
-        }else{
-            write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
-            write(39,551,"B: CANCEL",muted);
         }
     }else if(m.page==kharvox::VrMenuPage::Mods
         ||m.page==kharvox::VrMenuPage::Dev){
@@ -669,7 +783,8 @@ void paintVrHandMenu() {
                 ?(x>=tipX&&x<tipX+tipW
                     &&y>=tipY&&y<tipY+tipH?255:0)
             :(!calibrationView
-                ||(x>=22&&x<612&&y>=144&&y<576)?255:0);
+                ||(x>=22&&x<612&&y>=144&&y<576)
+                ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
     }
     SelectObject(dc,oldBitmap);
     DeleteObject(dib);

@@ -17,6 +17,22 @@ int main(){
     assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Folder));
     assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Experimental));
     assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::WeaponStability));
+    // DEV overlays are calibration-only. A checkbox being enabled is not
+    // enough to draw anything in ordinary gameplay or the settings list.
+    assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::None,true,false,false));
+    assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Menu,
+        VrLiveCapture::None,true,true,true));
+    assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::None,false,true,true));
+    assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::HipRight,false,true,false));
+    assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::WheelLeft,false,false,true));
+    assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::CrouchStanding,true,true,true));
+    assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
+        VrLiveCapture::HipRight,true,false,false));
     // Main-menu Quad is not classified as fullscreen HUD. Require 20
     // verified frames so boot loading doesn't consume the one-time notice.
     VrMenuStartupNotice notice{};

@@ -108,6 +108,25 @@ enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
     HolsterZones,ControllerMonitor,Experimental
 };
+// Only show DEV graphics in their intended capture screens. This is a
+// display policy, not an input remap and never changes saved calibration.
+inline constexpr bool vrDevCalibrationPanelVisible(
+    VrHandMenuMode mode,VrLiveCapture capture,
+    bool weaponAlignment,bool holsterZones,bool controllerInputs) noexcept {
+    if(mode!=VrHandMenuMode::Calibrating)return false;
+    if(capture==VrLiveCapture::None)return weaponAlignment;
+    if(capture==VrLiveCapture::HipRight
+        ||capture==VrLiveCapture::HipLeft
+        ||capture==VrLiveCapture::WheelRight
+        ||capture==VrLiveCapture::WheelLeft)
+        return holsterZones||controllerInputs;
+    return false;
+}
+struct VrDevControllerInputSnapshot {
+    bool rightTrigger{},leftTrigger{},leftClick{},rightClick{};
+    bool weaponGrip{},select{},back{};
+    float leftStickX{},leftStickY{};
+};
 // DEV appears only after the secret heading gesture; its switches are
 // launch-scoped so ordinary users never inherit experimental overlays.
 inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept {
@@ -452,7 +471,7 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
     bool recoilReturnToDev{};
-    std::string devControllerInputReadout;
+    VrDevControllerInputSnapshot devInput{};
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
     int hovered{-1};
