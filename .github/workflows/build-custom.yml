@@ -72,22 +72,6 @@ jobs:
         shell: powershell
         run: .\assets\branding\generate-controller-mapping.ps1
 
-      - name: Fetch licensed Freedoom face art
-        shell: powershell
-        run: |
-          $sha = "3ac019628d70b812ffb722f7f2365771b76a9d29"
-          $url = "https://raw.githubusercontent.com/freedoom/freedoom/$sha"
-          $dest = "assets/freedoom"
-          New-Item -ItemType Directory -Force -Path $dest | Out-Null
-          foreach ($name in @("stfst00.png", "stftl00.png", "stftr00.png", "stfevl0.png")) {
-            Invoke-WebRequest -UseBasicParsing -Uri "$url/graphics/$name" -OutFile "$dest/$name"
-            if ((Get-Item "$dest/$name").Length -lt 100) { throw "Freedoom sprite missing or empty: $name" }
-          }
-          Invoke-WebRequest -UseBasicParsing -Uri "$url/COPYING.adoc" -OutFile "$dest/COPYING.adoc"
-          if (!(Select-String -Path "$dest/COPYING.adoc" -Pattern "Redistribution and use")) {
-            throw "Freedoom attribution/license unavailable"
-          }
-
       - name: Restore launcher
         shell: powershell
         run: dotnet restore launcher\KharvoxLauncher\KharvoxLauncher.csproj
@@ -268,26 +252,11 @@ jobs:
           .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
           if ($LASTEXITCODE -ne 0) { throw "Watcher safety self-test failed: $LASTEXITCODE" }
 
-      - name: Restore supervisor
-        shell: powershell
-        run: dotnet restore supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj
-
-      - name: Build supervisor Release
-        shell: powershell
-        run: dotnet build supervisor\KharvoxSupervisor\KharvoxSupervisor.csproj --configuration Release --no-restore
-
-      - name: Test supervisor tail reader
-        shell: powershell
-        run: |
-          & .\supervisor\KharvoxSupervisor\bin\Release\net48\KharvoxSupervisor.exe --self-test
-          if ($LASTEXITCODE -ne 0) { throw "Supervisor tail self-test failed" }
-
       - name: Assemble full install and patch
         shell: powershell
         run: |
           $native = Join-Path $PWD "build\native\Release"
           $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
-          $supervisor = Join-Path $PWD "supervisor\KharvoxSupervisor\bin\Release\net48"
           $out = Join-Path $PWD "out\watcher"
           $full = Join-Path $out "full"
           $patch = Join-Path $out "patch"
@@ -296,19 +265,11 @@ jobs:
           Copy-Item -Path (Join-Path $native "*") -Destination $full -Recurse -Force
           Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe") -Destination $full -Force
           Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
-          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $full -Force
-          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
-            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $full -Force
-          }
-          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $full "KharvoxSupervisor.json") -Force
-          New-Item -ItemType Directory -Force -Path (Join-Path $full "supervisor-profiles") | Out-Null
-          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $full "supervisor-profiles") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
           Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
-          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $full "assets") -Recurse -Force
           foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt","offhand_hud_default.cfg")) {
             $source = Join-Path $native $name
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
@@ -319,18 +280,17 @@ jobs:
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
             Copy-Item -LiteralPath $source -Destination $patch -Force
           }
-          Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe") -Destination $patch -Force
-          if (Test-Path (Join-Path $supervisor "KharvoxSupervisor.exe.config")) {
-            Copy-Item -LiteralPath (Join-Path $supervisor "KharvoxSupervisor.exe.config") -Destination $patch -Force
-          }
-          Copy-Item -LiteralPath "supervisor\KharvoxSupervisor.json" -Destination (Join-Path $patch "KharvoxSupervisor.json") -Force
-          New-Item -ItemType Directory -Force -Path (Join-Path $patch "supervisor-profiles") | Out-Null
-          Copy-Item -Path "supervisor\profiles\*.json" -Destination (Join-Path $patch "supervisor-profiles") -Force
           Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
           Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
-          New-Item -ItemType Directory -Force -Path (Join-Path $patch "assets") | Out-Null
-          Copy-Item -Path "assets/freedoom" -Destination (Join-Path $patch "assets") -Recurse -Force
+
+          # Supervisor is only used by a paused mod; Freedoom face art is not consumed by gameplay.
+          # Neither belongs in the native artifacts or the lightweight retail distribution.
+          foreach ($package in @($full,$patch)) {
+            foreach ($excluded in @("assets/freedoom","assets/freedom","KharvoxSupervisor.exe","KharvoxSupervisor.exe.config","KharvoxSupervisor.json","supervisor-profiles")) {
+              if (Test-Path -LiteralPath (Join-Path $package $excluded)) { throw "Unused runtime asset packaged: $excluded" }
+            }
+          }
 
           # Provision only the original upstream SFS profile, NOT Cactus's
           # launcher/game binaries or any settings. The release ZIP is pinned
