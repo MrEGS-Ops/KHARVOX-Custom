@@ -42,12 +42,14 @@ inline bool updateGripPressed(
     return value > (wasPressed ? thresholds.release : thresholds.press);
 }
 
-// Controller-only safety latch. The runtime can report a valid "controller"
-// pose even while tracking bare hands, so we also require a fresh, deliberate
-// two-stick acknowledgement after losing a controller or its input profile.
-// The lock starts engaged; it never auto-rearms when emulated inputs appear.
+// Controller-only safety latch. Cold startup unlocks automatically after a
+// stable, neutral pair of verified physical controllers: there is no visible
+// reconnect warning or thumbstick requirement on DOOM's startup/menu screen.
+// After a previously armed controller is LOST, retain an explicit two-stick
+// acknowledgement requirement even when tracking comes back. Emulated hands
+// never satisfy the physical-profile and tracked-pose requirements.
 struct ControllerOnlySafetyState {
-    bool armed{},bothSticksAcknowledged{};
+    bool armed{},bothSticksAcknowledged{},reconnectAckRequired{};
     unsigned stableFrames{};
 };
 inline constexpr bool updateControllerOnlySafety(
@@ -58,7 +60,10 @@ inline constexpr bool updateControllerOnlySafety(
     bool bothSticksReleased,
     bool triggerAndGripNeutral) noexcept {
     if(!bothPhysicalControllerProfiles||!bothControllerPosesTracked){
-        state={};
+        state.reconnectAckRequired=state.reconnectAckRequired||state.armed;
+        state.armed=false;
+        state.bothSticksAcknowledged=false;
+        state.stableFrames=0;
         return false;
     }
     if(state.armed)return true;
@@ -67,9 +72,17 @@ inline constexpr bool updateControllerOnlySafety(
         state.bothSticksAcknowledged=false;
         return false;
     }
+    if(!state.reconnectAckRequired){
+        // First healthy start: do not leave the player blocked by a hidden
+        // two-stick acknowledgement prompt.
+        state.armed=true;
+        return true;
+    }
     if(bothSticksPressed)state.bothSticksAcknowledged=true;
     if(state.bothSticksAcknowledged&&bothSticksReleased){
         state.armed=true;
+        state.reconnectAckRequired=false;
+        state.bothSticksAcknowledged=false;
         return true;
     }
     return false;

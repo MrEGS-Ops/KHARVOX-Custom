@@ -3425,6 +3425,7 @@ void updateGameplayActions(XrTime displayTime){
         &&readFloatAction(s.rightWeaponGrip)<.10f
         &&readFloatAction(s.leftWeaponGrip)<.10f;
     const bool previousArmed=s.controllerOnlySafety.armed;
+    const bool reconnectWasRequired=s.controllerOnlySafety.reconnectAckRequired;
     const bool armed=kharvox::updateControllerOnlySafety(
         s.controllerOnlySafety,bothProfiles,bothTracked,
         bothClicks,bothReleased,combatNeutral);
@@ -3434,7 +3435,8 @@ void updateGameplayActions(XrTime displayTime){
             log("[CONTROLLER-ONLY] controller tracking/profile LOST; gameplay blocked, no hand emulation");
             s.controllerPauseAttempted=false;
         }
-        if(!s.controllerPauseAttempted&&KharvoxCameraGameplayActive()
+        if(s.controllerOnlySafety.reconnectAckRequired
+            &&!s.controllerPauseAttempted&&KharvoxCameraGameplayActive()
             &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
             &&!KharvoxHudDeathMenuActive()&&!KharvoxCameraCutsceneActive()){
             // Request native pause ONCE, but never toggle an already paused
@@ -3469,7 +3471,10 @@ void updateGameplayActions(XrTime displayTime){
     }
     controllerOnlyPausePulse.store(false,std::memory_order_release);
     if(!previousArmed){
-        log("[CONTROLLER-ONLY] both tracked controllers confirmed with BOTH thumbstick clicks; player can resume native Pause");
+        if(reconnectWasRequired)
+            log("[CONTROLLER-ONLY] both tracked controllers re-armed after BOTH thumbstick clicks; player can resume native Pause");
+        else
+            log("[CONTROLLER-ONLY] both physical controllers verified; cold-start gameplay inputs unlocked without thumbstick acknowledgement");
         s.controllerPauseAttempted=false;
         s.controllerPauseUntilMs=0;
     }
@@ -5603,11 +5608,12 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 
 #include "PauseBindings.inc"
 #include "GripZoneDebug.inc"
-// Display-only filter: game safety lock, input masking, and two-stick
-// acknowledgement remain active even when this warning is hidden.
+// Show only a REAL reconnect event: the cold-start physical-controller
+// verification lock is temporary and never asks for hidden thumbstick input.
 bool controllerReconnectBannerVisible(){
     return kharvox::vrControllerReconnectBannerVisible(
-        controllerOnlyLocked.load(std::memory_order_acquire),
+        controllerOnlyLocked.load(std::memory_order_acquire)
+            &&s.controllerOnlySafety.reconnectAckRequired,
         KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
         KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
         KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
