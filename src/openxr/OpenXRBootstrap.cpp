@@ -2331,14 +2331,16 @@ const char* supportGripName(){return s.weaponHandLeft?"RIGHT GRIP":"LEFT GRIP";}
 // Only the actual Grip input or Gauss's ongoing native charge selects Alt Fire.
 // Never infer a deployed attachment from weapon declaration names.
 bool heavyAltMode(KharvoxWeaponKind kind){
-    if(kind!=KharvoxWeaponKind::GaussCannon
-        &&kind!=KharvoxWeaponKind::Chaingun)return false;
-    const bool menuOpen=s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed;
-    const bool selected=kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon());
-    return kharvox::vrHeavyAlternateGripActive(menuOpen,selected,
-        s.vrHandMenu.alternateProfile,s.heavyAlternateInputForwarded,
-        kind==KharvoxWeaponKind::GaussCannon
-            &&KharvoxWeaponGaussSiegeChargeActive());
+    const bool upgradePresent=kind==KharvoxWeaponKind::GaussCannon
+        ?KharvoxWeaponGaussSiegeChargeActive()
+        :kind==KharvoxWeaponKind::Chaingun
+            &&KharvoxWeaponChaingunTurretModeActive();
+    if(!upgradePresent)return false;
+    // Calibration menu owns Grip; its explicit Normal/Alternate selection wins.
+    if(s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+       &&kind==KharvoxWeaponKindFromKey(s.vrHandMenu.weapon()))
+        return s.vrHandMenu.alternateProfile;
+    return s.heavyAlternateInputForwarded;
 }
 bool altHeavySupport(KharvoxWeaponKind kind,XrVector3f&pos){
     if(!heavyAltMode(kind))return false;
