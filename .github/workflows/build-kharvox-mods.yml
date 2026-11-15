@@ -261,7 +261,7 @@ jobs:
           $overviews = Get-Content -LiteralPath "src/openxr/VrLiveMenuLogic.inc" -Raw
           foreach ($expected in @(
             "Calibrate guns to your VR hand position.",
-            "Open a weapon wheel behind either side",
+            "Select by moving your ARM, not your wrist.",
             "Control cinematic Glory Kill speed.",
             "One-handed fire adds physical recoil.",
             "Perform Glory Kills with real punches.",
