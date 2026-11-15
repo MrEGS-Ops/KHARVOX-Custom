@@ -95,6 +95,31 @@ jobs:
           foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
             Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
           }
+          # A lightweight CUSTOM ADD-ON, not a complete KHARVOX re-release.
+          # The user must select the already-installed original KHARVOX on
+          # first launch. Runtime references its original 75 SFS shaders.
+          $originalShaders = Join-Path $root "sfs-profile"
+          if (!(Test-Path -LiteralPath $originalShaders) -or
+              @(Get-ChildItem -LiteralPath $originalShaders -Filter *.spv -File).Count -ne 75) {
+            throw "Verified native package lacks the expected original 75 SFS shaders."
+          }
+          Remove-Item -LiteralPath $originalShaders -Recurse -Force
+          # Strip C++ debug symbols and link-only output, retaining all DLLs,
+          # EXEs, licenses, runtime configs, assets and helper utilities.
+          $devExtensions = @(".pdb",".lib",".exp",".ilk",".idb",".iobj",".ipch")
+          $devFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse |
+            Where-Object { $devExtensions -contains $_.Extension.ToLowerInvariant() })
+          foreach ($file in $devFiles) {
+            Write-Host "Removed development-only file: $($file.FullName.Substring($root.Length+1))"
+            Remove-Item -LiteralPath $file.FullName -Force
+          }
+          # Group explanatory source text without altering runtime paths.
+          $docs = Join-Path $root "Docs"
+          New-Item -ItemType Directory -Force -Path $docs | Out-Null
+          $sourceNotice = Join-Path $root "SFS-PROFILE-SOURCE.txt"
+          if (Test-Path -LiteralPath $sourceNotice) {
+            Move-Item -LiteralPath $sourceNotice -Destination (Join-Path $docs "SFS-PROFILE-SOURCE.txt")
+          }
           @(
             "KHARVOX VR - RETAIL PREVIEW (EXPERIMENTAL)"
             "Source: ${{ github.sha }}"
@@ -103,7 +128,11 @@ jobs:
             "Original KHARVOX by CactusVRStudios: https://github.com/CactusVRStudios/KHARVOX"
             "VR modifications: MrEGS_"
             ""
-            "Run KharvoxLauncher.exe and select your DOOM (2016) installation."
+            "PREREQUISITE: Download and install the original CactusVRStudios KHARVOX first."
+            "Original download: https://github.com/CactusVRStudios/KHARVOX"
+            "On first launch, select the original KharvoxLauncher.exe in its installed folder."
+            "The original installation supplies SFS shader files; it is never overwritten."
+            "Run our KharvoxLauncher.exe, then select your DOOM (2016) installation."
             "All VR mod controls and calibration are inside the headset."
             "The desktop Mod Manager, updater and automatic patcher are retired."
             "Keep existing UserData when upgrading; do not overwrite it."
@@ -113,12 +142,20 @@ jobs:
           foreach ($forbidden in @("KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","Get-KHARVOX-Custom-Watcher.ps1")) {
             if (Get-ChildItem -LiteralPath $root -Filter $forbidden -File -Recurse) { throw "Forbidden updater/mod executable included: $forbidden" }
           }
+          if (Test-Path -LiteralPath (Join-Path $root "sfs-profile")) {
+            throw "Original KHARVOX SFS shader assets must not be bundled in the lightweight add-on."
+          }
+          $remainingDev = @(Get-ChildItem -LiteralPath $root -File -Recurse |
+            Where-Object { @(".pdb",".lib",".exp",".ilk",".idb",".iobj",".ipch") -contains $_.Extension.ToLowerInvariant() })
+          if ($remainingDev.Count -ne 0) {
+            throw "Debug and linker files were left in the retail add-on."
+          }
 
       - name: Regression-test launcher, profile and preserved mod defaults
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KharvoxLauncher.exe"
-          foreach ($test in @("--self-test-retail-mods","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
+          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.
             $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow
@@ -134,7 +171,7 @@ jobs:
           Compress-Archive -Path (Join-Path $root "*") -DestinationPath $zip -CompressionLevel Optimal
           $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
           "$sha *KHARVOX-Retail-Preview.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ASCII
-          "Single KHARVOX launcher, native VR runtime, no manager or updater." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          "Lightweight KHARVOX add-on: original Cactus installation required, first-run picker, original SFS shaders referenced, no manager/updater/debug symbols." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
       - name: Upload experimental KHARVOX retail preview
         uses: actions/upload-artifact@v4
