@@ -74,7 +74,7 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or $metadata.conclusion -ne "success" -or $metadata.headSha -ne $env:NATIVE_COMMIT -or $metadata.headBranch -ne "${{ github.ref_name }}") { throw "Native source verification failed." }
           gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name RIPSHIFT-Native-Full --dir $root
           if ($LASTEXITCODE -ne 0) { throw "Verified native runtime download failed." }
-          foreach ($required in @("KharvoxLauncher.exe","KharvoxLayer.dll","KharvoxLayer.json","PATCH-BUILD.txt","PATCH-MANIFEST.json","native_sfs_build.txt","KharvoxSupervisor.exe")) {
+          foreach ($required in @("KharvoxLauncher.exe","KharvoxLayer.dll","KharvoxLayer.json","PATCH-BUILD.txt","PATCH-MANIFEST.json","native_sfs_build.txt")) {
             if (!(Test-Path -LiteralPath (Join-Path $root $required))) { throw "Missing essential native runtime file: $required" }
           }
           $stamp = Get-Content -LiteralPath (Join-Path $root "PATCH-BUILD.txt") -Raw
@@ -102,6 +102,16 @@ jobs:
           }
           foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
             Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
+          }
+          # Drop legacy Supervisor helpers (Revenge Demon is currently paused) and
+          # Freedoom art, which has no runtime consumer. Keep the source in GitHub.
+          foreach ($legacy in @("KharvoxSupervisor.exe","KharvoxSupervisor.exe.config","KharvoxSupervisor.json")) {
+            $old = Join-Path $root $legacy
+            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
+          }
+          foreach ($legacyFolder in @("supervisor-profiles","assets/freedoom","assets/freedom")) {
+            $old = Join-Path $root $legacyFolder
+            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
           }
           # RIPSHIFT VR is a lightweight gameplay add-on, not a KHARVOX re-release.
           # The user must select the already-installed original KHARVOX on
@@ -137,8 +147,7 @@ jobs:
             "two_hand_weapon_profiles_default.cfg",
             "weapon_pitch_default.cfg",
             "weapon_roll_default.cfg",
-            "weapon_yaw_default.cfg",
-            "KharvoxSupervisor.json"
+            "weapon_yaw_default.cfg"
           )
           $runtimeShaders = @("Fsr1Easu.spv","Fsr1Rcas.spv","HandPbr.frag.spv","HandPbr.vert.spv")
           foreach ($name in $runtimeConfigs) {
@@ -180,6 +189,9 @@ jobs:
           if ((Test-Path -LiteralPath $redundantArtworkFolder) -and
               @(Get-ChildItem -LiteralPath $redundantArtworkFolder -Force).Count -eq 0) {
             Remove-Item -LiteralPath $redundantArtworkFolder -Force
+          }
+          foreach ($excluded in @("KharvoxSupervisor.exe","KharvoxSupervisor.exe.config","KharvoxSupervisor.json","supervisor-profiles","assets/freedoom","assets/freedom")) {
+            if (Test-Path -LiteralPath (Join-Path $root $excluded)) { throw "Unused asset leaked into retail package: $excluded" }
           }
           # Keep the package clean; setup
           # guidance is in the first-run dialog, provenance in GitHub Actions.
@@ -287,6 +299,9 @@ jobs:
             Where-Object { @(".zip",".7z",".rar") -contains $_.Extension.ToLowerInvariant() })
           if ($nested.Count -gt 0) {
             throw "Refusing to publish nested archives in retail artifact: $($nested.FullName -join ', ')"
+          }
+          foreach ($excluded in @("KharvoxSupervisor.exe","KharvoxSupervisor.exe.config","KharvoxSupervisor.json","supervisor-profiles","assets/freedoom","assets/freedom")) {
+            if (Test-Path -LiteralPath (Join-Path $root $excluded)) { throw "Non-runtime asset in published ZIP: $excluded" }
           }
           # upload-artifact already delivers one ZIP. Upload the directory
           # contents, NOT a pre-built ZIP + SHA file, avoiding ZIP-in-ZIP.
