@@ -58,12 +58,12 @@ internal static class GunslingerShoulderWeaponLock
         {
             // Core Gunslinger is always enabled by the retail launcher.
             // Never query the removed Mod Manager bridge or its JSON.
-            bool lockShoulder = MrEgsLaunchProfileBridge.IsActive(form) ||
+            bool lockShoulder = RipshiftLaunchProfileBridge.IsActive(form) ||
                 RetailVrDefaults.GunslingerAlwaysOn;
 
             if (lastLock == lockShoulder) return;
             SetLocked(picker, caption, defaultCaptionColor, help, lockShoulder,
-                MrEgsLaunchProfileBridge.IsActive(form) ? "Locked by the MrEGS_ launch profile." : null);
+                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked by the MrEGS_ launch profile." : null);
             lastLock = lockShoulder;
         }
 
@@ -96,7 +96,7 @@ internal static class GunslingerShoulderWeaponLock
             {
                 var picker = FindPicker(form);
                 var caption = FindLabel(form);
-                MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
+                RipshiftLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
                 if (picker == null || caption == null || !picker.Enabled)
                     throw new InvalidDataException("Shoulder Weapon picker missing.");
 
@@ -163,11 +163,11 @@ internal static class VirtualGunstockGripCalibrationLock
         bool? lastLock = null;
         void Refresh()
         {
-            bool blocked = MrEgsLaunchProfileBridge.IsActive(form) ||
+            bool blocked = RipshiftLaunchProfileBridge.IsActive(form) ||
                 RetailVrDefaults.WeaponGripAlwaysOn;
             if (lastLock == blocked) return;
             SetLocked(toggle, help, blocked,
-                MrEgsLaunchProfileBridge.IsActive(form) ? "Locked off by the MrEGS_ launch profile." : null);
+                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked off by the MrEGS_ launch profile." : null);
             lastLock = blocked;
         }
 
@@ -196,7 +196,7 @@ internal static class VirtualGunstockGripCalibrationLock
             using var help = new ToolTip();
             var toggle = FindToggle(form)
                 ?? throw new InvalidDataException("Cactus Virtual Gunstock checkbox missing.");
-            MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
+            RipshiftLaunchProfileBridge.SelectProfileForSelfTest(form, 0);
             toggle.Checked = true;
             SetLocked(toggle, help, true);
             if (toggle.Enabled || toggle.Checked)

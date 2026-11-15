@@ -171,10 +171,10 @@ internal static class LauncherSettingsStore
         // Slot 3 used to mean freeform Custom. It is now the named MrEGS_
         // profile. Preserve every other stored setting, but migrate the
         // former Custom turn controls to the user's new profile defaults.
-        if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.MrEgsPresetIndex)
+        if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.RipshiftPresetIndex)
         {
             settings.TurnMode = 0;
-            settings.SmoothSpeed = LauncherPresetPolicy.MrEgsTurnSpeed;
+            settings.SmoothSpeed = LauncherPresetPolicy.RipshiftTurnSpeed;
         }
         // Adopt the release renderer once for existing Custom profiles. Later AER choices remain valid.
         if (settings.SettingsVersion < 33 && settings.Preset == 3
