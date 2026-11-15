@@ -367,6 +367,48 @@ int main(){
      userStatus,factoryStatus,"pistol",false));
  assert(!kharvox::vrPrimaryPoseChangedFromFactory(
      userStatus,factoryStatus,"pistol",true));
+ // Unlike the old primary-only indicators, a CUSTOM support grip must
+ // update the corresponding physical LEFT/RIGHT menu status.
+ const std::string supportLive=std::string(path)+".support";
+ const std::string supportFactory=std::string(path)+".support-default";
+ {std::ofstream f(supportFactory);
+     f<<"2 pistol barrel -0.05 0.01 -0.23 0.20 1.0\n";
+     f<<"2 shotgun barrel -0.05 0.02 -0.23 0.20 1.0\n";}
+ {std::ofstream f(supportLive);
+     f<<"2 pistol barrel -0.05 0.01 -0.23 0.20 1.0\n";
+     f<<"2 shotgun barrel -0.05 0.02 -0.23 0.20 1.0\n";}
+ assert(!kharvox::vrSupportProfileChangedFromFactory(
+     supportLive,supportFactory,"pistol"));
+ assert(kharvox::saveHeavySupportGrip(supportLive,"pistol",
+     {-.08f,.03f,-.20f},false,.2f,1.f,&why));
+ assert(kharvox::vrSupportSaveMatchesReload(supportLive,"pistol",
+     {-.08f,.03f,-.20f},false,.2f,1.f));
+ assert(!kharvox::vrSupportSaveMatchesReload(supportLive,"pistol",
+     {-.07f,.03f,-.20f},false,.2f,1.f));
+ assert(kharvox::vrSupportProfileChangedFromFactory(
+     supportLive,supportFactory,"pistol"));
+ assert(!kharvox::vrSupportProfileChangedFromFactory(
+     supportLive,supportFactory,"shotgun"));
+ kharvox::RightHandGripSettings altCurrent{},altFactory{};
+ altFactory.gaussSiegeSupport={-.10f,.02f,-.20f};
+ altFactory.gaussSiegeSupportValid=true;
+ altCurrent=altFactory;
+ assert(!kharvox::vrAlternateSupportChangedFromFactory(
+     altCurrent,altFactory,"gauss_cannon",false));
+ altCurrent.gaussSiegeSupport.x-=.03f;
+ assert(kharvox::vrAlternateSupportChangedFromFactory(
+     altCurrent,altFactory,"gauss_cannon",false));
+ assert(kharvox::vrAlternateSupportMatchesReload(
+     altCurrent,"gauss_cannon",false,altCurrent.gaussSiegeSupport));
+ altFactory.leftPrimaryAlternateSupport["gauss_cannon_siege"]=
+     {.05f,-.01f,-.15f};
+ altCurrent=altFactory;
+ altCurrent.leftPrimaryAlternateSupport["gauss_cannon_siege"].z-=.03f;
+ assert(kharvox::vrAlternateSupportChangedFromFactory(
+     altCurrent,altFactory,"gauss_cannon",true));
+ std::remove(supportLive.c_str());
+ std::remove(supportFactory.c_str());
+ std::remove((supportLive+".before-heavy-support.bak").c_str());
  // Primary-hand calibration statuses must be independent of support grips.
  assert(!kharvox::hasSavedVrPrimaryPose(visual,"pistol",true));
  assert(kharvox::hasSavedVrPrimaryPose(visual,"pistol",false));

@@ -5,15 +5,32 @@ void refreshVrHandMenuSavedStatus(){
     auto& m=s.vrHandMenu;
     const auto factory=kharvox::readRightHandGripSettings(
         kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));
+    // The selected physical hand may be PRIMARY or SUPPORT. Track BOTH
+    // kinds of persistent customisation independently from factory defaults.
+    const auto rightPrimarySupport=kharvox::runtimePathA(
+        "two_hand_weapon_profiles_saved.cfg"); // RIGHT gun, LEFT support
+    const auto leftPrimarySupport=kharvox::runtimePathA(
+        "two_hand_weapon_profiles_left_primary_saved.cfg"); // LEFT gun, RIGHT support
+    const auto factoryRightPrimarySupport=kharvox::runtimePathA(
+        "CalibrationDefaults/two_hand_weapon_profiles_saved.cfg");
+    const auto factoryLeftPrimarySupport=kharvox::runtimePathA(
+        "CalibrationDefaults/two_hand_weapon_profiles_left_primary_saved.cfg");
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const std::string key=kharvox::kVrCalibrationWeapons[i];
-        // Factory profiles are shipped into UserData on first run.
-        // Compare editable primary pose AND 1 cm positional fine-tune
-        // against the original factory values, including heavy alt modes.
+        // RIGHT column: right-primary glove OR right support for a left gun.
+        // LEFT column: left-primary glove OR left support for a right gun.
         m.rightSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
-            s.rightGripSettings,factory,key,false);
+            s.rightGripSettings,factory,key,false)
+            ||kharvox::vrSupportProfileChangedFromFactory(
+                leftPrimarySupport,factoryLeftPrimarySupport,key)
+            ||kharvox::vrAlternateSupportChangedFromFactory(
+                s.rightGripSettings,factory,key,true);
         m.leftSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
-            s.rightGripSettings,factory,key,true);
+            s.rightGripSettings,factory,key,true)
+            ||kharvox::vrSupportProfileChangedFromFactory(
+                rightPrimarySupport,factoryRightPrimarySupport,key)
+            ||kharvox::vrAlternateSupportChangedFromFactory(
+                s.rightGripSettings,factory,key,false);
     }
 }
 void updateVrMenuPreview(bool primaryWeaponGripHeld){
@@ -208,9 +225,16 @@ void saveVrHandMenuCalibration(){
         ok=kharvox::saveHeavyAlternativeSupport(
             rightFile,profileKey,m.previewPosition,&why,s.weaponHandLeft);
         if(ok){
-            s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
-            s.twoHandLatched=false;
-            s.supportVisualLocked=false;
+            const auto reloaded=kharvox::readRightHandGripSettings(rightFile);
+            if(!kharvox::vrAlternateSupportMatchesReload(
+                reloaded,profileKey,s.weaponHandLeft,m.previewPosition)){
+                ok=false;
+                why="alternate support save failed read-back verification";
+            }else{
+                s.rightGripSettings=reloaded;
+                s.twoHandLatched=false;
+                s.supportVisualLocked=false;
+            }
         }
     }else{
         auto* profile=twoHandCalibrationFor(kind);
@@ -221,13 +245,19 @@ void saveVrHandMenuCalibration(){
         // them back when the weapon is held in the left hand.
         auto position=m.previewPosition;
         if(s.weaponHandLeft)position.x=-position.x;
+        const auto supportPath=kharvox::runtimePathA(s.weaponHandLeft
+            ?"two_hand_weapon_profiles_left_primary_saved.cfg"
+            :"two_hand_weapon_profiles_saved.cfg");
+        const float radius=std::clamp(profile->captureRadius,.08f,.40f);
+        const float weight=std::clamp(profile->maximumHandLineWeight,0.f,1.f);
+        const bool sideGrip=mode==TwoHandAimMode::SideGrip;
         ok=kharvox::saveHeavySupportGrip(
-            kharvox::runtimePathA(s.weaponHandLeft
-                ?"two_hand_weapon_profiles_left_primary_saved.cfg"
-                :"two_hand_weapon_profiles_saved.cfg"),
-            m.weapon(),position,mode==TwoHandAimMode::SideGrip,
-            std::clamp(profile->captureRadius,.08f,.40f),
-            std::clamp(profile->maximumHandLineWeight,0.f,1.f),&why);
+            supportPath,m.weapon(),position,sideGrip,radius,weight,&why);
+        if(ok&&!kharvox::vrSupportSaveMatchesReload(
+            supportPath,m.weapon(),position,sideGrip,radius,weight)){
+            ok=false;
+            why="support grip save failed read-back verification";
+        }
         if(ok){
             profile->supportPosition={position.x,position.y,
                 position.z};
