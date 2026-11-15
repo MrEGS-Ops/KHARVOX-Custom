@@ -105,7 +105,7 @@ public sealed class MainForm : Form
     internal MainForm(string settingsPath)
     {
         SettingsPath = settingsPath;
-        Text = "RIPSHIFT VR";
+        Text = "KHARVOX Launcher";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(548, 904);
@@ -131,34 +131,23 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 330));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 172));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
         launcherContent = root;
         viewport.Controls.Add(root);
         Controls.Add(viewport);
         viewport.ClientSizeChanged += (_, _) => LayoutViewport();
 
-        // RIPSHIFT is the add-on. Original KHARVOX continues to provide
-        // the independent, required VR conversion and runtime components.
-        var banner = new TableLayoutPanel {
-            Dock = DockStyle.Fill, BackColor = Color.Black,
-            ColumnCount = 1, RowCount = 2,
-            Padding = new Padding(12, 16, 12, 10)
-        };
-        banner.RowStyles.Add(new RowStyle(SizeType.Absolute, 60));
-        banner.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        banner.Controls.Add(new Label {
-            Text = "RIPSHIFT VR",
-            Dock = DockStyle.Fill, ForeColor = Color.White,
-            Font = new Font("Segoe UI Semibold", 30f, FontStyle.Bold),
-            TextAlign = ContentAlignment.MiddleLeft
-        }, 0, 0);
-        banner.Controls.Add(new Label {
-            Text = "A gameplay enhancement for KHARVOX  |  By MrEGS_",
-            Dock = DockStyle.Fill,
-            ForeColor = Color.FromArgb(172, 183, 192),
-            Font = new Font("Segoe UI", 9f),
-            TextAlign = ContentAlignment.TopLeft
-        }, 0, 1);
+        // Keep the original Cactus KHARVOX launcher artwork prominently visible.
+        // RIPSHIFT is credited discreetly in the footer as an independent enhancement.
+        var banner = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black };
+        using (var bannerStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Kharvox.Branding.Logo"))
+        {
+            if (bannerStream is not null)
+            {
+                using var embeddedImage = Image.FromStream(bannerStream);
+                banner.Image = new Bitmap(embeddedImage);
+            }
+        }
         root.Controls.Add(banner);
 
         var profileRow = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, Padding = new Padding(8, 2, 8, 2) };
@@ -445,7 +434,7 @@ public sealed class MainForm : Form
 
         var footerLabel = new Label
         {
-            Text = "RIPSHIFT VR · MrEGS_",
+            Text = "Original KHARVOX by CactusVRStudios",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
@@ -462,22 +451,35 @@ public sealed class MainForm : Form
         };
         footerLabel.MouseEnter += (_, _) => footerLabel.ForeColor = Color.Gainsboro;
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
+        var ripshiftCredit = new Label
+        {
+            Text = "RIPSHIFT VR  |  A gameplay enhancement for KHARVOX  |  By MrEGS_",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleRight,
+            ForeColor = Color.FromArgb(150, 158, 167),
+            Font = new Font("Segoe UI", 8f)
+        };
         var footer = new TableLayoutPanel {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
-        footer.Controls.Add(new Label {
+        var versionLabel = new Label {
             Text = releaseVersion.ToString(releaseVersion.Build == 0 ? 2 : 3)
                 + (releaseInfo.Contains("-test") ? " Test" : releaseInfo.Contains("-beta") ? " Beta" : releaseInfo.Contains("-rc") ? " RC" : ""),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomLeft,
             ForeColor = Color.Gray
-        }, 0, 0);
+        };
+        footer.Controls.Add(versionLabel, 0, 0);
+        footer.SetRowSpan(versionLabel, 2);
         footer.Controls.Add(footerLabel, 1, 0);
+        footer.Controls.Add(ripshiftCredit, 1, 1);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();

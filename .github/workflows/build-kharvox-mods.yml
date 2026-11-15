@@ -159,6 +159,10 @@ jobs:
             Move-Item -LiteralPath $file.FullName -Destination (Join-Path $licenses $file.Name)
           }
           Remove-Item -LiteralPath $upstreamLicenses -Recurse -Force
+          # Preserve the upstream KHARVOX MIT copyright and third-party
+          # licensing in the user-facing standalone distribution.
+          Copy-Item -LiteralPath "LICENSE.txt" -Destination (Join-Path $licenses "KHARVOX-MIT-LICENSE.txt") -Force
+          Copy-Item -LiteralPath "Docs/THIRD_PARTY_NOTICES.txt" -Destination (Join-Path $licenses "THIRD_PARTY_NOTICES.txt") -Force
           $sourceNotice = Join-Path $root "SFS-PROFILE-SOURCE.txt"
           if (Test-Path -LiteralPath $sourceNotice) {
             Move-Item -LiteralPath $sourceNotice -Destination (Join-Path $licenses "SFS-PROFILE-SOURCE.txt")
@@ -211,7 +215,7 @@ jobs:
               throw "Incorrect shader packaging path: $name"
             }
           }
-          foreach ($name in @("SPIRV-Cross.txt","glslang.txt","SPIRV-Tools.txt")) {
+          foreach ($name in @("SPIRV-Cross.txt","glslang.txt","SPIRV-Tools.txt","KHARVOX-MIT-LICENSE.txt","THIRD_PARTY_NOTICES.txt")) {
             if (!(Test-Path -LiteralPath (Join-Path $licenses $name))) {
               throw "Required license file missing: $name"
             }
