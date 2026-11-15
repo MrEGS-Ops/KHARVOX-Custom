@@ -81,12 +81,19 @@ void paintVrHandMenu() {
     // are transparent while the warning is shown.
     constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
     const bool disconnectView=controllerReconnectBannerVisible();
-    const bool calibrationView=!disconnectView
+    const bool startupTipView=!disconnectView&&s.modMenuStartupNotice.visible
+        &&m.mode==kharvox::VrHandMenuMode::Closed;
+    constexpr int tipX=130,tipY=188,tipW=700,tipH=152;
+    const bool calibrationView=!disconnectView&&!startupTipView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     if(disconnectView){
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
         fill(bannerX+6,bannerY,bannerW-6,3,RGB(76,88,99));
+    }else if(startupTipView){
+        fill(tipX,tipY,tipW,tipH,RGB(17,24,32));
+        fill(tipX,tipY,6,tipH,RGB(55,209,214));
+        fill(tipX+6,tipY,tipW-6,3,RGB(55,209,214));
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -120,6 +127,15 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(bannerX+24,bannerY+58,
             "Press both thumbsticks to reconnect.",RGB(255,204,128));
+    }else if(startupTipView){
+        SelectObject(dc,regular);
+        write(tipX+24,tipY+12,"KHARVOX MOD MENU",white);
+        SelectObject(dc,smallFont);
+        write(tipX+24,tipY+57,
+            "While in-game, hold the Right Thumbstick (R3)",white);
+        write(tipX+24,tipY+83,"to open the Mod Menu.",white);
+        write(tipX+24,tipY+121,
+            "Press any button to dismiss.",RGB(84,233,214));
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -572,6 +588,9 @@ void paintVrHandMenu() {
         dst[b+3]=disconnectView
             ?(x>=bannerX&&x<bannerX+bannerW
                 &&y>=bannerY&&y<bannerY+bannerH?255:0)
+            :startupTipView
+                ?(x>=tipX&&x<tipX+tipW
+                    &&y>=tipY&&y<tipY+tipH?255:0)
             :(!calibrationView
                 ||(x>=22&&x<612&&y>=144&&y<576)?255:0);
     }

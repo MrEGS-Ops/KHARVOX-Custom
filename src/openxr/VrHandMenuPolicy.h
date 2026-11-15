@@ -97,6 +97,25 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     return VrMenuShortcutAction::None;
 }
 enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
+// One-time, non-blocking main-menu tip. Wait for an actual button release
+// before treating a new press as dismissal; never reappear this process.
+struct VrMenuStartupNotice {
+    bool shown{},visible{},buttonReleased{};
+};
+inline constexpr void updateVrMenuStartupNotice(
+    VrMenuStartupNotice& notice,bool onMainMenu,bool anyButtonDown) noexcept {
+    if(notice.shown){
+        if(!notice.visible)return;
+        if(!onMainMenu){notice.visible=false;return;}
+        if(!anyButtonDown)notice.buttonReleased=true;
+        else if(notice.buttonReleased)notice.visible=false;
+        return;
+    }
+    if(!onMainMenu)return;
+    notice.shown=true;
+    notice.visible=true;
+    notice.buttonReleased=!anyButtonDown;
+}
 // Seven pointer-and-trigger taps on the existing MOD SETTINGS heading.
 // This state is transient and defaults to hidden on every new game launch.
 struct VrMenuDeveloperReveal {

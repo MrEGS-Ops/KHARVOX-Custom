@@ -105,7 +105,7 @@ public sealed class MainForm : Form
     internal MainForm(string settingsPath)
     {
         SettingsPath = settingsPath;
-        Text = "KHARVOX Launcher";
+        Text = "_RIPSHIFT - KHARVOX Launcher";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(548, 904);
@@ -412,7 +412,27 @@ public sealed class MainForm : Form
             if (artworkStream is not null)
             {
                 using var embeddedArtwork = Image.FromStream(artworkStream);
-                bloodArtwork.Image = new Bitmap(embeddedArtwork);
+                // Preserve the existing Cactus blood splatter, adding the
+                // user's compact MrEGS emblem in its centre.
+                var composed = new Bitmap(embeddedArtwork.Width, embeddedArtwork.Height);
+                using (var graphics = Graphics.FromImage(composed))
+                {
+                    graphics.DrawImage(embeddedArtwork,
+                        new Rectangle(0, 0, composed.Width, composed.Height));
+                    using var markStream = Assembly.GetExecutingAssembly()
+                        .GetManifestResourceStream("Kharvox.Branding.MrEgsMark");
+                    if (markStream is not null)
+                    {
+                        using var mark = Image.FromStream(markStream);
+                        var size = (int)(Math.Min(composed.Width, composed.Height) * 0.54f);
+                        var rect = new Rectangle((composed.Width - size) / 2,
+                            (composed.Height - size) / 2, size, size);
+                        graphics.InterpolationMode =
+                            System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        graphics.DrawImage(mark, rect);
+                    }
+                }
+                bloodArtwork.Image = composed;
             }
         }
         action.Controls.Add(bloodArtwork, 0, 0);
@@ -432,9 +452,9 @@ public sealed class MainForm : Form
         action.Controls.Add(status, 1, 1);
         root.Controls.Add(action);
 
-        // Three balanced footer columns: RIPSHIFT link left, version centred,
-        // original KHARVOX credit right. Preserve the original Cactus
-        // credit's click/Shift+click actions and unobtrusive hover styling.
+        // Compact footer: RIPSHIFT on the left, original KHARVOX on the
+        // right, version immediately after CactusVRStudios. Preserve the
+        // original Cactus credit's click/Shift+click actions.
         var footerLabel = new Label
         {
             Text = "Original KHARVOX by CactusVRStudios",
@@ -484,12 +504,11 @@ public sealed class MainForm : Form
         ripshiftCredit.MouseEnter += (_, _) => ripshiftCredit.ForeColor = Color.Gainsboro;
         ripshiftCredit.MouseLeave += (_, _) => ripshiftCredit.ForeColor = Color.Gray;
         var footer = new TableLayoutPanel {
-            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
         footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
@@ -497,14 +516,22 @@ public sealed class MainForm : Form
         var versionLabel = new Label {
             Text = releaseVersion.ToString(releaseVersion.Build == 0 ? 2 : 3)
                 + (releaseInfo.Contains("-test") ? " Test" : releaseInfo.Contains("-beta") ? " Beta" : releaseInfo.Contains("-rc") ? " RC" : ""),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.Gray,
             Font = new Font("Segoe UI", 8f),
-            Margin = Padding.Empty
+            Margin = new Padding(5, 0, 0, 0)
         };
+        var sourceAndVersion = new TableLayoutPanel {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        sourceAndVersion.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        sourceAndVersion.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45));
+        sourceAndVersion.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sourceAndVersion.Controls.Add(footerLabel, 0, 0);
+        sourceAndVersion.Controls.Add(versionLabel, 1, 0);
         footer.Controls.Add(ripshiftCredit, 0, 0);
-        footer.Controls.Add(versionLabel, 1, 0);
-        footer.Controls.Add(footerLabel, 2, 0);
+        footer.Controls.Add(sourceAndVersion, 1, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();

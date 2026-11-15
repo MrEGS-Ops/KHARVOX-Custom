@@ -465,6 +465,7 @@ struct State {
     kharvox::RightHandGripSettings rightGripSettings{};
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
+    kharvox::VrMenuStartupNotice modMenuStartupNotice{};
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3496,6 +3497,23 @@ void updateGameplayActions(XrTime displayTime){
     const bool deathMenu=KharvoxHudDeathMenuActive();
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
+    // Headset-only informational hint at DOOM's main menu: not a safety
+    // latch, never blocks native game input and shows only once per launch.
+    // Physical A/B/X/Y, stick clicks, triggers and grips can dismiss it.
+    const bool mainMenuTipContext=nativeUiMenu&&!cutscene
+        &&(!gameplayWorld||!KharvoxCameraWorldActive());
+    const bool anyTipButtonDown=
+        leftStickClick||rightStickClick
+        ||readBooleanAction(s.doomJump)||readBooleanAction(s.doomCrouch)
+        ||readBooleanAction(s.doomEquipment)
+        ||readBooleanAction(s.doomMissionInfo)
+        ||readBooleanAction(s.doomSwitchWeaponMod)
+        ||readFloatAction(s.leftWeaponTrigger)>.55f
+        ||readFloatAction(s.rightWeaponTrigger)>.55f
+        ||readFloatAction(s.leftWeaponGrip)>.55f
+        ||readFloatAction(s.rightWeaponGrip)>.55f;
+    kharvox::updateVrMenuStartupNotice(
+        s.modMenuStartupNotice,mainMenuTipContext,anyTipButtonDown);
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
@@ -8171,9 +8189,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
 
     bool vrMenuImageAcquired=false;
     uint32_t vrMenuImageIndex{};
-    // Do not allocate/submit a reconnect overlay in startup, loading,
-    // cutscenes, pause, death, fullscreen menus, or the initial VR quad.
-    if((controllerReconnectBannerVisible()
+    // This shared quad handles the controller reconnect warning, the
+    // one-time main-menu hint and live mod settings. Only show when needed.
+    if((controllerReconnectBannerVisible()||s.modMenuStartupNotice.visible
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};

@@ -8,6 +8,27 @@ int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
     int selected=0;
+    // Main-menu hint appears only once and must not require a special key.
+    VrMenuStartupNotice notice{};
+    updateVrMenuStartupNotice(notice,false,false);
+    assert(!notice.shown&&!notice.visible);
+    updateVrMenuStartupNotice(notice,true,true); // a pre-held key doesn't dismiss
+    assert(notice.shown&&notice.visible&&!notice.buttonReleased);
+    updateVrMenuStartupNotice(notice,true,true);
+    assert(notice.visible);
+    updateVrMenuStartupNotice(notice,true,false);
+    assert(notice.visible&&notice.buttonReleased);
+    updateVrMenuStartupNotice(notice,true,true);
+    assert(!notice.visible);
+    updateVrMenuStartupNotice(notice,false,false);
+    updateVrMenuStartupNotice(notice,true,false);
+    assert(!notice.visible); // returning to the main menu never re-shows it
+    VrMenuStartupNotice leftMenu{};
+    updateVrMenuStartupNotice(leftMenu,true,false);
+    updateVrMenuStartupNotice(leftMenu,false,false);
+    assert(leftMenu.shown&&!leftMenu.visible);
+    updateVrMenuStartupNotice(leftMenu,true,false);
+    assert(!leftMenu.visible);
     // Seven fast taps reveal, seven further taps rehide, timing resets.
     VrMenuDeveloperReveal reveal{};
     assert(!reveal.visible);

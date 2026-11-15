@@ -122,7 +122,7 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Load event complete");
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
-                window.Text = "RIPSHIFT VR";
+                window.Text = "_RIPSHIFT - KHARVOX Launcher";
                 RipshiftLaunchProfileBridge.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);

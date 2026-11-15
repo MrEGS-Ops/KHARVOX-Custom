@@ -185,20 +185,20 @@ jobs:
           # guidance is in the first-run dialog, provenance in GitHub Actions.
           # Brand our shipped launcher only; the original Cactus launcher is never touched.
           $oldLauncher = Join-Path $root "KharvoxLauncher.exe"
-          $retailLauncher = Join-Path $root "RIPSHIFT.exe"
+          $retailLauncher = Join-Path $root "_RIPSHIFT.exe"
           if (!(Test-Path -LiteralPath $oldLauncher)) {
             throw "Original native-built launcher missing."
           }
           Move-Item -LiteralPath $oldLauncher -Destination $retailLauncher
           $oldAppConfig = Join-Path $root "KharvoxLauncher.exe.config"
           if (Test-Path -LiteralPath $oldAppConfig) {
-            Move-Item -LiteralPath $oldAppConfig -Destination (Join-Path $root "RIPSHIFT.exe.config")
+            Move-Item -LiteralPath $oldAppConfig -Destination (Join-Path $root "_RIPSHIFT.exe.config")
           }
           if ((Test-Path -LiteralPath $oldLauncher) -or !(Test-Path -LiteralPath $retailLauncher)) {
             throw "RIPSHIFT executable rename failed."
           }
           $brand = (Get-Item -LiteralPath $retailLauncher).VersionInfo.ProductName
-          if ($brand -ne "RIPSHIFT VR") { throw "RIPSHIFT executable metadata mismatch: $brand" }
+          if ($brand -ne "_RIPSHIFT") { throw "RIPSHIFT executable metadata mismatch: $brand" }
           if ((Test-Path -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt")) -or
               (Test-Path -LiteralPath (Join-Path $root "RETAIL-BUILD.txt"))) {
             throw "Obsolete retail text files were unexpectedly packaged."
@@ -240,7 +240,7 @@ jobs:
       - name: Regression-test launcher, profile and preserved mod defaults
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "dist/RIPSHIFT-VR/RIPSHIFT.exe"
+          $exe = Join-Path $PWD "dist/RIPSHIFT-VR/_RIPSHIFT.exe"
           foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-ripshift-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.
@@ -248,7 +248,7 @@ jobs:
             if ($process.ExitCode -ne 0) { throw "Retail launcher regression $test failed ($($process.ExitCode))" }
           }
           # Preserve KHARVOX's original launcher identity and Cactus attribution.
-          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Text = "KHARVOX Launcher"' -Quiet)) {
+          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Text = "_RIPSHIFT - KHARVOX Launcher"' -Quiet)) {
             throw "Original KHARVOX launcher title missing."
           }
           if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Original KHARVOX by CactusVRStudios' -Quiet) -or
@@ -257,13 +257,13 @@ jobs:
             throw "Original KHARVOX, RIPSHIFT attribution or Twitch link missing."
           }
           $product = (Get-Item -LiteralPath $exe).VersionInfo.ProductName
-          if ($product -ne "RIPSHIFT VR") { throw "Executable product metadata incorrect: $product" }
+          if ($product -ne "_RIPSHIFT") { throw "Executable product metadata incorrect: $product" }
 
       - name: Verify direct retail directory (one ZIP layer)
         shell: pwsh
         run: |
           $root = Join-Path $PWD "dist/RIPSHIFT-VR"
-          if (!(Test-Path -LiteralPath (Join-Path $root "RIPSHIFT.exe"))) {
+          if (!(Test-Path -LiteralPath (Join-Path $root "_RIPSHIFT.exe"))) {
             throw "RIPSHIFT VR launcher missing from upload directory."
           }
           if (!(Test-Path -LiteralPath (Join-Path $root "KharvoxLayer.dll"))) {
