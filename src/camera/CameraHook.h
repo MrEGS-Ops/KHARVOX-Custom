@@ -70,6 +70,8 @@ void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
 // Reapply native Glory Kill Highlight selection after DOOM reloads campaign settings.
 // Does not affect Glory Kill availability, animation or timing.
 void KharvoxCameraEnforceGloryKillHighlightSetting();
+// Native DOOM tutorial setting only. Never force-close tutorial or automap screens.
+void KharvoxCameraEnforceTutorialsDisabled();
 // In-headset DEV request: 0 = native value not verified, 1 = verified and applied.
 // Do not claim a successful setting change if DOOM\'s CVar is unavailable.
 void KharvoxCameraSetGloryKillHighlightEnabled(bool enabled);

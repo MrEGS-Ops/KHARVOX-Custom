@@ -390,6 +390,15 @@ void pulsePlayerUpgradeManagerQuadSession() {
     }
 }
 
+bool ripshiftTutorialsDisabled() {
+    static const bool disabled=[] {
+        char v[8]{};
+        return GetEnvironmentVariableA("KHARVOX_DISABLE_TUTORIALS",v,sizeof(v))==1
+            && v[0]=='1';
+    }();
+    return disabled;
+}
+
 void pulseTutorialActiveSession() {
     const auto now = GetTickCount64();
     const auto previous = tutorialManagerLastActiveFrameTick.exchange(
@@ -657,6 +666,9 @@ LocalizedTextLookup originalLocalizedTextLookup{};
 const char* __fastcall localizedTextBindingHook(const void* key){
     const char* original=originalLocalizedTextLookup(key);
     if(!original)return original;
+    // When native DOOM tutorials are disabled, avoid modifying any native
+    // localized action text. The game still owns its own UI state/lifecycle.
+    if(ripshiftTutorialsDisabled())return original;
     const size_t length=strnlen_s(original,8192);
     if(length==8192||!std::memchr(original,'_',length))return original;
     try {
@@ -2256,6 +2268,12 @@ void __fastcall tutorialSpriteRenderHook(
         originalTutorialSpriteRender(swf,view,sprite,state,time,flag);
         return;
     }
+    // Native tutorial setting OFF: skip only RIPSHIFT's tutorial screen
+    // repositioning. Preserve every other native HUD, map and UI render path.
+    if (ripshiftTutorialsDisabled() && isTutorialTextRoot(swf,sprite)) {
+        originalTutorialSpriteRender(swf,view,sprite,state,time,flag);
+        return;
+    }
     if (!isTutorialTextRoot(swf, sprite) || !state || !readableRange(state, 24)) {
         originalTutorialSpriteRender(swf, view, sprite, state, time, flag);
         return;
@@ -3776,7 +3794,8 @@ bool KharvoxHudInstallHook() {
             "Gui_EndOfChallenge Update / gameplay counter elements");
     }
     installTutorialLifecycleHooks();
-    installLocalizedBindingHook();
+    if (!ripshiftTutorialsDisabled()) installLocalizedBindingHook();
+    else log("[TUTORIAL] native tutorials OFF; text rewrite and positioning disabled; native UI lifecycle intact");
     installHudMovieHook();
     installPlayerUpgradeManagerFrameHook();
     installPlayerUpgradePickupNotificationHook();

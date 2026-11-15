@@ -3312,6 +3312,40 @@ void KharvoxCameraEnforceGloryKillHighlightSetting() {
     }else gloryKillHighlightApplied().store(0,std::memory_order_release);
 }
 
+// DOOM reloads campaign game settings after initial process arguments.
+// Reassert Tutorials=OFF only if its exact native integer CVar can be
+// resolved safely; otherwise preserve DOOM-owned state (fail closed).
+void KharvoxCameraEnforceTutorialsDisabled() {
+    static const bool disabled=[] {
+        char value[8]{};
+        return GetEnvironmentVariableA("KHARVOX_DISABLE_TUTORIALS",
+            value,sizeof(value))==1&&value[0]=='1';
+    }();
+    if(!disabled||!KharvoxCameraWorldActive()||KharvoxCameraCutsceneActive())return;
+    static volatile LONG* tutorialValue{};
+    static unsigned long long retryAt{};
+    static bool unavailableLogged{};
+    if(!tutorialValue){
+        const auto now=GetTickCount64();
+        if(now<retryAt)return;
+        retryAt=now+15000;
+        tutorialValue=resolveVerifiedIntegerCvar("g_setting_tutorials",1);
+        if(!tutorialValue){
+            if(!unavailableLogged){
+                logGlorySlowmo("Tutorials native CVar unresolved; launch default requested, no unsafe writes");
+                unavailableLogged=true;
+            }
+            return;
+        }
+        logGlorySlowmo("native DOOM Tutorials CVar verified; maintaining OFF");
+    }
+    const LONG observed=InterlockedCompareExchange(tutorialValue,0,0);
+    if(observed==1){
+        InterlockedExchange(tutorialValue,0);
+        logGlorySlowmo("campaign/settings reload: native Tutorials reset OFF");
+    }
+}
+
 bool KharvoxCameraBossSequenceActive(){
     char name[128]{};
     uintptr_t owner{},master{};

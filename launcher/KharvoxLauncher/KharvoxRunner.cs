@@ -531,6 +531,7 @@ internal static class KharvoxRunner
             // Developer-only, read-only collectible/RS focus snapshot. No gameplay changes.
             psi.EnvironmentVariables["KHARVOX_COLLECTIBLE_PROBE"] = options.ExtendedLogging ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GK_HIGHLIGHT_ENABLED"] = options.GloryKillHighlightEnabled ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_DISABLE_TUTORIALS"] = "1";
             psi.EnvironmentVariables.Remove("VK_LOADER_DEBUG");
             if (options.ExtendedLogging)
             {
@@ -1832,6 +1833,13 @@ internal static class KharvoxRunner
     internal static IEnumerable<string> NativeGloryKillHighlightArguments(bool enabled = false) =>
         ["+g_setting_gk_highlight", enabled ? "1" : "0"];
 
+    // Disable DOOM 2016's native tutorial pop-ups and instruction panels.
+    // Use the actual game setting, not simulated screen-close inputs: suppressing
+    // the tutorial manager's ShowScreen can trap native automap/UI ownership.
+    // Unlike g_showHUD, this preserves objectives, collectibles and prompts.
+    internal static IEnumerable<string> NativeTutorialArguments(bool enabled = false) =>
+        ["+g_setting_tutorials", enabled ? "1" : "0"];
+
     // The former working Build #83 path toggled DOOM's native sync CVars.
     // The legacy slow-motion dropdown AND either fast-execution checkbox may
     // request it; no game-wide custom timescale multiplier is necessary.
@@ -1920,6 +1928,7 @@ internal static class KharvoxRunner
         // This does not require DOOMModLoader, alter user config files or
         // introduce any on-screen launcher option.
         args.AddRange(NativeGloryKillHighlightArguments(options.GloryKillHighlightEnabled));
+        args.AddRange(NativeTutorialArguments()); // Tutorials OFF by default.
 
         // Reuse the native sync-slowdown bypass the user previously confirmed
         // working: checking EITHER fast-kill mod must activate all THREE CVars

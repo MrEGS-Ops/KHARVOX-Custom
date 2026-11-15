@@ -978,6 +978,16 @@ internal static class SelfTest
             var aerArgs=(IEnumerable<string>)argumentBuilder.Invoke(null,new object[]{form.CreateLaunchOptions(),false,100m,false})!;
             Require(string.Join(" ",nativeArgs).Contains("+r_useSMP 1"),"native serial renderer argument");
             Require(!aerArgs.Contains("+r_useSMP"),"headset AER restart retains original arguments");
+            Require(KharvoxRunner.NativeTutorialArguments().SequenceEqual(new[] {
+                "+g_setting_tutorials", "0" }), "RIPSHIFT defaults native DOOM tutorials OFF");
+            Require(KharvoxRunner.NativeTutorialArguments(true).SequenceEqual(new[] {
+                "+g_setting_tutorials", "1" }), "native tutorial helper supports explicit enable");
+            Require(nativeArgs.Contains("+g_setting_tutorials")
+                && nativeArgs.ElementAt(Array.IndexOf(nativeArgs.ToArray(), "+g_setting_tutorials") + 1) == "0",
+                "native renderer passes tutorial-off setting");
+            Require(aerArgs.Contains("+g_setting_tutorials")
+                && aerArgs.ElementAt(Array.IndexOf(aerArgs.ToArray(), "+g_setting_tutorials") + 1) == "0",
+                "AER renderer passes tutorial-off setting");
             Require(!KharvoxRunner.NativeShadowDiagnosticArguments(false,true).Any(),
                 "AER and AFW ignore the native shadow diagnostic, including recovery");
             Require(!KharvoxRunner.NativeShadowDiagnosticArguments(true,false).Any(),
