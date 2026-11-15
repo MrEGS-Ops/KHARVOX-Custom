@@ -3393,9 +3393,9 @@ void updateGameplayActions(XrTime displayTime){
     locateGameplayControllerPoses(displayTime);
     auto readFloatAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateFloat state{XR_TYPE_ACTION_STATE_FLOAT};return XR_SUCCEEDED(s.getActionStateFloat(s.session,&info,&state))&&state.isActive?state.currentState:0.f;};
     auto readBooleanAction=[](XrAction action){XrActionStateGetInfo info{XR_TYPE_ACTION_STATE_GET_INFO};info.action=action;XrActionStateBoolean state{XR_TYPE_ACTION_STATE_BOOLEAN};return XR_SUCCEEDED(s.getActionStateBoolean(s.session,&info,&state))&&state.isActive&&state.currentState;};
-    // Physical-controller-only mode: both Touch/Touch Plus/Index profiles and
-    // both tracked AIM+GRIP poses must exist. A hand-emulated profile, sleeping
-    // controller or tracking gap immediately locks ALL gameplay actions.
+    // Gameplay-only physical controller safety: both Touch/Touch Plus/Index
+    // profiles and tracked AIM poses must exist during active gameplay.
+    // Menu/loading controls are never locked by the L3+R3 reconnect latch.
     XrInteractionProfileState leftProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
     XrInteractionProfileState rightProfile{XR_TYPE_INTERACTION_PROFILE_STATE};
     const bool profileQueriesValid=s.getCurrentInteractionProfile
@@ -3454,13 +3454,40 @@ void updateGameplayActions(XrTime displayTime){
         log("[VR-MODS-TIP] R3 hint shown on main-menu Quad; new button press dismisses");
     if(tipWasVisible&&!s.modMenuStartupNotice.visible)
         log("[VR-MODS-TIP] R3 hint dismissed");
+    // Controller reconnection is checked and acknowledged ONLY in playable
+    // world gameplay. Main menus, settings, pause, loading and cinematics
+    // must remain usable even with a disconnected controller.
+    const bool safetyGameplay=kharvox::vrControllerLiveGameplay(
+        KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
+        KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
+        KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
+        s.quadMode||s.centeredQuadTransitionPending
+            ||s.immersiveCinematicActive,
+        KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
     const bool previousArmed=s.controllerOnlySafety.armed;
     const bool reconnectWasRequired=s.controllerOnlySafety.reconnectAckRequired;
-    const bool armed=kharvox::updateControllerOnlySafety(
-        s.controllerOnlySafety,bothProfiles,bothTracked,
-        bothClicks,bothReleased,combatNeutral);
-    controllerOnlyLocked.store(!armed,std::memory_order_release);
-    if(!armed){
+    bool armed=previousArmed;
+    if(safetyGameplay){
+        armed=kharvox::updateControllerOnlySafety(
+            s.controllerOnlySafety,bothProfiles,bothTracked,
+            bothClicks,bothReleased,combatNeutral);
+    }else if(!previousArmed&&!reconnectWasRequired){
+        // Optionally warm the clean-start controller check in menus without
+        // ever engaging a disconnect acknowledgement there.
+        if(bothProfiles&&bothTracked)
+            armed=kharvox::updateControllerOnlySafety(
+                s.controllerOnlySafety,bothProfiles,bothTracked,
+                bothClicks,bothReleased,combatNeutral);
+        else{
+            s.controllerOnlySafety.stableFrames=0;
+            s.controllerOnlySafety.bothSticksAcknowledged=false;
+        }
+    }
+    // This flag also drives the native XInput interception. Never suppress
+    // menu buttons simply because gameplay safety is awaiting L3+R3.
+    controllerOnlyLocked.store(safetyGameplay&&!armed,
+        std::memory_order_release);
+    if(safetyGameplay&&!armed){
         if(previousArmed){
             log("[CONTROLLER-ONLY] controller tracking/profile LOST; gameplay blocked, no hand emulation");
             s.controllerPauseAttempted=false;
@@ -3500,11 +3527,11 @@ void updateGameplayActions(XrTime displayTime){
         return;
     }
     controllerOnlyPausePulse.store(false,std::memory_order_release);
-    if(!previousArmed){
+    if(safetyGameplay&&!previousArmed){
         if(reconnectWasRequired)
-            log("[CONTROLLER-ONLY] both tracked controllers re-armed after BOTH thumbstick clicks; player can resume native Pause");
+            log("[CONTROLLER-ONLY] two-stick acknowledgement accepted in gameplay; controllers re-armed");
         else
-            log("[CONTROLLER-ONLY] both physical controllers verified; cold-start gameplay inputs unlocked without thumbstick acknowledgement");
+            log("[CONTROLLER-ONLY] physical controllers verified; no cold-start thumbstick acknowledgement required");
         s.controllerPauseAttempted=false;
         s.controllerPauseUntilMs=0;
     }
@@ -5650,7 +5677,8 @@ bool controllerReconnectBannerVisible(){
         KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
         KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
         s.quadMode||s.centeredQuadTransitionPending
-            ||s.immersiveCinematicActive);
+            ||s.immersiveCinematicActive,
+        KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
 }
 #include "VrHandMenuRender.inc"
 

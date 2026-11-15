@@ -20,14 +20,21 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
-// Keep the physical-controller safety lock active at ALL times, but only
-// draw its reconnect warning in live, unpaused gameplay. This prevents the
-// initial unarmed state from covering DOOM's startup/menu/loading screens.
+// A genuine controller disconnect is a gameplay concern. In menus, pause,
+// loading, death screens, cinematics or Quad presentation, neither the
+// two-stick acknowledgement nor the reconnect banner should block inputs.
+inline constexpr bool vrControllerLiveGameplay(
+    bool gameplay,bool world,bool paused,bool fullscreenMenu,
+    bool deathMenu,bool cutscene,bool quadMode,bool otherMenu=false) noexcept {
+    return gameplay&&world&&!paused&&!fullscreenMenu
+        &&!deathMenu&&!cutscene&&!quadMode&&!otherMenu;
+}
 inline constexpr bool vrControllerReconnectBannerVisible(
     bool locked,bool gameplay,bool world,bool paused,
-    bool fullscreenMenu,bool deathMenu,bool cutscene,bool quadMode) noexcept {
-    return locked && gameplay && world && !paused
-        && !fullscreenMenu && !deathMenu && !cutscene && !quadMode;
+    bool fullscreenMenu,bool deathMenu,bool cutscene,bool quadMode,
+    bool otherMenu=false) noexcept {
+    return locked&&vrControllerLiveGameplay(gameplay,world,paused,
+        fullscreenMenu,deathMenu,cutscene,quadMode,otherMenu);
 }
 // One calibration slot per firing state. Neither mode is bound to a
 // particular equipped Gauss or Chaingun attachment.

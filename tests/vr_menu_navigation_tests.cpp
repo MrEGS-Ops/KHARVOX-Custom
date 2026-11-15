@@ -80,6 +80,17 @@ int main(){
     recoilNav.settingsColumn=true;
     recoilNav.actionIndex=5;
     assert(vrMenuRecoilGamepadTarget(recoilNav,9)==145); // reset turret only
+    // The reconnect acknowledgement itself, not just its banner,
+    // is gameplay-scoped. Other native screens must remain interactive.
+    assert(vrControllerLiveGameplay(true,true,false,false,false,false,false));
+    assert(!vrControllerLiveGameplay(false,true,false,false,false,false,false));
+    assert(!vrControllerLiveGameplay(true,false,false,false,false,false,false));
+    assert(!vrControllerLiveGameplay(true,true,true,false,false,false,false));
+    assert(!vrControllerLiveGameplay(true,true,false,true,false,false,false));
+    assert(!vrControllerLiveGameplay(true,true,false,false,true,false,false));
+    assert(!vrControllerLiveGameplay(true,true,false,false,false,true,false));
+    assert(!vrControllerLiveGameplay(true,true,false,false,false,false,true));
+    assert(!vrControllerLiveGameplay(true,true,false,false,false,false,false,true));
     // Initial controller lock must NOT cover DOOM's main menu or loading.
     // The reconnect banner only appears in live gameplay, with safety
     // gating unaffected for every other context.
@@ -101,6 +112,8 @@ int main(){
         true,true,true,false,false,false,true,false)); // cinematic
     assert(!vrControllerReconnectBannerVisible(
         true,true,true,false,false,false,false,true)); // flat/quad transition
+    assert(!vrControllerReconnectBannerVisible(
+        true,true,true,false,false,false,false,false,true)); // special menu
     // LEFT stick moves through rows only on a deliberate edge.
     vrMenuNavigateStick(nav,0.f,-.90f,5,selected,2);
     assert(selected==1&&nav.usingStick&&!nav.settingsColumn);
