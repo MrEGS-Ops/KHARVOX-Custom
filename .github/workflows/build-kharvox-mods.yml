@@ -258,22 +258,32 @@ jobs:
           }
           if ((git hash-object launcher/KharvoxLauncher/MainForm.cs).Trim() -ne "fdfdd46536a68853612b7ce5a0d2418541a60586") { throw "Cactus MainForm.cs must remain byte-for-byte unmodified." }
 
-      - name: Zip the KHARVOX-only install
+      - name: Verify direct retail directory (one ZIP layer)
         shell: pwsh
         run: |
           $root = Join-Path $PWD "dist/KHARVOX-Retail-Preview"
-          $zip = Join-Path $PWD "dist/KHARVOX-Retail-Preview.zip"
-          Compress-Archive -Path (Join-Path $root "*") -DestinationPath $zip -CompressionLevel Optimal
-          $sha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
-          "$sha *KHARVOX-Retail-Preview.zip" | Set-Content -LiteralPath "$zip.sha256" -Encoding ASCII
-          "Lightweight KHARVOX add-on: original Cactus installation required, first-run picker, original SFS shaders referenced, no manager/updater/debug symbols." | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          if (!(Test-Path -LiteralPath (Join-Path $root "KHARVOX-MrEGS.exe"))) {
+            throw "MrEGS retail launcher missing from upload directory."
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $root "KharvoxLayer.dll"))) {
+            throw "Native runtime missing from upload directory."
+          }
+          $nested = @(Get-ChildItem -LiteralPath $root -File -Recurse |
+            Where-Object { @(".zip",".7z",".rar") -contains $_.Extension.ToLowerInvariant() })
+          if ($nested.Count -gt 0) {
+            throw "Refusing to publish nested archives in retail artifact: $($nested.FullName -join ', ')"
+          }
+          # upload-artifact already delivers one ZIP. Upload the directory
+          # contents, NOT a pre-built ZIP + SHA file, avoiding ZIP-in-ZIP.
+          $files = @(Get-ChildItem -LiteralPath $root -File -Recurse)
+          if ($files.Count -lt 25) { throw "Retail package unexpectedly sparse." }
+          "Retail ZIP root: $($files.Count) files, direct launcher + assets, no nested ZIP. Original Cactus KHARVOX installation still required." |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Upload experimental KHARVOX retail preview
+      - name: Upload experimental KHARVOX retail preview (single ZIP)
         uses: actions/upload-artifact@v4
         with:
           name: KHARVOX-Retail-Preview-Experimental
-          path: |
-            dist/KHARVOX-Retail-Preview.zip
-            dist/KHARVOX-Retail-Preview.zip.sha256
+          path: dist/KHARVOX-Retail-Preview/
           if-no-files-found: error
           retention-days: 30
