@@ -3413,10 +3413,12 @@ void updateGameplayActions(XrTime displayTime){
     const bool bothProfiles=profileQueriesValid
         &&physicalProfile(leftProfile.interactionProfile)
         &&physicalProfile(rightProfile.interactionProfile);
-    const bool bothTracked=s.leftController.valid&&s.leftController.positionTracked
-        &&s.rightController.valid&&s.rightController.positionTracked
-        &&s.leftGripController.valid&&s.leftGripController.positionTracked
-        &&s.rightGripController.valid&&s.rightGripController.positionTracked;
+    // An optional Grip pose must not block the entire front-menu XInput
+    // bridge. Physical profiles plus BOTH tracked Aim poses prove genuine
+    // controllers. Grip tracking is checked independently when grabbing.
+    const bool bothTracked=kharvox::physicalControllerAimPairTracked(
+        s.leftController.valid,s.leftController.positionTracked,
+        s.rightController.valid,s.rightController.positionTracked);
     const bool leftStickClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
     const bool rightStickClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool bothClicks=leftStickClick&&rightStickClick;
@@ -5598,12 +5600,14 @@ void pollEvents(){
                 resetCinewindowAnchorState();
             }
         }else if(e.type==XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED){
-            // Even if Virtual Desktop keeps advertising a Touch profile while
-            // swapping to bare hands, force fresh physical acknowledgement.
+            // A transient profile notification is NOT evidence that a
+            // controller has disconnected. Re-query physical profiles on the
+            // very next input frame; updateControllerOnlySafety will engage
+            // the reconnect latch only if an armed physical controller was
+            // genuinely lost. Resetting here repeatedly blocked cold startup
+            // at DOOM's front menu, making L3+R3 look mandatory.
             s.interactionProfilesDirty=true;
-            s.controllerOnlySafety={};
-            controllerOnlyLocked.store(true,std::memory_order_release);
-            log("[CONTROLLER-ONLY] OpenXR interaction profile changed: controller-only lock engaged");
+            log("[CONTROLLER-ONLY] interaction profile changed; verify both physical controllers next frame");
         }else if(e.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING){
             clearXInputHapticState();
             KharvoxPsvr2SubmitTrigger(kharvox::psvr2::offCommand(

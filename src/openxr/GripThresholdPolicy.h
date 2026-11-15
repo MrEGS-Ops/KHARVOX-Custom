@@ -48,6 +48,18 @@ inline bool updateGripPressed(
 // After a previously armed controller is LOST, retain an explicit two-stick
 // acknowledgement requirement even when tracking comes back. Emulated hands
 // never satisfy the physical-profile and tracked-pose requirements.
+// Aim poses are the physical controller tracking evidence required by the
+// safety lock. Grip poses may be late or unavailable on a healthy controller
+// (especially during DOOM's front menu); refusing the whole input stack in
+// that case can leave the menu waiting for an apparent L3+R3 acknowledgement.
+// Valid interaction profiles are still checked separately, and genuine AIM
+// tracking loss after arming still requires deliberate reconnection.
+inline constexpr bool physicalControllerAimPairTracked(
+    bool leftAimValid,bool leftAimTracked,
+    bool rightAimValid,bool rightAimTracked) noexcept {
+    return leftAimValid&&leftAimTracked&&rightAimValid&&rightAimTracked;
+}
+
 struct ControllerOnlySafetyState {
     bool armed{},bothSticksAcknowledged{},reconnectAckRequired{};
     unsigned stableFrames{};

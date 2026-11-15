@@ -27,6 +27,14 @@ int main() {
     if (updateGripPressed(NAN, false, GripControllerProfile::ValveIndex)) return 10;
     if (updateGripPressed(NAN, true, GripControllerProfile::ValveIndex)) return 11;
 
+    // A pair of tracked Aim poses is sufficient for controller-only startup:
+    // additional Grip pose tracking must not become a hidden menu gate.
+    if(!physicalControllerAimPairTracked(true,true,true,true))return 35;
+    if(physicalControllerAimPairTracked(true,true,true,false))return 36;
+    if(physicalControllerAimPairTracked(true,false,true,true))return 37;
+    if(physicalControllerAimPairTracked(false,true,true,true))return 38;
+    if(physicalControllerAimPairTracked(true,true,false,true))return 39;
+
     // Cold startup: no hidden two-thumbstick gate if both physical profiles
     // and controller poses are tracked and all trigger/grip inputs are neutral.
     ControllerOnlySafetyState safety{};
