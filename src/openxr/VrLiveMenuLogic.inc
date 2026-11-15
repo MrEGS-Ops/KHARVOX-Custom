@@ -70,8 +70,8 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "are saved independently.",
             ""}}};
         case VrLiveMod::Gunslinger:return {{{
-            "Open a weapon wheel behind either side",
-            "of your head.",
+            "Open the wheel behind either side of head.",
+            "Select by moving your ARM, not your wrist.",
             "Leave with Grip held to equip.",
             "Leave without Grip to cancel.",
             "Store and draw guns at either hip.",
