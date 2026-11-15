@@ -95,7 +95,7 @@ internal static class OriginalKharvoxSetup
         using var setup = new Form
         {
             Text = "RIPSHIFT VR | First-Time Setup",
-            ClientSize = new Size(498, 205),
+            ClientSize = new Size(528, 238),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
             StartPosition = FormStartPosition.CenterScreen,
@@ -110,22 +110,22 @@ internal static class OriginalKharvoxSetup
         catch (ArgumentException) { }
         setup.Controls.Add(new Label {
             Text = "Locate Original KHARVOX",
-            Location = new Point(18, 17), Size = new Size(455, 27),
-            Font = new Font("Segoe UI", 11f, FontStyle.Bold)
+            Location = new Point(24, 20), Size = new Size(480, 30),
+            Font = new Font("Segoe UI Semibold", 12f, FontStyle.Bold)
         });
         setup.Controls.Add(new Label {
             Text = "This add-on requires an existing installation of KHARVOX by CactusVRStudios.",
-            Location = new Point(18, 52), Size = new Size(460, 28)
+            Location = new Point(24, 62), Size = new Size(480, 44)
         });
         setup.Controls.Add(new Label {
             Text = "Select the original KharvoxLauncher.exe to continue. Your existing installation will remain unchanged.",
-            Location = new Point(18, 83), Size = new Size(460, 52),
+            Location = new Point(24, 112), Size = new Size(480, 52),
             ForeColor = Color.Gainsboro
         });
 
         var link = new LinkLabel {
             Text = "Get KHARVOX on GitHub",
-            Location = new Point(18, 151), Size = new Size(304, 33),
+            Location = new Point(24, 190), Size = new Size(310, 28),
             LinkColor = Color.LightSkyBlue, ActiveLinkColor = Color.White,
             BackColor = setup.BackColor
         };
@@ -142,7 +142,7 @@ internal static class OriginalKharvoxSetup
 
         var select = new Button {
             Text = "Browse…", Size = new Size(141, 32),
-            Location = new Point(338, 151),
+            Location = new Point(361, 184),
             BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.WhiteSmoke,
             FlatStyle = FlatStyle.Flat
         };
