@@ -24,7 +24,7 @@ internal sealed class CracktroForm : Form
             renderer = new AmigaCracktroRenderer(amigaAudio);
         }
         else renderer = new CracktroRenderer();
-        Text = amiga ? "KHARVOX — Amiga Cracktro" : "CACTUS VR — Made by Cactus";
+        Text = amiga ? "RIPSHIFT VR — Amiga Cracktro" : "RIPSHIFT VR — Retro Intro";
         AutoScaleMode = AutoScaleMode.None;
         FormBorderStyle = FormBorderStyle.None;
         StartPosition = FormStartPosition.Manual;

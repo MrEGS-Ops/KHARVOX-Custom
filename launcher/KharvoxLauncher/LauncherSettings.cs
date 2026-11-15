@@ -168,7 +168,7 @@ internal static class LauncherSettingsStore
             settings.GloryKillSlowmoLevel = 10;
         }
         settings.GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, settings.GloryKillSlowmoLevel));
-        // Slot 3 used to mean freeform Custom. It is now the named MrEGS_
+        // Slot 3 used to mean freeform Custom. It is now the named RIPSHIFT
         // profile. Preserve every other stored setting, but migrate the
         // former Custom turn controls to the user's new profile defaults.
         if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.RipshiftPresetIndex)

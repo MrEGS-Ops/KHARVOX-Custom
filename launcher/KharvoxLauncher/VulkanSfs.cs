@@ -58,7 +58,7 @@ internal static class VulkanSfs
         var local = Path.Combine(runtime, "sfs-profile");
         if (HasCompleteShaderProfile(runtime)) return local;
         throw new InvalidOperationException(
-            "Original KHARVOX SFS shaders not found. Open KHARVOX Custom and choose the original CactusVRStudios installation again.");
+            "Original KHARVOX SFS shaders not found. Open RIPSHIFT VR and choose the original CactusVRStudios installation again.");
     }
 
     internal static void EnsureAvailable(string? runtime = null)

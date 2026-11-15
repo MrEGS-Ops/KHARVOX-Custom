@@ -1143,7 +1143,7 @@ internal sealed class InfoForm : Form
         {
             MessageBox.Show(
                 "The link could not be opened.\n\n" + uri.AbsoluteUri,
-                "KHARVOX Instructions",
+                "RIPSHIFT VR Instructions",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

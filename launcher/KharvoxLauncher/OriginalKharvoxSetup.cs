@@ -105,7 +105,7 @@ internal static class OriginalKharvoxSetup
             Font = new Font("Segoe UI", 9f)
         };
 
-        // Distinct retail executable uses the owner's MrEGS_ icon.
+        // RIPSHIFT.exe uses the owner's original black-M MrEGS_ emblem.
         try { setup.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
         catch (ArgumentException) { }
         setup.Controls.Add(new Label {

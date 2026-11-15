@@ -375,7 +375,7 @@ internal static class CustomModSettingsStore
             if (!refused || File.ReadAllText(path) != "{BROKEN")
                 throw new InvalidDataException(
                     "Damaged custom mod settings must fail without resetting the file.");
-            Console.WriteLine("KHARVOX custom VR mod settings safety tests passed.");
+            Console.WriteLine("RIPSHIFT VR mod settings safety tests passed.");
             return 0;
         }
         catch (Exception error)

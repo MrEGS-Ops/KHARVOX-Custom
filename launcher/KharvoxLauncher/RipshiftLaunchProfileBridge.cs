@@ -20,7 +20,7 @@ internal static class RipshiftLaunchProfileBridge
     private static T Get<T>(MainForm form, string field) where T : Control =>
         typeof(MainForm).GetField(field, PrivateInstance)
             ?.GetValue(form) as T
-        ?? throw new InvalidDataException("KHARVOX launcher profile control missing: " + field);
+        ?? throw new InvalidDataException("RIPSHIFT launcher profile control missing: " + field);
 
     internal static bool IsActive(MainForm form) =>
         Get<ComboBox>(form, "preset").SelectedIndex == LauncherPresetPolicy.RipshiftPresetIndex;

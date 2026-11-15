@@ -63,7 +63,7 @@ internal static class GunslingerShoulderWeaponLock
 
             if (lastLock == lockShoulder) return;
             SetLocked(picker, caption, defaultCaptionColor, help, lockShoulder,
-                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked by the MrEGS_ launch profile." : null);
+                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked by the RIPSHIFT launch profile." : null);
             lastLock = lockShoulder;
         }
 
@@ -167,7 +167,7 @@ internal static class VirtualGunstockGripCalibrationLock
                 RetailVrDefaults.WeaponGripAlwaysOn;
             if (lastLock == blocked) return;
             SetLocked(toggle, help, blocked,
-                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked off by the MrEGS_ launch profile." : null);
+                RipshiftLaunchProfileBridge.IsActive(form) ? "Locked off by the RIPSHIFT launch profile." : null);
             lastLock = blocked;
         }
 

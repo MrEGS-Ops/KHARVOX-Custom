@@ -172,7 +172,7 @@ public sealed class MainForm : Form
             BackColor = Color.FromArgb(184, 145, 0),
             ForeColor = Color.Black,
             Font = new Font(Font, FontStyle.Bold),
-            AccessibleName = "Open KHARVOX Instructions"
+            AccessibleName = "Open RIPSHIFT VR Instructions"
         };
         infoButton.FlatAppearance.BorderColor = Color.FromArgb(212, 172, 24);
         infoButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(205, 164, 12);
