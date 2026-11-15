@@ -1,4 +1,4 @@
-name: KHARVOX Custom Build
+name: RIPSHIFT Native Build
 
 on:
   push:
@@ -103,11 +103,11 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-custom-settings" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "VR mod settings self-test failed: $($test.ExitCode)" }
 
-      - name: Verify MrEGS_ launch profile defaults and fixed controls
+      - name: Verify RIPSHIFT launch profile defaults and fixed controls
         shell: powershell
         run: |
           $exe = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48\KharvoxLauncher.exe"
-          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-mregs-profile" -Wait -PassThru -NoNewWindow
+          $test = Start-Process -FilePath $exe -ArgumentList "--self-test-ripshift-profile" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "MrEGS_ launch profile self-test failed: $($test.ExitCode)" }
 
       - name: Test modified launcher Gunslinger Shoulder Weapon UI
@@ -363,7 +363,7 @@ jobs:
             }
             $manifest = [ordered]@{ schema=1; kind=$kind; run="${{ github.run_number }}"; commit="${{ github.sha }}"; branch="${{ github.ref_name }}"; createdUtc=(Get-Date).ToUniversalTime().ToString("o"); files=$files }
             $manifest | ConvertTo-Json -Depth 6 | Set-Content -Encoding utf8 -LiteralPath (Join-Path $root "PATCH-MANIFEST.json")
-            @("KHARVOX_CUSTOM_WATCHER_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
+            @("RIPSHIFT_NATIVE_BUNDLE_1","kind=$kind","run=${{ github.run_number }}","commit=${{ github.sha }}") | Set-Content -Encoding ascii -LiteralPath (Join-Path $root "PATCH-BUILD.txt")
           }
           # Strict packaging is already checked above. Never upload a release
           # that would be blocked immediately by VulkanSfs.EnsureAvailable().
@@ -374,14 +374,14 @@ jobs:
               throw "Launcher missing from integrated package: $package"
             }
           }
-          "Integrated KHARVOX build: FULL and PATCH include 75 validated SFS shader replacements." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+          "RIPSHIFT native build: FULL and PATCH include 75 validated SFS shader replacements." | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
           Write-Manifest $full "full"
           Write-Manifest $patch "patch"
 
       - name: Upload full install
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-Full-Build
+          name: RIPSHIFT-Native-Full
           path: out/watcher/full
           if-no-files-found: error
           compression-level: 6
@@ -390,7 +390,7 @@ jobs:
       - name: Upload fast patch
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-Dev-Patch
+          name: RIPSHIFT-Native-Patch
           path: out/watcher/patch
           if-no-files-found: error
           compression-level: 1

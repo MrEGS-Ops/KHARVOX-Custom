@@ -1,4 +1,4 @@
-name: KHARVOX Retail Preview (Experimental)
+name: RIPSHIFT VR (Experimental)
 
 on:
   push:
@@ -23,7 +23,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: kharvox-retail-preview-${{ github.ref }}
+  group: ripshift-retail-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -63,31 +63,31 @@ jobs:
           "NATIVE_COMMIT=$($selected.headSha)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "Verified native build $($selected.databaseId) at $($selected.headSha)"
 
-      - name: Assemble single-launcher KHARVOX package
+      - name: Assemble lightweight RIPSHIFT VR package
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $root = Join-Path $PWD "dist/KHARVOX-Retail-Preview"
+          $root = Join-Path $PWD "dist/RIPSHIFT-VR"
           New-Item -ItemType Directory -Force -Path $root | Out-Null
           $metadata = gh run view $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --json headSha,headBranch,conclusion | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $metadata.conclusion -ne "success" -or $metadata.headSha -ne $env:NATIVE_COMMIT -or $metadata.headBranch -ne "${{ github.ref_name }}") { throw "Native source verification failed." }
-          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name KHARVOX-Full-Build --dir $root
+          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name RIPSHIFT-Native-Full --dir $root
           if ($LASTEXITCODE -ne 0) { throw "Verified native runtime download failed." }
           foreach ($required in @("KharvoxLauncher.exe","KharvoxLayer.dll","KharvoxLayer.json","PATCH-BUILD.txt","PATCH-MANIFEST.json","native_sfs_build.txt","KharvoxSupervisor.exe")) {
             if (!(Test-Path -LiteralPath (Join-Path $root $required))) { throw "Missing essential native runtime file: $required" }
           }
           $stamp = Get-Content -LiteralPath (Join-Path $root "PATCH-BUILD.txt") -Raw
           $provenance = Get-Content -LiteralPath (Join-Path $root "PATCH-MANIFEST.json") -Raw | ConvertFrom-Json
-          if (!$stamp.Contains("KHARVOX_CUSTOM_WATCHER_1") -or !$stamp.Contains("kind=full") -or !$stamp.Contains("commit=$env:NATIVE_COMMIT") -or $provenance.kind -ne "full" -or $provenance.commit -ne $env:NATIVE_COMMIT -or $provenance.branch -ne "${{ github.ref_name }}") { throw "Native SHA/branch manifest mismatch." }
+          if (!$stamp.Contains("RIPSHIFT_NATIVE_BUNDLE_1") -or !$stamp.Contains("kind=full") -or !$stamp.Contains("commit=$env:NATIVE_COMMIT") -or $provenance.kind -ne "full" -or $provenance.commit -ne $env:NATIVE_COMMIT -or $provenance.branch -ne "${{ github.ref_name }}") { throw "Native SHA/branch manifest mismatch." }
           if (Test-Path -LiteralPath (Join-Path $root "UserData")) { throw "Developer UserData was bundled unexpectedly." }
           if (Test-Path -LiteralPath (Join-Path $root "NativeBridge")) { throw "Legacy manager NativeBridge wrapper was bundled." }
           $factory = Join-Path $root "CalibrationDefaults"
           New-Item -ItemType Directory -Force -Path $factory | Out-Null
           $defaults = @(Get-ChildItem -LiteralPath "config/user_calibration_defaults" -File)
           if ($defaults.Count -ne 7) { throw "Missing owner-calibrated factory settings." }
-          # Hardware-dependent visual options must never come from the
-          # owner's saved MrEGS_ factory profile: keep both editable.
+          # Render scale and FSR are hardware-specific; never ship them as
+          # RIPSHIFT profile factory locks.
           $factoryLauncher = Get-Content -LiteralPath "config/user_calibration_defaults/kharvox-launcher-settings.json" -Raw | ConvertFrom-Json
           foreach ($unwanted in @("RenderScale","UseFsrUpscaling")) {
             if ($factoryLauncher.PSObject.Properties.Name -contains $unwanted) {
@@ -103,7 +103,7 @@ jobs:
           foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
             Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
           }
-          # A lightweight CUSTOM ADD-ON, not a complete KHARVOX re-release.
+          # RIPSHIFT VR is a lightweight gameplay add-on, not a KHARVOX re-release.
           # The user must select the already-installed original KHARVOX on
           # first launch. Runtime references its original 75 SFS shaders.
           $originalShaders = Join-Path $root "sfs-profile"
@@ -167,7 +167,7 @@ jobs:
             $old = Join-Path $root $obsoleteFolder
             if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
           }
-          # Embedded in KharvoxLauncher.exe; loose copy has no retail consumer.
+          # Embedded in RIPSHIFT.exe; loose copy has no retail consumer.
           $redundantArtwork = Join-Path $root "assets/branding/quest-controller-mapping.png"
           if (Test-Path -LiteralPath $redundantArtwork) {
             Remove-Item -LiteralPath $redundantArtwork -Force
@@ -177,49 +177,28 @@ jobs:
               @(Get-ChildItem -LiteralPath $redundantArtworkFolder -Force).Count -eq 0) {
             Remove-Item -LiteralPath $redundantArtworkFolder -Force
           }
-          # No second readme or retail build stamp at the top level: setup
+          # Keep the package clean; setup
           # guidance is in the first-run dialog, provenance in GitHub Actions.
-          # Rename only the retail launcher, never the original Cactus binary.
+          # Brand our shipped launcher only; the original Cactus launcher is never touched.
           $oldLauncher = Join-Path $root "KharvoxLauncher.exe"
-          $retailLauncher = Join-Path $root "KHARVOX-MrEGS.exe"
+          $retailLauncher = Join-Path $root "RIPSHIFT.exe"
           if (!(Test-Path -LiteralPath $oldLauncher)) {
             throw "Original native-built launcher missing."
           }
           Move-Item -LiteralPath $oldLauncher -Destination $retailLauncher
           $oldAppConfig = Join-Path $root "KharvoxLauncher.exe.config"
           if (Test-Path -LiteralPath $oldAppConfig) {
-            Move-Item -LiteralPath $oldAppConfig -Destination (Join-Path $root "KHARVOX-MrEGS.exe.config")
+            Move-Item -LiteralPath $oldAppConfig -Destination (Join-Path $root "RIPSHIFT.exe.config")
           }
           if ((Test-Path -LiteralPath $oldLauncher) -or !(Test-Path -LiteralPath $retailLauncher)) {
-            throw "Retail executable rename failed."
+            throw "RIPSHIFT executable rename failed."
           }
+          $brand = (Get-Item -LiteralPath $retailLauncher).VersionInfo.ProductName
+          if ($brand -ne "RIPSHIFT VR") { throw "RIPSHIFT executable metadata mismatch: $brand" }
           if ((Test-Path -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt")) -or
               (Test-Path -LiteralPath (Join-Path $root "RETAIL-BUILD.txt"))) {
             throw "Obsolete retail text files were unexpectedly packaged."
           }
-          <# Original retail README (retired):
-          @(
-            "KHARVOX VR - RETAIL PREVIEW (EXPERIMENTAL)"
-            "Source: ${{ github.sha }}"
-            "Native commit: $env:NATIVE_COMMIT"
-            "Native workflow run: $env:NATIVE_RUN_ID"
-            "Original KHARVOX by CactusVRStudios: https://github.com/CactusVRStudios/KHARVOX"
-            "VR modifications: MrEGS_"
-            ""
-            "PREREQUISITE: Download and install the original CactusVRStudios KHARVOX first."
-            "Original download: https://github.com/CactusVRStudios/KHARVOX"
-            "On first launch, select the original KharvoxLauncher.exe in its installed folder."
-            "The original installation supplies SFS shader files; it is never overwritten."
-            "Run our KharvoxLauncher.exe, then select your DOOM (2016) installation."
-            "All VR mod controls and calibration are inside the headset."
-            "Immutable default configuration: Config/. Graphics shader binaries: Shaders/."
-            "Owner presets: CalibrationDefaults/. Copyright notices: Licenses/."
-            "The desktop Mod Manager, updater and automatic patcher are retired."
-            "Keep existing UserData when upgrading; do not overwrite it."
-            "Experimental build; headset verification is required before release."
-          ) | Set-Content -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt") -Encoding UTF8
-          @("KHARVOX_RETAIL_PREVIEW_1","commit=${{ github.sha }}","nativeCommit=$env:NATIVE_COMMIT","nativeRun=$env:NATIVE_RUN_ID") | Set-Content -LiteralPath (Join-Path $root "RETAIL-BUILD.txt") -Encoding ASCII
-          #>
           foreach ($name in $runtimeConfigs) {
             if (!(Test-Path -LiteralPath (Join-Path $config $name)) -or
                 (Test-Path -LiteralPath (Join-Path $root $name))) {
@@ -257,21 +236,26 @@ jobs:
       - name: Regression-test launcher, profile and preserved mod defaults
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KHARVOX-MrEGS.exe"
-          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
+          $exe = Join-Path $PWD "dist/RIPSHIFT-VR/RIPSHIFT.exe"
+          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-ripshift-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.
             $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow
             if ($process.ExitCode -ne 0) { throw "Retail launcher regression $test failed ($($process.ExitCode))" }
           }
-          if ((git hash-object launcher/KharvoxLauncher/MainForm.cs).Trim() -ne "fdfdd46536a68853612b7ce5a0d2418541a60586") { throw "Cactus MainForm.cs must remain byte-for-byte unmodified." }
+          # RIPSHIFT branding intentionally changes the custom launcher UI.
+          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Text = "RIPSHIFT VR"' -Quiet)) {
+            throw "RIPSHIFT VR launcher title missing."
+          }
+          $product = (Get-Item -LiteralPath $exe).VersionInfo.ProductName
+          if ($product -ne "RIPSHIFT VR") { throw "Executable product metadata incorrect: $product" }
 
       - name: Verify direct retail directory (one ZIP layer)
         shell: pwsh
         run: |
-          $root = Join-Path $PWD "dist/KHARVOX-Retail-Preview"
-          if (!(Test-Path -LiteralPath (Join-Path $root "KHARVOX-MrEGS.exe"))) {
-            throw "MrEGS retail launcher missing from upload directory."
+          $root = Join-Path $PWD "dist/RIPSHIFT-VR"
+          if (!(Test-Path -LiteralPath (Join-Path $root "RIPSHIFT.exe"))) {
+            throw "RIPSHIFT VR launcher missing from upload directory."
           }
           if (!(Test-Path -LiteralPath (Join-Path $root "KharvoxLayer.dll"))) {
             throw "Native runtime missing from upload directory."
@@ -288,10 +272,10 @@ jobs:
           "Retail ZIP root: $($files.Count) files, direct launcher + assets, no nested ZIP. Original Cactus KHARVOX installation still required." |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Upload experimental KHARVOX retail preview (single ZIP)
+      - name: Upload experimental RIPSHIFT VR (single ZIP)
         uses: actions/upload-artifact@v4
         with:
-          name: KHARVOX-Retail-Preview-Experimental
-          path: dist/KHARVOX-Retail-Preview/
+          name: RIPSHIFT-VR-Experimental
+          path: dist/RIPSHIFT-VR/
           if-no-files-found: error
           retention-days: 30
