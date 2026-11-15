@@ -448,6 +448,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Mods){
+        // Secret developer gesture on the header; not a visible button.
+        if(pixelX>=38&&pixelX<=505&&pixelY>=18&&pixelY<75)
+            return 1500;
         if(pixelX>=38&&pixelX<=493){
             for(int i=0;i<10;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
@@ -680,7 +683,20 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.selectedRow,n,n>0?optionCount(rows[m.selectedRow]):0,
                     n>0&&kharvox::vrLiveModToggleable(rows[m.selectedRow].mod)):-1;
             if(pointed>=0)m.navigation.usingStick=false;
-            if(chosen>=1000&&chosen<1000+n){
+            if(chosen==1500){
+                if(kharvox::vrMenuDeveloperTap(m.devReveal,GetTickCount64())){
+                    const int updatedCount=static_cast<int>(activeVrMenuEntries().size());
+                    m.selectedRow=std::clamp(m.selectedRow,0,
+                        std::max(0,updatedCount-1));
+                    m.modScroll=0;
+                    m.navigation={};
+                    m.message=m.devReveal.visible
+                        ?"Developer option: Weapon Stability shown."
+                        :"Developer option: Weapon Stability hidden.";
+                    log(std::string("[VR-MODS] Weapon Stability developer row ")
+                        +(m.devReveal.visible?"shown":"hidden"));
+                }
+            }else if(chosen>=1000&&chosen<1000+n){
                 // Browse changes highlight only: the right panel is a
                 // gameplay description until A/CONFIGURE is explicitly
                 // pressed, never an accidental ON/OFF or capture.

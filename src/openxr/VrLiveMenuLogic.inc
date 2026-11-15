@@ -21,8 +21,10 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
-    add("Weapon Stability",VrLiveMod::WeaponRecoil,
-        kharvox::anyWeaponRecoilEnabled(s.recoilSettings),true);
+    // Hidden by default; gameplay recoil remains independent of menu visibility.
+    if(s.vrHandMenu.devReveal.visible)
+        add("Weapon Stability",VrLiveMod::WeaponRecoil,
+            kharvox::anyWeaponRecoilEnabled(s.recoilSettings),true);
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
     // Group the two live ON/OFF features together at the bottom.
@@ -43,54 +45,54 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
     using kharvox::VrLiveMod;
     switch(mod){
         case VrLiveMod::WeaponGrip:return {{{
-            "Fit guns to your physical VR hands.",
-            "Equip LEFT-hand gun to fit LEFT.",
-            "Equip RIGHT-hand gun to fit RIGHT.",
-            "Choose a weapon and CALIBRATE.",
-            "Fit primary and support grips.",
-            "Left/right profiles save separately."}}};
+            "Align each weapon with your VR hands.",
+            "Equip it in the hand to calibrate.",
+            "Adjust primary and support-hand grips.",
+            "Left and right profiles are saved",
+            "independently.",
+            ""}}};
         case VrLiveMod::Gunslinger:return {{{
-            "LEFT and RIGHT behind-head wheels.",
-            "Put either hand behind your head.",
-            "Exit holding Grip to select a gun.",
-            "Exit without Grip to cancel.",
-            "Left/right hip zones quick-draw guns.",
-            "Release Grip in a hip zone to set."}}};
+            "Access weapon wheels behind your head.",
+            "Use either hand to select a weapon.",
+            "Keep Grip held when leaving to equip.",
+            "Release Grip to cancel selection.",
+            "Store and draw weapons at the hips.",
+            "Calibrate your wheel and hip zones."}}};
         case VrLiveMod::Killtime:return {{{
-            "Change cinematic Glory Kill speed.",
-            "Lower tick Hz = faster execution.",
-            "Higher tick Hz = slower execution.",
-            "Only affects the finisher timing.",
-            "Normal movement is unchanged.",
-            "Choose speed in CONFIGURE."}}};
+            "Control cinematic Glory Kill speed.",
+            "Lower Hz makes executions faster.",
+            "Higher Hz slows executions down.",
+            "Only execution timing is changed.",
+            "Normal movement remains unchanged.",
+            ""}}};
         case VrLiveMod::WeaponRecoil:return {{{
-            "One-handed firing kicks the barrel.",
-            "Repeated shots make the muzzle climb.",
-            "Lower your hand to compensate.",
-            "A true support-grip steadies the gun.",
-            "Set strength and recovery per gun.",
-            "Open CONFIGURE to calibrate."}}};
+            "One-handed fire introduces recoil.",
+            "Sustained shots cause muzzle climb.",
+            "Lower your hand to correct aim.",
+            "A support grip steadies the weapon.",
+            "Adjust strength and recovery for",
+            "each weapon."}}};
         case VrLiveMod::PhysicalGloryKills:return {{{
-            "Trigger Glory Kills with punches.",
-            "Strike a staggered demon in VR.",
-            "Actual hand velocity is measured.",
-            "Choose right, left, or both hands.",
-            "Adjust sensitivity to your swing.",
-            "Set punch options in CONFIGURE."}}};
+            "Perform Glory Kills with real punches.",
+            "Strike staggered demons to execute.",
+            "Hand velocity determines the hit.",
+            "Select left, right or both hands.",
+            "Adjust punch sensitivity as needed.",
+            ""}}};
         case VrLiveMod::PhysicalCrouch:return {{{
-            "Physically lower your head to duck.",
-            "Stand back up to rise in-game.",
-            "Your headset height is tracked.",
-            "Fit standing and crouching height.",
-            "When OFF, use right-stick crouch.",
-            "Toggle and fit in CONFIGURE."}}};
+            "Crouch naturally using headset height.",
+            "Stand to return to full height.",
+            "Calibrate your standing and crouching",
+            "positions to match your play space.",
+            "When off, use right-stick crouch.",
+            ""}}};
         case VrLiveMod::Painsaw:return {{{
-            "Three-pull chainsaw revving mode.",
-            "First pull starts the native kill.",
-            "Release and re-pull up to twice.",
-            "Each pull boosts execution speed.",
-            "",
-            "Toggle mode in CONFIGURE."}}};
+            "Take your time... or RIP & TEAR.",
+            "Enjoy a slow, brutal execution,",
+            "or rev it up when you're in a hurry.",
+            "Control speed with each trigger pull.",
+            "Disabling PAINSAW restores native",
+            "chainsaw execution."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }

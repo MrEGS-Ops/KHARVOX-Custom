@@ -247,9 +247,13 @@ jobs:
             $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow
             if ($process.ExitCode -ne 0) { throw "Retail launcher regression $test failed ($($process.ExitCode))" }
           }
-          # RIPSHIFT branding intentionally changes the custom launcher UI.
-          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Text = "RIPSHIFT VR"' -Quiet)) {
-            throw "RIPSHIFT VR launcher title missing."
+          # Preserve KHARVOX's original launcher identity and Cactus attribution.
+          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Text = "KHARVOX Launcher"' -Quiet)) {
+            throw "Original KHARVOX launcher title missing."
+          }
+          if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Original KHARVOX by CactusVRStudios' -Quiet) -or
+              !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'RIPSHIFT VR  |  A gameplay enhancement for KHARVOX  |  By MrEGS_' -Quiet)) {
+            throw "Original KHARVOX and RIPSHIFT attribution footer missing."
           }
           $product = (Get-Item -LiteralPath $exe).VersionInfo.ProductName
           if ($product -ne "RIPSHIFT VR") { throw "Executable product metadata incorrect: $product" }

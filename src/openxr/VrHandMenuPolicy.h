@@ -97,6 +97,26 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     return VrMenuShortcutAction::None;
 }
 enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
+// Seven pointer-and-trigger taps on the existing MOD SETTINGS heading.
+// This state is transient and defaults to hidden on every new game launch.
+struct VrMenuDeveloperReveal {
+    bool visible{};
+    unsigned taps{};
+    std::uint64_t firstTapMs{};
+};
+inline bool vrMenuDeveloperTap(
+    VrMenuDeveloperReveal& state,std::uint64_t nowMs) noexcept {
+    if(state.taps==0||nowMs<state.firstTapMs
+        ||nowMs-state.firstTapMs>5000ULL){
+        state.taps=0;
+        state.firstTapMs=nowMs;
+    }
+    if(++state.taps<7)return false;
+    state.visible=!state.visible;
+    state.taps=0;
+    state.firstTapMs=0;
+    return true;
+}
 // Independent, edge-triggered left-stick navigation. It never modifies the
 // in-game movement or the right-hand laser/pointer input outside this menu.
 struct VrMenuNavigation {
@@ -379,6 +399,7 @@ struct VrHandMenuState {
     bool calibratingWeaponLeft{};
     VrMenuHoldShortcut shortcut{};
     VrMenuNavigation navigation{};
+    VrMenuDeveloperReveal devReveal{};
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
     int hovered{-1};

@@ -8,6 +8,27 @@ int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
     int selected=0;
+    // Seven fast taps reveal, seven further taps rehide, timing resets.
+    VrMenuDeveloperReveal reveal{};
+    assert(!reveal.visible);
+    for(int i=0;i<6;++i)
+        assert(!vrMenuDeveloperTap(reveal,1000+i*150));
+    assert(!reveal.visible);
+    assert(vrMenuDeveloperTap(reveal,1900));
+    assert(reveal.visible&&reveal.taps==0);
+    for(int i=0;i<6;++i)
+        assert(!vrMenuDeveloperTap(reveal,3000+i*150));
+    assert(vrMenuDeveloperTap(reveal,3900));
+    assert(!reveal.visible);
+    for(int i=0;i<6;++i)
+        assert(!vrMenuDeveloperTap(reveal,6000+i*150));
+    assert(!vrMenuDeveloperTap(reveal,12000)); // expired
+    assert(!reveal.visible&&reveal.taps==1);
+    for(int i=1;i<7;++i){
+        const bool changed=vrMenuDeveloperTap(reveal,12000+i*150);
+        assert(changed==(i==6));
+    }
+    assert(reveal.visible);
     // Both minigun recoil profiles must be reachable by controller navigation.
     assert(kVrRecoilMenuProfileCount==10);
     VrMenuNavigation recoilNav{};
