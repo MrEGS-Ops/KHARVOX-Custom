@@ -3353,6 +3353,7 @@ void updateGameplayActions(XrTime displayTime){
     }
     *reinterpret_cast<int*>(doomFloat(0x5B64540))=0;
     holdNativeTurnCvars(manualTurnCarrierSpeed());
+    KharvoxCameraEnforceGloryKillHighlightSetting();
     static bool yawSpeedHoldLogged=false;
     if(!yawSpeedHoldLogged){yawSpeedHoldLogged=true;std::ostringstream o;o<<"[TURN] holding live joy_yawSpeed current-value RVA 0x"<<std::hex<<joyYawSpeedCurrentRva<<std::dec<<" at "<<manualTurnCarrierSpeed()<<" only for hidden body catch-up; visible Smooth Turn uses OpenXR frame time";log(o.str());}
     XrActiveActionSet active{s.gameplayActionSet,XR_NULL_PATH}; XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets=1; sync.activeActionSets=&active;
@@ -5072,7 +5073,6 @@ bool createGameplayActions(){
         +" behindHeadWheel="+(s.customMods.behindHeadWeaponWheel?"on":"off")
         +" behindHeadHandSelect="+(s.customMods.behindHeadWheelHandSelection?"on":"off")
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")
-        +" revenge="+(s.customMods.revengeDemon?"on":"off")
         +" dynamicShoulder="+(s.customMods.dynamicShoulderHolster?"on":"off")
         +" persistentSsgReload="+(s.customMods.persistentSuperShotgunReload
             ?"requested-but-disabled-until-native-animation-hook":"off")

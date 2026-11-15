@@ -51,9 +51,6 @@ bool KharvoxCameraCutsceneActive();
 // This is NOT an animation playhead or proof of an animator state.
 bool KharvoxCameraReadCinematicSourceOrigin(float origin[3]);
 bool KharvoxCameraBossSequenceActive();
-// Writes a narrow death-time idPlayer->managed-entity reference snapshot for
-// the external Supervisor. No continuous diagnostics are performed in-game.
-bool KharvoxCameraWriteRevengeDiscoverySnapshot();
 bool KharvoxCameraSyncAttackActive();
 // Temporary Glory Kill playback override. A value <= 0 clears it.
 // The camera hook restores DOOM's baseline timescale when the sync attack ends.
@@ -70,6 +67,9 @@ void KharvoxCameraSetChainsawTakedownCinematic(bool active);
 // nothing if safe lookup fails; does not replace the model with a fake.
 void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
     bool requestNewReplay, bool superShotgunActiveAndSafe);
+// Reapply native Glory Kill Highlight selection after DOOM reloads campaign settings.
+// Does not affect Glory Kill availability, animation or timing.
+void KharvoxCameraEnforceGloryKillHighlightSetting();
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
 void KharvoxCameraResetCombatTimeDilation();
 bool KharvoxCameraLedgeTransitionActive();

@@ -12,7 +12,6 @@ on:
       - 'config/user_calibration_defaults/**'
       - 'tests/**'
       - 'launcher/KharvoxLauncher/**'
-      - 'supervisor/**'
       - 'tools/**'
       - 'assets/**'
       - '.github/workflows/build-custom.yml'

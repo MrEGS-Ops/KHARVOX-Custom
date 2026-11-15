@@ -11,7 +11,8 @@ internal sealed class DevModeForm : Form
         CheckBox hudDebugging,
         CheckBox extendedLogging,
         CheckBox calibrateHands,
-        Label weaponStatus, CheckBox? disableAa = null, CheckBox? captureEyes = null)
+        Label weaponStatus, CheckBox? disableAa = null, CheckBox? captureEyes = null,
+        CheckBox? gloryKillHighlight = null)
     {
         Text = "KHARVOX – Dev Mode";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -29,13 +30,14 @@ internal sealed class DevModeForm : Form
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(14),
-            RowCount = 6,
+            RowCount = 7,
             ColumnCount = 1
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 26));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
@@ -96,6 +98,9 @@ internal sealed class DevModeForm : Form
         captureEyes ??= new CheckBox {Text="Eye capture: Ctrl+Shift+P (next launch)",AutoSize=true};
         captureEyes.Dock=DockStyle.Fill;
         root.Controls.Add(captureEyes);
+        gloryKillHighlight ??= new CheckBox { Text = "Glory Kill Highlight (next launch; default Off)", AutoSize = true };
+        gloryKillHighlight.Dock = DockStyle.Fill;
+        root.Controls.Add(gloryKillHighlight);
         var liveAmmo = new CheckBox { Text="Life/Ammo/ProgMeter calibration",AutoSize=true,Dock=DockStyle.Fill };
         var liveAmmoMarker=Path.Combine(AppContext.BaseDirectory,"enable_live_ammo_calibration");
         liveAmmo.Checked=File.Exists(liveAmmoMarker);

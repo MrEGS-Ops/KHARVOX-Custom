@@ -34,6 +34,7 @@ internal sealed class KharvoxLaunchOptions
     public string LeftHandSwapMode { get; }
     public bool LaserSight { get; }
     public bool HudDebugging { get; }
+    public bool GloryKillHighlightEnabled { get; }
     public bool ExtendedLogging { get; }
     public bool CaptureEyes { get; }
     public bool DisableAa { get; }
@@ -65,7 +66,8 @@ internal sealed class KharvoxLaunchOptions
         bool usePsvr2Toolkit,
         string backWeapon, bool handsJump = false, bool disableAa = false, bool captureEyes = false,
         bool disableVrIntro = false, bool swapJumpCrouch = false,
-        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10)
+        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10,
+        bool gloryKillHighlightEnabled = false)
     {
         ImmersiveMode = immersiveMode; CinematicFreelook = cinematicFreelook;
         OtherCinematicsInQuad = otherCinematicsInQuad;
@@ -87,6 +89,7 @@ internal sealed class KharvoxLaunchOptions
         LeftHandSwapMode = leftHandSwapMode;
         LaserSight = laserSight;
         ExtendedLogging = extendedLogging;
+        GloryKillHighlightEnabled = gloryKillHighlightEnabled;
         HandCalibrationMode = handCalibrationMode switch
         {
             "rotation" => "rotation",
@@ -158,10 +161,8 @@ internal static class KharvoxRunner
     private static readonly object bhapticsLock = new();
     private static BhapticsBridgeSession? currentBhaptics;
     private static readonly object psvr2Lock = new();
-    private static readonly object supervisorLock = new();
     private static readonly object diagnosticLogLock = new();
     private static Psvr2BridgeSession? currentPsvr2;
-    private static KharvoxSupervisorSession? currentSupervisor;
     private static int launchInProgress;
     internal enum StartupState
     {
@@ -204,7 +205,6 @@ internal static class KharvoxRunner
             if (Volatile.Read(ref launchInProgress) != 0) return false;
             StopBhapticsInBackground();
             StopPsvr2InBackground();
-            StopSupervisor();
             return false;
         }
     }
@@ -352,7 +352,6 @@ internal static class KharvoxRunner
         EnsureNativeControllerBindings(options.BackWeapon);
         await StopBhapticsAsync().ConfigureAwait(false);
         await StopPsvr2Async().ConfigureAwait(false);
-        StopSupervisor();
         var bhaptics = BhapticsBridgeSession.TryStart(
             options.EnableBhaptics, runtimeDir, statusUpdate,
             bhapticsAppId, bhapticsApiKey, options.ExtendedLogging);
@@ -529,6 +528,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO_HANDOFF");
             psi.EnvironmentVariables["KHARVOX_EXTENDED_LOGGING"] = options.ExtendedLogging ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_GK_HIGHLIGHT_ENABLED"] = options.GloryKillHighlightEnabled ? "1" : "0";
             psi.EnvironmentVariables.Remove("VK_LOADER_DEBUG");
             if (options.ExtendedLogging)
             {
@@ -630,7 +630,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_LEFT_WRIST_WHEEL"] = customMods.LeftWristWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL_HAND_SELECTION"] = customMods.BehindHeadWheelHandSelection ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_SSG_PERSISTENT_RELOAD"] = customMods.PersistentSuperShotgunReload ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
@@ -770,12 +769,6 @@ internal static class KharvoxRunner
             }
             const long logOffset = 0;
             EnsureNoRunningDoom();
-            var supervisor = KharvoxSupervisorSession.TryStart(customMods, runtimeDir, statusUpdate);
-            lock (supervisorLock)
-            {
-                currentSupervisor?.Dispose();
-                currentSupervisor = supervisor;
-            }
             if (options.ExtendedLogging)
                 AppendRegistryDiagnostics(logPath, launchId, "before-process-start", key,
                     manifestPath);
@@ -983,7 +976,6 @@ internal static class KharvoxRunner
             {
                 await StopBhapticsAsync().ConfigureAwait(false);
                 await StopPsvr2Async().ConfigureAwait(false);
-                StopSupervisor();
             }
         }
     }
@@ -1343,7 +1335,6 @@ internal static class KharvoxRunner
         {
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
-            StopSupervisor();
             return;
         }
         try
@@ -1356,19 +1347,7 @@ internal static class KharvoxRunner
             game.Dispose();
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
-            StopSupervisor();
         }
-    }
-
-    private static void StopSupervisor()
-    {
-        KharvoxSupervisorSession? session;
-        lock (supervisorLock)
-        {
-            session = currentSupervisor;
-            currentSupervisor = null;
-        }
-        session?.Dispose();
     }
 
     internal static async Task StopBhapticsAsync()
@@ -1848,8 +1827,8 @@ internal static class KharvoxRunner
     // Do not change stagger, Glory Kill availability, animation or timing.
     // Read-only reference: DOOMLegacyMod's game CVar dump identifies
     // g_setting_gk_highlight as "show or hide the GK highlight".
-    internal static IEnumerable<string> NativeGloryKillHighlightArguments() =>
-        ["+g_setting_gk_highlight", "0"];
+    internal static IEnumerable<string> NativeGloryKillHighlightArguments(bool enabled = false) =>
+        ["+g_setting_gk_highlight", enabled ? "1" : "0"];
 
     // The former working Build #83 path toggled DOOM's native sync CVars.
     // The legacy slow-motion dropdown AND either fast-execution checkbox may
@@ -1938,7 +1917,7 @@ internal static class KharvoxRunner
         // Always turn off DOOM's own blue/orange stagger outlines in VR.
         // This does not require DOOMModLoader, alter user config files or
         // introduce any on-screen launcher option.
-        args.AddRange(NativeGloryKillHighlightArguments());
+        args.AddRange(NativeGloryKillHighlightArguments(options.GloryKillHighlightEnabled));
 
         // Reuse the native sync-slowdown bypass the user previously confirmed
         // working: checking EITHER fast-kill mod must activate all THREE CVars

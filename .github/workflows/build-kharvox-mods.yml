@@ -11,7 +11,6 @@ on:
       - 'launcher/KharvoxLauncher/**'
       - 'launcher/KharvoxMods/**'
       - 'launcher/KharvoxModsUpdater/**'
-      - 'supervisor/**'
       - 'tools/**'
       - 'assets/**'
       - '.github/workflows/build-custom.yml'
@@ -103,8 +102,8 @@ jobs:
           foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
             Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
           }
-          # Drop legacy Supervisor helpers (Revenge Demon is currently paused) and
-          # Freedoom art, which has no runtime consumer. Keep the source in GitHub.
+          # Drop retired Supervisor helpers (Revenge Demon removed) and
+          # Freedoom art, which has no runtime consumer.
           foreach ($legacy in @("KharvoxSupervisor.exe","KharvoxSupervisor.exe.config","KharvoxSupervisor.json")) {
             $old = Join-Path $root $legacy
             if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
@@ -253,7 +252,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/RIPSHIFT-VR/_RIPSHIFT.exe"
-          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-ripshift-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
+          foreach ($test in @("--self-test-glorykill-highlight","--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-ripshift-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.
             $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow
