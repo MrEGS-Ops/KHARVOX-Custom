@@ -432,14 +432,14 @@ public sealed class MainForm : Form
         action.Controls.Add(status, 1, 1);
         root.Controls.Add(action);
 
-        // Single unobtrusive attribution row. Keep original KHARVOX credit
-        // clearly visible while distinguishing the RIPSHIFT enhancement.
-        // Preserve the original Cactus credit's click/Shift+click actions.
+        // Three balanced footer columns: RIPSHIFT link left, version centred,
+        // original KHARVOX credit right. Preserve the original Cactus
+        // credit's click/Shift+click actions and unobtrusive hover styling.
         var footerLabel = new Label
         {
             Text = "Original KHARVOX by CactusVRStudios",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleCenter,
+            TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
             Font = new Font("Segoe UI", 8f),
             Margin = Padding.Empty,
@@ -455,20 +455,41 @@ public sealed class MainForm : Form
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
         var ripshiftCredit = new Label
         {
-            Text = "RIPSHIFT VR by MrEGS_",
+            Text = "RIPSHIFT by MrEGS_",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight,
-            ForeColor = Color.FromArgb(150, 158, 167),
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.Gray,
             Font = new Font("Segoe UI", 8f),
-            Margin = Padding.Empty
+            Margin = Padding.Empty,
+            Cursor = Cursors.Hand,
+            AccessibleName = "Visit MrEGS_ on Twitch"
         };
+        ripshiftCredit.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://www.twitch.tv/MrEGS_",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Unable to open Twitch: " + ex.Message,
+                    "RIPSHIFT VR", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        ripshiftCredit.MouseEnter += (_, _) => ripshiftCredit.ForeColor = Color.Gainsboro;
+        ripshiftCredit.MouseLeave += (_, _) => ripshiftCredit.ForeColor = Color.Gray;
         var footer = new TableLayoutPanel {
             Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 44));
         footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
@@ -476,14 +497,14 @@ public sealed class MainForm : Form
         var versionLabel = new Label {
             Text = releaseVersion.ToString(releaseVersion.Build == 0 ? 2 : 3)
                 + (releaseInfo.Contains("-test") ? " Test" : releaseInfo.Contains("-beta") ? " Beta" : releaseInfo.Contains("-rc") ? " RC" : ""),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.Gray,
             Font = new Font("Segoe UI", 8f),
             Margin = Padding.Empty
         };
-        footer.Controls.Add(versionLabel, 0, 0);
-        footer.Controls.Add(footerLabel, 1, 0);
-        footer.Controls.Add(ripshiftCredit, 2, 0);
+        footer.Controls.Add(ripshiftCredit, 0, 0);
+        footer.Controls.Add(versionLabel, 1, 0);
+        footer.Controls.Add(footerLabel, 2, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
