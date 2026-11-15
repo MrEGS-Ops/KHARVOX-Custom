@@ -36,7 +36,7 @@ internal static class LauncherPresetPolicy
     internal const bool DefaultEnableHands = true;
     internal const int RipshiftPresetIndex = 3;
     internal const int DefaultPresetIndex = RipshiftPresetIndex;
-    internal const int RipshiftTurnSpeed = 387;
+    internal const int RipshiftTurnSpeed = 400;
     internal static bool TryGet(int presetIndex, out LauncherPresetDefinition definition)
     {
         // Recommended and Intense intentionally share the same high-immersion

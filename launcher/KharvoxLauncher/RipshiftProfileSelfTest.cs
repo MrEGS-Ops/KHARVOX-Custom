@@ -31,7 +31,7 @@ internal static class RipshiftProfileSelfTest
             RipshiftLaunchProfileBridge.Watch(form);
             var profile = Control<ComboBox>(form, "preset");
             if (profile.SelectedIndex != LauncherPresetPolicy.DefaultPresetIndex
-                || !string.Equals(profile.Text, "RIPSHIFT", StringComparison.Ordinal))
+                || !string.Equals(profile.Text, "_RIPSHIFT", StringComparison.Ordinal))
                 throw new InvalidDataException("RIPSHIFT must be the fresh-install default.");
 
             void CheckLocks()
@@ -84,8 +84,15 @@ internal static class RipshiftProfileSelfTest
             }
             finally { try { File.Delete(oldSettingsPath); } catch { } }
             var turnSpeed = Control<TrackBar>(form, "smoothSpeed");
-            if (turnSpeed.Value != 387)
-                throw new InvalidDataException("New profile smooth turn speed must be 387 degrees/s.");
+            if (turnSpeed.Value != 400)
+                throw new InvalidDataException("New profile smooth turn speed must be 400 degrees/s.");
+            var punchSpeed = Control<TrackBar>(form, "physicalGlorykillSpeed");
+            if (punchSpeed.Value != 9)
+                throw new InvalidDataException("Physical Glory Kill default must be 2.8 m/s.");
+            punchSpeed.Value = 10;
+            CheckLocks();
+            if (punchSpeed.Value != 10 || !punchSpeed.Enabled)
+                throw new InvalidDataException("Physical Glory Kill threshold must stay adjustable.");
             // Disabled controls remain mutable from code. The selected profile
             // must reject a conflicting update, not just disable mouse clicks.
             Control<CheckBox>(form, "virtualGunstock").Checked = true;
@@ -117,7 +124,7 @@ internal static class RipshiftProfileSelfTest
                 || !renderScale.Enabled || !useFsr.Enabled)
                 throw new InvalidDataException(
                     "Choosing RIPSHIFT unexpectedly changed render scale or FSR.");
-            if (turnSpeed.Value != 387)
+            if (turnSpeed.Value != 400)
                 throw new InvalidDataException("Profile switch did not reset smooth turn speed.");
             turnSpeed.Value = 390;
             Control<CheckBox>(form, "laserSight").Checked = true;

@@ -126,7 +126,7 @@ void paintVrHandMenu() {
         write(bannerX+24,bannerY+13,"CONTROLLERS DISCONNECTED",white);
         SelectObject(dc,smallFont);
         write(bannerX+24,bannerY+58,
-            "Press both thumbsticks to reconnect.",RGB(255,204,128));
+            "Press L3 + R3 together to reconnect.",RGB(255,204,128));
     }else if(startupTipView){
         SelectObject(dc,regular);
         write(tipX+24,tipY+12,"KHARVOX MOD MENU",white);
@@ -255,7 +255,7 @@ void paintVrHandMenu() {
             for(int line=0;line<6;++line){
                 const char* text=overview.lines[line];
                 if(text&&*text)
-                    write(540,224+line*49,text,line==5?RGB(84,233,214):white);
+                    write(540,224+line*37,text,line==5?RGB(84,233,214):white);
             }
             fill(531,550,384,59,m.hovered==115
                 ?RGB(53,95,108):RGB(36,78,92));

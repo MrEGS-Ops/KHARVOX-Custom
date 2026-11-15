@@ -3425,6 +3425,33 @@ void updateGameplayActions(XrTime displayTime){
         &&readFloatAction(s.leftWeaponTrigger)<.10f
         &&readFloatAction(s.rightWeaponGrip)<.10f
         &&readFloatAction(s.leftWeaponGrip)<.10f;
+    // Service the menu-only information banner BEFORE the controller safety
+    // lock's early return. Main-menu input can still be safety-locked during
+    // startup, and fullscreen HUD classification does not identify DOOM's
+    // front menu. The banner must not itself block native controller input.
+    const bool mainMenuTipContext=s.quadMode
+        &&!KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
+        &&!KharvoxHudEndOfLevelMenuActive()
+        &&!s.centeredQuadTransitionPending&&vrHandMenuSurface.ready;
+    const bool anyTipButtonDown=
+        leftStickClick||rightStickClick
+        ||readBooleanAction(s.doomJump)||readBooleanAction(s.doomCrouch)
+        ||readBooleanAction(s.doomEquipment)
+        ||readBooleanAction(s.doomMissionInfo)
+        ||readBooleanAction(s.doomSwitchWeaponMod)
+        ||readFloatAction(s.leftWeaponTrigger)>.55f
+        ||readFloatAction(s.rightWeaponTrigger)>.55f
+        ||readFloatAction(s.leftWeaponGrip)>.55f
+        ||readFloatAction(s.rightWeaponGrip)>.55f;
+    const bool tipWasVisible=s.modMenuStartupNotice.visible;
+    const bool tipWasShown=s.modMenuStartupNotice.shown;
+    kharvox::updateVrMenuStartupNotice(s.modMenuStartupNotice,
+        mainMenuTipContext,KharvoxCameraWorldActive(),anyTipButtonDown);
+    if(!tipWasShown&&s.modMenuStartupNotice.visible)
+        log("[VR-MODS-TIP] R3 hint shown on main-menu Quad; new button press dismisses");
+    if(tipWasVisible&&!s.modMenuStartupNotice.visible)
+        log("[VR-MODS-TIP] R3 hint dismissed");
     const bool previousArmed=s.controllerOnlySafety.armed;
     const bool reconnectWasRequired=s.controllerOnlySafety.reconnectAckRequired;
     const bool armed=kharvox::updateControllerOnlySafety(
@@ -3497,23 +3524,6 @@ void updateGameplayActions(XrTime displayTime){
     const bool deathMenu=KharvoxHudDeathMenuActive();
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
-    // Headset-only informational hint at DOOM's main menu: not a safety
-    // latch, never blocks native game input and shows only once per launch.
-    // Physical A/B/X/Y, stick clicks, triggers and grips can dismiss it.
-    const bool mainMenuTipContext=nativeUiMenu&&!cutscene
-        &&(!gameplayWorld||!KharvoxCameraWorldActive());
-    const bool anyTipButtonDown=
-        leftStickClick||rightStickClick
-        ||readBooleanAction(s.doomJump)||readBooleanAction(s.doomCrouch)
-        ||readBooleanAction(s.doomEquipment)
-        ||readBooleanAction(s.doomMissionInfo)
-        ||readBooleanAction(s.doomSwitchWeaponMod)
-        ||readFloatAction(s.leftWeaponTrigger)>.55f
-        ||readFloatAction(s.rightWeaponTrigger)>.55f
-        ||readFloatAction(s.leftWeaponGrip)>.55f
-        ||readFloatAction(s.rightWeaponGrip)>.55f;
-    kharvox::updateVrMenuStartupNotice(
-        s.modMenuStartupNotice,mainMenuTipContext,anyTipButtonDown);
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);

@@ -101,17 +101,26 @@ enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
 // before treating a new press as dismissal; never reappear this process.
 struct VrMenuStartupNotice {
     bool shown{},visible{},buttonReleased{};
+    unsigned stableMainMenuFrames{};
 };
 inline constexpr void updateVrMenuStartupNotice(
-    VrMenuStartupNotice& notice,bool onMainMenu,bool anyButtonDown) noexcept {
+    VrMenuStartupNotice& notice,bool onMainMenu,bool gameplayStarted,
+    bool anyButtonDown) noexcept {
     if(notice.shown){
         if(!notice.visible)return;
-        if(!onMainMenu){notice.visible=false;return;}
+        // A one-frame menu classification gap must not permanently discard
+        // the first-launch tip. Only gameplay or a fresh button press does.
+        if(gameplayStarted){notice.visible=false;return;}
         if(!anyButtonDown)notice.buttonReleased=true;
         else if(notice.buttonReleased)notice.visible=false;
         return;
     }
-    if(!onMainMenu)return;
+    if(!onMainMenu){
+        notice.stableMainMenuFrames=0;
+        return;
+    }
+    if(notice.stableMainMenuFrames<20)++notice.stableMainMenuFrames;
+    if(notice.stableMainMenuFrames<20)return;
     notice.shown=true;
     notice.visible=true;
     notice.buttonReleased=!anyButtonDown;

@@ -48,7 +48,7 @@ internal static class RipshiftLaunchProfileBridge
             throw new InvalidDataException("KHARVOX launch profile count changed unexpectedly.");
 
         // The fourth slot retains its old numeric ID for existing settings.
-        preset.Items[LauncherPresetPolicy.RipshiftPresetIndex] = "RIPSHIFT";
+        preset.Items[LauncherPresetPolicy.RipshiftPresetIndex] = "_RIPSHIFT";
 
         var immersive = Get<CheckBox>(form, "intense");
         var freelook = Get<CheckBox>(form, "cinematicFreelook");

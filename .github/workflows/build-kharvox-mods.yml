@@ -252,9 +252,23 @@ jobs:
             throw "Original KHARVOX launcher title missing."
           }
           if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Original KHARVOX by CactusVRStudios' -Quiet) -or
-              !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'RIPSHIFT by MrEGS_' -Quiet) -or
+              !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch '_RIPSHIFT by MrEGS_' -Quiet) -or
               !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'https://www.twitch.tv/MrEGS_' -Quiet)) {
             throw "Original KHARVOX, RIPSHIFT attribution or Twitch link missing."
+          }
+          # Ensure all seven rewritten overviews are included in the source
+          # corresponding to this exact successful native build.
+          $overviews = Get-Content -LiteralPath "src/openxr/VrLiveMenuLogic.inc" -Raw
+          foreach ($expected in @(
+            "Calibrate guns to your VR hand position.",
+            "Open a weapon wheel behind either side",
+            "Control cinematic Glory Kill speed.",
+            "One-handed fire adds physical recoil.",
+            "Perform Glory Kills with real punches.",
+            "Crouch by physically lowering your head.",
+            "Take your time... or RIP & TEAR."
+          )) {
+            if (!$overviews.Contains($expected)) { throw "Missing updated VR mod overview: $expected" }
           }
           $product = (Get-Item -LiteralPath $exe).VersionInfo.ProductName
           if ($product -ne "_RIPSHIFT") { throw "Executable product metadata incorrect: $product" }

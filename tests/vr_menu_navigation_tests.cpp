@@ -8,27 +8,38 @@ int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
     int selected=0;
-    // Main-menu hint appears only once and must not require a special key.
+    // Main-menu Quad is not classified as fullscreen HUD. Require 20
+    // verified frames so boot loading doesn't consume the one-time notice.
     VrMenuStartupNotice notice{};
-    updateVrMenuStartupNotice(notice,false,false);
+    for(int i=0;i<20;++i)
+        updateVrMenuStartupNotice(notice,false,false,false);
     assert(!notice.shown&&!notice.visible);
-    updateVrMenuStartupNotice(notice,true,true); // a pre-held key doesn't dismiss
+    for(int i=0;i<19;++i)
+        updateVrMenuStartupNotice(notice,true,false,true);
+    assert(!notice.shown);
+    updateVrMenuStartupNotice(notice,true,false,true); // pre-held button
     assert(notice.shown&&notice.visible&&!notice.buttonReleased);
-    updateVrMenuStartupNotice(notice,true,true);
+    updateVrMenuStartupNotice(notice,false,false,true); // one-frame gap
     assert(notice.visible);
-    updateVrMenuStartupNotice(notice,true,false);
+    updateVrMenuStartupNotice(notice,true,false,false);
     assert(notice.visible&&notice.buttonReleased);
-    updateVrMenuStartupNotice(notice,true,true);
+    updateVrMenuStartupNotice(notice,true,false,true); // dismiss by new press
     assert(!notice.visible);
-    updateVrMenuStartupNotice(notice,false,false);
-    updateVrMenuStartupNotice(notice,true,false);
-    assert(!notice.visible); // returning to the main menu never re-shows it
-    VrMenuStartupNotice leftMenu{};
-    updateVrMenuStartupNotice(leftMenu,true,false);
-    updateVrMenuStartupNotice(leftMenu,false,false);
-    assert(leftMenu.shown&&!leftMenu.visible);
-    updateVrMenuStartupNotice(leftMenu,true,false);
-    assert(!leftMenu.visible);
+    updateVrMenuStartupNotice(notice,true,false,false);
+    assert(!notice.visible);
+    VrMenuStartupNotice gameplayExit{};
+    for(int i=0;i<20;++i)
+        updateVrMenuStartupNotice(gameplayExit,true,false,false);
+    assert(gameplayExit.shown&&gameplayExit.visible);
+    updateVrMenuStartupNotice(gameplayExit,false,true,false);
+    assert(!gameplayExit.visible);
+    VrMenuStartupNotice skippedLoading{};
+    for(int i=0;i<15;++i)
+        updateVrMenuStartupNotice(skippedLoading,true,false,false);
+    updateVrMenuStartupNotice(skippedLoading,false,false,false);
+    for(int i=0;i<5;++i)
+        updateVrMenuStartupNotice(skippedLoading,true,false,false);
+    assert(!skippedLoading.shown);
     // Seven fast taps reveal, seven further taps rehide, timing resets.
     VrMenuDeveloperReveal reveal{};
     assert(!reveal.visible);

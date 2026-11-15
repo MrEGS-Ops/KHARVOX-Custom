@@ -161,7 +161,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.WhiteSmoke
         });
-        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "RIPSHIFT"]);
+        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "_RIPSHIFT"]);
         preset.Dock = DockStyle.Fill;
         preset.SelectedIndexChanged += (_, _) => ApplyPreset();
         profileRow.Controls.Add(preset);
@@ -424,7 +424,7 @@ public sealed class MainForm : Form
                     if (markStream is not null)
                     {
                         using var mark = Image.FromStream(markStream);
-                        var size = (int)(Math.Min(composed.Width, composed.Height) * 0.54f);
+                        var size = (int)(Math.Min(composed.Width, composed.Height) * 0.35f);
                         var rect = new Rectangle((composed.Width - size) / 2,
                             (composed.Height - size) / 2, size, size);
                         graphics.InterpolationMode =
@@ -475,7 +475,7 @@ public sealed class MainForm : Form
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
         var ripshiftCredit = new Label
         {
-            Text = "RIPSHIFT by MrEGS_",
+            Text = "_RIPSHIFT by MrEGS_",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.Gray,
