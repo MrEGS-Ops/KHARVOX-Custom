@@ -94,8 +94,8 @@ internal static class OriginalKharvoxSetup
 
         using var setup = new Form
         {
-            Text = "KHARVOX Custom — First-Time Setup",
-            ClientSize = new Size(498, 221),
+            Text = "KHARVOX — MrEGS_ Edition | First Run",
+            ClientSize = new Size(498, 205),
             FormBorderStyle = FormBorderStyle.FixedDialog,
             MaximizeBox = false, MinimizeBox = false,
             StartPosition = FormStartPosition.CenterScreen,
@@ -105,24 +105,27 @@ internal static class OriginalKharvoxSetup
             Font = new Font("Segoe UI", 9f)
         };
 
+        // Distinct retail executable uses the owner's MrEGS_ icon.
+        try { setup.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); }
+        catch (ArgumentException) { }
         setup.Controls.Add(new Label {
-            Text = "Original KHARVOX installation required",
+            Text = "Locate your original KHARVOX",
             Location = new Point(18, 17), Size = new Size(455, 27),
             Font = new Font("Segoe UI", 11f, FontStyle.Bold)
         });
         setup.Controls.Add(new Label {
-            Text = "This lightweight add-on uses CactusVRStudios' original KHARVOX files.",
-            Location = new Point(18, 53), Size = new Size(460, 37)
+            Text = "This MrEGS_ edition runs alongside CactusVRStudios' KHARVOX.",
+            Location = new Point(18, 52), Size = new Size(460, 28)
         });
         setup.Controls.Add(new Label {
-            Text = "Choose its original KharvoxLauncher.exe. Your original installation will not be changed.",
-            Location = new Point(18, 95), Size = new Size(460, 43),
+            Text = "Browse to KharvoxLauncher.exe in your original KHARVOX folder. We use its shader files without changing your installation.",
+            Location = new Point(18, 83), Size = new Size(460, 52),
             ForeColor = Color.Gainsboro
         });
 
         var link = new LinkLabel {
-            Text = "Don't have KHARVOX? Get the original on GitHub",
-            Location = new Point(18, 164), Size = new Size(320, 35),
+            Text = "Get original KHARVOX on GitHub",
+            Location = new Point(18, 151), Size = new Size(304, 33),
             LinkColor = Color.LightSkyBlue, ActiveLinkColor = Color.White,
             BackColor = setup.BackColor
         };
@@ -138,8 +141,8 @@ internal static class OriginalKharvoxSetup
         setup.Controls.Add(link);
 
         var select = new Button {
-            Text = "Select original…", Size = new Size(136, 32),
-            Location = new Point(344, 164),
+            Text = "Browse original…", Size = new Size(141, 32),
+            Location = new Point(338, 151),
             BackColor = Color.FromArgb(43, 43, 47), ForeColor = Color.WhiteSmoke,
             FlatStyle = FlatStyle.Flat
         };
@@ -152,7 +155,7 @@ internal static class OriginalKharvoxSetup
             if (chooser.ShowDialog(setup) != DialogResult.OK) return;
             if (Validate(chooser.FileName) == null) {
                 MessageBox.Show(setup,
-                    "Select the original KHARVOX launcher in its own installation folder. A complete original SFS profile (75 shaders) must be present. Do not select this custom launcher.",
+                    "That is not the original KHARVOX installation. Select its KharvoxLauncher.exe from the folder containing the original SFS shader profile.",
                     "KHARVOX Custom — Original installation required",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;

@@ -4,7 +4,7 @@ namespace KharvoxLauncher;
 
 internal sealed class LauncherSettings
 {
-    internal const int CurrentVersion = 36;
+    internal const int CurrentVersion = 37;
 
     public int SettingsVersion { get; set; }
     public int Preset { get; set; }
@@ -158,6 +158,10 @@ internal static class LauncherSettingsStore
             settings.DisableAa = false;
         if (settings.SettingsVersion < 31) settings.DisableVrIntro = false;
         if (settings.SettingsVersion < 34) settings.SwapJumpCrouch = false;
+        // Legacy user profiles sometimes carried an accidentally enabled
+        // Jump/Crouch swap. Reset it once on upgrade to v37, but continue
+        // honouring explicit changes saved by the user in v37 and later.
+        if (settings.SettingsVersion < 37) settings.SwapJumpCrouch = false;
         if (settings.SettingsVersion < 35)
         {
             settings.WeaponWheelRemapEnabled = true;

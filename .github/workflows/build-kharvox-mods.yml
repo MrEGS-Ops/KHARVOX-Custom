@@ -169,6 +169,27 @@ jobs:
               @(Get-ChildItem -LiteralPath $redundantArtworkFolder -Force).Count -eq 0) {
             Remove-Item -LiteralPath $redundantArtworkFolder -Force
           }
+          # No second readme or retail build stamp at the top level: setup
+          # guidance is in the first-run dialog, provenance in GitHub Actions.
+          # Rename only the retail launcher, never the original Cactus binary.
+          $oldLauncher = Join-Path $root "KharvoxLauncher.exe"
+          $retailLauncher = Join-Path $root "KHARVOX-MrEGS.exe"
+          if (!(Test-Path -LiteralPath $oldLauncher)) {
+            throw "Original native-built launcher missing."
+          }
+          Move-Item -LiteralPath $oldLauncher -Destination $retailLauncher
+          $oldAppConfig = Join-Path $root "KharvoxLauncher.exe.config"
+          if (Test-Path -LiteralPath $oldAppConfig) {
+            Move-Item -LiteralPath $oldAppConfig -Destination (Join-Path $root "KHARVOX-MrEGS.exe.config")
+          }
+          if ((Test-Path -LiteralPath $oldLauncher) -or !(Test-Path -LiteralPath $retailLauncher)) {
+            throw "Retail executable rename failed."
+          }
+          if ((Test-Path -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt")) -or
+              (Test-Path -LiteralPath (Join-Path $root "RETAIL-BUILD.txt"))) {
+            throw "Obsolete retail text files were unexpectedly packaged."
+          }
+          <# Original retail README (retired):
           @(
             "KHARVOX VR - RETAIL PREVIEW (EXPERIMENTAL)"
             "Source: ${{ github.sha }}"
@@ -190,6 +211,7 @@ jobs:
             "Experimental build; headset verification is required before release."
           ) | Set-Content -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt") -Encoding UTF8
           @("KHARVOX_RETAIL_PREVIEW_1","commit=${{ github.sha }}","nativeCommit=$env:NATIVE_COMMIT","nativeRun=$env:NATIVE_RUN_ID") | Set-Content -LiteralPath (Join-Path $root "RETAIL-BUILD.txt") -Encoding ASCII
+          #>
           foreach ($name in $runtimeConfigs) {
             if (!(Test-Path -LiteralPath (Join-Path $config $name)) -or
                 (Test-Path -LiteralPath (Join-Path $root $name))) {
@@ -227,7 +249,7 @@ jobs:
       - name: Regression-test launcher, profile and preserved mod defaults
         shell: pwsh
         run: |
-          $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KharvoxLauncher.exe"
+          $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KHARVOX-MrEGS.exe"
           foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.

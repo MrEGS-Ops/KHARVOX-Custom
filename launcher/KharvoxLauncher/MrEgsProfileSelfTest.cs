@@ -51,6 +51,23 @@ internal static class MrEgsProfileSelfTest
             }
 
             CheckLocks();
+            if (Control<CheckBox>(form, "swapJumpCrouch").Checked)
+                throw new InvalidDataException("Jump/Crouch swap must default to OFF.");
+            // A saved v36 override used to keep this switch on unexpectedly.
+            // Upgrade only once; future deliberate user choices remain valid.
+            var oldSettingsPath = path + ".legacy";
+            try
+            {
+                File.WriteAllText(oldSettingsPath,
+                    "{\"SettingsVersion\":36,\"SwapJumpCrouch\":true,\"RendererMode\":\"VULKAN_SFS\"}");
+                if (LauncherSettingsStore.Load(oldSettingsPath).SwapJumpCrouch)
+                    throw new InvalidDataException("v36 jump/crouch swap migration failed.");
+                File.WriteAllText(oldSettingsPath,
+                    "{\"SettingsVersion\":37,\"SwapJumpCrouch\":true,\"RendererMode\":\"VULKAN_SFS\"}");
+                if (!LauncherSettingsStore.Load(oldSettingsPath).SwapJumpCrouch)
+                    throw new InvalidDataException("Explicit v37 jump/crouch user choice was lost.");
+            }
+            finally { try { File.Delete(oldSettingsPath); } catch { } }
             var turnSpeed = Control<TrackBar>(form, "smoothSpeed");
             if (turnSpeed.Value != 387)
                 throw new InvalidDataException("New profile smooth turn speed must be 387 degrees/s.");

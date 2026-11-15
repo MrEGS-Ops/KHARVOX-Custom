@@ -122,7 +122,7 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Load event complete");
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
-                window.Text = "KHARVOX — VR Launcher";
+                window.Text = "KHARVOX — MrEGS_ Edition";
                 MrEgsLaunchProfileBridge.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);
