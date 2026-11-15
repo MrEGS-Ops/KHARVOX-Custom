@@ -96,7 +96,19 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
-enum class VrMenuPage {Mods,WeaponGrip,WeaponRecoil};
+enum class VrMenuPage {Mods,Dev,WeaponGrip,WeaponRecoil};
+enum class VrMenuDevOption {
+    None,Folder,WeaponStability,WeaponAlignment,HandFocus,
+    HolsterZones,ControllerMonitor,Experimental
+};
+// DEV appears only after the secret heading gesture; its switches are
+// launch-scoped so ordinary users never inherit experimental overlays.
+inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept {
+    return option==VrMenuDevOption::WeaponAlignment
+        ||option==VrMenuDevOption::HandFocus
+        ||option==VrMenuDevOption::HolsterZones
+        ||option==VrMenuDevOption::ControllerMonitor;
+}
 // One-time, non-blocking main-menu tip. Wait for an actual button release
 // before treating a new press as dismissal; never reappear this process.
 struct VrMenuStartupNotice {
@@ -428,6 +440,9 @@ struct VrHandMenuState {
     VrMenuHoldShortcut shortcut{};
     VrMenuNavigation navigation{};
     VrMenuDeveloperReveal devReveal{};
+    bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
+    bool recoilReturnToDev{};
+    std::string devControllerInputReadout;
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
     int hovered{-1};

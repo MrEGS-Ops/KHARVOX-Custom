@@ -83,7 +83,8 @@ void paintVrHandMenu() {
     const bool disconnectView=controllerReconnectBannerVisible();
     const bool startupTipView=!disconnectView&&s.modMenuStartupNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
-    constexpr int tipX=130,tipY=188,tipW=700,tipH=152;
+    // Use the EXACT same compact banner bounds as controller disconnect.
+    constexpr int tipX=bannerX,tipY=bannerY,tipW=bannerW,tipH=bannerH;
     const bool calibrationView=!disconnectView&&!startupTipView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     if(disconnectView){
@@ -93,7 +94,7 @@ void paintVrHandMenu() {
     }else if(startupTipView){
         fill(tipX,tipY,tipW,tipH,RGB(17,24,32));
         fill(tipX,tipY,6,tipH,RGB(55,209,214));
-        fill(tipX+6,tipY,tipW-6,3,RGB(55,209,214));
+        fill(tipX+6,tipY,tipW-6,3,RGB(76,88,99));
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -129,13 +130,10 @@ void paintVrHandMenu() {
             "Press L3 + R3 together to reconnect.",RGB(255,204,128));
     }else if(startupTipView){
         SelectObject(dc,regular);
-        write(tipX+24,tipY+12,"KHARVOX MOD MENU",white);
+        write(tipX+24,tipY+13,"RIPSHIFT MOD SETTINGS",white);
         SelectObject(dc,smallFont);
-        write(tipX+24,tipY+57,
-            "While in-game, hold the Right Thumbstick (R3)",white);
-        write(tipX+24,tipY+83,"to open the Mod Menu.",white);
-        write(tipX+24,tipY+121,
-            "Press any button to dismiss.",RGB(84,233,214));
+        write(tipX+24,tipY+58,
+            "Hold R3 in-game to open the Mod Menu.",RGB(84,233,214));
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -198,12 +196,54 @@ void paintVrHandMenu() {
             write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
         }
         SelectObject(dc,smallFont);
-        write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
-        write(39,551,"B: CANCEL",muted);
-    }else if(m.page==kharvox::VrMenuPage::Mods){
-        write(38,24,"RIPSHIFT VR  /  MOD SETTINGS",white);
+        const bool gunslingerCapture=m.liveCapture!=kharvox::VrLiveCapture::None
+            &&m.liveCapture!=kharvox::VrLiveCapture::CrouchStanding
+            &&m.liveCapture!=kharvox::VrLiveCapture::CrouchLowered;
+        if(gunslingerCapture&&m.devHolsterZones
+            &&s.trackingHeadPositionValid&&s.headZeroPositionValid){
+            using C=kharvox::VrLiveCapture;
+            const bool hip=m.liveCapture==C::HipRight||m.liveCapture==C::HipLeft;
+            const bool right=m.liveCapture==C::HipRight||m.liveCapture==C::WheelRight;
+            const int side=right?0:1;
+            const auto& grip=right?s.rightGripController:s.leftGripController;
+            if(grip.valid&&grip.positionTracked){
+                const auto hand=controllerRelativeToBodyTrackingOrigin(grip).position;
+                const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+                const kharvox::VrLivePoint relative{
+                    right?hand.x-head.x:head.x-hand.x,
+                    hand.y-head.y,hand.z-head.z};
+                const bool inside=hip
+                    ?kharvox::vrLiveHipInside(relative,false,
+                        s.vrLiveSettings.hipShift[side])
+                    :kharvox::vrLiveWheelInside(relative,false,
+                        s.vrLiveSettings.wheelShift[side]);
+                write(39,390,std::string(hip?"HIP ZONE ":"WHEEL ZONE ")
+                    +(right?"RIGHT: ":"LEFT: ")
+                    +(inside?"INSIDE":"OUTSIDE"),inside
+                        ?RGB(108,235,161):RGB(239,197,116));
+                write(39,425,"Live detection: actual Gunslinger bounds.",muted);
+            }
+        }
+        if(gunslingerCapture&&m.devControllerInputs)
+            write(39,473,m.devControllerInputReadout,RGB(84,233,214));
+        if(!gunslingerCapture&&m.liveCapture==kharvox::VrLiveCapture::None
+            &&m.devWeaponAlignment){
+            std::ostringstream debug;
+            debug<<std::fixed<<std::setprecision(2)
+                <<"ANCHOR XYZ: "<<m.previewPosition.x<<", "
+                <<m.previewPosition.y<<", "<<m.previewPosition.z;
+            write(39,523,debug.str(),RGB(84,233,214));
+            write(39,551,"RIGHT TRIGGER: SAVE    B: CANCEL",muted);
+        }else{
+            write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
+            write(39,551,"B: CANCEL",muted);
+        }
+    }else if(m.page==kharvox::VrMenuPage::Mods
+        ||m.page==kharvox::VrMenuPage::Dev){
+        const bool devPage=m.page==kharvox::VrMenuPage::Dev;
+        write(38,24,devPage?"RIPSHIFT VR  /  DEV":"RIPSHIFT VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
-        write(40,102,"CONFIGURABLE MODS",muted);
+        write(40,102,devPage?"DEVELOPER TOOLS":"CONFIGURABLE MODS",muted);
         write(535,102,m.navigation.settingsColumn?"CONFIG OPTIONS":"MOD OVERVIEW",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
@@ -230,7 +270,8 @@ void paintVrHandMenu() {
             // PAINSAW have an ON/OFF switch. Other rows lead to settings.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].enabled?white:muted);
-            const bool switchable=kharvox::vrLiveModToggleable(entries[index].mod);
+            const bool switchable=!devPage
+                &&kharvox::vrLiveModToggleable(entries[index].mod);
             // The four fixed-on gameplay mods have no "SET" labels.
             // Use a simple disclosure arrow; Crouch/PAINSAW show status.
             write(switchable?436:458,y+10,
@@ -247,7 +288,10 @@ void paintVrHandMenu() {
         // explicitly opens configuration for the highlighted mod.
         if(!m.navigation.settingsColumn){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
-            const auto overview=vrLiveModOverview(mod);
+            const auto overview=entries[overviewSelected].developer
+                ==kharvox::VrMenuDevOption::None
+                    ?vrLiveModOverview(mod)
+                    :vrDevOptionOverview(entries[overviewSelected].developer);
             SelectObject(dc,regular);
             write(536,127,count>0?entries[overviewSelected].title:"No available mods",white);
             SelectObject(dc,smallFont);
@@ -260,17 +304,36 @@ void paintVrHandMenu() {
             fill(531,550,384,59,m.hovered==115
                 ?RGB(53,95,108):RGB(36,78,92));
             SelectObject(dc,regular);
-            write(646,563,"CONFIGURE  >",white);
+            write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
             SelectObject(dc,smallFont);
             write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
-        const bool toggleable=kharvox::vrLiveModToggleable(mod);
+        const bool toggleable=!devPage&&kharvox::vrLiveModToggleable(mod);
         const bool enabled=count>0&&entries[selected].enabled;
         SelectObject(dc,regular);
         write(536,126,count>0?entries[selected].title:"No active mods",white);
-        if(toggleable){
+        if(devPage){
+            using D=kharvox::VrMenuDevOption;
+            const auto opt=count>0?entries[selected].developer:D::Experimental;
+            SelectObject(dc,smallFont);
+            write(538,163,opt==D::Experimental
+                ?"RESERVED FOR FUTURE FEATURES":"SESSION-ONLY DEVELOPER TOOL",muted);
+            if(opt!=D::Experimental){
+                fill(531,186,384,58,m.hovered==130
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,204,opt==D::WeaponStability
+                    ?"OPEN WEAPON RECOIL SETTINGS"
+                    :opt==D::HandFocus
+                        ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
+                            :"SWITCH TO HAND FOCUS")
+                    :(entries[selected].enabled?"TURN VISUALISER OFF"
+                        :"TURN VISUALISER ON"),white);
+            }else write(538,248,"New features will appear here.",muted);
+            write(538,332,"Enabled tools only show in the matching",muted);
+            write(538,361,"calibration screen.",muted);
+        }else if(toggleable){
             const bool focusToggle=m.navigation.usingStick
                 &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
             fill(531,159,384,60,focusToggle?RGB(52,83,99):RGB(39,49,63));
@@ -361,8 +424,15 @@ void paintVrHandMenu() {
         }
         }
         SelectObject(dc,smallFont);
+        if(devPage){
+            fill(797,16,129,57,m.hovered==95
+                ?RGB(47,95,110):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(815,30,"BACK",white);
+        }
         if(m.navigation.settingsColumn)
-            write(538,638,"B: BACK TO MODS     A: SELECT",muted);
+            write(538,638,devPage?"B: DEV LIST    A: SELECT"
+                :"B: BACK TO MODS     A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){

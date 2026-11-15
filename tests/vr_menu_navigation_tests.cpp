@@ -8,6 +8,15 @@ int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
     int selected=0;
+    // The hidden DEV submenu has a distinct page and only diagnostic
+    // toggles; none of its developer entries becomes a normal mod checkbox.
+    assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::WeaponAlignment));
+    assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::HandFocus));
+    assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::HolsterZones));
+    assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::ControllerMonitor));
+    assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Folder));
+    assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Experimental));
+    assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::WeaponStability));
     // Main-menu Quad is not classified as fullscreen HUD. Require 20
     // verified frames so boot loading doesn't consume the one-time notice.
     VrMenuStartupNotice notice{};

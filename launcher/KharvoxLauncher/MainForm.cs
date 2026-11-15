@@ -429,7 +429,11 @@ public sealed class MainForm : Form
                             (composed.Height - size) / 2, size, size);
                         graphics.InterpolationMode =
                             System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        using var circularMask = new System.Drawing.Drawing2D.GraphicsPath();
+                        circularMask.AddEllipse(rect);
+                        graphics.SetClip(circularMask);
                         graphics.DrawImage(mark, rect);
+                        graphics.ResetClip();
                     }
                 }
                 bloodArtwork.Image = composed;

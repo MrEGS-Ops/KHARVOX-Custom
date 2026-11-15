@@ -5,11 +5,29 @@ struct VrLiveMenuEntry {
     const char* title;
     kharvox::VrLiveMod mod{kharvox::VrLiveMod::Other};
     bool enabled{};
-
+    kharvox::VrMenuDevOption developer{kharvox::VrMenuDevOption::None};
 };
 std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     using kharvox::VrLiveMod;
     std::vector<VrLiveMenuEntry> rows;
+    // DEV is a dedicated second list, not a set of miscellaneous rows in
+    // the public menu. Reuse the same selection, laser and navigation system.
+    if(s.vrHandMenu.page==kharvox::VrMenuPage::Dev){
+        using D=kharvox::VrMenuDevOption;
+        rows.push_back({"Weapon Stability",VrLiveMod::WeaponRecoil,
+            kharvox::anyWeaponRecoilEnabled(s.recoilSettings),D::WeaponStability});
+        rows.push_back({"Weapon Alignment Debug",VrLiveMod::Other,
+            s.vrHandMenu.devWeaponAlignment,D::WeaponAlignment});
+        rows.push_back({"Hand Focus",VrLiveMod::HandFocus,
+            s.customMods.handFocusedRs,D::HandFocus});
+        rows.push_back({"Holster Zone Visualiser",VrLiveMod::Other,
+            s.vrHandMenu.devHolsterZones,D::HolsterZones});
+        rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
+            s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
+        rows.push_back({"Experimental Features",VrLiveMod::Other,
+            false,D::Experimental});
+        return rows;
+    }
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
         if(on||showEvenIfOff)rows.push_back({title,id,on});
     };
@@ -21,10 +39,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
     add("KILLTIME",VrLiveMod::Killtime,
         s.vrLiveKilltimeEnabled,true);
-    // Hidden by default; gameplay recoil remains independent of menu visibility.
-    if(s.vrHandMenu.devReveal.visible)
-        add("Weapon Stability",VrLiveMod::WeaponRecoil,
-            kharvox::anyWeaponRecoilEnabled(s.recoilSettings),true);
+    // The heading gesture reveals one DEV folder, never loose DEV mods.
     add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
         s.physicalGlorykillEnabled,true);
     // Group the two live ON/OFF features together at the bottom.
@@ -33,6 +48,9 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     add("PAINSAW",VrLiveMod::Painsaw,
         s.customMods.chainsawTriggerThrottle
             ||s.customMods.motionChainsawKillSpeed,true);
+    if(s.vrHandMenu.devReveal.visible)
+        rows.push_back({"DEV  >",VrLiveMod::Other,true,
+            kharvox::VrMenuDevOption::Folder});
     return rows;
 }
 // This is the PLAYABILITY overview, not a calibration tutorial. It appears
@@ -94,6 +112,36 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Disabling PAINSAW restores native",
             "chainsaw execution."}}};
         default:return {{{"Select a mod for information."}}};
+    }
+}
+VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
+    using D=kharvox::VrMenuDevOption;
+    switch(option){
+        case D::Folder:return {{{"Experimental controls and diagnostics.",
+            "Open DEV to access specialist tools.",
+            "Normal mod settings remain unchanged.","","",""}}};
+        case D::WeaponStability:
+            return vrLiveModOverview(kharvox::VrLiveMod::WeaponRecoil);
+        case D::WeaponAlignment:return {{{"Display live gun and hand anchor data.",
+            "Shown ONLY during Weapon Grip",
+            "Calibration's live capture screen.",
+            "No positions are changed.","",""}}};
+        case D::HandFocus:return {{{"Switch world interaction focus between",
+            "your tracked weapon hand and head.",
+            "Native scripted actions stay native.",
+            "Applies live for this game session.","",""}}};
+        case D::HolsterZones:return {{{"Visualise the active hip or head zone.",
+            "Appears ONLY while calibrating",
+            "Gunslinger hip and wheel positions.",
+            "Uses live zone boundaries.","",""}}};
+        case D::ControllerMonitor:return {{{"Show live hand-controller inputs.",
+            "Visible ONLY inside Gunslinger",
+            "hip or wheel calibration.",
+            "Does not change button bindings.","",""}}};
+        case D::Experimental:return {{{"Future experimental features belong",
+            "in this section once implemented.",
+            "No hidden prototype is active.","","",""}}};
+        default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }
 // Show the runtime's effective Glory Kill target, not the provenance of
