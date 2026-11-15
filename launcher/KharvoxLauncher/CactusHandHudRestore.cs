@@ -31,7 +31,9 @@ internal static class CactusHandHudRestore
 
     internal static void EnsureRestored(string runtimeDir, Action<string>? report = null)
     {
-        var source = Path.Combine(runtimeDir, DefaultFile);
+        var groupedDefault = Path.Combine(runtimeDir, "Config", DefaultFile);
+        var source = File.Exists(groupedDefault)
+            ? groupedDefault : Path.Combine(runtimeDir, DefaultFile);
         var target = Path.Combine(runtimeDir, SavedFile);
         var marker = Path.Combine(runtimeDir, Marker);
         if (!File.Exists(source))

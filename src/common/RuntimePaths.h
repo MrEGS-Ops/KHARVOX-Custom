@@ -84,7 +84,26 @@ inline bool isUserConfigName(const wchar_t* name) noexcept {
 }
 inline std::wstring runtimePath(const wchar_t* name) {
     if(isUserConfigName(name))return userDataDirectory()+L"\\"+name;
-    return runtimeDirectory()+L"\\"+name;
+    const auto root=runtimeDirectory();
+    const std::wstring file(name);
+    // Keep the native developer layout compatible while putting immutable
+    // retail defaults and only our four shader binaries into subdirectories.
+    if(file.find_first_of(L"\\/")==std::wstring::npos){
+        const bool isDefault=file.size()>=12
+            && _wcsicmp(file.c_str()+file.size()-12,L"_default.cfg")==0;
+        const bool isHandModels=_wcsicmp(file.c_str(),L"hand_models.cfg")==0;
+        const bool isRetailShader=_wcsicmp(file.c_str(),L"Fsr1Easu.spv")==0
+            ||_wcsicmp(file.c_str(),L"Fsr1Rcas.spv")==0
+            ||_wcsicmp(file.c_str(),L"HandPbr.vert.spv")==0
+            ||_wcsicmp(file.c_str(),L"HandPbr.frag.spv")==0;
+        if(isDefault || isHandModels || isRetailShader){
+            const auto subfolder=isRetailShader?L"\\Shaders\\":L"\\Config\\";
+            const auto grouped=root+subfolder+file;
+            if(GetFileAttributesW(grouped.c_str())!=INVALID_FILE_ATTRIBUTES)
+                return grouped;
+        }
+    }
+    return root+L"\\"+name;
 }
 inline std::string runtimePathA(const char* name) {
     std::wstring file;

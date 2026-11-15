@@ -113,12 +113,61 @@ jobs:
             Write-Host "Removed development-only file: $($file.FullName.Substring($root.Length+1))"
             Remove-Item -LiteralPath $file.FullName -Force
           }
-          # Group explanatory source text without altering runtime paths.
-          $docs = Join-Path $root "Docs"
-          New-Item -ItemType Directory -Force -Path $docs | Out-Null
+          # Retail-only layout: never rearrange the native developer build.
+          # Keep executable companions and Vulkan layer manifest at the root.
+          $config = Join-Path $root "Config"
+          $shaders = Join-Path $root "Shaders"
+          $licenses = Join-Path $root "Licenses"
+          New-Item -ItemType Directory -Force -Path $config,$shaders,$licenses | Out-Null
+          $runtimeConfigs = @(
+            "hand_models.cfg",
+            "hand_models_calibration_default.cfg",
+            "hud_flat_calibration_default.cfg",
+            "hud_profile_calibration_default.cfg",
+            "hud_quad_scale_default.cfg",
+            "offhand_hud_default.cfg",
+            "two_hand_weapon_profiles_default.cfg",
+            "weapon_pitch_default.cfg",
+            "weapon_roll_default.cfg",
+            "weapon_yaw_default.cfg",
+            "KharvoxSupervisor.json"
+          )
+          $runtimeShaders = @("Fsr1Easu.spv","Fsr1Rcas.spv","HandPbr.frag.spv","HandPbr.vert.spv")
+          foreach ($name in $runtimeConfigs) {
+            $from = Join-Path $root $name
+            if (!(Test-Path -LiteralPath $from)) { throw "Required retail config missing: $name" }
+            Move-Item -LiteralPath $from -Destination (Join-Path $config $name)
+          }
+          foreach ($name in $runtimeShaders) {
+            $from = Join-Path $root $name
+            if (!(Test-Path -LiteralPath $from)) { throw "Required retail shader missing: $name" }
+            Move-Item -LiteralPath $from -Destination (Join-Path $shaders $name)
+          }
+          $upstreamLicenses = Join-Path $root "sfs-compiler-licenses"
+          if (!(Test-Path -LiteralPath $upstreamLicenses)) {
+            throw "Third-party SFS licenses were missing."
+          }
+          foreach ($file in @(Get-ChildItem -LiteralPath $upstreamLicenses -File)) {
+            Move-Item -LiteralPath $file.FullName -Destination (Join-Path $licenses $file.Name)
+          }
+          Remove-Item -LiteralPath $upstreamLicenses -Recurse -Force
           $sourceNotice = Join-Path $root "SFS-PROFILE-SOURCE.txt"
           if (Test-Path -LiteralPath $sourceNotice) {
-            Move-Item -LiteralPath $sourceNotice -Destination (Join-Path $docs "SFS-PROFILE-SOURCE.txt")
+            Move-Item -LiteralPath $sourceNotice -Destination (Join-Path $licenses "SFS-PROFILE-SOURCE.txt")
+          }
+          foreach ($obsoleteFolder in @("Docs","tools","supervisor-profiles")) {
+            $old = Join-Path $root $obsoleteFolder
+            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Recurse -Force }
+          }
+          # Embedded in KharvoxLauncher.exe; loose copy has no retail consumer.
+          $redundantArtwork = Join-Path $root "assets/branding/quest-controller-mapping.png"
+          if (Test-Path -LiteralPath $redundantArtwork) {
+            Remove-Item -LiteralPath $redundantArtwork -Force
+          }
+          $redundantArtworkFolder = Join-Path $root "assets/branding"
+          if ((Test-Path -LiteralPath $redundantArtworkFolder) -and
+              @(Get-ChildItem -LiteralPath $redundantArtworkFolder -Force).Count -eq 0) {
+            Remove-Item -LiteralPath $redundantArtworkFolder -Force
           }
           @(
             "KHARVOX VR - RETAIL PREVIEW (EXPERIMENTAL)"
@@ -134,11 +183,35 @@ jobs:
             "The original installation supplies SFS shader files; it is never overwritten."
             "Run our KharvoxLauncher.exe, then select your DOOM (2016) installation."
             "All VR mod controls and calibration are inside the headset."
+            "Immutable default configuration: Config/. Graphics shader binaries: Shaders/."
+            "Owner presets: CalibrationDefaults/. Copyright notices: Licenses/."
             "The desktop Mod Manager, updater and automatic patcher are retired."
             "Keep existing UserData when upgrading; do not overwrite it."
             "Experimental build; headset verification is required before release."
           ) | Set-Content -LiteralPath (Join-Path $root "README-RETAIL-PREVIEW.txt") -Encoding UTF8
           @("KHARVOX_RETAIL_PREVIEW_1","commit=${{ github.sha }}","nativeCommit=$env:NATIVE_COMMIT","nativeRun=$env:NATIVE_RUN_ID") | Set-Content -LiteralPath (Join-Path $root "RETAIL-BUILD.txt") -Encoding ASCII
+          foreach ($name in $runtimeConfigs) {
+            if (!(Test-Path -LiteralPath (Join-Path $config $name)) -or
+                (Test-Path -LiteralPath (Join-Path $root $name))) {
+              throw "Incorrect config packaging path: $name"
+            }
+          }
+          foreach ($name in $runtimeShaders) {
+            if (!(Test-Path -LiteralPath (Join-Path $shaders $name)) -or
+                (Test-Path -LiteralPath (Join-Path $root $name))) {
+              throw "Incorrect shader packaging path: $name"
+            }
+          }
+          foreach ($name in @("SPIRV-Cross.txt","glslang.txt","SPIRV-Tools.txt")) {
+            if (!(Test-Path -LiteralPath (Join-Path $licenses $name))) {
+              throw "Required license file missing: $name"
+            }
+          }
+          foreach ($old in @("Docs","supervisor-profiles","tools","sfs-compiler-licenses")) {
+            if (Test-Path -LiteralPath (Join-Path $root $old)) {
+              throw "Obsolete retail folder still packaged: $old"
+            }
+          }
           foreach ($forbidden in @("KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","Get-KHARVOX-Custom-Watcher.ps1")) {
             if (Get-ChildItem -LiteralPath $root -Filter $forbidden -File -Recurse) { throw "Forbidden updater/mod executable included: $forbidden" }
           }
@@ -155,7 +228,7 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $PWD "dist/KHARVOX-Retail-Preview/KharvoxLauncher.exe"
-          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
+          foreach ($test in @("--self-test-retail-mods","--self-test-original-kharvox","--self-test-cactus-hand-hud","--self-test-mregs-profile","--self-test-shoulder-weapon-lock","--self-test-virtual-gunstock-lock","--self-test-cactus-launcher")) {
             # WinExe doesn't reliably set LASTEXITCODE when invoked with & in
             # PowerShell 7. This matches the verified native Windows CI tests.
             $process = Start-Process -FilePath $exe -ArgumentList $test -Wait -PassThru -NoNewWindow

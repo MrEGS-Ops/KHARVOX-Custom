@@ -2270,7 +2270,8 @@ internal static class KharvoxRunner
     internal static string ReadCalibrationWithDefault(
         string directory, string savedFileName, string defaultFileName, string builtInFallback) =>
         ReadCalibration(directory, savedFileName,
-            ReadCalibration(directory, defaultFileName, builtInFallback));
+            ReadCalibration(Path.Combine(directory, "Config"), defaultFileName,
+                ReadCalibration(directory, defaultFileName, builtInFallback)));
 
     private static string Inv(decimal value) => value.ToString(Invariant);
 

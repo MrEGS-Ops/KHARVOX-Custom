@@ -74,8 +74,11 @@ internal static class VulkanSfs
         if (lines.Length != 2 || lines[0] != "KHARVOX_NATIVE_SFS_1" ||
             !hash.Equals(lines[1], StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The SFS build manifest does not match KharvoxLayer.dll. Rebuild or restore the complete SFS test package.");
+        var licenses = Directory.Exists(Path.Combine(runtime, "Licenses"))
+            ? Path.Combine(runtime, "Licenses")
+            : Path.Combine(runtime, "sfs-compiler-licenses");
         foreach (var name in new[] { "SPIRV-Cross.txt", "glslang.txt", "SPIRV-Tools.txt" })
-            if (!File.Exists(Path.Combine(runtime, "sfs-compiler-licenses", name)))
+            if (!File.Exists(Path.Combine(licenses, name)))
                 throw new InvalidOperationException("SFS compiler license files are missing from the test package.");
         var profile = ResolveShaderProfile(runtime);
         if (!Directory.Exists(profile) || Directory.GetFiles(profile, "*.spv").Length != 75)

@@ -43,7 +43,9 @@ internal static class Program
 
     private static int Main(string[] args)
     {
-        var configPath = Path.Combine(AppContext.BaseDirectory, "KharvoxSupervisor.json");
+        var configPath = Path.Combine(AppContext.BaseDirectory, "Config", "KharvoxSupervisor.json");
+        if (!File.Exists(configPath))
+            configPath = Path.Combine(AppContext.BaseDirectory, "KharvoxSupervisor.json");
         var once = false;
         for (var i = 0; i < args.Length; i++)
         {

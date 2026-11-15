@@ -1147,7 +1147,7 @@ internal static class SelfTest
         using var sha = System.Security.Cryptography.SHA256.Create();
         File.WriteAllLines(Path.Combine(runtime, "native_sfs_build.txt"), new[] {
             "KHARVOX_NATIVE_SFS_1", BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(layer))).Replace("-", "") });
-        var licenses = Path.Combine(runtime, "sfs-compiler-licenses");
+        var licenses = Path.Combine(runtime, "Licenses");
         Directory.CreateDirectory(licenses);
         foreach (var name in new[] { "SPIRV-Cross.txt", "glslang.txt", "SPIRV-Tools.txt" })
             File.WriteAllText(Path.Combine(licenses, name), "Test fixture");
