@@ -1936,6 +1936,58 @@ void serviceHandFocusUseKeyboardPulse(XrTime displayTime,bool contextActive){
 }
 float environmentFloat(const char* name,float fallback,float minimum,float maximum){char text[64]{};if(!GetEnvironmentVariableA(name,text,sizeof(text)))return fallback;char*end{};const float value=std::strtof(text,&end);return end!=text?std::clamp(value,minimum,maximum):fallback;}
 bool environmentEnabled(const char* name){char text[16]{};if(!GetEnvironmentVariableA(name,text,sizeof(text)))return false;return !_stricmp(text,"1")||!_stricmp(text,"true")||!_stricmp(text,"yes")||!_stricmp(text,"on");}
+// Opt-in, read-only investigation for collectible interaction selection. The
+// game chooses the actual target; this records the native focus trace activity,
+// world-space player/head poses, RS-use pulses, and pickup animation state.
+// Only Enabled Extended Logging sessions produce samples (max 4/s while in world).
+void sampleCollectibleInteractionProbe(bool gameplay, bool useDown, bool meleeDown) {
+    static const bool enabled=environmentEnabled("KHARVOX_COLLECTIBLE_PROBE");
+    if (!enabled) return;
+    static ULONGLONG nextTick{};
+    static bool previousUse{},previousMelee{},previousCollectible{},previousWorld{};
+    const bool world=KharvoxCameraWorldActive();
+    const bool collectible=KharvoxWeaponCollectibleAnimationActive();
+    const bool changed=useDown!=previousUse || meleeDown!=previousMelee
+        || collectible!=previousCollectible || world!=previousWorld;
+    previousUse=useDown;
+    previousMelee=meleeDown;
+    previousCollectible=collectible;
+    previousWorld=world;
+    if (!world) {
+        if (changed) log("[COLLECTIBLE-PROBE] world context exited; probe idle");
+        return;
+    }
+    const ULONGLONG now=GetTickCount64();
+    if (now<nextTick && !changed) return;
+    nextTick=now+250;
+    unsigned long long traces{},handTraces{},headTraces{};
+    bool handReady{};
+    KharvoxCameraFocusTraceDiagnostics(traces,handTraces,headTraces,handReady);
+    float player[3]{},head[3]{},headAxis[9]{};
+    const bool playerValid=KharvoxCameraGetPlayerPhysicsOrigin(player);
+    const bool headValid=KharvoxCameraGetHeadRenderPose(head,headAxis);
+    std::ostringstream o;
+    o<<std::fixed<<std::setprecision(2)
+     <<"[COLLECTIBLE-PROBE] t_ms="<<now
+     <<" gameplay="<<(gameplay?1:0)
+     <<" use="<<(useDown?1:0)
+     <<" melee="<<(meleeDown?1:0)
+     <<" collectibleAnimation="<<(collectible?1:0)
+     <<" focusTraces="<<traces
+     <<" focusHandTraces="<<handTraces
+     <<" focusHeadTraces="<<headTraces
+     <<" focusHandValid="<<(handReady?1:0);
+    if (playerValid)
+        o<<" player="<<player[0]<<","<<player[1]<<","<<player[2];
+    else o<<" player=unavailable";
+    if (headValid)
+        o<<" head="<<head[0]<<","<<head[1]<<","<<head[2]
+         <<" headForward="<<headAxis[0]<<","<<headAxis[1]<<","<<headAxis[2];
+    else o<<" head=unavailable";
+    // Neither prompt visibility nor the selected collectible entity is
+    // exposed by this probe. Don't misclassify focus rays as proximity checks.
+    log(o.str());
+}
 float configuredWorldScale(){std::ifstream config(kharvox::runtimePathA("world_scale.cfg"));float value{};if(config>>value)return std::clamp(value,10.f,200.f);return environmentFloat("KHARVOX_WORLD_SCALE",39.3701f,10.f,200.f);}
 float configuredRenderScale(){std::ifstream config(kharvox::runtimePathA("render_scale.cfg"));float value{};if(config>>value)return kharvox::effectiveRenderScale(value,false);char text[64]{};if(!GetEnvironmentVariableA("KHARVOX_RENDER_SCALE",text,sizeof(text)))return 1.f;char*end{};value=std::strtof(text,&end);return end!=text?kharvox::effectiveRenderScale(value,false):1.f;}
 constexpr float nativeSmoothTurnCarrierSpeed=600.f;
@@ -4938,6 +4990,7 @@ void updateGameplayActions(XrTime displayTime){
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
+    sampleCollectibleInteractionProbe(gameplay,nativeUseDown,nativeMeleeDown);
     // Advance only AFTER both neutral stick and held wheel-button input
     // have reached XInput. The next XR frame releases the native button.
     s.wheelCancelDrain.frameSubmitted();
