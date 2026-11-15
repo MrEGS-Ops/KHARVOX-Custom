@@ -29,6 +29,7 @@ internal sealed class DevModeForm : Form
         var root = new TableLayoutPanel
         {
             Dock = DockStyle.Fill,
+            AutoScroll = true,
             Padding = new Padding(14),
             RowCount = 7,
             ColumnCount = 1
@@ -92,15 +93,19 @@ internal sealed class DevModeForm : Form
         weaponGrid.SetColumnSpan(weaponStatus, 2);
         weaponGroup.Controls.Add(weaponGrid);
         root.Controls.Add(weaponGroup);
+        gloryKillHighlight ??= new CheckBox {
+            Text = "Glory Kill Highlight — allow enemy glow (default OFF; next launch)",
+            AutoSize = true
+        };
+        gloryKillHighlight.Dock = DockStyle.Fill;
+        gloryKillHighlight.ForeColor = Color.FromArgb(84, 233, 214);
+        root.Controls.Add(gloryKillHighlight);
         disableAa ??= new CheckBox { Text = "Disable AA (both renderers, next launch)", AutoSize = true };
         disableAa.Dock = DockStyle.Fill;
         root.Controls.Add(disableAa);
         captureEyes ??= new CheckBox {Text="Eye capture: Ctrl+Shift+P (next launch)",AutoSize=true};
         captureEyes.Dock=DockStyle.Fill;
         root.Controls.Add(captureEyes);
-        gloryKillHighlight ??= new CheckBox { Text = "Glory Kill Highlight (next launch; default Off)", AutoSize = true };
-        gloryKillHighlight.Dock = DockStyle.Fill;
-        root.Controls.Add(gloryKillHighlight);
         var liveAmmo = new CheckBox { Text="Life/Ammo/ProgMeter calibration",AutoSize=true,Dock=DockStyle.Fill };
         var liveAmmoMarker=Path.Combine(AppContext.BaseDirectory,"enable_live_ammo_calibration");
         liveAmmo.Checked=File.Exists(liveAmmoMarker);
