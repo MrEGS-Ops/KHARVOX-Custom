@@ -86,6 +86,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path $factory | Out-Null
           $defaults = @(Get-ChildItem -LiteralPath "config/user_calibration_defaults" -File)
           if ($defaults.Count -ne 7) { throw "Missing owner-calibrated factory settings." }
+          # Hardware-dependent visual options must never come from the
+          # owner's saved MrEGS_ factory profile: keep both editable.
+          $factoryLauncher = Get-Content -LiteralPath "config/user_calibration_defaults/kharvox-launcher-settings.json" -Raw | ConvertFrom-Json
+          foreach ($unwanted in @("RenderScale","UseFsrUpscaling")) {
+            if ($factoryLauncher.PSObject.Properties.Name -contains $unwanted) {
+              throw "Hardware-dependent personal preference incorrectly bundled in factory profile: $unwanted"
+            }
+          }
           foreach ($file in $defaults) {
             $target = Join-Path $factory $file.Name
             if (Test-Path -LiteralPath $target) {

@@ -51,6 +51,21 @@ internal static class MrEgsProfileSelfTest
             }
 
             CheckLocks();
+            // Owner factory presets must not lock or impose render resolution
+            // or FSR. The ordinary launcher baseline stays 100% / unchecked,
+            // and the user can override each setting under MrEGS_.
+            var renderScale = Control<NumericUpDown>(form, "renderScale");
+            var useFsr = Control<CheckBox>(form, "useFsrUpscaling");
+            if (renderScale.Value != 100m || useFsr.Checked
+                || !renderScale.Enabled || !useFsr.Enabled)
+                throw new InvalidDataException(
+                    "RenderScale and FSR must retain the normal editable launcher baseline.");
+            renderScale.Value = 125m;
+            useFsr.Checked = true;
+            CheckLocks();
+            if (renderScale.Value != 125m || !useFsr.Checked)
+                throw new InvalidDataException(
+                    "MrEGS_ must not override explicitly selected RenderScale or FSR.");
             if (Control<CheckBox>(form, "swapJumpCrouch").Checked)
                 throw new InvalidDataException("Jump/Crouch swap must default to OFF.");
             // A saved v36 override used to keep this switch on unexpectedly.
@@ -92,8 +107,16 @@ internal static class MrEgsProfileSelfTest
                 throw new InvalidDataException(
                     "Editing a different profile must not silently select MrEGS_.");
 
+            // Switching to MrEGS_ from another profile must NOT enforce a
+            // saved owner's render scale or Use FSR preference.
+            renderScale.Value = 135m;
+            useFsr.Checked = true;
             MrEgsLaunchProfileBridge.SelectProfileForSelfTest(form, LauncherPresetPolicy.MrEgsPresetIndex);
             CheckLocks();
+            if (renderScale.Value != 135m || !useFsr.Checked
+                || !renderScale.Enabled || !useFsr.Enabled)
+                throw new InvalidDataException(
+                    "Choosing MrEGS_ unexpectedly changed render scale or FSR.");
             if (turnSpeed.Value != 387)
                 throw new InvalidDataException("Profile switch did not reset smooth turn speed.");
             turnSpeed.Value = 390;
