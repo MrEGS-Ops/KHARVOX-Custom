@@ -5603,6 +5603,17 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 
 #include "PauseBindings.inc"
 #include "GripZoneDebug.inc"
+// Display-only filter: game safety lock, input masking, and two-stick
+// acknowledgement remain active even when this warning is hidden.
+bool controllerReconnectBannerVisible(){
+    return kharvox::vrControllerReconnectBannerVisible(
+        controllerOnlyLocked.load(std::memory_order_acquire),
+        KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
+        KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
+        KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
+        s.quadMode||s.centeredQuadTransitionPending
+            ||s.immersiveCinematicActive);
+}
 #include "VrHandMenuRender.inc"
 
 bool createSwapchains() {
@@ -8154,7 +8165,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
 
     bool vrMenuImageAcquired=false;
     uint32_t vrMenuImageIndex{};
-    if((controllerOnlyLocked.load(std::memory_order_acquire)
+    // Do not allocate/submit a reconnect overlay in startup, loading,
+    // cutscenes, pause, death, fullscreen menus, or the initial VR quad.
+    if((controllerReconnectBannerVisible()
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};

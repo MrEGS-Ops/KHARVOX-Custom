@@ -76,12 +76,17 @@ void paintVrHandMenu() {
         FillRect(dc,&rect,brush);
         DeleteObject(brush);
     };
-    const bool disconnectView=controllerOnlyLocked.load(std::memory_order_acquire);
+    // The 960x720 texture stays shared with the mod menu, but the warning
+    // itself occupies only this small top-centre banner. All other pixels
+    // are transparent while the warning is shown.
+    constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
+    const bool disconnectView=controllerReconnectBannerVisible();
     const bool calibrationView=!disconnectView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     if(disconnectView){
-        fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
-        fill(38,82,884,4,RGB(213,143,54));
+        fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
+        fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
+        fill(bannerX+6,bannerY,bannerW-6,3,RGB(76,88,99));
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -110,18 +115,11 @@ void paintVrHandMenu() {
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
     if(disconnectView){
-        SelectObject(dc,title);
-        write(92,149,"CONTROLLERS DISCONNECTED",white);
         SelectObject(dc,regular);
-        write(95,247,"Controller-only gameplay is locked.",RGB(255,204,128));
-        write(95,303,"Wake both physical Quest controllers.",white);
-        write(95,354,"Press BOTH thumbsticks together, then release.",white);
+        write(bannerX+24,bannerY+13,"CONTROLLERS DISCONNECTED",white);
         SelectObject(dc,smallFont);
-        write(95,423,"Hand-tracking emulation cannot fire, Grip or throw grenades.",muted);
-        write(95,471,"Requires tracked controllers and a real controller profile.",muted);
-        write(95,530,KharvoxHudPauseMenuActive()
-            ?"DOOM PAUSED: after reconnecting, press Pause to resume."
-            :"Native Pause requested. Combat inputs remain blocked.",RGB(84,233,214));
+        write(bannerX+24,bannerY+58,
+            "Press both thumbsticks to reconnect.",RGB(255,204,128));
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -571,8 +569,11 @@ void paintVrHandMenu() {
         const size_t b=i*4;
         dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];
         const int x=int(i%vrMenuW),y=int(i/vrMenuW);
-        dst[b+3]=(disconnectView||!calibrationView
-            ||(x>=22&&x<612&&y>=144&&y<576))?255:0;
+        dst[b+3]=disconnectView
+            ?(x>=bannerX&&x<bannerX+bannerW
+                &&y>=bannerY&&y<bannerY+bannerH?255:0)
+            :(!calibrationView
+                ||(x>=22&&x<612&&y>=144&&y<576)?255:0);
     }
     SelectObject(dc,oldBitmap);
     DeleteObject(dib);
