@@ -25,6 +25,9 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-retail-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return RetailVrDefaults.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-original-kharvox",
+                StringComparison.OrdinalIgnoreCase)))
+            return OriginalKharvoxSetup.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
@@ -104,6 +107,9 @@ internal static class Program
 
         try
         {
+            // Restore the original first-run installation picker, but keep
+            // all regular gameplay configuration in KHARVOX VR itself.
+            if (!OriginalKharvoxSetup.EnsureSelected()) return 0;
             // Direct KHARVOX launcher: no external Mod Manager or updater.
             // Preserve CactusVRStudios' original MainForm.cs unchanged.
             LauncherStartupTrace.Mark("MainForm construction begins");
