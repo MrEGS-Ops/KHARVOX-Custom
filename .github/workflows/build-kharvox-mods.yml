@@ -252,7 +252,7 @@ jobs:
             throw "Original KHARVOX launcher title missing."
           }
           if (!(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'Original KHARVOX by CactusVRStudios' -Quiet) -or
-              !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'RIPSHIFT VR  |  A gameplay enhancement for KHARVOX  |  By MrEGS_' -Quiet)) {
+              !(Select-String -Path "launcher/KharvoxLauncher/MainForm.cs" -SimpleMatch 'RIPSHIFT VR by MrEGS_' -Quiet)) {
             throw "Original KHARVOX and RIPSHIFT attribution footer missing."
           }
           $product = (Get-Item -LiteralPath $exe).VersionInfo.ProductName

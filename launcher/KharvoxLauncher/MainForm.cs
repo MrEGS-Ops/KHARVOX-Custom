@@ -131,7 +131,7 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 330));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 172));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         launcherContent = root;
         viewport.Controls.Add(root);
         Controls.Add(viewport);
@@ -432,54 +432,58 @@ public sealed class MainForm : Form
         action.Controls.Add(status, 1, 1);
         root.Controls.Add(action);
 
+        // Single unobtrusive attribution row. Keep original KHARVOX credit
+        // clearly visible while distinguishing the RIPSHIFT enhancement.
+        // Preserve the original Cactus credit's click/Shift+click actions.
         var footerLabel = new Label
         {
             Text = "Original KHARVOX by CactusVRStudios",
             Dock = DockStyle.Fill,
-            TextAlign = ContentAlignment.MiddleRight,
+            TextAlign = ContentAlignment.MiddleCenter,
             ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 8f),
+            Margin = Padding.Empty,
             Cursor = Cursors.Hand
         };
         footerLabel.MouseClick += (_, e) =>
         {
             if (e.Button != MouseButtons.Left) return;
             if ((ModifierKeys & Keys.Shift) != 0) ShowDevMode();
-            else
-            {
-                ShowNextCracktro();
-            }
+            else ShowNextCracktro();
         };
         footerLabel.MouseEnter += (_, _) => footerLabel.ForeColor = Color.Gainsboro;
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
         var ripshiftCredit = new Label
         {
-            Text = "RIPSHIFT VR  |  A gameplay enhancement for KHARVOX  |  By MrEGS_",
+            Text = "RIPSHIFT VR by MrEGS_",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.FromArgb(150, 158, 167),
-            Font = new Font("Segoe UI", 8f)
+            Font = new Font("Segoe UI", 8f),
+            Margin = Padding.Empty
         };
         var footer = new TableLayoutPanel {
-            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 2,
+            Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 72));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
-        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 50));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 56));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
         var versionLabel = new Label {
             Text = releaseVersion.ToString(releaseVersion.Build == 0 ? 2 : 3)
                 + (releaseInfo.Contains("-test") ? " Test" : releaseInfo.Contains("-beta") ? " Beta" : releaseInfo.Contains("-rc") ? " RC" : ""),
-            Dock = DockStyle.Fill, TextAlign = ContentAlignment.BottomLeft,
-            ForeColor = Color.Gray
+            Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 8f),
+            Margin = Padding.Empty
         };
         footer.Controls.Add(versionLabel, 0, 0);
-        footer.SetRowSpan(versionLabel, 2);
         footer.Controls.Add(footerLabel, 1, 0);
-        footer.Controls.Add(ripshiftCredit, 1, 1);
+        footer.Controls.Add(ripshiftCredit, 2, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
