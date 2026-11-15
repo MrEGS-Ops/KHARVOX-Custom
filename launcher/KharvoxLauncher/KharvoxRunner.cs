@@ -267,6 +267,9 @@ internal static class KharvoxRunner
         Action<string>? statusUpdate = null, string? bhapticsAppId = null,
         string? bhapticsApiKey = null)
     {
+        // An already-installed ORIGINAL CactusVRStudios KHARVOX remains a
+        // hard dependency; this add-on never replaces or edits its files.
+        OriginalKharvoxSetup.RequireSelectedOriginal();
         if (RendererSelection.IsSfs(options.RendererMode)) VulkanSfs.EnsureAvailable();
         var runtimeDir = AppContext.BaseDirectory;
         var dllPath = Path.Combine(runtimeDir, "KharvoxLayer.dll");
