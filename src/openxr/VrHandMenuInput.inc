@@ -450,8 +450,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         const bool dev=s.vrHandMenu.page==kharvox::VrMenuPage::DevStats;
         if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
         if(pixelX>=38&&pixelX<=493)
-            for(int i=0;i<3;++i)
-                if(pixelY>=170+i*120&&pixelY<242+i*120)
+            for(int i=0;i<4;++i)
+                if(pixelY>=156+i*104&&pixelY<230+i*104)
                     return 1000+i;
         if(pixelX>=531&&pixelX<=915){
             if(!dev&&pixelY>=159&&pixelY<219)return 110;
@@ -706,12 +706,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int previous=m.statsSelected;
             if(dev)kharvox::vrMenuNavigateStick(m.navigation,
                 m.navigation.settingsColumn?s.leftStick.x:0.f,
-                s.leftStick.y,3,m.statsSelected,2);
+                s.leftStick.y,4,m.statsSelected,2);
             else kharvox::vrStatsNavigateStick(m.navigation,
                 s.leftStick.x,s.leftStick.y,m.statsSelected,
                 kharvox::statsGridCellFromPosition(
                     kharvox::vrStatsCorner(s.vrLiveSettings,m.statsSelected)));
-            m.statsSelected=std::clamp(m.statsSelected,0,2);
+            m.statsSelected=std::clamp(m.statsSelected,0,3);
             if(previous!=m.statsSelected){
                 m.navigation.actionIndex=0;
                 m.pendingStatsReset=-1;
@@ -729,7 +729,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation={};
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
-            }else if(chosen>=1000&&chosen<1003){
+            }else if(chosen>=1000&&chosen<1004){
                 m.statsSelected=chosen-1000;
                 m.navigation.actionIndex=0;
                 m.pendingStatsReset=-1;
