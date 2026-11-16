@@ -46,18 +46,28 @@ int main(){
         &&!stats.campaignTimerEnabled);
     assert(vrStatsSetEnabled(stats,0,true));
     assert(stats.deathCounterEnabled);
+    const auto beforeStatistics=stats;
     assert(vrStatsSetEnabled(stats,1,true));
     assert(!stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    assert(vrStatsDisplacedDisplay(beforeStatistics,stats,1));
+    // Enabling an item in a free position leaves the menu open.
+    // The UI closes ONLY when this policy reports an evicted overlay.
     // Timer top-left and statistics top-right can coexist.
+    const auto beforeTimerEnabled=stats;
     assert(vrStatsSetEnabled(stats,2,true));
     assert(stats.campaignTimerEnabled&&stats.deathStatisticsEnabled);
+    assert(!vrStatsDisplacedDisplay(beforeTimerEnabled,stats,2));
     // Assigning the timer to the stat's occupied corner disables statistics.
+    const auto beforeConflict=stats;
     assert(vrStatsSetCorner(stats,2,1));
     assert(stats.campaignTimerEnabled&&!stats.deathStatisticsEnabled);
+    assert(vrStatsDisplacedDisplay(beforeConflict,stats,2));
     assert(vrStatsCorner(stats,2)==1);
     // A hidden item's position preference does not displace visible items.
+    const auto beforeHiddenChange=stats;
     assert(vrStatsSetCorner(stats,0,1));
     assert(!stats.deathCounterEnabled&&stats.campaignTimerEnabled);
+    assert(!vrStatsDisplacedDisplay(beforeHiddenChange,stats,0));
     // Enabling the Death Counter in that corner now disables the timer.
     assert(vrStatsSetEnabled(stats,0,true));
     assert(stats.deathCounterEnabled&&!stats.campaignTimerEnabled);
