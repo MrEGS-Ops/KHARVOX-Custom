@@ -445,6 +445,23 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelX=(x/1.28f+.5f)*float(vrMenuW);
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
+    if(s.vrHandMenu.page==kharvox::VrMenuPage::Stats
+        ||s.vrHandMenu.page==kharvox::VrMenuPage::DevStats){
+        const bool dev=s.vrHandMenu.page==kharvox::VrMenuPage::DevStats;
+        if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
+        if(pixelX>=38&&pixelX<=493)
+            for(int i=0;i<3;++i)
+                if(pixelY>=170+i*120&&pixelY<242+i*120)
+                    return 1000+i;
+        if(pixelX>=531&&pixelX<=915){
+            if(!dev&&pixelY>=159&&pixelY<219)return 110;
+            if(dev)return pixelY>=186&&pixelY<244?130:-1;
+            for(int i=0;i<4;++i)
+                if(pixelY>=254+i*70&&pixelY<312+i*70)
+                    return 130+i;
+        }
+        return -1;
+    }
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Mods
         ||s.vrHandMenu.page==kharvox::VrMenuPage::Dev){
         if(s.vrHandMenu.page==kharvox::VrMenuPage::Dev
@@ -624,6 +641,18 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.page=wasLiveModCapture?kharvox::VrMenuPage::Mods
                 :kharvox::VrMenuPage::WeaponGrip;
             m.message="Calibration cancelled. No changes saved.";
+        }else if(m.page==kharvox::VrMenuPage::Stats
+            ||m.page==kharvox::VrMenuPage::DevStats){
+            const bool dev=m.page==kharvox::VrMenuPage::DevStats;
+            if(m.navigation.settingsColumn){
+                m.navigation.settingsColumn=false;
+                m.navigation.actionIndex=0;
+                m.message="Back to Stats options.";
+            }else{
+                m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Mods;
+                m.navigation={};
+                m.message=dev?"Back to developer tools.":"Back to mod settings.";
+            }
         }else if(m.page==kharvox::VrMenuPage::WeaponGrip
             ||m.page==kharvox::VrMenuPage::WeaponRecoil){
             const bool backToDev=m.page==kharvox::VrMenuPage::WeaponRecoil
@@ -659,7 +688,44 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
         const auto rows=activeVrMenuEntries();
-        if(m.page==kharvox::VrMenuPage::Mods
+        if(m.page==kharvox::VrMenuPage::Stats
+            ||m.page==kharvox::VrMenuPage::DevStats){
+            const bool dev=m.page==kharvox::VrMenuPage::DevStats;
+            const int previous=m.statsSelected;
+            kharvox::vrMenuNavigateStick(m.navigation,
+                m.navigation.settingsColumn?s.leftStick.x:0.f,
+                s.leftStick.y,3,m.statsSelected,dev?1:5);
+            m.statsSelected=std::clamp(m.statsSelected,0,2);
+            if(previous!=m.statsSelected){
+                m.navigation.actionIndex=0;
+                m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+            }
+            const int pointed=triggerEdge?m.hovered:-1;
+            const int chosen=pointed>=0?pointed:
+                aEdge?(m.navigation.settingsColumn
+                    ?dev?130:m.navigation.actionIndex==0
+                        ?110:129+m.navigation.actionIndex
+                    :1000+m.statsSelected):-1;
+            if(pointed>=0)m.navigation.usingStick=false;
+            if(chosen==95){
+                m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Mods;
+                m.navigation={};
+                m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+            }else if(chosen>=1000&&chosen<1003){
+                m.statsSelected=chosen-1000;
+                m.navigation.actionIndex=0;
+                m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+                m.navigation.settingsColumn=aEdge;
+                m.message=std::string(dev?"Reset ":"Configure ")
+                    +kharvox::vrStatsLabel(m.statsSelected);
+            }else if(m.navigation.settingsColumn
+                &&(chosen==110||(chosen>=130&&chosen<=133))){
+                handleVrStatsMenuAction(chosen,dev);
+            }
+        }else if(m.page==kharvox::VrMenuPage::Mods
             ||m.page==kharvox::VrMenuPage::Dev){
             const bool devPage=m.page==kharvox::VrMenuPage::Dev;
             const int n=static_cast<int>(rows.size());
@@ -716,6 +782,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.page=kharvox::VrMenuPage::Dev;
                     m.selectedRow=0;m.modScroll=0;m.navigation={};
                     m.message="DEV tools. B returns to MOD SETTINGS.";
+                }else if(entry.developer==D::StatsReset){
+                    m.page=kharvox::VrMenuPage::DevStats;
+                    m.statsSelected=0;
+                    m.navigation={};
+                    m.pendingStatsReset=-1;
+                    m.message="Choose a stat to reset; confirm twice.";
                 }else if(entry.developer==D::WeaponStability){
                     m.page=kharvox::VrMenuPage::WeaponRecoil;
                     m.recoilReturnToDev=true;
@@ -755,6 +827,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     if(openDevEntry(rows[newRow])){
                         // DEV entries own navigation; never fall through to
                         // the ordinary mod toggle/configuration handlers.
+                    }else if(m.selectedMod==kharvox::VrLiveMod::Stats){
+                        m.page=kharvox::VrMenuPage::Stats;
+                        m.statsSelected=0;
+                        m.navigation={};
+                        m.message="Choose an item and configure its display.";
                     }else if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip
                         ||m.selectedMod==kharvox::VrLiveMod::WeaponRecoil){
                         // Both calibration mods have their own complete page.
@@ -779,6 +856,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedMod=rows[m.selectedRow].mod;
                 if(openDevEntry(rows[m.selectedRow])){
                     // Submenu or DEV toggle panel opened.
+                }else if(m.selectedMod==kharvox::VrLiveMod::Stats){
+                    m.page=kharvox::VrMenuPage::Stats;
+                    m.statsSelected=0;
+                    m.navigation={};
+                    m.message="Choose an item and configure its display.";
                 }else if(m.selectedMod==kharvox::VrLiveMod::WeaponGrip
                     ||m.selectedMod==kharvox::VrLiveMod::WeaponRecoil){
                     const bool grip=m.selectedMod==kharvox::VrLiveMod::WeaponGrip;
@@ -817,18 +899,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
-                }else if(kind==D::ResetDeathCounter){
-                    const auto now=GetTickCount64();
-                    if(!m.confirmDeathResetUntilMs
-                        ||now>m.confirmDeathResetUntilMs){
-                        m.confirmDeathResetUntilMs=now+6000ULL;
-                        m.message="Press RESET again within 6 seconds to erase total.";
-                    }else{
-                        m.confirmDeathResetUntilMs=0;
-                        if(KharvoxHudResetCampaignDeathCount())
-                            m.message="Campaign death total reset to 0.";
-                        else m.message="Reset failed: could not save death total.";
-                    }
+
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
