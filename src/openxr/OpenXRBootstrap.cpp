@@ -5772,6 +5772,21 @@ bool controllerReconnectBannerVisible(){
             ||s.immersiveCinematicActive,
         KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
 }
+// Show a persistent, non-blocking reminder on the front menu while native
+// DOOM Game Settings remain ON or cannot be VERIFIED. Never claim that
+// DOOMConfig.cfg proves the live state: DOOM reloads options after launch.
+bool nativeGameSettingsReminderVisible() {
+    if(!vrHandMenuSurface.ready || !s.quadMode
+        ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+        ||KharvoxCameraWorldActive()||KharvoxCameraCutsceneActive()
+        ||KharvoxHudPauseMenuActive()||KharvoxHudDeathMenuActive()
+        ||KharvoxHudEndOfLevelMenuActive()||s.centeredQuadTransitionPending)
+        return false;
+    return kharvox::vrNativeSettingsNeedManualCheck(
+        KharvoxCameraNativeTutorialsValue(),
+        KharvoxCameraNativeGloryKillHighlightValue(),
+        KharvoxCameraGloryKillHighlightRequested());
+}
 #include "VrHandMenuRender.inc"
 
 bool createSwapchains() {
@@ -8325,7 +8340,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     uint32_t vrMenuImageIndex{};
     // This shared quad handles the controller reconnect warning, the
     // one-time main-menu hint and live mod settings. Only show when needed.
-    if((controllerReconnectBannerVisible()||s.modMenuStartupNotice.visible
+    if((controllerReconnectBannerVisible()||nativeGameSettingsReminderVisible()
+            ||s.modMenuStartupNotice.visible
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
