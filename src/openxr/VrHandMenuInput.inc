@@ -454,7 +454,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
                     return 1000+s.vrHandMenu.recordsScroll+i;
         if(pixelX>=531&&pixelX<=915
-            &&pixelY>=186&&pixelY<244)return 130;
+            &&pixelY>=(dev?186:310)&&pixelY<(dev?244:368))return 130;
         return -1;
     }
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Stats
