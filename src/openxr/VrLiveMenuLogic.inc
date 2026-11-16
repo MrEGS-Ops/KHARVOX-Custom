@@ -427,8 +427,15 @@ bool handleVrLevelRecordTrack(int missionIndex){
     // A replay of the SAME mission must also start a clean attempt. Preserve
     // all previously saved Level Best times and HUD preferences.
     s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
-    s.recentLevelBestGoldUntilMs=0;
-    s.recentLevelBestTimeMs=0;
+    // A tracked run begins with LEVEL TIME 00:00 and LEVEL DEATHS 0.
+    // Level Time's visual toggle automatically turns OFF on completion;
+    // unrelated death/session/campaign counters are never reset here.
+    const auto previousHud=s.vrLiveSettings;
+    kharvox::vrStatsSetEnabled(s.vrLiveSettings,4,true);
+    if(!saveVrLiveSettings()){
+        s.vrLiveSettings=previousHud;
+        log("[LEVEL-STATS] timed run started but Level Time HUD setting could not be saved");
+    }
     // Exact same input suppression as DEV Reset All: no trigger-to-fire,
     // A-to-crouch or B-to-jump leaking into DOOM on automatic close.
     menu.mode=kharvox::VrHandMenuMode::Closed;
@@ -448,29 +455,28 @@ bool handleVrLevelRecordTrack(int missionIndex){
 bool handleVrLevelRecordReset(int action) {
     auto& menu=s.vrHandMenu;
     if(action!=130)return false;
-    const int choice=std::clamp(menu.recordSelected,0,1);
+    const int choice=std::clamp(menu.recordSelected,0,
+        static_cast<int>(kharvox::kCampaignMissions.size()));
+    const bool all=choice==static_cast<int>(kharvox::kCampaignMissions.size());
     const auto now=GetTickCount64();
-    const int key=10+choice; // cannot be confused with ordinary Stats resets
+    const int key=100+choice; // separate from Stats and timed-start confirms
     if(menu.pendingStatsReset!=key||!menu.confirmDeathResetUntilMs
         ||now>menu.confirmDeathResetUntilMs){
         menu.pendingStatsReset=key;
         menu.confirmDeathResetUntilMs=now+6000ULL;
-        menu.message=choice==0
-            ?"Press again to reset CURRENT LEVEL record."
-            :"Press again to reset ALL level records.";
+        menu.message=all
+            ?"Press again to delete ALL level records."
+            :std::string("Press again to delete records for ")
+                +kharvox::kCampaignMissions[choice].title+".";
         return true;
     }
     menu.pendingStatsReset=-1;
     menu.confirmDeathResetUntilMs=0;
     auto previous=s.levelRecords;
-    if(choice==0){
-        const auto& keyName=s.levelProgress.verifiedMapKey;
-        if(!kharvox::levelRecordKeyValid(keyName)){
-            menu.message="Current level identity unverified. No record was deleted.";
-            return true;
-        }
+    if(!all){
+        const auto& keyName=kharvox::kCampaignMissions[choice].key;
         if(!kharvox::levelRecordsReset(s.levelRecords,keyName)){
-            menu.message="Current level has no saved personal best.";
+            menu.message="Selected mission has no records to delete.";
             return true;
         }
     }else kharvox::levelRecordsResetAll(s.levelRecords);
@@ -480,7 +486,7 @@ bool handleVrLevelRecordReset(int action) {
         menu.message="Could not save record reset; records restored in memory.";
         return true;
     }
-    menu.message=choice==0?"Current level record reset.":"All level bests reset.";
+    menu.message=all?"All mission records reset.":"Selected mission records reset.";
     s.levelProgress.bestUpdated=false;
     return true;
 }
