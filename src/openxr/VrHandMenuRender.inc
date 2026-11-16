@@ -81,13 +81,7 @@ void paintVrHandMenu() {
     // are transparent while the warning is shown.
     constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
     const bool disconnectView=controllerReconnectBannerVisible();
-    // If the CVar is read as ON, the player needs to disable it.
-    // If its live value cannot be verified, ask the player to check manually.
-    // Neither case misreports a saved config as a verified game setting.
-    const bool settingsWarningView=!disconnectView
-        &&nativeGameSettingsReminderVisible();
-    constexpr int settingsX=128,settingsY=148,settingsW=704,settingsH=152;
-    const bool startupTipView=!disconnectView&&!settingsWarningView
+    const bool startupTipView=!disconnectView
         &&s.modMenuStartupNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
     // Use the EXACT same compact banner bounds as controller disconnect.
@@ -101,10 +95,6 @@ void paintVrHandMenu() {
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
         fill(bannerX+6,bannerY,bannerW-6,3,RGB(76,88,99));
-    }else if(settingsWarningView){
-        fill(settingsX,settingsY,settingsW,settingsH,RGB(17,24,32));
-        fill(settingsX,settingsY,6,settingsH,RGB(231,161,62));
-        fill(settingsX+6,settingsY,settingsW-6,3,RGB(76,88,99));
     }else if(startupTipView){
         fill(tipX,tipY,tipW,tipH,RGB(17,24,32));
         fill(tipX,tipY,6,tipH,RGB(55,209,214));
@@ -147,24 +137,6 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(bannerX+24,bannerY+58,
             "Press L3 + R3 together to reconnect.",RGB(255,204,128));
-    }else if(settingsWarningView){
-        SelectObject(dc,regular);
-        write(settingsX+24,settingsY+12,"CHECK DOOM GAME SETTINGS",white);
-        SelectObject(dc,smallFont);
-        const int tutorials=KharvoxCameraNativeTutorialsValue();
-        const int gk=KharvoxCameraNativeGloryKillHighlightValue();
-        const bool expectedGkOn=KharvoxCameraGloryKillHighlightRequested();
-        const auto stateName=[](int value)->const char* {
-            return value==0?"OFF":value==1?"ON":"UNVERIFIED";
-        };
-        write(settingsX+24,settingsY+53,
-            std::string("TUTORIALS: ")+stateName(tutorials)
-            +"    GK HIGHLIGHT: "+(expectedGkOn?"DEV ON":stateName(gk)),
-            RGB(255,204,128));
-        write(settingsX+24,settingsY+87,
-            "DOOM > Settings > Game: turn unwanted options OFF.",white);
-        write(settingsX+24,settingsY+118,
-            "Clears when native OFF is verified; otherwise check manually.",muted);
     }else if(startupTipView){
         SelectObject(dc,regular);
         write(tipX+24,tipY+13,"RIPSHIFT MOD SETTINGS",white);
@@ -474,25 +446,11 @@ void paintVrHandMenu() {
                     :opt==D::HandFocus
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
-                    :opt==D::GloryKillHighlight
-                        ?(KharvoxCameraGloryKillHighlightStatus()!=1
-                            ?"NATIVE CONTROL UNAVAILABLE"
-                            :KharvoxCameraGloryKillHighlightRequested()
-                                ?"HIGHLIGHT OFF":"HIGHLIGHT ON")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else write(538,248,"New features will appear here.",muted);
-            if(opt==D::GloryKillHighlight){
-                write(538,332,KharvoxCameraGloryKillHighlightStatus()==1
-                    ?"NATIVE SETTING VERIFIED":"NATIVE SETTING UNVERIFIED",
-                    KharvoxCameraGloryKillHighlightStatus()==1
-                        ?RGB(84,233,214):RGB(240,169,115));
-                write(538,361,KharvoxCameraGloryKillHighlightStatus()==1
-                    ?"Native value observed.":"Use DOOM Game Settings to change.",muted);
-            }else{
-                write(538,332,"Enabled tools only show in the matching",muted);
-                write(538,361,"calibration screen.",muted);
-            }
+            write(538,332,"Enabled tools only show in the matching",muted);
+            write(538,361,"calibration screen.",muted);
         }else if(toggleable){
             const bool focusToggle=m.navigation.usingStick
                 &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
@@ -833,9 +791,6 @@ void paintVrHandMenu() {
         dst[b+3]=disconnectView
             ?(x>=bannerX&&x<bannerX+bannerW
                 &&y>=bannerY&&y<bannerY+bannerH?255:0)
-            :settingsWarningView
-                ?(x>=settingsX&&x<settingsX+settingsW
-                    &&y>=settingsY&&y<settingsY+settingsH?255:0)
             :startupTipView
                 ?(x>=tipX&&x<tipX+tipW
                     &&y>=tipY&&y<tipY+tipH?255:0)
