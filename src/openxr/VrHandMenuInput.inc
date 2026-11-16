@@ -453,7 +453,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             for(int i=0;i<10;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
                     return 1000+s.vrHandMenu.recordsScroll+i;
-        if(dev&&pixelX>=531&&pixelX<=915
+        if(pixelX>=531&&pixelX<=915
             &&pixelY>=186&&pixelY<244)return 130;
         return -1;
     }
@@ -723,10 +723,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.page==kharvox::VrMenuPage::Records
             ||m.page==kharvox::VrMenuPage::DevRecords){
             const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
-            const int count=dev?2:static_cast<int>(s.levelRecords.bestMs.size());
+            const int count=dev?2:static_cast<int>(
+                kharvox::kCampaignMissions.size());
             kharvox::vrMenuNavigateStick(m.navigation,
-                dev?s.leftStick.x:0.f,s.leftStick.y,
-                count,m.recordSelected,dev?1:0);
+                s.leftStick.x,s.leftStick.y,
+                count,m.recordSelected,1);
             m.recordSelected=std::clamp(m.recordSelected,0,std::max(0,count-1));
             m.recordsScroll=std::clamp(m.recordsScroll,0,std::max(0,count-10));
             if(m.recordSelected<m.recordsScroll)m.recordsScroll=m.recordSelected;
@@ -734,7 +735,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.recordsScroll=m.recordSelected-9;
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:aEdge
-                ?(m.navigation.settingsColumn&&dev?130:1000+m.recordSelected):-1;
+                ?(m.navigation.settingsColumn?130:1000+m.recordSelected):-1;
             if(chosen==95){
                 m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Stats;
                 m.navigation={};m.pendingStatsReset=-1;
@@ -742,11 +743,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }else if(chosen>=1000&&chosen<1000+count){
                 m.recordSelected=chosen-1000;
                 m.navigation.actionIndex=0;
-                m.navigation.settingsColumn=aEdge&&dev;
+                m.navigation.settingsColumn=aEdge;
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
-            }else if(dev&&chosen==130)
-                handleVrLevelRecordReset(130);
+            }else if(chosen==130){
+                if(dev)handleVrLevelRecordReset(130);
+                else handleVrLevelRecordTrack(m.recordSelected);
+            }
         }else if(m.page==kharvox::VrMenuPage::Stats
             ||m.page==kharvox::VrMenuPage::DevStats){
             const bool dev=m.page==kharvox::VrMenuPage::DevStats;
