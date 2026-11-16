@@ -138,6 +138,13 @@ inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept
 }
 // One-time, non-blocking main-menu tip. Wait for an actual button release
 // before treating a new press as dismissal; never reappear this process.
+// Native readback status: -1=UNKNOWN, 0=OFF, 1=ON. A saved config
+// file cannot prove the live status; unknown must prompt manual checking.
+// A deliberate Dev Mode GK Highlight=ON is not an unwanted setting.
+inline constexpr bool vrNativeSettingsNeedManualCheck(
+    int tutorials,int gloryKillHighlight,bool gkHighlightDeliberatelyOn) noexcept {
+    return tutorials!=0 || (!gkHighlightDeliberatelyOn&&gloryKillHighlight!=0);
+}
 struct VrMenuStartupNotice {
     bool shown{},visible{},buttonReleased{};
     unsigned stableMainMenuFrames{};
