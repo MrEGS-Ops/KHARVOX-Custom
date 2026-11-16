@@ -1857,8 +1857,6 @@ bool validateCollectibleClassifier(unsigned char* image) {
         && *reinterpret_cast<const uint64_t*>(image + 0x3519998) == 7
         && *reinterpret_cast<const uint64_t*>(image + 0x35199a8) == 8;
     collectibleClassifierSupported.store(supported, std::memory_order_release);
-    log(supported ? "[COLLECTIBLE-QUAD] native animation classifier validated (first/standard/fist bump)"
-        : "[COLLECTIBLE-QUAD] native metadata mismatch; classifier disabled");
     return supported;
 }
 
