@@ -33,37 +33,65 @@ int main(){
         VrLiveCapture::CrouchStanding,true,true,true));
     assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
         VrLiveCapture::HipRight,true,false,false));
-    // Main-menu Quad is not classified as fullscreen HUD. Require 20
-    // verified frames so boot loading doesn't consume the one-time notice.
+    // First-install setup must be a true modal prompt on the front menu,
+    // not an R3 hint during loading or a controller reconnect request.
+    VrFirstTimeSetupNotice setup{};
+    for(int i=0;i<220;++i)
+        assert(!updateVrFirstTimeSetupNotice(setup,false,false,false,true));
+    assert(!setup.visible&&!setup.acknowledged);
+    for(int i=0;i<179;++i)
+        assert(!updateVrFirstTimeSetupNotice(setup,true,false,false,true));
+    assert(!setup.visible);
+    assert(!updateVrFirstTimeSetupNotice(setup,true,false,false,true));
+    assert(setup.visible&&setup.bothSticksReleased);
+    assert(!updateVrFirstTimeSetupNotice(setup,true,true,false,true));
+    assert(!updateVrFirstTimeSetupNotice(setup,true,false,false,true));
+    assert(!updateVrFirstTimeSetupNotice(setup,true,true,true,false));
+    assert(updateVrFirstTimeSetupNotice(setup,true,true,true,true));
+    assert(!updateVrFirstTimeSetupNotice(setup,true,true,true,true)); // edge only
+    setup.acknowledged=true; // file write was successful
+    assert(!updateVrFirstTimeSetupNotice(setup,true,false,false,true));
+    assert(!setup.visible);
+    VrFirstTimeSetupNotice preHeld{};
+    for(int i=0;i<180;++i)
+        assert(!updateVrFirstTimeSetupNotice(preHeld,true,true,true,true));
+    assert(preHeld.visible&&!preHeld.bothSticksReleased);
+    assert(!updateVrFirstTimeSetupNotice(preHeld,true,false,false,true));
+    assert(updateVrFirstTimeSetupNotice(preHeld,true,true,true,true));
+    VrFirstTimeSetupNotice interrupted{};
+    for(int i=0;i<160;++i)
+        updateVrFirstTimeSetupNotice(interrupted,true,false,false,true);
+    assert(!updateVrFirstTimeSetupNotice(interrupted,false,false,false,true));
+    for(int i=0;i<20;++i)
+        updateVrFirstTimeSetupNotice(interrupted,true,false,false,true);
+    assert(!interrupted.visible); // loading transition reset the counter
+    // Gameplay R3 tip is separate and only appears once per DOOM process.
     VrMenuStartupNotice notice{};
     for(int i=0;i<20;++i)
-        updateVrMenuStartupNotice(notice,false,false,false);
+        updateVrMenuStartupNotice(notice,false,false);
     assert(!notice.shown&&!notice.visible);
     for(int i=0;i<19;++i)
-        updateVrMenuStartupNotice(notice,true,false,true);
+        updateVrMenuStartupNotice(notice,true,true);
     assert(!notice.shown);
-    updateVrMenuStartupNotice(notice,true,false,true); // pre-held button
+    updateVrMenuStartupNotice(notice,true,true); // pre-held button
     assert(notice.shown&&notice.visible&&!notice.buttonReleased);
-    updateVrMenuStartupNotice(notice,false,false,true); // one-frame gap
-    assert(notice.visible);
-    updateVrMenuStartupNotice(notice,true,false,false);
-    assert(notice.visible&&notice.buttonReleased);
-    updateVrMenuStartupNotice(notice,true,false,true); // dismiss by new press
+    updateVrMenuStartupNotice(notice,false,true); // menu / cinematic
     assert(!notice.visible);
-    updateVrMenuStartupNotice(notice,true,false,false);
-    assert(!notice.visible);
-    VrMenuStartupNotice gameplayExit{};
+    updateVrMenuStartupNotice(notice,true,false);
+    assert(!notice.visible); // no repeat after gameplay is re-entered
+    VrMenuStartupNotice dismiss{};
     for(int i=0;i<20;++i)
-        updateVrMenuStartupNotice(gameplayExit,true,false,false);
-    assert(gameplayExit.shown&&gameplayExit.visible);
-    updateVrMenuStartupNotice(gameplayExit,false,true,false);
-    assert(!gameplayExit.visible);
+        updateVrMenuStartupNotice(dismiss,true,true);
+    updateVrMenuStartupNotice(dismiss,true,false);
+    assert(dismiss.visible&&dismiss.buttonReleased);
+    updateVrMenuStartupNotice(dismiss,true,true);
+    assert(!dismiss.visible);
     VrMenuStartupNotice skippedLoading{};
     for(int i=0;i<15;++i)
-        updateVrMenuStartupNotice(skippedLoading,true,false,false);
-    updateVrMenuStartupNotice(skippedLoading,false,false,false);
+        updateVrMenuStartupNotice(skippedLoading,true,false);
+    updateVrMenuStartupNotice(skippedLoading,false,false);
     for(int i=0;i<5;++i)
-        updateVrMenuStartupNotice(skippedLoading,true,false,false);
+        updateVrMenuStartupNotice(skippedLoading,true,false);
     assert(!skippedLoading.shown);
     // Seven fast taps reveal, seven further taps rehide, timing resets.
     VrMenuDeveloperReveal reveal{};
