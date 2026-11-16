@@ -6,6 +6,7 @@
 #include "HudLayoutPolicy.h"
 #include "WeaponWheelHudPolicy.h"
 #include "HudMenuPolicy.h"
+#include "CampaignDeathCounterPolicy.h"
 
 #include "../camera/CameraHook.h"
 #include "../common/RuntimePaths.h"
@@ -236,6 +237,36 @@ std::atomic<bool> pauseMenuActive{};
 std::atomic<bool> pauseRootVisible{};
 std::atomic<bool> deathMenuActive{};
 std::atomic<unsigned long long> deathMenuLevelGenerationAtShow{};
+std::atomic<std::uint64_t> campaignDeathCount{};
+std::mutex campaignDeathCountMutex;
+// The total is independent of the overlay toggle: enabling the display
+// later still shows actual deaths that happened with it hidden.
+void loadCampaignDeathCount(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    std::ifstream input(kharvox::runtimePathA("campaign_death_count.cfg"));
+    std::uint64_t value{};
+    if(input && (input>>value) && value<1000000000ULL)
+        campaignDeathCount.store(value,std::memory_order_release);
+}
+bool saveCampaignDeathCountLocked(std::uint64_t value){
+    const auto path=kharvox::runtimePathA("campaign_death_count.cfg");
+    const auto temporary=path+".tmp";
+    {
+        std::ofstream output(temporary,std::ios::trunc);
+        if(!output)return false;
+        output<<value<<'\n';
+        output.flush();
+        if(!output)return false;
+    }
+    return MoveFileExA(temporary.c_str(),path.c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+}
+void registerCampaignDeath(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    const auto value=campaignDeathCount.fetch_add(1,std::memory_order_acq_rel)+1;
+    if(!saveCampaignDeathCountLocked(value))
+        log("Campaign death total updated in memory; UserData save failed");
+}
 std::atomic<unsigned int> endOfLevelScreenMask{};
 std::atomic<unsigned long long> endOfLevelMenuGenerationAtShow{};
 std::atomic<unsigned int> playerUpgradeScreenMask{};
@@ -1516,11 +1547,17 @@ bool installMenuVtableHook(
 }
 
 void __fastcall campaignDeathShowHook(void* deathScreen, int transitionType) {
-    deathMenuLevelGenerationAtShow.store(
-        KharvoxCameraLevelTransitionGeneration(), std::memory_order_release);
-    if (!deathMenuActive.exchange(true, std::memory_order_acq_rel))
-        log("native CampaignDeath screen shown; Death-menu QUAD active (transition="
-            + std::to_string(transitionType) + ")");
+    const auto currentGeneration=KharvoxCameraLevelTransitionGeneration();
+    const auto previousGeneration=deathMenuLevelGenerationAtShow.exchange(
+        currentGeneration,std::memory_order_acq_rel);
+    const bool wasVisible=deathMenuActive.exchange(true,std::memory_order_acq_rel);
+    if(kharvox::campaignDeathOpeningIsNew(
+            wasVisible,previousGeneration,currentGeneration)){
+        registerCampaignDeath();
+        log("native CampaignDeath screen shown; counted one death, total="
+            +std::to_string(campaignDeathCount.load(std::memory_order_relaxed))
+            +" transition="+std::to_string(transitionType));
+    }
     originalCampaignDeathShow(deathScreen, transitionType);
 }
 
@@ -3829,6 +3866,7 @@ bool KharvoxHudInstallHook() {
         && _stricmp(hudDebugging, "false") != 0
         && _stricmp(hudDebugging, "off") != 0;
     loadHeadlockedHudSettings();
+    loadCampaignDeathCount();
     loadHudIdentity();
     loadGuiProfileCalibrations();
     offhandCanvasHookReady=installOffhandCanvasHook();
@@ -4195,6 +4233,18 @@ void KharvoxHudEndSuitUpgradeMenuSession() {
 
 bool KharvoxHudPauseMenuActive() {
     return pauseMenuActive.load(std::memory_order_acquire);
+}
+
+std::uint64_t KharvoxHudCampaignDeathCount(){
+    return campaignDeathCount.load(std::memory_order_acquire);
+}
+bool KharvoxHudResetCampaignDeathCount(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    const auto previous=campaignDeathCount.load(std::memory_order_acquire);
+    campaignDeathCount.store(0,std::memory_order_release);
+    if(saveCampaignDeathCountLocked(0))return true;
+    campaignDeathCount.store(previous,std::memory_order_release);
+    return false;
 }
 
 bool KharvoxHudDeathMenuActive() {
