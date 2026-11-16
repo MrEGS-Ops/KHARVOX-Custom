@@ -453,8 +453,11 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             for(int i=0;i<10;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
                     return 1000+s.vrHandMenu.recordsScroll+i;
-        if(pixelX>=531&&pixelX<=915
-            &&pixelY>=(dev?186:310)&&pixelY<(dev?244:368))return 130;
+        if(pixelX>=531&&pixelX<=915){
+            if(!dev&&pixelY>=190&&pixelY<237)return 131; // SORT
+            if(pixelY>=(dev?186:565)&&pixelY<(dev?244:618))
+                return 130; // RESET or TRACK
+        }
         return -1;
     }
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Stats
@@ -727,12 +730,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.page==kharvox::VrMenuPage::Records
             ||m.page==kharvox::VrMenuPage::DevRecords){
             const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
-            const int count=dev?2:static_cast<int>(
-                kharvox::kCampaignMissions.size());
+            const int count=static_cast<int>(
+                kharvox::kCampaignMissions.size())+(dev?1:0);
             const int previousRecord=m.recordSelected;
             kharvox::vrMenuNavigateStick(m.navigation,
                 s.leftStick.x,s.leftStick.y,
-                count,m.recordSelected,1);
+                count,m.recordSelected,dev?1:2);
             m.recordSelected=std::clamp(m.recordSelected,0,std::max(0,count-1));
             if(previousRecord!=m.recordSelected){
                 // A confirmation belongs to one exact mission/reset choice.
@@ -746,7 +749,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.recordsScroll=m.recordSelected-9;
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:aEdge
-                ?(m.navigation.settingsColumn?130:1000+m.recordSelected):-1;
+                ?(m.navigation.settingsColumn
+                    ?(dev||m.navigation.actionIndex==1?130:131)
+                    :1000+m.recordSelected):-1;
             if(chosen==95){
                 m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Stats;
                 m.navigation={};m.pendingStatsReset=-1;
@@ -757,6 +762,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation.settingsColumn=aEdge;
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
+            }else if(!dev&&chosen==131){
+                m.recordSortDeaths=!m.recordSortDeaths;
+                m.message=m.recordSortDeaths
+                    ?"Top five runs ranked by fewest deaths."
+                    :"Top five runs ranked by fastest time.";
             }else if(chosen==130){
                 if(dev)handleVrLevelRecordReset(130);
                 else handleVrLevelRecordTrack(m.recordSelected);
