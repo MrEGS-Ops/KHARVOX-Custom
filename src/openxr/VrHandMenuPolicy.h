@@ -103,10 +103,10 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
-enum class VrMenuPage {Mods,Dev,WeaponGrip,WeaponRecoil};
+enum class VrMenuPage {Mods,Dev,Stats,DevStats,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    HolsterZones,ControllerMonitor,Experimental,ResetDeathCounter
+    HolsterZones,ControllerMonitor,Experimental,StatsReset
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -487,6 +487,8 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
+    int statsSelected{}; // 0 deaths, 1 death statistics, 2 run time
+    int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
