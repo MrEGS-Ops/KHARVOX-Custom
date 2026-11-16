@@ -24,6 +24,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devHolsterZones,D::HolsterZones});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
+        rows.push_back({"Reset Death Counter",VrLiveMod::Other,
+            false,D::ResetDeathCounter});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             false,D::Experimental});
         return rows;
@@ -127,7 +129,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Choose one of four screen corners.",
             "Death totals persist between sessions.",
             "Counts native CampaignDeath screens.",
-            "Reset the total here anytime."}}};
+            "Reset total is in hidden DEV tools."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
@@ -155,6 +157,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
+        case D::ResetDeathCounter:return {{{"Reset the lifetime campaign death total.",
+            "Use only when starting a fresh challenge.",
+            "Press the reset button twice to confirm.",
+            "Saved totals are cleared from UserData.",
+            "Normal Death Counter settings stay.",
+            ""}}};
         case D::Experimental:return {{{"Future experimental features belong",
             "in this section once implemented.",
             "No hidden prototype is active.","","",""}}};
@@ -490,10 +498,6 @@ bool handleVrLiveMenuAction(int action){
             if(option>=0&&option<4){
                 s.vrLiveSettings.deathCounterCorner=option;
                 changed=true;
-            }else if(option==4){
-                if(KharvoxHudResetCampaignDeathCount())
-                    m.message="Campaign death total reset to zero.";
-                else m.message="Could not save reset death total to UserData.";
             }
             break;
         case VrLiveMod::PhysicalGloryKills:
