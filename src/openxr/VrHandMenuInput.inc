@@ -679,6 +679,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     case VrLiveMod::TurnSpeed:return 3;
                     case VrLiveMod::PhysicalGloryKills:return 4;
                     case VrLiveMod::Painsaw:return 1; // toggle only
+                    case VrLiveMod::DeathCounter:return 6; // toggle, four corners, reset
                     default:return 0;
                 }
             };
