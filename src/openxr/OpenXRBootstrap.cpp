@@ -8409,13 +8409,16 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!KharvoxHudEndOfLevelMenuActive()
         &&!s.quadMode&&!s.centeredQuadTransitionPending
         &&!s.immersiveCinematicActive;
-    const bool deathCounterView=kharvox::deathCounterShouldDraw(
-        s.vrLiveSettings.deathCounterEnabled,deathCounterGameplay,
+    const bool statsLiveView=kharvox::campaignStatsCanDraw(
+        deathCounterGameplay,
         s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed,
         s.firstTimeSetupNotice.visible||s.gameplayWelcomeNotice.visible,
-        controllerReconnectBannerVisible());
+        controllerReconnectBannerVisible())
+        &&(s.vrLiveSettings.deathCounterEnabled
+            ||s.vrLiveSettings.deathStatisticsEnabled
+            ||s.vrLiveSettings.campaignTimerEnabled);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
-            ||s.gameplayWelcomeNotice.visible||deathCounterView
+            ||s.gameplayWelcomeNotice.visible||statsLiveView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
