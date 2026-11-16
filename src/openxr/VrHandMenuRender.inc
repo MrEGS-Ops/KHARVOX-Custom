@@ -81,12 +81,19 @@ void paintVrHandMenu() {
     // are transparent while the warning is shown.
     constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
     const bool disconnectView=controllerReconnectBannerVisible();
-    const bool startupTipView=!disconnectView
+    const bool firstTimeSetupView=!disconnectView
+        &&s.firstTimeSetupNotice.visible
+        &&m.mode==kharvox::VrHandMenuMode::Closed;
+    const bool startupTipView=!disconnectView&&!firstTimeSetupView
         &&s.modMenuStartupNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
+    // Full-size first-install instructions; compositor pixels outside this
+    // panel stay transparent and DOOM's actual front menu remains visible.
+    constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
     // Use the EXACT same compact banner bounds as controller disconnect.
     constexpr int tipX=bannerX,tipY=bannerY,tipW=bannerW,tipH=bannerH;
     const bool calibrationView=!disconnectView&&!startupTipView
+        &&!firstTimeSetupView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
         m.mode,m.liveCapture,m.devWeaponAlignment,
@@ -95,6 +102,11 @@ void paintVrHandMenu() {
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
         fill(bannerX+6,bannerY,bannerW-6,3,RGB(76,88,99));
+    }else if(firstTimeSetupView){
+        fill(setupX,setupY,setupW,setupH,RGB(16,29,39));
+        fill(setupX,setupY,7,setupH,RGB(55,209,214));
+        fill(setupX+7,setupY,setupW-7,4,RGB(66,91,105));
+        fill(setupX+24,setupY+73,setupW-48,2,RGB(66,91,105));
     }else if(startupTipView){
         fill(tipX,tipY,tipW,tipH,RGB(17,24,32));
         fill(tipX,tipY,6,tipH,RGB(55,209,214));
@@ -137,12 +149,34 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(bannerX+24,bannerY+58,
             "Press L3 + R3 together to reconnect.",RGB(255,204,128));
+    }else if(firstTimeSetupView){
+        SelectObject(dc,title);
+        write(setupX+28,setupY+19,"RIPSHIFT - FIRST-TIME SETUP",white);
+        SelectObject(dc,regular);
+        write(setupX+30,setupY+95,
+            "For the best RIPSHIFT VR experience, we recommend",white);
+        write(setupX+30,setupY+128,
+            "disabling two settings in DOOM.",white);
+        write(setupX+44,setupY+201,"TUTORIALS - OFF (REQUIRED)",
+            RGB(84,233,214));
+        write(setupX+44,setupY+249,
+            "GLORY KILL HIGHLIGHT - OFF (OPTIONAL)",white);
+        SelectObject(dc,smallFont);
+        write(setupX+30,setupY+321,
+            "Go to DOOM > Settings > Game to change them manually.",muted);
+        fill(setupX+25,setupY+376,setupW-50,55,RGB(28,57,66));
+        SelectObject(dc,regular);
+        write(setupX+43,setupY+390,
+            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
+        SelectObject(dc,smallFont);
+        write(setupX+30,setupY+452,
+            "This notice will only appear once.",muted);
     }else if(startupTipView){
         SelectObject(dc,regular);
         write(tipX+24,tipY+13,"RIPSHIFT MOD SETTINGS",white);
         SelectObject(dc,smallFont);
         write(tipX+24,tipY+58,
-            "Hold R3 in-game to open the Mod Menu.",RGB(84,233,214));
+            "Hold R3 in gameplay to open the Mod Menu.",RGB(84,233,214));
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -791,6 +825,9 @@ void paintVrHandMenu() {
         dst[b+3]=disconnectView
             ?(x>=bannerX&&x<bannerX+bannerW
                 &&y>=bannerY&&y<bannerY+bannerH?255:0)
+            :firstTimeSetupView
+                ?(x>=setupX&&x<setupX+setupW
+                    &&y>=setupY&&y<setupY+setupH?255:0)
             :startupTipView
                 ?(x>=tipX&&x<tipX+tipW
                     &&y>=tipY&&y<tipY+tipH?255:0)
