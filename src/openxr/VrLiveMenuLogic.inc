@@ -113,10 +113,10 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
         case VrLiveMod::PhysicalCrouch:return {{{
             "Crouch by physically lowering your head.",
             "Stand to rise back up in-game.",
+            "Press A to toggle crouch at any time.",
+            "A works even with Physical Crouch OFF.",
             "Calibrate standing and crouching height.",
-            "When disabled, use right-stick crouch.",
-            "",
-            ""}}};
+            "B remains your jump button."}}};
         case VrLiveMod::Painsaw:return {{{
             "Take your time... or RIP & TEAR.",
             "Enjoy a slow, brutal chainsaw kill,",
@@ -257,7 +257,9 @@ void applyVrLiveModRuntimeState(){
     if(s.customMods.physicalCrouch&&!physicalCrouch){
         if(s.physicalCrouchActive)s.vrCrouchReleasePending=true;
         s.physicalCrouchActive=false;
-        KharvoxCameraSetCrouchState(false);
+        // Disabling HMD crouch must not cancel a separate A-button
+        // manual crouch that the player intentionally toggled.
+        KharvoxCameraSetCrouchState(s.crouchToggleActive);
     }
     s.customMods.physicalCrouch=physicalCrouch;
     // PAINSAW includes legacy motion-only mode as well as current trigger
