@@ -504,7 +504,12 @@ bool handleVrStatsMenuAction(int action,bool dev){
             }
             KharvoxHudResetCampaignSessionDeaths();
             kharvox::resetCampaignRunTime(s.sessionRunTime);
-            menu.message="All statistics reset; display settings preserved.";
+            // Reset the active level's live counters but never its
+            // persistent personal best (that belongs to DEV > Records).
+            kharvox::resetCampaignRunTime(s.levelProgress.time);
+            s.levelProgress.deaths=0;
+            s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
+            menu.message="Live statistics reset; display and records preserved.";
             if(kharvox::vrStatsMenuShouldClose(dev,action,true)){
                 menu.mode=kharvox::VrHandMenuMode::Closed;
                 menu.navigation={};
