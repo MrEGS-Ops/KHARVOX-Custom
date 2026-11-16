@@ -30,6 +30,7 @@ bool KharvoxHudPrepareOriginTransform(void* entity, float* nativeOrigin);
 
 namespace {
 bool readableRange(const void* address, size_t bytes);
+void log(const std::string& text);
 
 std::string calibrationPath() { return kharvox::runtimePathA("hud_role_calibration_saved.cfg"); }
 std::string identityPath() { return kharvox::runtimePathA("hud_roles_saved.cfg"); }
