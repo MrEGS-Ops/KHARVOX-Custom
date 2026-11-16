@@ -3390,7 +3390,7 @@ bool resetCampaignRunTimeSaved(){
 void serviceLevelStats(bool gameplay,std::uint64_t now) {
     auto& progress=s.levelProgress;
     const auto deaths=KharvoxHudCampaignSessionDeaths();
-    if(deaths>s.observedSessionDeaths){
+    if(progress.armed&&!progress.completed&&deaths>s.observedSessionDeaths){
         const auto increment=std::min<std::uint64_t>(
             deaths-s.observedSessionDeaths,1000000000ULL-progress.deaths);
         progress.deaths+=increment;
@@ -3415,8 +3415,17 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
                 log("[STATS] failed to persist ranked level run; retained in memory");
             else log("[STATS] ranked level run saved");
         }
-        log("[LEVEL-STATS] end-level results recorded; timer disarmed; "
-            "new manual confirmation required for the next attempt");
+        // The end-of-level screen also turns OFF the Level Time HUD
+        // toggle. This is distinct from resetting its saved personal bests.
+        // A new explicit TRACK THIS LEVEL enables it again.
+        if(s.vrLiveSettings.levelDisplayEnabled[0]){
+            kharvox::vrStatsSetEnabled(s.vrLiveSettings,4,false);
+            if(!kharvox::vrLiveSave(kharvox::runtimePathA(
+                "vr_live_mods_saved.cfg"),s.vrLiveSettings))
+                log("[STATS] could not persist automatic Level Time HUD off");
+        }
+        log("[LEVEL-STATS] end-level results recorded; timer disarmed, "
+            "Level Time display off; new manual confirmation required");
     }
     progress.endMenuWasVisible=completedMenu;
     // A checkpoint reload cannot change the manually selected mission.
