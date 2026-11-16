@@ -63,24 +63,24 @@ inline std::wstring userDataDirectory(){
     CreateDirectoryW(user.c_str(),nullptr);
     return user;
 }
-// Per-install marker: lives under the install's Config folder, NOT UserData.
-// Updates that leave this folder intact do not show setup again; deleting the
-// RIPSHIFT installation (even if UserData is backed up) resets the notice.
-inline std::wstring firstTimeSetupMarkerPath(){
+// Per-install notice acknowledgements stay in Config, never UserData.
+// A clean reinstall resets both notices, while an in-place update preserves
+// their separate acknowledgements and never affects weapon calibrations.
+inline std::wstring installNoticeMarkerPath(const wchar_t* filename){
     const auto runtime=runtimeDirectory();
     const auto slash=runtime.find_last_of(L"\\/");
     const auto basename=slash==std::wstring::npos?runtime:runtime.substr(slash+1);
     const bool bridge=_wcsicmp(basename.c_str(),L"NativeBridge")==0;
     const auto root=bridge&&slash!=std::wstring::npos?runtime.substr(0,slash):runtime;
-    return root+L"\\Config\\first_time_setup.ack";
+    return root+L"\\Config\\"+filename;
 }
-inline bool firstTimeSetupAcknowledged(){
-    const auto path=firstTimeSetupMarkerPath();
+inline bool installNoticeAcknowledged(const wchar_t* filename){
+    const auto path=installNoticeMarkerPath(filename);
     const DWORD attributes=GetFileAttributesW(path.c_str());
     return attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
 }
-inline bool persistFirstTimeSetupAcknowledgement(){
-    const auto path=firstTimeSetupMarkerPath();
+inline bool persistInstallNoticeAcknowledgement(const wchar_t* filename){
+    const auto path=installNoticeMarkerPath(filename);
     const auto split=path.find_last_of(L"\\/");
     if(split==std::wstring::npos)return false;
     const auto folder=path.substr(0,split);
@@ -89,9 +89,24 @@ inline bool persistFirstTimeSetupAcknowledgement(){
     HANDLE marker=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,
         CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
     if(marker==INVALID_HANDLE_VALUE)
-        return GetLastError()==ERROR_FILE_EXISTS && firstTimeSetupAcknowledged();
+        return GetLastError()==ERROR_FILE_EXISTS && installNoticeAcknowledged(filename);
     CloseHandle(marker);
-    return firstTimeSetupAcknowledged();
+    return installNoticeAcknowledged(filename);
+}
+inline std::wstring firstTimeSetupMarkerPath(){
+    return installNoticeMarkerPath(L"first_time_setup.ack");
+}
+inline bool firstTimeSetupAcknowledged(){
+    return installNoticeAcknowledged(L"first_time_setup.ack");
+}
+inline bool persistFirstTimeSetupAcknowledgement(){
+    return persistInstallNoticeAcknowledgement(L"first_time_setup.ack");
+}
+inline bool gameplayWelcomeAcknowledged(){
+    return installNoticeAcknowledged(L"gameplay_welcome.ack");
+}
+inline bool persistGameplayWelcomeAcknowledgement(){
+    return persistInstallNoticeAcknowledgement(L"gameplay_welcome.ack");
 }
 inline bool isUserConfigName(const wchar_t* name) noexcept {
     if(!name)return false;
