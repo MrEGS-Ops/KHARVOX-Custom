@@ -1,4 +1,6 @@
 #pragma once
+#include "../hud/CampaignDeathCounterPolicy.h"
+#include "../hud/CampaignStatsPolicy.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -98,7 +100,7 @@ struct VrLiveSettings {
 float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
     bool deathCounterEnabled{}; // optional: never clutter the headset by default
-    int deathCounterCorner{1}; // 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    int deathCounterCorner{1}; // 0..3 legacy corners; 100..219 fine grid positions
     bool deathStatisticsEnabled{};
     int deathStatisticsCorner{1};
     bool campaignTimerEnabled{};
@@ -129,8 +131,9 @@ inline bool vrLiveValidShift(VrLivePoint p) {
         &&std::abs(p.x)<=.7f&&std::abs(p.y)<=.9f&&std::abs(p.z)<=1.f;
 }
 // Three independent HUD choices. Death Counter and Death Statistics are
-// mutually exclusive; a new choice takes the corner by DISABLING the old
-// occupant. Hidden counters still collect deaths unconditionally.
+// mutually exclusive; a new selection evicts overlapping visible displays.
+// Old 0..3 corners load unchanged; fine placement uses 12 x 10 cells.
+// Hidden counters still collect deaths unconditionally.
 inline bool vrStatsEnabled(const VrLiveSettings& s,int item) noexcept {
     return item==0?s.deathCounterEnabled
         :item==1?s.deathStatisticsEnabled:s.campaignTimerEnabled;
@@ -142,6 +145,22 @@ inline int vrStatsCorner(const VrLiveSettings& s,int item) noexcept {
 inline constexpr const char* vrStatsLabel(int item) noexcept {
     return item==0?"Death Counter":item==1?"Death Statistics":"Campaign Run Timer";
 }
+// Use the actual HUD panel rectangles, not only a cell ID, to prevent
+// closely-spaced positions from accidentally drawing over each other.
+inline constexpr bool vrStatsPositionsOverlap(int first,int firstPosition,
+    int second,int secondPosition) noexcept {
+    if(first<0||first>2||second<0||second>2
+        ||!statsPositionValid(firstPosition)
+        ||!statsPositionValid(secondPosition))return false;
+    const int firstWidth=campaignStatsPanelWidth(first);
+    const int secondWidth=campaignStatsPanelWidth(second);
+    const int x1=statsPanelX(firstPosition,960,firstWidth);
+    const int y1=statsPanelY(firstPosition,720,60);
+    const int x2=statsPanelX(secondPosition,960,secondWidth);
+    const int y2=statsPanelY(secondPosition,720,60);
+    return x1<x2+secondWidth&&x2<x1+firstWidth
+        &&y1<y2+60&&y2<y1+60;
+}
 inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
     if(item<0||item>2)return false;
     if(item==0)s.deathCounterEnabled=on;
@@ -152,7 +171,8 @@ inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
         if(item==1)s.deathCounterEnabled=false;
         const int target=vrStatsCorner(s,item);
         for(int other=0;other<3;++other)if(other!=item
-            &&vrStatsEnabled(s,other)&&vrStatsCorner(s,other)==target){
+            &&vrStatsEnabled(s,other)
+            &&vrStatsPositionsOverlap(item,target,other,vrStatsCorner(s,other))){
             if(other==0)s.deathCounterEnabled=false;
             else if(other==1)s.deathStatisticsEnabled=false;
             else s.campaignTimerEnabled=false;
@@ -167,7 +187,7 @@ inline constexpr bool vrStatsMenuShouldClose(bool dev,int action,
     return dev&&action==131&&persistedSuccessfully;
 }
 inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
-    if(item<0||item>2||corner<0||corner>3)return false;
+    if(item<0||item>2||!statsPositionValid(corner))return false;
     if(item==0)s.deathCounterCorner=corner;
     else if(item==1)s.deathStatisticsCorner=corner;
     else s.campaignTimerCorner=corner;
@@ -217,13 +237,14 @@ inline void vrLiveResetGunslingerPositions(VrLiveSettings& s) noexcept {
 }
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
-    if(s.deathCounterCorner<0||s.deathCounterCorner>3)return false;
-    if(s.deathStatisticsCorner<0||s.deathStatisticsCorner>3)return false;
-    if(s.campaignTimerCorner<0||s.campaignTimerCorner>3)return false;
+    if(!statsPositionValid(s.deathCounterCorner))return false;
+    if(!statsPositionValid(s.deathStatisticsCorner))return false;
+    if(!statsPositionValid(s.campaignTimerCorner))return false;
     if(s.deathCounterEnabled&&s.deathStatisticsEnabled)return false;
     for(int i=0;i<3;++i)for(int j=i+1;j<3;++j)
         if(vrStatsEnabled(s,i)&&vrStatsEnabled(s,j)
-            &&vrStatsCorner(s,i)==vrStatsCorner(s,j))return false;
+            &&vrStatsPositionsOverlap(i,vrStatsCorner(s,i),
+                j,vrStatsCorner(s,j)))return false;
     for(const auto& p:s.hipShift)if(!vrLiveValidShift(p))return false;
     for(const auto& p:s.wheelShift)if(!vrLiveValidShift(p))return false;
     return std::isfinite(s.crouchStandDelta)
@@ -359,7 +380,7 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
     }
     if(f.bad()||schema!=1)return false;
     // Prefer new Statistics over legacy counter in old/conflicting saves.
-    // The timer is independently hidden if it had the same old corner.
+    // The timer is independently hidden if its panel overlaps.
     if(next.deathStatisticsEnabled)vrStatsSetEnabled(next,1,true);
     else if(next.deathCounterEnabled)vrStatsSetEnabled(next,0,true);
     if(next.campaignTimerEnabled)vrStatsSetEnabled(next,2,true);
