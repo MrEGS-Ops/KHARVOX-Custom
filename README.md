@@ -82,7 +82,7 @@ Designed and tested with **KHARVOX v1.1.1**. Compatibility with earlier or later
 2. Download the **RIPSHIFT VR Experimental** artifact from this repository's [GitHub Actions](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions). Extract the ZIP into its **own permanent folder**, separate from DOOM and original KHARVOX.
 3. Run `RIPSHIFT.exe`.
 4. On first launch, choose the original `KharvoxLauncher.exe` inside your **CactusVRStudios KHARVOX** installation. RIPSHIFT uses required original shader files without modifying the original installation.
-5. In the RIPSHIFT launcher, select the **DOOM (2016) game folder containing `DOOMx64vk.exe`**. This is separate from the original KHARVOX folder selected in step 4. Launch DOOM, then adjust gameplay settings and weapon calibration through RIPSHIFT's in-game Mod Menu.
+5. RIPSHIFT normally **detects your DOOM (2016) installation automatically** or remembers its previously saved location. If the **DOOM installation** field is empty or incorrect, click **Browse** and select the game folder containing `DOOMx64vk.exe`. This is separate from the original KHARVOX folder located in step 4. Launch the game and configure RIPSHIFT through the in-game Mod Menu.
 
 **Upgrading:** Preserve your existing RIPSHIFT `UserData` folder. Clean installs seed the included factory weapon defaults; upgrades will not overwrite user calibrations. The original KHARVOX directory stays separate.
 
