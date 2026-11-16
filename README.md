@@ -2,7 +2,7 @@
 
 **More physical combat. Better weapon handling.**
 
-RIPSHIFT VR is a gameplay enhancement for **KHARVOX DOOM (2016) VR**, designed to make combat more physical, weapon handling more immersive, and everyday VR interactions more intuitive.
+RIPSHIFT VR is a gameplay enhancement for **KHARVOX DOOM (2016) VR**, designed to make combat more physical, weapon handling more immersive, and everyday VR interactions more intuitive. **Gunslinger hip holsters let you quick-swap weapons physically**, while optional **in-game statistics, level timers and personal records** help you track your performance.
 
 ## Gameplay Enhancements
 
