@@ -438,9 +438,27 @@ bool handleVrStatsMenuAction(int action,bool dev){
         changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,item,action-130);
     }else return false;
     if(changed){
+        // New selection wins: a previously visible display displaced by a
+        // corner collision (or Death Statistics' exclusivity) is turned OFF.
+        // Save FIRST; only then close. Failed saves restore state and leave
+        // the configuration open so the player can retry.
+        const bool displaced=kharvox::vrStatsDisplacedDisplay(
+            old,s.vrLiveSettings,item);
         if(!saveVrLiveSettings())s.vrLiveSettings=old;
-        else menu.message=std::string(kharvox::vrStatsLabel(item))
-            +" saved. Conflicting visible item automatically disabled.";
+        else if(displaced){
+            menu.message="Position saved. Previous display switched OFF.";
+            menu.mode=kharvox::VrHandMenuMode::Closed;
+            menu.navigation={};
+            menu.liveCapture=kharvox::VrLiveCapture::None;
+            menu.consumeMenuFaceUntilRelease=true;
+            menu.consumeMenuTriggerUntilRelease=true;
+            menu.hovered=-1;
+            menu.cursorX=menu.cursorY=-1.f;
+            log("[STATS] conflicting visible display disabled; mod menu closed");
+        }else{
+            menu.message=std::string(kharvox::vrStatsLabel(item))
+                +" saved. Choose another setting or press B to close.";
+        }
     }
     return true;
 }
