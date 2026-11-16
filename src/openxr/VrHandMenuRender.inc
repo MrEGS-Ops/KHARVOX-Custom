@@ -133,8 +133,8 @@ void paintVrHandMenu() {
     }else if(statsLiveView){
         for(int i=0;i<3;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
-            const int x=kharvox::deathCounterPanelX(statsCorners[i],vrMenuW,width);
-            const int y=kharvox::deathCounterPanelY(statsCorners[i],vrMenuH,counterH);
+            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
             fill(x,y,4,counterH,i==2?RGB(55,209,214):RGB(210,69,76));
         }
@@ -221,8 +221,8 @@ void paintVrHandMenu() {
     }else if(statsLiveView){
         for(int i=0;i<3;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
-            const int x=kharvox::deathCounterPanelX(statsCorners[i],vrMenuW,width);
-            const int y=kharvox::deathCounterPanelY(statsCorners[i],vrMenuH,counterH);
+            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             SelectObject(dc,smallFont);
             if(i==0){
                 write(x+16,y+19,"DEATHS",muted);
@@ -523,20 +523,52 @@ void paintVrHandMenu() {
             SelectObject(dc,regular);
             write(603,169,enabled?"DISPLAY ENABLED":"DISPLAY DISABLED",white);
             SelectObject(dc,smallFont);
-            for(int i=0;i<4;++i){
-                const int y=254+i*70;
-                const bool active=kharvox::vrStatsCorner(s.vrLiveSettings,chosen)==i;
-                const bool focus=m.hovered==130+i
+            write(538,226,"POSITION ON SCREEN  /  12 x 10",muted);
+            const int currentCell=kharvox::statsGridCellFromPosition(
+                kharvox::vrStatsCorner(s.vrLiveSettings,chosen));
+            // One miniature screen replaces 120 word-labelled buttons.
+            // An occupied cell is dark but still selectable: it evicts the
+            // other display only when the new position is confirmed.
+            fill(kharvox::kStatsMenuGridX-2,kharvox::kStatsMenuGridY-2,
+                kharvox::kStatsGridColumns*kharvox::kStatsMenuGridCellWidth+4,
+                kharvox::kStatsGridRows*kharvox::kStatsMenuGridCellHeight+4,
+                RGB(71,96,108));
+            for(int cell=0;cell<kharvox::kStatsGridCells;++cell){
+                const int col=cell%kharvox::kStatsGridColumns;
+                const int row=cell/kharvox::kStatsGridColumns;
+                const int x=kharvox::kStatsMenuGridX
+                    +col*kharvox::kStatsMenuGridCellWidth;
+                const int y=kharvox::kStatsMenuGridY
+                    +row*kharvox::kStatsMenuGridCellHeight;
+                const bool available=kharvox::statsGridCellSelectable(cell);
+                const bool active=cell==currentCell;
+                const bool focus=m.hovered==130+cell
                     ||(m.navigation.settingsColumn
                         &&m.navigation.usingStick
-                        &&m.navigation.actionIndex==i+1);
-                fill(531,y,384,58,focus?RGB(52,83,99)
-                    :active?RGB(33,70,79):RGB(39,49,63));
-                write(548,y+17,std::string(kharvox::deathCounterCornerName(i))
-                    +(active?"  (SELECTED)":""),active?RGB(84,233,214):white);
+                        &&m.navigation.actionIndex==cell+1);
+                bool occupied=false;
+                if(available)for(int other=0;other<3;++other){
+                    if(other==chosen||!kharvox::vrStatsEnabled(
+                        s.vrLiveSettings,other))continue;
+                    if(kharvox::vrStatsPositionsOverlap(chosen,
+                        kharvox::statsPositionFromGridCell(cell),other,
+                        kharvox::vrStatsCorner(s.vrLiveSettings,other))){
+                        occupied=true;break;
+                    }
+                }
+                fill(x,y,kharvox::kStatsMenuGridCellWidth-1,
+                    kharvox::kStatsMenuGridCellHeight-1,
+                    !available?RGB(3,8,12)
+                    :focus?RGB(42,116,132)
+                    :active?RGB(30,99,103)
+                    :occupied?RGB(20,24,33):RGB(37,53,67));
+                if(active&&available)
+                    fill(x+9,y+8,kharvox::kStatsMenuGridCellWidth-19,
+                        kharvox::kStatsMenuGridCellHeight-17,
+                        RGB(76,231,167));
             }
-            write(538,572,"Occupied corner: previous display OFF.",muted);
-            write(538,607,"Deaths keep counting while hidden.",muted);
+            write(538,572,"Dark = occupied (select to replace).",muted);
+            write(538,607,"Centre blocked; deaths keep counting.",muted);
         }
         SelectObject(dc,smallFont);
         write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
@@ -1007,9 +1039,9 @@ void paintVrHandMenu() {
                 ?([&](){
                     for(int i=0;i<3;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
-                        const int left=kharvox::deathCounterPanelX(
+                        const int left=kharvox::statsPanelX(
                             statsCorners[i],vrMenuW,width);
-                        const int top=kharvox::deathCounterPanelY(
+                        const int top=kharvox::statsPanelY(
                             statsCorners[i],vrMenuH,counterH);
                         if(x>=left&&x<left+width&&y>=top&&y<top+counterH)
                             return 220;
