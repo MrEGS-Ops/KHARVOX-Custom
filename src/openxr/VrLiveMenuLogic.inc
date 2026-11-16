@@ -24,8 +24,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devHolsterZones,D::HolsterZones});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
-        rows.push_back({"Reset Death Counter",VrLiveMod::Other,
-            false,D::ResetDeathCounter});
+        rows.push_back({"Stats / Reset",VrLiveMod::Stats,
+            true,D::StatsReset});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             false,D::Experimental});
         return rows;
@@ -51,8 +51,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     add("PAINSAW",VrLiveMod::Painsaw,
         s.customMods.chainsawTriggerThrottle
             ||s.customMods.motionChainsawKillSpeed,true);
-    add("Campaign Death Counter",VrLiveMod::DeathCounter,
-        s.vrLiveSettings.deathCounterEnabled,true);
+    add("Stats",VrLiveMod::Stats,true,true);
     if(s.vrHandMenu.devReveal.visible)
         rows.push_back({"DEV  >",VrLiveMod::Other,true,
             kharvox::VrMenuDevOption::Folder});
@@ -123,13 +122,13 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Control speed with each trigger pull.",
             "Disabling PAINSAW restores native",
             "chainsaw execution."}}};
-        case VrLiveMod::DeathCounter:return {{{
-            "Count campaign deaths automatically.",
-            "Minimal counter, hidden by default.",
-            "Choose one of four screen corners.",
-            "Death totals persist between sessions.",
-            "Counts native CampaignDeath screens.",
-            "Reset total is in hidden DEV tools."}}};
+        case VrLiveMod::Stats:return {{{
+            "Campaign deaths, statistics and timer.",
+            "Each on-screen item has its own switch.",
+            "Assign each item to one HUD corner.",
+            "New selection disables occupied items.",
+            "Deaths always count when display is OFF.",
+            "Support-grip feedback is built in."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
@@ -157,11 +156,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
-        case D::ResetDeathCounter:return {{{"Reset the lifetime campaign death total.",
-            "Use only when starting a fresh challenge.",
-            "Press the reset button twice to confirm.",
-            "Saved totals are cleared from UserData.",
-            "Normal Death Counter settings stay.",
+        case D::StatsReset:return {{{
+            "Reset death total, session deaths",
+            "or campaign run timer independently.",
+            "Press the same reset button twice.",
+            "No Stats display settings are changed.",
+            "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{"Future experimental features belong",
             "in this section once implemented.",
@@ -396,6 +396,53 @@ void captureVrLivePosition(){
     m.message="Position saved to UserData and applied instantly.";
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
+}
+// Hidden DEV panel exposes one guarded reset per persistent stat.
+// Public Stats controls never reset any underlying measurement.
+bool handleVrStatsMenuAction(int action,bool dev){
+    auto& menu=s.vrHandMenu;
+    const int item=menu.statsSelected;
+    if(item<0||item>2)return false;
+    if(dev){
+        if(action!=130)return false;
+        const auto now=GetTickCount64();
+        if(menu.pendingStatsReset!=item||!menu.confirmDeathResetUntilMs
+            ||now>menu.confirmDeathResetUntilMs){
+            menu.pendingStatsReset=item;
+            menu.confirmDeathResetUntilMs=now+6000ULL;
+            menu.message="Press same RESET again within 6 seconds to confirm.";
+            return true;
+        }
+        menu.pendingStatsReset=-1;
+        menu.confirmDeathResetUntilMs=0;
+        if(item==0){
+            menu.message=KharvoxHudResetCampaignDeathCount()
+                ?"Lifetime campaign deaths reset to 0."
+                :"Failed to save lifetime death reset.";
+        }else if(item==1){
+            KharvoxHudResetCampaignSessionDeaths();
+            menu.message="This session's death count reset to 0.";
+        }else{
+            menu.message=resetCampaignRunTimeSaved()
+                ?"Campaign run time reset to 0."
+                :"Failed to save campaign timer reset.";
+        }
+        return true;
+    }
+    auto old=s.vrLiveSettings;
+    bool changed=false;
+    if(action==110){
+        changed=kharvox::vrStatsSetEnabled(s.vrLiveSettings,item,
+            !kharvox::vrStatsEnabled(s.vrLiveSettings,item));
+    }else if(action>=130&&action<=133){
+        changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,item,action-130);
+    }else return false;
+    if(changed){
+        if(!saveVrLiveSettings())s.vrLiveSettings=old;
+        else menu.message=std::string(kharvox::vrStatsLabel(item))
+            +" saved. Conflicting visible item automatically disabled.";
+    }
+    return true;
 }
 bool handleVrLiveMenuAction(int action){
     using kharvox::VrLiveMod;
