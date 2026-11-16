@@ -3226,52 +3226,6 @@ BossObservation readCurrentBossSequenceAt(uintptr_t owner,uintptr_t referenceOff
         ?BossObservation::Active:BossObservation::Inactive;
 }
 }
-namespace {
-std::atomic<LONG>& gloryKillHighlightDesired() {
-    static std::atomic<LONG> desired{[] {
-        char value[8]{};
-        return GetEnvironmentVariableA("KHARVOX_GK_HIGHLIGHT_ENABLED",
-            value,sizeof(value))==1 && value[0]=='1'?1L:0L;
-    }()};
-    return desired;
-}
-} // namespace
-void KharvoxCameraEnforceGloryKillHighlightSetting() {
-    // Launch arguments alone are not persistent: DOOM can apply new campaign
-    // settings after the process starts. Reassert the selected native setting.
-    // The launcher profile remains the sole owner of this legacy preference.
-    if (!KharvoxCameraWorldActive() || KharvoxCameraCutsceneActive()) return;
-    const LONG selected=gloryKillHighlightDesired().load(std::memory_order_acquire);
-    static volatile LONG* highlightValue{};
-    static unsigned long long nextResolveTick{};
-    static bool unavailableLogged{};
-    if (!highlightValue) {
-        const auto now=GetTickCount64();
-        if (now<nextResolveTick) return;
-        nextResolveTick=now+15000;
-        // The resolver requires a separately verified idCVar object layout.
-        // If DOOM's layout is unknown, it fails closed; no guessed writes.
-        highlightValue=resolveVerifiedIntegerCvar("g_setting_gk_highlight",1);
-        if (!highlightValue) {
-            if (!unavailableLogged) {
-                logGlorySlowmo("GK Highlight idCVar unresolved; refusing unverified writes");
-                unavailableLogged=true;
-            }
-            return;
-        }
-        logGlorySlowmo(std::string("native GK Highlight verified, enforcing ")
-            +(selected ? "ON (Dev Mode)" : "OFF (default)"));
-    }
-    const LONG observed=InterlockedCompareExchange(highlightValue,0,0);
-    if (observed==0 || observed==1) {
-        if(observed!=selected) {
-            InterlockedExchange(highlightValue,selected);
-            logGlorySlowmo(std::string("new-game/settings reload: GK Highlight reset ")
-                +(selected ? "ON" : "OFF"));
-        }
-    }
-}
-
 // DOOM reloads campaign game settings after initial process arguments.
 // Reassert Tutorials=OFF only if its exact native integer CVar can be
 // resolved safely; otherwise preserve DOOM-owned state (fail closed).
