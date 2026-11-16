@@ -135,30 +135,57 @@ inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept
         ||option==VrMenuDevOption::HolsterZones
         ||option==VrMenuDevOption::ControllerMonitor;
 }
-// One-time, non-blocking main-menu tip. Wait for an actual button release
-// before treating a new press as dismissal; never reappear this process.
-struct VrMenuStartupNotice {
-    bool shown{},visible{},buttonReleased{};
+// Two independent notices: first-install setup appears on DOOM's front
+// menu and needs a fresh physical L3+R3 chord, while the ordinary R3 shortcut
+// hint appears only after real gameplay begins, once per process.
+struct VrFirstTimeSetupNotice {
+    bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
     unsigned stableMainMenuFrames{};
 };
+inline constexpr bool updateVrFirstTimeSetupNotice(
+    VrFirstTimeSetupNotice& notice,bool mainMenu,bool leftClick,
+    bool rightClick,bool trackedControllers) noexcept {
+    if(notice.acknowledged){notice.visible=false;return false;}
+    if(!mainMenu){
+        notice.visible=false;
+        notice.stableMainMenuFrames=0;
+        notice.bothSticksReleased=false;
+        notice.chordConsumed=false;
+        return false;
+    }
+    // DOOM can spend several startup frames in Quad loading screens.
+    // A stable front-menu presentation is required before showing setup.
+    if(notice.stableMainMenuFrames<180)++notice.stableMainMenuFrames;
+    if(notice.stableMainMenuFrames<180)return false;
+    notice.visible=true;
+    if(!leftClick&&!rightClick){
+        notice.bothSticksReleased=true;
+        notice.chordConsumed=false;
+    }
+    if(!trackedControllers || !notice.bothSticksReleased
+        ||!leftClick||!rightClick||notice.chordConsumed)return false;
+    notice.chordConsumed=true;
+    return true; // caller must persist the install-scoped acknowledgement
+}
+struct VrMenuStartupNotice {
+    bool shown{},visible{},buttonReleased{};
+    unsigned stableGameplayFrames{};
+};
 inline constexpr void updateVrMenuStartupNotice(
-    VrMenuStartupNotice& notice,bool onMainMenu,bool gameplayStarted,
-    bool anyButtonDown) noexcept {
+    VrMenuStartupNotice& notice,bool playableGameplay,bool anyButtonDown) noexcept {
     if(notice.shown){
         if(!notice.visible)return;
-        // A one-frame menu classification gap must not permanently discard
-        // the first-launch tip. Only gameplay or a fresh button press does.
-        if(gameplayStarted){notice.visible=false;return;}
+        if(!playableGameplay){notice.visible=false;return;}
         if(!anyButtonDown)notice.buttonReleased=true;
         else if(notice.buttonReleased)notice.visible=false;
         return;
     }
-    if(!onMainMenu){
-        notice.stableMainMenuFrames=0;
+    if(!playableGameplay){
+        notice.stableGameplayFrames=0;
         return;
     }
-    if(notice.stableMainMenuFrames<20)++notice.stableMainMenuFrames;
-    if(notice.stableMainMenuFrames<20)return;
+    if(notice.stableGameplayFrames<20)++notice.stableGameplayFrames;
+    if(notice.stableGameplayFrames<20)return;
     notice.shown=true;
     notice.visible=true;
     notice.buttonReleased=!anyButtonDown;
