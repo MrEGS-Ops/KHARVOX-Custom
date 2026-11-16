@@ -63,6 +63,36 @@ inline std::wstring userDataDirectory(){
     CreateDirectoryW(user.c_str(),nullptr);
     return user;
 }
+// Per-install marker: lives under the install's Config folder, NOT UserData.
+// Updates that leave this folder intact do not show setup again; deleting the
+// RIPSHIFT installation (even if UserData is backed up) resets the notice.
+inline std::wstring firstTimeSetupMarkerPath(){
+    const auto runtime=runtimeDirectory();
+    const auto slash=runtime.find_last_of(L"\\/");
+    const auto basename=slash==std::wstring::npos?runtime:runtime.substr(slash+1);
+    const bool bridge=_wcsicmp(basename.c_str(),L"NativeBridge")==0;
+    const auto root=bridge&&slash!=std::wstring::npos?runtime.substr(0,slash):runtime;
+    return root+L"\\Config\\first_time_setup.ack";
+}
+inline bool firstTimeSetupAcknowledged(){
+    const auto path=firstTimeSetupMarkerPath();
+    const DWORD attributes=GetFileAttributesW(path.c_str());
+    return attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
+}
+inline bool persistFirstTimeSetupAcknowledgement(){
+    const auto path=firstTimeSetupMarkerPath();
+    const auto split=path.find_last_of(L"\\/");
+    if(split==std::wstring::npos)return false;
+    const auto folder=path.substr(0,split);
+    if(!CreateDirectoryW(folder.c_str(),nullptr)&&GetLastError()!=ERROR_ALREADY_EXISTS)
+        return false;
+    HANDLE marker=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,
+        CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(marker==INVALID_HANDLE_VALUE)
+        return GetLastError()==ERROR_FILE_EXISTS && firstTimeSetupAcknowledged();
+    CloseHandle(marker);
+    return firstTimeSetupAcknowledged();
+}
 inline bool isUserConfigName(const wchar_t* name) noexcept {
     if(!name)return false;
     const std::wstring value(name);
