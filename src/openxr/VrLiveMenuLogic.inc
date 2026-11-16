@@ -49,6 +49,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     add("PAINSAW",VrLiveMod::Painsaw,
         s.customMods.chainsawTriggerThrottle
             ||s.customMods.motionChainsawKillSpeed,true);
+    add("Campaign Death Counter",VrLiveMod::DeathCounter,
+        s.vrLiveSettings.deathCounterEnabled,true);
     if(s.vrHandMenu.devReveal.visible)
         rows.push_back({"DEV  >",VrLiveMod::Other,true,
             kharvox::VrMenuDevOption::Folder});
@@ -119,6 +121,13 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Control speed with each trigger pull.",
             "Disabling PAINSAW restores native",
             "chainsaw execution."}}};
+        case VrLiveMod::DeathCounter:return {{{
+            "Count campaign deaths automatically.",
+            "Minimal counter, hidden by default.",
+            "Choose one of four screen corners.",
+            "Death totals persist between sessions.",
+            "Counts native CampaignDeath screens.",
+            "Reset the total here anytime."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
@@ -386,7 +395,7 @@ bool handleVrLiveMenuAction(int action){
     auto& m=s.vrHandMenu;
     if(action==110){
         if(!kharvox::vrLiveModToggleable(m.selectedMod)){
-            m.message="Core settings remain accessible; only Physical Crouch and PAINSAW toggle.";
+            m.message="This setting cannot be toggled in-game.";
             return true;
         }
         if(KharvoxCameraSyncAttackActive()||s.chainsawKillLatched){
@@ -475,6 +484,16 @@ bool handleVrLiveMenuAction(int action){
                     s.vrDesktopSmoothTurnSpeed,1);changed=true;
             }else if(option==2){
                 s.vrLiveSettings.smoothTurnSpeedDegreesPerSec=0.f;changed=true;
+            }
+            break;
+        case VrLiveMod::DeathCounter:
+            if(option>=0&&option<4){
+                s.vrLiveSettings.deathCounterCorner=option;
+                changed=true;
+            }else if(option==4){
+                if(KharvoxHudResetCampaignDeathCount())
+                    m.message="Campaign death total reset to zero.";
+                else m.message="Could not save reset death total to UserData.";
             }
             break;
         case VrLiveMod::PhysicalGloryKills:
