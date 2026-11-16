@@ -528,8 +528,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO_HANDOFF");
             psi.EnvironmentVariables["KHARVOX_EXTENDED_LOGGING"] = options.ExtendedLogging ? "1" : "0";
-            // Developer-only, read-only collectible/RS focus snapshot. No gameplay changes.
-            psi.EnvironmentVariables["KHARVOX_COLLECTIBLE_PROBE"] = options.ExtendedLogging ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_GK_HIGHLIGHT_ENABLED"] = options.GloryKillHighlightEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_DISABLE_TUTORIALS"] = "1";
             psi.EnvironmentVariables.Remove("VK_LOADER_DEBUG");
