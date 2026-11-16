@@ -102,7 +102,6 @@ std::atomic<bool> crouchRequested{};
 std::array<std::atomic<float>,3> focusHandOrigin{};
 std::array<std::atomic<float>,3> focusHandDirection{};
 std::atomic<bool> focusHandValid{};
-std::atomic<unsigned long long> focusTraceCalls{},focusTraceHandCalls{},focusTraceHeadCalls{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -296,7 +295,6 @@ void emit64(unsigned char*& p, unsigned long long value) {
 
 extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     if(!rawFocusTrace)return;
-    focusTraceCalls.fetch_add(1,std::memory_order_relaxed);
     // World interactions can run when the native player-physics snapshot is
     // not refreshed this render frame. Don't require the stricter "gameplay"
     // freshness test or an available HMD sample before using the hand ray.
@@ -311,11 +309,6 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     const auto source=kharvox::chooseWorldFocusRaySource(
         world,cinematic,boss,handValid,headValid);
     if(source==kharvox::WorldFocusRaySource::Native)return;
-    if(source==kharvox::WorldFocusRaySource::Hand)
-        focusTraceHandCalls.fetch_add(1,std::memory_order_relaxed);
-    else
-        focusTraceHeadCalls.fetch_add(1,std::memory_order_relaxed);
-
     float focusOrigin[3]{};
     float focusDirection[3]{};
     if(source==kharvox::WorldFocusRaySource::Hand){
@@ -329,16 +322,6 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
             focusDirection[axis]=hmdAxis[axis];
         }
     }
-    // Only log changes in active native focus targeting, never every frame.
-    // If a station/collectible still responds to gaze after this reports
-    // HAND, its interactable uses a separate engine query to investigate.
-    static std::atomic<int> lastRaySource{-1};
-    const int ray=source==kharvox::WorldFocusRaySource::Hand?1:0;
-    if(lastRaySource.exchange(ray,std::memory_order_acq_rel)!=ray)
-        log(ray==1?"[FOCUS] world interaction native trace -> HAND"
-                  :"[FOCUS] world interaction native trace -> HEAD (hand unavailable)");
-
-
     auto bytes = static_cast<unsigned char*>(rawFocusTrace);
     auto start = reinterpret_cast<float*>(bytes + 0xB0);
     auto nearEnd = reinterpret_cast<float*>(bytes + 0xBC);
@@ -913,152 +896,7 @@ void logNativeSsgReplay(const std::string& message) {
     f << "[KHARVOX][SSG-NATIVE-REPLAY] " << message << '\n';
 }
 
-// DOOM's two checkbox settings should not depend on the unrelated timescale
-// resolver. Validate them as a PAIR: both exact names must have exactly one
-// writable 0/1 value at the SAME idCVar layout offset. Reject an ambiguous
-// layout; never guess a live game pointer or modify DOOM on lookup failure.
-// This is a fallback for DOOM binaries where the timescale float is dynamic
-// or its value isn't in the heuristic's expected interval.
-volatile LONG* resolveVerifiedGameCheckboxCvar(const char* requested) {
-    constexpr const char* names[]={
-        "g_setting_gk_highlight","g_setting_tutorials"
-    };
-    const int requestedIndex=std::strcmp(requested,names[0])==0?0
-        :std::strcmp(requested,names[1])==0?1:-1;
-    if(requestedIndex<0)return nullptr;
-    static std::mutex lookupMutex;
-    static std::array<volatile LONG*,2> resolved{};
-    static unsigned long long retryAt{};
-    static bool failureReported{};
-    std::lock_guard<std::mutex> lock(lookupMutex);
-    if(resolved[0]&&resolved[1])return resolved[requestedIndex];
-    const auto now=GetTickCount64();
-    if(now<retryAt)return nullptr;
-    retryAt=now+15000u;
-
-    auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
-    if(!image||!readableMemory(image,sizeof(IMAGE_DOS_HEADER)))return nullptr;
-    const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
-    if(dos->e_magic!=IMAGE_DOS_SIGNATURE
-        ||!readableMemory(image+dos->e_lfanew,sizeof(IMAGE_NT_HEADERS64)))
-        return nullptr;
-    const auto nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(image+dos->e_lfanew);
-    if(nt->Signature!=IMAGE_NT_SIGNATURE)return nullptr;
-    const auto sections=IMAGE_FIRST_SECTION(nt);
-    std::array<std::vector<uintptr_t>,2> nameAddresses{};
-    for(unsigned si=0;si<nt->FileHeader.NumberOfSections;++si) {
-        const auto& section=sections[si];
-        if(!(section.Characteristics&IMAGE_SCN_MEM_READ))continue;
-        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
-        const auto begin=image+section.VirtualAddress;
-        if(!bytes||!readableMemory(begin,bytes))continue;
-        const auto first=reinterpret_cast<const char*>(begin);
-        const auto last=first+bytes;
-        for(int n=0;n<2;++n) {
-            const size_t length=std::strlen(names[n])+1;
-            if(bytes<length)continue;
-            for(auto cursor=first;cursor+length<=last;) {
-                const auto found=std::search(cursor,last,names[n],names[n]+length);
-                if(found==last)break;
-                nameAddresses[n].push_back(reinterpret_cast<uintptr_t>(found));
-                cursor=found+1;
-            }
-        }
-    }
-    if(nameAddresses[0].empty()||nameAddresses[1].empty()){
-        if(!failureReported){
-            logGlorySlowmo("game checkbox resolver: native CVar name missing; no memory writes");
-            failureReported=true;
-        }
-        return nullptr;
-    }
-    constexpr std::array<uint32_t,5> offsets{{0,8,16,24,32}};
-    std::array<std::array<std::vector<uintptr_t>,5>,2> candidates{};
-    for(unsigned si=0;si<nt->FileHeader.NumberOfSections;++si) {
-        const auto& section=sections[si];
-        if(!(section.Characteristics&IMAGE_SCN_MEM_WRITE))continue;
-        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
-        const auto begin=image+section.VirtualAddress;
-        if(bytes<sizeof(uintptr_t)||!readableMemory(begin,bytes))continue;
-        const uintptr_t b=reinterpret_cast<uintptr_t>(begin),e=b+bytes;
-        for(uintptr_t address=(b+7u)&~uintptr_t(7u);
-            address+sizeof(uintptr_t)<=e;address+=sizeof(uintptr_t)) {
-            uintptr_t target{};
-            std::memcpy(&target,reinterpret_cast<const void*>(address),sizeof(target));
-            for(int n=0;n<2;++n) {
-                if(std::find(nameAddresses[n].begin(),nameAddresses[n].end(),target)
-                   ==nameAddresses[n].end())continue;
-                for(size_t oi=0;oi<offsets.size();++oi){
-                    const auto offset=offsets[oi];
-                    if(address<reinterpret_cast<uintptr_t>(image)+offset)continue;
-                    const uintptr_t valueAddress=address-offset+0x34u;
-                    if(valueAddress%alignof(LONG)
-                        ||!writableMemory(reinterpret_cast<void*>(valueAddress),sizeof(LONG)))
-                        continue;
-                    LONG value{};
-                    std::memcpy(&value,reinterpret_cast<const void*>(valueAddress),sizeof(value));
-                    if(value!=0&&value!=1)continue;
-                    auto& values=candidates[n][oi];
-                    if(std::find(values.begin(),values.end(),valueAddress)==values.end())
-                        values.push_back(valueAddress);
-                }
-            }
-        }
-    }
-    // Prefer a THIRD, already-used native CVar to prove the exact name
-    // pointer offset. DOOM's joy_yawSpeed current-value RVA is independently
-    // used by our live turn adapter, so this validates the object layout
-    // without needing the unreliable timescale scan.
-    constexpr uintptr_t knownYawCurrentRva=0x5FAA3A4u;
-    constexpr char knownYawName[]="joy_yawSpeed";
-    constexpr uintptr_t cvarCurrentOffset=0x34u;
-    int anchoredOffset=-1;
-    auto yawBase=image+knownYawCurrentRva-cvarCurrentOffset;
-    if(readableMemory(yawBase,offsets.back()+sizeof(uintptr_t))) {
-        for(size_t oi=0;oi<offsets.size();++oi){
-            uintptr_t namePointer{};
-            std::memcpy(&namePointer,yawBase+offsets[oi],sizeof(namePointer));
-            if(namePointer
-                &&readableMemory(reinterpret_cast<const void*>(namePointer),sizeof(knownYawName))
-                &&std::memcmp(reinterpret_cast<const void*>(namePointer),
-                    knownYawName,sizeof(knownYawName))==0){
-                if(anchoredOffset!=-1){anchoredOffset=-2;break;}
-                anchoredOffset=static_cast<int>(oi);
-            }
-        }
-    }
-    uintptr_t selectedHighlight{},selectedTutorial{};
-    unsigned layouts{};
-    for(size_t oi=0;oi<offsets.size();++oi){
-        if(anchoredOffset==-2 || (anchoredOffset>=0
-            &&oi!=static_cast<size_t>(anchoredOffset)))continue;
-        if(candidates[0][oi].size()!=1||candidates[1][oi].size()!=1
-            ||candidates[0][oi][0]==candidates[1][oi][0])continue;
-        selectedHighlight=candidates[0][oi][0];
-        selectedTutorial=candidates[1][oi][0];
-        ++layouts;
-    }
-    if(layouts!=1){
-        if(!failureReported){
-            logGlorySlowmo("game checkbox resolver: exact name-pair layout unverified/ambiguous ("
-                +std::to_string(layouts)+" candidates); no memory writes");
-            failureReported=true;
-        }
-        return nullptr;
-    }
-    resolved={reinterpret_cast<volatile LONG*>(selectedHighlight),
-              reinterpret_cast<volatile LONG*>(selectedTutorial)};
-    logGlorySlowmo(std::string("game checkbox pair VERIFIED independently of timescale; ")
-        +"exact names, unique shared idCVar offset and 0/1 values; yaw anchor "
-        +(anchoredOffset>=0?"VERIFIED":"unavailable (strict unique-pair fallback)"));
-    return resolved[requestedIndex];
-}
-
 volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
-    // Native game-checkbox pairs can prove their OWN object layout without
-    // depending on the unrelated timescale CVar. All other native writes
-    // retain the original timescale-verified protection.
-    if(auto* value=resolveVerifiedGameCheckboxCvar(name))return value;
     // Do not write ANY native CVar until a known working float CVar has
     // established the actual idCVar object's name-pointer layout.
     if(!resolveTimescaleCvarCurrent())return nullptr;
@@ -2822,14 +2660,6 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
-void KharvoxCameraFocusTraceDiagnostics(
-    unsigned long long& allTraces,unsigned long long& handTraces,
-    unsigned long long& headTraces,bool& handPoseReady){
-    allTraces=focusTraceCalls.load(std::memory_order_relaxed);
-    handTraces=focusTraceHandCalls.load(std::memory_order_relaxed);
-    headTraces=focusTraceHeadCalls.load(std::memory_order_relaxed);
-    handPoseReady=focusHandValid.load(std::memory_order_acquire);
-}
 void KharvoxCameraSetFocusHandPose(
     const float origin[3], const float direction[3], bool valid) {
     if(!valid||!origin||!direction){
@@ -3405,38 +3235,6 @@ std::atomic<LONG>& gloryKillHighlightDesired() {
     }()};
     return desired;
 }
-std::atomic<int>& gloryKillHighlightApplied() {
-    static std::atomic<int> verified{0};
-    return verified;
-}
-}
-void KharvoxCameraSetGloryKillHighlightEnabled(bool enabled) {
-    gloryKillHighlightDesired().store(enabled?1L:0L,std::memory_order_release);
-    gloryKillHighlightApplied().store(0,std::memory_order_release);
-}
-bool KharvoxCameraGloryKillHighlightRequested() {
-    return gloryKillHighlightDesired().load(std::memory_order_acquire)!=0;
-}
-int KharvoxCameraGloryKillHighlightStatus() {
-    return gloryKillHighlightApplied().load(std::memory_order_acquire);
-}
-// These accessors never force a setting. The underlying exact-name resolver
-// must verify its native idCVar layout before any value is read or reported.
-// Unknown is not OFF; game config files cannot prove the live DOOM value.
-namespace {
-int readLiveDoomGameCheckbox(const char* name) {
-    auto* value=resolveVerifiedIntegerCvar(name,1);
-    if(!value)return -1;
-    const LONG observed=InterlockedCompareExchange(value,0,0);
-    return observed==0||observed==1?static_cast<int>(observed):-1;
-}
-}
-int KharvoxCameraNativeGloryKillHighlightValue() {
-    return readLiveDoomGameCheckbox("g_setting_gk_highlight");
-}
-int KharvoxCameraNativeTutorialsValue() {
-    return readLiveDoomGameCheckbox("g_setting_tutorials");
-}
 void KharvoxCameraEnforceGloryKillHighlightSetting() {
     // Launch arguments alone are not persistent: DOOM can apply new campaign
     // settings after the process starts. Reassert the selected native setting.
@@ -3470,8 +3268,7 @@ void KharvoxCameraEnforceGloryKillHighlightSetting() {
             logGlorySlowmo(std::string("new-game/settings reload: GK Highlight reset ")
                 +(selected ? "ON" : "OFF"));
         }
-        gloryKillHighlightApplied().store(1,std::memory_order_release);
-    }else gloryKillHighlightApplied().store(0,std::memory_order_release);
+    }
 }
 
 // DOOM reloads campaign game settings after initial process arguments.
