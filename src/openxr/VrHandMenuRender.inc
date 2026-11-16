@@ -246,16 +246,23 @@ void paintVrHandMenu() {
             }else{
                 const auto best=kharvox::levelBestFor(s.levelRecords,
                     s.levelProgress.verifiedMapKey);
-                write(x+16,y+5,i==2?"CAMPAIGN TIME"
-                    :i==3?"SESSION TIME":i==4?"LEVEL TIME":"LEVEL BEST",muted);
+                const bool newBestOnLevel=i==5&&s.levelProgress.bestUpdated
+                    &&GetTickCount64()<s.levelProgress.newBestGoldUntilMs;
+                const bool newBestAfterLoad=i==5
+                    &&GetTickCount64()<s.recentLevelBestGoldUntilMs;
+                const bool gold=newBestOnLevel||newBestAfterLoad;
+                write(x+16,y+5,gold?"NEW PERSONAL BEST!"
+                    :i==2?"CAMPAIGN TIME":i==3?"SESSION TIME"
+                    :i==4?"LEVEL TIME":"LEVEL BEST",
+                    gold?RGB(255,207,66):muted);
                 SelectObject(dc,regular);
-                write(x+16,y+28,i==5&&best==0?"--:--:--":
-                    kharvox::campaignRunTimeText(i==2?s.campaignRunTime.elapsedMs:
+                const auto displayedTime=newBestAfterLoad?s.recentLevelBestTimeMs
+                    :i==2?s.campaignRunTime.elapsedMs:
                         i==3?s.sessionRunTime.elapsedMs:
-                        i==4?s.levelProgress.time.elapsedMs:best),
-                    i==5&&s.levelProgress.bestUpdated
-                      &&GetTickCount64()<s.levelProgress.newBestGoldUntilMs
-                        ?RGB(255,207,66):RGB(84,233,214));
+                        i==4?s.levelProgress.time.elapsedMs:best;
+                write(x+16,y+28,i==5&&!gold&&best==0?"--:--:--":
+                    kharvox::campaignRunTimeText(displayedTime),
+                    gold?RGB(255,207,66):RGB(84,233,214));
             }
         }
     }else if(calibrationView){
