@@ -1,6 +1,7 @@
 #include "../src/openxr/VrHandMenuPolicy.h"
 #include "../src/openxr/ManualCrouchPolicy.h"
 #include "../src/hud/CampaignDeathCounterPolicy.h"
+#include "../src/hud/CampaignStatsPolicy.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -38,6 +39,49 @@ int main(){
     assert(!deathCounterShouldDraw(true,true,true,true,false));
     assert(!deathCounterShouldDraw(true,true,true,false,true));
     assert(vrLiveValidSettings(counterSettings));
+    // New stats take ownership of their corner by disabling the previous
+    // screen item. No automatic repositioning or stacking is allowed.
+    VrLiveSettings stats{};
+    assert(!stats.deathCounterEnabled&&!stats.deathStatisticsEnabled
+        &&!stats.campaignTimerEnabled);
+    assert(vrStatsSetEnabled(stats,0,true));
+    assert(stats.deathCounterEnabled);
+    assert(vrStatsSetEnabled(stats,1,true));
+    assert(!stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    // Timer top-left and statistics top-right can coexist.
+    assert(vrStatsSetEnabled(stats,2,true));
+    assert(stats.campaignTimerEnabled&&stats.deathStatisticsEnabled);
+    // Assigning the timer to the stat's occupied corner disables statistics.
+    assert(vrStatsSetCorner(stats,2,1));
+    assert(stats.campaignTimerEnabled&&!stats.deathStatisticsEnabled);
+    assert(vrStatsCorner(stats,2)==1);
+    // A hidden item's position preference does not displace visible items.
+    assert(vrStatsSetCorner(stats,0,1));
+    assert(!stats.deathCounterEnabled&&stats.campaignTimerEnabled);
+    // Enabling the Death Counter in that corner now disables the timer.
+    assert(vrStatsSetEnabled(stats,0,true));
+    assert(stats.deathCounterEnabled&&!stats.campaignTimerEnabled);
+    assert(vrStatsSetEnabled(stats,1,true));
+    assert(!stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    assert(vrLiveValidSettings(stats));
+    assert(!vrStatsSetCorner(stats,2,4));
+    assert(!vrStatsSetEnabled(stats,-1,true));
+    CampaignRunTime run{};
+    advanceCampaignRunTime(run,true,1000);
+    advanceCampaignRunTime(run,true,1016);
+    assert(run.elapsedMs==16);
+    advanceCampaignRunTime(run,false,2000);
+    advanceCampaignRunTime(run,true,6000);
+    advanceCampaignRunTime(run,true,6020);
+    assert(run.elapsedMs==36); // no pause gap counted
+    assert(campaignRunTimeText(3723000)=="01:02:03");
+    assert(campaignStatsPanelWidth(0)==226);
+    assert(campaignStatsPanelWidth(1)==316);
+    resetCampaignRunTime(run);
+    assert(run.elapsedMs==0&&!run.activeLastSample);
+    assert(campaignStatsCanDraw(true,true,false,false));
+    assert(!campaignStatsCanDraw(true,true,false,true));
+    assert(!campaignStatsCanDraw(true,false,false,false));
     counterSettings.deathCounterCorner=4;
     assert(!vrLiveValidSettings(counterSettings));
     
