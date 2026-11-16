@@ -239,6 +239,7 @@ std::atomic<bool> pauseRootVisible{};
 std::atomic<bool> deathMenuActive{};
 std::atomic<unsigned long long> deathMenuLevelGenerationAtShow{};
 std::atomic<std::uint64_t> campaignDeathCount{};
+std::atomic<std::uint64_t> campaignSessionDeaths{};
 std::mutex campaignDeathCountMutex;
 // The total is independent of the overlay toggle: enabling the display
 // later still shows actual deaths that happened with it hidden.
@@ -265,6 +266,7 @@ bool saveCampaignDeathCountLocked(std::uint64_t value){
 void registerCampaignDeath(){
     std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
     const auto value=campaignDeathCount.fetch_add(1,std::memory_order_acq_rel)+1;
+    campaignSessionDeaths.fetch_add(1,std::memory_order_acq_rel);
     if(!saveCampaignDeathCountLocked(value))
         log("Campaign death total updated in memory; UserData save failed");
 }
@@ -4236,6 +4238,12 @@ bool KharvoxHudPauseMenuActive() {
     return pauseMenuActive.load(std::memory_order_acquire);
 }
 
+std::uint64_t KharvoxHudCampaignSessionDeaths(){
+    return campaignSessionDeaths.load(std::memory_order_acquire);
+}
+void KharvoxHudResetCampaignSessionDeaths(){
+    campaignSessionDeaths.store(0,std::memory_order_release);
+}
 std::uint64_t KharvoxHudCampaignDeathCount(){
     return campaignDeathCount.load(std::memory_order_acquire);
 }
