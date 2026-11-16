@@ -2382,8 +2382,70 @@ void __fastcall tutorialManagerFrameHook(
     // screen owner is. This is the path used by the Elite Guard/Praetor-token
     // pickup after its short cinematic.
     const auto bytes = static_cast<const unsigned char*>(tutorialManager);
-    if (*reinterpret_cast<void* const*>(bytes + 0x8E8))
+    // Let DOOM's own Tutorial manager finish its native Frame first. Then
+    // close ONLY a verified native Tutorial screen through its own HideScreen
+    // method. Merely skipping ShowScreen/rendering can leave an activator
+    // waiting for dismissal, trapping the game or AutoMap menu input.
+    //
+    // This is a fallback for DOOM re-enabling g_setting_tutorials on loading a
+    // fresh campaign or saved checkpoint. It never touches Dossier, AutoMap,
+    // Upgrade or other full-screen menus, and leaves their lifecycle alone.
+    // Exact executable vtables + previously validated Hide hooks are required.
+    const auto active = readableRange(bytes + 0x8E8, sizeof(void*))
+        ? *reinterpret_cast<void* const*>(bytes + 0x8E8) : nullptr;
+    if (!ripshiftTutorialsDisabled()) {
+        if (active) pulseTutorialActiveSession();
+        return;
+    }
+    // A given tutorial screen is dismissed ONCE per activation, not every VR
+    // frame. Null active-owner naturally rearms the next tutorial encounter.
+    static void* lastOwner{};
+    if (!active) { lastOwner = nullptr; return; }
+    if (active == lastOwner) return;
+    lastOwner = const_cast<void*>(active);
+    if (!readableRange(active, sizeof(void*))) {
+        log("[TUTORIAL-OFF] active Tutorial owner unreadable; leaving native state unchanged");
+        return;
+    }
+    const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) return;
+    const void* screenVtable = *reinterpret_cast<void* const*>(active);
+    PauseScreenTransitionFn hide{};
+    unsigned int bit{};
+    const char* label{};
+    if (screenVtable == image + 0x2257B40) {
+        hide = originalTutorialSimpleHide;
+        bit = tutorialSimpleBit;
+        label = "Tutorial_Simple";
+    } else if (screenVtable == image + 0x2257C30) {
+        hide = originalTutorialVideoHide;
+        bit = tutorialVideoBit;
+        label = "Tutorial_Video";
+    } else if (screenVtable == image + 0x2257D20) {
+        hide = originalTutorialTextHide;
+        bit = tutorialTextBit;
+        label = "Tutorial_Text";
+    } else {
+        // The Tutorial manager can own auxiliary non-tutorial state. Do not
+        // close an unidentified screen or guess its vtable.
+        log("[TUTORIAL-OFF] manager owner is not an exact native tutorial screen; no action");
         pulseTutorialActiveSession();
+        return;
+    }
+    if (!hide) {
+        log("[TUTORIAL-OFF] native HideScreen hook unavailable; refusing guessed call");
+        pulseTutorialActiveSession();
+        return;
+    }
+    hide(lastOwner, 2); // 2 = native closing transition; no fake controller input.
+    endTutorialScreenActivity(bit, label, 2);
+    // The engine may still have a frame of queued UI draw work. Never keep
+    // KHARVOX's 300-second projection/tutorial latch for a dismissed screen.
+    tutorialManagerLastActiveFrameTick.store(0, std::memory_order_release);
+    tutorialSessionUntilTick.store(0, std::memory_order_release);
+    tutorialScreenMask.store(0, std::memory_order_release);
+    log(std::string("[TUTORIAL-OFF] exact native ") + label
+        + " dismissed after manager frame using verified HideScreen");
 }
 
 std::atomic<unsigned long long> hudMovieUntil{};
