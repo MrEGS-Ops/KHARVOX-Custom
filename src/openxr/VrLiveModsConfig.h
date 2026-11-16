@@ -180,7 +180,7 @@ inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
     else if(item==2)s.campaignTimerEnabled=on;
     else s.sessionTimerEnabled=on;
     if(on){
-         const int target=vrStatsCorner(s,item);
+        const int target=vrStatsCorner(s,item);
         for(int other=0;other<4;++other)if(other!=item
             &&vrStatsEnabled(s,other)
             &&vrStatsPositionsOverlap(item,target,other,vrStatsCorner(s,other))){
@@ -222,7 +222,7 @@ inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
         :s.enabledOverrides[static_cast<size_t>(index)]==1;
 }
 inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
-    if(mod==VrLiveMod::DeathCounter){s.deathCounterEnabled=on;return true;}
+    if(mod==VrLiveMod::DeathCounter)return vrStatsSetEnabled(s,0,on);
     if(!vrLiveModToggleable(mod))return false;
     const int index=vrLiveToggleIndex(mod);
     if(index<0)return false;
