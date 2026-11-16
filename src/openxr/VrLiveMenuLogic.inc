@@ -123,7 +123,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Disabling PAINSAW restores native",
             "chainsaw execution."}}};
         case VrLiveMod::Stats:return {{{
-            "Campaign deaths, statistics and timer.",
+            "Campaign deaths, session and run timers.",
             "Each on-screen item has its own switch.",
             "Place each item on a fine HUD grid.",
             "Overlapping positions replace old items.",
@@ -158,7 +158,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Does not change button bindings.","",""}}};
         case D::StatsReset:return {{{
             "Reset death total, session deaths",
-            "or campaign run timer independently.",
+            "or campaign and session timers.",
             "Press the same reset button twice.",
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
@@ -402,14 +402,14 @@ void captureVrLivePosition(){
 bool handleVrStatsMenuAction(int action,bool dev){
     auto& menu=s.vrHandMenu;
     const int item=menu.statsSelected;
-    if(item<0||item>2)return false;
+    if(item<0||item>3)return false;
     if(dev){
         // 130 resets the selected statistic. 131 is the explicit RESET ALL
         // button. Both require a fresh second press within six seconds.
         // The reset never calls vrLiveSave or modifies display switches,
         // saved corners, weapon profiles or any other user preferences.
         if(action!=130&&action!=131)return false;
-        const int resetKey=action==131?3:item;
+        const int resetKey=action==131?4:item;
         const auto now=GetTickCount64();
         if(menu.pendingStatsReset!=resetKey||!menu.confirmDeathResetUntilMs
             ||now>menu.confirmDeathResetUntilMs){
@@ -435,6 +435,7 @@ bool handleVrStatsMenuAction(int action,bool dev){
                 return true;
             }
             KharvoxHudResetCampaignSessionDeaths();
+            kharvox::resetCampaignRunTime(s.sessionRunTime);
             menu.message="All statistics reset; display settings preserved.";
             if(kharvox::vrStatsMenuShouldClose(dev,action,true)){
                 menu.mode=kharvox::VrHandMenuMode::Closed;
@@ -454,10 +455,13 @@ bool handleVrStatsMenuAction(int action,bool dev){
         }else if(item==1){
             KharvoxHudResetCampaignSessionDeaths();
             menu.message="This session's death count reset to 0.";
-        }else{
+        }else if(item==2){
             menu.message=resetCampaignRunTimeSaved()
                 ?"Campaign run time reset to 0."
                 :"Failed to save campaign timer reset.";
+        }else{
+            kharvox::resetCampaignRunTime(s.sessionRunTime);
+            menu.message="Session time reset to 0.";
         }
         return true;
     }
