@@ -549,6 +549,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.menuAPreviously=menuA;
         m.menuBPreviously=menuB;
         m.consumeMenuFaceUntilRelease=false;
+        m.consumeMenuTriggerUntilRelease=false;
         return false;
     }
     if(shortcut==kharvox::VrMenuShortcutAction::Toggle){
@@ -600,6 +601,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
+        // Swallow held release edges after Stats closes the menu automatically.
+        // Never let the confirmation trigger fire a shot on the next frame.
+        if(m.consumeMenuTriggerUntilRelease){
+            if(!rightTrigger){
+                m.consumeMenuTriggerUntilRelease=false;
+            }else return true;
+        }
         // Keep a menu-closing B/A held press out of normal jump/crouch.
         if(m.consumeMenuFaceUntilRelease){
             if(!menuA&&!menuB)m.consumeMenuFaceUntilRelease=false;
