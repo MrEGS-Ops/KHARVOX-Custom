@@ -1,5 +1,6 @@
 #include "../src/openxr/VrHandMenuPolicy.h"
 #include "../src/openxr/ManualCrouchPolicy.h"
+#include "../src/hud/CampaignDeathCounterPolicy.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -7,6 +8,39 @@
 int main(){
     using namespace kharvox;
     VrMenuNavigation nav{};
+    // Campaign death detection never depends on whether the overlay is
+    // visible. Each native death-menu opening is counted exactly once.
+    assert(campaignDeathOpeningIsNew(false,0,0));
+    assert(!campaignDeathOpeningIsNew(true,4,4));
+    assert(campaignDeathOpeningIsNew(true,4,5));
+    assert(campaignDeathOpeningIsNew(false,4,4));
+    VrLiveSettings counterSettings{};
+    assert(!counterSettings.deathCounterEnabled);
+    assert(counterSettings.deathCounterCorner==1);
+    assert(vrLiveModEditable(VrLiveMod::DeathCounter));
+    assert(vrLiveModToggleable(VrLiveMod::DeathCounter));
+    assert(!vrLiveEffectiveEnabled(counterSettings,VrLiveMod::DeathCounter,true));
+    assert(vrLiveSetEnabled(counterSettings,VrLiveMod::DeathCounter,true));
+    assert(vrLiveEffectiveEnabled(counterSettings,VrLiveMod::DeathCounter,false));
+    assert(counterSettings.deathCounterCorner==1);
+    assert(deathCounterPanelX(0,960,226)==32);
+    assert(deathCounterPanelX(1,960,226)==702);
+    assert(deathCounterPanelX(2,960,226)==32);
+    assert(deathCounterPanelX(3,960,226)==702);
+    assert(deathCounterPanelY(0,720,60)==28);
+    assert(deathCounterPanelY(1,720,60)==28);
+    assert(deathCounterPanelY(2,720,60)==632);
+    assert(deathCounterPanelY(3,720,60)==632);
+    assert(deathCounterShouldDraw(true,true,true,false,false));
+    assert(!deathCounterShouldDraw(false,true,true,false,false));
+    assert(!deathCounterShouldDraw(true,false,true,false,false));
+    assert(!deathCounterShouldDraw(true,true,false,false,false));
+    assert(!deathCounterShouldDraw(true,true,true,true,false));
+    assert(!deathCounterShouldDraw(true,true,true,false,true));
+    assert(vrLiveValidSettings(counterSettings));
+    counterSettings.deathCounterCorner=4;
+    assert(!vrLiveValidSettings(counterSettings));
+    
     int selected=0;
     // The hidden DEV submenu has a distinct page and only diagnostic
     // toggles; none of its developer entries becomes a normal mod checkbox.
