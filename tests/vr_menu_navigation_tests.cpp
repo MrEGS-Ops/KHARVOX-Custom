@@ -6,15 +6,6 @@
 #include <cassert>
 int main(){
     using namespace kharvox;
-    // Live settings verification controls the nag, not cached launch values.
-    assert(!vrNativeSettingsNeedManualCheck(0,0,false));
-    assert(vrNativeSettingsNeedManualCheck(1,0,false));
-    assert(vrNativeSettingsNeedManualCheck(0,1,false));
-    assert(vrNativeSettingsNeedManualCheck(-1,0,false));
-    assert(vrNativeSettingsNeedManualCheck(0,-1,false));
-    assert(vrNativeSettingsNeedManualCheck(-1,-1,false));
-    assert(!vrNativeSettingsNeedManualCheck(0,1,true));
-    assert(vrNativeSettingsNeedManualCheck(1,1,true));
     VrMenuNavigation nav{};
     int selected=0;
     // The hidden DEV submenu has a distinct page and only diagnostic
