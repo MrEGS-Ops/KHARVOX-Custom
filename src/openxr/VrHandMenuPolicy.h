@@ -291,7 +291,7 @@ inline void vrStatsNavigateStick(VrMenuNavigation& nav,float x,float y,
     if(yEdge){
         nav.verticalCentered=false;nav.usingStick=true;
         if(!nav.settingsColumn){
-            selectedIndex=(selectedIndex+(y<0.f?1:2))%3;
+            selectedIndex=(selectedIndex+(y<0.f?1:3))%4;
             nav.actionIndex=0;
         }else if(nav.actionIndex==0){
             if(y<0.f)nav.actionIndex=1+(statsGridCellSelectable(savedCell)
@@ -543,7 +543,7 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
-    int statsSelected{}; // 0 deaths, 1 death statistics, 2 run time
+    int statsSelected{}; // 0 deaths, 1 death statistics, 2 campaign time, 3 session time
     int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
