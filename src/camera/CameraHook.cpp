@@ -3235,6 +3235,7 @@ std::atomic<LONG>& gloryKillHighlightDesired() {
     }()};
     return desired;
 }
+} // namespace
 void KharvoxCameraEnforceGloryKillHighlightSetting() {
     // Launch arguments alone are not persistent: DOOM can apply new campaign
     // settings after the process starts. Reassert the selected native setting.
