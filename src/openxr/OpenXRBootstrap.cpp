@@ -4941,8 +4941,8 @@ void updateGameplayActions(XrTime displayTime){
     publishHudHandPose(true,s.rightGripController);
     publishHudHandPose(false,s.leftGripController);
 
-    // The native FocusTracker can inspect health stations and collectible
-    // interactions during a playable world frame even if the player-physics
+    // The native FocusTracker can inspect world interactions during a
+    // playable frame even if the player-physics
     // snapshot has not been captured in the last two render presents.
     // Use that wider world context ONLY to publish the controller focus ray.
     // Movement, firing, menus, scripted executions and Boxing Guard continue
@@ -5403,12 +5403,6 @@ void updatePresentationMode(){
         log("[BOSS-QUAD] r313 centered native boss scene requested");
     }
     previousBossSequence=bossSequence;
-    static bool previousCollectibleQuad=false;
-    if(collectibleQuad!=previousCollectibleQuad){
-        log(collectibleQuad ? "[COLLECTIBLE-QUAD] native toy animation active; centered Quad requested"
-            : "[COLLECTIBLE-QUAD] native toy animation ended; automatic presentation restored");
-        previousCollectibleQuad=collectibleQuad;
-    }
     const bool deathMenuActive=KharvoxHudDeathMenuActive();
     const bool fullscreenMenuActive=KharvoxHudFullscreenMenuActive();
     const bool tutorialActive=KharvoxHudTutorialActive();
