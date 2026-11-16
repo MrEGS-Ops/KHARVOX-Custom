@@ -860,29 +860,29 @@ int main(){
     assert(vrMenuModsGamepadTarget(nav,5,7,1,true)==110);
     nav.actionIndex=1;
     assert(vrMenuModsGamepadTarget(nav,2,7,4,true)==130);
-    // Legacy wheel remap is retired, but Gunslinger's gesture wheel frees
-    // right-stick DOWN for crouch when Physical Crouch is OFF.
-    assert(manualStickCrouchAllowed(false,true,false));
-    assert(manualStickCrouchAllowed(false,false,true));
-    assert(!manualStickCrouchAllowed(true,true,true));
-    assert(!manualStickCrouchAllowed(false,false,false));
-    assert(manualStickCrouchDirection(0.f,-1.f));
-    assert(manualStickCrouchDirection(.24f,-.95f));
-    assert(!manualStickCrouchDirection(.7f,-1.f)); // turning diagonally
-    assert(!manualStickCrouchDirection(0.f,-.5f)); // no accidental crouch
-    assert(!manualStickCrouchDirection(0.f,.9f)); // chainsaw UP unchanged
-    // No Weapon Wheel cannot resurrect the retired stick-down wheel route.
+    // A is the dedicated manual crouch toggle with Physical Crouch
+    // enabled OR disabled. Right-stick DOWN never toggles crouch anymore,
+    // but may be used for optional directional dash. R3 click is untouched.
+    assert(!vrCombinedCrouchDesired(false,false));
+    assert(vrCombinedCrouchDesired(true,false)); // Physical Crouch OFF
+    assert(vrCombinedCrouchDesired(false,true)); // Physical Crouch ON
+    assert(vrCombinedCrouchDesired(true,true));  // simultaneous sources
+    assert(vrRightStickDownGesture(0.f,-1.f));
+    assert(vrRightStickDownGesture(.24f,-.95f));
+    assert(!vrRightStickDownGesture(.7f,-1.f)); // no diagonal turn activation
+    assert(!vrRightStickDownGesture(0.f,-.5f)); // deadzone respected
+    assert(!vrRightStickDownGesture(0.f,.9f)); // chainsaw UP unchanged
+    // No Weapon Wheel cannot resurrect retired weapon-select controls.
     assert(!vrScopedWeaponSelectDown(true,true,true,false,true));
     assert(!vrScopedWeaponSelectDown(true,false,true,false,true));
     assert(vrScopedWeaponSelectDown(true,false,true,true,true));
     assert(vrScopedWeaponSelectDown(true,false,false,false,true));
     assert(!vrScopedWeaponSelectDown(false,false,true,true,true));
-    // Native 90 ms edge pulse, both on crouch and on stand; never leak a
-    // manual pulse into Physical Crouch, menus or the old remap input path.
-    assert(manualStickCrouchPulseActive(true,false,false,100,100+90000000));
-    assert(!manualStickCrouchPulseActive(true,false,false,100+90000000,100+90000000));
-    assert(!manualStickCrouchPulseActive(false,false,false,100,100+90000000));
-    assert(!manualStickCrouchPulseActive(true,true,false,100,100+90000000));
-    assert(!manualStickCrouchPulseActive(true,false,true,100,100+90000000));
+    // The combined native crouch output queues a single 90-ms pulse and
+    // requires a release interval before another transition, avoiding
+    // duplicate toggles from simultaneous A and headset height changes.
+    assert(vrCrouchPulseReady(true,110000000,90000000));
+    assert(!vrCrouchPulseReady(true,109999999,90000000));
+    assert(!vrCrouchPulseReady(false,110000000,90000000));
     return 0;
 }
