@@ -3641,6 +3641,26 @@ void updateGameplayActions(XrTime displayTime){
     const bool deathMenu=KharvoxHudDeathMenuActive();
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
+    if(suppressSetupButtons||suppressWelcomeButtons){
+        // Keep both onboarding screens truly modal. Do not allow the
+        // acknowledgement chord to trigger native pause/melee, the R3 menu
+        // shortcut, keyboard USE pulses or residual virtual movement.
+        s.vrHandMenu.shortcut={};
+        releaseHandFocusUseKeyboardPulse();
+        releaseMovement();
+        updateVirtualButtons(false,false,false,false,false,false,false,
+            false,false,false,false,false,false);
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        KharvoxCameraSetCrouchState(false);
+        s.usePulseUntil=0;
+        s.meleePulseUntil=0;
+        s.physicalPunchPulseUntil=0;
+        s.primaryFireDown=false;
+        s.firePressed=false;
+        s.pausePressed=false;
+        s.meleePressed=false;
+        return;
+    }
     serviceBackWeaponKeyboardPulse(displayTime,gameplay);
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
