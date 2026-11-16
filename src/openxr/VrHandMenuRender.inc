@@ -487,7 +487,8 @@ void paintVrHandMenu() {
                 &&m.confirmDeathResetUntilMs
                 &&GetTickCount64()<=m.confirmDeathResetUntilMs;
             fill(531,186,384,58,m.hovered==130
-                ||(m.navigation.settingsColumn&&m.navigation.usingStick)
+                ||(m.navigation.settingsColumn&&m.navigation.usingStick
+                    &&m.navigation.actionIndex==0)
                     ?RGB(66,83,99):RGB(39,49,63));
             SelectObject(dc,smallFont);
             write(549,202,confirming?"CONFIRM RESET (SECOND PRESS)"
@@ -499,7 +500,19 @@ void paintVrHandMenu() {
                 :chosen==1?std::to_string(KharvoxHudCampaignSessionDeaths())+" deaths"
                 :kharvox::campaignRunTimeText(s.campaignRunTime.elapsedMs);
             write(538,292,"CURRENT: "+value,RGB(84,233,214));
-            write(538,342,"Confirm by pressing RESET twice.",muted);
+            write(538,342,"Each reset needs two presses.",muted);
+            const bool confirmAll=m.pendingStatsReset==3
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            fill(531,397,384,58,m.hovered==131
+                ||(m.navigation.settingsColumn&&m.navigation.usingStick
+                    &&m.navigation.actionIndex==1)
+                    ?RGB(83,52,61):RGB(60,38,48));
+            write(549,412,confirmAll?"CONFIRM RESET ALL (SECOND PRESS)"
+                :"RESET ALL STATS",confirmAll?RGB(255,175,175):white);
+            write(538,475,"Resets lifetime, session and run time.",muted);
+            write(538,510,"Keeps display toggles and positions.",RGB(84,233,214));
+            write(538,552,"Closes the Mod Menu after reset.",muted);
         }else{
             const bool enabled=kharvox::vrStatsEnabled(s.vrLiveSettings,chosen);
             fill(531,159,384,60,m.hovered==110
