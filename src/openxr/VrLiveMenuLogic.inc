@@ -128,7 +128,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Assign each item to one HUD corner.",
             "New selection disables occupied items.",
             "Deaths always count when display is OFF.",
-            "Support-grip feedback is built in."}}};
+            "Death Statistics replaces Death Counter."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
