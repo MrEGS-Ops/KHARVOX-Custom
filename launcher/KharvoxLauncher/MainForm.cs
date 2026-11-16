@@ -59,7 +59,6 @@ public sealed class MainForm : Form
     private readonly CheckBox extendedLogging = MakeCheck("Extended Logging (debug only)", false);
     private readonly CheckBox captureEyes = MakeCheck("Eye capture: Ctrl+Shift+P (next launch)", false);
     private readonly CheckBox disableAa = MakeCheck("Disable AA (both renderers, next launch)", false);
-    private readonly CheckBox gloryKillHighlight = MakeCheck("Glory Kill Highlight (next launch; default Off)", false);
     private readonly CheckBox handsJump = MakeCheck("Hands Jump", true);
     private readonly CheckBox disableVrIntro = MakeCheck("Disable VR-Intro", false);
     private readonly CheckBox showHands = MakeCheck("Enable Hands", true);
@@ -375,7 +374,6 @@ public sealed class MainForm : Form
         statusToolTip.SetToolTip(extendedLogging,
             "Extra diagnostic capture and log file writes may affect VR frame times. Leave OFF for normal play.");
         disableAa.CheckedChanged += OptionChanged;
-        gloryKillHighlight.CheckedChanged += OptionChanged;
         captureEyes.CheckedChanged += OptionChanged;
 
         showHands.CheckedChanged += (_, _) =>
@@ -819,7 +817,6 @@ public sealed class MainForm : Form
             showHands.Checked = LauncherPresetPolicy.DefaultEnableHands;
             handsJump.Checked = true;
             disableAa.Checked = false;
-            gloryKillHighlight.Checked = false;
             captureEyes.Checked = false;
 
             if (LauncherPresetPolicy.TryGet(preset.SelectedIndex, out var defaults))
@@ -921,7 +918,7 @@ public sealed class MainForm : Form
     {
         devModeForm ??= new DevModeForm(
             weaponMode, calibrationWeapon, gripAlignment, hudDebugging,
-            extendedLogging, calibrateHands, weaponStatus, disableAa, captureEyes, gloryKillHighlight);
+            extendedLogging, calibrateHands, weaponStatus, disableAa, captureEyes);
         if (!devModeForm.Visible) devModeForm.Show(this);
         if (devModeForm.WindowState == FormWindowState.Minimized)
             devModeForm.WindowState = FormWindowState.Normal;
@@ -1032,8 +1029,7 @@ public sealed class MainForm : Form
         calibrateHands.Checked ? "rotation" : "off",
         enableBhaptics.Checked,
         usePsvr2Toolkit.Checked,
-        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, swapJumpCrouch.Checked,
-        gloryKillHighlightEnabled: gloryKillHighlight.Checked);
+        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, swapJumpCrouch.Checked);
 
     private void SetRunningState(bool running)
     {
@@ -1121,7 +1117,6 @@ public sealed class MainForm : Form
             disableVrIntro.Checked = s.DisableVrIntro;
             handsJump.Checked = s.HandsJump;
             disableAa.Checked = s.DisableAa;
-            gloryKillHighlight.Checked = s.SettingsVersion >= 38 && s.GloryKillHighlightEnabled;
             captureEyes.Checked = s.CaptureEyes;
 
             calibrateHands.Checked = s.SettingsVersion >= 27
@@ -1155,7 +1150,6 @@ public sealed class MainForm : Form
             showHands.Checked = LauncherPresetPolicy.DefaultEnableHands;
             handsJump.Checked = true;
             disableAa.Checked = false;
-            gloryKillHighlight.Checked = false;
             captureEyes.Checked = false;
 
             calibrateHands.Checked = false;
@@ -1206,7 +1200,6 @@ public sealed class MainForm : Form
                 enableBhaptics.Checked,
                 usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, swapJumpCrouch.Checked);
             s.DisableVrIntro = disableVrIntro.Checked;
-            s.GloryKillHighlightEnabled = gloryKillHighlight.Checked;
             LauncherSettingsStore.Save(SettingsPath, s);
         }
         catch { /* Settings are optional; launching must remain possible. */ }
