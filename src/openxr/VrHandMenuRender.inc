@@ -427,8 +427,8 @@ void paintVrHandMenu() {
             if(active)fill(38,y,5,40,RGB(55,209,214));
             SelectObject(dc,smallFont);
             std::string title=entries[index].title;
-            // Core features are fixed active; only Physical Crouch and
-            // PAINSAW have an ON/OFF switch. Other rows lead to settings.
+            // Core mods stay fixed; Crouch, PAINSAW and the optional
+            // Campaign Death Counter have live ON/OFF controls.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].enabled?white:muted);
             const bool switchable=!devPage
@@ -490,14 +490,25 @@ void paintVrHandMenu() {
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
                     ?"OPEN WEAPON RECOIL SETTINGS"
+                    :opt==D::ResetDeathCounter
+                        ?(m.confirmDeathResetUntilMs
+                            &&GetTickCount64()<=m.confirmDeathResetUntilMs
+                            ?"CONFIRM RESET DEATHS"
+                            :"RESET DEATHS")
                     :opt==D::HandFocus
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else write(538,248,"New features will appear here.",muted);
-            write(538,332,"Enabled tools only show in the matching",muted);
-            write(538,361,"calibration screen.",muted);
+            if(opt==D::ResetDeathCounter){
+                write(538,305,"CURRENT TOTAL: "+
+                    std::to_string(KharvoxHudCampaignDeathCount()),RGB(84,233,214));
+                write(538,348,"Press twice within 6s to reset.",muted);
+            }else{
+                write(538,332,"Enabled tools only show in the matching",muted);
+                write(538,361,"calibration screen.",muted);
+            }
         }else if(toggleable){
             const bool focusToggle=m.navigation.usingStick
                 &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
@@ -553,6 +564,10 @@ void paintVrHandMenu() {
                     options[2]="USE LAUNCHER SPEED";
                     optionCount=3;
                     break;
+                case kharvox::VrLiveMod::DeathCounter:
+                    options={"TOP LEFT","TOP RIGHT","BOTTOM LEFT","BOTTOM RIGHT",""};
+                    optionCount=4;
+                    break;
                 case kharvox::VrLiveMod::PhysicalGloryKills:
                     options[0]="LOWER PUNCH THRESHOLD";
                     options[1]="RAISE PUNCH THRESHOLD";
@@ -594,6 +609,11 @@ void paintVrHandMenu() {
                     RGB(84,233,214));
                 if(!enabled)
                     write(548,575,"RIGHT STICK DOWN: TOGGLE CROUCH",RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::DeathCounter){
+                write(548,543,"POSITION: "+std::string(kharvox::deathCounterCornerName(
+                    s.vrLiveSettings.deathCounterCorner)),RGB(84,233,214));
+                write(548,574,"DEATHS: "+
+                    std::to_string(KharvoxHudCampaignDeathCount()),muted);
             }else if(mod==kharvox::VrLiveMod::Painsaw){
                 write(548,270,enabled?"PAINSAW CUSTOM SPEED ACTIVE"
                     :"NATIVE CHAINSAW SPEED",RGB(84,233,214));
