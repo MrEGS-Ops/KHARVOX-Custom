@@ -34,7 +34,6 @@ internal sealed class KharvoxLaunchOptions
     public string LeftHandSwapMode { get; }
     public bool LaserSight { get; }
     public bool HudDebugging { get; }
-    public bool GloryKillHighlightEnabled { get; }
     public bool ExtendedLogging { get; }
     public bool CaptureEyes { get; }
     public bool DisableAa { get; }
@@ -66,8 +65,7 @@ internal sealed class KharvoxLaunchOptions
         bool usePsvr2Toolkit,
         string backWeapon, bool handsJump = false, bool disableAa = false, bool captureEyes = false,
         bool disableVrIntro = false, bool swapJumpCrouch = false,
-        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10,
-        bool gloryKillHighlightEnabled = false)
+        bool weaponWheelRemapEnabled = true, int gloryKillSlowmoLevel = 10)
     {
         ImmersiveMode = immersiveMode; CinematicFreelook = cinematicFreelook;
         OtherCinematicsInQuad = otherCinematicsInQuad;
@@ -89,7 +87,6 @@ internal sealed class KharvoxLaunchOptions
         LeftHandSwapMode = leftHandSwapMode;
         LaserSight = laserSight;
         ExtendedLogging = extendedLogging;
-        GloryKillHighlightEnabled = gloryKillHighlightEnabled;
         HandCalibrationMode = handCalibrationMode switch
         {
             "rotation" => "rotation",
@@ -349,7 +346,7 @@ internal static class KharvoxRunner
 
         using var gameIntro = await VrGameIntroSession.StartAsync(runtimeDir, statusUpdate, disableVrIntro: options.DisableVrIntro).ConfigureAwait(false);
         WriteManifest(manifestPath, dllPath);
-        EnsureNativeControllerBindings(options.BackWeapon, options.GloryKillHighlightEnabled, statusUpdate);
+        EnsureNativeControllerBindings(options.BackWeapon, statusUpdate);
         await StopBhapticsAsync().ConfigureAwait(false);
         await StopPsvr2Async().ConfigureAwait(false);
         var bhaptics = BhapticsBridgeSession.TryStart(
@@ -528,7 +525,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO_HANDOFF");
             psi.EnvironmentVariables["KHARVOX_EXTENDED_LOGGING"] = options.ExtendedLogging ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_GK_HIGHLIGHT_ENABLED"] = options.GloryKillHighlightEnabled ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_DISABLE_TUTORIALS"] = "1";
             psi.EnvironmentVariables.Remove("VK_LOADER_DEBUG");
             if (options.ExtendedLogging)
@@ -1824,13 +1820,6 @@ internal static class KharvoxRunner
         return (Math.Max(1, (int)(1280 * scale)), Math.Max(1, (int)(720 * scale)));
     }
 
-    // DOOM 2016's native Game Settings > Glory Kill Highlight option.
-    // Do not change stagger, Glory Kill availability, animation or timing.
-    // Read-only reference: DOOMLegacyMod's game CVar dump identifies
-    // g_setting_gk_highlight as "show or hide the GK highlight".
-    internal static IEnumerable<string> NativeGloryKillHighlightArguments(bool enabled = false) =>
-        ["+g_setting_gk_highlight", enabled ? "1" : "0"];
-
     // Disable DOOM 2016's native tutorial pop-ups and instruction panels.
     // Use the actual game setting, not simulated screen-close inputs: suppressing
     // the tutorial manager's ShowScreen can trap native automap/UI ownership.
@@ -1922,10 +1911,6 @@ internal static class KharvoxRunner
             "+r_windowWidth", renderWidth.ToString(Invariant),
             "+r_windowHeight", renderHeight.ToString(Invariant)
         ]);
-        // Always turn off DOOM's own blue/orange stagger outlines in VR.
-        // This does not require DOOMModLoader, alter user config files or
-        // introduce any on-screen launcher option.
-        args.AddRange(NativeGloryKillHighlightArguments(options.GloryKillHighlightEnabled));
         args.AddRange(NativeTutorialArguments()); // Tutorials OFF by default.
 
         // Reuse the native sync-slowdown bypass the user previously confirmed
@@ -2079,7 +2064,7 @@ internal static class KharvoxRunner
         finally { foreach (var process in processes) process.Dispose(); }
     }
 
-    private static void EnsureNativeControllerBindings(string backWeapon, bool gloryHighlightEnabled, Action<string>? statusUpdate)
+    private static void EnsureNativeControllerBindings(string backWeapon, Action<string>? statusUpdate)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -2097,7 +2082,7 @@ internal static class KharvoxRunner
         }
         catch { }
 
-        // The controller patch and cosmetic game settings target the same
+        // Controller bindings and native tutorials settings target the same
         // existing DOOMConfig.cfg files. Never touch the encrypted savegame.
         // Game code can reload settings later, so record FILE status rather
         // than claiming live success without observing the native value.
@@ -2107,7 +2092,7 @@ internal static class KharvoxRunner
         {
             discovered++;
             PatchCampaignControllerBindings(config, backWeapon);
-            if (DoomGameSettingsOverride.TryApply(config, gloryHighlightEnabled, out var result))
+            if (DoomGameSettingsOverride.TryApply(config, out var result))
                 statusUpdate?.Invoke("DOOM settings profile: " + result);
             else
                 statusUpdate?.Invoke("DOOM settings profile unavailable: " + result);
