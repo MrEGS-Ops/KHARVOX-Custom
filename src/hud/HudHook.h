@@ -32,6 +32,8 @@ void KharvoxHudEndSuitUpgradeMenuSession();
 bool KharvoxHudPauseMenuActive();
 bool KharvoxHudDeathMenuActive();
 // Persistent cumulative CampaignDeath count; display toggle is separate.
+std::uint64_t KharvoxHudCampaignSessionDeaths();
+void KharvoxHudResetCampaignSessionDeaths();
 std::uint64_t KharvoxHudCampaignDeathCount();
 bool KharvoxHudResetCampaignDeathCount();
 bool KharvoxHudEndOfLevelMenuActive();
