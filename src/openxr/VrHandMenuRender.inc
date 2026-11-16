@@ -614,8 +614,8 @@ void paintVrHandMenu() {
                     ?RGB(83,52,61):RGB(60,38,48));
             write(549,412,confirmAll?"CONFIRM RESET ALL (SECOND PRESS)"
                 :"RESET ALL STATS",confirmAll?RGB(255,175,175):white);
-            write(538,475,"Resets deaths and both timers.",muted);
-            write(538,510,"Keeps display toggles and positions.",RGB(84,233,214));
+            write(538,475,"Resets deaths, session & level timers.",muted);
+            write(538,510,"Keeps personal bests and HUD settings.",RGB(84,233,214));
             write(538,552,"Closes the Mod Menu after reset.",muted);
         }else if(chosen==kharvox::kVrStatsItemCount){
             SelectObject(dc,smallFont);
