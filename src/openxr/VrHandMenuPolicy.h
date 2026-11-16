@@ -259,7 +259,7 @@ inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
 // stick-navigable grid; its toggle remains directly above the grid.
 // Each thumbstick deflection is one cell. A new press requires recentering.
 inline void vrStatsNavigateStick(VrMenuNavigation& nav,float x,float y,
-    int& selectedIndex,int savedCell) noexcept {
+    int& selectedIndex,int savedCell,int listCount=4) noexcept {
     const bool xEdge=std::isfinite(x)&&std::abs(x)>.75f
         &&nav.horizontalCentered;
     const bool yEdge=std::isfinite(y)&&std::abs(y)>.75f
@@ -291,7 +291,8 @@ inline void vrStatsNavigateStick(VrMenuNavigation& nav,float x,float y,
     if(yEdge){
         nav.verticalCentered=false;nav.usingStick=true;
         if(!nav.settingsColumn){
-            selectedIndex=(selectedIndex+(y<0.f?1:3))%4;
+            if(listCount>0)selectedIndex=(selectedIndex+
+                (y<0.f?1:listCount-1))%listCount;
             nav.actionIndex=0;
         }else if(nav.actionIndex==0){
             if(y<0.f)nav.actionIndex=1+(statsGridCellSelectable(savedCell)
@@ -543,7 +544,8 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
-    int statsSelected{}; // 0 deaths, 1 death statistics, 2 campaign time, 3 session time
+    int statsSelected{}; // selected Stats list row, independent from Mods
+    int statsScroll{}; // same 10-row left-list viewport as main Mod Menu
     int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
