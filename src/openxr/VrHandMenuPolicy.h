@@ -106,7 +106,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    HolsterZones,ControllerMonitor,Experimental
+    HolsterZones,ControllerMonitor,Experimental,ResetDeathCounter
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -506,6 +506,7 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
     bool recoilReturnToDev{};
+    std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
