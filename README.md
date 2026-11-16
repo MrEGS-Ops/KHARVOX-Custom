@@ -22,7 +22,7 @@ Fine-tune individual weapon positions, rotations and support grips for either ha
 
 Reach behind either side of your head to open the weapon wheel using the corresponding hand. **Move your arm** to highlight a weapon, hold Grip to equip it, or leave without gripping to cancel.
 
-Store and retrieve weapons from adjustable hip holsters, with tactile controller feedback. Whether you're left-handed, right-handed or simply prefer switching weapon hands, Gunslinger gives you more control over your loadout.
+**Use the adjustable hip holsters as your quick-swap slots**: draw your go-to weapons straight from either hip for fast, physical weapon changes instead of reopening the weapon wheel every time. Tactile controller feedback confirms your actions. Whether you're left-handed, right-handed or simply prefer switching weapon hands, Gunslinger gives you more control over your loadout.
 
 ### 4. PAINSAW — Physical Chainsaw Combat
 
@@ -53,6 +53,16 @@ Grip weapons with both hands for greater stability, rewarding controlled shootin
 Improved controller-disconnect handling provides clear in-headset guidance when tracking is lost.
 
 Gameplay-specific acknowledgement controls help you recover without unnecessary interruptions during menus, loading screens or cinematics.
+
+### 9. In-Game Stats & Personal Records
+
+Track **Campaign Deaths, Session Deaths, Campaign Run Time and Session Time** without leaving VR. Optional **Level Time, Level Deaths and Level Best** readouts help you follow your performance as you play.
+
+Choose exactly which statistics appear on your HUD and position each independently using the fine **12×10 placement grid**. The Stats menu uses the same scrolling-list layout as the main Mod Menu, with display controls and positioning on the right.
+
+View saved level-time personal bests in the **Level Records** menu. Beat your record and the Level Best readout briefly celebrates in gold. Developer tools provide separate, confirmed options for resetting statistics or personal records without changing your HUD layout.
+
+**Experimental note:** Level Best currently requires selecting the campaign mission manually in Level Records before the run; automatic mission identification has not yet been verified.
 
 ---
 
