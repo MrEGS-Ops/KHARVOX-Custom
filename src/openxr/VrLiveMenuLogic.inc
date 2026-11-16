@@ -123,12 +123,12 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Disabling PAINSAW restores native",
             "chainsaw execution."}}};
         case VrLiveMod::Stats:return {{{
-            "Campaign deaths, session and run timers.",
+            "Death counters, timers and level records.",
             "Each on-screen item has its own switch.",
             "Place each item on a fine HUD grid.",
             "Overlapping positions replace old items.",
             "Deaths always count when display is OFF.",
-            "Campaign and Session Deaths can coexist."}}};
+            "Every widget has its own grid position."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
@@ -402,7 +402,7 @@ void captureVrLivePosition(){
 bool handleVrStatsMenuAction(int action,bool dev){
     auto& menu=s.vrHandMenu;
     const int item=menu.statsSelected;
-    if(item<0||item>3)return false;
+    if(item<0||item>=(dev?4:kharvox::kVrStatsItemCount))return false;
     if(dev){
         // 130 resets the selected statistic. 131 is the explicit RESET ALL
         // button. Both require a fresh second press within six seconds.
