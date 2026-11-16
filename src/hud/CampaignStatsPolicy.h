@@ -46,6 +46,9 @@ inline std::string campaignRunTimeText(std::uint64_t milliseconds){
     return result;
 }
 inline constexpr int campaignStatsPanelWidth(int item) noexcept {
-    return item==1?316:226;
+    // All four compact readouts use the same width, allowing clean
+    // left-edge alignment of Campaign/Session Deaths and both timers.
+    (void)item;
+    return 226;
 }
 } // namespace kharvox
