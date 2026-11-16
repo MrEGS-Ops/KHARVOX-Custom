@@ -80,7 +80,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Select by moving your ARM, not your wrist.",
             "Leave with Grip held to equip.",
             "Leave without Grip to cancel.",
-            "Store and draw guns at either hip.",
+            "Use hip holsters for instant quick swaps.",
             "Calibrate your wheel and hip zones."}}};
         case VrLiveMod::Killtime:return {{{
             "Control cinematic Glory Kill speed.",
