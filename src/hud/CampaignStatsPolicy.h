@@ -1,5 +1,7 @@
 #pragma once
 #include <cstdint>
+#include <cstdio>
+#include <string>
 
 namespace kharvox {
 struct CampaignRunTime {
@@ -30,6 +32,18 @@ inline constexpr bool campaignStatsCanDraw(bool gameplay,bool menuClosed,
 }
 inline constexpr bool campaignStatsDrawItem(bool enabled,bool canDraw) noexcept {
     return enabled&&canDraw;
+}
+inline std::string campaignRunTimeText(std::uint64_t milliseconds){
+    const auto seconds=milliseconds/1000ULL;
+    const auto hours=seconds/3600ULL;
+    const auto minutes=(seconds/60ULL)%60ULL;
+    const auto secs=seconds%60ULL;
+    char result[64]{};
+    std::snprintf(result,sizeof(result),"%02llu:%02llu:%02llu",
+        static_cast<unsigned long long>(hours),
+        static_cast<unsigned long long>(minutes),
+        static_cast<unsigned long long>(secs));
+    return result;
 }
 inline constexpr int campaignStatsPanelWidth(int item) noexcept {
     return item==1?316:226;
