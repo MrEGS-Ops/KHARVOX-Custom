@@ -45,6 +45,7 @@
 #include "../hud/HudHook.h"
 #include "../hud/HudLayoutPolicy.h"
 #include "../hud/HudMenuPolicy.h"
+#include "../hud/CampaignDeathCounterPolicy.h"
 #include "../weapon/WeaponHook.h"
 #include "../weapon/WeaponControllerPosePolicy.h"
 #include "../weapon/BackWeaponPolicy.h"
@@ -8340,10 +8341,22 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
 
     bool vrMenuImageAcquired=false;
     uint32_t vrMenuImageIndex{};
-    // This shared quad handles the controller reconnect warning, the
-    // one-time main-menu hint and live mod settings. Only show when needed.
+    // Reuse the same head-locked XR Quad and memory for the tiny optional
+    // death badge. The renderer emits alpha only inside the badge bounds.
+    const bool deathCounterGameplay=KharvoxCameraGameplayActive()
+        &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+        &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
+        &&!KharvoxHudEndOfLevelMenuActive()
+        &&!s.quadMode&&!s.centeredQuadTransitionPending
+        &&!s.immersiveCinematicActive;
+    const bool deathCounterView=kharvox::deathCounterShouldDraw(
+        s.vrLiveSettings.deathCounterEnabled,deathCounterGameplay,
+        s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed,
+        s.firstTimeSetupNotice.visible||s.gameplayWelcomeNotice.visible,
+        controllerReconnectBannerVisible());
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
-            ||s.gameplayWelcomeNotice.visible
+            ||s.gameplayWelcomeNotice.visible||deathCounterView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
