@@ -89,6 +89,51 @@ int main(){
     assert(campaignRunTimeText(3723000)=="01:02:03");
     assert(campaignStatsPanelWidth(0)==226);
     assert(campaignStatsPanelWidth(1)==316);
+    // Session Timer is a fourth, separately positionable display.
+    VrLiveSettings sessionDisplay{};
+    assert(!sessionDisplay.sessionTimerEnabled);
+    assert(sessionDisplay.sessionTimerCorner==2);
+    assert(std::string(vrStatsLabel(3))=="Session Timer");
+    assert(vrStatsSetCorner(sessionDisplay,2,statsPositionFromGridCell(0)));
+    assert(vrStatsSetEnabled(sessionDisplay,2,true));
+    assert(vrStatsSetCorner(sessionDisplay,3,statsPositionFromGridCell(12)));
+    assert(vrStatsSetEnabled(sessionDisplay,3,true));
+    assert(sessionDisplay.campaignTimerEnabled&&sessionDisplay.sessionTimerEnabled);
+    assert(!vrStatsPositionsOverlap(2,sessionDisplay.campaignTimerCorner,
+        3,sessionDisplay.sessionTimerCorner));
+    // Both timers may run and draw together. Selecting a physically
+    // overlapping placement evicts the other timer.
+    assert(vrStatsSetCorner(sessionDisplay,3,statsPositionFromGridCell(0)));
+    assert(sessionDisplay.sessionTimerEnabled&&!sessionDisplay.campaignTimerEnabled);
+    assert(vrLiveValidSettings(sessionDisplay));
+    // Timers share the same gameplay gate yet hold entirely separate state.
+    CampaignRunTime sessionClock{};
+    CampaignRunTime campaignClock{};
+    campaignClock.elapsedMs=7200000ULL;
+    advanceCampaignRunTime(campaignClock,true,1000);
+    advanceCampaignRunTime(sessionClock,true,1000);
+    advanceCampaignRunTime(campaignClock,true,1250);
+    advanceCampaignRunTime(sessionClock,true,1250);
+    assert(campaignClock.elapsedMs==7200250ULL);
+    assert(sessionClock.elapsedMs==250ULL);
+    advanceCampaignRunTime(sessionClock,false,1350);
+    advanceCampaignRunTime(sessionClock,true,2000);
+    advanceCampaignRunTime(sessionClock,true,2100);
+    assert(sessionClock.elapsedMs==350ULL);
+    resetCampaignRunTime(sessionClock);
+    assert(sessionClock.elapsedMs==0&&campaignClock.elapsedMs==7200250ULL);
+    // Save/load retains the session HUD position and toggle, but no
+    // elapsed session time is serialized.
+    const auto sessionFile=std::filesystem::temp_directory_path()
+        /"ripshift_session_timer_display_roundtrip.cfg";
+    assert(vrLiveSave(sessionFile.string(),sessionDisplay));
+    VrLiveSettings loadedSession{};
+    assert(vrLiveLoad(sessionFile.string(),loadedSession));
+    assert(loadedSession.sessionTimerEnabled);
+    assert(loadedSession.sessionTimerCorner==sessionDisplay.sessionTimerCorner);
+    assert(!loadedSession.campaignTimerEnabled);
+    std::error_code sessionFileError;
+    std::filesystem::remove(sessionFile,sessionFileError);
     resetCampaignRunTime(run);
     assert(run.elapsedMs==0&&!run.activeLastSample);
     assert(campaignStatsCanDraw(true,true,false,false));
