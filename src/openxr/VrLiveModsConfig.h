@@ -160,6 +160,15 @@ inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
     }
     return true;
 }
+// A displaced visible widget is the only event that auto-closes Stats.
+// Merely picking a free position or changing a hidden widget stays in menu.
+inline bool vrStatsDisplacedDisplay(const VrLiveSettings& before,
+    const VrLiveSettings& after,int selected) noexcept {
+    for(int other=0;other<3;++other)
+        if(other!=selected&&vrStatsEnabled(before,other)
+            &&!vrStatsEnabled(after,other))return true;
+    return false;
+}
 inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
     if(item<0||item>2||corner<0||corner>3)return false;
     if(item==0)s.deathCounterCorner=corner;
