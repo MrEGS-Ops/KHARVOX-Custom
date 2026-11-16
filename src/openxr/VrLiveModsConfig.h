@@ -26,7 +26,7 @@ inline constexpr std::array<VrLivePoint,2> kVrLiveFactoryHipShifts{{
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
-    HandsJump, BoxingGuard, Other, WeaponRecoil, TurnSpeed
+    HandsJump, BoxingGuard, Other, WeaponRecoil, TurnSpeed, DeathCounter
 };
 // "Has live settings" is NOT the same as "can be enabled/disabled".
 // The three core mods stay available; only Physical Crouch and PAINSAW
@@ -36,10 +36,12 @@ inline constexpr bool vrLiveModEditable(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
         ||id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Killtime
         ||id==VrLiveMod::PhysicalGloryKills||id==VrLiveMod::Painsaw
-        ||id==VrLiveMod::WeaponRecoil||id==VrLiveMod::TurnSpeed;
+        ||id==VrLiveMod::WeaponRecoil||id==VrLiveMod::TurnSpeed
+        ||id==VrLiveMod::DeathCounter;
 }
 inline constexpr bool vrLiveModToggleable(VrLiveMod id) noexcept {
-    return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw;
+    return id==VrLiveMod::PhysicalCrouch||id==VrLiveMod::Painsaw
+        ||id==VrLiveMod::DeathCounter;
 }
 inline constexpr bool vrLiveModAlwaysEnabled(VrLiveMod id) noexcept {
     return id==VrLiveMod::WeaponGrip||id==VrLiveMod::Gunslinger
@@ -58,6 +60,7 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
 case VrLiveMod::TurnSpeed:return "Smooth Turn Speed";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
+        case VrLiveMod::DeathCounter:return "Campaign Death Counter";
         default:return "Other active mod";
     }
 }
@@ -93,6 +96,8 @@ struct VrLiveSettings {
     float smoothTurnSpeedDegreesPerSec{0.f}; // 0 inherits the desktop launcher speed
 float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
+    bool deathCounterEnabled{}; // optional: never clutter the headset by default
+    int deathCounterCorner{1}; // 0 top left, 1 top right, 2 bottom left, 3 bottom right
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
@@ -120,6 +125,7 @@ inline bool vrLiveValidShift(VrLivePoint p) {
 }
 inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
     VrLiveMod mod,bool desktopStartupEnabled) {
+    if(mod==VrLiveMod::DeathCounter)return s.deathCounterEnabled;
     // Ignore legacy OFF entries for core features. Keep the old six-field
     // save format readable instead of silently rewriting UserData.
     if(vrLiveModAlwaysEnabled(mod))return true;
@@ -131,6 +137,7 @@ inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
         :s.enabledOverrides[static_cast<size_t>(index)]==1;
 }
 inline bool vrLiveSetEnabled(VrLiveSettings& s,VrLiveMod mod,bool on) {
+    if(mod==VrLiveMod::DeathCounter){s.deathCounterEnabled=on;return true;}
     if(!vrLiveModToggleable(mod))return false;
     const int index=vrLiveToggleIndex(mod);
     if(index<0)return false;
@@ -158,6 +165,7 @@ inline void vrLiveResetGunslingerPositions(VrLiveSettings& s) noexcept {
 }
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
+    if(s.deathCounterCorner<0||s.deathCounterCorner>3)return false;
     for(const auto& p:s.hipShift)if(!vrLiveValidShift(p))return false;
     for(const auto& p:s.wheelShift)if(!vrLiveValidShift(p))return false;
     return std::isfinite(s.crouchStandDelta)
@@ -272,7 +280,14 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
         else if(name=="punch_speed"){if(!(row>>next.punchSpeedMetersPerSec))return false;}
         else if(name=="punch_hands"){if(!(row>>next.punchHands))return false;}
         else if(name=="smooth_turn_speed"){if(!(row>>next.smoothTurnSpeedDegreesPerSec))return false;}
-        else return false;
+        else if(name=="death_counter_enabled"){
+            int enabled{};std::string extra;
+            if(!(row>>enabled)||(enabled!=0&&enabled!=1)||(row>>extra))return false;
+            next.deathCounterEnabled=enabled!=0;
+        }else if(name=="death_counter_corner"){
+            std::string extra;
+            if(!(row>>next.deathCounterCorner)||(row>>extra))return false;
+        }else return false;
     }
     if(f.bad()||schema!=1||!vrLiveValidSettings(next))return false;
     out=next;
@@ -304,7 +319,9 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
        <<"killtime_hz "<<s.gloryKillHz<<'\n'
        <<"punch_speed "<<s.punchSpeedMetersPerSec<<'\n'
        <<"punch_hands "<<s.punchHands<<'\n'
-       <<"smooth_turn_speed "<<s.smoothTurnSpeedDegreesPerSec<<'\n';
+       <<"smooth_turn_speed "<<s.smoothTurnSpeedDegreesPerSec<<'\n'
+       <<"death_counter_enabled "<<(s.deathCounterEnabled?1:0)<<'\n'
+       <<"death_counter_corner "<<s.deathCounterCorner<<'\n';
     out.flush();
     if(!out){out.close();fs::remove(tmp,ec);return false;}
     out.close();
