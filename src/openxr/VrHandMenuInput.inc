@@ -445,6 +445,18 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelX=(x/1.28f+.5f)*float(vrMenuW);
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
+    if(s.vrHandMenu.page==kharvox::VrMenuPage::Records
+        ||s.vrHandMenu.page==kharvox::VrMenuPage::DevRecords){
+        const bool dev=s.vrHandMenu.page==kharvox::VrMenuPage::DevRecords;
+        if(pixelX>=800&&pixelX<927&&pixelY>=10&&pixelY<76)return 95;
+        if(pixelX>=38&&pixelX<=493)
+            for(int i=0;i<10;++i)
+                if(pixelY>=136+i*45&&pixelY<176+i*45)
+                    return 1000+s.vrHandMenu.recordsScroll+i;
+        if(dev&&pixelX>=531&&pixelX<=915
+            &&pixelY>=186&&pixelY<244)return 130;
+        return -1;
+    }
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Stats
         ||s.vrHandMenu.page==kharvox::VrMenuPage::DevStats){
         const bool dev=s.vrHandMenu.page==kharvox::VrMenuPage::DevStats;
@@ -653,6 +665,14 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.page=wasLiveModCapture?kharvox::VrMenuPage::Mods
                 :kharvox::VrMenuPage::WeaponGrip;
             m.message="Calibration cancelled. No changes saved.";
+        }else if(m.page==kharvox::VrMenuPage::Records
+            ||m.page==kharvox::VrMenuPage::DevRecords){
+            const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
+            m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Stats;
+            m.navigation={};
+            m.pendingStatsReset=-1;
+            m.confirmDeathResetUntilMs=0;
+            m.message="Back to "+std::string(dev?"DEV tools.":"Stats.");
         }else if(m.page==kharvox::VrMenuPage::Stats
             ||m.page==kharvox::VrMenuPage::DevStats){
             const bool dev=m.page==kharvox::VrMenuPage::DevStats;
@@ -700,7 +720,34 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
         const auto rows=activeVrMenuEntries();
-        if(m.page==kharvox::VrMenuPage::Stats
+        if(m.page==kharvox::VrMenuPage::Records
+            ||m.page==kharvox::VrMenuPage::DevRecords){
+            const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
+            const int count=dev?2:static_cast<int>(s.levelRecords.bestMs.size());
+            kharvox::vrMenuNavigateStick(m.navigation,
+                dev?s.leftStick.x:0.f,s.leftStick.y,
+                count,m.recordSelected,dev?1:0);
+            m.recordSelected=std::clamp(m.recordSelected,0,std::max(0,count-1));
+            m.recordsScroll=std::clamp(m.recordsScroll,0,std::max(0,count-10));
+            if(m.recordSelected<m.recordsScroll)m.recordsScroll=m.recordSelected;
+            if(m.recordSelected>=m.recordsScroll+10)
+                m.recordsScroll=m.recordSelected-9;
+            const int pointed=triggerEdge?m.hovered:-1;
+            const int chosen=pointed>=0?pointed:aEdge
+                ?(m.navigation.settingsColumn&&dev?130:1000+m.recordSelected):-1;
+            if(chosen==95){
+                m.page=dev?kharvox::VrMenuPage::Dev:kharvox::VrMenuPage::Stats;
+                m.navigation={};m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+            }else if(chosen>=1000&&chosen<1000+count){
+                m.recordSelected=chosen-1000;
+                m.navigation.actionIndex=0;
+                m.navigation.settingsColumn=aEdge&&dev;
+                m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+            }else if(dev&&chosen==130)
+                handleVrLevelRecordReset(130);
+        }else if(m.page==kharvox::VrMenuPage::Stats
             ||m.page==kharvox::VrMenuPage::DevStats){
             const bool dev=m.page==kharvox::VrMenuPage::DevStats;
             const int previous=m.statsSelected;
@@ -711,8 +758,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 s.leftStick.x,s.leftStick.y,m.statsSelected,
                 kharvox::statsGridCellFromPosition(
                     kharvox::vrStatsCorner(s.vrLiveSettings,m.statsSelected)),
-                kharvox::kVrStatsItemCount);
-            const int statsCount=dev?4:kharvox::kVrStatsItemCount;
+                kharvox::kVrStatsItemCount+1);
+            const int statsCount=dev?4:kharvox::kVrStatsItemCount+1;
             m.statsSelected=std::clamp(m.statsSelected,0,statsCount-1);
             m.statsScroll=std::clamp(m.statsScroll,0,std::max(0,statsCount-10));
             if(m.statsSelected<m.statsScroll)m.statsScroll=m.statsSelected;
@@ -735,6 +782,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation={};
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
+            }else if(!dev&&chosen==1000+kharvox::kVrStatsItemCount){
+                m.page=kharvox::VrMenuPage::Records;
+                m.recordSelected=0;m.recordsScroll=0;m.navigation={};
+                m.message="Saved level personal bests. B returns to Stats.";
             }else if(chosen>=1000&&chosen<1000+statsCount){
                 m.statsSelected=chosen-1000;
                 m.statsScroll=std::clamp(m.statsScroll,0,std::max(0,statsCount-10));
@@ -806,6 +857,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.page=kharvox::VrMenuPage::Dev;
                     m.selectedRow=0;m.modScroll=0;m.navigation={};
                     m.message="DEV tools. B returns to MOD SETTINGS.";
+                }else if(entry.developer==D::LevelRecordsReset){
+                    m.page=kharvox::VrMenuPage::DevRecords;
+                    m.recordSelected=0;m.recordsScroll=0;
+                    m.navigation={};m.pendingStatsReset=-1;
+                    m.confirmDeathResetUntilMs=0;
+                    m.message="Choose current or all level records. Confirm twice.";
                 }else if(entry.developer==D::StatsReset){
                     m.page=kharvox::VrMenuPage::DevStats;
                     m.statsSelected=0;
