@@ -460,9 +460,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 if(pixelY>=397&&pixelY<455)return 131; // RESET ALL
                 return -1;
             }
-            for(int i=0;i<4;++i)
-                if(pixelY>=254+i*70&&pixelY<312+i*70)
-                    return 130+i;
+            const int cell=kharvox::statsMenuGridCellAt(
+                static_cast<int>(pixelX),static_cast<int>(pixelY));
+            if(cell>=0)return 130+cell;
         }
         return -1;
     }
@@ -704,9 +704,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             ||m.page==kharvox::VrMenuPage::DevStats){
             const bool dev=m.page==kharvox::VrMenuPage::DevStats;
             const int previous=m.statsSelected;
-            kharvox::vrMenuNavigateStick(m.navigation,
+            if(dev)kharvox::vrMenuNavigateStick(m.navigation,
                 m.navigation.settingsColumn?s.leftStick.x:0.f,
-                s.leftStick.y,3,m.statsSelected,dev?2:5);
+                s.leftStick.y,3,m.statsSelected,2);
+            else kharvox::vrStatsNavigateStick(m.navigation,
+                s.leftStick.x,s.leftStick.y,m.statsSelected,
+                kharvox::statsGridCellFromPosition(
+                    kharvox::vrStatsCorner(s.vrLiveSettings,m.statsSelected)));
             m.statsSelected=std::clamp(m.statsSelected,0,2);
             if(previous!=m.statsSelected){
                 m.navigation.actionIndex=0;
@@ -734,7 +738,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.message=std::string(dev?"Reset ":"Configure ")
                     +kharvox::vrStatsLabel(m.statsSelected);
             }else if((m.navigation.settingsColumn||pointed>=0)
-                &&(chosen==110||(chosen>=130&&chosen<=133))){
+                &&(chosen==110||(chosen>=130
+                    &&chosen<130+kharvox::kStatsGridCells))){
                 handleVrStatsMenuAction(chosen,dev);
             }
         }else if(m.page==kharvox::VrMenuPage::Mods
