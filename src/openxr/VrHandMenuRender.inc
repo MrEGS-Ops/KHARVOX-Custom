@@ -80,6 +80,7 @@ void paintVrHandMenu() {
     // itself occupies only this small top-centre banner. All other pixels
     // are transparent while the warning is shown.
     constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
+    constexpr int resultX=173,resultY=515,resultW=614,resultH=126;
     const bool disconnectView=controllerReconnectBannerVisible();
     const bool firstTimeSetupView=!disconnectView
         &&s.firstTimeSetupNotice.visible
@@ -87,6 +88,10 @@ void paintVrHandMenu() {
     const bool gameplayWelcomeView=!disconnectView&&!firstTimeSetupView
         &&s.gameplayWelcomeNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
+    const bool resultView=!disconnectView&&!firstTimeSetupView
+        &&!gameplayWelcomeView&&m.mode==kharvox::VrHandMenuMode::Closed
+        &&KharvoxHudEndOfLevelMenuActive()
+        &&s.levelProgress.completed&&s.levelProgress.completedTimeMs>0;
     const bool statsGameplay=KharvoxCameraGameplayActive()
         &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
@@ -139,6 +144,12 @@ void paintVrHandMenu() {
         fill(welcomeX,welcomeY,7,welcomeH,RGB(55,209,214));
         fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
         fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
+    }else if(resultView){
+        const auto accent=s.levelProgress.bestUpdated
+            ?RGB(255,207,66):RGB(55,209,214);
+        fill(resultX,resultY,resultW,resultH,RGB(17,23,31));
+        fill(resultX,resultY,7,resultH,accent);
+        fill(resultX+7,resultY,resultW-7,3,accent);
     }else if(statsLiveView){
         for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -227,6 +238,25 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(welcomeX+30,welcomeY+386,
             "This notice will only appear once.",muted);
+    }else if(resultView){
+        const bool newBest=s.levelProgress.bestUpdated;
+        const auto accent=newBest?RGB(255,207,66):RGB(84,233,214);
+        SelectObject(dc,regular);
+        write(resultX+27,resultY+16,newBest?"NEW PERSONAL BEST!"
+            :"LEVEL TIME",accent);
+        SelectObject(dc,smallFont);
+        write(resultX+27,resultY+58,
+            kharvox::campaignRunTimeText(s.levelProgress.completedTimeMs),white);
+        if(newBest){
+            write(resultX+252,resultY+58,s.levelProgress.previousBestMs
+                ?std::string("BEAT PREVIOUS BEST BY ")
+                    +kharvox::campaignRunTimeText(s.levelProgress.bestImprovementMs)
+                :std::string("FIRST RECORDED COMPLETION!"),accent);
+        }else{
+            write(resultX+252,resultY+58,"Personal best unchanged.",muted);
+        }
+        write(resultX+27,resultY+92,
+            "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
     }else if(statsLiveView){
         for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -244,25 +274,21 @@ void paintVrHandMenu() {
                 SelectObject(dc,regular);
                 write(x+16,y+28,std::to_string(s.levelProgress.deaths),RGB(235,92,99));
             }else{
-                const auto best=kharvox::levelBestFor(s.levelRecords,
-                    s.levelProgress.verifiedMapKey);
-                const bool newBestOnLevel=i==5&&s.levelProgress.bestUpdated
-                    &&GetTickCount64()<s.levelProgress.newBestGoldUntilMs;
-                const bool newBestAfterLoad=i==5
-                    &&GetTickCount64()<s.recentLevelBestGoldUntilMs;
-                const bool gold=newBestOnLevel||newBestAfterLoad;
-                write(x+16,y+5,gold?"NEW PERSONAL BEST!"
-                    :i==2?"CAMPAIGN TIME":i==3?"SESSION TIME"
-                    :i==4?"LEVEL TIME":"LEVEL BEST",
-                    gold?RGB(255,207,66):muted);
+                const bool lastLevel=i==5&&!s.levelProgress.armed
+                    &&!s.lastCompletedMissionKey.empty();
+                const auto& key=lastLevel?s.lastCompletedMissionKey
+                    :s.levelProgress.verifiedMapKey;
+                const auto best=kharvox::levelBestFor(s.levelRecords,key);
+                write(x+16,y+5,i==2?"CAMPAIGN TIME"
+                    :i==3?"SESSION TIME":i==4?"LEVEL TIME"
+                    :lastLevel?"LAST LEVEL BEST":"LEVEL BEST",muted);
                 SelectObject(dc,regular);
-                const auto displayedTime=newBestAfterLoad?s.recentLevelBestTimeMs
-                    :i==2?s.campaignRunTime.elapsedMs:
-                        i==3?s.sessionRunTime.elapsedMs:
-                        i==4?s.levelProgress.time.elapsedMs:best;
-                write(x+16,y+28,i==5&&!gold&&best==0?"--:--:--":
+                const auto displayedTime=i==2?s.campaignRunTime.elapsedMs:
+                    i==3?s.sessionRunTime.elapsedMs:
+                    i==4?s.levelProgress.time.elapsedMs:best;
+                write(x+16,y+28,i==5&&!best?"--:--:--":
                     kharvox::campaignRunTimeText(displayedTime),
-                    gold?RGB(255,207,66):RGB(84,233,214));
+                    RGB(84,233,214));
             }
         }
     }else if(calibrationView){
@@ -1143,7 +1169,8 @@ void paintVrHandMenu() {
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!statsLiveView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+       &&!statsLiveView&&!resultView&&!calibrationView
+       &&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -1173,6 +1200,9 @@ void paintVrHandMenu() {
             :gameplayWelcomeView
                 ?(x>=welcomeX&&x<welcomeX+welcomeW
                     &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
+            :resultView
+                ?(x>=resultX&&x<resultX+resultW
+                    &&y>=resultY&&y<resultY+resultH?245:0)
             :statsLiveView
                 ?([&](){
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
