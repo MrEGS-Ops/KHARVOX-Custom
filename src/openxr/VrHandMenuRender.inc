@@ -87,6 +87,24 @@ void paintVrHandMenu() {
     const bool gameplayWelcomeView=!disconnectView&&!firstTimeSetupView
         &&s.gameplayWelcomeNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
+    const bool deathCounterView=kharvox::deathCounterShouldDraw(
+        s.vrLiveSettings.deathCounterEnabled,
+        KharvoxCameraGameplayActive()&&KharvoxCameraWorldActive()
+            &&!KharvoxCameraCutsceneActive()
+            &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+            &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
+            &&!KharvoxHudEndOfLevelMenuActive()
+            &&!s.quadMode&&!s.centeredQuadTransitionPending
+            &&!s.immersiveCinematicActive,
+        m.mode==kharvox::VrHandMenuMode::Closed,
+        firstTimeSetupView||gameplayWelcomeView,disconnectView);
+    // The death counter uses only this small rectangle. All other pixels
+    // remain transparent; the full VR menu is never shown behind it.
+    constexpr int counterW=226,counterH=60;
+    const int counterX=kharvox::deathCounterPanelX(
+        s.vrLiveSettings.deathCounterCorner,vrMenuW,counterW);
+    const int counterY=kharvox::deathCounterPanelY(
+        s.vrLiveSettings.deathCounterCorner,vrMenuH,counterH);
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
     constexpr int welcomeX=95,welcomeY=145,welcomeW=770,welcomeH=435;
@@ -110,6 +128,9 @@ void paintVrHandMenu() {
         fill(welcomeX,welcomeY,7,welcomeH,RGB(55,209,214));
         fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
         fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
+    }else if(deathCounterView){
+        fill(counterX,counterY,counterW,counterH,RGB(19,23,30));
+        fill(counterX,counterY,4,counterH,RGB(210,69,76));
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -190,6 +211,14 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(welcomeX+30,welcomeY+386,
             "This notice will only appear once.",muted);
+    }else if(deathCounterView){
+        SelectObject(dc,smallFont);
+        write(counterX+18,counterY+21,"DEATHS",muted);
+        SelectObject(dc,regular);
+        const auto deaths=std::to_string(KharvoxHudCampaignDeathCount());
+        const int digits=static_cast<int>(deaths.size());
+        write(counterX+counterW-20-14*digits,counterY+16,
+            deaths,RGB(235,92,99));
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -835,7 +864,7 @@ void paintVrHandMenu() {
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+       &&!deathCounterView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -865,6 +894,9 @@ void paintVrHandMenu() {
             :gameplayWelcomeView
                 ?(x>=welcomeX&&x<welcomeX+welcomeW
                     &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
+            :deathCounterView
+                ?(x>=counterX&&x<counterX+counterW
+                    &&y>=counterY&&y<counterY+counterH?220:0)
             :(!calibrationView
                 ||(x>=22&&x<612&&y>=144&&y<576)
                 ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
