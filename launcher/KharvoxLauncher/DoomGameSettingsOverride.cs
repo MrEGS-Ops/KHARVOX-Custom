@@ -10,11 +10,8 @@ internal static class DoomGameSettingsOverride
     private static readonly Regex TutorialLine = new Regex(
         @"(?m)^(?<prefix>[ \t]*(?:(?:set|seta)[ \t]+)?g_setting_tutorials[ \t]+)""?[01]""?(?<tail>[ \t]*(?://[^\r\n]*)?\r?)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex HighlightLine = new Regex(
-        @"(?m)^(?<prefix>[ \t]*(?:(?:set|seta)[ \t]+)?g_setting_gk_highlight[ \t]+)""?[01]""?(?<tail>[ \t]*(?://[^\r\n]*)?\r?)$",
-        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
-    internal static string UpdatedContent(string original, bool highlightEnabled)
+    internal static string UpdatedContent(string original)
     {
         var newline = original.Contains("\r\n") ? "\r\n" : "\n";
         var changed = TutorialLine.Replace(original,
@@ -22,17 +19,10 @@ internal static class DoomGameSettingsOverride
         if (!TutorialLine.IsMatch(original))
             changed = changed.TrimEnd('\r', '\n') + newline + "g_setting_tutorials \"0\"" + newline;
 
-        var highlightPresent = HighlightLine.IsMatch(original);
-        changed = HighlightLine.Replace(changed,
-            m => m.Groups["prefix"].Value + (highlightEnabled ? "\"1\"" : "\"0\"")
-                + m.Groups["tail"].Value);
-        if (!highlightPresent)
-            changed = changed.TrimEnd('\r', '\n') + newline +
-                "g_setting_gk_highlight " + (highlightEnabled ? "\"1\"" : "\"0\"") + newline;
         return changed;
     }
 
-    internal static bool TryApply(string configPath, bool highlightEnabled, out string result)
+    internal static bool TryApply(string configPath, out string result)
     {
         result = "not attempted";
         try
@@ -44,7 +34,7 @@ internal static class DoomGameSettingsOverride
                 return false;
             }
             var original = File.ReadAllText(configPath);
-            var updated = UpdatedContent(original, highlightEnabled);
+            var updated = UpdatedContent(original);
             if (original == updated)
             {
                 result = "settings lines already correct (runtime not yet verified)";
