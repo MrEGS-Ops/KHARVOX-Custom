@@ -51,6 +51,22 @@ internal static class RipshiftProfileSelfTest
             }
 
             CheckLocks();
+            // Extra file/loader diagnostics are a developer opt-in, not a
+            // saved RIPSHIFT launch-profile default. Do not force the switch
+            // off on every launch: an explicit user choice still wins.
+            var extendedLogging = Control<CheckBox>(form, "extendedLogging");
+            if (extendedLogging.Checked || form.CreateLaunchOptions().ExtendedLogging)
+                throw new InvalidDataException(
+                    "Fresh RIPSHIFT profile must launch with Extended Logging OFF.");
+            extendedLogging.Checked = true;
+            CheckLocks();
+            if (!form.CreateLaunchOptions().ExtendedLogging)
+                throw new InvalidDataException(
+                    "An explicit Extended Logging opt-in must still be supported.");
+            extendedLogging.Checked = false;
+            if (form.CreateLaunchOptions().ExtendedLogging)
+                throw new InvalidDataException(
+                    "Disabling Extended Logging must be reflected in launch options.");
             // Owner factory presets must not lock or impose render resolution
             // or FSR. The ordinary launcher baseline stays 100% / unchecked,
             // and the user can override each setting under RIPSHIFT.
