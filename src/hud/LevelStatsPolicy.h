@@ -43,7 +43,6 @@ inline bool levelRecordKeyValid(std::string_view key) noexcept {
     if(key.empty()||key.size()>95)return false;
     for(unsigned char c:key)
         if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')
-            ||(c>='0'&&c<='9')||(c>='A'&&c<='Z')
             ||(c>='0'&&c<='9')||c=='_'||c=='-'||c=='/'
             ||c=='.'))return false;
     return key.find("..")==std::string_view::npos;
