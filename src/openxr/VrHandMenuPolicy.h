@@ -588,6 +588,29 @@ struct VrHandMenuState {
     std::string message;
     const char* weapon() const noexcept {return kVrCalibrationWeapons[static_cast<size_t>(selectedWeapon)];}
 };
+// Distinct 20..32 confirmation keys are separate from DEV reset actions
+// (0..4, 10..11). Changing the selected mission or timing out rearms.
+inline constexpr int kVrLevelStartConfirmBase=20;
+inline constexpr std::uint64_t kVrLevelStartConfirmWindowMs=6000;
+inline bool vrLevelStartPending(const VrHandMenuState& menu,
+    int missionIndex,std::uint64_t nowMs) noexcept {
+    return missionIndex>=0&&missionIndex<13
+        &&menu.pendingStatsReset==kVrLevelStartConfirmBase+missionIndex
+        &&menu.confirmDeathResetUntilMs!=0
+        &&nowMs<=menu.confirmDeathResetUntilMs;
+}
+inline bool vrConfirmLevelStart(VrHandMenuState& menu,
+    int missionIndex,std::uint64_t nowMs) noexcept {
+    if(missionIndex<0||missionIndex>=13)return false;
+    if(!vrLevelStartPending(menu,missionIndex,nowMs)){
+        menu.pendingStatsReset=kVrLevelStartConfirmBase+missionIndex;
+        menu.confirmDeathResetUntilMs=nowMs+kVrLevelStartConfirmWindowMs;
+        return false;
+    }
+    menu.pendingStatsReset=-1;
+    menu.confirmDeathResetUntilMs=0;
+    return true;
+}
 inline bool isVrMenuInputOwner(const VrHandMenuState& m) noexcept {
     return m.mode!=VrHandMenuMode::Closed;
 }
