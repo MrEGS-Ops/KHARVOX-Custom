@@ -58,7 +58,7 @@ Gameplay-specific acknowledgement controls help you recover without unnecessary 
 
 Track **Campaign Deaths, Session Deaths, Campaign Run Time and Session Time** without leaving VR. Optional **Level Time, Level Deaths and Level Best** readouts help you follow your performance as you play.
 
-Choose exactly which statistics appear on your HUD and position each independently using the fine **12×10 placement grid**. The Stats menu uses the same scrolling-list layout as the main Mod Menu, with display controls and positioning on the right.
+Choose exactly which statistics appear on your HUD and position each independently using the fine **12×10 placement grid**. 
 
 View saved level-time personal bests in the **Level Records** menu. Beat your record and the Level Best readout briefly celebrates in gold. Developer tools provide separate, confirmed options for resetting statistics or personal records without changing your HUD layout.
 
