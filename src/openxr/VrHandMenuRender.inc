@@ -467,6 +467,75 @@ void paintVrHandMenu() {
                 }
             }
         }
+    }else if(m.page==kharvox::VrMenuPage::Records
+        ||m.page==kharvox::VrMenuPage::DevRecords){
+        const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
+        SelectObject(dc,title);
+        write(38,24,dev?"RIPSHIFT VR / DEV / LEVEL RECORDS"
+            :"RIPSHIFT VR / LEVEL RECORDS",white);
+        SelectObject(dc,smallFont);
+        write(40,100,dev?"SELECT RECORDS TO RESET":"PERSONAL BEST TIMES",muted);
+        const int count=dev?2:static_cast<int>(s.levelRecords.bestMs.size());
+        const int chosen=std::clamp(m.recordSelected,0,std::max(0,count-1));
+        for(int shown=0;shown<10;++shown){
+            const int i=shown+m.recordsScroll;
+            if(i>=count)break;
+            const int y=136+shown*45;
+            const bool active=i==chosen;
+            fill(38,y,455,40,active?RGB(32,89,104):
+                m.hovered==1000+i?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,smallFont);
+            if(dev){
+                write(55,y+10,i==0?"Current Level Record"
+                    :"All Level Records",white);
+            }else{
+                int n{};
+                for(const auto& entry:s.levelRecords.bestMs){
+                    if(n++==i){write(55,y+10,entry.first,white);break;}
+                }
+            }
+        }
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
+        SelectObject(dc,regular);
+        write(538,115,dev?"RECORD RESET":"LEVEL PERSONAL BEST",white);
+        SelectObject(dc,smallFont);
+        if(dev){
+            const bool confirming=m.pendingStatsReset==10+chosen
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            fill(531,186,384,58,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                ?RGB(83,52,61):RGB(60,38,48));
+            write(548,202,confirming?"CONFIRM RESET (SECOND PRESS)"
+                :chosen==0?"RESET CURRENT LEVEL":"RESET ALL LEVEL RECORDS",
+                confirming?RGB(255,175,175):white);
+            write(538,294,chosen==0?"Only the active level's saved best."
+                :"Deletes every saved Level Best.",muted);
+            write(538,339,"Does not reset timers or death counters.",muted);
+            write(538,383,"HUD switches and positions stay unchanged.",muted);
+            write(538,437,"Two presses required; remains in DEV.",RGB(84,233,214));
+        }else if(!count){
+            write(538,216,"NO LEVEL RECORDS SAVED",muted);
+            write(538,265,"Records are saved after verified",muted);
+            write(538,302,"successful level completions.",muted);
+        }else{
+            int n{};
+            for(const auto& entry:s.levelRecords.bestMs){
+                if(n++==chosen){
+                    write(538,216,entry.first,white);
+                    write(538,283,kharvox::campaignRunTimeText(entry.second),
+                        RGB(255,207,66));
+                    break;
+                }
+            }
+            write(538,374,"Persistent best completion time.",muted);
+            write(538,415,"DEV > Level Records / Reset",muted);
+        }
+        write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
+        write(40,676,m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::Stats
         ||m.page==kharvox::VrMenuPage::DevStats){
         const bool dev=m.page==kharvox::VrMenuPage::DevStats;
@@ -475,10 +544,10 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
         const int chosen=std::clamp(m.statsSelected,0,
-            dev?3:kharvox::kVrStatsItemCount-1);
+            dev?3:kharvox::kVrStatsItemCount);
         // Identical ten-row, 45px list pattern to the main Mod Menu.
         // Extra Stats appear by scrolling rather than shrinking buttons.
-        const int statCount=dev?4:kharvox::kVrStatsItemCount;
+        const int statCount=dev?4:kharvox::kVrStatsItemCount+1;
         for(int shown=0;shown<10;++shown){
             const int i=shown+m.statsScroll;
             if(i>=statCount)break;
@@ -491,10 +560,12 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             write(55,y+10,dev?(i==0?"Campaign Deaths":
                 i==1?"Session Deaths":i==2?"Campaign Run Timer":"Session Timer")
-                :kharvox::vrStatsLabel(i),white);
-            if(!dev)write(428,y+10,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
-                ?"ON":"OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
-                    ?RGB(108,235,161):muted);
+                :i==kharvox::kVrStatsItemCount?"LEVEL RECORDS  >"
+                    :kharvox::vrStatsLabel(i),white);
+            if(!dev&&i<kharvox::kVrStatsItemCount)
+                write(428,y+10,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                    ?"ON":"OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                        ?RGB(108,235,161):muted);
         }
         if(statCount>10)
             write(48,602,"LEFT STICK: scroll ("+
@@ -503,7 +574,9 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(815,30,"BACK",white);
         SelectObject(dc,regular);
-        write(538,115,dev?"RESET OPTIONS":kharvox::vrStatsLabel(chosen),white);
+        write(538,115,dev?"RESET OPTIONS"
+            :chosen==kharvox::kVrStatsItemCount?"LEVEL RECORDS"
+                :kharvox::vrStatsLabel(chosen),white);
         if(dev){
             const bool confirming=m.pendingStatsReset==chosen
                 &&m.confirmDeathResetUntilMs
@@ -537,6 +610,12 @@ void paintVrHandMenu() {
             write(538,475,"Resets deaths and both timers.",muted);
             write(538,510,"Keeps display toggles and positions.",RGB(84,233,214));
             write(538,552,"Closes the Mod Menu after reset.",muted);
+        }else if(chosen==kharvox::kVrStatsItemCount){
+            SelectObject(dc,smallFont);
+            write(538,208,"VIEW SAVED LEVEL PERSONAL BESTS",white);
+            write(538,267,"Press A to open the Records page.",RGB(84,233,214));
+            write(538,325,"Records survive game restarts.",muted);
+            write(538,380,"DEV has separate record resets.",muted);
         }else{
             const bool enabled=kharvox::vrStatsEnabled(s.vrLiveSettings,chosen);
             fill(531,159,384,60,m.hovered==110
