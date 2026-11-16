@@ -412,16 +412,35 @@ void captureVrLivePosition(){
 bool handleVrLevelRecordTrack(int missionIndex){
     if(missionIndex<0||missionIndex>=static_cast<int>(
         kharvox::kCampaignMissions.size()))return false;
-    const auto& mission=kharvox::kCampaignMissions[missionIndex];
-    const bool changed=kharvox::levelProgressSetMap(
-        s.levelProgress,mission.key);
-    if(changed){
-        s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
-        s.recentLevelBestGoldUntilMs=0;
+    auto& menu=s.vrHandMenu;
+    const auto now=GetTickCount64();
+    if(!kharvox::vrConfirmLevelStart(menu,missionIndex,now)){
+        menu.message="This Mod Menu will close and the timer will start. "
+            "Press TRACK THIS LEVEL again within 6 seconds to confirm.";
+        return true; // First press only arms confirmation; time is unchanged.
     }
-    s.vrHandMenu.message=std::string(changed
-        ?"Now tracking ":"Already tracking ")+mission.title
-        +(changed?". Timer starts from this selection.":".");
+    const auto& mission=kharvox::kCampaignMissions[missionIndex];
+    if(!kharvox::levelProgressStartAttempt(s.levelProgress,mission.key)){
+        menu.message="Cannot start: invalid campaign mission.";
+        return false;
+    }
+    // A replay of the SAME mission must also start a clean attempt. Preserve
+    // all previously saved Level Best times and HUD preferences.
+    s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
+    s.recentLevelBestGoldUntilMs=0;
+    s.recentLevelBestTimeMs=0;
+    // Exact same input suppression as DEV Reset All: no trigger-to-fire,
+    // A-to-crouch or B-to-jump leaking into DOOM on automatic close.
+    menu.mode=kharvox::VrHandMenuMode::Closed;
+    menu.navigation={};
+    menu.liveCapture=kharvox::VrLiveCapture::None;
+    menu.consumeMenuFaceUntilRelease=true;
+    menu.consumeMenuTriggerUntilRelease=true;
+    menu.hovered=-1;
+    menu.cursorX=menu.cursorY=-1.f;
+    menu.message=std::string("Timed level attempt started: ")+mission.title;
+    log(std::string("[LEVEL-STATS] confirmed timed attempt; Mod Menu closed, mission=")
+        +mission.key+"; timer advances only during live gameplay");
     return true;
 }
 // Record resets are separate from Stats RESET ALL. Neither reset
