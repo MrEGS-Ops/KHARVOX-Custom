@@ -471,9 +471,10 @@ struct State {
     kharvox::RightHandGripSettings rightGripSettings{};
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
-    kharvox::VrMenuStartupNotice modMenuStartupNotice{};
+    kharvox::VrGameplayWelcomeNotice gameplayWelcomeNotice{};
     kharvox::VrFirstTimeSetupNotice firstTimeSetupNotice{};
     bool firstTimeSetupLoaded{},firstTimeSetupBlocksButtonsUntilRelease{};
+    bool gameplayWelcomeLoaded{},gameplayWelcomeBlocksButtonsUntilRelease{};
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -502,7 +503,7 @@ alignas(4) volatile LONG immersiveAdaptiveParticipantBypass{};
 alignas(4) volatile LONG nativeAdaptiveParticipantObserved{};
 using XInputGetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_STATE*);
 using XInputSetStateFn=DWORD(WINAPI*)(DWORD,XINPUT_VIBRATION*);
-XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<bool> controllerOnlyLocked{true},controllerOnlyPausePulse{};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
+XInputGetStateFn originalXInputGetState{};XInputSetStateFn originalXInputSetState{};std::atomic<uint32_t> virtualMovementAxes{};std::atomic<SHORT> virtualRightX{},virtualRightY{};std::atomic<BYTE> virtualLeftTrigger{},virtualRightTrigger{};std::atomic<WORD> virtualButtons{};std::atomic<DWORD> virtualPacket{1};std::atomic<bool> controllerOnlyLocked{true},controllerOnlyPausePulse{},onboardingInputBlocked{};std::atomic<uint32_t> nativeXInputRumble{};std::atomic<uint32_t> pendingXInputRumblePeaks{};bool xinputHookReady{};bool xinputSetStateHookReady{};
 PFN_vkGetInstanceProcAddr bridgeNextGipa=nullptr;
 thread_local bool bridgeSessionTrace=false;
 // Meta may invoke the XR_KHR_vulkan_enable2 callbacks from one of its own
@@ -1095,6 +1096,13 @@ DWORD WINAPI kharvoxXInputGetState(DWORD userIndex,XINPUT_STATE* state){
         state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
         if(controllerOnlyPausePulse.load(std::memory_order_acquire))
             state->Gamepad.wButtons=XINPUT_GAMEPAD_START;
+        return ERROR_SUCCESS;
+    }
+    if(onboardingInputBlocked.load(std::memory_order_acquire)){
+        // Consume onboarding acknowledgement sticks, including any physical
+        // XInput source; the chord must not pause, melee or navigate DOOM.
+        ZeroMemory(&state->Gamepad,sizeof(state->Gamepad));
+        state->dwPacketNumber=virtualPacket.load(std::memory_order_relaxed);
         return ERROR_SUCCESS;
     }
     if(result!=ERROR_SUCCESS)ZeroMemory(state,sizeof(*state));
@@ -3491,8 +3499,13 @@ void updateGameplayActions(XrTime displayTime){
         ||s.firstTimeSetupBlocksButtonsUntilRelease;
     if(s.firstTimeSetupBlocksButtonsUntilRelease&&bothReleased)
         s.firstTimeSetupBlocksButtonsUntilRelease=false;
-    // The ordinary short R3 hint has moved to LIVE GAMEPLAY (once per
-    // launch), not the front menu. It never blocks gameplay controls.
+    // Install-scoped READY TO PLAY guidance appears only inside playable
+    // DOOM gameplay. Unlike the old R3 banner, it stays until an explicit
+    // L3+R3 chord is saved, and can never consume a reconnect acknowledgement.
+    if(!s.gameplayWelcomeLoaded){
+        s.gameplayWelcomeNotice.acknowledged=kharvox::gameplayWelcomeAcknowledged();
+        s.gameplayWelcomeLoaded=true;
+    }
     const bool firstPlayableGameplay=kharvox::vrControllerLiveGameplay(
         KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
         KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
@@ -3500,23 +3513,35 @@ void updateGameplayActions(XrTime displayTime){
         s.quadMode||s.centeredQuadTransitionPending
             ||s.immersiveCinematicActive,
         KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
-    const bool anyTipButtonDown=
-        leftStickClick||rightStickClick
-        ||readBooleanAction(s.doomJump)||readBooleanAction(s.doomCrouch)
-        ||readBooleanAction(s.doomEquipment)
-        ||readBooleanAction(s.doomMissionInfo)
-        ||readBooleanAction(s.doomSwitchWeaponMod)
-        ||readFloatAction(s.leftWeaponTrigger)>.55f
-        ||readFloatAction(s.rightWeaponTrigger)>.55f
-        ||readFloatAction(s.leftWeaponGrip)>.55f
-        ||readFloatAction(s.rightWeaponGrip)>.55f;
-    const bool tipWasVisible=s.modMenuStartupNotice.visible;
-    kharvox::updateVrMenuStartupNotice(s.modMenuStartupNotice,
-        firstPlayableGameplay,anyTipButtonDown);
-    if(!tipWasVisible&&s.modMenuStartupNotice.visible)
-        log("[VR-MODS-TIP] Hold R3 hint shown on first playable gameplay");
-    if(tipWasVisible&&!s.modMenuStartupNotice.visible)
-        log("[VR-MODS-TIP] gameplay R3 hint dismissed");
+    const bool canShowGameplayWelcome=firstPlayableGameplay
+        &&bothProfiles&&bothTracked
+        &&s.controllerOnlySafety.armed
+        &&!s.controllerOnlySafety.reconnectAckRequired
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&vrHandMenuSurface.ready;
+    const bool welcomeWasVisible=s.gameplayWelcomeNotice.visible;
+    const bool welcomeConfirmed=kharvox::updateVrGameplayWelcomeNotice(
+        s.gameplayWelcomeNotice,canShowGameplayWelcome,leftStickClick,
+        rightStickClick,bothProfiles&&bothTracked);
+    if(!welcomeWasVisible&&s.gameplayWelcomeNotice.visible)
+        log("[VR-WELCOME] READY TO PLAY shown in DOOM gameplay (install-scoped)");
+    if(welcomeConfirmed){
+        if(kharvox::persistGameplayWelcomeAcknowledgement()){
+            s.gameplayWelcomeNotice.acknowledged=true;
+            s.gameplayWelcomeNotice.visible=false;
+            s.gameplayWelcomeBlocksButtonsUntilRelease=true;
+            log("[VR-WELCOME] L3+R3 confirmed; saved Config/gameplay_welcome.ack");
+        }else log("[VR-WELCOME] acknowledgement not saved; gameplay welcome remains");
+    }
+    const bool suppressWelcomeButtons=welcomeWasVisible
+        ||s.gameplayWelcomeNotice.visible
+        ||s.gameplayWelcomeBlocksButtonsUntilRelease;
+    if(s.gameplayWelcomeBlocksButtonsUntilRelease&&bothReleased)
+        s.gameplayWelcomeBlocksButtonsUntilRelease=false;
+    // The modal notices and reconnect lock are independent. Always mask
+    // ORIGINAL XInput plus synthetic buttons while either notice is shown.
+    onboardingInputBlocked.store(suppressSetupButtons||suppressWelcomeButtons,
+        std::memory_order_release);
     // Controller reconnection is checked and acknowledged ONLY in playable
     // world gameplay. Main menus, settings, pause, loading and cinematics
     // must remain usable even with a disconnected controller.
@@ -4959,7 +4984,7 @@ void updateGameplayActions(XrTime displayTime){
         // A first-run setup popup is modal to DOOM's front-menu button
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.
-        if(suppressSetupButtons)
+        if(suppressSetupButtons||suppressWelcomeButtons)
             updateVirtualButtons(false,false,false,false,false,false,false,
                 false,false,false,false,false,false);
         else
@@ -8298,7 +8323,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // This shared quad handles the controller reconnect warning, the
     // one-time main-menu hint and live mod settings. Only show when needed.
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
-            ||s.modMenuStartupNotice.visible
+            ||s.gameplayWelcomeNotice.visible
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
