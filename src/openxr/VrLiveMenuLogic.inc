@@ -353,7 +353,7 @@ bool handleVrRecoilCalibrationAction(int action){
 bool saveVrLiveSettings(){
     const auto path=kharvox::runtimePathA("vr_live_mods_saved.cfg");
     if(!kharvox::vrLiveSave(path,s.vrLiveSettings)){
-        s.vrHandMenu.message="Save failed: UserData/vr_live_mods_saved.cfg";
+        s.vrHandMenu.message="Save failed: UserData/Settings/vr_live_mods_saved.cfg";
         return false;
     }
     applyVrLiveModRuntimeState();

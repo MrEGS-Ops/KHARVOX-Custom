@@ -76,8 +76,8 @@ internal static class OriginalKharvoxSetup
         if (Validate(originalLauncherFile) == null)
             throw new InvalidDataException(
                 "That is not a complete original KHARVOX installation with the required 75 SFS shaders.");
-        Directory.CreateDirectory(LauncherUserData.Root);
         var target = LocationPath;
+        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         var staging = target + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {

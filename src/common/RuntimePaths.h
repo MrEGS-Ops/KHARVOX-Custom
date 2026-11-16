@@ -127,8 +127,58 @@ inline bool isUserConfigName(const wchar_t* name) noexcept {
         return false;
     return true;
 }
+// Explicit, persistent configuration categories. Unknown editable *.cfg
+// files remain in flat UserData for backward compatibility. In particular,
+// launcher-owned transient *.cfg files are NOT moved by this refactor.
+inline const wchar_t* userConfigFolder(const wchar_t* name) noexcept {
+    if(!name || wcschr(name,L'\\') || wcschr(name,L'/') || wcsstr(name,L".."))
+        return nullptr;
+    struct Entry { const wchar_t* file; const wchar_t* folder; };
+    static constexpr Entry entries[]{
+        {L"vr_live_mods_saved.cfg",L"Settings"},
+        {L"hud_headlock.cfg",L"Settings"},
+        {L"offhand_hud.cfg",L"Calibrations"},
+        {L"offhand_right_hand_positions.cfg",L"Calibrations"},
+        {L"two_hand_weapon_profiles_saved.cfg",L"Calibrations"},
+        {L"two_hand_weapon_profiles_left_primary_saved.cfg",L"Calibrations"},
+        {L"two_hand_shotgun_saved.cfg",L"Calibrations"},
+        {L"hud_role_calibration_saved.cfg",L"Calibrations"},
+        {L"hud_roles_saved.cfg",L"Calibrations"},
+        {L"hud_flat_calibration_saved.cfg",L"Calibrations"},
+        {L"hud_profile_calibration_saved.cfg",L"Calibrations"},
+        {L"hud_quad_scale_saved.cfg",L"Calibrations"},
+        {L"hand_models_calibration_saved.cfg",L"Calibrations"},
+        {L"weapon_yaw_saved.cfg",L"Calibrations"},
+        {L"weapon_roll_saved.cfg",L"Calibrations"},
+        {L"weapon_pitch_saved.cfg",L"Calibrations"},
+        {L"weapon_recoil_saved.cfg",L"Calibrations"},
+        {L"campaign_death_count.cfg",L"Statistics"},
+        {L"campaign_run_timer.cfg",L"Statistics"},
+        {L"level_best_records.cfg",L"Records"}
+    };
+    for(const auto& entry : entries)
+        if(_wcsicmp(name,entry.file)==0)return entry.folder;
+    return nullptr;
+}
 inline std::wstring runtimePath(const wchar_t* name) {
-    if(isUserConfigName(name))return userDataDirectory()+L"\\"+name;
+    if(isUserConfigName(name)){
+        const auto user=userDataDirectory();
+        const std::wstring file(name);
+        if(const wchar_t* category=userConfigFolder(name)){
+            const auto folder=user+L"\\"+category;
+            const auto preferred=folder+L"\\"+file;
+            // Preserve old flat-file behaviour if migration has not yet
+            // completed or a user launches the native runtime directly.
+            if(GetFileAttributesW(preferred.c_str())!=INVALID_FILE_ATTRIBUTES)
+                return preferred;
+            const auto legacy=user+L"\\"+file;
+            if(GetFileAttributesW(legacy.c_str())!=INVALID_FILE_ATTRIBUTES)
+                return legacy;
+            CreateDirectoryW(folder.c_str(),nullptr);
+            return preferred;
+        }
+        return user+L"\\"+file;
+    }
     const auto root=runtimeDirectory();
     const std::wstring file(name);
     // Keep the native developer layout compatible while putting immutable
