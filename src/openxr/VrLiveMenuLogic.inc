@@ -125,8 +125,8 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
         case VrLiveMod::Stats:return {{{
             "Campaign deaths, statistics and timer.",
             "Each on-screen item has its own switch.",
-            "Assign each item to one HUD corner.",
-            "New selection disables occupied items.",
+            "Place each item on a fine HUD grid.",
+            "Overlapping positions replace old items.",
             "Deaths always count when display is OFF.",
             "Death Statistics replaces Death Counter."}}};
         default:return {{{"Select a mod for information."}}};
@@ -466,15 +466,16 @@ bool handleVrStatsMenuAction(int action,bool dev){
     if(action==110){
         changed=kharvox::vrStatsSetEnabled(s.vrLiveSettings,item,
             !kharvox::vrStatsEnabled(s.vrLiveSettings,item));
-    }else if(action>=130&&action<=133){
-        changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,item,action-130);
+    }else if(action>=130&&action<130+kharvox::kStatsGridCells){
+        changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,item,
+            kharvox::statsPositionFromGridCell(action-130));
     }else return false;
     if(changed){
         // Position changes and display replacement do NOT close the menu.
         // The only Stats action that closes it is confirmed DEV RESET ALL.
         if(!saveVrLiveSettings())s.vrLiveSettings=old;
         else menu.message=std::string(kharvox::vrStatsLabel(item))
-            +" saved. Conflicting display switched OFF if occupied.";
+            +" saved. Overlapping display switched OFF if occupied.";
     }
     return true;
 }
