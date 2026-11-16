@@ -11,8 +11,7 @@ internal sealed class DevModeForm : Form
         CheckBox hudDebugging,
         CheckBox extendedLogging,
         CheckBox calibrateHands,
-        Label weaponStatus, CheckBox? disableAa = null, CheckBox? captureEyes = null,
-        CheckBox? gloryKillHighlight = null)
+        Label weaponStatus, CheckBox? disableAa = null, CheckBox? captureEyes = null)
     {
         Text = "KHARVOX – Dev Mode";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
@@ -31,11 +30,10 @@ internal sealed class DevModeForm : Form
             Dock = DockStyle.Fill,
             AutoScroll = true,
             Padding = new Padding(14),
-            RowCount = 7,
+            RowCount = 6,
             ColumnCount = 1
         };
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 360));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 34));
@@ -93,13 +91,6 @@ internal sealed class DevModeForm : Form
         weaponGrid.SetColumnSpan(weaponStatus, 2);
         weaponGroup.Controls.Add(weaponGrid);
         root.Controls.Add(weaponGroup);
-        gloryKillHighlight ??= new CheckBox {
-            Text = "Glory Kill Highlight — allow enemy glow (default OFF; next launch)",
-            AutoSize = true
-        };
-        gloryKillHighlight.Dock = DockStyle.Fill;
-        gloryKillHighlight.ForeColor = Color.FromArgb(84, 233, 214);
-        root.Controls.Add(gloryKillHighlight);
         disableAa ??= new CheckBox { Text = "Disable AA (both renderers, next launch)", AutoSize = true };
         disableAa.Dock = DockStyle.Fill;
         root.Controls.Add(disableAa);
