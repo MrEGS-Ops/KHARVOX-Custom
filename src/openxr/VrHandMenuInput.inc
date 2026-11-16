@@ -679,7 +679,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     case VrLiveMod::TurnSpeed:return 3;
                     case VrLiveMod::PhysicalGloryKills:return 4;
                     case VrLiveMod::Painsaw:return 1; // toggle only
-                    case VrLiveMod::DeathCounter:return 6; // toggle, four corners, reset
+                    case VrLiveMod::DeathCounter:return 5; // toggle + four corners
                     default:return 0;
                 }
             };
@@ -817,6 +817,18 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
+                }else if(kind==D::ResetDeathCounter){
+                    const auto now=GetTickCount64();
+                    if(!m.confirmDeathResetUntilMs
+                        ||now>m.confirmDeathResetUntilMs){
+                        m.confirmDeathResetUntilMs=now+6000ULL;
+                        m.message="Press RESET again within 6 seconds to erase total.";
+                    }else{
+                        m.confirmDeathResetUntilMs=0;
+                        if(KharvoxHudResetCampaignDeathCount())
+                            m.message="Campaign death total reset to 0.";
+                        else m.message="Reset failed: could not save death total.";
+                    }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
