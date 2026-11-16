@@ -710,9 +710,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             else kharvox::vrStatsNavigateStick(m.navigation,
                 s.leftStick.x,s.leftStick.y,m.statsSelected,
                 kharvox::statsGridCellFromPosition(
-                    kharvox::vrStatsCorner(s.vrLiveSettings,m.statsSelected)),4);
-            m.statsSelected=std::clamp(m.statsSelected,0,3);
-            m.statsScroll=std::clamp(m.statsScroll,0,0);
+                    kharvox::vrStatsCorner(s.vrLiveSettings,m.statsSelected)),
+                kharvox::kVrStatsItemCount);
+            const int statsCount=dev?4:kharvox::kVrStatsItemCount;
+            m.statsSelected=std::clamp(m.statsSelected,0,statsCount-1);
+            m.statsScroll=std::clamp(m.statsScroll,0,std::max(0,statsCount-10));
             if(m.statsSelected<m.statsScroll)m.statsScroll=m.statsSelected;
             if(m.statsSelected>=m.statsScroll+10)
                 m.statsScroll=m.statsSelected-9;
@@ -733,9 +735,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation={};
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
-            }else if(chosen>=1000&&chosen<1004){
+            }else if(chosen>=1000&&chosen<1000+statsCount){
                 m.statsSelected=chosen-1000;
-                m.statsScroll=std::clamp(m.statsScroll,0,0);
+                m.statsScroll=std::clamp(m.statsScroll,0,std::max(0,statsCount-10));
                 m.navigation.actionIndex=0;
                 m.pendingStatsReset=-1;
                 m.confirmDeathResetUntilMs=0;
