@@ -721,7 +721,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.navigation.settingsColumn=aEdge;
                 m.message=std::string(dev?"Reset ":"Configure ")
                     +kharvox::vrStatsLabel(m.statsSelected);
-            }else if(m.navigation.settingsColumn
+            }else if((m.navigation.settingsColumn||pointed>=0)
                 &&(chosen==110||(chosen>=130&&chosen<=133))){
                 handleVrStatsMenuAction(chosen,dev);
             }
