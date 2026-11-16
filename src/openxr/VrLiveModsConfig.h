@@ -26,7 +26,7 @@ inline constexpr std::array<VrLivePoint,2> kVrLiveFactoryHipShifts{{
 enum class VrLiveMod : int {
     WeaponGrip, Gunslinger, PhysicalCrouch, Killtime,
     PhysicalGloryKills, HandFocus, Painsaw,
-    HandsJump, BoxingGuard, Other, WeaponRecoil, TurnSpeed, DeathCounter
+    HandsJump, BoxingGuard, Other, WeaponRecoil, TurnSpeed, DeathCounter, Stats
 };
 // "Has live settings" is NOT the same as "can be enabled/disabled".
 // The three core mods stay available; only Physical Crouch and PAINSAW
@@ -61,6 +61,7 @@ case VrLiveMod::TurnSpeed:return "Smooth Turn Speed";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
         case VrLiveMod::DeathCounter:return "Campaign Death Counter";
+        case VrLiveMod::Stats:return "Stats";
         default:return "Other active mod";
     }
 }
@@ -98,6 +99,10 @@ float punchSpeedMetersPerSec{2.8f};
     int punchHands{2}; // 0 right, 1 left, 2 both
     bool deathCounterEnabled{}; // optional: never clutter the headset by default
     int deathCounterCorner{1}; // 0 top left, 1 top right, 2 bottom left, 3 bottom right
+    bool deathStatisticsEnabled{};
+    int deathStatisticsCorner{1};
+    bool campaignTimerEnabled{};
+    int campaignTimerCorner{0};
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
@@ -122,6 +127,47 @@ inline bool vrLiveValidPoint(VrLivePoint p) {
 inline bool vrLiveValidShift(VrLivePoint p) {
     return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
         &&std::abs(p.x)<=.7f&&std::abs(p.y)<=.9f&&std::abs(p.z)<=1.f;
+}
+// Three independent HUD choices. Death Counter and Death Statistics are
+// mutually exclusive; a new choice takes the corner by DISABLING the old
+// occupant. Hidden counters still collect deaths unconditionally.
+inline bool vrStatsEnabled(const VrLiveSettings& s,int item) noexcept {
+    return item==0?s.deathCounterEnabled
+        :item==1?s.deathStatisticsEnabled:s.campaignTimerEnabled;
+}
+inline int vrStatsCorner(const VrLiveSettings& s,int item) noexcept {
+    return item==0?s.deathCounterCorner
+        :item==1?s.deathStatisticsCorner:s.campaignTimerCorner;
+}
+inline constexpr const char* vrStatsLabel(int item) noexcept {
+    return item==0?"Death Counter":item==1?"Death Statistics":"Campaign Run Timer";
+}
+inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
+    if(item<0||item>2)return false;
+    if(item==0)s.deathCounterEnabled=on;
+    else if(item==1)s.deathStatisticsEnabled=on;
+    else s.campaignTimerEnabled=on;
+    if(on){
+        if(item==0)s.deathStatisticsEnabled=false;
+        if(item==1)s.deathCounterEnabled=false;
+        const int target=vrStatsCorner(s,item);
+        for(int other=0;other<3;++other)if(other!=item
+            &&vrStatsEnabled(s,other)&&vrStatsCorner(s,other)==target){
+            if(other==0)s.deathCounterEnabled=false;
+            else if(other==1)s.deathStatisticsEnabled=false;
+            else s.campaignTimerEnabled=false;
+        }
+    }
+    return true;
+}
+inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
+    if(item<0||item>2||corner<0||corner>3)return false;
+    if(item==0)s.deathCounterCorner=corner;
+    else if(item==1)s.deathStatisticsCorner=corner;
+    else s.campaignTimerCorner=corner;
+    // Assigning a position to a hidden widget must not evict anything.
+    if(vrStatsEnabled(s,item))vrStatsSetEnabled(s,item,true);
+    return true;
 }
 inline bool vrLiveEffectiveEnabled(const VrLiveSettings& s,
     VrLiveMod mod,bool desktopStartupEnabled) {
@@ -166,6 +212,12 @@ inline void vrLiveResetGunslingerPositions(VrLiveSettings& s) noexcept {
 inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     for(int value:s.enabledOverrides)if(value < -1||value > 1)return false;
     if(s.deathCounterCorner<0||s.deathCounterCorner>3)return false;
+    if(s.deathStatisticsCorner<0||s.deathStatisticsCorner>3)return false;
+    if(s.campaignTimerCorner<0||s.campaignTimerCorner>3)return false;
+    if(s.deathCounterEnabled&&s.deathStatisticsEnabled)return false;
+    for(int i=0;i<3;++i)for(int j=i+1;j<3;++j)
+        if(vrStatsEnabled(s,i)&&vrStatsEnabled(s,j)
+            &&vrStatsCorner(s,i)==vrStatsCorner(s,j))return false;
     for(const auto& p:s.hipShift)if(!vrLiveValidShift(p))return false;
     for(const auto& p:s.wheelShift)if(!vrLiveValidShift(p))return false;
     return std::isfinite(s.crouchStandDelta)
@@ -287,9 +339,25 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
         }else if(name=="death_counter_corner"){
             std::string extra;
             if(!(row>>next.deathCounterCorner)||(row>>extra))return false;
+        }else if(name=="death_statistics_enabled"||name=="campaign_timer_enabled"){
+            int enabled{};std::string extra;
+            if(!(row>>enabled)||(enabled!=0&&enabled!=1)||(row>>extra))return false;
+            (name=="death_statistics_enabled"
+                ?next.deathStatisticsEnabled:next.campaignTimerEnabled)=enabled!=0;
+        }else if(name=="death_statistics_corner"||name=="campaign_timer_corner"){
+            int corner{};std::string extra;
+            if(!(row>>corner)||(row>>extra))return false;
+            (name=="death_statistics_corner"
+                ?next.deathStatisticsCorner:next.campaignTimerCorner)=corner;
         }else return false;
     }
-    if(f.bad()||schema!=1||!vrLiveValidSettings(next))return false;
+    if(f.bad()||schema!=1)return false;
+    // Prefer new Statistics over legacy counter in old/conflicting saves.
+    // The timer is independently hidden if it had the same old corner.
+    if(next.deathStatisticsEnabled)vrStatsSetEnabled(next,1,true);
+    else if(next.deathCounterEnabled)vrStatsSetEnabled(next,0,true);
+    if(next.campaignTimerEnabled)vrStatsSetEnabled(next,2,true);
+    if(!vrLiveValidSettings(next))return false;
     out=next;
     return true;
 }
@@ -321,7 +389,11 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
        <<"punch_hands "<<s.punchHands<<'\n'
        <<"smooth_turn_speed "<<s.smoothTurnSpeedDegreesPerSec<<'\n'
        <<"death_counter_enabled "<<(s.deathCounterEnabled?1:0)<<'\n'
-       <<"death_counter_corner "<<s.deathCounterCorner<<'\n';
+       <<"death_counter_corner "<<s.deathCounterCorner<<'\n'
+       <<"death_statistics_enabled "<<(s.deathStatisticsEnabled?1:0)<<'\n'
+       <<"death_statistics_corner "<<s.deathStatisticsCorner<<'\n'
+       <<"campaign_timer_enabled "<<(s.campaignTimerEnabled?1:0)<<'\n'
+       <<"campaign_timer_corner "<<s.campaignTimerCorner<<'\n';
     out.flush();
     if(!out){out.close();fs::remove(tmp,ec);return false;}
     out.close();
