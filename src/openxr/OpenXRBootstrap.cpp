@@ -479,6 +479,7 @@ struct State {
     bool gameplayWelcomeLoaded{},gameplayWelcomeBlocksButtonsUntilRelease{};
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::CampaignRunTime campaignRunTime{};
+    kharvox::CampaignRunTime sessionRunTime{}; // never persisted, fresh at process launch
     std::uint64_t campaignRunTimeLastSavedMs{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3380,7 +3381,11 @@ bool resetCampaignRunTimeSaved(){
 }
 void serviceCampaignRunTime(bool gameplay){
     const bool wasActive=s.campaignRunTime.activeLastSample;
-    kharvox::advanceCampaignRunTime(s.campaignRunTime,gameplay,GetTickCount64());
+    const auto now=GetTickCount64();
+    kharvox::advanceCampaignRunTime(s.campaignRunTime,gameplay,now);
+    // Identical active-gameplay policy, independent lifetime and reset.
+    // Session time is memory-only and is not restored on the next launch.
+    kharvox::advanceCampaignRunTime(s.sessionRunTime,gameplay,now);
     if((wasActive&&!gameplay
         ||s.campaignRunTime.elapsedMs>=s.campaignRunTimeLastSavedMs+30000ULL)
         &&s.campaignRunTime.elapsedMs!=s.campaignRunTimeLastSavedMs)
@@ -8416,7 +8421,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         controllerReconnectBannerVisible())
         &&(s.vrLiveSettings.deathCounterEnabled
             ||s.vrLiveSettings.deathStatisticsEnabled
-            ||s.vrLiveSettings.campaignTimerEnabled);
+            ||s.vrLiveSettings.campaignTimerEnabled
+             ||s.vrLiveSettings.sessionTimerEnabled);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
