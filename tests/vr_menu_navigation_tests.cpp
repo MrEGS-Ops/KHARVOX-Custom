@@ -65,34 +65,50 @@ int main(){
     for(int i=0;i<20;++i)
         updateVrFirstTimeSetupNotice(interrupted,true,false,false,true);
     assert(!interrupted.visible); // loading transition reset the counter
-    // Gameplay R3 tip is separate and only appears once per DOOM process.
-    VrMenuStartupNotice notice{};
-    for(int i=0;i<20;++i)
-        updateVrMenuStartupNotice(notice,false,false);
-    assert(!notice.shown&&!notice.visible);
+    // Gameplay's READY TO PLAY notice is independent of first-install
+    // main-menu setup, persists across restarts and never accepts a lone R3.
+    VrGameplayWelcomeNotice welcome{};
+    for(int i=0;i<80;++i)
+        assert(!updateVrGameplayWelcomeNotice(welcome,false,false,false,true));
+    assert(!welcome.visible&&!welcome.acknowledged);
     for(int i=0;i<19;++i)
-        updateVrMenuStartupNotice(notice,true,true);
-    assert(!notice.shown);
-    updateVrMenuStartupNotice(notice,true,true); // pre-held button
-    assert(notice.shown&&notice.visible&&!notice.buttonReleased);
-    updateVrMenuStartupNotice(notice,false,true); // menu / cinematic
-    assert(!notice.visible);
-    updateVrMenuStartupNotice(notice,true,false);
-    assert(!notice.visible); // no repeat after gameplay is re-entered
-    VrMenuStartupNotice dismiss{};
+        assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+    assert(!welcome.visible);
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+    assert(welcome.visible&&welcome.bothSticksReleased);
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,true,true));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,false,true));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,false));
+    assert(updateVrGameplayWelcomeNotice(welcome,true,true,true,true));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,true));
+    welcome.acknowledged=true; // persisted to Config/gameplay_welcome.ack
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+    assert(!welcome.visible);
+    VrGameplayWelcomeNotice preHeldWelcome{};
     for(int i=0;i<20;++i)
-        updateVrMenuStartupNotice(dismiss,true,true);
-    updateVrMenuStartupNotice(dismiss,true,false);
-    assert(dismiss.visible&&dismiss.buttonReleased);
-    updateVrMenuStartupNotice(dismiss,true,true);
-    assert(!dismiss.visible);
-    VrMenuStartupNotice skippedLoading{};
-    for(int i=0;i<15;++i)
-        updateVrMenuStartupNotice(skippedLoading,true,false);
-    updateVrMenuStartupNotice(skippedLoading,false,false);
-    for(int i=0;i<5;++i)
-        updateVrMenuStartupNotice(skippedLoading,true,false);
-    assert(!skippedLoading.shown);
+        assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,true));
+    assert(preHeldWelcome.visible&&!preHeldWelcome.bothSticksReleased);
+    assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,false,false,true));
+    assert(updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,true));
+    VrGameplayWelcomeNotice interruptedWelcome{};
+    for(int i=0;i<20;++i)
+        updateVrGameplayWelcomeNotice(interruptedWelcome,true,false,false,true);
+    assert(interruptedWelcome.visible);
+    assert(!updateVrGameplayWelcomeNotice(interruptedWelcome,false,false,false,true));
+    assert(!interruptedWelcome.visible&&!interruptedWelcome.acknowledged);
+    for(int i=0;i<20;++i)
+        updateVrGameplayWelcomeNotice(interruptedWelcome,true,false,false,true);
+    assert(interruptedWelcome.visible); // unacknowledged => retry later
+    // Main-menu and gameplay statuses must never automatically acknowledge
+    // one another; only explicit successful file writes update each state.
+    VrFirstTimeSetupNotice alreadySetup{};
+    alreadySetup.acknowledged=true;
+    VrGameplayWelcomeNotice freshWelcome{};
+    for(int i=0;i<20;++i)
+        updateVrGameplayWelcomeNotice(freshWelcome,true,false,false,true);
+    assert(freshWelcome.visible&&!freshWelcome.acknowledged);
+    assert(alreadySetup.acknowledged);
     // Seven fast taps reveal, seven further taps rehide, timing resets.
     VrMenuDeveloperReveal reveal{};
     assert(!reveal.visible);
