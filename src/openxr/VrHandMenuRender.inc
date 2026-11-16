@@ -528,6 +528,8 @@ void paintVrHandMenu() {
             const auto& mission=kharvox::kCampaignMissions[chosen];
             const auto best=kharvox::levelBestFor(s.levelRecords,mission.key);
             const bool current=s.levelProgress.verifiedMapKey==mission.key;
+            const bool confirming=kharvox::vrLevelStartPending(
+                m,chosen,GetTickCount64());
             write(538,170,mission.title,white);
             write(538,221,"BEST: "+(best
                 ?kharvox::campaignRunTimeText(best):std::string("--:--:--")),
@@ -535,11 +537,20 @@ void paintVrHandMenu() {
             fill(531,310,384,58,m.hovered==130
                 ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
                 ?RGB(52,83,99):RGB(39,49,63));
-            write(550,327,current?"CURRENT LEVEL SELECTED"
-                :"TRACK THIS LEVEL",current?RGB(84,233,214):white);
-            write(538,409,"Select your mission at the level start.",muted);
-            write(538,448,"Records save only completed runs.",muted);
-            write(538,489,"Map auto-detection is not yet verified.",muted);
+            write(550,327,confirming?"CONFIRM START (SECOND PRESS)"
+                :current?"RESTART TIMED RUN":"TRACK THIS LEVEL",
+                confirming?RGB(255,207,66):white);
+            write(538,409,confirming
+                ?"This Mod Menu will close and"
+                :"Select your mission at the level start.",
+                confirming?RGB(255,207,66):muted);
+            write(538,448,confirming
+                ?"the timer will start. Press again."
+                :"Records save only completed runs.",
+                confirming?RGB(255,207,66):muted);
+            write(538,489,confirming
+                ?"Confirm within 6 seconds. B cancels."
+                :"Map auto-detection is not yet verified.",muted);
         }
         write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
         write(40,676,m.message.substr(0,105),RGB(84,233,214));
