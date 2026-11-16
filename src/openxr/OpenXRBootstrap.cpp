@@ -46,6 +46,7 @@
 #include "../hud/HudLayoutPolicy.h"
 #include "../hud/HudMenuPolicy.h"
 #include "../hud/CampaignDeathCounterPolicy.h"
+#include "../hud/CampaignStatsPolicy.h"
 #include "../weapon/WeaponHook.h"
 #include "../weapon/WeaponControllerPosePolicy.h"
 #include "../weapon/BackWeaponPolicy.h"
@@ -477,6 +478,8 @@ struct State {
     bool firstTimeSetupLoaded{},firstTimeSetupBlocksButtonsUntilRelease{};
     bool gameplayWelcomeLoaded{},gameplayWelcomeBlocksButtonsUntilRelease{};
     kharvox::VrLiveSettings vrLiveSettings{};
+    kharvox::CampaignRunTime campaignRunTime{};
+    std::uint64_t campaignRunTimeLastSavedMs{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
     kharvox::CustomModFlags vrDesktopMods{};
@@ -2795,6 +2798,16 @@ void updateWeapon6Dof(){
                 if(distance<=activeCalibration.captureRadius){
                     s.twoHandLatched=true;
                     s.twoHandLatchedWeapon=kind;
+                    // Built-in calibration feedback: one quiet pulse when
+                    // the real physical SUPPORT grip attaches. No toggle,
+                    // no menu entry and no visual HUD notification.
+                    if(!s.twoHandCalibrationMode
+                        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed){
+                        const int physicalSupportSide=s.weaponHandLeft?0:1;
+                        kharvox::queueControllerZoneCue(
+                            s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
+                                physicalSupportSide)],GetTickCount64(),48,.32f,165.f);
+                    }
                     log(std::string("[TWO-HAND] ")+KharvoxWeaponKindKey(kind)+" support acquired mode="+twoHandModeName(activeCalibration.aimMode)
                         +" distance="+std::to_string(distance));
                 }
@@ -3332,6 +3345,47 @@ void updateWeapon6Dof(){
 
 
 }
+// Campaign timing is independent of the HUD display toggle. Preserve time
+// between launches but count ONLY confirmed live campaign gameplay frames.
+// Save when gameplay is interrupted and periodically during a long run.
+bool saveCampaignRunTime(){
+    const auto path=kharvox::runtimePathA("campaign_run_timer.cfg");
+    const auto tmp=path+".tmp";
+    {
+        std::ofstream file(tmp,std::ios::trunc);
+        if(!file)return false;
+        file<<s.campaignRunTime.elapsedMs<<'\n';
+        file.flush();
+        if(!file)return false;
+    }
+    if(!MoveFileExA(tmp.c_str(),path.c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return false;
+    s.campaignRunTimeLastSavedMs=s.campaignRunTime.elapsedMs;
+    return true;
+}
+void loadCampaignRunTime(){
+    std::ifstream input(kharvox::runtimePathA("campaign_run_timer.cfg"));
+    std::uint64_t value{};
+    if(input&&(input>>value)&&value<100000000000000ULL){
+        s.campaignRunTime.elapsedMs=value;
+        s.campaignRunTimeLastSavedMs=value;
+    }
+}
+bool resetCampaignRunTimeSaved(){
+    const auto previous=s.campaignRunTime;
+    kharvox::resetCampaignRunTime(s.campaignRunTime);
+    if(saveCampaignRunTime())return true;
+    s.campaignRunTime=previous;
+    return false;
+}
+void serviceCampaignRunTime(bool gameplay){
+    const bool wasActive=s.campaignRunTime.activeLastSample;
+    kharvox::advanceCampaignRunTime(s.campaignRunTime,gameplay,GetTickCount64());
+    if((wasActive&&!gameplay
+        ||s.campaignRunTime.elapsedMs>=s.campaignRunTimeLastSavedMs+30000ULL)
+        &&s.campaignRunTime.elapsedMs!=s.campaignRunTimeLastSavedMs)
+        if(!saveCampaignRunTime())log("[STATS] failed to save campaign run time");
+}
 // Native VR hand menu input must precede the gameplay input dispatcher.
 // Render-side compositor helper stays in its later Vulkan include.
 #include "VrLiveMenuLogic.inc"
@@ -3553,6 +3607,10 @@ void updateGameplayActions(XrTime displayTime){
         s.quadMode||s.centeredQuadTransitionPending
             ||s.immersiveCinematicActive,
         KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
+    serviceCampaignRunTime(safetyGameplay&&bothProfiles&&bothTracked
+        &&s.controllerOnlySafety.armed&&!s.controllerOnlySafety.reconnectAckRequired
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!suppressSetupButtons&&!suppressWelcomeButtons);
     const bool previousArmed=s.controllerOnlySafety.armed;
     const bool reconnectWasRequired=s.controllerOnlySafety.reconnectAckRequired;
     bool armed=previousArmed;
@@ -6087,6 +6145,7 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 }
 
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
+    loadCampaignRunTime();
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
     if(!kharvox::loadWeaponRecoilSettings(
