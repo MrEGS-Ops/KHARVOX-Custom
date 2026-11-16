@@ -24,8 +24,6 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devHolsterZones,D::HolsterZones});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
-        rows.push_back({"Glory Kill Highlight",VrLiveMod::Other,
-            KharvoxCameraGloryKillHighlightRequested(),D::GloryKillHighlight});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             false,D::Experimental});
         return rows;
@@ -148,13 +146,6 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
-        case D::GloryKillHighlight:return {{{
-            "Request DOOM Glory Kill highlighting.",
-            "OFF is the default for RIPSHIFT.",
-            "Direct setting control needs a verified CVar.",
-            "If unavailable, use DOOM Game Settings.",
-            "RIPSHIFT also requests OFF on launch.",
-            ""}}};
         case D::Experimental:return {{{"Future experimental features belong",
             "in this section once implemented.",
             "No hidden prototype is active.","","",""}}};
