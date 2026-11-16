@@ -94,20 +94,27 @@ void paintVrHandMenu() {
         &&!KharvoxHudEndOfLevelMenuActive()
         &&!s.quadMode&&!s.centeredQuadTransitionPending
         &&!s.immersiveCinematicActive;
-    const std::array<bool,4> statsVisible{
+    const std::array<bool,kharvox::kVrStatsItemCount> statsVisible{
         s.vrLiveSettings.deathCounterEnabled,
         s.vrLiveSettings.deathStatisticsEnabled,
         s.vrLiveSettings.campaignTimerEnabled,
-        s.vrLiveSettings.sessionTimerEnabled};
-    const std::array<int,4> statsCorners{
+        s.vrLiveSettings.sessionTimerEnabled,
+        s.vrLiveSettings.levelDisplayEnabled[0],
+        s.vrLiveSettings.levelDisplayEnabled[1],
+        s.vrLiveSettings.levelDisplayEnabled[2]};
+    const std::array<int,kharvox::kVrStatsItemCount> statsCorners{
         s.vrLiveSettings.deathCounterCorner,
         s.vrLiveSettings.deathStatisticsCorner,
         s.vrLiveSettings.campaignTimerCorner,
-        s.vrLiveSettings.sessionTimerCorner};
+        s.vrLiveSettings.sessionTimerCorner,
+        s.vrLiveSettings.levelDisplayPosition[0],
+        s.vrLiveSettings.levelDisplayPosition[1],
+        s.vrLiveSettings.levelDisplayPosition[2]};
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
-        &&(statsVisible[0]||statsVisible[1]||statsVisible[2]||statsVisible[3]);
+        &&std::any_of(statsVisible.begin(),statsVisible.end(),
+            [](bool on){return on;});
     constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
@@ -133,12 +140,12 @@ void paintVrHandMenu() {
         fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
         fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
     }else if(statsLiveView){
-        for(int i=0;i<4;++i)if(statsVisible[i]){
+        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
-            fill(x,y,4,counterH,i>=2?RGB(55,209,214):RGB(210,69,76));
+            fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
         }
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
@@ -221,7 +228,7 @@ void paintVrHandMenu() {
         write(welcomeX+30,welcomeY+386,
             "This notice will only appear once.",muted);
     }else if(statsLiveView){
-        for(int i=0;i<4;++i)if(statsVisible[i]){
+        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
@@ -232,12 +239,23 @@ void paintVrHandMenu() {
                 write(x+16,y+28,std::to_string(i==0
                     ?KharvoxHudCampaignDeathCount()
                     :KharvoxHudCampaignSessionDeaths()),RGB(235,92,99));
-            }else{
-                write(x+16,y+5,i==2?"CAMPAIGN TIME":"SESSION TIME",muted);
+            }else if(i==6){
+                write(x+16,y+5,"LEVEL DEATHS",muted);
                 SelectObject(dc,regular);
-                write(x+16,y+28,kharvox::campaignRunTimeText(
-                    i==2?s.campaignRunTime.elapsedMs:s.sessionRunTime.elapsedMs),
-                    RGB(84,233,214));
+                write(x+16,y+28,std::to_string(s.levelProgress.deaths),RGB(235,92,99));
+            }else{
+                const auto best=kharvox::levelBestFor(s.levelRecords,
+                    s.levelProgress.verifiedMapKey);
+                write(x+16,y+5,i==2?"CAMPAIGN TIME"
+                    :i==3?"SESSION TIME":i==4?"LEVEL TIME":"LEVEL BEST",muted);
+                SelectObject(dc,regular);
+                write(x+16,y+28,i==5&&best==0?"--:--:--":
+                    kharvox::campaignRunTimeText(i==2?s.campaignRunTime.elapsedMs:
+                        i==3?s.sessionRunTime.elapsedMs:
+                        i==4?s.levelProgress.time.elapsedMs:best),
+                    i==5&&s.levelProgress.bestUpdated
+                      &&GetTickCount64()<s.levelProgress.newBestGoldUntilMs
+                        ?RGB(255,207,66):RGB(84,233,214));
             }
         }
     }else if(calibrationView){
@@ -456,10 +474,11 @@ void paintVrHandMenu() {
         write(38,24,dev?"RIPSHIFT VR / DEV / STATS RESET":"RIPSHIFT VR / STATS",white);
         SelectObject(dc,smallFont);
         write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
-        const int chosen=std::clamp(m.statsSelected,0,3);
+        const int chosen=std::clamp(m.statsSelected,0,
+            dev?3:kharvox::kVrStatsItemCount-1);
         // Identical ten-row, 45px list pattern to the main Mod Menu.
         // Extra Stats appear by scrolling rather than shrinking buttons.
-        const int statCount=dev?4:4;
+        const int statCount=dev?4:kharvox::kVrStatsItemCount;
         for(int shown=0;shown<10;++shown){
             const int i=shown+m.statsScroll;
             if(i>=statCount)break;
@@ -552,7 +571,7 @@ void paintVrHandMenu() {
                         &&m.navigation.usingStick
                         &&m.navigation.actionIndex==cell+1);
                 bool occupied=false;
-                if(available)for(int other=0;other<4;++other){
+                if(available)for(int other=0;other<kharvox::kVrStatsItemCount;++other){
                     if(other==chosen||!kharvox::vrStatsEnabled(
                         s.vrLiveSettings,other))continue;
                     if(kharvox::vrStatsPositionsOverlap(chosen,
@@ -573,7 +592,7 @@ void paintVrHandMenu() {
                         RGB(76,231,167));
             }
             write(538,572,"Dark = occupied (select to replace).",muted);
-            write(538,607,"Centre blocked; deaths keep counting.",muted);
+            write(538,607,"Centre blocked; stats track while hidden.",muted);
         }
         SelectObject(dc,smallFont);
         write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
@@ -1042,7 +1061,7 @@ void paintVrHandMenu() {
                     &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
             :statsLiveView
                 ?([&](){
-                    for(int i=0;i<4;++i)if(statsVisible[i]){
+                    for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
                         const int left=kharvox::statsPanelX(
                             statsCorners[i],vrMenuW,width);
