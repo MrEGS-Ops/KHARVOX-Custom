@@ -512,6 +512,7 @@ struct VrHandMenuState {
     VrDevControllerInputSnapshot devInput{};
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
+    bool consumeMenuTriggerUntilRelease{}; // ignore held pointer trigger on automatic close
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
