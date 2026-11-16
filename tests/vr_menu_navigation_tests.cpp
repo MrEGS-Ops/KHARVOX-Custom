@@ -115,6 +115,18 @@ int main(){
     assert(std::string(vrStatsLabel(4))=="Level Time");
     assert(std::string(vrStatsLabel(5))=="Level Best");
     assert(std::string(vrStatsLabel(6))=="Level Deaths");
+    assert(kCampaignMissions.size()==13);
+    assert(std::string(kCampaignMissions[0].key)=="campaign/01");
+    assert(std::string(kCampaignMissions[12].key)=="campaign/13");
+    assert(levelRecordKeyValid(kCampaignMissions[0].key));
+    assert(levelRecordKeyValid(kCampaignMissions[12].key));
+    int statSelection=6;
+    VrMenuNavigation statMenuNavigation{};
+    vrStatsNavigateStick(statMenuNavigation,0.f,-.9f,statSelection,0,8);
+    assert(statSelection==7); // Records entry follows the seven readouts
+    vrStatsNavigateStick(statMenuNavigation,0.f,0.f,statSelection,0,8);
+    vrStatsNavigateStick(statMenuNavigation,0.f,-.9f,statSelection,0,8);
+    assert(statSelection==0);
     assert(!vrStatsSetCorner(levelWidgets,4,-2));
     assert(!vrStatsSetEnabled(levelWidgets,7,true));
     // Level timing/deaths survive checkpoint-generation changes.
