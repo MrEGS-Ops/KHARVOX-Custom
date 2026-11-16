@@ -485,6 +485,7 @@ struct State {
     kharvox::LevelRecords levelRecords{};
     std::uint64_t observedSessionDeaths{};
     bool levelRecordsLoaded{};
+    std::uint64_t recentLevelBestTimeMs{},recentLevelBestGoldUntilMs{};
     std::uint64_t campaignRunTimeLastSavedMs{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3412,7 +3413,15 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
     // end-of-level screen. Checkpoint loads during the same level do nothing.
     if(progress.awaitingNextLevel&&!completedMenu&&gameplay
         &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration()){
+        const bool announce=progress.bestUpdated;
+        const auto completedBest=progress.completedTimeMs;
         kharvox::levelProgressNextUnidentified(progress);
+        // Show the gold result on returning to playable VR, not behind the
+        // end-of-level/loading screens where the player cannot see it.
+        if(announce){
+            s.recentLevelBestTimeMs=completedBest;
+            s.recentLevelBestGoldUntilMs=now+kharvox::kLevelBestGoldMs;
+        }
     }
     kharvox::levelProgressAdvance(progress,gameplay,now);
 }
