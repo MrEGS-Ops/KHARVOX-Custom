@@ -481,8 +481,10 @@ void paintVrHandMenu() {
         write(38,24,dev?"RIPSHIFT VR / DEV / LEVEL RECORDS"
             :"RIPSHIFT VR / LEVEL RECORDS",white);
         SelectObject(dc,smallFont);
-        write(40,100,dev?"SELECT RECORDS TO RESET":"PERSONAL BEST TIMES",muted);
-        const int count=dev?2:static_cast<int>(kharvox::kCampaignMissions.size());
+        write(40,100,dev?"SELECT MISSION RECORDS TO RESET"
+            :"MISSION RESULTS / TOP FIVE",muted);
+        const int count=static_cast<int>(kharvox::kCampaignMissions.size())
+            +(dev?1:0);
         const int chosen=std::clamp(m.recordSelected,0,std::max(0,count-1));
         for(int shown=0;shown<10;++shown){
             const int i=shown+m.recordsScroll;
@@ -493,12 +495,12 @@ void paintVrHandMenu() {
                 m.hovered==1000+i?RGB(44,54,71):RGB(27,32,43));
             if(active)fill(38,y,5,40,RGB(55,209,214));
             SelectObject(dc,smallFont);
-            if(dev){
-                write(55,y+10,i==0?"Current Level Record"
-                    :"All Level Records",white);
+            if(dev&&i==static_cast<int>(kharvox::kCampaignMissions.size())){
+                write(55,y+10,"ALL LEVEL RECORDS",RGB(255,175,175));
             }else{
                 const auto& mission=kharvox::kCampaignMissions[i];
-                const bool current=s.levelProgress.verifiedMapKey==mission.key;
+                const bool current=s.levelProgress.armed
+                    &&s.levelProgress.verifiedMapKey==mission.key;
                 write(55,y+10,mission.title,current?RGB(84,233,214):white);
                 if(current)write(439,y+10,"*",RGB(255,207,66));
             }
@@ -507,50 +509,65 @@ void paintVrHandMenu() {
             ?RGB(47,95,110):RGB(39,49,63));
         write(815,30,"BACK",white);
         SelectObject(dc,regular);
-        write(538,115,dev?"RECORD RESET":"LEVEL PERSONAL BEST",white);
+        write(538,115,dev?"RECORD RESET":"MISSION RECORDS",white);
         SelectObject(dc,smallFont);
         if(dev){
-            const bool confirming=m.pendingStatsReset==10+chosen
+            const bool all=chosen==static_cast<int>(
+                kharvox::kCampaignMissions.size());
+            const bool confirming=m.pendingStatsReset==100+chosen
                 &&m.confirmDeathResetUntilMs
                 &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            write(538,145,all?"ALL MISSIONS"
+                :kharvox::kCampaignMissions[chosen].title,white);
             fill(531,186,384,58,m.hovered==130
                 ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
                 ?RGB(83,52,61):RGB(60,38,48));
-            write(548,202,confirming?"CONFIRM RESET (SECOND PRESS)"
-                :chosen==0?"RESET CURRENT LEVEL":"RESET ALL LEVEL RECORDS",
+            write(548,202,confirming?"CONFIRM DELETE (SECOND PRESS)"
+                :all?"DELETE ALL LEVEL RECORDS":"DELETE SELECTED MISSION",
                 confirming?RGB(255,175,175):white);
-            write(538,294,chosen==0?"Only the active level's saved best."
-                :"Deletes every saved Level Best.",muted);
-            write(538,339,"Does not reset timers or death counters.",muted);
-            write(538,383,"HUD switches and positions stay unchanged.",muted);
-            write(538,437,"Two presses required; remains in DEV.",RGB(84,233,214));
+            write(538,294,all?"Deletes ALL saved mission results."
+                :"Only the selected mission is affected.",muted);
+            write(538,339,"Removes both time and deaths rankings.",muted);
+            write(538,383,"Live stats & HUD settings stay unchanged.",muted);
+            write(538,437,"Press twice within 6 seconds.",RGB(84,233,214));
         }else{
             const auto& mission=kharvox::kCampaignMissions[chosen];
-            const auto best=kharvox::levelBestFor(s.levelRecords,mission.key);
-            const bool current=s.levelProgress.verifiedMapKey==mission.key;
+            const bool current=s.levelProgress.armed
+                &&s.levelProgress.verifiedMapKey==mission.key;
             const bool confirming=kharvox::vrLevelStartPending(
                 m,chosen,GetTickCount64());
-            write(538,170,mission.title,white);
-            write(538,221,"BEST: "+(best
-                ?kharvox::campaignRunTimeText(best):std::string("--:--:--")),
-                best?RGB(255,207,66):muted);
-            fill(531,310,384,58,m.hovered==130
+            const auto ranked=kharvox::levelRankedRuns(
+                s.levelRecords,mission.key,m.recordSortDeaths);
+            write(538,152,mission.title,white);
+            fill(531,190,384,47,m.hovered==131
                 ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                ?RGB(44,76,88):RGB(32,53,65));
+            write(549,203,m.recordSortDeaths?"SORT: FEWEST DEATHS  < >"
+                :"SORT: FASTEST TIME  < >",RGB(84,233,214));
+            write(542,270,"#   TIME",muted);
+            write(701,270,"DEATHS",muted);
+            write(777,270,"DATE",muted);
+            if(ranked.empty())
+                write(540,339,"No completed runs recorded.",muted);
+            for(std::size_t i=0;i<ranked.size();++i){
+                const int y=303+int(i)*48;
+                const auto& run=ranked[i];
+                fill(532,y-5,383,39,i==0?RGB(48,45,33):RGB(25,33,43));
+                write(541,y,std::to_string(i+1),i==0?RGB(255,207,66):muted);
+                write(570,y,kharvox::campaignRunTimeText(run.timeMs),white);
+                write(714,y,run.deaths==kharvox::kLevelDeathsUnknown
+                    ?std::string("--"):std::to_string(run.deaths),white);
+                write(790,y,kharvox::levelRecordDateText(run.dateYmd),muted);
+            }
+            fill(531,565,384,53,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==1)
                 ?RGB(52,83,99):RGB(39,49,63));
-            write(550,327,confirming?"CONFIRM START (SECOND PRESS)"
+            write(550,579,confirming?"CONFIRM START (SECOND PRESS)"
                 :current?"RESTART TIMED RUN":"TRACK THIS LEVEL",
                 confirming?RGB(255,207,66):white);
-            write(538,409,confirming
-                ?"This Mod Menu will close and"
-                :"Select your mission at the level start.",
+            write(538,632,confirming?"Menu closes; timer and deaths reset."
+                :"Double-confirm to start a timed attempt.",
                 confirming?RGB(255,207,66):muted);
-            write(538,448,confirming
-                ?"the timer will start. Press again."
-                :"Records save only completed runs.",
-                confirming?RGB(255,207,66):muted);
-            write(538,489,confirming
-                ?"Confirm within 6 seconds. B cancels."
-                :"Map auto-detection is not yet verified.",muted);
         }
         write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
         write(40,676,m.message.substr(0,105),RGB(84,233,214));
