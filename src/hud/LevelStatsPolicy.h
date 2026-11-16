@@ -33,7 +33,6 @@ inline constexpr std::array<CampaignMission,13> kCampaignMissions{{
     {"campaign/12","12  VEGA Central Processing"},
     {"campaign/13","13  Argent D'Nur"},
 }};
-inline constexpr std::uint64_t kLevelBestGoldMs=5000;
 inline constexpr std::size_t kLevelRecordsMax=64;
 inline constexpr std::uint64_t kLevelRecordMaxMs=100000000000ULL;
 inline bool levelRecordKeyValid(std::string_view key) noexcept {
@@ -54,7 +53,8 @@ struct LevelProgress {
     bool completed{};
     bool awaitingNextLevel{};
     bool bestUpdated{};
-    std::uint64_t newBestGoldUntilMs{};
+    std::uint64_t previousBestMs{};
+    std::uint64_t bestImprovementMs{}; // zero for first-ever completion
     std::uint64_t completedTimeMs{};
     bool endMenuWasVisible{};
     // A generation change alone is NOT a new level. Only the validated map
@@ -87,7 +87,8 @@ inline bool levelProgressSetMap(LevelProgress& progress,
     progress.completed=false;
     progress.awaitingNextLevel=false;
     progress.bestUpdated=false;
-    progress.newBestGoldUntilMs=0;
+    progress.previousBestMs=0;
+    progress.bestImprovementMs=0;
     progress.completedTimeMs=0;
     progress.endMenuWasVisible=false;
     progress.generationAtCompletion=0;
@@ -101,21 +102,24 @@ inline void levelProgressDeath(LevelProgress& progress) noexcept {
     if(!progress.completed&&progress.deaths<1000000000ULL)++progress.deaths;
 }
 inline bool levelProgressComplete(LevelProgress& progress,
-    LevelRecords& records,std::uint64_t nowMs) {
+    LevelRecords& records,std::uint64_t /*nowMs*/) {
     if(progress.completed)return false; // EndOfLevel nested screens repeat.
     progress.completed=true;
     progress.awaitingNextLevel=true;
     progress.completedTimeMs=progress.time.elapsedMs;
     progress.time.activeLastSample=false;
     progress.bestUpdated=false;
+    progress.previousBestMs=0;
+    progress.bestImprovementMs=0;
     if(!levelRecordKeyValid(progress.verifiedMapKey)
         ||!progress.completedTimeMs)return false;
     const auto best=levelBestFor(records,progress.verifiedMapKey);
+    progress.previousBestMs=best;
     if(best&&progress.completedTimeMs>=best)return false;
     if(records.bestMs.size()>=kLevelRecordsMax && !best)return false;
     records.bestMs[progress.verifiedMapKey]=progress.completedTimeMs;
     progress.bestUpdated=true;
-    progress.newBestGoldUntilMs=nowMs+kLevelBestGoldMs;
+    if(best)progress.bestImprovementMs=best-progress.completedTimeMs;
     return true;
 }
 inline void levelProgressNextUnidentified(LevelProgress& progress) noexcept {
@@ -123,7 +127,8 @@ inline void levelProgressNextUnidentified(LevelProgress& progress) noexcept {
     // recycle the last map's best into a different level.
     progress.time={};progress.deaths=0;progress.verifiedMapKey.clear();
     progress.completed=false;progress.awaitingNextLevel=false;
-    progress.bestUpdated=false;progress.completedTimeMs=0;
+    progress.bestUpdated=false;progress.previousBestMs=0;
+    progress.bestImprovementMs=0;progress.completedTimeMs=0;
     progress.endMenuWasVisible=false;progress.generationAtCompletion=0;
 }
 inline bool levelRecordsReset(LevelRecords& records,
