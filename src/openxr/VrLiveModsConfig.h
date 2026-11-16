@@ -62,7 +62,7 @@ inline const char* vrLiveModLabel(VrLiveMod id) noexcept {
 case VrLiveMod::TurnSpeed:return "Smooth Turn Speed";
         case VrLiveMod::HandsJump:return "Hands Jump";
         case VrLiveMod::BoxingGuard:return "Boxing Guard";
-        case VrLiveMod::DeathCounter:return "Campaign Death Counter";
+        case VrLiveMod::DeathCounter:return "Campaign Deaths";
         case VrLiveMod::Stats:return "Stats";
         default:return "Other active mod";
     }
@@ -102,7 +102,7 @@ float punchSpeedMetersPerSec{2.8f};
     bool deathCounterEnabled{}; // optional: never clutter the headset by default
     int deathCounterCorner{1}; // 0..3 legacy corners; 100..219 fine grid positions
     bool deathStatisticsEnabled{};
-    int deathStatisticsCorner{1};
+    int deathStatisticsCorner{0}; // fresh install defaults opposite Campaign Deaths
     bool campaignTimerEnabled{};
     int campaignTimerCorner{0};
     bool sessionTimerEnabled{}; // session elapsed is NOT persisted, only this display preference
@@ -132,10 +132,10 @@ inline bool vrLiveValidShift(VrLivePoint p) {
     return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
         &&std::abs(p.x)<=.7f&&std::abs(p.y)<=.9f&&std::abs(p.z)<=1.f;
 }
-// Four independently positioned HUD choices. Death Counter and Death Statistics are
-// mutually exclusive; a new selection evicts overlapping visible displays.
-// Old 0..3 corners load unchanged; fine placement uses 12 x 10 cells.
-// Hidden counters still collect deaths unconditionally.
+// Campaign and Session Deaths are independent counters and HUD displays.
+// A new HUD position replaces any existing physically overlapping display.
+// Old 0..3 positions load unchanged; fine placement uses a 12 x 10 grid.
+// Hidden counters continue collecting deaths unconditionally.
 inline bool vrStatsEnabled(const VrLiveSettings& s,int item) noexcept {
     if(item==0)return s.deathCounterEnabled;
     if(item==1)return s.deathStatisticsEnabled;
@@ -150,8 +150,8 @@ inline int vrStatsCorner(const VrLiveSettings& s,int item) noexcept {
 }
 inline constexpr const char* vrStatsLabel(int item) noexcept {
     switch(item){
-        case 0:return "Death Counter";
-        case 1:return "Death Statistics";
+        case 0:return "Campaign Deaths";
+        case 1:return "Session Deaths";
         case 2:return "Campaign Run Timer";
         case 3:return "Session Timer";
         default:return "Unknown Stat";
@@ -180,9 +180,7 @@ inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
     else if(item==2)s.campaignTimerEnabled=on;
     else s.sessionTimerEnabled=on;
     if(on){
-        if(item==0)s.deathStatisticsEnabled=false;
-        if(item==1)s.deathCounterEnabled=false;
-        const int target=vrStatsCorner(s,item);
+         const int target=vrStatsCorner(s,item);
         for(int other=0;other<4;++other)if(other!=item
             &&vrStatsEnabled(s,other)
             &&vrStatsPositionsOverlap(item,target,other,vrStatsCorner(s,other))){
@@ -256,7 +254,6 @@ inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     if(!statsPositionValid(s.deathStatisticsCorner))return false;
     if(!statsPositionValid(s.campaignTimerCorner))return false;
     if(!statsPositionValid(s.sessionTimerCorner))return false;
-    if(s.deathCounterEnabled&&s.deathStatisticsEnabled)return false;
     for(int i=0;i<4;++i)for(int j=i+1;j<4;++j)
         if(vrStatsEnabled(s,i)&&vrStatsEnabled(s,j)
             &&vrStatsPositionsOverlap(i,vrStatsCorner(s,i),
@@ -399,10 +396,10 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
         }else return false;
     }
     if(f.bad()||schema!=1)return false;
-    // Prefer new Statistics over legacy counter in old/conflicting saves.
-    // The timer is independently hidden if its panel overlaps.
+    // Preserve both counters when they occupy separate areas. Resolve any
+    // overlapping settings (including legacy saved corners) deterministically.
+    if(next.deathCounterEnabled)vrStatsSetEnabled(next,0,true);
     if(next.deathStatisticsEnabled)vrStatsSetEnabled(next,1,true);
-    else if(next.deathCounterEnabled)vrStatsSetEnabled(next,0,true);
     if(next.campaignTimerEnabled)vrStatsSetEnabled(next,2,true);
     if(next.sessionTimerEnabled)vrStatsSetEnabled(next,3,true);
     if(!vrLiveValidSettings(next))return false;
