@@ -36,8 +36,6 @@ internal sealed class LauncherSettings
     public bool ExtendedLogging { get; set; }
     public bool CaptureEyes { get; set; }
     public bool DisableAa { get; set; }
-    // Developer-only option; default Off and explicitly opt-in per profile.
-    public bool GloryKillHighlightEnabled { get; set; }
     public bool HandsJump { get; set; } = true;
     public bool SwapJumpCrouch { get; set; }
     public bool DisableVrIntro { get; set; } = false;
@@ -164,7 +162,6 @@ internal static class LauncherSettingsStore
         // Jump/Crouch swap. Reset it once on upgrade to v37, but continue
         // honouring explicit changes saved by the user in v37 and later.
         if (settings.SettingsVersion < 37) settings.SwapJumpCrouch = false;
-        if (settings.SettingsVersion < 38) settings.GloryKillHighlightEnabled = false;
         if (settings.SettingsVersion < 35)
         {
             settings.WeaponWheelRemapEnabled = true;
