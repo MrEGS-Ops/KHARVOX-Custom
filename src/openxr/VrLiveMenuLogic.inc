@@ -128,7 +128,7 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "Place each item on a fine HUD grid.",
             "Overlapping positions replace old items.",
             "Deaths always count when display is OFF.",
-            "Death Statistics replaces Death Counter."}}};
+            "Campaign and Session Deaths can coexist."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
@@ -157,7 +157,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
         case D::StatsReset:return {{{
-            "Reset death total, session deaths",
+            "Reset campaign and session deaths",
             "or campaign and session timers.",
             "Press the same reset button twice.",
             "No Stats display settings are changed.",
@@ -430,7 +430,7 @@ bool handleVrStatsMenuAction(int action,bool dev){
             const bool timerReset=resetCampaignRunTimeSaved();
             if(!deathsReset||!timerReset){
                 menu.message="RESET ALL failed to save "
-                    +std::string(!deathsReset?"lifetime deaths":"campaign timer")
+                    +std::string(!deathsReset?"campaign deaths":"campaign timer")
                     +". DEV remains open; check UserData.";
                 return true;
             }
@@ -450,8 +450,8 @@ bool handleVrStatsMenuAction(int action,bool dev){
             }
         }else if(item==0){
             menu.message=KharvoxHudResetCampaignDeathCount()
-                ?"Lifetime campaign deaths reset to 0."
-                :"Failed to save lifetime death reset.";
+                ?"Campaign deaths reset to 0."
+                :"Failed to save campaign death reset.";
         }else if(item==1){
             KharvoxHudResetCampaignSessionDeaths();
             menu.message="This session's death count reset to 0.";
@@ -581,10 +581,8 @@ bool handleVrLiveMenuAction(int action){
             }
             break;
         case VrLiveMod::DeathCounter:
-            if(option>=0&&option<4){
-                s.vrLiveSettings.deathCounterCorner=option;
-                changed=true;
-            }
+            if(option>=0&&option<4)
+                changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,0,option);
             break;
         case VrLiveMod::PhysicalGloryKills:
             if(option==0){
