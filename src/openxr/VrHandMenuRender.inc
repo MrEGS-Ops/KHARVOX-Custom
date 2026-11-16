@@ -84,15 +84,13 @@ void paintVrHandMenu() {
     const bool firstTimeSetupView=!disconnectView
         &&s.firstTimeSetupNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
-    const bool startupTipView=!disconnectView&&!firstTimeSetupView
-        &&s.modMenuStartupNotice.visible
+    const bool gameplayWelcomeView=!disconnectView&&!firstTimeSetupView
+        &&s.gameplayWelcomeNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
-    // Full-size first-install instructions; compositor pixels outside this
-    // panel stay transparent and DOOM's actual front menu remains visible.
+    // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
-    // Use the EXACT same compact banner bounds as controller disconnect.
-    constexpr int tipX=bannerX,tipY=bannerY,tipW=bannerW,tipH=bannerH;
-    const bool calibrationView=!disconnectView&&!startupTipView
+    constexpr int welcomeX=95,welcomeY=145,welcomeW=770,welcomeH=435;
+    const bool calibrationView=!disconnectView&&!gameplayWelcomeView
         &&!firstTimeSetupView
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
@@ -107,10 +105,11 @@ void paintVrHandMenu() {
         fill(setupX,setupY,7,setupH,RGB(55,209,214));
         fill(setupX+7,setupY,setupW-7,4,RGB(66,91,105));
         fill(setupX+24,setupY+73,setupW-48,2,RGB(66,91,105));
-    }else if(startupTipView){
-        fill(tipX,tipY,tipW,tipH,RGB(17,24,32));
-        fill(tipX,tipY,6,tipH,RGB(55,209,214));
-        fill(tipX+6,tipY,tipW-6,3,RGB(76,88,99));
+    }else if(gameplayWelcomeView){
+        fill(welcomeX,welcomeY,welcomeW,welcomeH,RGB(16,29,39));
+        fill(welcomeX,welcomeY,7,welcomeH,RGB(55,209,214));
+        fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
+        fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -171,12 +170,26 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(setupX+30,setupY+452,
             "This notice will only appear once.",muted);
-    }else if(startupTipView){
+    }else if(gameplayWelcomeView){
+        SelectObject(dc,title);
+        write(welcomeX+28,welcomeY+19,"RIPSHIFT - READY TO PLAY",white);
         SelectObject(dc,regular);
-        write(tipX+24,tipY+13,"RIPSHIFT MOD SETTINGS",white);
+        write(welcomeX+30,welcomeY+108,
+            "Your VR experience is already configured.",white);
+        write(welcomeX+30,welcomeY+150,
+            "Enjoy the default gameplay first, then",white);
+        write(welcomeX+30,welcomeY+183,
+            "fine-tune it to your liking if needed.",white);
         SelectObject(dc,smallFont);
-        write(tipX+24,tipY+58,
-            "Hold R3 in gameplay to open the Mod Menu.",RGB(84,233,214));
+        write(welcomeX+30,welcomeY+245,
+            "Hold R3 during gameplay to adjust settings.",RGB(84,233,214));
+        fill(welcomeX+25,welcomeY+308,welcomeW-50,55,RGB(28,57,66));
+        SelectObject(dc,regular);
+        write(welcomeX+43,welcomeY+323,
+            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
+        SelectObject(dc,smallFont);
+        write(welcomeX+30,welcomeY+386,
+            "This notice will only appear once.",muted);
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -801,7 +814,8 @@ void paintVrHandMenu() {
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
-    if(!disconnectView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+    if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
+       &&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -828,9 +842,9 @@ void paintVrHandMenu() {
             :firstTimeSetupView
                 ?(x>=setupX&&x<setupX+setupW
                     &&y>=setupY&&y<setupY+setupH?255:0)
-            :startupTipView
-                ?(x>=tipX&&x<tipX+tipW
-                    &&y>=tipY&&y<tipY+tipH?255:0)
+            :gameplayWelcomeView
+                ?(x>=welcomeX&&x<welcomeX+welcomeW
+                    &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
             :(!calibrationView
                 ||(x>=22&&x<612&&y>=144&&y<576)
                 ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
