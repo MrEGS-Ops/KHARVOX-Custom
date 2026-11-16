@@ -58,7 +58,7 @@ Gameplay-specific acknowledgement controls help you recover without unnecessary 
 
 Track **Campaign Deaths, Session Deaths, Campaign Run Time and Session Time** without leaving VR. Optional **Level Time, Level Deaths and Level Best** readouts help you follow your performance as you play.
 
-Choose exactly which statistics appear on your HUD and position each independently using the fine **12×10 placement grid**. 
+Choose exactly which statistics appear on your HUD and position each independently using the fine **12×10 placement grid**.
 
 View saved level-time personal bests in the **Level Records** menu. Beat your record and the Level Best readout briefly celebrates in gold. Developer tools provide separate, confirmed options for resetting statistics or personal records without changing your HUD layout.
 
@@ -82,7 +82,7 @@ Designed and tested with **KHARVOX v1.1.1**. Compatibility with earlier or later
 2. Download the **RIPSHIFT VR Experimental** artifact from this repository's [GitHub Actions](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions). Extract the ZIP into its **own permanent folder**, separate from DOOM and original KHARVOX.
 3. Run `RIPSHIFT.exe`.
 4. On first launch, choose the original `KharvoxLauncher.exe` inside your **CactusVRStudios KHARVOX** installation. RIPSHIFT uses required original shader files without modifying the original installation.
-5. Select your DOOM installation in RIPSHIFT VR and start the game. Configure and calibrate RIPSHIFT's gameplay enhancements in the in-headset mod menu.
+5. In the RIPSHIFT launcher, select the **DOOM (2016) game folder containing `DOOMx64vk.exe`**. This is separate from the original KHARVOX folder selected in step 4. Launch DOOM, then adjust gameplay settings and weapon calibration through RIPSHIFT's in-game Mod Menu.
 
 **Upgrading:** Preserve your existing RIPSHIFT `UserData` folder. Clean installs seed the included factory weapon defaults; upgrades will not overwrite user calibrations. The original KHARVOX directory stays separate.
 
