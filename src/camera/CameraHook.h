@@ -26,11 +26,6 @@ void KharvoxCameraRecordAerWorldSource(const kharvox::AerWorldView& source);
 bool KharvoxCameraUsesAerGameplaySource();
 kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
-// Debug native focus processing when an in-world interactable still
-// follows the headset (health station, collectible, etc.).
-void KharvoxCameraFocusTraceDiagnostics(
-    unsigned long long& allTraces,unsigned long long& handTraces,
-    unsigned long long& headTraces,bool& handPoseReady);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
 void KharvoxCameraSetImmersiveCinematicFov(
@@ -72,15 +67,6 @@ void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
 void KharvoxCameraEnforceGloryKillHighlightSetting();
 // Native DOOM tutorial setting only. Never force-close tutorial or automap screens.
 void KharvoxCameraEnforceTutorialsDisabled();
-// In-headset DEV request: 0 = native value not verified, 1 = verified and applied.
-// Do not claim a successful setting change if DOOM\'s CVar is unavailable.
-void KharvoxCameraSetGloryKillHighlightEnabled(bool enabled);
-bool KharvoxCameraGloryKillHighlightRequested();
-int KharvoxCameraGloryKillHighlightStatus();
-// READ ONLY: -1 = cannot verify, 0 = native OFF, 1 = native ON.
-// Never report a saved DOOMConfig value as the game's live setting.
-int KharvoxCameraNativeGloryKillHighlightValue();
-int KharvoxCameraNativeTutorialsValue();
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
 void KharvoxCameraResetCombatTimeDilation();
 bool KharvoxCameraLedgeTransitionActive();
