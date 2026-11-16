@@ -94,18 +94,20 @@ void paintVrHandMenu() {
         &&!KharvoxHudEndOfLevelMenuActive()
         &&!s.quadMode&&!s.centeredQuadTransitionPending
         &&!s.immersiveCinematicActive;
-    const std::array<bool,3> statsVisible{
+    const std::array<bool,4> statsVisible{
         s.vrLiveSettings.deathCounterEnabled,
         s.vrLiveSettings.deathStatisticsEnabled,
-        s.vrLiveSettings.campaignTimerEnabled};
-    const std::array<int,3> statsCorners{
+        s.vrLiveSettings.campaignTimerEnabled,
+        s.vrLiveSettings.sessionTimerEnabled};
+    const std::array<int,4> statsCorners{
         s.vrLiveSettings.deathCounterCorner,
         s.vrLiveSettings.deathStatisticsCorner,
-        s.vrLiveSettings.campaignTimerCorner};
+        s.vrLiveSettings.campaignTimerCorner,
+        s.vrLiveSettings.sessionTimerCorner};
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
-        &&(statsVisible[0]||statsVisible[1]||statsVisible[2]);
+        &&(statsVisible[0]||statsVisible[1]||statsVisible[2]||statsVisible[3]);
     constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
@@ -131,12 +133,12 @@ void paintVrHandMenu() {
         fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
         fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
     }else if(statsLiveView){
-        for(int i=0;i<3;++i)if(statsVisible[i]){
+        for(int i=0;i<4;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
-            fill(x,y,4,counterH,i==2?RGB(55,209,214):RGB(210,69,76));
+            fill(x,y,4,counterH,i>=2?RGB(55,209,214):RGB(210,69,76));
         }
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
@@ -219,7 +221,7 @@ void paintVrHandMenu() {
         write(welcomeX+30,welcomeY+386,
             "This notice will only appear once.",muted);
     }else if(statsLiveView){
-        for(int i=0;i<3;++i)if(statsVisible[i]){
+        for(int i=0;i<4;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
@@ -238,10 +240,11 @@ void paintVrHandMenu() {
                     std::to_string(KharvoxHudCampaignDeathCount()),
                     RGB(235,92,99));
             }else{
-                write(x+16,y+5,"CAMPAIGN TIME",muted);
+                write(x+16,y+5,i==2?"CAMPAIGN TIME":"SESSION TIME",muted);
                 SelectObject(dc,regular);
                 write(x+16,y+28,kharvox::campaignRunTimeText(
-                    s.campaignRunTime.elapsedMs),RGB(84,233,214));
+                    i==2?s.campaignRunTime.elapsedMs:s.sessionRunTime.elapsedMs),
+                    RGB(84,233,214));
             }
         }
     }else if(calibrationView){
@@ -460,15 +463,15 @@ void paintVrHandMenu() {
         write(38,24,dev?"RIPSHIFT VR / DEV / STATS RESET":"RIPSHIFT VR / STATS",white);
         SelectObject(dc,smallFont);
         write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
-        const int chosen=std::clamp(m.statsSelected,0,2);
-        for(int i=0;i<3;++i){
-            const int y=170+i*120;
+        const int chosen=std::clamp(m.statsSelected,0,3);
+        for(int i=0;i<4;++i){
+            const int y=156+i*104;
             const bool active=i==chosen;
-            fill(38,y,455,72,active?RGB(32,89,104):RGB(27,32,43));
-            if(active)fill(38,y,5,72,RGB(55,209,214));
+            fill(38,y,455,74,active?RGB(32,89,104):RGB(27,32,43));
+            if(active)fill(38,y,5,74,RGB(55,209,214));
             SelectObject(dc,regular);
             write(55,y+15,dev?(i==0?"Lifetime Deaths":
-                i==1?"Session Deaths":"Campaign Run Timer")
+                i==1?"Session Deaths":i==2?"Campaign Run Timer":"Session Timer")
                 :kharvox::vrStatsLabel(i),white);
             if(!dev){
                 SelectObject(dc,smallFont);
@@ -493,15 +496,17 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             write(549,202,confirming?"CONFIRM RESET (SECOND PRESS)"
                 :chosen==0?"RESET LIFETIME DEATHS"
-                :chosen==1?"RESET SESSION DEATHS":"RESET CAMPAIGN TIMER",
+                :chosen==1?"RESET SESSION DEATHS"
+                 :chosen==2?"RESET CAMPAIGN TIMER":"RESET SESSION TIMER",
                 confirming?RGB(235,92,99):white);
             const std::string value=chosen==0
                 ?std::to_string(KharvoxHudCampaignDeathCount())+" deaths"
                 :chosen==1?std::to_string(KharvoxHudCampaignSessionDeaths())+" deaths"
-                :kharvox::campaignRunTimeText(s.campaignRunTime.elapsedMs);
+                :kharvox::campaignRunTimeText(chosen==2
+                    ?s.campaignRunTime.elapsedMs:s.sessionRunTime.elapsedMs);
             write(538,292,"CURRENT: "+value,RGB(84,233,214));
             write(538,342,"Each reset needs two presses.",muted);
-            const bool confirmAll=m.pendingStatsReset==3
+            const bool confirmAll=m.pendingStatsReset==4
                 &&m.confirmDeathResetUntilMs
                 &&GetTickCount64()<=m.confirmDeathResetUntilMs;
             fill(531,397,384,58,m.hovered==131
@@ -510,7 +515,7 @@ void paintVrHandMenu() {
                     ?RGB(83,52,61):RGB(60,38,48));
             write(549,412,confirmAll?"CONFIRM RESET ALL (SECOND PRESS)"
                 :"RESET ALL STATS",confirmAll?RGB(255,175,175):white);
-            write(538,475,"Resets lifetime, session and run time.",muted);
+            write(538,475,"Resets deaths and both timers.",muted);
             write(538,510,"Keeps display toggles and positions.",RGB(84,233,214));
             write(538,552,"Closes the Mod Menu after reset.",muted);
         }else{
@@ -547,7 +552,7 @@ void paintVrHandMenu() {
                         &&m.navigation.usingStick
                         &&m.navigation.actionIndex==cell+1);
                 bool occupied=false;
-                if(available)for(int other=0;other<3;++other){
+                if(available)for(int other=0;other<4;++other){
                     if(other==chosen||!kharvox::vrStatsEnabled(
                         s.vrLiveSettings,other))continue;
                     if(kharvox::vrStatsPositionsOverlap(chosen,
@@ -1037,7 +1042,7 @@ void paintVrHandMenu() {
                     &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
             :statsLiveView
                 ?([&](){
-                    for(int i=0;i<3;++i)if(statsVisible[i]){
+                    for(int i=0;i<4;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
                         const int left=kharvox::statsPanelX(
                             statsCorners[i],vrMenuW,width);
