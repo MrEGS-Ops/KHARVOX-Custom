@@ -136,8 +136,9 @@ inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept
         ||option==VrMenuDevOption::ControllerMonitor;
 }
 // Two independent notices: first-install setup appears on DOOM's front
-// menu and needs a fresh physical L3+R3 chord, while the ordinary R3 shortcut
-// hint appears only after real gameplay begins, once per process.
+// menu and needs a fresh physical L3+R3 chord; the separately persisted
+// gameplay welcome appears on the first playable frame and needs the same
+// acknowledgement chord.
 struct VrFirstTimeSetupNotice {
     bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
     unsigned stableMainMenuFrames{};
@@ -167,28 +168,35 @@ inline constexpr bool updateVrFirstTimeSetupNotice(
     notice.chordConsumed=true;
     return true; // caller must persist the install-scoped acknowledgement
 }
-struct VrMenuStartupNotice {
-    bool shown{},visible{},buttonReleased{};
+// Independent install-scoped gameplay welcome notice. It is modal, needs
+// a fresh L3+R3 chord, and does not dismiss via a regular face button.
+// The caller is responsible for committing the acknowledgement to Config.
+struct VrGameplayWelcomeNotice {
+    bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
     unsigned stableGameplayFrames{};
 };
-inline constexpr void updateVrMenuStartupNotice(
-    VrMenuStartupNotice& notice,bool playableGameplay,bool anyButtonDown) noexcept {
-    if(notice.shown){
-        if(!notice.visible)return;
-        if(!playableGameplay){notice.visible=false;return;}
-        if(!anyButtonDown)notice.buttonReleased=true;
-        else if(notice.buttonReleased)notice.visible=false;
-        return;
-    }
+inline constexpr bool updateVrGameplayWelcomeNotice(
+    VrGameplayWelcomeNotice& notice,bool playableGameplay,
+    bool leftClick,bool rightClick,bool trackedControllers) noexcept {
+    if(notice.acknowledged){notice.visible=false;return false;}
     if(!playableGameplay){
+        notice.visible=false;
         notice.stableGameplayFrames=0;
-        return;
+        notice.bothSticksReleased=false;
+        notice.chordConsumed=false;
+        return false;
     }
     if(notice.stableGameplayFrames<20)++notice.stableGameplayFrames;
-    if(notice.stableGameplayFrames<20)return;
-    notice.shown=true;
+    if(notice.stableGameplayFrames<20)return false;
     notice.visible=true;
-    notice.buttonReleased=!anyButtonDown;
+    if(!leftClick&&!rightClick){
+        notice.bothSticksReleased=true;
+        notice.chordConsumed=false;
+    }
+    if(!trackedControllers||!notice.bothSticksReleased
+        ||!leftClick||!rightClick||notice.chordConsumed)return false;
+    notice.chordConsumed=true;
+    return true;
 }
 // Seven pointer-and-trigger taps on the existing MOD SETTINGS heading.
 // This state is transient and defaults to hidden on every new game launch.
