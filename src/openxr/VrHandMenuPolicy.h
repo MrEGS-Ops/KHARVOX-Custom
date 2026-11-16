@@ -255,6 +255,62 @@ inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
         }
     }
 }
+// The public Stats panel treats the miniature HUD as a two-dimensional
+// stick-navigable grid; its toggle remains directly above the grid.
+// Each thumbstick deflection is one cell. A new press requires recentering.
+inline void vrStatsNavigateStick(VrMenuNavigation& nav,float x,float y,
+    int& selectedIndex,int savedCell) noexcept {
+    const bool xEdge=std::isfinite(x)&&std::abs(x)>.75f
+        &&nav.horizontalCentered;
+    const bool yEdge=std::isfinite(y)&&std::abs(y)>.75f
+        &&nav.verticalCentered;
+    if(std::isfinite(x)&&std::abs(x)<.3f)nav.horizontalCentered=true;
+    if(std::isfinite(y)&&std::abs(y)<.3f)nav.verticalCentered=true;
+    if(xEdge){
+        nav.horizontalCentered=false;nav.usingStick=true;
+        if(!nav.settingsColumn){
+            if(x>0.f){nav.settingsColumn=true;nav.actionIndex=0;}
+        }else if(nav.actionIndex==0){
+            if(x<0.f)nav.settingsColumn=false;
+            else nav.actionIndex=1+(statsGridCellSelectable(savedCell)
+                ?savedCell:0);
+        }else{
+            const int old=nav.actionIndex-1;
+            const int row=old/kStatsGridColumns;
+            int col=old%kStatsGridColumns;
+            const int step=x>0.f?1:-1;
+            while(col+step>=0&&col+step<kStatsGridColumns){
+                col+=step;
+                const int candidate=row*kStatsGridColumns+col;
+                if(statsGridCellSelectable(candidate)){
+                    nav.actionIndex=1+candidate;break;
+                }
+            }
+        }
+    }
+    if(yEdge){
+        nav.verticalCentered=false;nav.usingStick=true;
+        if(!nav.settingsColumn){
+            selectedIndex=(selectedIndex+(y<0.f?1:2))%3;
+            nav.actionIndex=0;
+        }else if(nav.actionIndex==0){
+            if(y<0.f)nav.actionIndex=1+(statsGridCellSelectable(savedCell)
+                ?savedCell:0);
+        }else{
+            const int old=nav.actionIndex-1,col=old%kStatsGridColumns;
+            int row=old/kStatsGridColumns;
+            const int step=y<0.f?1:-1;
+            if(step<0&&row==0)nav.actionIndex=0;
+            else while(row+step>=0&&row+step<kStatsGridRows){
+                row+=step;
+                const int candidate=row*kStatsGridColumns+col;
+                if(statsGridCellSelectable(candidate)){
+                    nav.actionIndex=1+candidate;break;
+                }
+            }
+        }
+    }
+}
 inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
     int selectedRow,int count,int actionCount,bool toggleable=true) noexcept {
     if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
