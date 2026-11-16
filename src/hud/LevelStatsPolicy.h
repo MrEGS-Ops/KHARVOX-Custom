@@ -67,6 +67,16 @@ inline std::uint64_t levelBestFor(const LevelRecords& records,
     const auto it=records.bestMs.find(key);
     return it==records.bestMs.end()?0:it->second;
 }
+// An explicit timed attempt must reset even if the same campaign mission
+// is selected again (e.g. retrying to beat the existing personal best).
+// Saved LevelRecords are separate and never affected by a new attempt.
+inline bool levelProgressStartAttempt(LevelProgress& progress,
+    const std::string& verifiedKey) {
+    if(!levelRecordKeyValid(verifiedKey))return false;
+    progress=LevelProgress{};
+    progress.verifiedMapKey=verifiedKey;
+    return true;
+}
 inline bool levelProgressSetMap(LevelProgress& progress,
     const std::string& verifiedKey) {
     if(!levelRecordKeyValid(verifiedKey))return false;
