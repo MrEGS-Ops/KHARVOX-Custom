@@ -62,6 +62,10 @@ RIPSHIFT VR is an unofficial gameplay enhancement and is not affiliated with Cac
 
 **Requires DOOM (2016) and the original KHARVOX VR mod.**
 
+## Compatibility
+
+Designed and tested with **KHARVOX v1.1.1**. Compatibility with earlier or later versions has not been tested and is not guaranteed.
+
 ## Install RIPSHIFT VR
 
 1. Install a legitimate Windows copy of **DOOM (2016)** and the original [KHARVOX by CactusVRStudios](https://github.com/CactusVRStudios/KHARVOX).
