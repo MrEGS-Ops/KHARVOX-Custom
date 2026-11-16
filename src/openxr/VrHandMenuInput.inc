@@ -578,6 +578,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
             m.page=kharvox::VrMenuPage::Mods;
+            // A pending timed-run confirmation must never survive closing
+            // and reopening the menu, even inside its six-second window.
+            m.pendingStatsReset=-1;
+            m.confirmDeathResetUntilMs=0;
             m.recoilReturnToDev=false;
             m.selectedMod=kharvox::VrLiveMod::WeaponGrip;
             m.selectedRow=0;
