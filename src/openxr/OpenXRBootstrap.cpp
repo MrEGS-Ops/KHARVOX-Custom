@@ -3849,9 +3849,8 @@ void updateGameplayActions(XrTime displayTime){
     // Retained custom controller layout. Behind-Head Weapon Wheel can
     // replace the physical weapon-select control entirely, freeing the old
     // wheel control for dash without changing jump/double-jump.
-    const bool physicalAButtonDown=readBooleanAction(s.doomCrouch);
     const bool rightStickDownGesture=turnActive
-        &&kharvox::manualStickCrouchDirection(
+        &&kharvox::vrRightStickDownGesture(
             s.rightStick.x,rightStickY); // optional dash, NEVER crouch
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
@@ -4957,15 +4956,16 @@ void updateGameplayActions(XrTime displayTime){
             log("[INPUT] jump request -> release A-button manual crouch");
         }
         const bool desiredCrouch=gameplay
-            &&(s.crouchToggleActive||s.physicalCrouchActive);
+            &&kharvox::vrCombinedCrouchDesired(
+                s.crouchToggleActive,s.physicalCrouchActive);
         if(gameplay&&desiredCrouch!=s.crouchNativeDesired){
             s.crouchNativeDesired=desiredCrouch;
             // A rapid opposite transition while the 90ms pulse is active
             // must wait for an OFF gap before generating another native edge.
             s.crouchNativePulseQueued=!s.crouchNativePulseQueued;
         }
-        if(gameplay&&s.crouchNativePulseQueued
-            &&displayTime>=s.crouchNativePulseUntil+20000000){
+        if(gameplay&&kharvox::vrCrouchPulseReady(
+                s.crouchNativePulseQueued,displayTime,s.crouchNativePulseUntil)){
             s.crouchNativePulseUntil=displayTime+90000000;
             s.crouchNativePulseQueued=false;
         }
