@@ -3989,7 +3989,7 @@ void updateGameplayActions(XrTime displayTime){
             if(KharvoxCameraApplyDirectionalDash(
                     dashStick.x,dashStick.y)){
                 s.dashCooldownUntil=displayTime+650000000;
-                log(std::string("[DASH] right stick DOWN -> horizontal dash transformedStick=("
+                log(std::string("[DASH] right stick DOWN -> horizontal dash transformedStick=(")
                     +std::to_string(dashStick.x)+","
                     +std::to_string(dashStick.y)+")");
             }
