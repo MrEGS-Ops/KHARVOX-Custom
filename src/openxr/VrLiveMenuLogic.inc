@@ -404,18 +404,48 @@ bool handleVrStatsMenuAction(int action,bool dev){
     const int item=menu.statsSelected;
     if(item<0||item>2)return false;
     if(dev){
-        if(action!=130)return false;
+        // 130 resets the selected statistic. 131 is the explicit RESET ALL
+        // button. Both require a fresh second press within six seconds.
+        // The reset never calls vrLiveSave or modifies display switches,
+        // saved corners, weapon profiles or any other user preferences.
+        if(action!=130&&action!=131)return false;
+        const int resetKey=action==131?3:item;
         const auto now=GetTickCount64();
-        if(menu.pendingStatsReset!=item||!menu.confirmDeathResetUntilMs
+        if(menu.pendingStatsReset!=resetKey||!menu.confirmDeathResetUntilMs
             ||now>menu.confirmDeathResetUntilMs){
-            menu.pendingStatsReset=item;
+            menu.pendingStatsReset=resetKey;
             menu.confirmDeathResetUntilMs=now+6000ULL;
-            menu.message="Press same RESET again within 6 seconds to confirm.";
+            menu.message=action==131
+                ?"Press RESET ALL again within 6 seconds to confirm."
+                :"Press the same RESET again within 6 seconds to confirm.";
             return true;
         }
         menu.pendingStatsReset=-1;
         menu.confirmDeathResetUntilMs=0;
-        if(item==0){
+        if(action==131){
+            // Each persistent counter writes its own file. If either save
+            // fails, keep DEV open and visibly report the partial failure.
+            // Only on success do we clear session deaths and close the menu.
+            const bool deathsReset=KharvoxHudResetCampaignDeathCount();
+            const bool timerReset=resetCampaignRunTimeSaved();
+            if(!deathsReset||!timerReset){
+                menu.message="RESET ALL failed to save "
+                    +std::string(!deathsReset?"lifetime deaths":"campaign timer")
+                    +". DEV remains open; check UserData.";
+                return true;
+            }
+            KharvoxHudResetCampaignSessionDeaths();
+            menu.message="All statistics reset; display settings preserved.";
+            menu.mode=kharvox::VrHandMenuMode::Closed;
+            menu.navigation={};
+            menu.liveCapture=kharvox::VrLiveCapture::None;
+            menu.consumeMenuFaceUntilRelease=true;
+            menu.consumeMenuTriggerUntilRelease=true;
+            menu.hovered=-1;
+            menu.cursorX=menu.cursorY=-1.f;
+            log("[STATS] RESET ALL confirmed, saved and closed MOD MENU; "
+                "all display toggles and corner positions preserved");
+        }else if(item==0){
             menu.message=KharvoxHudResetCampaignDeathCount()
                 ?"Lifetime campaign deaths reset to 0."
                 :"Failed to save lifetime death reset.";
@@ -438,27 +468,11 @@ bool handleVrStatsMenuAction(int action,bool dev){
         changed=kharvox::vrStatsSetCorner(s.vrLiveSettings,item,action-130);
     }else return false;
     if(changed){
-        // New selection wins: a previously visible display displaced by a
-        // corner collision (or Death Statistics' exclusivity) is turned OFF.
-        // Save FIRST; only then close. Failed saves restore state and leave
-        // the configuration open so the player can retry.
-        const bool displaced=kharvox::vrStatsDisplacedDisplay(
-            old,s.vrLiveSettings,item);
+        // Position changes and display replacement do NOT close the menu.
+        // The only Stats action that closes it is confirmed DEV RESET ALL.
         if(!saveVrLiveSettings())s.vrLiveSettings=old;
-        else if(displaced){
-            menu.message="Position saved. Previous display switched OFF.";
-            menu.mode=kharvox::VrHandMenuMode::Closed;
-            menu.navigation={};
-            menu.liveCapture=kharvox::VrLiveCapture::None;
-            menu.consumeMenuFaceUntilRelease=true;
-            menu.consumeMenuTriggerUntilRelease=true;
-            menu.hovered=-1;
-            menu.cursorX=menu.cursorY=-1.f;
-            log("[STATS] conflicting visible display disabled; mod menu closed");
-        }else{
-            menu.message=std::string(kharvox::vrStatsLabel(item))
-                +" saved. Choose another setting or press B to close.";
-        }
+        else menu.message=std::string(kharvox::vrStatsLabel(item))
+            +" saved. Conflicting display switched OFF if occupied.";
     }
     return true;
 }
