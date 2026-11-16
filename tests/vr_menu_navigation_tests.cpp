@@ -96,6 +96,65 @@ int main(){
     assert(!campaignStatsCanDraw(true,false,false,false));
     counterSettings.deathCounterCorner=4;
     assert(!vrLiveValidSettings(counterSettings));
+    // Fine HUD placement: 120 logical slots, with four central cells
+    // deliberately unavailable to keep the centre of view clear.
+    assert(kStatsGridColumns==12&&kStatsGridRows==10);
+    assert(statsGridCellFromPosition(0)==0);
+    assert(statsGridCellFromPosition(1)==11);
+    assert(statsGridCellFromPosition(2)==108);
+    assert(statsGridCellFromPosition(3)==119);
+    assert(statsGridCellFromPosition(statsPositionFromGridCell(107))==107);
+    assert(statsPositionFromGridCell(53)==-1);
+    assert(statsPositionFromGridCell(66)==-1);
+    assert(statsMenuGridCellAt(kStatsMenuGridX+4,kStatsMenuGridY+4)==0);
+    assert(statsMenuGridCellAt(kStatsMenuGridX+5*kStatsMenuGridCellWidth+4,
+        kStatsMenuGridY+4*kStatsMenuGridCellHeight+4)==-1);
+    assert(statsPanelX(1,960,226)==702); // legacy untouched
+    assert(statsPanelY(1,720,60)==28);
+    assert(statsPanelX(statsPositionFromGridCell(11),960,316)==612);
+    assert(statsPanelY(statsPositionFromGridCell(12),720,60)>88);
+    VrLiveSettings fineGrid{};
+    assert(vrStatsSetCorner(fineGrid,1,statsPositionFromGridCell(0)));
+    assert(vrStatsSetEnabled(fineGrid,1,true));
+    assert(vrStatsSetCorner(fineGrid,2,statsPositionFromGridCell(12)));
+    assert(vrStatsSetEnabled(fineGrid,2,true));
+    // Separate vertical cells allow exact left-edge alignment and stacking.
+    assert(fineGrid.deathStatisticsEnabled&&fineGrid.campaignTimerEnabled);
+    assert(statsPanelX(fineGrid.deathStatisticsCorner,960,316)
+        ==statsPanelX(fineGrid.campaignTimerCorner,960,226));
+    assert(!vrStatsPositionsOverlap(1,fineGrid.deathStatisticsCorner,
+        2,fineGrid.campaignTimerCorner));
+    // A nearby horizontal cell still overlaps physically, so the newly
+    // selected display replaces the old one rather than drawing over it.
+    assert(vrStatsSetCorner(fineGrid,2,statsPositionFromGridCell(1)));
+    assert(fineGrid.campaignTimerEnabled&&!fineGrid.deathStatisticsEnabled);
+    assert(!vrStatsSetCorner(fineGrid,2,statsPositionFromGridCell(53)));
+    assert(vrLiveValidSettings(fineGrid));
+    VrMenuNavigation fineNav{};
+    int fineSelected=0;
+    vrStatsNavigateStick(fineNav,.95f,0.f,fineSelected,0);
+    assert(fineNav.settingsColumn&&fineNav.actionIndex==0);
+    vrStatsNavigateStick(fineNav,0.f,0.f,fineSelected,0);
+    vrStatsNavigateStick(fineNav,0.f,-.95f,fineSelected,0);
+    assert(fineNav.actionIndex==1);
+    vrStatsNavigateStick(fineNav,0.f,0.f,fineSelected,0);
+    vrStatsNavigateStick(fineNav,0.f,-.95f,fineSelected,0);
+    assert(fineNav.actionIndex==1+kStatsGridColumns);
+    fineNav.actionIndex=1+52; // row 4, column 4, next two cells blocked
+    fineNav.horizontalCentered=true;
+    vrStatsNavigateStick(fineNav,.95f,0.f,fineSelected,0);
+    assert(fineNav.actionIndex==1+55);
+    // Saved fine-grid cells round-trip using the same schema 1 UserData
+    // format, while legacy integer corner preferences still remain readable.
+    const auto fineFile=std::filesystem::temp_directory_path()
+        /"ripshift_stats_grid_roundtrip.cfg";
+    assert(vrLiveSave(fineFile.string(),fineGrid));
+    VrLiveSettings loadedFine{};
+    assert(vrLiveLoad(fineFile.string(),loadedFine));
+    assert(loadedFine.campaignTimerCorner==fineGrid.campaignTimerCorner);
+    assert(loadedFine.campaignTimerEnabled==fineGrid.campaignTimerEnabled);
+    std::error_code fineFileError;
+    std::filesystem::remove(fineFile,fineFileError);
     
     int selected=0;
     // The hidden DEV submenu has a distinct page and only diagnostic
