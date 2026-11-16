@@ -64,7 +64,6 @@ void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
     bool requestNewReplay, bool superShotgunActiveAndSafe);
 // Reapply native Glory Kill Highlight selection after DOOM reloads campaign settings.
 // Does not affect Glory Kill availability, animation or timing.
-void KharvoxCameraEnforceGloryKillHighlightSetting();
 // Native DOOM tutorial setting only. Never force-close tutorial or automap screens.
 void KharvoxCameraEnforceTutorialsDisabled();
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
