@@ -127,6 +127,23 @@ int main(){
     vrStatsNavigateStick(statMenuNavigation,0.f,0.f,statSelection,0,8);
     vrStatsNavigateStick(statMenuNavigation,0.f,-.9f,statSelection,0,8);
     assert(statSelection==0);
+    // Timed runs arm only on the first press. Same mission + 2nd
+    // confirmation within six seconds closes the menu and resets the timer.
+    VrHandMenuState timedStart{};
+    assert(!vrLevelStartPending(timedStart,2,1000));
+    assert(!vrConfirmLevelStart(timedStart,2,1000));
+    assert(vrLevelStartPending(timedStart,2,1001));
+    assert(!vrLevelStartPending(timedStart,3,1001));
+    assert(vrConfirmLevelStart(timedStart,2,1001));
+    assert(timedStart.pendingStatsReset==-1);
+    assert(!vrConfirmLevelStart(timedStart,2,2000));
+    assert(!vrConfirmLevelStart(timedStart,2,9001)); // expiry rearms
+    assert(vrConfirmLevelStart(timedStart,2,9002));
+    assert(!vrConfirmLevelStart(timedStart,0,12000));
+    assert(!vrConfirmLevelStart(timedStart,1,12001)); // mission change
+    assert(vrConfirmLevelStart(timedStart,1,12002));
+    assert(!vrConfirmLevelStart(timedStart,-1,12003));
+    assert(!vrConfirmLevelStart(timedStart,13,12003));
     assert(!vrStatsSetCorner(levelWidgets,4,-2));
     assert(!vrStatsSetEnabled(levelWidgets,7,true));
     // Level timing/deaths survive checkpoint-generation changes.
@@ -143,6 +160,18 @@ int main(){
     levelProgressAdvance(progression,true,3000);
     levelProgressAdvance(progression,true,3030);
     assert(progression.time.elapsedMs==280);
+    // Retrying the exact same map resets live attempt counters without
+    // destroying its existing PB; do not rely on 'different key' semantics.
+    LevelProgress retry{};
+    assert(levelProgressStartAttempt(retry,"campaign/01"));
+    levelProgressAdvance(retry,true,100);
+    levelProgressAdvance(retry,true,200);
+    levelProgressDeath(retry);
+    assert(retry.time.elapsedMs==100&&retry.deaths==1);
+    assert(levelProgressStartAttempt(retry,"campaign/01"));
+    assert(retry.verifiedMapKey=="campaign/01"
+        &&retry.time.elapsedMs==0&&retry.deaths==0);
+    assert(!levelProgressStartAttempt(retry,"not a valid map"));
     assert(levelProgressComplete(progression,bests,4000));
     assert(progression.completed&&progression.deaths==2);
     assert(levelBestFor(bests,"maps/game/uem1")==280);
