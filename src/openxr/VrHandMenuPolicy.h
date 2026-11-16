@@ -547,6 +547,7 @@ struct VrHandMenuState {
     int statsSelected{}; // selected Stats list row, independent from Mods
     int statsScroll{}; // same 10-row left-list viewport as main Mod Menu
     int recordSelected{},recordsScroll{};
+    bool recordSortDeaths{}; // TIME or DEATHS ranking; no duplicate counters
     int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
     bool autoSelectingWeapon{};
