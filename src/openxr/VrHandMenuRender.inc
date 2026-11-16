@@ -482,7 +482,7 @@ void paintVrHandMenu() {
             :"RIPSHIFT VR / LEVEL RECORDS",white);
         SelectObject(dc,smallFont);
         write(40,100,dev?"SELECT RECORDS TO RESET":"PERSONAL BEST TIMES",muted);
-        const int count=dev?2:static_cast<int>(s.levelRecords.bestMs.size());
+        const int count=dev?2:static_cast<int>(kharvox::kCampaignMissions.size());
         const int chosen=std::clamp(m.recordSelected,0,std::max(0,count-1));
         for(int shown=0;shown<10;++shown){
             const int i=shown+m.recordsScroll;
@@ -497,10 +497,10 @@ void paintVrHandMenu() {
                 write(55,y+10,i==0?"Current Level Record"
                     :"All Level Records",white);
             }else{
-                int n{};
-                for(const auto& entry:s.levelRecords.bestMs){
-                    if(n++==i){write(55,y+10,entry.first,white);break;}
-                }
+                const auto& mission=kharvox::kCampaignMissions[i];
+                const bool current=s.levelProgress.verifiedMapKey==mission.key;
+                write(55,y+10,mission.title,current?RGB(84,233,214):white);
+                if(current)write(439,y+10,"*",RGB(255,207,66));
             }
         }
         fill(797,16,129,57,m.hovered==95
@@ -524,22 +524,22 @@ void paintVrHandMenu() {
             write(538,339,"Does not reset timers or death counters.",muted);
             write(538,383,"HUD switches and positions stay unchanged.",muted);
             write(538,437,"Two presses required; remains in DEV.",RGB(84,233,214));
-        }else if(!count){
-            write(538,216,"NO LEVEL RECORDS SAVED",muted);
-            write(538,265,"Records are saved after verified",muted);
-            write(538,302,"successful level completions.",muted);
         }else{
-            int n{};
-            for(const auto& entry:s.levelRecords.bestMs){
-                if(n++==chosen){
-                    write(538,216,entry.first,white);
-                    write(538,283,kharvox::campaignRunTimeText(entry.second),
-                        RGB(255,207,66));
-                    break;
-                }
-            }
-            write(538,374,"Persistent best completion time.",muted);
-            write(538,415,"DEV > Level Records / Reset",muted);
+            const auto& mission=kharvox::kCampaignMissions[chosen];
+            const auto best=kharvox::levelBestFor(s.levelRecords,mission.key);
+            const bool current=s.levelProgress.verifiedMapKey==mission.key;
+            write(538,170,mission.title,white);
+            write(538,221,"BEST: "+(best
+                ?kharvox::campaignRunTimeText(best):std::string("--:--:--")),
+                best?RGB(255,207,66):muted);
+            fill(531,310,384,58,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                ?RGB(52,83,99):RGB(39,49,63));
+            write(550,327,current?"CURRENT LEVEL SELECTED"
+                :"TRACK THIS LEVEL",current?RGB(84,233,214):white);
+            write(538,409,"Select your mission at the level start.",muted);
+            write(538,448,"Records save only completed runs.",muted);
+            write(538,489,"Map auto-detection is not yet verified.",muted);
         }
         write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
         write(40,676,m.message.substr(0,105),RGB(84,233,214));
