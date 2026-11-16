@@ -729,10 +729,17 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
             const int count=dev?2:static_cast<int>(
                 kharvox::kCampaignMissions.size());
+            const int previousRecord=m.recordSelected;
             kharvox::vrMenuNavigateStick(m.navigation,
                 s.leftStick.x,s.leftStick.y,
                 count,m.recordSelected,1);
             m.recordSelected=std::clamp(m.recordSelected,0,std::max(0,count-1));
+            if(previousRecord!=m.recordSelected){
+                // A confirmation belongs to one exact mission/reset choice.
+                // Scrolling to another row, even briefly, cancels it.
+                m.pendingStatsReset=-1;
+                m.confirmDeathResetUntilMs=0;
+            }
             m.recordsScroll=std::clamp(m.recordsScroll,0,std::max(0,count-10));
             if(m.recordSelected<m.recordsScroll)m.recordsScroll=m.recordSelected;
             if(m.recordSelected>=m.recordsScroll+10)
