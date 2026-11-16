@@ -485,7 +485,7 @@ struct State {
     kharvox::LevelRecords levelRecords{};
     std::uint64_t observedSessionDeaths{};
     bool levelRecordsLoaded{};
-    std::uint64_t recentLevelBestTimeMs{},recentLevelBestGoldUntilMs{};
+    std::string lastCompletedMissionKey; // only for LAST LEVEL BEST HUD readout
     std::uint64_t campaignRunTimeLastSavedMs{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3397,32 +3397,34 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
     }
     s.observedSessionDeaths=deaths; // handles an explicit DEV session reset
     const bool completedMenu=KharvoxHudEndOfLevelMenuActive();
-    if(completedMenu&&!progress.endMenuWasVisible&&!progress.completed){
-        const bool bestChanged=kharvox::levelProgressComplete(
-            progress,s.levelRecords,now);
+    if(completedMenu&&!progress.endMenuWasVisible&&progress.armed){
+        SYSTEMTIME local{};GetLocalTime(&local);
+        const auto date=std::uint32_t(local.wYear)*10000u
+            +std::uint32_t(local.wMonth)*100u+std::uint32_t(local.wDay);
+        const bool ranked=kharvox::levelProgressComplete(
+            progress,s.levelRecords,now,date);
         progress.generationAtCompletion=KharvoxCameraLevelTransitionGeneration();
-        if(bestChanged){
+        // The end-of-level results screen owns the achievement banner.
+        // Keep a safe read-only fallback for the last mission's best once
+        // the active record is disarmed, without retaining its timer identity.
+        if(kharvox::levelRecordKeyValid(progress.verifiedMapKey))
+            s.lastCompletedMissionKey=progress.verifiedMapKey;
+        if(ranked){
             if(!kharvox::levelRecordsSave(kharvox::runtimePathA(
                 "level_best_records.cfg"),s.levelRecords))
-                log("[STATS] failed to persist level best; retained in memory");
-            else log("[STATS] validated new level best saved");
+                log("[STATS] failed to persist ranked level run; retained in memory");
+            else log("[STATS] ranked level run saved");
         }
+        log("[LEVEL-STATS] end-level results recorded; timer disarmed; "
+            "new manual confirmation required for the next attempt");
     }
     progress.endMenuWasVisible=completedMenu;
-    // The *only* generation-driven reset is AFTER a confirmed native
-    // end-of-level screen. Checkpoint loads during the same level do nothing.
+    // A checkpoint reload cannot change the manually selected mission.
+    // Once a completed mission advances or restarts, drop its identity and
+    // remain DISARMED until the player confirms a new timed attempt.
     if(progress.awaitingNextLevel&&!completedMenu&&gameplay
-        &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration()){
-        const bool announce=progress.bestUpdated;
-        const auto completedBest=progress.completedTimeMs;
+        &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration())
         kharvox::levelProgressNextUnidentified(progress);
-        // Show the gold result on returning to playable VR, not behind the
-        // end-of-level/loading screens where the player cannot see it.
-        if(announce){
-            s.recentLevelBestTimeMs=completedBest;
-            s.recentLevelBestGoldUntilMs=now+kharvox::kLevelBestGoldMs;
-        }
-    }
     kharvox::levelProgressAdvance(progress,gameplay,now);
 }
 void serviceCampaignRunTime(bool gameplay){
