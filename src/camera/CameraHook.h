@@ -77,6 +77,10 @@ void KharvoxCameraEnforceTutorialsDisabled();
 void KharvoxCameraSetGloryKillHighlightEnabled(bool enabled);
 bool KharvoxCameraGloryKillHighlightRequested();
 int KharvoxCameraGloryKillHighlightStatus();
+// READ ONLY: -1 = cannot verify, 0 = native OFF, 1 = native ON.
+// Never report a saved DOOMConfig value as the game's live setting.
+int KharvoxCameraNativeGloryKillHighlightValue();
+int KharvoxCameraNativeTutorialsValue();
 void KharvoxCameraSetBoxingGuardSlowmo(bool active);
 void KharvoxCameraResetCombatTimeDilation();
 bool KharvoxCameraLedgeTransitionActive();
