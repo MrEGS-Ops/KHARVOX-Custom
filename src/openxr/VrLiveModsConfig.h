@@ -105,6 +105,8 @@ float punchSpeedMetersPerSec{2.8f};
     int deathStatisticsCorner{1};
     bool campaignTimerEnabled{};
     int campaignTimerCorner{0};
+    bool sessionTimerEnabled{}; // session elapsed is NOT persisted, only this display preference
+    int sessionTimerCorner{2};
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
@@ -130,26 +132,36 @@ inline bool vrLiveValidShift(VrLivePoint p) {
     return std::isfinite(p.x)&&std::isfinite(p.y)&&std::isfinite(p.z)
         &&std::abs(p.x)<=.7f&&std::abs(p.y)<=.9f&&std::abs(p.z)<=1.f;
 }
-// Three independent HUD choices. Death Counter and Death Statistics are
+// Four independently positioned HUD choices. Death Counter and Death Statistics are
 // mutually exclusive; a new selection evicts overlapping visible displays.
 // Old 0..3 corners load unchanged; fine placement uses 12 x 10 cells.
 // Hidden counters still collect deaths unconditionally.
 inline bool vrStatsEnabled(const VrLiveSettings& s,int item) noexcept {
-    return item==0?s.deathCounterEnabled
-        :item==1?s.deathStatisticsEnabled:s.campaignTimerEnabled;
+    if(item==0)return s.deathCounterEnabled;
+    if(item==1)return s.deathStatisticsEnabled;
+    if(item==2)return s.campaignTimerEnabled;
+    return item==3?s.sessionTimerEnabled:false;
 }
 inline int vrStatsCorner(const VrLiveSettings& s,int item) noexcept {
-    return item==0?s.deathCounterCorner
-        :item==1?s.deathStatisticsCorner:s.campaignTimerCorner;
+    if(item==0)return s.deathCounterCorner;
+    if(item==1)return s.deathStatisticsCorner;
+    if(item==2)return s.campaignTimerCorner;
+    return item==3?s.sessionTimerCorner:-1;
 }
 inline constexpr const char* vrStatsLabel(int item) noexcept {
-    return item==0?"Death Counter":item==1?"Death Statistics":"Campaign Run Timer";
+    switch(item){
+        case 0:return "Death Counter";
+        case 1:return "Death Statistics";
+        case 2:return "Campaign Run Timer";
+        case 3:return "Session Timer";
+        default:return "Unknown Stat";
+    }
 }
 // Use the actual HUD panel rectangles, not only a cell ID, to prevent
 // closely-spaced positions from accidentally drawing over each other.
 inline constexpr bool vrStatsPositionsOverlap(int first,int firstPosition,
     int second,int secondPosition) noexcept {
-    if(first<0||first>2||second<0||second>2
+    if(first<0||first>3||second<0||second>3
         ||!statsPositionValid(firstPosition)
         ||!statsPositionValid(secondPosition))return false;
     const int firstWidth=campaignStatsPanelWidth(first);
@@ -162,20 +174,22 @@ inline constexpr bool vrStatsPositionsOverlap(int first,int firstPosition,
         &&y1<y2+60&&y2<y1+60;
 }
 inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
-    if(item<0||item>2)return false;
+    if(item<0||item>3)return false;
     if(item==0)s.deathCounterEnabled=on;
     else if(item==1)s.deathStatisticsEnabled=on;
-    else s.campaignTimerEnabled=on;
+    else if(item==2)s.campaignTimerEnabled=on;
+    else s.sessionTimerEnabled=on;
     if(on){
         if(item==0)s.deathStatisticsEnabled=false;
         if(item==1)s.deathCounterEnabled=false;
         const int target=vrStatsCorner(s,item);
-        for(int other=0;other<3;++other)if(other!=item
+        for(int other=0;other<4;++other)if(other!=item
             &&vrStatsEnabled(s,other)
             &&vrStatsPositionsOverlap(item,target,other,vrStatsCorner(s,other))){
             if(other==0)s.deathCounterEnabled=false;
             else if(other==1)s.deathStatisticsEnabled=false;
-            else s.campaignTimerEnabled=false;
+            else if(other==2)s.campaignTimerEnabled=false;
+            else s.sessionTimerEnabled=false;
         }
     }
     return true;
@@ -187,10 +201,11 @@ inline constexpr bool vrStatsMenuShouldClose(bool dev,int action,
     return dev&&action==131&&persistedSuccessfully;
 }
 inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
-    if(item<0||item>2||!statsPositionValid(corner))return false;
+    if(item<0||item>3||!statsPositionValid(corner))return false;
     if(item==0)s.deathCounterCorner=corner;
     else if(item==1)s.deathStatisticsCorner=corner;
-    else s.campaignTimerCorner=corner;
+    else if(item==2)s.campaignTimerCorner=corner;
+    else s.sessionTimerCorner=corner;
     // Assigning a position to a hidden widget must not evict anything.
     if(vrStatsEnabled(s,item))vrStatsSetEnabled(s,item,true);
     return true;
@@ -240,8 +255,9 @@ inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     if(!statsPositionValid(s.deathCounterCorner))return false;
     if(!statsPositionValid(s.deathStatisticsCorner))return false;
     if(!statsPositionValid(s.campaignTimerCorner))return false;
+    if(!statsPositionValid(s.sessionTimerCorner))return false;
     if(s.deathCounterEnabled&&s.deathStatisticsEnabled)return false;
-    for(int i=0;i<3;++i)for(int j=i+1;j<3;++j)
+    for(int i=0;i<4;++i)for(int j=i+1;j<4;++j)
         if(vrStatsEnabled(s,i)&&vrStatsEnabled(s,j)
             &&vrStatsPositionsOverlap(i,vrStatsCorner(s,i),
                 j,vrStatsCorner(s,j)))return false;
@@ -366,16 +382,20 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
         }else if(name=="death_counter_corner"){
             std::string extra;
             if(!(row>>next.deathCounterCorner)||(row>>extra))return false;
-        }else if(name=="death_statistics_enabled"||name=="campaign_timer_enabled"){
+        }else if(name=="death_statistics_enabled"||name=="campaign_timer_enabled"
+            ||name=="session_timer_enabled"){
             int enabled{};std::string extra;
             if(!(row>>enabled)||(enabled!=0&&enabled!=1)||(row>>extra))return false;
-            (name=="death_statistics_enabled"
-                ?next.deathStatisticsEnabled:next.campaignTimerEnabled)=enabled!=0;
-        }else if(name=="death_statistics_corner"||name=="campaign_timer_corner"){
+            (name=="death_statistics_enabled"?next.deathStatisticsEnabled
+                :name=="campaign_timer_enabled"?next.campaignTimerEnabled
+                :next.sessionTimerEnabled)=enabled!=0;
+        }else if(name=="death_statistics_corner"||name=="campaign_timer_corner"
+            ||name=="session_timer_corner"){
             int corner{};std::string extra;
             if(!(row>>corner)||(row>>extra))return false;
-            (name=="death_statistics_corner"
-                ?next.deathStatisticsCorner:next.campaignTimerCorner)=corner;
+            (name=="death_statistics_corner"?next.deathStatisticsCorner
+                :name=="campaign_timer_corner"?next.campaignTimerCorner
+                :next.sessionTimerCorner)=corner;
         }else return false;
     }
     if(f.bad()||schema!=1)return false;
@@ -384,6 +404,7 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
     if(next.deathStatisticsEnabled)vrStatsSetEnabled(next,1,true);
     else if(next.deathCounterEnabled)vrStatsSetEnabled(next,0,true);
     if(next.campaignTimerEnabled)vrStatsSetEnabled(next,2,true);
+    if(next.sessionTimerEnabled)vrStatsSetEnabled(next,3,true);
     if(!vrLiveValidSettings(next))return false;
     out=next;
     return true;
@@ -420,7 +441,9 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
        <<"death_statistics_enabled "<<(s.deathStatisticsEnabled?1:0)<<'\n'
        <<"death_statistics_corner "<<s.deathStatisticsCorner<<'\n'
        <<"campaign_timer_enabled "<<(s.campaignTimerEnabled?1:0)<<'\n'
-       <<"campaign_timer_corner "<<s.campaignTimerCorner<<'\n';
+       <<"campaign_timer_corner "<<s.campaignTimerCorner<<'\n'
+       <<"session_timer_enabled "<<(s.sessionTimerEnabled?1:0)<<'\n'
+       <<"session_timer_corner "<<s.sessionTimerCorner<<'\n';
     out.flush();
     if(!out){out.close();fs::remove(tmp,ec);return false;}
     out.close();
