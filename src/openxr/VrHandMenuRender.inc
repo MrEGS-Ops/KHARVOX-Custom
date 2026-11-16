@@ -87,24 +87,26 @@ void paintVrHandMenu() {
     const bool gameplayWelcomeView=!disconnectView&&!firstTimeSetupView
         &&s.gameplayWelcomeNotice.visible
         &&m.mode==kharvox::VrHandMenuMode::Closed;
-    const bool deathCounterView=kharvox::deathCounterShouldDraw(
+    const bool statsGameplay=KharvoxCameraGameplayActive()
+        &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+        &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
+        &&!KharvoxHudEndOfLevelMenuActive()
+        &&!s.quadMode&&!s.centeredQuadTransitionPending
+        &&!s.immersiveCinematicActive;
+    const std::array<bool,3> statsVisible{
         s.vrLiveSettings.deathCounterEnabled,
-        KharvoxCameraGameplayActive()&&KharvoxCameraWorldActive()
-            &&!KharvoxCameraCutsceneActive()
-            &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
-            &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
-            &&!KharvoxHudEndOfLevelMenuActive()
-            &&!s.quadMode&&!s.centeredQuadTransitionPending
-            &&!s.immersiveCinematicActive,
-        m.mode==kharvox::VrHandMenuMode::Closed,
-        firstTimeSetupView||gameplayWelcomeView,disconnectView);
-    // The death counter uses only this small rectangle. All other pixels
-    // remain transparent; the full VR menu is never shown behind it.
-    constexpr int counterW=226,counterH=60;
-    const int counterX=kharvox::deathCounterPanelX(
-        s.vrLiveSettings.deathCounterCorner,vrMenuW,counterW);
-    const int counterY=kharvox::deathCounterPanelY(
-        s.vrLiveSettings.deathCounterCorner,vrMenuH,counterH);
+        s.vrLiveSettings.deathStatisticsEnabled,
+        s.vrLiveSettings.campaignTimerEnabled};
+    const std::array<int,3> statsCorners{
+        s.vrLiveSettings.deathCounterCorner,
+        s.vrLiveSettings.deathStatisticsCorner,
+        s.vrLiveSettings.campaignTimerCorner};
+    const bool statsLiveView=kharvox::campaignStatsCanDraw(
+        statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
+        firstTimeSetupView||gameplayWelcomeView,disconnectView)
+        &&(statsVisible[0]||statsVisible[1]||statsVisible[2]);
+    constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
     constexpr int welcomeX=95,welcomeY=145,welcomeW=770,welcomeH=435;
@@ -128,9 +130,14 @@ void paintVrHandMenu() {
         fill(welcomeX,welcomeY,7,welcomeH,RGB(55,209,214));
         fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
         fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
-    }else if(deathCounterView){
-        fill(counterX,counterY,counterW,counterH,RGB(19,23,30));
-        fill(counterX,counterY,4,counterH,RGB(210,69,76));
+    }else if(statsLiveView){
+        for(int i=0;i<3;++i)if(statsVisible[i]){
+            const int width=kharvox::campaignStatsPanelWidth(i);
+            const int x=kharvox::deathCounterPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::deathCounterPanelY(statsCorners[i],vrMenuH,counterH);
+            fill(x,y,width,counterH,RGB(19,23,30));
+            fill(x,y,4,counterH,i==2?RGB(55,209,214):RGB(210,69,76));
+        }
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
@@ -211,14 +218,32 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(welcomeX+30,welcomeY+386,
             "This notice will only appear once.",muted);
-    }else if(deathCounterView){
-        SelectObject(dc,smallFont);
-        write(counterX+18,counterY+21,"DEATHS",muted);
-        SelectObject(dc,regular);
-        const auto deaths=std::to_string(KharvoxHudCampaignDeathCount());
-        const int digits=static_cast<int>(deaths.size());
-        write(counterX+counterW-20-14*digits,counterY+16,
-            deaths,RGB(235,92,99));
+    }else if(statsLiveView){
+        for(int i=0;i<3;++i)if(statsVisible[i]){
+            const int width=kharvox::campaignStatsPanelWidth(i);
+            const int x=kharvox::deathCounterPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::deathCounterPanelY(statsCorners[i],vrMenuH,counterH);
+            SelectObject(dc,smallFont);
+            if(i==0){
+                write(x+16,y+19,"DEATHS",muted);
+                SelectObject(dc,regular);
+                const auto deaths=std::to_string(KharvoxHudCampaignDeathCount());
+                const int digits=static_cast<int>(deaths.size());
+                write(x+width-18-14*digits,y+15,deaths,RGB(235,92,99));
+            }else if(i==1){
+                write(x+15,y+5,"DEATH STATISTICS",muted);
+                write(x+15,y+31,"SESSION "+
+                    std::to_string(KharvoxHudCampaignSessionDeaths())
+                    +"    TOTAL "+
+                    std::to_string(KharvoxHudCampaignDeathCount()),
+                    RGB(235,92,99));
+            }else{
+                write(x+16,y+5,"CAMPAIGN TIME",muted);
+                SelectObject(dc,regular);
+                write(x+16,y+28,kharvox::campaignRunTimeText(
+                    s.campaignRunTime.elapsedMs),RGB(84,233,214));
+            }
+        }
     }else if(calibrationView){
         write(39,155,"LIVE CALIBRATION",white);
         SelectObject(dc,regular);
@@ -428,6 +453,81 @@ void paintVrHandMenu() {
                 }
             }
         }
+    }else if(m.page==kharvox::VrMenuPage::Stats
+        ||m.page==kharvox::VrMenuPage::DevStats){
+        const bool dev=m.page==kharvox::VrMenuPage::DevStats;
+        SelectObject(dc,title);
+        write(38,24,dev?"RIPSHIFT VR / DEV / STATS RESET":"RIPSHIFT VR / STATS",white);
+        SelectObject(dc,smallFont);
+        write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
+        const int chosen=std::clamp(m.statsSelected,0,2);
+        for(int i=0;i<3;++i){
+            const int y=170+i*120;
+            const bool active=i==chosen;
+            fill(38,y,455,72,active?RGB(32,89,104):RGB(27,32,43));
+            if(active)fill(38,y,5,72,RGB(55,209,214));
+            SelectObject(dc,regular);
+            write(55,y+15,dev?(i==0?"Lifetime Deaths":
+                i==1?"Session Deaths":"Campaign Run Timer")
+                :kharvox::vrStatsLabel(i),white);
+            if(!dev){
+                SelectObject(dc,smallFont);
+                write(55,y+47,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                    ?"DISPLAY ON":"DISPLAY OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                        ?RGB(108,235,161):muted);
+            }
+        }
+        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
+        SelectObject(dc,smallFont);
+        write(815,30,"BACK",white);
+        SelectObject(dc,regular);
+        write(538,115,dev?"RESET OPTIONS":kharvox::vrStatsLabel(chosen),white);
+        if(dev){
+            const bool confirming=m.pendingStatsReset==chosen
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            fill(531,186,384,58,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.usingStick)
+                    ?RGB(66,83,99):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(549,202,confirming?"CONFIRM RESET (SECOND PRESS)"
+                :chosen==0?"RESET LIFETIME DEATHS"
+                :chosen==1?"RESET SESSION DEATHS":"RESET CAMPAIGN TIMER",
+                confirming?RGB(235,92,99):white);
+            const std::string value=chosen==0
+                ?std::to_string(KharvoxHudCampaignDeathCount())+" deaths"
+                :chosen==1?std::to_string(KharvoxHudCampaignSessionDeaths())+" deaths"
+                :kharvox::campaignRunTimeText(s.campaignRunTime.elapsedMs);
+            write(538,292,"CURRENT: "+value,RGB(84,233,214));
+            write(538,342,"Confirm by pressing RESET twice.",muted);
+        }else{
+            const bool enabled=kharvox::vrStatsEnabled(s.vrLiveSettings,chosen);
+            fill(531,159,384,60,m.hovered==110
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                    ?RGB(52,83,99):RGB(39,49,63));
+            fill(553,172,36,36,RGB(54,79,91));
+            if(enabled)fill(562,181,18,18,RGB(76,231,167));
+            SelectObject(dc,regular);
+            write(603,169,enabled?"DISPLAY ENABLED":"DISPLAY DISABLED",white);
+            SelectObject(dc,smallFont);
+            for(int i=0;i<4;++i){
+                const int y=254+i*70;
+                const bool active=kharvox::vrStatsCorner(s.vrLiveSettings,chosen)==i;
+                const bool focus=m.hovered==130+i
+                    ||(m.navigation.settingsColumn
+                        &&m.navigation.usingStick
+                        &&m.navigation.actionIndex==i+1);
+                fill(531,y,384,58,focus?RGB(52,83,99)
+                    :active?RGB(33,70,79):RGB(39,49,63));
+                write(548,y+17,std::string(kharvox::deathCounterCornerName(i))
+                    +(active?"  (SELECTED)":""),active?RGB(84,233,214):white);
+            }
+            write(538,572,"Occupied corner: previous display OFF.",muted);
+            write(538,607,"Deaths keep counting while hidden.",muted);
+        }
+        SelectObject(dc,smallFont);
+        write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
+        write(40,676,m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::Mods
         ||m.page==kharvox::VrMenuPage::Dev){
         const bool devPage=m.page==kharvox::VrMenuPage::Dev;
@@ -519,21 +619,17 @@ void paintVrHandMenu() {
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
                     ?"OPEN WEAPON RECOIL SETTINGS"
-                    :opt==D::ResetDeathCounter
-                        ?(m.confirmDeathResetUntilMs
-                            &&GetTickCount64()<=m.confirmDeathResetUntilMs
-                            ?"CONFIRM RESET DEATHS"
-                            :"RESET DEATHS")
+                     :opt==D::StatsReset
+                        ?"OPEN STATS RESET SETTINGS"
                     :opt==D::HandFocus
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else write(538,248,"New features will appear here.",muted);
-            if(opt==D::ResetDeathCounter){
-                write(538,305,"CURRENT TOTAL: "+
-                    std::to_string(KharvoxHudCampaignDeathCount()),RGB(84,233,214));
-                write(538,348,"Press twice within 6s to reset.",muted);
+            if(opt==D::StatsReset){
+                write(538,305,"Separate resets for all three Stats.",muted);
+                write(538,348,"Each requires a second confirmation.",muted);
             }else{
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
@@ -864,7 +960,7 @@ void paintVrHandMenu() {
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!deathCounterView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+       &&!statsLiveView&&!calibrationView&&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -894,9 +990,19 @@ void paintVrHandMenu() {
             :gameplayWelcomeView
                 ?(x>=welcomeX&&x<welcomeX+welcomeW
                     &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
-            :deathCounterView
-                ?(x>=counterX&&x<counterX+counterW
-                    &&y>=counterY&&y<counterY+counterH?220:0)
+            :statsLiveView
+                ?([&](){
+                    for(int i=0;i<3;++i)if(statsVisible[i]){
+                        const int width=kharvox::campaignStatsPanelWidth(i);
+                        const int left=kharvox::deathCounterPanelX(
+                            statsCorners[i],vrMenuW,width);
+                        const int top=kharvox::deathCounterPanelY(
+                            statsCorners[i],vrMenuH,counterH);
+                        if(x>=left&&x<left+width&&y>=top&&y<top+counterH)
+                            return 220;
+                    }
+                    return 0;
+                }())
             :(!calibrationView
                 ||(x>=22&&x<612&&y>=144&&y<576)
                 ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
