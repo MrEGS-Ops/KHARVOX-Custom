@@ -472,6 +472,8 @@ struct State {
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
     kharvox::VrMenuStartupNotice modMenuStartupNotice{};
+    kharvox::VrFirstTimeSetupNotice firstTimeSetupNotice{};
+    bool firstTimeSetupLoaded{},firstTimeSetupBlocksButtonsUntilRelease{};
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3455,15 +3457,49 @@ void updateGameplayActions(XrTime displayTime){
         &&readFloatAction(s.leftWeaponTrigger)<.10f
         &&readFloatAction(s.rightWeaponGrip)<.10f
         &&readFloatAction(s.leftWeaponGrip)<.10f;
-    // Service the menu-only information banner BEFORE the controller safety
-    // lock's early return. Main-menu input can still be safety-locked during
-    // startup, and fullscreen HUD classification does not identify DOOM's
-    // front menu. The banner must not itself block native controller input.
-    const bool mainMenuTipContext=s.quadMode
-        &&!KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
-        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudDeathMenuActive()
-        &&!KharvoxHudEndOfLevelMenuActive()
+    // The first-install setup screen belongs to DOOM's front menu, never
+    // the desktop launcher, world gameplay, loading transitions or pause.
+    // Do not re-use the controller reconnect acknowledgement: that belongs
+    // ONLY to genuine tracking loss during playable gameplay.
+    if(!s.firstTimeSetupLoaded){
+        s.firstTimeSetupNotice.acknowledged=kharvox::firstTimeSetupAcknowledged();
+        s.firstTimeSetupLoaded=true;
+    }
+    const bool frontMenuContext=s.quadMode
+        &&!KharvoxCameraWorldActive()&&!KharvoxCameraGameplayActive()
+        &&!KharvoxCameraCutsceneActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+        &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
+        &&!KharvoxHudEndOfLevelMenuActive()&&!KharvoxHudMovieActive()
         &&!s.centeredQuadTransitionPending&&vrHandMenuSurface.ready;
+    const bool wasSetupVisible=s.firstTimeSetupNotice.visible;
+    const bool setupConfirmed=kharvox::updateVrFirstTimeSetupNotice(
+        s.firstTimeSetupNotice,frontMenuContext,leftStickClick,rightStickClick,
+        bothProfiles&&bothTracked);
+    if(!wasSetupVisible&&s.firstTimeSetupNotice.visible)
+        log("[VR-SETUP] first-install instructions shown on DOOM front-menu Quad");
+    if(setupConfirmed){
+        if(kharvox::persistFirstTimeSetupAcknowledgement()){
+            s.firstTimeSetupNotice.acknowledged=true;
+            s.firstTimeSetupNotice.visible=false;
+            s.firstTimeSetupBlocksButtonsUntilRelease=true;
+            log("[VR-SETUP] L3+R3 acknowledged; saved in install Config (not UserData)");
+        }else log("[VR-SETUP] acknowledgement cannot be saved; setup remains visible for retry");
+    }
+    const bool suppressSetupButtons=wasSetupVisible
+        ||s.firstTimeSetupNotice.visible
+        ||s.firstTimeSetupBlocksButtonsUntilRelease;
+    if(s.firstTimeSetupBlocksButtonsUntilRelease&&bothReleased)
+        s.firstTimeSetupBlocksButtonsUntilRelease=false;
+    // The ordinary short R3 hint has moved to LIVE GAMEPLAY (once per
+    // launch), not the front menu. It never blocks gameplay controls.
+    const bool firstPlayableGameplay=kharvox::vrControllerLiveGameplay(
+        KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
+        KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
+        KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
+        s.quadMode||s.centeredQuadTransitionPending
+            ||s.immersiveCinematicActive,
+        KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
     const bool anyTipButtonDown=
         leftStickClick||rightStickClick
         ||readBooleanAction(s.doomJump)||readBooleanAction(s.doomCrouch)
@@ -3475,13 +3511,12 @@ void updateGameplayActions(XrTime displayTime){
         ||readFloatAction(s.leftWeaponGrip)>.55f
         ||readFloatAction(s.rightWeaponGrip)>.55f;
     const bool tipWasVisible=s.modMenuStartupNotice.visible;
-    const bool tipWasShown=s.modMenuStartupNotice.shown;
     kharvox::updateVrMenuStartupNotice(s.modMenuStartupNotice,
-        mainMenuTipContext,KharvoxCameraWorldActive(),anyTipButtonDown);
-    if(!tipWasShown&&s.modMenuStartupNotice.visible)
-        log("[VR-MODS-TIP] R3 hint shown on main-menu Quad; new button press dismisses");
+        firstPlayableGameplay,anyTipButtonDown);
+    if(!tipWasVisible&&s.modMenuStartupNotice.visible)
+        log("[VR-MODS-TIP] Hold R3 hint shown on first playable gameplay");
     if(tipWasVisible&&!s.modMenuStartupNotice.visible)
-        log("[VR-MODS-TIP] R3 hint dismissed");
+        log("[VR-MODS-TIP] gameplay R3 hint dismissed");
     // Controller reconnection is checked and acknowledged ONLY in playable
     // world gameplay. Main menus, settings, pause, loading and cinematics
     // must remain usable even with a disconnected controller.
@@ -8255,7 +8290,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     uint32_t vrMenuImageIndex{};
     // This shared quad handles the controller reconnect warning, the
     // one-time main-menu hint and live mod settings. Only show when needed.
-    if((controllerReconnectBannerVisible()||s.modMenuStartupNotice.visible
+    if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
+            ||s.modMenuStartupNotice.visible
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
