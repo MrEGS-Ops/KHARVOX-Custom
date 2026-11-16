@@ -1005,9 +1005,33 @@ volatile LONG* resolveVerifiedGameCheckboxCvar(const char* requested) {
             }
         }
     }
+    // Prefer a THIRD, already-used native CVar to prove the exact name
+    // pointer offset. DOOM's joy_yawSpeed current-value RVA is independently
+    // used by our live turn adapter, so this validates the object layout
+    // without needing the unreliable timescale scan.
+    constexpr uintptr_t knownYawCurrentRva=0x5FAA3A4u;
+    constexpr char knownYawName[]="joy_yawSpeed";
+    constexpr uintptr_t cvarCurrentOffset=0x34u;
+    int anchoredOffset=-1;
+    auto yawBase=image+knownYawCurrentRva-cvarCurrentOffset;
+    if(readableMemory(yawBase,offsets.back()+sizeof(uintptr_t))) {
+        for(size_t oi=0;oi<offsets.size();++oi){
+            uintptr_t namePointer{};
+            std::memcpy(&namePointer,yawBase+offsets[oi],sizeof(namePointer));
+            if(namePointer
+                &&readableMemory(reinterpret_cast<const void*>(namePointer),sizeof(knownYawName))
+                &&std::memcmp(reinterpret_cast<const void*>(namePointer),
+                    knownYawName,sizeof(knownYawName))==0){
+                if(anchoredOffset!=-1){anchoredOffset=-2;break;}
+                anchoredOffset=static_cast<int>(oi);
+            }
+        }
+    }
     uintptr_t selectedHighlight{},selectedTutorial{};
     unsigned layouts{};
     for(size_t oi=0;oi<offsets.size();++oi){
+        if(anchoredOffset==-2 || (anchoredOffset>=0
+            &&oi!=static_cast<size_t>(anchoredOffset)))continue;
         if(candidates[0][oi].size()!=1||candidates[1][oi].size()!=1
             ||candidates[0][oi][0]==candidates[1][oi][0])continue;
         selectedHighlight=candidates[0][oi][0];
@@ -1024,8 +1048,9 @@ volatile LONG* resolveVerifiedGameCheckboxCvar(const char* requested) {
     }
     resolved={reinterpret_cast<volatile LONG*>(selectedHighlight),
               reinterpret_cast<volatile LONG*>(selectedTutorial)};
-    logGlorySlowmo("game checkbox pair VERIFIED independently of timescale; "
-        "exact names, unique shared idCVar offset and 0/1 values");
+    logGlorySlowmo(std::string("game checkbox pair VERIFIED independently of timescale; ")
+        +"exact names, unique shared idCVar offset and 0/1 values; yaw anchor "
+        +(anchoredOffset>=0?"VERIFIED":"unavailable (strict unique-pair fallback)"));
     return resolved[requestedIndex];
 }
 
