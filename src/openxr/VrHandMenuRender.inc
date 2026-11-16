@@ -226,19 +226,12 @@ void paintVrHandMenu() {
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             SelectObject(dc,smallFont);
-            if(i==0){
-                write(x+16,y+19,"DEATHS",muted);
+            if(i==0||i==1){
+                write(x+16,y+5,i==0?"CAMPAIGN DEATHS":"SESSION DEATHS",muted);
                 SelectObject(dc,regular);
-                const auto deaths=std::to_string(KharvoxHudCampaignDeathCount());
-                const int digits=static_cast<int>(deaths.size());
-                write(x+width-18-14*digits,y+15,deaths,RGB(235,92,99));
-            }else if(i==1){
-                write(x+15,y+5,"DEATH STATISTICS",muted);
-                write(x+15,y+31,"SESSION "+
-                    std::to_string(KharvoxHudCampaignSessionDeaths())
-                    +"    TOTAL "+
-                    std::to_string(KharvoxHudCampaignDeathCount()),
-                    RGB(235,92,99));
+                write(x+16,y+28,std::to_string(i==0
+                    ?KharvoxHudCampaignDeathCount()
+                    :KharvoxHudCampaignSessionDeaths()),RGB(235,92,99));
             }else{
                 write(x+16,y+5,i==2?"CAMPAIGN TIME":"SESSION TIME",muted);
                 SelectObject(dc,regular);
@@ -470,7 +463,7 @@ void paintVrHandMenu() {
             fill(38,y,455,74,active?RGB(32,89,104):RGB(27,32,43));
             if(active)fill(38,y,5,74,RGB(55,209,214));
             SelectObject(dc,regular);
-            write(55,y+15,dev?(i==0?"Lifetime Deaths":
+            write(55,y+15,dev?(i==0?"Campaign Deaths":
                 i==1?"Session Deaths":i==2?"Campaign Run Timer":"Session Timer")
                 :kharvox::vrStatsLabel(i),white);
             if(!dev){
@@ -495,7 +488,7 @@ void paintVrHandMenu() {
                     ?RGB(66,83,99):RGB(39,49,63));
             SelectObject(dc,smallFont);
             write(549,202,confirming?"CONFIRM RESET (SECOND PRESS)"
-                :chosen==0?"RESET LIFETIME DEATHS"
+                :chosen==0?"RESET CAMPAIGN DEATHS"
                 :chosen==1?"RESET SESSION DEATHS"
                  :chosen==2?"RESET CAMPAIGN TIMER":"RESET SESSION TIMER",
                 confirming?RGB(235,92,99):white);
@@ -607,7 +600,7 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             std::string title=entries[index].title;
             // Core mods stay fixed; Crouch, PAINSAW and the optional
-            // Campaign Death Counter have live ON/OFF controls.
+            // Campaign Deaths has a legacy live ON/OFF control.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].enabled?white:muted);
             const bool switchable=!devPage
