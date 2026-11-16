@@ -406,6 +406,24 @@ void captureVrLivePosition(){
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
 }
+// Until native DOOM map identity has been verified, the owner can select
+// their campaign mission explicitly. This makes Level Best usable without
+// silently attributing checkpoint reloads to incorrect missions.
+bool handleVrLevelRecordTrack(int missionIndex){
+    if(missionIndex<0||missionIndex>=static_cast<int>(
+        kharvox::kCampaignMissions.size()))return false;
+    const auto& mission=kharvox::kCampaignMissions[missionIndex];
+    const bool changed=kharvox::levelProgressSetMap(
+        s.levelProgress,mission.key);
+    if(changed){
+        s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
+        s.recentLevelBestGoldUntilMs=0;
+    }
+    s.vrHandMenu.message=std::string(changed
+        ?"Now tracking ":"Already tracking ")+mission.title
+        +(changed?". Timer starts from this selection.":".");
+    return true;
+}
 // Record resets are separate from Stats RESET ALL. Neither reset
 // modifies live counters, timer values or HUD display positions.
 bool handleVrLevelRecordReset(int action) {
