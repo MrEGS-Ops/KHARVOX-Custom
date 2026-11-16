@@ -88,6 +88,14 @@ jobs:
           # Render scale and FSR are hardware-specific; never ship them as
           # RIPSHIFT profile factory locks.
           $factoryLauncher = Get-Content -LiteralPath "config/user_calibration_defaults/kharvox-launcher-settings.json" -Raw | ConvertFrom-Json
+          # Extended diagnostics must never be inherited from a developer's
+          # saved profile. Normal logging remains available for errors.
+          foreach ($offByDefault in @("ExtendedLogging", "HudDebugging", "CaptureEyes")) {
+            if ($factoryLauncher.PSObject.Properties.Name -notcontains $offByDefault -or
+                $factoryLauncher.$offByDefault -ne $false) {
+              throw "Factory profile must explicitly disable diagnostic option: $offByDefault"
+            }
+          }
           foreach ($unwanted in @("RenderScale","UseFsrUpscaling")) {
             if ($factoryLauncher.PSObject.Properties.Name -contains $unwanted) {
               throw "Hardware-dependent personal preference incorrectly bundled in factory profile: $unwanted"
