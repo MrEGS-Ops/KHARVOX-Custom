@@ -126,11 +126,11 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
             "chainsaw execution."}}};
         case VrLiveMod::Stats:return {{{
             "Death counters, timers and level records.",
-            "Each on-screen item has its own switch.",
-            "Place each item on a fine HUD grid.",
+            "Each HUD item has its own ON/OFF switch.",
+            "Place items using the fine HUD grid.",
             "Overlapping positions replace old items.",
-            "Deaths always count when display is OFF.",
-            "Every widget has its own grid position."}}};
+            "Counters keep tracking when hidden.",
+            "Select a mission in LEVEL RECORDS for PB."}}};
         default:return {{{"Select a mod for information."}}};
     }
 }
