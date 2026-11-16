@@ -1,5 +1,6 @@
 #pragma once
 #include "CampaignStatsPolicy.h"
+#include <array>
 #include <algorithm>
 #include <cstdint>
 #include <map>
@@ -13,6 +14,25 @@
 // identity: that counter ALSO advances on checkpoint reloads. A verified,
 // stable native map key is required before a personal best can be saved.
 namespace kharvox {
+// Explicit campaign mission selection is a safe fallback until a verified
+// DOOM v1.1.1 native map identity becomes available. Never derive a mission
+// from levelTransitionGeneration: checkpoint reloads advance that too.
+struct CampaignMission {const char* key;const char* title;};
+inline constexpr std::array<CampaignMission,13> kCampaignMissions{{
+    {"campaign/01","01  The UAC"},
+    {"campaign/02","02  Resource Operations"},
+    {"campaign/03","03  Foundry"},
+    {"campaign/04","04  Argent Facility"},
+    {"campaign/05","05  Argent Energy Tower"},
+    {"campaign/06","06  Kadingir Sanctum"},
+    {"campaign/07","07  Argent Facility (Destroyed)"},
+    {"campaign/08","08  Advanced Research Complex"},
+    {"campaign/09","09  Lazarus Labs"},
+    {"campaign/10","10  Titan's Realm"},
+    {"campaign/11","11  The Necropolis"},
+    {"campaign/12","12  VEGA Central Processing"},
+    {"campaign/13","13  Argent D'Nur"},
+}};
 inline constexpr std::uint64_t kLevelBestGoldMs=5000;
 inline constexpr std::size_t kLevelRecordsMax=64;
 inline constexpr std::uint64_t kLevelRecordMaxMs=100000000000ULL;
