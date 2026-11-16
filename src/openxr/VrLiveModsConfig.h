@@ -160,14 +160,11 @@ inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
     }
     return true;
 }
-// A displaced visible widget is the only event that auto-closes Stats.
-// Merely picking a free position or changing a hidden widget stays in menu.
-inline bool vrStatsDisplacedDisplay(const VrLiveSettings& before,
-    const VrLiveSettings& after,int selected) noexcept {
-    for(int other=0;other<3;++other)
-        if(other!=selected&&vrStatsEnabled(before,other)
-            &&!vrStatsEnabled(after,other))return true;
-    return false;
+// Ordinary display changes never close the Mod Menu. Only a successful
+// confirmed DEV Reset All does; failed writes and per-item resets stay open.
+inline constexpr bool vrStatsMenuShouldClose(bool dev,int action,
+    bool persistedSuccessfully) noexcept {
+    return dev&&action==131&&persistedSuccessfully;
 }
 inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
     if(item<0||item>2||corner<0||corner>3)return false;
