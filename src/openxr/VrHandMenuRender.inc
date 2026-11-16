@@ -457,22 +457,29 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
         const int chosen=std::clamp(m.statsSelected,0,3);
-        for(int i=0;i<4;++i){
-            const int y=156+i*104;
+        // Identical ten-row, 45px list pattern to the main Mod Menu.
+        // Extra Stats appear by scrolling rather than shrinking buttons.
+        const int statCount=dev?4:4;
+        for(int shown=0;shown<10;++shown){
+            const int i=shown+m.statsScroll;
+            if(i>=statCount)break;
+            const int y=136+shown*45;
             const bool active=i==chosen;
-            fill(38,y,455,74,active?RGB(32,89,104):RGB(27,32,43));
-            if(active)fill(38,y,5,74,RGB(55,209,214));
-            SelectObject(dc,regular);
-            write(55,y+15,dev?(i==0?"Campaign Deaths":
+            const bool hovered=m.hovered==1000+i;
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hovered?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,smallFont);
+            write(55,y+10,dev?(i==0?"Campaign Deaths":
                 i==1?"Session Deaths":i==2?"Campaign Run Timer":"Session Timer")
                 :kharvox::vrStatsLabel(i),white);
-            if(!dev){
-                SelectObject(dc,smallFont);
-                write(55,y+47,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
-                    ?"DISPLAY ON":"DISPLAY OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
-                        ?RGB(108,235,161):muted);
-            }
+            if(!dev)write(428,y+10,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                ?"ON":"OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                    ?RGB(108,235,161):muted);
         }
+        if(statCount>10)
+            write(48,602,"LEFT STICK: scroll ("+
+                std::to_string(chosen+1)+"/"+std::to_string(statCount)+")",muted);
         fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
         SelectObject(dc,smallFont);
         write(815,30,"BACK",white);
