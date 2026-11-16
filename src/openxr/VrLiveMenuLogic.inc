@@ -26,6 +26,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
         rows.push_back({"Stats / Reset",VrLiveMod::Stats,
             true,D::StatsReset});
+        rows.push_back({"Level Records / Reset",VrLiveMod::Stats,
+            true,D::LevelRecordsReset});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             false,D::Experimental});
         return rows;
@@ -156,6 +158,13 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
+        case D::LevelRecordsReset:return {{{
+            "Reset your saved level-time records.",
+            "Current level or all levels.",
+            "Requires a second confirmation press.",
+            "Does NOT reset normal statistics.",
+            "Records and HUD preferences are separate.",
+            ""}}};
         case D::StatsReset:return {{{
             "Reset campaign and session deaths",
             "or campaign and session timers.",
@@ -396,6 +405,47 @@ void captureVrLivePosition(){
     m.message="Position saved to UserData and applied instantly.";
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
+}
+// Record resets are separate from Stats RESET ALL. Neither reset
+// modifies live counters, timer values or HUD display positions.
+bool handleVrLevelRecordReset(int action) {
+    auto& menu=s.vrHandMenu;
+    if(action!=130)return false;
+    const int choice=std::clamp(menu.recordSelected,0,1);
+    const auto now=GetTickCount64();
+    const int key=10+choice; // cannot be confused with ordinary Stats resets
+    if(menu.pendingStatsReset!=key||!menu.confirmDeathResetUntilMs
+        ||now>menu.confirmDeathResetUntilMs){
+        menu.pendingStatsReset=key;
+        menu.confirmDeathResetUntilMs=now+6000ULL;
+        menu.message=choice==0
+            ?"Press again to reset CURRENT LEVEL record."
+            :"Press again to reset ALL level records.";
+        return true;
+    }
+    menu.pendingStatsReset=-1;
+    menu.confirmDeathResetUntilMs=0;
+    auto previous=s.levelRecords;
+    if(choice==0){
+        const auto& keyName=s.levelProgress.verifiedMapKey;
+        if(!kharvox::levelRecordKeyValid(keyName)){
+            menu.message="Current level identity unverified. No record was deleted.";
+            return true;
+        }
+        if(!kharvox::levelRecordsReset(s.levelRecords,keyName)){
+            menu.message="Current level has no saved personal best.";
+            return true;
+        }
+    }else kharvox::levelRecordsResetAll(s.levelRecords);
+    if(!kharvox::levelRecordsSave(
+        kharvox::runtimePathA("level_best_records.cfg"),s.levelRecords)){
+        s.levelRecords=std::move(previous);
+        menu.message="Could not save record reset; records restored in memory.";
+        return true;
+    }
+    menu.message=choice==0?"Current level record reset.":"All level bests reset.";
+    s.levelProgress.bestUpdated=false;
+    return true;
 }
 // Hidden DEV panel exposes one guarded reset per persistent stat.
 // Public Stats controls never reset any underlying measurement.
