@@ -3239,7 +3239,7 @@ std::atomic<LONG>& gloryKillHighlightDesired() {
 void KharvoxCameraEnforceGloryKillHighlightSetting() {
     // Launch arguments alone are not persistent: DOOM can apply new campaign
     // settings after the process starts. Reassert the selected native setting.
-    // The developer toggle is opt-in, default OFF for all existing profiles.
+    // The launcher profile remains the sole owner of this legacy preference.
     if (!KharvoxCameraWorldActive() || KharvoxCameraCutsceneActive()) return;
     const LONG selected=gloryKillHighlightDesired().load(std::memory_order_acquire);
     static volatile LONG* highlightValue{};
