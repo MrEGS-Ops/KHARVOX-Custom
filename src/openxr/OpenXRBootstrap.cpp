@@ -352,9 +352,9 @@ struct State {
     // Retired standalone remap. Gunslinger alone owns behind-head wheel input.
     bool weaponWheelRemapEnabled{false};
     bool motionWheelEnabled{true}; kharvox::MotionWeaponWheelState motionWheelState{};
-    bool crouchToggleActive{},crouchStickPressed{};
+    bool crouchToggleActive{},crouchNativeDesired{},crouchNativePulseQueued{};
     bool physicalCrouchActive{};
-    XrTime physicalCrouchPulseUntil{},manualStickCrouchPulseUntil{};
+    XrTime physicalCrouchPulseUntil{},crouchNativePulseUntil{};
     bool behindHeadWheelActive{};
     bool hudWeaponWheelPresented{}; // HUD pose lifetime, independent of hand side
     int behindHeadWheelSide{-1}; // 0 right, 1 left
@@ -3503,8 +3503,9 @@ void updateGameplayActions(XrTime displayTime){
         s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
-        s.crouchToggleActive=false;s.crouchStickPressed=false;s.physicalCrouchActive=false;
-        s.physicalCrouchPulseUntil=0;
+        s.crouchToggleActive=false;s.physicalCrouchActive=false;
+        s.crouchNativeDesired=false;s.crouchNativePulseQueued=false;
+        s.crouchNativePulseUntil=0;s.physicalCrouchPulseUntil=0;
         if(s.hudWeaponWheelPresented){
             KharvoxHudResetWeaponWheelPresentation();
             s.hudWeaponWheelPresented=false;
@@ -3849,10 +3850,9 @@ void updateGameplayActions(XrTime displayTime){
     // replace the physical weapon-select control entirely, freeing the old
     // wheel control for dash without changing jump/double-jump.
     const bool physicalAButtonDown=readBooleanAction(s.doomCrouch);
-    const bool crouchStickDown=turnActive&&rightStickY<-.75f;
-    const bool manualCrouchDown=turnActive
+    const bool rightStickDownGesture=turnActive
         &&kharvox::manualStickCrouchDirection(
-            s.rightStick.x,rightStickY);
+            s.rightStick.x,rightStickY); // optional dash, NEVER crouch
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
     const bool leftWheelEnabled=s.customMods.behindHeadWeaponWheel; // one mod opens BOTH sides
@@ -3966,21 +3966,19 @@ void updateGameplayActions(XrTime displayTime){
     s.chainsawTriggerPressure=std::isfinite(weaponTriggerPressure)
         ?std::clamp(weaponTriggerPressure,0.f,1.f):0.f;
     const bool triggerDown=s.chainsawTriggerPressure>.55f;
-    const bool legacyWeaponSelectDown=s.weaponWheelRemapEnabled
-        ?physicalAButtonDown:crouchStickDown;
-    // Gunslinger owns selection exclusively, including when the separate
-    // No Weapon Wheel option suppresses gesture opening. Never fall through
-    // to the old right-stick-DOWN weapon select: that direction is reserved
-    // as manual crouch when Physical Crouch is disabled.
+    const bool legacyWeaponSelectDown=rightStickDownGesture;
+    // Gunslinger owns selection exclusively. A now always crouches, while
+    // the old right-stick-DOWN fallback never enters the manual crouch path.
     const bool weaponSelectDown=kharvox::vrScopedWeaponSelectDown(
         gameplay,s.customMods.disableWeaponWheel,
         s.customMods.behindHeadWeaponWheel,behindHeadWheelRequested,
         legacyWeaponSelectDown);
 
-    // When Behind-Head Weapon Wheel owns selection, the old wheel input is
-    // genuinely free. Use a fresh edge for dash only; neutral stick = no dash.
+    // A is reserved for crouch in gameplay regardless of Physical Crouch.
+    // Retain optional Directional Dash on a deliberate right-stick DOWN
+    // gesture (not R3 click), with left-stick movement for dash direction.
     const bool freedWeaponWheelButtonDown=s.weaponWheelRemapEnabled
-        &&physicalAButtonDown;
+        &&rightStickDownGesture;
     if(s.customMods.directionalDash&&s.customMods.behindHeadWeaponWheel
         &&s.weaponWheelRemapEnabled
         &&gameplay&&freedWeaponWheelButtonDown&&!s.dashButtonPressed
@@ -3992,8 +3990,7 @@ void updateGameplayActions(XrTime displayTime){
             if(KharvoxCameraApplyDirectionalDash(
                     dashStick.x,dashStick.y)){
                 s.dashCooldownUntil=displayTime+650000000;
-                log(std::string("[DASH] freed ")
-                    +"A wheel control -> horizontal dash transformedStick=("
+                log(std::string("[DASH] right stick DOWN -> horizontal dash transformedStick=("
                     +std::to_string(dashStick.x)+","
                     +std::to_string(dashStick.y)+")");
             }
@@ -4004,41 +4001,9 @@ void updateGameplayActions(XrTime displayTime){
     s.dashButtonPressed=freedWeaponWheelButtonDown;
     if(!gameplay){s.dashButtonPressed=false;s.dashCooldownUntil=0;}
 
-    // Gunslinger's gesture wheel frees the right-stick DOWN direction
-    // even when the retired standalone wheel remap is OFF. Do not conflate
-    // stick direction with RIGHT STICK CLICK (Hand Focus/Use).
-    const bool stickCrouchAvailable=kharvox::manualStickCrouchAllowed(
-        s.customMods.physicalCrouch,s.customMods.behindHeadWeaponWheel,
-        s.weaponWheelRemapEnabled);
-    // No crouch while the gesture wheel is held open, and require a new
-    // DOWN gesture after closing it. Never interpret diagonal turning
-    // as a crouch request.
-    const bool safeManualCrouchDown=manualCrouchDown
-        &&!s.behindHeadWheelActive&&!s.wheelCancelDrain.active();
-    if(stickCrouchAvailable&&gameplay
-        &&safeManualCrouchDown&&!s.crouchStickPressed){
-        s.crouchToggleActive=!s.crouchToggleActive;
-        if(!s.weaponWheelRemapEnabled)
-            s.manualStickCrouchPulseUntil=displayTime+90000000;
-        log(std::string("[INPUT] right stick DOWN (not click) -> crouch ")
-            +(s.crouchToggleActive?"ON":"OFF"));
-    }else if(!stickCrouchAvailable&&s.crouchToggleActive){
-        // Re-enabling HMD crouch must release a previously latched manual
-        // crouch exactly once after the VR menu has closed.
-        s.crouchToggleActive=false;
-        s.manualStickCrouchPulseUntil=0;
-        s.vrCrouchReleasePending=true;
-        log("[INPUT] manual crouch released for Physical Crouch.");
-    }
-    s.crouchStickPressed=manualCrouchDown; // fresh DOWN edge required
-    if(!gameplay){
-        // DOOM retains its native crouch toggle across a menu transition.
-        // Do not silently discard our latch and strand the player crouched;
-        // one queued native pulse stands them up upon returning to gameplay.
-        if(s.crouchToggleActive)s.vrCrouchReleasePending=true;
-        s.crouchToggleActive=false;
-        s.manualStickCrouchPulseUntil=0;
-    }
+    // Right-stick DOWN no longer crouches. A works independently from the
+    // physical HMD crouch option; its fresh edge is routed below after
+    // the menu/UI face-button suppression has been resolved.
 
     const bool secondaryFireGripDown=kharvox::updateGripPressed(
         readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip),
@@ -4923,6 +4888,15 @@ void updateGameplayActions(XrTime displayTime){
         &&s.crouchButtonRoute==FaceButtonRoute::Gameplay;
     const bool crouchUiDown=crouchDown&&!s.crouchSuppressedUntilRelease
         &&s.crouchButtonRoute==FaceButtonRoute::Ui;
+    if(s.weaponWheelRemapEnabled&&gameplay
+        &&crouchGameplayDown&&!s.crouchPressed){
+        // One A press toggles manual crouch/stand. Physical HMD crouch can
+        // still request the same stance, independently of this setting.
+        s.crouchToggleActive=!s.crouchToggleActive;
+        log(std::string("[INPUT] physical A -> manual crouch ")
+            +(s.crouchToggleActive?"ON":"OFF"));
+    }
+    if(!gameplay)s.crouchToggleActive=false;
     const auto previousJumpPulse=s.handsJump.pulseUntil;
     const bool handsJumpDown=s.handsJump.update(displayTime,
         s.handsJumpEnabled&&gameplay&&!weaponWheelActive&&!s.twoHandCalibrationMode
@@ -4946,7 +4920,7 @@ void updateGameplayActions(XrTime displayTime){
         // DOOM handles crouch as a TOGGLE on the button's rising edge.
         // Holding native B down throughout a real crouch cannot stand the
         // player up; emit one short pulse both going down AND standing up.
-        if(previous!=s.physicalCrouchActive)
+        if(previous!=s.physicalCrouchActive&&!s.weaponWheelRemapEnabled)
             s.physicalCrouchPulseUntil=displayTime+90000000;
         if(previous!=s.physicalCrouchActive)
             log(std::string("[INPUT] Physical Crouch ")
@@ -4961,49 +4935,55 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalCrouchPulseUntil=0;
     }
     if(gameplay&&s.vrCrouchReleasePending){
-        // If switched off while physically crouched, issue one native
-        // toggle release only after the VR overlay has closed.
-        s.physicalCrouchPulseUntil=displayTime+90000000;
+        // Non-Gunslinger legacy route retains its native release pulse;
+        // Gunslinger combines physical/manual desired states below to avoid
+        // duplicate toggles and an accidental stand while physically crouched.
+        if(!s.weaponWheelRemapEnabled)
+            s.physicalCrouchPulseUntil=displayTime+90000000;
         s.vrCrouchReleasePending=false;
     }
     const bool physicalCrouchNativePulse=gameplay
         &&displayTime<s.physicalCrouchPulseUntil;
-    // DOOM uses a native button edge to alternate crouch/stand. Never
-    // hold B forever as it would not create the second toggle edge.
-    if(!s.weaponWheelRemapEnabled&&stickCrouchAvailable
-        &&s.crouchToggleActive&&gameplay
-        &&(jumpGameplayDown||handsJumpDown)){
-        s.crouchToggleActive=false;
-        s.manualStickCrouchPulseUntil=displayTime+90000000;
-        log("[INPUT] jump -> release right-stick manual crouch");
-    }
-    const bool manualCrouchNativePulse=kharvox::manualStickCrouchPulseActive(
-        gameplay,s.customMods.physicalCrouch,s.weaponWheelRemapEnabled,
-        displayTime,s.manualStickCrouchPulseUntil);
+    // DOOM treats crouch as a native TOGGLE. Physical crouch and A must not
+    // send independent pulses: a simultaneous HMD/A transition would toggle
+    // twice. Drive one native crouch state from their logical union instead.
     bool gamepadADown{};
     bool gamepadBDown{};
     bool cameraCrouchDown{};
     if(s.weaponWheelRemapEnabled){
-        // Physical A is consumed by weapon selection. B/hands-jump remains
-        // jump, while right-stick-down owns a persistent crouch latch.
         const bool gameplayJumpRequested=jumpGameplayDown||handsJumpDown;
         if(gameplay&&gameplayJumpRequested&&s.crouchToggleActive){
             s.crouchToggleActive=false;
-            log("[INPUT] jump request -> crouch OFF before native jump");
+            log("[INPUT] jump request -> release A-button manual crouch");
+        }
+        const bool desiredCrouch=gameplay
+            &&(s.crouchToggleActive||s.physicalCrouchActive);
+        if(gameplay&&desiredCrouch!=s.crouchNativeDesired){
+            s.crouchNativeDesired=desiredCrouch;
+            // A rapid opposite transition while the 90ms pulse is active
+            // must wait for an OFF gap before generating another native edge.
+            s.crouchNativePulseQueued=!s.crouchNativePulseQueued;
+        }
+        if(gameplay&&s.crouchNativePulseQueued
+            &&displayTime>=s.crouchNativePulseUntil+20000000){
+            s.crouchNativePulseUntil=displayTime+90000000;
+            s.crouchNativePulseQueued=false;
         }
         gamepadADown=gameplayJumpRequested||crouchUiDown;
-        gamepadBDown=s.crouchToggleActive||physicalCrouchNativePulse||jumpUiDown;
-        cameraCrouchDown=s.crouchToggleActive||s.physicalCrouchActive;
+        gamepadBDown=(gameplay&&displayTime<s.crouchNativePulseUntil)
+            ||jumpUiDown;
+        cameraCrouchDown=desiredCrouch;
     }else{
-        // Exact official KHARVOX face-button routing.
+        // Retain original non-Gunslinger face-button routing and explicit
+        // launcher swap option; normal mode is physical A=crouch, B=jump.
         gamepadADown=(s.swapJumpCrouch
-            ?(crouchGameplayDown||physicalCrouchNativePulse||manualCrouchNativePulse)
+            ?(crouchGameplayDown||physicalCrouchNativePulse)
             :jumpGameplayDown)||handsJumpDown||crouchUiDown;
         gamepadBDown=(s.swapJumpCrouch?jumpGameplayDown
-            :(crouchGameplayDown||physicalCrouchNativePulse||manualCrouchNativePulse))
+            :(crouchGameplayDown||physicalCrouchNativePulse))
             ||jumpUiDown;
         cameraCrouchDown=(s.swapJumpCrouch?jumpGameplayDown:crouchGameplayDown)
-            ||s.physicalCrouchActive||s.crouchToggleActive;
+            ||s.physicalCrouchActive;
     }
     KharvoxCameraSetCrouchState(cameraCrouchDown);
     s.jumpPressed=jumpDown;
