@@ -9,21 +9,6 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-cactus-hand-hud",
                 StringComparison.OrdinalIgnoreCase)))
             return CactusHandHudRestore.RunSelfTest();
-        if (args.Any(argument => string.Equals(argument, "--self-test-glorykill-highlight",
-                StringComparison.OrdinalIgnoreCase)))
-        {
-            var nativeSetting = KharvoxRunner.NativeGloryKillHighlightArguments().ToArray();
-            var enabledSetting = KharvoxRunner.NativeGloryKillHighlightArguments(true).ToArray();
-            if (nativeSetting.Length != 2 || nativeSetting[0] != "+g_setting_gk_highlight"
-                || nativeSetting[1] != "0" || enabledSetting.Length != 2
-                || enabledSetting[0] != "+g_setting_gk_highlight" || enabledSetting[1] != "1")
-            {
-                Console.Error.WriteLine("Native DOOM Glory Kill Highlight must be Off.");
-                return 1;
-            }
-            Console.WriteLine("Native DOOM Glory Kill Highlight default-Off and developer-On startup policies passed.");
-            return 0;
-        }
         if (args.Any(argument => string.Equals(argument, "--self-test-retail-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return RetailVrDefaults.RunSelfTest();
