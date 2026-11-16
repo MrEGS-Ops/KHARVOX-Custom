@@ -3460,7 +3460,6 @@ void updateGameplayActions(XrTime displayTime){
     }
     *reinterpret_cast<int*>(doomFloat(0x5B64540))=0;
     holdNativeTurnCvars(manualTurnCarrierSpeed());
-    KharvoxCameraEnforceGloryKillHighlightSetting();
     KharvoxCameraEnforceTutorialsDisabled();
     static bool yawSpeedHoldLogged=false;
     if(!yawSpeedHoldLogged){yawSpeedHoldLogged=true;std::ostringstream o;o<<"[TURN] holding live joy_yawSpeed current-value RVA 0x"<<std::hex<<joyYawSpeedCurrentRva<<std::dec<<" at "<<manualTurnCarrierSpeed()<<" only for hidden body catch-up; visible Smooth Turn uses OpenXR frame time";log(o.str());}
