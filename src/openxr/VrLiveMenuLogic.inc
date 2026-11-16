@@ -436,15 +436,17 @@ bool handleVrStatsMenuAction(int action,bool dev){
             }
             KharvoxHudResetCampaignSessionDeaths();
             menu.message="All statistics reset; display settings preserved.";
-            menu.mode=kharvox::VrHandMenuMode::Closed;
-            menu.navigation={};
-            menu.liveCapture=kharvox::VrLiveCapture::None;
-            menu.consumeMenuFaceUntilRelease=true;
-            menu.consumeMenuTriggerUntilRelease=true;
-            menu.hovered=-1;
-            menu.cursorX=menu.cursorY=-1.f;
-            log("[STATS] RESET ALL confirmed, saved and closed MOD MENU; "
-                "all display toggles and corner positions preserved");
+            if(kharvox::vrStatsMenuShouldClose(dev,action,true)){
+                menu.mode=kharvox::VrHandMenuMode::Closed;
+                menu.navigation={};
+                menu.liveCapture=kharvox::VrLiveCapture::None;
+                menu.consumeMenuFaceUntilRelease=true;
+                menu.consumeMenuTriggerUntilRelease=true;
+                menu.hovered=-1;
+                menu.cursorX=menu.cursorY=-1.f;
+                log("[STATS] RESET ALL confirmed, saved and closed MOD MENU; "
+                    "all display toggles and corner positions preserved");
+            }
         }else if(item==0){
             menu.message=KharvoxHudResetCampaignDeathCount()
                 ?"Lifetime campaign deaths reset to 0."
