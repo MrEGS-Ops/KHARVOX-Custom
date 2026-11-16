@@ -2,6 +2,7 @@
 #include "../src/openxr/ManualCrouchPolicy.h"
 #include "../src/hud/CampaignDeathCounterPolicy.h"
 #include "../src/hud/CampaignStatsPolicy.h"
+#include "../src/hud/LevelStatsPolicy.h"
 #ifdef NDEBUG
 #undef NDEBUG
 #endif
@@ -102,6 +103,61 @@ int main(){
     assert(campaignStatsPanelWidth(0)==226);
     assert(campaignStatsPanelWidth(1)==226);
     // Session Timer is a fourth, separately positionable display.
+    // New optional level widgets are independently positionable, with
+    // no accidental conflicts and no changes to the old four defaults.
+    VrLiveSettings levelWidgets{};
+    for(int i=4;i<kVrStatsItemCount;++i)
+        assert(vrStatsSetEnabled(levelWidgets,i,true));
+    assert(levelWidgets.levelDisplayEnabled[0]
+        &&levelWidgets.levelDisplayEnabled[1]
+        &&levelWidgets.levelDisplayEnabled[2]);
+    assert(vrLiveValidSettings(levelWidgets));
+    assert(std::string(vrStatsLabel(4))=="Level Time");
+    assert(std::string(vrStatsLabel(5))=="Level Best");
+    assert(std::string(vrStatsLabel(6))=="Level Deaths");
+    assert(!vrStatsSetCorner(levelWidgets,4,-2));
+    assert(!vrStatsSetEnabled(levelWidgets,7,true));
+    // Level timing/deaths survive checkpoint-generation changes.
+    LevelProgress progression{};
+    LevelRecords bests{};
+    assert(levelProgressSetMap(progression,"maps/game/uem1"));
+    levelProgressAdvance(progression,true,1000);
+    levelProgressAdvance(progression,true,1600);
+    levelProgressDeath(progression);
+    levelProgressDeath(progression);
+    assert(progression.time.elapsedMs==250); // per-frame upper bound
+    assert(progression.deaths==2);
+    levelProgressAdvance(progression,false,2000);
+    levelProgressAdvance(progression,true,3000);
+    levelProgressAdvance(progression,true,3030);
+    assert(progression.time.elapsedMs==280);
+    assert(levelProgressComplete(progression,bests,4000));
+    assert(progression.completed&&progression.deaths==2);
+    assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(!levelProgressComplete(progression,bests,4010));
+    assert(progression.bestUpdated&&progression.newBestGoldUntilMs==9000);
+    // Slower replays never beat the existing personal best.
+    assert(levelProgressSetMap(progression,"maps/game/uem2"));
+    assert(levelProgressSetMap(progression,"maps/game/uem1"));
+    levelProgressAdvance(progression,true,4000);
+    levelProgressAdvance(progression,true,4400);
+    assert(!levelProgressComplete(progression,bests,5000));
+    assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(!levelRecordKeyValid("../traversal"));
+    assert(!levelRecordKeyValid("spaces not accepted"));
+    assert(!levelProgressSetMap(progression,"bad\nname"));
+    const auto levelsFile=std::filesystem::temp_directory_path()
+        /"ripshift_level_pb_roundtrip.cfg";
+    assert(levelRecordsSave(levelsFile.string(),bests));
+    LevelRecords readBests{};
+    assert(levelRecordsLoad(levelsFile.string(),readBests));
+    assert(levelBestFor(readBests,"maps/game/uem1")==280);
+    assert(levelRecordsReset(readBests,"maps/game/uem1"));
+    assert(levelBestFor(readBests,"maps/game/uem1")==0);
+    levelRecordsResetAll(readBests);
+    assert(readBests.bestMs.empty());
+    std::error_code levelsError;
+    std::filesystem::remove(levelsFile,levelsError);
     VrLiveSettings sessionDisplay{};
     assert(!sessionDisplay.sessionTimerEnabled);
     assert(sessionDisplay.sessionTimerCorner==2);
