@@ -3420,6 +3420,23 @@ bool KharvoxCameraGloryKillHighlightRequested() {
 int KharvoxCameraGloryKillHighlightStatus() {
     return gloryKillHighlightApplied().load(std::memory_order_acquire);
 }
+// These accessors never force a setting. The underlying exact-name resolver
+// must verify its native idCVar layout before any value is read or reported.
+// Unknown is not OFF; game config files cannot prove the live DOOM value.
+namespace {
+int readLiveDoomGameCheckbox(const char* name) {
+    auto* value=resolveVerifiedIntegerCvar(name,1);
+    if(!value)return -1;
+    const LONG observed=InterlockedCompareExchange(value,0,0);
+    return observed==0||observed==1?static_cast<int>(observed):-1;
+}
+}
+int KharvoxCameraNativeGloryKillHighlightValue() {
+    return readLiveDoomGameCheckbox("g_setting_gk_highlight");
+}
+int KharvoxCameraNativeTutorialsValue() {
+    return readLiveDoomGameCheckbox("g_setting_tutorials");
+}
 void KharvoxCameraEnforceGloryKillHighlightSetting() {
     // Launch arguments alone are not persistent: DOOM can apply new campaign
     // settings after the process starts. Reassert the selected native setting.
