@@ -47,6 +47,7 @@
 #include "../hud/HudMenuPolicy.h"
 #include "../hud/CampaignDeathCounterPolicy.h"
 #include "../hud/CampaignStatsPolicy.h"
+#include "../hud/LevelStatsPolicy.h"
 #include "../weapon/WeaponHook.h"
 #include "../weapon/WeaponControllerPosePolicy.h"
 #include "../weapon/BackWeaponPolicy.h"
@@ -480,6 +481,10 @@ struct State {
     kharvox::VrLiveSettings vrLiveSettings{};
     kharvox::CampaignRunTime campaignRunTime{};
     kharvox::CampaignRunTime sessionRunTime{}; // never persisted, fresh at process launch
+    kharvox::LevelProgress levelProgress{};
+    kharvox::LevelRecords levelRecords{};
+    std::uint64_t observedSessionDeaths{};
+    bool levelRecordsLoaded{};
     std::uint64_t campaignRunTimeLastSavedMs{};
     kharvox::WeaponRecoilSettings recoilSettings{};
     kharvox::WeaponRecoilState recoilState{};
@@ -3379,6 +3384,38 @@ bool resetCampaignRunTimeSaved(){
     s.campaignRunTime=previous;
     return false;
 }
+// The level timer shares the existing playable-gameplay gate. Death and
+// completion observations are independent of whether a HUD item is visible.
+void serviceLevelStats(bool gameplay,std::uint64_t now) {
+    auto& progress=s.levelProgress;
+    const auto deaths=KharvoxHudCampaignSessionDeaths();
+    if(deaths>s.observedSessionDeaths){
+        const auto increment=std::min<std::uint64_t>(
+            deaths-s.observedSessionDeaths,1000000000ULL-progress.deaths);
+        progress.deaths+=increment;
+    }
+    s.observedSessionDeaths=deaths; // handles an explicit DEV session reset
+    const bool completedMenu=KharvoxHudEndOfLevelMenuActive();
+    if(completedMenu&&!progress.endMenuWasVisible&&!progress.completed){
+        const bool bestChanged=kharvox::levelProgressComplete(
+            progress,s.levelRecords,now);
+        progress.generationAtCompletion=KharvoxCameraLevelTransitionGeneration();
+        if(bestChanged){
+            if(!kharvox::levelRecordsSave(kharvox::runtimePathA(
+                "level_best_records.cfg"),s.levelRecords))
+                log("[STATS] failed to persist level best; retained in memory");
+            else log("[STATS] validated new level best saved");
+        }
+    }
+    progress.endMenuWasVisible=completedMenu;
+    // The *only* generation-driven reset is AFTER a confirmed native
+    // end-of-level screen. Checkpoint loads during the same level do nothing.
+    if(progress.awaitingNextLevel&&!completedMenu&&gameplay
+        &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration()){
+        kharvox::levelProgressNextUnidentified(progress);
+    }
+    kharvox::levelProgressAdvance(progress,gameplay,now);
+}
 void serviceCampaignRunTime(bool gameplay){
     const bool wasActive=s.campaignRunTime.activeLastSample;
     const auto now=GetTickCount64();
@@ -3386,6 +3423,7 @@ void serviceCampaignRunTime(bool gameplay){
     // Identical active-gameplay policy, independent lifetime and reset.
     // Session time is memory-only and is not restored on the next launch.
     kharvox::advanceCampaignRunTime(s.sessionRunTime,gameplay,now);
+    serviceLevelStats(gameplay,now);
     if((wasActive&&!gameplay
         ||s.campaignRunTime.elapsedMs>=s.campaignRunTimeLastSavedMs+30000ULL)
         &&s.campaignRunTime.elapsedMs!=s.campaignRunTimeLastSavedMs)
@@ -6151,6 +6189,10 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     loadCampaignRunTime();
+    if(!kharvox::levelRecordsLoad(
+        kharvox::runtimePathA("level_best_records.cfg"),s.levelRecords))
+        log("[STATS] invalid saved level records; using safe empty records");
+    else s.levelRecordsLoaded=true;
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
     if(!kharvox::loadWeaponRecoilSettings(
@@ -8422,7 +8464,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&(s.vrLiveSettings.deathCounterEnabled
             ||s.vrLiveSettings.deathStatisticsEnabled
             ||s.vrLiveSettings.campaignTimerEnabled
-             ||s.vrLiveSettings.sessionTimerEnabled);
+             ||s.vrLiveSettings.sessionTimerEnabled
+             ||s.vrLiveSettings.levelDisplayEnabled[0]
+             ||s.vrLiveSettings.levelDisplayEnabled[1]
+             ||s.vrLiveSettings.levelDisplayEnabled[2]);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
