@@ -4956,11 +4956,18 @@ void updateGameplayActions(XrTime displayTime){
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
         const bool yDown=bfgPulse||backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
-        updateVirtualButtons(rightTriggerDown,gamepadADown,gamepadBDown,
-            leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
-            leftShoulderDown,rightShoulderDown,backDown,
-            gameplay&&switchWeaponModDown,yDown,pauseDown,
-            gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
+        // A first-run setup popup is modal to DOOM's front-menu button
+        // input. Consume the acknowledgement chord and its release so it
+        // cannot also select an underlying menu item or trigger native pause.
+        if(suppressSetupButtons)
+            updateVirtualButtons(false,false,false,false,false,false,false,
+                false,false,false,false,false,false);
+        else
+            updateVirtualButtons(rightTriggerDown,gamepadADown,gamepadBDown,
+                leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
+                leftShoulderDown,rightShoulderDown,backDown,
+                gameplay&&switchWeaponModDown,yDown,pauseDown,
+                gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
