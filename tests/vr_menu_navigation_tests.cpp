@@ -146,22 +146,48 @@ int main(){
     assert(!vrConfirmLevelStart(timedStart,13,12003));
     assert(!vrStatsSetCorner(levelWidgets,4,-2));
     assert(!vrStatsSetEnabled(levelWidgets,7,true));
-    // Level timing/deaths survive checkpoint-generation changes.
+    // Active level statistics start ONLY after a confirmed timed attempt.
+    // The same confirmation resets Level Time AND Level Deaths to zero.
     LevelProgress progression{};
     LevelRecords bests{};
-    assert(levelProgressSetMap(progression,"maps/game/uem1"));
+    levelProgressAdvance(progression,true,1000);
+    levelProgressAdvance(progression,true,1200);
+    levelProgressDeath(progression);
+    assert(progression.time.elapsedMs==0&&progression.deaths==0);
+    assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
+    assert(progression.armed&&progression.time.elapsedMs==0
+        &&progression.deaths==0);
     levelProgressAdvance(progression,true,1000);
     levelProgressAdvance(progression,true,1600);
     levelProgressDeath(progression);
     levelProgressDeath(progression);
-    assert(progression.time.elapsedMs==250); // per-frame upper bound
+    assert(progression.time.elapsedMs==250); // maximum frame delta
     assert(progression.deaths==2);
     levelProgressAdvance(progression,false,2000);
     levelProgressAdvance(progression,true,3000);
     levelProgressAdvance(progression,true,3030);
     assert(progression.time.elapsedMs==280);
-    // Retrying the exact same map resets live attempt counters without
-    // destroying its existing PB; do not rely on 'different key' semantics.
+    // First completion is a personal best, disarms timer, saves date/deaths.
+    assert(levelProgressComplete(progression,bests,4000,20261116));
+    assert(!progression.armed&&progression.completed&&progression.deaths==2);
+    assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(progression.bestUpdated&&progression.previousBestMs==0
+        &&progression.bestImprovementMs==0);
+    assert(bests.runs.at("maps/game/uem1").front().deaths==2);
+    assert(bests.runs.at("maps/game/uem1").front().dateYmd==20261116);
+    assert(!levelProgressComplete(progression,bests,4010,20261116));
+    levelProgressAdvance(progression,true,4300);
+    levelProgressDeath(progression);
+    assert(progression.time.elapsedMs==280&&progression.deaths==2);
+    // New level/replay cannot auto-start a previous mission's record.
+    levelProgressNextUnidentified(progression);
+    assert(!progression.armed&&progression.verifiedMapKey.empty());
+    levelProgressAdvance(progression,true,5000);
+    levelProgressAdvance(progression,true,5100);
+    levelProgressDeath(progression);
+    assert(progression.time.elapsedMs==0&&progression.deaths==0);
+    assert(!levelProgressComplete(progression,bests,5200,20261116));
+    // Same-mission retry explicitly resets timer/deaths and keeps old PB.
     LevelProgress retry{};
     assert(levelProgressStartAttempt(retry,"campaign/01"));
     levelProgressAdvance(retry,true,100);
@@ -169,34 +195,76 @@ int main(){
     levelProgressDeath(retry);
     assert(retry.time.elapsedMs==100&&retry.deaths==1);
     assert(levelProgressStartAttempt(retry,"campaign/01"));
-    assert(retry.verifiedMapKey=="campaign/01"
+    assert(retry.armed&&retry.verifiedMapKey=="campaign/01"
         &&retry.time.elapsedMs==0&&retry.deaths==0);
-    assert(!levelProgressStartAttempt(retry,"not a valid map"));
-    assert(levelProgressComplete(progression,bests,4000));
-    assert(progression.completed&&progression.deaths==2);
-    assert(levelBestFor(bests,"maps/game/uem1")==280);
-    assert(!levelProgressComplete(progression,bests,4010));
-    assert(progression.bestUpdated&&progression.newBestGoldUntilMs==9000);
-    // Slower replays never beat the existing personal best.
-    assert(levelProgressSetMap(progression,"maps/game/uem2"));
-    assert(levelProgressSetMap(progression,"maps/game/uem1"));
+    assert(!levelProgressStartAttempt(retry,"bad map name"));
+    // A slower completion still enters the leaderboard (not a personal best).
+    assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
     levelProgressAdvance(progression,true,4000);
     levelProgressAdvance(progression,true,4400);
-    assert(!levelProgressComplete(progression,bests,5000));
+    assert(levelProgressComplete(progression,bests,5000,20261117));
+    assert(!progression.bestUpdated&&progression.previousBestMs==280);
     assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(bests.runs.at("maps/game/uem1").size()==2);
+    // Improved completion reports the exact margin by which the PB fell.
+    assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
+    levelProgressAdvance(progression,true,6000);
+    levelProgressAdvance(progression,true,6150);
+    assert(levelProgressComplete(progression,bests,6300,20261118));
+    assert(progression.bestUpdated&&progression.previousBestMs==280
+        &&progression.bestImprovementMs==130);
+    assert(levelBestFor(bests,"maps/game/uem1")==150);
+    // Keep top five by TIME and top five by DEATHS from the SAME run pool.
+    // Maintaining the union (up to 10) ensures that sorting never loses a
+    // slower deathless run just because it isn't among five fastest times.
+    for(unsigned i=0;i<12;++i)
+        (void)levelRecordsAddRun(bests,"campaign/02",
+            LevelRun{1000ULL+10*i,12u-i,20261101u+i});
+    const auto timeRanked=levelRankedRuns(bests,"campaign/02",false);
+    const auto deathRanked=levelRankedRuns(bests,"campaign/02",true);
+    assert(timeRanked.size()==5&&deathRanked.size()==5);
+    assert(timeRanked.front().timeMs==1000);
+    assert(timeRanked.back().timeMs==1040);
+    assert(deathRanked.front().deaths==1);
+    assert(deathRanked.back().deaths==5);
+    assert(bests.runs.at("campaign/02").size()==10);
+    assert(levelRecordDateText(20261116)=="16/11/2026");
+    assert(levelRecordDateText(0)=="--/--/----");
+    assert(levelRecordDateValid(20240229));
+    assert(!levelRecordDateValid(20260229));
     assert(!levelRecordKeyValid("../traversal"));
     assert(!levelRecordKeyValid("spaces not accepted"));
     assert(!levelProgressSetMap(progression,"bad\nname"));
+    // Schema 2 roundtrip preserves all five rows, dates, deaths and ranking.
     const auto levelsFile=std::filesystem::temp_directory_path()
         /"ripshift_level_pb_roundtrip.cfg";
     assert(levelRecordsSave(levelsFile.string(),bests));
     LevelRecords readBests{};
     assert(levelRecordsLoad(levelsFile.string(),readBests));
-    assert(levelBestFor(readBests,"maps/game/uem1")==280);
-    assert(levelRecordsReset(readBests,"maps/game/uem1"));
-    assert(levelBestFor(readBests,"maps/game/uem1")==0);
-    levelRecordsResetAll(readBests);
-    assert(readBests.bestMs.empty());
+    assert(levelBestFor(readBests,"maps/game/uem1")==150);
+    assert(levelRankedRuns(readBests,"campaign/02",true).front().deaths==1);
+    assert(levelRankedRuns(readBests,"campaign/02",false).front().dateYmd==20261101);
+    // Schema 1 legacy saves held only time. Preserve the record WITHOUT
+    // fabricating a completion date or a zero-death result.
+    {
+        std::ofstream legacy(levelsFile,std::ios::trunc);
+        legacy<<"schema 1\nbest campaign/01 6200\n";
+    }
+    LevelRecords migrated{};
+    assert(levelRecordsLoad(levelsFile.string(),migrated));
+    assert(levelBestFor(migrated,"campaign/01")==6200);
+    const auto legacyRank=levelRankedRuns(migrated,"campaign/01",false);
+    assert(legacyRank.size()==1&&legacyRank[0].dateYmd==0
+        &&legacyRank[0].deaths==kLevelDeathsUnknown);
+    assert(levelRecordsSave(levelsFile.string(),migrated));
+    LevelRecords migratedAgain{};
+    assert(levelRecordsLoad(levelsFile.string(),migratedAgain));
+    assert(levelRankedRuns(migratedAgain,"campaign/01",false)[0].deaths
+        ==kLevelDeathsUnknown);
+    assert(levelRecordsReset(migratedAgain,"campaign/01"));
+    assert(levelBestFor(migratedAgain,"campaign/01")==0);
+    levelRecordsResetAll(migratedAgain);
+    assert(migratedAgain.runs.empty());
     std::error_code levelsError;
     std::filesystem::remove(levelsFile,levelsError);
     VrLiveSettings sessionDisplay{};
