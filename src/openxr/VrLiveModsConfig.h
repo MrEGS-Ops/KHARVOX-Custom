@@ -104,7 +104,7 @@ float punchSpeedMetersPerSec{2.8f};
     bool deathStatisticsEnabled{};
     int deathStatisticsCorner{0}; // fresh install defaults opposite Campaign Deaths
     bool campaignTimerEnabled{};
-    int campaignTimerCorner{0};
+    int campaignTimerCorner{3}; // fresh install bottom right; existing saved values take priority
     bool sessionTimerEnabled{}; // session elapsed is NOT persisted, only this display preference
     int sessionTimerCorner{2};
 };
