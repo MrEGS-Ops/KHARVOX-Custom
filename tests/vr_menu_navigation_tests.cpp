@@ -39,15 +39,18 @@ int main(){
     assert(!deathCounterShouldDraw(true,true,true,true,false));
     assert(!deathCounterShouldDraw(true,true,true,false,true));
     assert(vrLiveValidSettings(counterSettings));
-    // New stats take ownership of their corner by disabling the previous
-    // screen item. No automatic repositioning or stacking is allowed.
+    // Campaign Deaths and Session Deaths are separate badges. Both can
+    // remain visible when their actual rectangles do not overlap.
     VrLiveSettings stats{};
     assert(!stats.deathCounterEnabled&&!stats.deathStatisticsEnabled
         &&!stats.campaignTimerEnabled);
     assert(vrStatsSetEnabled(stats,0,true));
     assert(stats.deathCounterEnabled);
     assert(vrStatsSetEnabled(stats,1,true));
-    assert(!stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    assert(stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    assert(vrLiveValidSettings(stats)); // opposite default corners
+    assert(std::string(vrStatsLabel(0))=="Campaign Deaths");
+    assert(std::string(vrStatsLabel(1))=="Session Deaths");
     // Replacement and position changes NEVER close the Stats menu.
     assert(!vrStatsMenuShouldClose(false,110,true));
     assert(!vrStatsMenuShouldClose(false,130,true));
@@ -59,23 +62,32 @@ int main(){
     assert(!vrStatsMenuShouldClose(true,130,true));
     assert(!vrStatsMenuShouldClose(true,131,false));
     assert(vrStatsMenuShouldClose(true,131,true));
-    // Timer top-left and statistics top-right can coexist.
+    // A lower grid row is clear: campaign deaths, session deaths, and a
+    // timer can all draw at once without an overlap.
+    assert(vrStatsSetCorner(stats,2,statsPositionFromGridCell(12)));
     assert(vrStatsSetEnabled(stats,2,true));
-    assert(stats.campaignTimerEnabled&&stats.deathStatisticsEnabled);
-    // Assigning the timer to the stat's occupied corner disables statistics.
+    assert(stats.campaignTimerEnabled
+        &&stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    // Moving the timer onto Campaign Deaths' actual top-right rectangle
+    // replaces only Campaign Deaths, leaving Session Deaths visible.
     assert(vrStatsSetCorner(stats,2,1));
-    assert(stats.campaignTimerEnabled&&!stats.deathStatisticsEnabled);
+    assert(stats.campaignTimerEnabled&&!stats.deathCounterEnabled
+        &&stats.deathStatisticsEnabled);
     assert(!vrStatsMenuShouldClose(false,131,true));
     assert(vrStatsCorner(stats,2)==1);
     // A hidden item's position preference does not displace visible items.
     assert(vrStatsSetCorner(stats,0,1));
     assert(!stats.deathCounterEnabled&&stats.campaignTimerEnabled);
-    // Enabling the Death Counter in that corner now disables the timer.
+    // Re-enabling Campaign Deaths replaces the overlapping timer only.
     assert(vrStatsSetEnabled(stats,0,true));
-    assert(stats.deathCounterEnabled&&!stats.campaignTimerEnabled);
+    assert(stats.deathCounterEnabled&&stats.deathStatisticsEnabled
+        &&!stats.campaignTimerEnabled);
     assert(vrStatsSetEnabled(stats,1,true));
-    assert(!stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
+    assert(stats.deathCounterEnabled&&stats.deathStatisticsEnabled);
     assert(vrLiveValidSettings(stats));
+    // The older direct counter toggle uses the same collision rule.
+    assert(vrLiveSetEnabled(stats,VrLiveMod::DeathCounter,true));
+    assert(stats.deathStatisticsEnabled);
     assert(!vrStatsSetCorner(stats,2,4));
     assert(!vrStatsSetEnabled(stats,-1,true));
     CampaignRunTime run{};
@@ -88,7 +100,7 @@ int main(){
     assert(run.elapsedMs==36); // no pause gap counted
     assert(campaignRunTimeText(3723000)=="01:02:03");
     assert(campaignStatsPanelWidth(0)==226);
-    assert(campaignStatsPanelWidth(1)==316);
+    assert(campaignStatsPanelWidth(1)==226);
     // Session Timer is a fourth, separately positionable display.
     VrLiveSettings sessionDisplay{};
     assert(!sessionDisplay.sessionTimerEnabled);
@@ -156,7 +168,7 @@ int main(){
         kStatsMenuGridY+4*kStatsMenuGridCellHeight+4)==-1);
     assert(statsPanelX(1,960,226)==702); // legacy untouched
     assert(statsPanelY(1,720,60)==28);
-    assert(statsPanelX(statsPositionFromGridCell(11),960,316)==612);
+    assert(statsPanelX(statsPositionFromGridCell(11),960,226)==702);
     assert(statsPanelY(statsPositionFromGridCell(12),720,60)>88);
     VrLiveSettings fineGrid{};
     assert(vrStatsSetCorner(fineGrid,1,statsPositionFromGridCell(0)));
@@ -165,7 +177,7 @@ int main(){
     assert(vrStatsSetEnabled(fineGrid,2,true));
     // Separate vertical cells allow exact left-edge alignment and stacking.
     assert(fineGrid.deathStatisticsEnabled&&fineGrid.campaignTimerEnabled);
-    assert(statsPanelX(fineGrid.deathStatisticsCorner,960,316)
+    assert(statsPanelX(fineGrid.deathStatisticsCorner,960,226)
         ==statsPanelX(fineGrid.campaignTimerCorner,960,226));
     assert(!vrStatsPositionsOverlap(1,fineGrid.deathStatisticsCorner,
         2,fineGrid.campaignTimerCorner));
@@ -200,6 +212,31 @@ int main(){
     assert(loadedFine.campaignTimerEnabled==fineGrid.campaignTimerEnabled);
     std::error_code fineFileError;
     std::filesystem::remove(fineFile,fineFileError);
+    // Both death badges and both timers can be independently placed.
+    VrLiveSettings allStats{};
+    assert(vrStatsSetCorner(allStats,0,statsPositionFromGridCell(0)));
+    assert(vrStatsSetCorner(allStats,1,statsPositionFromGridCell(12)));
+    assert(vrStatsSetCorner(allStats,2,statsPositionFromGridCell(24)));
+    assert(vrStatsSetCorner(allStats,3,statsPositionFromGridCell(36)));
+    for(int item=0;item<4;++item)assert(vrStatsSetEnabled(allStats,item,true));
+    assert(allStats.deathCounterEnabled&&allStats.deathStatisticsEnabled
+        &&allStats.campaignTimerEnabled&&allStats.sessionTimerEnabled);
+    for(int a=0;a<4;++a)for(int b=a+1;b<4;++b)
+        assert(!vrStatsPositionsOverlap(a,vrStatsCorner(allStats,a),
+            b,vrStatsCorner(allStats,b)));
+    const auto allStatsFile=std::filesystem::temp_directory_path()
+        /"ripshift_four_hud_readouts_roundtrip.cfg";
+    assert(vrLiveSave(allStatsFile.string(),allStats));
+    VrLiveSettings fourLoaded{};
+    assert(vrLiveLoad(allStatsFile.string(),fourLoaded));
+    assert(fourLoaded.deathCounterEnabled&&fourLoaded.deathStatisticsEnabled
+        &&fourLoaded.campaignTimerEnabled&&fourLoaded.sessionTimerEnabled);
+    assert(fourLoaded.deathStatisticsCorner==allStats.deathStatisticsCorner);
+    std::error_code fourFileError;
+    std::filesystem::remove(allStatsFile,fourFileError);
+    // Still reject corrupted saved settings that force overlapping badges.
+    fourLoaded.deathStatisticsCorner=fourLoaded.deathCounterCorner;
+    assert(!vrLiveValidSettings(fourLoaded));
     
     int selected=0;
     // The hidden DEV submenu has a distinct page and only diagnostic
