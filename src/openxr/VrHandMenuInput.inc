@@ -455,7 +455,11 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                     return 1000+i;
         if(pixelX>=531&&pixelX<=915){
             if(!dev&&pixelY>=159&&pixelY<219)return 110;
-            if(dev)return pixelY>=186&&pixelY<244?130:-1;
+            if(dev){
+                if(pixelY>=186&&pixelY<244)return 130;
+                if(pixelY>=397&&pixelY<455)return 131; // RESET ALL
+                return -1;
+            }
             for(int i=0;i<4;++i)
                 if(pixelY>=254+i*70&&pixelY<312+i*70)
                     return 130+i;
@@ -702,7 +706,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int previous=m.statsSelected;
             kharvox::vrMenuNavigateStick(m.navigation,
                 m.navigation.settingsColumn?s.leftStick.x:0.f,
-                s.leftStick.y,3,m.statsSelected,dev?1:5);
+                s.leftStick.y,3,m.statsSelected,dev?2:5);
             m.statsSelected=std::clamp(m.statsSelected,0,2);
             if(previous!=m.statsSelected){
                 m.navigation.actionIndex=0;
@@ -712,7 +716,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int pointed=triggerEdge?m.hovered:-1;
             const int chosen=pointed>=0?pointed:
                 aEdge?(m.navigation.settingsColumn
-                    ?dev?130:m.navigation.actionIndex==0
+                    ?dev?130+m.navigation.actionIndex:m.navigation.actionIndex==0
                         ?110:129+m.navigation.actionIndex
                     :1000+m.statsSelected):-1;
             if(pointed>=0)m.navigation.usingStick=false;
