@@ -107,6 +107,9 @@ float punchSpeedMetersPerSec{2.8f};
     int campaignTimerCorner{3}; // fresh install bottom right; existing saved values take priority
     bool sessionTimerEnabled{}; // session elapsed is NOT persisted, only this display preference
     int sessionTimerCorner{2};
+    // Level readouts remain opt-in; records are stored separately.
+    std::array<bool,3> levelDisplayEnabled{{false,false,false}};
+    std::array<int,3> levelDisplayPosition{{117,129,141}};
 };
 // Native Sync Action pacing is inverse to the displayed speed: lower Hz
 // gives a faster kill, higher Hz a slower one (30 = fast, 240 = slow).
@@ -140,13 +143,15 @@ inline bool vrStatsEnabled(const VrLiveSettings& s,int item) noexcept {
     if(item==0)return s.deathCounterEnabled;
     if(item==1)return s.deathStatisticsEnabled;
     if(item==2)return s.campaignTimerEnabled;
-    return item==3?s.sessionTimerEnabled:false;
+    if(item==3)return s.sessionTimerEnabled;
+    return item>=4&&item<7?s.levelDisplayEnabled[item-4]:false;
 }
 inline int vrStatsCorner(const VrLiveSettings& s,int item) noexcept {
     if(item==0)return s.deathCounterCorner;
     if(item==1)return s.deathStatisticsCorner;
     if(item==2)return s.campaignTimerCorner;
-    return item==3?s.sessionTimerCorner:-1;
+    if(item==3)return s.sessionTimerCorner;
+    return item>=4&&item<7?s.levelDisplayPosition[item-4]:-1;
 }
 inline constexpr const char* vrStatsLabel(int item) noexcept {
     switch(item){
@@ -154,14 +159,19 @@ inline constexpr const char* vrStatsLabel(int item) noexcept {
         case 1:return "Session Deaths";
         case 2:return "Campaign Run Timer";
         case 3:return "Session Timer";
+        case 4:return "Level Time";
+        case 5:return "Level Best";
+        case 6:return "Level Deaths";
         default:return "Unknown Stat";
     }
 }
 // Use the actual HUD panel rectangles, not only a cell ID, to prevent
 // closely-spaced positions from accidentally drawing over each other.
+inline constexpr int kVrStatsItemCount=7;
 inline constexpr bool vrStatsPositionsOverlap(int first,int firstPosition,
     int second,int secondPosition) noexcept {
-    if(first<0||first>3||second<0||second>3
+    if(first<0||first>=kVrStatsItemCount
+        ||second<0||second>=kVrStatsItemCount
         ||!statsPositionValid(firstPosition)
         ||!statsPositionValid(secondPosition))return false;
     const int firstWidth=campaignStatsPanelWidth(first);
@@ -174,20 +184,22 @@ inline constexpr bool vrStatsPositionsOverlap(int first,int firstPosition,
         &&y1<y2+60&&y2<y1+60;
 }
 inline bool vrStatsSetEnabled(VrLiveSettings& s,int item,bool on) noexcept {
-    if(item<0||item>3)return false;
+    if(item<0||item>=kVrStatsItemCount)return false;
     if(item==0)s.deathCounterEnabled=on;
     else if(item==1)s.deathStatisticsEnabled=on;
     else if(item==2)s.campaignTimerEnabled=on;
-    else s.sessionTimerEnabled=on;
+    else if(item==3)s.sessionTimerEnabled=on;
+    else s.levelDisplayEnabled[item-4]=on;
     if(on){
         const int target=vrStatsCorner(s,item);
-        for(int other=0;other<4;++other)if(other!=item
+        for(int other=0;other<kVrStatsItemCount;++other)if(other!=item
             &&vrStatsEnabled(s,other)
             &&vrStatsPositionsOverlap(item,target,other,vrStatsCorner(s,other))){
             if(other==0)s.deathCounterEnabled=false;
             else if(other==1)s.deathStatisticsEnabled=false;
             else if(other==2)s.campaignTimerEnabled=false;
-            else s.sessionTimerEnabled=false;
+            else if(other==3)s.sessionTimerEnabled=false;
+            else s.levelDisplayEnabled[other-4]=false;
         }
     }
     return true;
@@ -199,11 +211,12 @@ inline constexpr bool vrStatsMenuShouldClose(bool dev,int action,
     return dev&&action==131&&persistedSuccessfully;
 }
 inline bool vrStatsSetCorner(VrLiveSettings& s,int item,int corner) noexcept {
-    if(item<0||item>3||!statsPositionValid(corner))return false;
+    if(item<0||item>=kVrStatsItemCount||!statsPositionValid(corner))return false;
     if(item==0)s.deathCounterCorner=corner;
     else if(item==1)s.deathStatisticsCorner=corner;
     else if(item==2)s.campaignTimerCorner=corner;
-    else s.sessionTimerCorner=corner;
+    else if(item==3)s.sessionTimerCorner=corner;
+    else s.levelDisplayPosition[item-4]=corner;
     // Assigning a position to a hidden widget must not evict anything.
     if(vrStatsEnabled(s,item))vrStatsSetEnabled(s,item,true);
     return true;
@@ -254,7 +267,10 @@ inline bool vrLiveValidSettings(const VrLiveSettings& s) {
     if(!statsPositionValid(s.deathStatisticsCorner))return false;
     if(!statsPositionValid(s.campaignTimerCorner))return false;
     if(!statsPositionValid(s.sessionTimerCorner))return false;
-    for(int i=0;i<4;++i)for(int j=i+1;j<4;++j)
+    for(const int position:s.levelDisplayPosition)
+        if(!statsPositionValid(position))return false;
+    for(int i=0;i<kVrStatsItemCount;++i)
+        for(int j=i+1;j<kVrStatsItemCount;++j)
         if(vrStatsEnabled(s,i)&&vrStatsEnabled(s,j)
             &&vrStatsPositionsOverlap(i,vrStatsCorner(s,i),
                 j,vrStatsCorner(s,j)))return false;
@@ -393,6 +409,18 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
             (name=="death_statistics_corner"?next.deathStatisticsCorner
                 :name=="campaign_timer_corner"?next.campaignTimerCorner
                 :next.sessionTimerCorner)=corner;
+        }else if(name=="level_time_enabled"||name=="level_best_enabled"
+            ||name=="level_deaths_enabled"){
+            int value{};std::string extra;
+            if(!(row>>value)||(value!=0&&value!=1)||(row>>extra))return false;
+            next.levelDisplayEnabled[name=="level_time_enabled"?0:
+                name=="level_best_enabled"?1:2]=value!=0;
+        }else if(name=="level_time_position"||name=="level_best_position"
+            ||name=="level_deaths_position"){
+            int value{};std::string extra;
+            if(!(row>>value)||(row>>extra))return false;
+            next.levelDisplayPosition[name=="level_time_position"?0:
+                name=="level_best_position"?1:2]=value;
         }else return false;
     }
     if(f.bad()||schema!=1)return false;
@@ -402,6 +430,8 @@ inline bool vrLiveLoad(const std::string& path,VrLiveSettings& out){
     if(next.deathStatisticsEnabled)vrStatsSetEnabled(next,1,true);
     if(next.campaignTimerEnabled)vrStatsSetEnabled(next,2,true);
     if(next.sessionTimerEnabled)vrStatsSetEnabled(next,3,true);
+    for(int i=4;i<kVrStatsItemCount;++i)
+        if(next.levelDisplayEnabled[i-4])vrStatsSetEnabled(next,i,true);
     if(!vrLiveValidSettings(next))return false;
     out=next;
     return true;
@@ -440,7 +470,13 @@ inline bool vrLiveSave(const std::string& path,const VrLiveSettings& s){
        <<"campaign_timer_enabled "<<(s.campaignTimerEnabled?1:0)<<'\n'
        <<"campaign_timer_corner "<<s.campaignTimerCorner<<'\n'
        <<"session_timer_enabled "<<(s.sessionTimerEnabled?1:0)<<'\n'
-       <<"session_timer_corner "<<s.sessionTimerCorner<<'\n';
+       <<"session_timer_corner "<<s.sessionTimerCorner<<'\n'
+       <<"level_time_enabled "<<(s.levelDisplayEnabled[0]?1:0)<<'\n'
+       <<"level_time_position "<<s.levelDisplayPosition[0]<<'\n'
+       <<"level_best_enabled "<<(s.levelDisplayEnabled[1]?1:0)<<'\n'
+       <<"level_best_position "<<s.levelDisplayPosition[1]<<'\n'
+       <<"level_deaths_enabled "<<(s.levelDisplayEnabled[2]?1:0)<<'\n'
+       <<"level_deaths_position "<<s.levelDisplayPosition[2]<<'\n';
     out.flush();
     if(!out){out.close();fs::remove(tmp,ec);return false;}
     out.close();
