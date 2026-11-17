@@ -612,8 +612,8 @@ bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
 }
 
 
-// Best-effort read-only native MSVC RTTI. A class name is a clue, not an
-// asset name, physics-body verification or an authorization to move the prop.
+// Best-effort read-only native MSVC RTTI: a class name is a clue, NOT
+// an asset name, proof of movable physics or permission to write a prop.
 bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
     std::uintptr_t base,std::uintptr_t imageSize,
     std::array<char,80>& output) {
@@ -635,13 +635,31 @@ bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
         ||!inside(base+col[3],23))return false;
     const auto name=base+col[3]+16; // MSVC TypeDescriptor name
     char decorated[80]{};
-    unsigned size{};
-    for(;size<sizeof(decorated)-1&&inside(name+size,1);++size){
-        const char c=*reinterpret_cast<const char*>(name+size);
+    unsigned length{};
+    for(;length<sizeof(decorated)-1&&inside(name+length,1);++length){
+        const char c=*reinterpret_cast<const char*>(name+length);
         if(c=='\0')break;
-        if((c<'A'||c>'Z')&&(c<'a'||c>'z')
-            &&(c<'0'||c>'9')&&c!='.'&&c!='?'&&c!='@'
-            &&c!='_'&&c!='
+        const bool permitted=(c>='A'&&c<='Z')||(c>='a'&&c<='z')
+            ||(c>='0'&&c<='9')||c=='.'||c=='?'||c=='@'
+            ||c=='_';
+        if(!permitted)return false;
+        decorated[length]=c;
+    }
+    if(length<7||length>=sizeof(decorated)-1
+        ||decorated[0]!='.'||decorated[1]!='?'
+        ||decorated[2]!='A'
+        ||(decorated[3]!='V'&&decorated[3]!='U'))return false;
+    const char* last=std::strstr(decorated+4,"@@");
+    if(!last)return false;
+    const auto count=static_cast<std::size_t>(last-(decorated+4));
+    if(count==0||count>=output.size())return false;
+    std::memcpy(output.data(),decorated+4,count);
+    output[count]='\0';
+    return true;
+}
+
+// DOOM has ALREADY resolved and null-checked this entity in FocusTracker.
+// These observations are read-only and never leave the game-thread pointer.
 // The following native instruction is itself 'mov rdx,[rax]' to fetch the
 // entity's vtable. Observe that same pointer while it's valid on game thread.
 // We export only a vtable RVA; never a live pointer or fabricated body ID.
