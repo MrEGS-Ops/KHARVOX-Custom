@@ -3101,8 +3101,12 @@ bool KharvoxCameraInstallDiagnosticHook() {
     if (image) {
         installPlayerPhysicsOriginCapture(image);
         installPlayerFocusTraceHook(image);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        // These extra native DOOM entity hooks exist only in the DLL shipped
+        // with RIPSHIFT VR (Experimental), never Native Full/Patch.
         installNativeWorldGrabTraceCandidateHooks(image);
         installNativeWorldGrabResolvedEntityHooks(image);
+#endif
         installPlayerLedgeStateCapture(image);
         validateSyncAttackClassifier(image);
         validatePlayerControlClassifier(image);
