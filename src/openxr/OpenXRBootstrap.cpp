@@ -2606,7 +2606,8 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     const auto transition=s.scriptedWeaponBoundary.update(
-        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive());
+        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive(),
+        s.hudWeaponWheelPresented);
     if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Suspend){
         KharvoxWeaponSetScriptedInteractionSuspended(true);
         log("[WEAPON-POSE] scripted terminal/control lock: temporary grip pivot capture suspended");
