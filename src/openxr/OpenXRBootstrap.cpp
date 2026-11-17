@@ -3685,13 +3685,19 @@ void updateGameplayActions(XrTime displayTime){
     // Controller reconnection is checked and acknowledged ONLY in playable
     // world gameplay. Main menus, settings, pause, loading and cinematics
     // must remain usable even with a disconnected controller.
+    // Browsing RIPSHIFT's own Mod Menu is NOT active combat. A sleeping
+    // controller must never force the L3+R3 reconnect modal, pause DOOM,
+    // or replace the visible menu with the reconnect banner. The menu owns
+    // all native inputs already, and rechecks controller tracking after
+    // closing. Genuine loss during playable gameplay still hard-locks.
     const bool safetyGameplay=kharvox::vrControllerLiveGameplay(
         KharvoxCameraGameplayActive(),KharvoxCameraWorldActive(),
         KharvoxHudPauseMenuActive(),KharvoxHudFullscreenMenuActive(),
         KharvoxHudDeathMenuActive(),KharvoxCameraCutsceneActive(),
         s.quadMode||s.centeredQuadTransitionPending
             ||s.immersiveCinematicActive,
-        KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible());
+        KharvoxHudEndOfLevelMenuActive()||KharvoxHudPauseRootVisible())
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
     serviceCampaignRunTime(safetyGameplay&&bothProfiles&&bothTracked
         &&s.controllerOnlySafety.armed&&!s.controllerOnlySafety.reconnectAckRequired
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
