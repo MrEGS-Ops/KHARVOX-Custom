@@ -6,6 +6,7 @@
 #include "WeaponHook.h"
 #include "WeaponControllerPosePolicy.h"
 #include "WeaponIdentityPolicy.h"
+#include "WeaponPivotOutlierPolicy.h"
 #include "AerWeaponPairPolicy.h"
 #include "AerWeaponPoseCache.h"
 #include "CollectiblePresentation.h"
@@ -166,6 +167,8 @@ std::atomic<uint64_t> animatedGripPivotTickMs{}; // read-only published timestam
 std::array<std::atomic<float>, 3> neutralGripPivot{};
 std::atomic<bool> neutralGripPivotValid{};
 std::atomic<unsigned> neutralGripPivotGeneration{};
+std::atomic<bool> scriptedPivotRecoveredPending{};
+kharvox::ScriptedWeaponPivotRecovery pivotRecoveryState{};
 std::atomic<KharvoxWeaponKind> neutralGripPivotWeapon{
     KharvoxWeaponKind::Unknown};
 unsigned neutralGripPivotWarmup{};
@@ -563,6 +566,8 @@ void captureAnimatedGripPivot(void* hands) {
         neutralGripPivotWarmup=0;
         neutralGripPivotSamples=0;
         neutralGripPivotSum.fill(0.0f);
+        pivotRecoveryState={};
+        scriptedPivotRecoveredPending.store(false,std::memory_order_release);
     }
     // Capture a short settled neutral window after gameplay/cutscene entry.
     // This becomes the LateUpdate reference used to remove only global
@@ -586,6 +591,23 @@ void captureAnimatedGripPivot(void* hands) {
                         << neutralGripPivot[2].load(std::memory_order_relaxed);
                 log(neutral.str());
             }
+        }
+    }
+    // A scripted in-world terminal can leave the native idHands joint
+    // translated far from its regular grip while gameplay stays active.
+    // Freeze that outlier to the known normal joint, not a corrupt offset.
+    if(neutralGripPivotValid.load(std::memory_order_acquire)){
+        float neutral[3]{};
+        for(int i=0;i<3;++i)
+            neutral[i]=neutralGripPivot[i].load(std::memory_order_relaxed);
+        const bool outlier=kharvox::weaponPivotOutlier(origin,neutral);
+        const auto event=pivotRecoveryState.observe(outlier);
+        if(outlier)for(int i=0;i<3;++i)origin[i]=neutral[i];
+        if(event==kharvox::ScriptedWeaponPivotRecovery::Event::Quarantine)
+            log("[WEAPON-PIVOT] large native joint displacement: using neutral grip until DOOM restores the joint");
+        else if(event==kharvox::ScriptedWeaponPivotRecovery::Event::Recovered){
+            scriptedPivotRecoveredPending.store(true,std::memory_order_release);
+            log("[WEAPON-PIVOT] native joint stable again; scheduling transient 6DoF cache rebuild");
         }
     }
     for (int index = 0; index < 3; ++index)
@@ -2446,9 +2468,21 @@ bool synchronizeAerAnimatedWeaponProp(
             &&!readCollectibleAnimation(activeHands)){
             float joint[3]{},delta[3]{};
             const auto adjustment=configuredWeaponPivotAdjustment();
-            if(readAnimatedGripPivot(activeHands,joint))
-                gripCorrected=kharvox::correctAerPropGrip(weaponRootSource,sourceRootOrigin.data(),
-                    sourceRootAxis.data(),joint,adjustment.data(),synchronizedOrigin,delta);
+            if(readAnimatedGripPivot(activeHands,joint)){
+                // The final weapon-prop correction MUST use the same bounded
+                // joint as the root, or the prop can reintroduce the offset.
+                if(neutralGripPivotValid.load(std::memory_order_acquire)){
+                    float neutral[3]{};
+                    for(int i=0;i<3;++i)
+                        neutral[i]=neutralGripPivot[i].load(std::memory_order_relaxed);
+                    if(kharvox::weaponPivotOutlier(joint,neutral))
+                        std::memcpy(joint,neutral,sizeof(neutral));
+                }
+                gripCorrected=kharvox::correctAerPropGrip(
+                    weaponRootSource,sourceRootOrigin.data(),
+                    sourceRootAxis.data(),joint,adjustment.data(),
+                    synchronizedOrigin,delta);
+            }
             static std::atomic<uint64_t> corrections{};
             if(gripCorrected&&(std::abs(delta[0])>.05f||std::abs(delta[1])>.05f||std::abs(delta[2])>.05f)){
                 const auto n=++corrections;
@@ -3040,6 +3074,9 @@ KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key) {
     return KharvoxWeaponKind::Unknown;
 }
 
+bool KharvoxWeaponConsumeScriptedPivotRecovery(){
+    return scriptedPivotRecoveredPending.exchange(false,std::memory_order_acq_rel);
+}
 void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend){
     scriptedInteractionSuspended.store(suspend,std::memory_order_release);
     if(suspend){

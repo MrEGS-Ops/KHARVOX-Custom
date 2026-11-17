@@ -79,6 +79,9 @@ const char* KharvoxWeaponKindDisplayName(KharvoxWeaponKind kind);
 KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key);
 // Clears ONLY temporary animated grip snapshots, not UserData settings.
 void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend);
+// True once when the native animated grip returns from an extreme scripted
+// displacement. Consumer resets runtime caches ONLY, not saved calibration.
+bool KharvoxWeaponConsumeScriptedPivotRecovery();
 void KharvoxWeaponResetCalibration();
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,
