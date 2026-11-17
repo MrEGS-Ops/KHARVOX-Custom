@@ -166,5 +166,27 @@ int main(){
     // A new attempt may be started normally without inheriting old deaths.
     assert(levelProgressStartAttempt(manualStop,"campaign/02",4100000));
     assert(manualStop.armed&&manualStop.time.elapsedMs==0&&manualStop.deaths==0);
+    // The HUD must pair the fastest-time record with THAT run's death
+    // count, never the unrelated fewest-deaths leaderboard result.
+    LevelRecords pairedResults{};
+    assert(levelFastestRunFor(pairedResults,"campaign/03")==nullptr);
+    assert(levelRecordsAddRun(pairedResults,"campaign/03",
+        LevelRun{1328000,2,20261117})); // 00:22:08, 2 deaths
+    assert(levelRecordsAddRun(pairedResults,"campaign/03",
+        LevelRun{1380000,0,20261117})); // fewer deaths, slower
+    const auto originalBest=levelFastestRunFor(pairedResults,"campaign/03");
+    assert(originalBest&&originalBest->timeMs==1328000
+        &&originalBest->deaths==2);
+    assert(levelBestFor(pairedResults,"campaign/03")==originalBest->timeMs);
+    assert(levelRecordsAddRun(pairedResults,"campaign/03",
+        LevelRun{1328000,1,20261118})); // equal time, fewer deaths wins
+    const auto tiedBest=levelFastestRunFor(pairedResults,"campaign/03");
+    assert(tiedBest&&tiedBest->timeMs==1328000&&tiedBest->deaths==1);
+    assert(levelRecordsAddRun(pairedResults,"campaign/04",
+        LevelRun{1800000,kLevelDeathsUnknown,0})); // legacy time-only
+    const auto legacyBest=levelFastestRunFor(pairedResults,"campaign/04");
+    assert(legacyBest&&legacyBest->timeMs==1800000
+        &&legacyBest->deaths==kLevelDeathsUnknown);
+    assert(levelFastestRunFor(pairedResults,"campaign/09")==nullptr);
     return 0;
 }
