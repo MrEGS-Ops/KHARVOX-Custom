@@ -3515,6 +3515,7 @@ void serviceCampaignRunTime(bool gameplay,
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.heavyAlternateInputForwarded=false;
@@ -3537,6 +3538,7 @@ void updateGameplayActions(XrTime displayTime){
     XrActiveActionSet active{s.gameplayActionSet,XR_NULL_PATH}; XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets=1; sync.activeActionSets=&active;
     if(XR_FAILED(s.syncActionsFn(s.session,&sync))
         ||s.sessionState!=XR_SESSION_STATE_FOCUSED){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.motionWheelState={};
@@ -4184,6 +4186,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&((weaponSelectDown&&s.weaponWheelOpened)||s.wheelCancelDrain.active());
     s.actionSpeedWheelObserved=weaponWheelActive;
+    // Render-only gun suppression while the actual wheel is open.
+    KharvoxWeaponSetWheelPresentationActive(weaponWheelActive);
     if(weaponWheelActive!=s.hudWeaponWheelPresented){
         // Reset renderer-local wheel transform/pivot at BOTH edges. Original
         // native menu size and distance remain unchanged.
