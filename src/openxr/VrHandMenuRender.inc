@@ -204,8 +204,9 @@ void paintVrHandMenu() {
             "For the best RIPSHIFT VR experience, we recommend",white);
         write(setupX+30,setupY+128,
             "disabling two settings in DOOM.",white);
+        // Required first-time setup instruction: high-contrast warning red.
         write(setupX+44,setupY+201,"TUTORIALS - OFF (REQUIRED)",
-            RGB(84,233,214));
+            RGB(255,92,92));
         write(setupX+44,setupY+249,
             "GLORY KILL HIGHLIGHT - OFF (OPTIONAL)",white);
         SelectObject(dc,smallFont);
