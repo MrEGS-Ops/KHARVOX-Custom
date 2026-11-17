@@ -9610,7 +9610,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // not a single flat disk. The cage spans the native rectangular zone's
     // X/Y/Z extents without changing collision or activation.
     // Multiple diagonal planes remain visible even when held at hip height.
-    std::array<XrCompositionLayerQuad,9> gunslingerZoneLayers{};
+    std::array<XrCompositionLayerQuad,3> gunslingerZoneLayers{};
 
     uint32_t gunslingerZoneLayerCount{};
     const auto& zm=s.vrHandMenu;
@@ -9652,28 +9652,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const auto hi=hip?kharvox::VrLivePoint{.51f,-.48f,.43f}
             :kharvox::VrLivePoint{.44f,.36f,.60f};
         const float width=hi.x-lo.x,height=hi.y-lo.y,depth=hi.z-lo.z;
-        // A single XR quad is ALWAYS flat. Eight rotated quads create a
-        // genuinely spatial cage: four longitudinal sections around Y and
-        // four transverse sections around X. The ellipse on each quad is
-        // stretched to its actual ellipsoid cross-section, not a circle
-        // pretending the interaction box is round.
+        // Orthogonal wireframe rings only: XY, XZ, and YZ.
+        // Each is sized to the existing zone's full X/Y/Z dimensions.
+        // XZ faces UP so the hip-zone circle remains visible looking down.
+        std::array<XrQuaternionf,3> ringOrientations{{
+            {0.f,0.f,0.f,1.f},                                  // XY
+            {-.70710678118f,0.f,0.f,.70710678118f},          // XZ
+            {0.f,right?-.70710678118f:.70710678118f,0.f,
+                 .70710678118f}                               // YZ inward-facing
+        }};
+        std::array<XrExtent2Df,3> ringSizes{{
+            {width,height},                                   // XY
+            {width,depth},                                    // XZ
+            {depth,height}                                    // YZ
+        }};
         for(size_t ring=0;ring<gunslingerZoneLayers.size();++ring){
-            // Explicit horizontal equator (XZ plane) at zone mid-height.
-            // Face normal points UP toward the headset when looking down.
-            const bool equator=ring==8;
-            const bool aroundY=ring<4;
-            const float angle=equator?1.5707963267948966f
-                :float(ring%4)*.7853981633974483f;
-            const float sh=std::sin(angle*.5f),ch=std::cos(angle*.5f);
-            const XrQuaternionf axis=equator
-                ?XrQuaternionf{-.70710678118f,0.f,0.f,.70710678118f}
-                :aroundY?XrQuaternionf{0.f,sh,0.f,ch}
-                    :XrQuaternionf{sh,0.f,0.f,ch};
-            const float ca=std::cos(angle),sa=std::sin(angle);
-            const XrExtent2Df crossSection=equator
-                ?XrExtent2Df{width,depth}
-                :aroundY?XrExtent2Df{std::hypot(width*ca,depth*sa),height}
-                    :XrExtent2Df{width,std::hypot(height*ca,depth*sa)};
+            const auto axis=ringOrientations[ring];
+            const auto crossSection=ringSizes[ring];
             auto& marker=gunslingerZoneLayers[ring];
             marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
             marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
