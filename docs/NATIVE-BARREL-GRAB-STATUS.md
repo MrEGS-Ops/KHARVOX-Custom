@@ -6,7 +6,7 @@
 - Allow any verified, non-static, non-kinematic, movable **dynamic physics body**.
 - Exclude player, characters, projectiles, scripted objects and unknown/stale handles.
 - Valid candidate -> red aim laser; unknown/static/non-grabbable -> cyan aim laser.
-- Fresh free-hand Grip -> acquire; hand motion -> body follows through DOOM physics; release -> drop; Trigger while holding -> throw. Physics must remain collision-owned.
+- Fresh free-hand Grip -> select one movable object and allow native-Vacuum-style travel to DOOM's unmodified collection destination. The hand geometrically INTERCEPTS the object's measured collision surface; then Catch/Hold stops Vacuum without collecting it. Trigger after Catch -> grenade-derived launch; Grip release -> Drop. Physics must remain collision-owned.
 - Never require a fixed mesh, entity name or barrel-specific whitelist.
 
 ## Confirmed from game data already examined
@@ -53,29 +53,31 @@
 - This is native **entity detection and hand-targeting**, not true **generic rigid-body physics selection**: FocusTracker's ordinary interactable filter may still exclude barrels. A game-thread collision query capable of selecting ANY dynamic body still requires engine verification.
 - No object is pulled, frozen, teleported, launched, reclassified or mutated by these probes. The Vacuum rune and ordinary grenade controls are untouched. The present hand-follow spring and grenade-ballistics structures are **intent policies only**, not a native adapter.
 
-## Native item Vacuum rune as the hand-centred pull source — research decision
-- DOOM (2016) has a campaign **Vacuum** rune; its documented effect is increasing the effective absorption / collection range for **dropped health and ammo**. The game documentation does **not** verify that this is a generic rigid-body attraction force; it may operate on pickup-specific movement/consumption logic.
-- Proposed reuse: identify the *native dropped-item attraction routine*, if any, and test whether its target-location input can be supplied with the **selected free-hand controller's world-space location** instead of the player-body position. Read-only verification before trying a redirect or extending it to non-pickup props.
-- **No directional Vacuum beam**: the laser is ONLY for initial object selection. On a fresh Grip, lock precisely that one verified native movable body; attraction always targets the current hand position, even if the controller turns away or loses laser intersection while Grip remains held. Never require continuous ray alignment, ray direction or a cone to maintain the pull. Do not affect surrounding consumables or props.
-- The candidate must already be a valid dynamic rigid-body hit from the native trace; Vacuum must NEVER be used to select all nearby props, convert a barrel into a pickup, collect/delete an object, change ammo/health, or disable its native collision.
-- Grip engages **one targeted movable object** within the existing 0.90 m acquisition limit. Pull toward the free hand; stop/hold at the hand while Grip remains down. Releasing Grip drops the object's original native body. Trigger uses separately verified grenade ballistics and no Vacuum pickup logic.
-- Important constraint: if the rune only changes pickup radius, **there is no reusable pulling force**. In that case a signed native idPhysics impulse/drag interface is still required; do not invent an engine pointer or silently claim that the spring-follow policy is native Vacuum.
-- Current implementation: the generic `WorldGrabMotionPolicy.h` computes a capped spring-follow *intent* only. No Vacuum routine, arbitrary hand-target pointer, entity-to-rigidbody adapter, or native physics writer has been verified/installed.
-- This design does not depend on the player equipping Vacuum or turning an existing rune ON globally. Existing health/ammo pickup behaviour remains untouched.
+## Native Vacuum attraction, item-spec contact catch — owner's corrected design
+- The free hand is a **selector and interceptor**, NEVER a Vacuum target or a directional attraction field. On a laser hit, Grip assigns one **already native-movable physics object**, by physics body identity.
+- Temporarily simulate/borrow only the *item attraction behaviour*. **DOOM's existing native Vacuum/pickup destination remains unchanged.** The object travels along DOOM's original attraction route as a normal vacuumable item would.
+- Do **not** redirect attraction toward the gripping hand; no hand-tether, spring-follow, gravity-gun beam, or fixed stopping distance.
+- Derive the catch point mathematically from that specific item's actual collision shape and orientation. Compute the **closest distance between the hand contact point and the selected object's native collider surface**. Example: a face-on 1-metre-wide box has a centre-to-face extent of 0.5 metres, so the box reaches the catching hand when its **centre is still 0.5 metres away**. Other shapes, orientations and sizes yield different stopping offsets.
+- The hand **intercepts** the moving object as its surface reaches the hand. Only at this contact does the native adapter stop/suspend attraction and hold the caught object. If the object does not intersect the hand, the hand must not alter DOOM's native Vacuum destination.
+- Before activating native attraction, the adapter must positively verify the selected **dynamic body**, its native collider dimensions and coordinate transform, and an **item pickup-consumption suppression mechanism**. If native collection cannot be blocked, **do not activate Vacuum for that object**; otherwise an unmodified pickup could disappear or alter inventory.
+- The object retains its original class, physical mesh, collision rules and barrel-specific effects. It never becomes a health pickup, ammo pickup or grenade.
+- Trigger launches **only a caught object**, via verified DOOM grenade launch ballistics on the same existing rigid body. Grip release stops temporary attraction/hold and returns the body to normal; losing tracking, level changes or weapon support do the same.
+- `WorldGrabMotionPolicy.h` now exposes an **item-sized oriented bounding-box catch test**, using measured body half-extents, rotated collider axes, and the free-hand contact position in the same metre-space. A small 0.015-metre geometric contact tolerance avoids exact floating-point contact errors; it is **not** an attraction radius.
+- The native adapter still does **not** exist. The state/geometry policy and pure regression tests are a source-level contract, not a claim of working native Vacuum, collider discovery or playable object grabbing. Real DOOM's Vacuum rune may only expand pickup range; its physical movement/consumption internals remain unverified.
 
 ## Grenade-derived trigger throwing — 17 November 2026
 - Confirmed from the live source: RIPSHIFT's optional Physical Grenade Throw responds to controller Grip release outside the chest pocket by setting `equipmentThrowPulseUntil` for 100 ms; the input mapper then sends the existing equipment-button input to DOOM. This code does **not** contain DOOM's grenade launch speed, arc, drag, impact physics, damage or fuse values.
 - The desired barrel mechanic is **trigger-to-throw, not hand-swing-to-throw**. The barrel stays its original object; do not spawn a grenade or duplicate explosive properties. Reuse DOOM's *verified native grenade launch* vector, gravity scale and damping, then restore the barrel's original flight parameters once the temporary flight interval ends. A falling barrel's collision shape and object-specific behaviour remain its own.
 - `WorldGrabMotionPolicy.h` has removed its former invented throw formula (smoothed hand movement × 1.7 plus fixed 6 m/s forward, clamped to 14 m/s). That formula was unrelated to the grenade launcher and should not be restored.
 - `WorldGrabGrenadeBallistics` now carries verified native launch velocity in **DOOM native units** plus verified grenade flight gravity/damping and level generation. A trigger edge issues a Throw command only when those values are finite, valid and generation-matched. No native sample -> **keep holding; do not invent a throw or launch a grenade instead**.
-- `WorldGrabOutput` passes the grenade ballistics to an eventual engine-thread adapter as-is. The hand movement is used for Follow assistance only, never to change the trigger-to-throw strength. Grip release continues to Drop.
+- `WorldGrabOutput` passes verified grenade ballistics to an eventual native engine adapter as-is. Grip state now passes through **Acquire → native-target VacuumAttract → geometry-based Catch → CaughtHold → Throw/Drop**. Hand position is used for contact interception ONLY, never for attraction direction, moving the object, or changing launch speed.
 - This is an intentionally fail-closed policy contract; **the native grenade launch capture and movable-object physics writer are not yet bound**. CI validates the policy but cannot demonstrate working barrel throws. DOOM grenade speed and trajectory constants have not been claimed or guessed.
 - An identical starting velocity alone does not guarantee identical landing distance for differently sized objects with differing collision/drag behaviour. Physics adaptation must be validated with actual native body properties, preserving the original object and restoring its physics state.
 
 ## Implemented in source — NOT yet functional in headset
 - WorldGrabTargetPolicy.h: generic hit snapshot, dynamic-physics eligibility and cyan/red visual feedback decision. Requires a validated native body ID; does not infer movability from a rendered laser.
-- WorldGrabMotionPolicy.h: both-hand-aware Grip acquire/follow/drop/throw commands now use the generic physics-hit snapshot rather than a verifiedBarrel flag, including zero-distance hand contact and a 0.90 m reach limit. Its Throw output is now native-grenade-sample-gated, with no hand-swing launch formula.
-- Existing VR laser/Grip probe and spring-follow intent remain separate; throw intent requires verified native grenade ballistics. No arbitrary entity memory writes are made.
+- WorldGrabMotionPolicy.h: both-hand-aware Acquire/VacuumAttract/Catch/CaughtHold/Drop/Throw intents use the generic verified native physics-hit snapshot, a 0.90 m initial selection limit, and **real object collider half-extents/orientation for catching**. Trigger Throw requires Catch and verified DOOM grenade ballistics.
+- Existing VR laser/Grip probe remains read-only; the former hand-to-body spring-follow intent was removed. Pure math now determines item-size catch contact. No arbitrary DOOM entity memory writes are made.
 - Existing engine FocusTracker selection is now observed passively via a thread-safe native state bridge. This is **not** a replacement for native all-physics-object collision detection and does **not** make barrels draggable.
 - Two additionally verified engine trace-to-entity candidate hook sites now produce separate, read-only, frame-context candidate handle snapshots. These are not physics body pointers; DOOM continues to perform its normal entity resolution.
 - Isolated tests cover dynamic vs static bodies, kinematic objects, player/character/projectile exclusions, stale level handles, unknown trace, contact range, ownership, release and throw.
@@ -83,8 +85,8 @@
 ## Still missing before a real gameplay build can grab anything
 1. Confirm a native **collision trace or hand overlap query** that returns the actual hit entity (not just the FocusTracker interaction focus).
 2. Verify how DOOM exposes the hit entity's physics body, dynamic/kinematic/static state, and writable/impulse-capable physics API in this game revision.
-3. Write a game-thread adapter that fills WorldGrabPhysicsHit from that native query and applies validated physics impulses/spring motion.
-4. Feed the verified hit to red/cyan laser rendering and to WorldGrabMotionPolicy; handle removal, teleport, load, focus loss and multiplayer constraints.
+3. Verify the native Vacuum attraction path, **keep its original pickup destination**, suppress pickup consumption, read selected item's real collision bounds, and implement safe Catch/Hold at hand-surface contact. No custom hand-target spring or new attraction force.
+4. Feed validated body/bounds into WorldGrabMotionPolicy; bind verified grenade launch behaviour to the caught native rigid body, then restore properties on Drop/Throw. Cover removal, teleport, loading, tracking loss and multiplayer constraints.
 
 **The cyan laser is still visual-only. The new trace-candidate observer logs DOOM-native handles only; red target indication and actual object grabbing are not connected to the game.** Do not give the tester another laser-only screenshot task.
 
@@ -98,4 +100,4 @@
 - Never use the retired player idPhysics velocity setter (previously caused void teleport).
 - Do not enable developer/cheat CVars, install additional loaders, write game archives or touch UserData.
 - Opt-in DEV testing only until the actual native adapter passes in-headset verification.
-- Do not patch the Vacuum rune or globally increase pickup radius to implement grabbing; preserve its original pickup behaviour.
+- Preserve DOOM's original Vacuum destination and global pickup rules. Never patch the Vacuum rune globally, redirect it to the controller, or let selected physics props be consumed as health/ammo.
