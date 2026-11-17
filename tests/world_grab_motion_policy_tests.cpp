@@ -65,6 +65,7 @@ int main(){
     in.grip=false;controller.update(0,in);in.grip=true;
     in.hit.distanceMeters=.5f;in.hit.dynamicBody=false;
     assert(controller.update(0,in).command==WorldGrabCommand::None);
+    in.hit.dynamicBody=true;
     // Static, kinematic, actor and unverified collision objects are excluded,
     // even when they have a physics/collision component.
     in.grip=false;controller.update(0,in);in.grip=true;in.hit.staticBody=true;
@@ -91,7 +92,7 @@ int main(){
     assert(controller.update(0,in).command==WorldGrabCommand::Drop);
     // Critical: a long physical separation releases before any follow force.
     in.grip=false;controller.update(0,in);
-    in.grip=true;in.objectPosition={.5f,0.f,0.f};
+    in.grip=true;in.hit.levelGeneration=9;in.objectPosition={.5f,0.f,0.f};
     assert(controller.update(0,in).command==WorldGrabCommand::Acquire);
     in.objectPosition={2.f,0.f,0.f};
     assert(controller.update(0,in).command==WorldGrabCommand::Drop);
