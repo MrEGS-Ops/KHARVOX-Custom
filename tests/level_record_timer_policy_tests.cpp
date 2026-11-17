@@ -1,3 +1,7 @@
+// LevelStatsPolicy uses MoveFileExW in its Windows persistence path.
+#ifdef _WIN32
+#include <windows.h>
+#endif
 #include "../src/hud/LevelStatsPolicy.h"
 #include <cassert>
 #include <cstdint>
