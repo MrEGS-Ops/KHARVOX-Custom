@@ -6,6 +6,17 @@
 // Stage 1: input-only world-grab probe. Never accesses arbitrary DOOM entities,
 // never writes native physics and never clamps locomotion.
 namespace kharvox {
+// This is a visual ray only: valid tracking does NOT establish a barrel hit.
+// Session-only DEV controls must never take ownership from weapon handling.
+struct WorldGrabDebugLaserInput {
+  bool enabled{},gameplay{},tracked{},controllersReady{},
+      wheelBusy{},supportBusy{},menuOpen{};
+};
+inline constexpr bool worldGrabDebugLaserVisible(
+    const WorldGrabDebugLaserInput& in) noexcept {
+  return in.enabled&&in.gameplay&&in.tracked&&in.controllersReady
+      &&!in.wheelBusy&&!in.supportBusy&&!in.menuOpen;
+}
 struct WorldGrabProbeInput {
   bool enabled{},gameplay{},controllersReady{},supportBusy{},wheelBusy{};
   std::array<bool,2> tracked{},freeHand{},grip{}; // LEFT, RIGHT

@@ -2,6 +2,21 @@
 #include <cassert>
 int main(){
   using namespace kharvox;
+  WorldGrabDebugLaserInput ray{};
+  assert(!worldGrabDebugLaserVisible(ray)); // OFF by default
+  ray.enabled=ray.gameplay=ray.tracked=ray.controllersReady=true;
+  assert(worldGrabDebugLaserVisible(ray)); // No Grip needed to inspect aim
+  ray.wheelBusy=true;assert(!worldGrabDebugLaserVisible(ray));
+  ray.wheelBusy=false;ray.supportBusy=true;
+  assert(!worldGrabDebugLaserVisible(ray));
+  ray.supportBusy=false;ray.menuOpen=true;
+  assert(!worldGrabDebugLaserVisible(ray));
+  ray.menuOpen=false;ray.tracked=false;
+  assert(!worldGrabDebugLaserVisible(ray));
+  ray.tracked=true;ray.controllersReady=false;
+  assert(!worldGrabDebugLaserVisible(ray));
+  ray.controllersReady=true;ray.enabled=false;
+  assert(!worldGrabDebugLaserVisible(ray));
   WorldGrabProbeState state{};
   WorldGrabProbeInput p{};
   p.gameplay=p.controllersReady=true;

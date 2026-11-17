@@ -167,11 +167,11 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{
-            "Physical World Grabbing: INPUT PROBE.",
-            "Checks either free-hand Grip in VR.",
-            "Reports arm-reach diagnostic events.",
-            "NO physics writes or locomotion changes.",
-            "Native prop discovery is not verified.",
+            "World Grab: CYAN AIM LASER (0.90m).",
+            "Points along the FREE controller AIM.",
+            "Visible in gameplay, hidden in menus.",
+            "Scene depth hides the beam behind props.",
+            "No verified barrel hit or physics yet.",
             "Session-only and OFF by default."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }

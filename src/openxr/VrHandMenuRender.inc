@@ -766,7 +766,7 @@ void paintVrHandMenu() {
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
-                ?"EXPERIMENTAL - INPUT ONLY":"SESSION-ONLY DEVELOPER TOOL",muted);
+                ?"EXPERIMENTAL - LASER AIM":"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
@@ -782,12 +782,12 @@ void paintVrHandMenu() {
             }else{
                 fill(531,186,384,58,m.hovered==130?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,entries[selected].enabled
-                    ?"WORLD GRAB INPUT PROBE: ON"
-                    :"WORLD GRAB INPUT PROBE: OFF",white);
-                write(538,271,"Probes Grip on either FREE hand.",muted);
-                write(538,303,"Advisory arm reach: 0.90m.",muted);
-                write(538,339,"NO object movement or body tether.",RGB(255,187,111));
-                write(538,375,"No verified native prop physics API.",muted);
+                    ?"FREE-HAND AIM LASER: ON"
+                    :"FREE-HAND AIM LASER: OFF",white);
+                write(538,271,"Cyan beam from free controller AIM.",muted);
+                write(538,303,"0.90m reach; scene-depth occluded.",muted);
+                write(538,339,"AIM ONLY: barrel hit not verified.",RGB(255,187,111));
+                write(538,375,"Native object movement pending.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

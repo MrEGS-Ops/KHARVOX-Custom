@@ -1013,8 +1013,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         !m.experimentalWorldGrabProbeEnabled;
                     if(!m.experimentalWorldGrabProbeEnabled)s.worldGrabProbe={};
                     m.message=m.experimentalWorldGrabProbeEnabled
-                        ?"World Grab INPUT PROBE ON (physics untouched)."
-                        :"World Grab INPUT PROBE OFF.";
+                        ?"Free-hand cyan AIM LASER ON (physics pending)."
+                        :"Free-hand cyan AIM LASER OFF.";
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){

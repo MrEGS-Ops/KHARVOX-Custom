@@ -8,6 +8,7 @@
 ## What has been implemented
 - `WorldGrabMotionPolicy.h` computes two-hand-aware Grip acquisition, held-object follow velocity, release and Trigger throw intent, with distance checks, level-generation release, collision/weapon-owner priority, and finite/velocity clamps.
 - Unit tests exercise these state transitions independently of DOOM. This is **not yet a functional grabbing feature**: it deliberately has no game-engine writes.
+- DEV → Experimental Features now visualizes a **cyan 0.90m free-hand AIM laser** using the existing DOOM scene-depth renderer. It is session-only and OFF by default. It follows left/right Gunslinger hand switching, disappears during menus, two-hand bracing, and lost tracking, and stays independent of the regular red muzzle laser. **A visible beam is not yet a native collision-target confirmation.**
 
 ## Still required for a real headset test
 1. Verify a native collision trace that identifies non-interactable props, not just focusable UI/collectibles.
