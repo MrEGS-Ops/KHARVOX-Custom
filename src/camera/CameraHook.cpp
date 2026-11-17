@@ -31,6 +31,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdint>
 #include <cstring>
 #include <cstdlib>
 #include <fstream>
@@ -483,11 +484,11 @@ extern "C" void __fastcall observeNativeWorldGrabTraceCandidate(
 // No cheater CVars, extra traces, object memory writes or user input changes.
 bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
     if(!image)return false;
-    constexpr unsigned char sigPrimary[14]{
+    static constexpr unsigned char sigPrimary[14]{
         0x48,0x8B,0x0D,0x69,0x6B,0xDC,0x04,
         0x48,0x8D,0x55,0x6C,0x48,0x8B,0x01
     };
-    constexpr unsigned char sigSecondary[14]{
+    static constexpr unsigned char sigSecondary[14]{
         0x48,0x8B,0x0D,0xE1,0x6A,0xDC,0x04,
         0x48,0x8D,0x55,0xDC,0x48,0x8B,0x01
     };
@@ -497,7 +498,7 @@ bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
         unsigned int path;
         const unsigned char* signature;
     };
-    constexpr CandidateSite sites[2]{
+    static constexpr CandidateSite sites[2]{
         {0xD48B60,0x6C,0,sigPrimary},
         {0xD48BE8,0xDC,1,sigSecondary}
     };
