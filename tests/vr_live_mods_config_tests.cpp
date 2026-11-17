@@ -33,6 +33,30 @@ int main(){
     assert(std::abs(hips[1].z+.1343255f)<.0000001f);
     assert(vrLiveHipInside({.315f,-.76f,.225f},false,s.hipShift[0]));
     assert(vrLiveWheelInside({.20f,.09f,.3075f},false,s.wheelShift[1]));
+    // Preview starts at the saved zone. A held Grip snaps to the tracked
+    // controller centre (not a delta from old holster placement); release
+    // keeps the last draft, and no saved shifts are changed until Save.
+    VrLivePoint draft=vrLiveZoneCenter(s,VrLiveCapture::HipRight);
+    const VrLivePoint saved=s.hipShift[0];
+    assert(!vrLiveUpdateZoneDraft(draft,false,true,
+        {.50f,-.70f,.20f},VrLiveCapture::HipRight));
+    assert(vrLiveUpdateZoneDraft(draft,true,true,
+        {.50f,-.70f,.20f},VrLiveCapture::HipRight));
+    assert(draft.x==.50f&&draft.y==-.70f&&draft.z==.20f);
+    assert(vrLiveUpdateZoneDraft(draft,true,true,
+        {.60f,-.65f,.28f},VrLiveCapture::HipRight));
+    assert(draft.x==.60f&&draft.y==-.65f&&draft.z==.28f);
+    assert(!vrLiveUpdateZoneDraft(draft,false,true,
+        {.10f,-.20f,.80f},VrLiveCapture::HipRight));
+    assert(draft.x==.60f&&draft.y==-.65f&&draft.z==.28f);
+    assert(s.hipShift[0].x==saved.x&&s.hipShift[0].y==saved.y);
+    // Preview outside the allowed save area still snaps visually; an
+    // attempted commit is separately rejected by vrLiveCapturePoint.
+    assert(vrLiveUpdateZoneDraft(draft,true,true,
+        {1.8f,.2f,.1f},VrLiveCapture::HipRight));
+    assert(draft.x==1.8f);
+    assert(!vrLiveCapturePoint(s,VrLiveCapture::HipRight,draft,0.f));
+    assert(s.hipShift[0].x==saved.x);
     assert(vrLiveCapturePoint(s,VrLiveCapture::HipRight,
         {.40f,-.71f,.18f},0));
     assert(vrLiveHipInside({.40f,-.71f,.18f},false,s.hipShift[0]));

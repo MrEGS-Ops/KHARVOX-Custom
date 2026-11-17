@@ -3823,25 +3823,32 @@ void updateGameplayActions(XrTime displayTime){
         updateWeapon6Dof();
         return;
     }
-    // Short solo RS click retains Hand Focus. Only the hold-then-click
-    // sequence is swallowed by the in-headset calibration menu.
+    // A short isolated click on the CURRENT WEAPON HAND invokes world Use:
+    // R3 when right-handed, L3 when Gunslinger transfers the gun left.
+    // The opposite short click handles Pause. Long R3 still opens the
+    // standard Mod Menu; simultaneous L3+R3 remains a protected chord.
     const bool guardedStickClicks=s.customMods.offHandGripCapture
         ||s.customMods.handFocusedRs||s.physicalGlorykillEnabled;
     s.offHandStickOutput=s.offHandStickInput.update(
         vrRightClick,vrLeftClick,guardedStickClicks,GetTickCount64());
+    const bool weaponHandUseClick=kharvox::handFocusUseClick(
+        s.customMods.handFocusedRs,s.weaponHandLeft,
+        s.offHandStickOutput.rightMelee,s.offHandStickOutput.leftPause);
     if(kharvox::physicalgk::routeKeyboardWorldUse(
         gameplay,s.customMods.handFocusedRs,s.physicalGlorykillEnabled,
-        s.offHandStickOutput.rightMelee)){
+        weaponHandUseClick)){
+        const bool usingLeftClick=s.customMods.handFocusedRs&&s.weaponHandLeft;
         if(s.customMods.handFocusedRs){
-            // RS is USE only. Never flip from weapon-hand to head aim when
-            // opening a door, using a station or any world interaction.
-            log("[FOCUS] isolated RS Use -> persistent HAND focus unchanged");
+            // Use NEVER toggles the aim source away from the current hand.
+            log(std::string("[FOCUS] isolated ")
+                +(usingLeftClick?"L3":"R3")+" Use -> persistent HAND focus unchanged");
             kharvox::queueControllerZoneCue(
-                s.handZoneCues[kharvox::hapticOutputForPhysicalSide(0)],
-                GetTickCount64(),70,.6f,150.f);
+                s.handZoneCues[kharvox::hapticOutputForPhysicalSide(
+                    usingLeftClick?1:0)],GetTickCount64(),70,.6f,150.f);
         }
         const bool sent=startHandFocusUseKeyboardPulse(displayTime);
-        log(std::string("[USE] isolated RS -> native keyboard E ")
+        log(std::string("[USE] isolated ")+(usingLeftClick?"L3":"R3")
+            +" -> native keyboard E "
             +(sent?"KEYDOWN (150ms; no JOY8 melee)":"FAILED to inject")
             +(s.physicalGlorykillEnabled?" PhysicalGK=on":" PhysicalGK=off"));
     }
@@ -4438,8 +4445,9 @@ void updateGameplayActions(XrTime displayTime){
     const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
-    // Hand Focus owns isolated right-stick clicks. Independent keyboard E
-    // handles world USE above; the same press must never produce JOY8 melee.
+    // Hand Focus owns whichever physical stick is in the current weapon
+    // hand. Independent keyboard E handles Use; neither focus click may
+    // generate native JOY8 melee.
     const bool rawMeleeDown=s.customMods.handFocusedRs?false
         :s.customMods.offHandGripCapture?s.offHandStickOutput.rightMelee
         :readBooleanAction(s.doomMelee);
@@ -5096,9 +5104,15 @@ void updateGameplayActions(XrTime displayTime){
     const bool switchWeaponModDown=readBooleanAction(s.doomSwitchWeaponMod);
     const bool pauseDown=(s.customMods.offHandGripCapture
         ||s.customMods.handFocusedRs)
-        ?s.offHandStickOutput.leftPause:readBooleanAction(s.doomPause);
+        ?kharvox::handFocusPauseClick(s.customMods.handFocusedRs,
+            s.weaponHandLeft,s.offHandStickOutput.rightMelee,
+            s.offHandStickOutput.leftPause)
+        :readBooleanAction(s.doomPause);
     const bool restrictedLeftHandSwap=s.leftHanded&&!s.leftHandSwapSticks;
-    if(pauseDown&&!s.pausePressed)log(std::string("[INPUT] ")+(s.customMods.offHandGripCapture?"left":pauseHandName())+" thumbstick click -> native JOY9/start pause");
+    if(pauseDown&&!s.pausePressed)
+        log(std::string("[INPUT] ")
+            +(s.customMods.handFocusedRs&&s.weaponHandLeft?"right":"left")
+            +" thumbstick click -> native JOY9/start pause");
     s.pausePressed=pauseDown;
     if(xinputHookReady){
         // Full-screen game interfaces are native gamepad UIs, not gameplay.
