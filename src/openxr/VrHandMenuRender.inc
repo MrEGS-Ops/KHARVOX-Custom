@@ -291,7 +291,9 @@ void paintVrHandMenu() {
                         s.vrHandMenu.hudRecordSelected].key
                     :lastLevel?s.lastCompletedMissionKey
                     :s.levelProgress.verifiedMapKey;
-                const auto best=kharvox::levelBestFor(s.levelRecords,key);
+                const auto bestRecord=i==5
+                    ?kharvox::levelFastestRunFor(s.levelRecords,key):nullptr;
+                const auto best=bestRecord?bestRecord->timeMs:0;
                 write(x+16,y+5,i==2?"CAMPAIGN TIME"
                     :i==3?"SESSION TIME":i==4?"LEVEL TIME"
                     :lastLevel?"LAST LEVEL BEST":"LEVEL BEST",muted);
@@ -300,9 +302,23 @@ void paintVrHandMenu() {
                     i==3?s.sessionRunTime.elapsedMs:
                     i==4?(s.levelProgress.armed
                          ?s.levelProgress.time.elapsedMs:s.levelLiveStats.time.elapsedMs):best;
-                write(x+16,y+28,i==5&&!best?"--:--:--":
-                    kharvox::campaignRunTimeText(displayedTime),
-                    RGB(84,233,214));
+                const auto timeText=i==5&&!best?std::string("--:--:--"):
+                    kharvox::campaignRunTimeText(displayedTime);
+                write(x+16,y+28,timeText,RGB(84,233,214));
+                // One red number with no label, immediately beside the PB
+                // time. Never substitute the separate fewest-deaths run.
+                if(i==5&&bestRecord
+                    &&bestRecord->deaths!=kharvox::kLevelDeathsUnknown){
+                    SIZE timeSize{},deathSize{};
+                    const auto deathsText=std::to_string(bestRecord->deaths);
+                    GetTextExtentPoint32A(dc,timeText.c_str(),
+                        static_cast<int>(timeText.size()),&timeSize);
+                    GetTextExtentPoint32A(dc,deathsText.c_str(),
+                        static_cast<int>(deathsText.size()),&deathSize);
+                    const int deathsX=x+16+timeSize.cx+10;
+                    if(deathsX+deathSize.cx<=x+width-10)
+                        write(deathsX,y+28,deathsText,RGB(235,92,99));
+                }
             }
         }
     }else if(calibrationView){
