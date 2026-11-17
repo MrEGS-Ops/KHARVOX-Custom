@@ -8709,8 +8709,17 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[0]
              ||s.vrLiveSettings.levelDisplayEnabled[1]
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
+    // Experimental World Grab inspector is painted on the existing
+    // transparent in-game menu/stats quad. Native release never requests
+    // this extra overlay and normal stats continue to coexist with it.
+    const bool grabInspectorView=KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        &&s.worldGrabInspector.enabled&&deathCounterGameplay
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!controllerReconnectBannerVisible()
+        &&!s.firstTimeSetupNotice.visible&&!s.gameplayWelcomeNotice.visible;
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
+            ||grabInspectorView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
