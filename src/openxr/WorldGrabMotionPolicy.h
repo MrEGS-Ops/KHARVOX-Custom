@@ -58,73 +58,54 @@ inline bool worldGrabGrenadeBallisticsReady(
         &&std::isfinite(grenade.linearDamping)
         &&grenade.linearDamping>=0.f;
 }
-enum class WorldGrabCommand {None,Acquire,Follow,Drop,Throw};
+// The native Vacuum destination remains exactly DOOM's original pickup
+// destination; the VR hand selects one object and never becomes a pull target.
+// No physics-gun tether, spring, or directional Vacuum is implemented.
+enum class WorldGrabCommand {None,Acquire,VacuumAttract,Drop,Throw};
 struct WorldGrabInput {
     bool enabled{},gameplay{},controllerTracked{},freeHand{},grip{},trigger{};
     bool weaponSupportBusy{},wheelBusy{},holsterBusy{};
     // Generic verified native physics hit: no class-name or mesh whitelist.
     WorldGrabPhysicsHit hit{};
     std::uint64_t levelGeneration{};
-    GrabVec3 handPosition{},handForward{},objectPosition{},objectVelocity{};
-    // Actual native grenade launch data only. A debug focus handle, laser
-    // or synthetic hand-speed estimate must never qualify as a grenade sample.
+    // Actual native grenade launch data only. The Vacuum target uses DOOM's
+    // original pickup destination: controller position is NOT used to pull.
     WorldGrabGrenadeBallistics nativeGrenade{};
-    float deltaSeconds{};
 };
 struct WorldGrabOutput {
     WorldGrabCommand command{WorldGrabCommand::None};
     std::uint64_t entityId{},physicsBodyId{};
-    GrabVec3 velocity{}; // FOLLOW only: metres/sec; never used for a throw
-    // THROW only: copy of native grenade ballistic parameters. A native
-    // adapter must restore the barrel's original flight physics after
-    // release/landing; no grenade entity or explosive flags are copied.
+    // VACUUM_ATTRACT: apply the selected object's *temporary*, explicitly
+    // verified native item-attraction behaviour to DOOM's original pickup
+    // destination. Never change the entity class or allow consumption.
+    // THROW: copy of native grenade ballistic parameters. A native adapter
+    // must restore original object properties after throw/drop; no grenade
+    // entity or explosive flags are copied.
     WorldGrabGrenadeBallistics nativeGrenade{};
 };
 struct WorldGrabHand {
     // A controller touching an object may grab it at zero ray distance.
     static constexpr float kMinimumAcquireMeters=0.f;
     static constexpr float kMaximumAcquireMeters=.90f;
-    static constexpr float kMaximumHoldSeparationMeters=1.40f;
     std::uint64_t entityId{},physicsBodyId{},levelGeneration{};
-    bool previousGrip{},previousTrigger{},velocitySampleValid{},observedGrip{};
-    GrabVec3 lastHandPosition{},smoothedHandVelocity{};
+    bool previousGrip{},previousTrigger{},observedGrip{};
 
     WorldGrabOutput update(const WorldGrabInput& in,
                            std::uint64_t entityHeldByOtherHand=0) noexcept {
         WorldGrabOutput out{};
-        const bool validPose=grabFinite(in.handPosition)
-            &&grabFinite(in.handForward)&&grabFinite(in.objectPosition)
-            &&grabFinite(in.objectVelocity);
         const bool allowed=in.enabled&&in.gameplay&&in.controllerTracked
             &&in.freeHand&&!in.weaponSupportBusy&&!in.wheelBusy
-            &&!in.holsterBusy&&validPose;
+            &&!in.holsterBusy;
         // A newly enabled/reconnected controller must first report a Grip
         // release before its next press can acquire an entity.
         const bool newGrip=observedGrip&&in.grip&&!previousGrip;
         observedGrip=true;
         const bool newTrigger=in.trigger&&!previousTrigger;
         previousGrip=in.grip;previousTrigger=in.trigger;
-        const float dt=in.deltaSeconds;
-        if(allowed&&std::isfinite(dt)&&dt>.001f&&dt<.20f) {
-            if(velocitySampleValid) {
-                const auto instantaneous=grabClampLength(
-                    grabScale(grabSub(in.handPosition,lastHandPosition),1.f/dt),12.f);
-                smoothedHandVelocity=grabAdd(
-                    grabScale(smoothedHandVelocity,.7f),
-                    grabScale(instantaneous,.3f));
-            }
-            lastHandPosition=in.handPosition;
-            velocitySampleValid=true;
-        } else {
-            velocitySampleValid=false;
-            smoothedHandVelocity={};
-        }
         if(entityId) {
             out.entityId=entityId;
             out.physicsBodyId=physicsBodyId;
-            if(!allowed||!in.grip||in.levelGeneration!=levelGeneration
-                ||grabLength(grabSub(in.handPosition,in.objectPosition))
-                    >kMaximumHoldSeparationMeters) {
+            if(!allowed||!in.grip||in.levelGeneration!=levelGeneration) {
                 out.command=WorldGrabCommand::Drop;
                 entityId=physicsBodyId=levelGeneration=0;
                 return out;
@@ -132,21 +113,18 @@ struct WorldGrabHand {
             if(newTrigger&&worldGrabGrenadeBallisticsReady(
                     in.nativeGrenade,in.levelGeneration)) {
                 // DOOM's native equipment launch velocity / gravity / drag
-                // are passed through UNMODIFIED. In particular, controller
-                // swing speed never alters grenade-style trigger throwing.
-                // This is only an intent; do not spawn a grenade projectile.
+                // pass through unmodified. First clear temporary Vacuum
+                // eligibility, then launch the SAME existing entity.
+                // This is intent only; never spawn a grenade projectile.
                 out.command=WorldGrabCommand::Throw;
                 out.nativeGrenade=in.nativeGrenade;
                 entityId=physicsBodyId=levelGeneration=0;
                 return out;
             }
-            out.command=WorldGrabCommand::Follow;
-            // Spring follow remains physics-owned. The native adapter must
-            // apply a validated impulse/force; never set a guessed vtable slot.
-            const auto error=grabSub(in.handPosition,in.objectPosition);
-            out.velocity=grabClampLength(
-                grabAdd(grabScale(error,7.f),
-                    grabScale(smoothedHandVelocity,.35f)),8.f);
+            // Keep the original DOOM item-Vacuum destination, not a moving
+            // controller/hand target. A native adapter is REQUIRED: until
+            // verified, this command changes no entity or pickup properties.
+            out.command=WorldGrabCommand::VacuumAttract;
             return out;
         }
         if(!allowed||!newGrip
