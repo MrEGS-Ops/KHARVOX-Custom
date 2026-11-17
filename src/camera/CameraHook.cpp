@@ -106,9 +106,10 @@ std::atomic<bool> focusHandValid{};
 // These opaque values are NOT a validated physics hit and must not be used
 // as an idPhysics pointer or to select objects for grabbing.
 std::atomic<bool> nativeGrabFocusObservationEnabled{};
-std::atomic<unsigned long long> nativeGrabFocusSequence{};
-std::atomic<unsigned int> nativeGrabFocusIndexA{},nativeGrabFocusIndexB{};
-std::atomic<unsigned long long> nativeGrabFocusReference{},nativeGrabFocusGeneration{};
+std::mutex nativeGrabFocusMutex;
+unsigned long long nativeGrabFocusSequence{};
+unsigned int nativeGrabFocusIndexA{},nativeGrabFocusIndexB{};
+unsigned long long nativeGrabFocusReference{},nativeGrabFocusGeneration{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -321,15 +322,13 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
         std::memcpy(&a,focusBytes+0x68,sizeof(a));
         std::memcpy(&b,focusBytes+0x6C,sizeof(b));
         std::memcpy(&opaqueRef,focusBytes+0x70,sizeof(opaqueRef));
-        nativeGrabFocusSequence.fetch_add(1,std::memory_order_acq_rel);
-        nativeGrabFocusIndexA.store(a,std::memory_order_relaxed);
-        nativeGrabFocusIndexB.store(b,std::memory_order_relaxed);
-        nativeGrabFocusReference.store(
-            static_cast<unsigned long long>(opaqueRef),std::memory_order_relaxed);
-        nativeGrabFocusGeneration.store(
-            levelTransitionGeneration.load(std::memory_order_acquire),
-            std::memory_order_relaxed);
-        nativeGrabFocusSequence.fetch_add(1,std::memory_order_release);
+        std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+        nativeGrabFocusIndexA=a;
+        nativeGrabFocusIndexB=b;
+        nativeGrabFocusReference=static_cast<unsigned long long>(opaqueRef);
+        nativeGrabFocusGeneration=levelTransitionGeneration.load(
+            std::memory_order_acquire);
+        ++nativeGrabFocusSequence;
     }
     const bool handValid=focusHandValid.load(std::memory_order_acquire);
     float hmdOrigin[3]{},hmdAxis[9]{};
@@ -2647,38 +2646,32 @@ void KharvoxCameraSetCrouchState(bool active) {
 }
 
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
-    nativeGrabFocusObservationEnabled.store(enabled,std::memory_order_release);
-    if(!enabled){
-        nativeGrabFocusSequence.fetch_add(1,std::memory_order_acq_rel);
-        nativeGrabFocusIndexA.store(0,std::memory_order_relaxed);
-        nativeGrabFocusIndexB.store(0,std::memory_order_relaxed);
-        nativeGrabFocusReference.store(0,std::memory_order_relaxed);
-        nativeGrabFocusGeneration.store(0,std::memory_order_relaxed);
-        nativeGrabFocusSequence.fetch_add(1,std::memory_order_release);
-    }
+    const bool previous=nativeGrabFocusObservationEnabled.exchange(
+        enabled,std::memory_order_acq_rel);
+    if(previous==enabled)return;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    // Release opaque handles on either session transition. The native hook
+    // will publish a fresh sample, if any, during the next DOOM world tick.
+    nativeGrabFocusSequence=0;
+    nativeGrabFocusIndexA=nativeGrabFocusIndexB=0;
+    nativeGrabFocusReference=nativeGrabFocusGeneration=0;
 }
 
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) {
     sample={};
     if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
         return false;
-    for(int attempt=0;attempt<3;++attempt){
-        const auto start=nativeGrabFocusSequence.load(std::memory_order_acquire);
-        if(!start||(start&1u))continue;
-        KharvoxWorldGrabNativeFocus next{};
-        next.indexA=nativeGrabFocusIndexA.load(std::memory_order_relaxed);
-        next.indexB=nativeGrabFocusIndexB.load(std::memory_order_relaxed);
-        next.nativeReference=nativeGrabFocusReference.load(std::memory_order_relaxed);
-        next.levelGeneration=nativeGrabFocusGeneration.load(std::memory_order_relaxed);
-        const auto end=nativeGrabFocusSequence.load(std::memory_order_acquire);
-        if(start!=end||end&1u)continue;
-        if(next.levelGeneration!=KharvoxCameraLevelTransitionGeneration())
-            return false;
-        next.sampleSequence=end;
-        sample=next;
-        return true;
-    }
-    return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||nativeGrabFocusSequence==0
+        ||nativeGrabFocusGeneration!=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample.indexA=nativeGrabFocusIndexA;
+    sample.indexB=nativeGrabFocusIndexB;
+    sample.nativeReference=nativeGrabFocusReference;
+    sample.levelGeneration=nativeGrabFocusGeneration;
+    sample.sampleSequence=nativeGrabFocusSequence;
+    return true;
 }
 
 void KharvoxCameraSetFocusHandPose(
