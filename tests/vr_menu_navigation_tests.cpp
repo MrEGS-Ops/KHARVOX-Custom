@@ -421,7 +421,6 @@ int main(){
     // toggles; none of its developer entries becomes a normal mod checkbox.
     assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::WeaponAlignment));
     assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::HandFocus));
-    assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::HolsterZones));
     assert(kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::ControllerMonitor));
     assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Folder));
     assert(!kharvox::vrMenuDevOptionToggleable(VrMenuDevOption::Experimental));
@@ -429,19 +428,19 @@ int main(){
     // DEV overlays are calibration-only. A checkbox being enabled is not
     // enough to draw anything in ordinary gameplay or the settings list.
     assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::None,true,false,false));
+        VrLiveCapture::None,true,false));
     assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Menu,
-        VrLiveCapture::None,true,true,true));
+        VrLiveCapture::None,true,true));
     assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::None,false,true,true));
+        VrLiveCapture::None,false,true));
     assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::HipRight,false,true,false));
+        VrLiveCapture::HipRight,false,true));
     assert(vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::WheelLeft,false,false,true));
+        VrLiveCapture::WheelLeft,false,true));
     assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::CrouchStanding,true,true,true));
+        VrLiveCapture::CrouchStanding,true,true));
     assert(!vrDevCalibrationPanelVisible(VrHandMenuMode::Calibrating,
-        VrLiveCapture::HipRight,true,false,false));
+        VrLiveCapture::HipRight,true,false));
     // First-install setup must be a true modal prompt on the front menu,
     // not an R3 hint during loading or a controller reconnect request.
     VrFirstTimeSetupNotice setup{};
