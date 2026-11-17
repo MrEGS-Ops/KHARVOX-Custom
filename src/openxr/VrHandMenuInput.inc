@@ -1005,9 +1005,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.message=s.customMods.handFocusedRs
                         ?"Hand Focus enabled for this session."
                         :"Head Focus enabled for this session.";
-                }else if(kind==D::HolsterZones){
-                    m.devHolsterZones=!m.devHolsterZones;
-                    m.message=m.devHolsterZones?"Gunslinger zone visualiser ON.":"Gunslinger zone visualiser OFF.";
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
