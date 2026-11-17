@@ -93,14 +93,24 @@ inline std::vector<LevelRun> levelRankedRuns(const LevelRecords& records,
     if(ranked.size()>kLevelRankLimit)ranked.resize(kLevelRankLimit);
     return ranked;
 }
+// Return the complete fastest run so the HUD's red deaths number always
+// belongs to the exact time displayed, not to the fewest-deaths ranking.
+// A time tie uses the same deaths/date ordering as Level Records.
+inline const LevelRun* levelFastestRunFor(const LevelRecords& records,
+    const std::string& key) noexcept {
+    if(!levelRecordKeyValid(key))return nullptr;
+    const auto it=records.runs.find(key);
+    if(it==records.runs.end()||it->second.empty())return nullptr;
+    const auto best=std::min_element(it->second.begin(),it->second.end(),
+        [](const LevelRun& a,const LevelRun& b) {
+            return levelRunLess(a,b,false);
+        });
+    return &*best;
+}
 inline std::uint64_t levelBestFor(const LevelRecords& records,
     const std::string& key) noexcept {
-    if(!levelRecordKeyValid(key))return 0;
-    const auto it=records.runs.find(key);
-    if(it==records.runs.end()||it->second.empty())return 0;
-    std::uint64_t best=it->second.front().timeMs;
-    for(const auto& run:it->second)best=std::min(best,run.timeMs);
-    return best;
+    const auto best=levelFastestRunFor(records,key);
+    return best?best->timeMs:0;
 }
 inline bool levelRecordsAddRun(LevelRecords& records,const std::string& key,
     const LevelRun& result) {
