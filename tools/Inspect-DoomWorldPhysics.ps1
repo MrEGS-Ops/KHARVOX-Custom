@@ -1,9 +1,9 @@
 # Read-only executable scanner: no DOOM process writes, cheat CVars or game launch.
 # Run from the repository root: powershell -ExecutionPolicy Bypass -File .\tools\Inspect-DoomWorldPhysics.ps1
 # Or supply -ExePath "D:\SteamLibrary\steamapps\common\DOOM\DOOMx64vk.exe".
-param([string]$ExePath, [string]$ReportPath = (Join-Path $PSScriptRoot 'DOOM-native-physics-report.txt'))
+param([string]$ExePath, [string]$ReportPath = (Join-Path $PSScriptRoot 'DOOM-native-physics-report.txt'), [switch]$ValidateOnly)
 $ErrorActionPreference='Stop'
-if (-not $ExePath) {
+if (-not $ExePath -and -not $ValidateOnly) {
   $steamx86=[Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
   $steam64=[Environment]::GetEnvironmentVariable('ProgramFiles')
   $candidates=@(
@@ -14,7 +14,7 @@ if (-not $ExePath) {
   )
   $ExePath=$candidates | Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } | Select-Object -First 1
 }
-if (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath -PathType Leaf)) {
+if (-not $ValidateOnly -and (-not $ExePath -or -not (Test-Path -LiteralPath $ExePath -PathType Leaf))) {
   throw 'DOOMx64vk.exe not located. Pass -ExePath with its exact path.'
 }
 $source=@'
@@ -121,6 +121,7 @@ public static class KharvoxPhysicsInspector2026 {
 if (-not ('KharvoxPhysicsInspector2026' -as [type])) {
   Add-Type -TypeDefinition $source -Language CSharp
 }
+if ($ValidateOnly) { Write-Host 'Native physics inspector compiled successfully'; return }
 $resolved=(Resolve-Path -LiteralPath $ExePath).Path
 $report=[KharvoxPhysicsInspector2026]::Scan($resolved)
 [IO.File]::WriteAllText($ReportPath,$report,[Text.Encoding]::UTF8)
