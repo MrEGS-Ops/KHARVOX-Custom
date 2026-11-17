@@ -816,11 +816,7 @@ void paintVrHandMenu() {
             fill(531,550,384,59,m.hovered==115
                 ?RGB(53,95,108):RGB(36,78,92));
             SelectObject(dc,regular);
-            const bool experimentalRow=devPage
-                &&entries[overviewSelected].developer
-                    ==kharvox::VrMenuDevOption::Experimental;
-            write(624,563,experimentalRow?"COMING SOON"
-                :devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
+            write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
             SelectObject(dc,smallFont);
             write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
@@ -835,7 +831,7 @@ void paintVrHandMenu() {
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
-                ?"RESERVED FOR FUTURE FEATURES":"SESSION-ONLY DEVELOPER TOOL",muted);
+                ?"EXPERIMENTAL - INPUT ONLY":"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
@@ -848,11 +844,20 @@ void paintVrHandMenu() {
                             :"SWITCH TO HAND FOCUS")
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
-            }else write(538,248,"New features will appear here.",muted);
+            }else{
+                fill(531,186,384,58,m.hovered==130?RGB(52,83,99):RGB(39,49,63));
+                write(548,204,entries[selected].enabled
+                    ?"WORLD GRAB INPUT PROBE: ON"
+                    :"WORLD GRAB INPUT PROBE: OFF",white);
+                write(538,271,"Probes Grip on either FREE hand.",muted);
+                write(538,303,"Advisory arm reach: 0.90m.",muted);
+                write(538,339,"NO object movement or body tether.",RGB(255,187,111));
+                write(538,375,"No verified native prop physics API.",muted);
+            }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else{
+            }else if(opt!=D::Experimental){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }

@@ -570,6 +570,7 @@ struct VrHandMenuState {
     VrMenuNavigation navigation{};
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
+    bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};

@@ -838,7 +838,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 using kharvox::VrLiveMod;
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
-                    return entry.developer==kharvox::VrMenuDevOption::Experimental?0:1;
+                    return 1; // DEV Experimental has one safe input-probe toggle
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -904,7 +904,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.navigation={};
                     m.message="Tune weapon stability; B returns to DEV.";
                 }else if(entry.developer==D::Experimental){
-                    m.message="No experimental prototype installed yet.";
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.message="INPUT PROBE ONLY: no props moved or player tethered.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -1009,7 +1011,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
-
+                }else if(kind==D::Experimental){
+                    m.experimentalWorldGrabProbeEnabled=
+                        !m.experimentalWorldGrabProbeEnabled;
+                    if(!m.experimentalWorldGrabProbeEnabled)s.worldGrabProbe={};
+                    m.message=m.experimentalWorldGrabProbeEnabled
+                        ?"World Grab INPUT PROBE ON (physics untouched)."
+                        :"World Grab INPUT PROBE OFF.";
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){

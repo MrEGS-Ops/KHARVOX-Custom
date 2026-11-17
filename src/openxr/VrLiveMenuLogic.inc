@@ -29,7 +29,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Level Records / Reset",VrLiveMod::Stats,
             true,D::LevelRecordsReset});
         rows.push_back({"Experimental Features",VrLiveMod::Other,
-            false,D::Experimental});
+            s.vrHandMenu.experimentalWorldGrabProbeEnabled,D::Experimental});
         return rows;
     }
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
@@ -172,9 +172,13 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
             ""}}};
-        case D::Experimental:return {{{"Future experimental features belong",
-            "in this section once implemented.",
-            "No hidden prototype is active.","","",""}}};
+        case D::Experimental:return {{{
+            "Physical World Grabbing: INPUT PROBE.",
+            "Checks either free-hand Grip in VR.",
+            "Reports arm-reach diagnostic events.",
+            "NO physics writes or locomotion changes.",
+            "Native prop discovery is not verified.",
+            "Session-only and OFF by default."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }

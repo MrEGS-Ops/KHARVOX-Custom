@@ -155,3 +155,13 @@ add_test(NAME level-record-timer-no-menu-or-cutscene-exploit COMMAND KharvoxLeve
 add_executable(KharvoxScriptedWeaponPoseBoundaryTests ../scripted_weapon_pose_boundary_tests.cpp)
 target_compile_features(KharvoxScriptedWeaponPoseBoundaryTests PRIVATE cxx_std_17)
 add_test(NAME scripted-terminal-weapon-pose-recovery COMMAND KharvoxScriptedWeaponPoseBoundaryTests)
+
+# Experimental world grabbing, safe input probe only (no entity physics).
+add_executable(KharvoxWorldGrabProbeTests ../world_grab_probe_policy_tests.cpp)
+target_compile_features(KharvoxWorldGrabProbeTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWorldGrabProbeTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWorldGrabProbeTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME world-grab-input-probe COMMAND KharvoxWorldGrabProbeTests)
