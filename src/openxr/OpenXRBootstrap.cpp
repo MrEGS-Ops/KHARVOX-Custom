@@ -4478,6 +4478,34 @@ void updateGameplayActions(XrTime displayTime){
                 }
             }
         }
+        // Observe DOOM's actual primary/secondary entity-resolution inputs.
+        // Unlike the original laser-only probe, this data comes from the
+        // native collision-result path, before interactable filtering. A
+        // handle alone is NOT proof of dynamic physics or grabbability.
+        if(in.enabled&&in.gameplay){
+            static std::array<unsigned int,2> lastNativeCandidate{};
+            static std::array<unsigned long long,2> lastCandidateReportTick{};
+            static std::array<unsigned long long,2> lastCandidateSequence{};
+            for(unsigned int path=0;path<2;++path){
+                KharvoxWorldGrabTraceCandidate candidate{};
+                if(!KharvoxCameraReadWorldGrabTraceCandidate(path,candidate)
+                    ||candidate.sampleSequence==lastCandidateSequence[path])
+                    continue;
+                lastCandidateSequence[path]=candidate.sampleSequence;
+                const auto now=GetTickCount64();
+                const bool changed=candidate.nativeHandle!=lastNativeCandidate[path];
+                if((changed&&now-lastCandidateReportTick[path]>=1000)
+                    ||now-lastCandidateReportTick[path]>=6000){
+                    lastNativeCandidate[path]=candidate.nativeHandle;
+                    lastCandidateReportTick[path]=now;
+                    log(std::string("[WORLD-GRAB-NATIVE-HIT] ")
+                        +(path==0?"PRIMARY":"SECONDARY")
+                        +" rawEntityHandle="+std::to_string(candidate.nativeHandle)
+                        +" level="+std::to_string(candidate.levelGeneration)
+                        +" (pre-interaction filter, NOT verified physics)");
+                }
+            }
+        }
         if(in.enabled)for(int hand=0;hand<2;++hand){
             if(events.started[hand])
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
