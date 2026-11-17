@@ -92,6 +92,7 @@ Unresolved headset-reported issues are tracked until they are verified fixed in-
 
 - **Lazarus Labs — weapon changes position after completing the minigame.** **Workaround:** Restart from checkpoint. The experimental recovery workaround was retired because it did not fix the issue.
 - **Equipped gun visible inside the Gunslinger weapon wheel (build 658).** A render-only correction is under test; not confirmed fixed until headset verification.
+- **Personal-best notification never disappears.** A five-second timeout is implemented and awaiting headset verification.
 
 ## Compatibility notes
 
