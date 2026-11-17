@@ -4007,12 +4007,12 @@ void updateGameplayActions(XrTime displayTime){
             selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
-            // two-hand acquisition, equipment use or the held BFG shortcut.
+            // two-hand acquisition or equipment use.
             s.wheelWeaponGripSuppressedUntilRelease=true;
             // Suppress any grip already held by the newly assigned support hand
-            // until release. Prevents accidental equipment cycling or BFG select.
+            // until release. Prevents accidental equipment cycling.
             s.wheelSupportGripSuppressedUntilRelease=true;
-                    log(std::string("[WEAPON-WHEEL] physical wheel confirmed with ")
+            log(std::string("[WEAPON-WHEEL] physical wheel confirmed with ")
                 +(selectedSide==0?"right":"left")+" weapon hand");
         }
         s.behindHeadWheelActive=behindHeadWheelRequested;
@@ -4279,7 +4279,7 @@ void updateGameplayActions(XrTime displayTime){
             // drop native weapon-mod input or latch suppression until release.
             if(kharvox::quickHipConsumesGrip(action)){
                 quickHolsterGripConsumed=true;
-                            if(weaponHandAtThisHip)
+                if(weaponHandAtThisHip)
                     s.wheelWeaponGripSuppressedUntilRelease=true;
                 else s.wheelSupportGripSuppressedUntilRelease=true;
             }
@@ -5104,7 +5104,7 @@ void updateGameplayActions(XrTime displayTime){
             static_cast<std::int64_t>(displayTime));
         if(action==kharvox::ChestGrenadeAction::Cycle){
             s.grenadeCyclePulseUntil=displayTime+100000000;
-                    kharvox::queueControllerZoneCue(
+            kharvox::queueControllerZoneCue(
                 s.handZoneCues[equipmentHapticHand],hapticNow,85,.72f,195.f);
             s.nextCookPulseAt=hapticNow+350;
             log("[GRENADE] support Grip in chest pocket -> cycle grenade; pin armed");
@@ -5112,8 +5112,7 @@ void updateGameplayActions(XrTime displayTime){
             s.equipmentThrowPulseUntil=displayTime+100000000;
             log("[GRENADE] pulled outside chest and released Grip -> one native throw");
         }
-        if(s.grenadeGesture.held&&s.grenadeGesture.armed)
-                // Quiet periodic heartbeat only after the 'pin' has been pulled.
+        // Quiet periodic heartbeat only after the 'pin' has been pulled.
         // Native damage/firing rumble is always higher priority.
         if(s.grenadeGesture.held&&s.grenadeGesture.armed
             &&s.grenadeGesture.pulled){
