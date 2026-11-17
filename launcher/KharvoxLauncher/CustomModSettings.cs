@@ -70,7 +70,6 @@ internal sealed class CustomModSettings
     public Dictionary<string, ActionSpeedSetting> ActionSpeedProfiles { get; set; } = new();
     public bool ActionSpeedLogTestEnabled { get; set; }
     public bool HandFocusedRs { get; set; }
-    public bool DirectionalDash { get; set; }
     public bool BehindHeadWeaponWheel { get; set; }
     public bool LeftWristWeaponWheel { get; set; }
     public bool BehindHeadWheelHandSelection { get; set; } = false;
@@ -116,7 +115,6 @@ internal static class CustomModSettingsStore
         value.GaussChargeSlowMovement = false;
         value.BackOfHandHud = false;
         value.BoxingGuard = false;
-        value.DirectionalDash = false;
         value.RevengeDemon = false;
         value.DynamicShoulderHolster = false;
         value.PersistentSuperShotgunReload = false;

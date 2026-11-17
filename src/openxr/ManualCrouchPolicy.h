@@ -2,7 +2,7 @@
 #include <cmath>
 
 namespace kharvox {
-// A deliberate right-stick DOWN gesture is available for optional dash,
+// Right-stick DOWN remains available only as the legacy weapon-wheel fallback,
 // never manual crouch. R3 CLICK remains independent for Hand Focus/menu.
 inline bool vrRightStickDownGesture(float x,float normalizedY) noexcept {
     return std::isfinite(x)&&std::isfinite(normalizedY)

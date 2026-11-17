@@ -23,7 +23,6 @@ struct CustomModFlags {
     bool fastGloryKills{};
     bool fastChainsawKills{};
     bool handFocusedRs{};
-    bool directionalDash{};
     bool behindHeadWeaponWheel{};
     bool leftWristWeaponWheel{};
     bool behindHeadWheelHandSelection{true};
@@ -57,7 +56,6 @@ inline CustomModFlags loadCustomModFlags() {
     flags.fastGloryKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS");
     flags.fastChainsawKills=customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");
     flags.handFocusedRs = customModEnvironmentEnabled("KHARVOX_MOD_HAND_FOCUS_RS");
-    flags.directionalDash = customModEnvironmentEnabled("KHARVOX_MOD_DIRECTIONAL_DASH");
     flags.behindHeadWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_BEHIND_HEAD_WHEEL");
     flags.leftWristWeaponWheel = customModEnvironmentEnabled("KHARVOX_MOD_LEFT_WRIST_WHEEL");
     char behindHeadHandSelection[16]{};

@@ -362,8 +362,6 @@ struct State {
     bool wheelWeaponGripSuppressedUntilRelease{};
     bool wheelSupportGripSuppressedUntilRelease{};
     XrVector2f frozenWheelStick{};
-    bool dashButtonPressed{};
-    XrTime dashCooldownUntil{};
     bool dynamicShoulderHolstered{};
     bool openHandUnequipped{}; // no hip assignment; native weapon kept in inventory
     KharvoxWeaponKind openHandUnequippedKind{KharvoxWeaponKind::Unknown};
@@ -3579,7 +3577,6 @@ void updateGameplayActions(XrTime displayTime){
         // No delayed weapon-restore path.
         s.wheelWeaponGripSuppressedUntilRelease=false;
         s.wheelSupportGripSuppressedUntilRelease=false;
-        s.dashButtonPressed=false;s.dashCooldownUntil=0;
         s.dynamicShoulderHolstered=false;
         s.openHandUnequipped=false;
         s.openHandUnequippedKind=KharvoxWeaponKind::Unknown;
@@ -3923,12 +3920,10 @@ void updateGameplayActions(XrTime displayTime){
             +std::to_string(s.postCinematicYawGuard.absorbedDegrees)+"deg");
     }
 
-    // Retained custom controller layout. Behind-Head Weapon Wheel can
-    // replace the physical weapon-select control entirely, freeing the old
-    // wheel control for dash without changing jump/double-jump.
+    // Retain the right-stick DOWN gesture as a legacy weapon-wheel fallback
+    // only when Gunslinger does not own selection; it never crouches.
     const bool rightStickDownGesture=turnActive
-        &&kharvox::vrRightStickDownGesture(
-            s.rightStick.x,rightStickY); // optional dash, NEVER crouch
+        &&kharvox::vrRightStickDownGesture(s.rightStick.x,rightStickY);
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
     const bool leftWheelEnabled=s.customMods.behindHeadWeaponWheel; // one mod opens BOTH sides
@@ -4049,33 +4044,6 @@ void updateGameplayActions(XrTime displayTime){
         gameplay,s.customMods.disableWeaponWheel,
         s.customMods.behindHeadWeaponWheel,behindHeadWheelRequested,
         legacyWeaponSelectDown);
-
-    // A is reserved for crouch in gameplay regardless of Physical Crouch.
-    // Retain optional Directional Dash on a deliberate right-stick DOWN
-    // gesture (not R3 click), with left-stick movement for dash direction.
-    const bool freedWeaponWheelButtonDown=s.weaponWheelRemapEnabled
-        &&rightStickDownGesture;
-    if(s.customMods.directionalDash&&s.customMods.behindHeadWeaponWheel
-        &&s.weaponWheelRemapEnabled
-        &&gameplay&&freedWeaponWheelButtonDown&&!s.dashButtonPressed
-        &&displayTime>=s.dashCooldownUntil){
-        const auto dashStick=movementDirectionRelativeStick(s.leftStick,gameplay);
-        const float dashMagnitude=std::sqrt(
-            dashStick.x*dashStick.x+dashStick.y*dashStick.y);
-        if(dashMagnitude>=.20f){
-            if(KharvoxCameraApplyDirectionalDash(
-                    dashStick.x,dashStick.y)){
-                s.dashCooldownUntil=displayTime+650000000;
-                log(std::string("[DASH] right stick DOWN -> horizontal dash transformedStick=(")
-                    +std::to_string(dashStick.x)+","
-                    +std::to_string(dashStick.y)+")");
-            }
-        }else{
-            log("[DASH] freed wheel button pressed with neutral stick; ignored");
-        }
-    }
-    s.dashButtonPressed=freedWeaponWheelButtonDown;
-    if(!gameplay){s.dashButtonPressed=false;s.dashCooldownUntil=0;}
 
     // Right-stick DOWN no longer crouches. A works independently from the
     // physical HMD crouch option; its fresh edge is routed below after
@@ -5366,7 +5334,6 @@ bool createGameplayActions(){
         +" gaussSlow="+(s.customMods.gaussChargeSlowMovement?"on":"off")
         +" backHandHud="+(s.customMods.backOfHandHud?"on":"off")
         +" handFocusRs="+(s.customMods.handFocusedRs?"on":"off")
-        +" dash="+(s.customMods.directionalDash?"on":"off")
         +" behindHeadWheel="+(s.customMods.behindHeadWeaponWheel?"on":"off")
         +" behindHeadHandSelect="+(s.customMods.behindHeadWheelHandSelection?"on":"off")
         +" physicalCrouch="+(s.customMods.physicalCrouch?"on":"off")

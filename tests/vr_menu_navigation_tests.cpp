@@ -874,7 +874,7 @@ int main(){
     assert(vrMenuModsGamepadTarget(nav,2,7,4,true)==130);
     // A is the dedicated manual crouch toggle with Physical Crouch
     // enabled OR disabled. Right-stick DOWN never toggles crouch anymore,
-    // but may be used for optional directional dash. R3 click is untouched.
+    // and remains the legacy wheel fallback. R3 click is untouched.
     assert(!vrCombinedCrouchDesired(false,false));
     assert(vrCombinedCrouchDesired(true,false)); // Physical Crouch OFF
     assert(vrCombinedCrouchDesired(false,true)); // Physical Crouch ON

@@ -306,7 +306,6 @@ The VR checkbox remains explicitly marked **Incomplete** in its launcher tooltip
 - [ ] [PENDING] Boxing Guard pose head focus / slight time dilation / return-to-hand delay and native wheel effect priority.
 - [ ] [PENDING] Gauss Siege Charge Slow Movement allows intended slow movement (previously still immobile).
 - [ ] [PENDING] Physical Crouch triggers crouch/stand without jump toggling.
-- [ ] [PENDING] Directional Dash remains DISABLED after unsafe native physics regression.
 - [ ] [BLOCKED] Haptic Overhaul damage pulses require validated live health/armour read; don't expect pulses.
 - [ ] [BLOCKED] Revenge Demon is diagnostic only.
 - [ ] [BLOCKED] Dual-wielding is just policy/design; not yet a usable DOOM user mod + VR bridge.

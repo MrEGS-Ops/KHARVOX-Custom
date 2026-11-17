@@ -661,9 +661,6 @@ bool immersiveCinematicFov(float& fovX, float& fovY) {
 using PlayerViewOriginFn = const float*(__fastcall*)(void*);
 using PlayerViewAxisFn = const float*(__fastcall*)(void*);
 using PhysicsGetOriginFn = const float*(__fastcall*)(void*, int);
-using PhysicsGetAxisFn = const float*(__fastcall*)(void*, int);
-using PhysicsSetLinearVelocityFn = void(__fastcall*)(void*, const float*, int);
-using PhysicsGetLinearVelocityFn = const float*(__fastcall*)(void*, int);
 std::atomic<PlayerViewAxisFn> originalPlayerViewAxis{};
 std::atomic<bool> playerViewAxisHookInstalled{};
 
@@ -1109,46 +1106,6 @@ bool clearInterlockedMaskSafely(volatile LONG* address, std::uint32_t mask) {
     }
 #else
     InterlockedAnd(address, static_cast<LONG>(~mask));
-    return true;
-#endif
-}
-
-bool readPhysicsDashStateSafely(
-    PhysicsGetAxisFn getAxis, PhysicsGetLinearVelocityFn getVelocity,
-    void* physics, float axisOut[9], float velocityOut[3]) {
-    if (!getAxis || !getVelocity || !physics || !axisOut || !velocityOut)
-        return false;
-#if defined(_MSC_VER)
-    __try {
-#endif
-        const float* axis = getAxis(physics, 0);
-        const float* velocity = getVelocity(physics, 0);
-        if (!readableMemory(axis, 9 * sizeof(float))
-            || !readableMemory(velocity, 3 * sizeof(float)))
-            return false;
-        std::memcpy(axisOut, axis, 9 * sizeof(float));
-        std::memcpy(velocityOut, velocity, 3 * sizeof(float));
-        return true;
-#if defined(_MSC_VER)
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#endif
-}
-
-bool setPhysicsLinearVelocitySafely(
-    PhysicsSetLinearVelocityFn setVelocity, void* physics,
-    const float velocity[3]) {
-    if (!setVelocity || !physics || !velocity) return false;
-#if defined(_MSC_VER)
-    __try {
-        setVelocity(physics, velocity, 0);
-        return true;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#else
-    setVelocity(physics, velocity, 0);
     return true;
 #endif
 }
@@ -3591,20 +3548,6 @@ void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
         candidateMask.store(0, std::memory_order_release);
         candidateStableFrames.store(0, std::memory_order_release);
     }
-}
-
-bool KharvoxCameraApplyDirectionalDash(float localRight, float localForward) {
-    // SAFETY HALT: native idPhysics vtable slots inferred from adjacency are
-    // NOT a validated write ABI. Real headset testing reported that the old
-    // SetLinearVelocity call warped the player into a void and killed them.
-    // No physics pointers, origins or velocity may be mutated until a
-    // separately verified gameplay dash interface is available.
-    (void)localRight;
-    (void)localForward;
-    static std::atomic<bool> warned{};
-    if (!warned.exchange(true, std::memory_order_acq_rel))
-        log("[DASH] disabled: previous native-physics setter was unsafe (void teleport/death)");
-    return false;
 }
 
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]) {

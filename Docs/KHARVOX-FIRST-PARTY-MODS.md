@@ -11,7 +11,6 @@ Status: **development / opt-in**. No game assets or third-party Nexus mod files 
 | Immersion Controls | Scan original resource index for candidate highlight, pickup and FX declarations | Read-only inventory and synthetic test; no runtime edits |
 | Skip Intro | Existing launcher option +com_skipIntroVideo 1 | Already passed; needs actual startup-video verification |
 | KHARVOX Visual Enhancements | Stereo-consistent linear colour policy | C++ reference policy and local unit tests; not yet connected to Vulkan |
-| Directional Dash | Native KHARVOX gameplay | Existing experimental track; not recreated here |
 
 Generator source: tools/Generate-KHARVOX-Mods.py. It reads original resources from the user's own *unmodified* DOOM installation. It can also accept declarations exported by the user. It does not use third-party mod data and does not write into the game directory.
 

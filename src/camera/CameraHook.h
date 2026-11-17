@@ -82,11 +82,7 @@ void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement);
 // While Gauss Siege is charging, learn and clear only charge-added movement
 // inhibit bits. Calling with false updates the normal gameplay baseline.
 void KharvoxCameraSetGaussChargeMovementOverride(bool active);
-// Applies one horizontal dash through idPhysics_Player's validated velocity
-// interface. localRight/localForward come from the movement stick.
-bool KharvoxCameraApplyDirectionalDash(float localRight, float localForward);
-// Applies one horizontal dash through the validated idPhysics_Player object.
-// forward/lateral are normalized body-relative intent values.
+// Returns the live gameplay body pose for VR rendering without mutating physics.
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHeadRenderPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHudCenterRenderPose(float origin[3], float axis[9]);
