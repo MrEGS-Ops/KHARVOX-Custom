@@ -9,7 +9,7 @@ int main(){
     WeaponRecoilSettings settings{};
     WeaponRecoilState state{};
     assert(anyWeaponRecoilEnabled(settings));
-    assert(!settings.enabled[0]&&!settings.enabled[4]&&settings.enabled[1]
+    assert(!settings.enabled[0]&&settings.enabled[4]&&settings.enabled[1]
         &&settings.enabled[2]&&settings.enabled[3]&&settings.enabled[5]
         &&settings.enabled[6]&&settings.enabled[7]&&settings.enabled[8]
         &&settings.enabled[9]);
@@ -21,6 +21,7 @@ int main(){
     assert(weaponRecoilIndex("chaingun_turret")==9);
     assert(weaponRecoilIndex("chainsaw")==-1);
     assert(settings.strength[7]==1.f&&settings.strength[9]==3.f);
+    assert(settings.strength[4]==5.f&&settings.recovery[4]==.6f); // Rocket: 500%.
     assert(settings.recovery[7]==.45f&&settings.recovery[9]==.75f);
     assert(recoilAllowedForWeaponMode(2,false)); // Rifle primary
     assert(!recoilAllowedForWeaponMode(2,true)); // Rifle alternate

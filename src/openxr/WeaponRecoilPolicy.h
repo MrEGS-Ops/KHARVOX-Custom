@@ -47,18 +47,18 @@ inline int weaponRecoilIndex(const char* weapon,bool turretMode=false) noexcept 
         if(std::strcmp(weapon,kWeaponRecoilKinds[i])==0)return static_cast<int>(i);
     return -1;
 }
-// Owner-tested 2026-11-14 recoil presets. Existing UserData always wins;
+// Owner-tested 2026-11-17 recoil presets. Existing UserData always wins;
 // Reset returns to these per-weapon values.
 inline constexpr std::array<float,10> kWeaponRecoilDefaultStrength{{
-    2.00f,2.00f,1.70f,2.45f,2.70f,8.50f,5.00f,1.00f,9.00f,3.00f
+    2.00f,2.00f,1.70f,2.45f,5.00f,8.50f,5.00f,1.00f,9.00f,3.00f
 }};
 inline constexpr std::array<float,10> kWeaponRecoilDefaultRecovery{{
     .70f,.60f,.55f,.60f,.60f,.55f,.25f,.45f,.55f,.75f
 }};
 struct WeaponRecoilSettings {
-    // Owner's uploaded 2026-11-14 preset; pistol and rocket remain OFF.
+    // Owner's uploaded 2026-11-17 preset; pistol OFF, rocket ON at 500%.
     // Normal and Turret are separate slots. Two hands cancels added recoil.
-    std::array<bool,10> enabled{{false,true,true,true,false,true,true,true,true,true}};
+    std::array<bool,10> enabled{{false,true,true,true,true,true,true,true,true,true}};
     std::array<float,10> strength=kWeaponRecoilDefaultStrength;
     std::array<float,10> recovery=kWeaponRecoilDefaultRecovery;
     // Shared dynamic build-up comes from the uploaded user preset;
