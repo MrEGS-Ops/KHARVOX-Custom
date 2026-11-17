@@ -311,6 +311,31 @@ inline bool vrLiveWheelInside(VrLivePoint p,bool expanded,VrLivePoint shift){
         expanded?VrLivePoint{.66f,.54f,.86f}:VrLivePoint{.44f,.36f,.60f},
         shift);
 }
+// Gunslinger calibration previews use the same head-relative zone coordinates
+// as live detection. During a Grip drag only the temporary draft changes.
+inline constexpr bool vrLiveIsGunslingerCapture(VrLiveCapture target) noexcept {
+    return target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft
+        ||target==VrLiveCapture::WheelRight||target==VrLiveCapture::WheelLeft;
+}
+inline VrLivePoint vrLiveZoneCenter(const VrLiveSettings& s,VrLiveCapture target) noexcept {
+    if(!vrLiveIsGunslingerCapture(target))return {};
+    const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
+    const int side=(target==VrLiveCapture::HipLeft||target==VrLiveCapture::WheelLeft)?1:0;
+    return vrLiveShiftedPoint(hip?vrLiveHipDefaultCenter():vrLiveWheelDefaultCenter(),
+        hip?s.hipShift[side]:s.wheelShift[side]);
+}
+inline bool vrLiveUpdateZoneDraft(VrLivePoint& draft,bool gripHeld,bool tracked,
+                                  VrLivePoint controllerRelative,VrLiveCapture target) noexcept {
+    if(!vrLiveIsGunslingerCapture(target)||!gripHeld||!tracked
+        ||!vrLiveValidPoint(controllerRelative))return false;
+    const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
+    const auto base=hip?vrLiveHipDefaultCenter():vrLiveWheelDefaultCenter();
+    if(!vrLiveValidShift({controllerRelative.x-base.x,
+                          controllerRelative.y-base.y,
+                          controllerRelative.z-base.z}))return false;
+    draft=controllerRelative;
+    return true;
+}
 inline bool vrLiveCapturePoint(VrLiveSettings& s,VrLiveCapture target,
                                VrLivePoint handRelative,float headDelta){
     if(target==VrLiveCapture::CrouchStanding){

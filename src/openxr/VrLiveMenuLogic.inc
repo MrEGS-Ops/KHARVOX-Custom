@@ -353,7 +353,7 @@ bool handleVrRecoilCalibrationAction(int action){
 bool saveVrLiveSettings(){
     const auto path=kharvox::runtimePathA("vr_live_mods_saved.cfg");
     if(!kharvox::vrLiveSave(path,s.vrLiveSettings)){
-        s.vrHandMenu.message="Save failed: UserData/vr_live_mods_saved.cfg";
+        s.vrHandMenu.message="Save failed: UserData/Settings/vr_live_mods_saved.cfg";
         return false;
     }
     applyVrLiveModRuntimeState();
@@ -363,12 +363,38 @@ void openVrLiveCapture(kharvox::VrLiveCapture capture){
     auto& m=s.vrHandMenu;
     m.liveCapture=capture;
     m.previewValid=false;
+    m.gunslingerZoneDraftValid=kharvox::vrLiveIsGunslingerCapture(capture);
+    m.gunslingerZoneDraft=m.gunslingerZoneDraftValid
+        ?kharvox::vrLiveZoneCenter(s.vrLiveSettings,capture):kharvox::VrLivePoint{};
+    m.gunslingerZoneMoving=false;
     m.mode=kharvox::VrHandMenuMode::Calibrating;
     const bool crouch=capture==kharvox::VrLiveCapture::CrouchStanding
         ||capture==kharvox::VrLiveCapture::CrouchLowered;
     m.message=crouch?"Move your HEAD to target height, then RIGHT TRIGGER."
-        :"Move the matching HAND to target zone, then RIGHT TRIGGER.";
+        :"Hold the matching GRIP to drag the zone. Release to freeze; RIGHT TRIGGER saves.";
     log("[VR-MODS] live calibration armed; fire remains blocked");
+}
+// A Grip drag updates ONLY the unsaved visual zone. Releasing Grip keeps the
+// last valid draft position; reopening placement starts at the saved location.
+void updateVrLiveZoneDraft(){
+    using kharvox::VrLiveCapture;
+    auto& m=s.vrHandMenu;
+    const auto target=m.liveCapture;
+    m.gunslingerZoneMoving=false;
+    if(!kharvox::vrLiveIsGunslingerCapture(target))return;
+    const bool right=target==VrLiveCapture::HipRight
+        ||target==VrLiveCapture::WheelRight;
+    const bool gripHeld=readFloatAction(right?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
+    m.gunslingerZoneMoving=gripHeld;
+    if(!gripHeld||!s.trackingHeadPositionValid||!s.headZeroPositionValid)return;
+    const auto& controller=right?s.rightGripController:s.leftGripController;
+    if(!controller.valid||!controller.positionTracked)return;
+    const auto relative=controllerRelativeToBodyTrackingOrigin(controller).position;
+    const auto hd=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+    const kharvox::VrLivePoint point{right?relative.x-hd.x:hd.x-relative.x,
+        relative.y-hd.y,relative.z-hd.z};
+    if(kharvox::vrLiveUpdateZoneDraft(m.gunslingerZoneDraft,
+        gripHeld,true,point,target))m.gunslingerZoneDraftValid=true;
 }
 void captureVrLivePosition(){
     using kharvox::VrLiveCapture;
@@ -382,16 +408,10 @@ void captureVrLivePosition(){
     const bool crouch=capture==VrLiveCapture::CrouchStanding
         ||capture==VrLiveCapture::CrouchLowered;
     if(!crouch){
-        const bool right=capture==VrLiveCapture::HipRight
-            ||capture==VrLiveCapture::WheelRight;
-        const auto& controller=right?s.rightGripController:s.leftGripController;
-        if(!controller.valid||!controller.positionTracked){
-            m.message="Chosen hand not tracked. Position not saved.";return;
+        if(!m.gunslingerZoneDraftValid){
+            m.message="No valid zone preview. Nothing saved.";return;
         }
-        const auto relative=controllerRelativeToBodyTrackingOrigin(controller).position;
-        const auto hd=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-        p={right?relative.x-hd.x:hd.x-relative.x,
-            relative.y-hd.y,relative.z-hd.z};
+        p=m.gunslingerZoneDraft;
     }
     const float headDelta=s.trackingHeadPosition.y-s.headZeroPosition.y;
     if(!kharvox::vrLiveCapturePoint(s.vrLiveSettings,capture,p,headDelta)){
@@ -403,8 +423,10 @@ void captureVrLivePosition(){
         s.vrLiveSettings=before;return;
     }
     m.liveCapture=VrLiveCapture::None;
+    m.gunslingerZoneDraftValid=false;
+    m.gunslingerZoneMoving=false;
     m.mode=kharvox::VrHandMenuMode::Menu;
-    m.message="Position saved to UserData and applied instantly.";
+    m.message="Zone saved to UserData and applied instantly.";
     kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
         190,.80f,185.f);
 }

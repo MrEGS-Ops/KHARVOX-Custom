@@ -357,8 +357,10 @@ void paintVrHandMenu() {
             write(39,235,crouch?"PHYSICAL CROUCH":"GUNSLINGER ZONE",white);
             SelectObject(dc,smallFont);
             write(39,295,crouch?"Move HEAD to the target height."
-                :"Move the matching HAND into the target zone.",white);
-            write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
+                :"Hold matching GRIP to move the zone.",white);
+            write(39,340,crouch?"Press RIGHT TRIGGER to capture."
+                :m.gunslingerZoneMoving?"DRAGGING: release GRIP to freeze."
+                :"RELEASED: RIGHT TRIGGER saves.",RGB(84,233,214));
         }
         SelectObject(dc,smallFont);
         write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));

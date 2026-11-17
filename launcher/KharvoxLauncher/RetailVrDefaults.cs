@@ -23,7 +23,7 @@ internal static class RetailVrDefaults
         mods.DynamicShoulderHolster = true;
         mods.OffHandGripCapture = WeaponGripAlwaysOn;
         // Remain individually toggleable from the in-headset MODS page. The
-        // native UserData/vr_live_mods_saved.cfg overrides can still set 0.
+        // native UserData/Settings/vr_live_mods_saved.cfg overrides can still set 0.
         mods.PhysicalCrouch = true;
         mods.ChainsawTriggerThrottle = true;
         mods.MotionChainsawKillSpeed = false;
