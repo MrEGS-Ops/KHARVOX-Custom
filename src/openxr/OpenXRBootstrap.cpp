@@ -3424,7 +3424,7 @@ void serviceLevelStats(bool levelPlayable,bool frontMenuContext,std::uint64_t no
     kharvox::levelLiveAdvance(live,nativePause,now);
     kharvox::levelLiveObserveEndMenu(live,completedMenu,generation);
     if(progress.armed&&!progress.completed&&deaths>s.observedSessionDeaths){
-        const auto increment=(std::min)<std::uint64_t>(
+        const auto increment=std::min<std::uint64_t>(
             deaths-s.observedSessionDeaths,1000000000ULL-progress.deaths);
         progress.deaths+=increment;
     }
