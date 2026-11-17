@@ -410,21 +410,16 @@ void paintVrHandMenu() {
                     write(dx+18,dy+213,"keep its hand tracked.",white);
                 }
             }else{
-                using C=kharvox::VrLiveCapture;
-                const bool hip=m.liveCapture==C::HipRight
-                    ||m.liveCapture==C::HipLeft;
-                const bool right=m.liveCapture==C::HipRight
-                    ||m.liveCapture==C::WheelRight;
-                const int side=right?0:1;
-                const auto& grip=right?s.rightGripController
-                    :s.leftGripController;
-                const bool tracked=s.trackingHeadPositionValid
-                    &&grip.valid&&grip.positionTracked;
-                write(dx+18,dy+64,hip?"HIP ZONE":"HEAD / WHEEL ZONE",
-                    RGB(84,233,214));
-                write(dx+18,dy+94,right?"RIGHT CONTROLLER"
-                    :"LEFT CONTROLLER",muted);
                 if(m.devControllerInputs){
+                    using C=kharvox::VrLiveCapture;
+                    const bool hip=m.liveCapture==C::HipRight
+                        ||m.liveCapture==C::HipLeft;
+                    const bool right=m.liveCapture==C::HipRight
+                        ||m.liveCapture==C::WheelRight;
+                    write(dx+18,dy+64,hip?"HIP ZONE":"HEAD / WHEEL ZONE",
+                        RGB(84,233,214));
+                    write(dx+18,dy+94,right?"RIGHT CONTROLLER"
+                        :"LEFT CONTROLLER",muted);
                     const auto& sample=m.devInput;
                     auto on=[](bool value){return value?"ON":"off";};
                     const int top=dy+155;
