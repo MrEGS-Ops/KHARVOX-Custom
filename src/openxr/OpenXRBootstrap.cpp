@@ -5351,10 +5351,12 @@ void updateGameplayActions(XrTime displayTime){
             s.boxingHeadFocus=false;
             log("[FOCUS] guard pose released -> Boxing Guard slowdown ended");
         }
-        // Using an open-hand grab never repositions the weapon; it only
-        // lends the existing DOOM world-interaction ray the free-hand pose.
+        // Use the same FREE-HAND AIM controller as the DEV laser. GRIP pose
+        // provides physical hand position but is not the laser's origin/axis.
+        // Never reposition the equipped gun or borrow its firing direction.
         const auto& controller=worldGrabFreeHandFocus
-            ?supportGripController():weaponController();
+            ?(s.weaponHandLeft?s.rightController:s.leftController)
+            :weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
         // Native actions own HEAD focus for the duration of their authored
         // executions. Otherwise always use the current physical weapon
