@@ -4448,6 +4448,11 @@ void updateGameplayActions(XrTime displayTime){
             vectorLength(subtractVector(s.leftGripController.position,s.trackingHeadPosition)),
             vectorLength(subtractVector(s.rightGripController.position,s.trackingHeadPosition))};
         const auto events=s.worldGrabProbe.update(in);
+        auto& inspector=s.worldGrabInspector;
+        inspector.enabled=in.enabled&&in.gameplay&&in.controllersReady;
+        inspector.gripHeld=inspector.enabled&&(in.grip[0]||in.grip[1]);
+        inspector.freeHandRight=s.weaponHandLeft;
+        if(!inspector.enabled)inspector={};
         // This is a real DOOM FocusTracker observation, sampled on its
         // native game thread. It is NOT yet a rigid-body hit: never issue
         // Acquire or turn the laser red solely from these opaque fields.
@@ -4456,6 +4461,11 @@ void updateGameplayActions(XrTime displayTime){
         if(in.enabled&&in.gameplay){
             KharvoxWorldGrabNativeFocus nativeFocus{};
             if(KharvoxCameraReadWorldGrabNativeFocus(nativeFocus)){
+                inspector.nativeFocusSeen=true;
+                inspector.focusIndexA=nativeFocus.indexA;
+                inspector.focusIndexB=nativeFocus.indexB;
+                inspector.focusHasReference=nativeFocus.nativeReference!=0;
+                inspector.focusLastMs=GetTickCount64();
                 static unsigned long long lastFocusReportTick{};
                 static unsigned int lastIndexA{},lastIndexB{};
                 static bool lastRefPresent{};
@@ -4497,6 +4507,19 @@ void updateGameplayActions(XrTime displayTime){
                     continue;
                 lastCandidateSequence[path]=candidate.sampleSequence;
                 const auto now=GetTickCount64();
+                auto& clue=inspector.paths[path];
+                clue.hasCandidate=true;
+                clue.nativeHandle=candidate.nativeHandle;
+                clue.levelGeneration=candidate.levelGeneration;
+                clue.lastCandidateMs=now;
+                // When a trace reports a different entity, old resolved
+                // class fingerprints must not be attributed to the new hit.
+                if(clue.hasResolved&&candidate.nativeHandle!=0
+                    &&clue.nativeHandle!=0
+                    &&clue.nativeHandle!=candidate.nativeHandle){
+                    clue.hasResolved=false;
+                    clue.nativeClassName.clear();
+                }
                 const bool changed=candidate.nativeHandle!=lastNativeCandidate[path];
                 if((changed&&now-lastCandidateReportTick[path]>=1000)
                     ||now-lastCandidateReportTick[path]>=6000){
@@ -4527,6 +4550,17 @@ void updateGameplayActions(XrTime displayTime){
                     continue;
                 lastResolvedSequence[path]=resolved.sampleSequence;
                 const auto now=GetTickCount64();
+                auto& clue=inspector.paths[path];
+                clue.hasResolved=true;
+                clue.hasCandidate=true;
+                clue.nativeHandle=resolved.nativeHandle;
+                clue.vtableRva=resolved.vtableRva;
+                clue.vtableInExecutable=resolved.vtableInExecutable;
+                clue.levelGeneration=resolved.levelGeneration;
+                clue.lastResolvedMs=now;
+                clue.lastCandidateMs=now;
+                clue.nativeClassName=resolved.nativeClassName.data();
+                inspector.lastEvent="DOOM resolved native entity; physics unverified";
                 const bool changed=resolved.vtableRva!=lastResolvedVtableRva[path]
                     ||resolved.nativeHandle!=lastResolvedHandle[path];
                 if((changed&&now-lastResolvedReportAt[path]>=1000)
@@ -4545,15 +4579,21 @@ void updateGameplayActions(XrTime displayTime){
             }
         }
         if(in.enabled)for(int hand=0;hand<2;++hand){
-            if(events.started[hand])
+            if(events.started[hand]){
+                inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
+                    +" Grip pressed - looking for native object";
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
                     +" free-hand Grip detected; NO world object attached");
+            }
             if(events.pastReach[hand])
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
                     +" 0.90m advisory reach exceeded; NO movement restriction");
-            if(events.released[hand])
+            if(events.released[hand]){
+                inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
+                    +" Grip released - no object physics changed";
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
                     +" Grip released; NO world physics modified");
+            }
         }
     }
     const bool manualMove=std::abs(s.leftStick.x)>.15f||std::abs(s.leftStick.y)>.15f;
