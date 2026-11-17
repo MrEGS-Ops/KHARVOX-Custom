@@ -349,9 +349,14 @@ public sealed class MainForm : Form
         leftHanded.Dock = DockStyle.Fill;
         grid.Controls.Add(leftHanded, 0, 3);
         grid.Controls.Add(leftHandSwapMode, 1, 3);
+        // RIPSHIFT's Gunslinger owns the A=crouch/B=jump mapping.
+        // Keep this legacy launcher option visible, greyed out and inert.
         swapJumpCrouch.Dock = DockStyle.Fill;
-        swapJumpCrouch.CheckedChanged += OptionChanged;
-        statusToolTip.SetToolTip(swapJumpCrouch, "Swap the gameplay Jump and Crouch actions on the A/B face buttons. Menu controls stay the same.");
+        swapJumpCrouch.Checked = false;
+        swapJumpCrouch.Enabled = false;
+        swapJumpCrouch.TabStop = false;
+        statusToolTip.SetToolTip(swapJumpCrouch,
+            "Locked by RIPSHIFT: A = Crouch, B = Jump. Physical crouch and Hands Jump still work.");
         grid.Controls.Add(swapJumpCrouch, 0, 4);
         grid.SetColumnSpan(swapJumpCrouch, 2);
         foreach (Control c in new Control[] { turnMode, snapAngle })
@@ -1029,7 +1034,7 @@ public sealed class MainForm : Form
         calibrateHands.Checked ? "rotation" : "off",
         enableBhaptics.Checked,
         usePsvr2Toolkit.Checked,
-        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, swapJumpCrouch.Checked);
+        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, false);
 
     private void SetRunningState(bool running)
     {
@@ -1109,7 +1114,8 @@ public sealed class MainForm : Form
             leftHandSwapMode.SelectedIndex = s.SettingsVersion >= 13
                 ? ClampInt(s.LeftHandSwapMode, 0, 1) : 0;
             leftHanded.Checked = s.SettingsVersion >= 13 && s.LeftHanded;
-            swapJumpCrouch.Checked = s.SettingsVersion >= 34 && s.SwapJumpCrouch;
+            // Older saved profiles may contain a swap: RIPSHIFT must ignore it.
+            swapJumpCrouch.Checked = false;
             laserSight.Checked = s.SettingsVersion >= 14 && s.LaserSight;
             hudDebugging.Checked = s.SettingsVersion >= 9 && s.HudDebugging;
             extendedLogging.Checked = s.SettingsVersion >= 25 && s.ExtendedLogging;
@@ -1198,7 +1204,7 @@ public sealed class MainForm : Form
                 showHands.Checked,
                 calibrateHands.Checked ? 1 : 0,
                 enableBhaptics.Checked,
-                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, swapJumpCrouch.Checked);
+                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, false);
             s.DisableVrIntro = disableVrIntro.Checked;
             LauncherSettingsStore.Save(SettingsPath, s);
         }
