@@ -161,6 +161,17 @@ else()
 endif()
 add_test(NAME world-grab-input-probe COMMAND KharvoxWorldGrabProbeTests)
 
+# A movable physics target is selected by verified native body properties,
+# never by an asset, barrel type, or collision-mesh whitelist.
+add_executable(KharvoxWorldGrabTargetPolicyTests ../world_grab_target_policy_tests.cpp)
+target_compile_features(KharvoxWorldGrabTargetPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWorldGrabTargetPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWorldGrabTargetPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME world-grab-dynamic-physics-target COMMAND KharvoxWorldGrabTargetPolicyTests)
+
 # Real grab/hold/throw intent and constraints. The native physics adapter
 # remains unbound until the DOOM entity trace and write ABI are verified.
 add_executable(KharvoxWorldGrabMotionPolicyTests ../world_grab_motion_policy_tests.cpp)
