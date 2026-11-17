@@ -1,5 +1,9 @@
 // LevelStatsPolicy uses MoveFileExW in its Windows persistence path.
 #ifdef _WIN32
+// Avoid Windows' min/max macros replacing std::min/std::max in LevelStatsPolicy.
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 #include "../src/hud/LevelStatsPolicy.h"
