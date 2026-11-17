@@ -36,7 +36,6 @@
 #include "ChainsawExperimentalModesPolicy.h"
 #include "ChainsawLoopProbePolicy.h"
 #include "ChainsawAnimationInvestigationPolicy.h"
-#include "GripZoneMarkerPolicy.h"
 #include "ChainsawTriggerThrottlePolicy.h"
 #include "ManualCrouchPolicy.h"
 #include "ChainsawHapticPreviewPolicy.h"
@@ -151,13 +150,6 @@ struct VrHandMenuSurface {
 VrHandMenuSurface vrHandMenuSurface;
 EyeSwapchain pauseBindings;
 bool pauseBindingsReady{};
-EyeSwapchain gripZoneDebug;
-bool gripZoneDebugReady{};
-bool gripZonesDebugRequested(){
-    char v[8]{};
-    return GetEnvironmentVariableA("KHARVOX_CHAINSAW_ZONES_DEBUG",v,sizeof(v))==1
-        &&v[0]=='1';
-}
 struct HeadPose { XrQuaternionf orientation{0,0,0,1}; XrVector3f position{}; float yaw{},pitch{},roll{}; bool valid{}; };
 struct ControllerPose {
     bool valid{},linearVelocityValid{},positionTracked{};
@@ -5905,7 +5897,6 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 }
 
 #include "PauseBindings.inc"
-#include "GripZoneDebug.inc"
 // Show only a REAL reconnect event: the cold-start physical-controller
 // verification lock is temporary and never asks for hidden thumbstick input.
 bool controllerReconnectBannerVisible(){
@@ -6084,10 +6075,6 @@ bool createSwapchains() {
     log(initializePauseBindings(formats)
         ? "[PAUSE-BINDINGS] static controller image uploaded; pause root only"
         : "[PAUSE-BINDINGS] image unavailable; normal pause menu retained");
-    if(gripZonesDebugRequested())
-        log(initializeGripZoneDebug(formats)
-            ? "[CHAINSAW-ZONES] elliptical XR marker ready (stereo tracked)"
-            : "[CHAINSAW-ZONES] OpenXR marker texture unavailable; grip haptics/logs remain active");
     log(initializeVrHandMenuSurface(formats)
         ? "[VR-HAND-MENU] dedicated OpenXR compositor panel ready"
         : "[VR-HAND-MENU] overlay unavailable; native gameplay unaffected");
@@ -9529,61 +9516,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         vrMenuLayer.size={1.28f,.96f};
     }
 
-    // Small circular START marker, same draw/projection dimensions.
-    // Once armed, hide it so it cannot imply an ongoing cutting corridor.
-    std::array<XrCompositionLayerQuad,1> gripZoneLayers{};
-    // The selected variant is launch-scoped; this is the XR submission
-    // function, not the chainsaw update function which owns experimentMode.
-    // NativeFast and PointerFocus need NO activation circle.
-    static const bool abPreviewCircle=[](){
-        char buf[8]{};
-        const auto n=GetEnvironmentVariableA(
-            "KHARVOX_CHAINSAW_EXPERIMENT_MODE",buf,sizeof(buf));
-        if(!n||n>=sizeof(buf))return true;
-        const int m=std::atoi(buf);
-        return m!=3&&m!=8&&m!=9;
-    }();
-    const bool zonePreviewRequested=gripZoneDebugReady
-        &&gripZonesDebugRequested()
-        &&s.customMods.chainsawTriggerThrottle
-        &&s.sessionState==XR_SESSION_STATE_FOCUSED
-        &&KharvoxCameraWorldActive()
-        &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chainsaw
-        &&kharvox::chainsawModeUsesCircle(s.chainsawExperiment.mode)
-        &&abPreviewCircle
-        &&!s.chainsawExperiment.cutPathLocked;
-    const bool zoneFrozen=gripZoneDebugReady&&gripZonesDebugRequested()
-        &&s.chainsawExperiment.active
-        &&!s.chainsawExperiment.cutPathLocked
-        &&kharvox::chainsawModeUsesCircle(s.chainsawExperiment.mode)
-        &&s.sessionState==XR_SESSION_STATE_FOCUSED;
-    const bool submitGripZones=(zonePreviewRequested||zoneFrozen)
-        &&gripZoneDebug.handle!=XR_NULL_HANDLE;
-    if(submitGripZones){
-        auto& marker=gripZoneLayers[0];
-        marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
-        marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-        marker.space=s.space;
-        marker.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
-        marker.subImage.swapchain=gripZoneDebug.handle;
-        marker.subImage.imageRect={{0,0},
-            {static_cast<int32_t>(gripZoneDebug.width),
-             static_cast<int32_t>(gripZoneDebug.height)}};
-        marker.pose.orientation=s.views[0].pose.orientation;
-        if(zoneFrozen){
-            const auto& pos=s.chainsawExperiment.zones[0];
-            marker.pose.position={pos.x,pos.y,pos.z};
-        }else{
-            const auto q=s.views[0].pose.orientation;
-            const auto forward=rotateVector(q,XrVector3f{0.f,0.f,-1.f});
-            const auto preview=kharvox::singleZoneCenter(
-                {s.trackingHeadPosition.x,s.trackingHeadPosition.y,s.trackingHeadPosition.z},
-                {forward.x,forward.y,forward.z});
-            marker.pose.position={preview.x,preview.y,preview.z};
-        }
-        marker.size={kharvox::chainsawZoneQuadWidthMeters,
-                     kharvox::chainsawZoneQuadHeightMeters};
-    }
     std::array<const XrCompositionLayerBaseHeader*,9> layers{};
     uint32_t layerCount{};
     layers[layerCount++]=s.quadMode
@@ -9604,10 +9536,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 <<KharvoxHudQuadScale()<<"x; Num +/- preview, Num * save";
             log(activated.str());
         }
-    }
-    if(submitGripZones){
-        for(const auto& marker:gripZoneLayers)
-            layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&marker);
     }
     if(vrMenuImageAcquired)
         layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&vrMenuLayer);
