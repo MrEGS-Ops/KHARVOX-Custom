@@ -612,6 +612,3606 @@ bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
 }
 
 
+// Best-effort read-only native MSVC RTTI. A class name is a clue, not an
+// asset name, physics-body verification or an authorization to move the prop.
+bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
+    std::uintptr_t base,std::uintptr_t imageSize,
+    std::array<char,80>& output) {
+    output={};
+    const auto inside=[&](std::uintptr_t p,std::size_t bytes) {
+        return p>=base&&p-base<=imageSize&&bytes<=imageSize-(p-base);
+    };
+    if(vtable<sizeof(std::uintptr_t)
+        ||!inside(vtable-sizeof(std::uintptr_t),sizeof(std::uintptr_t)))
+        return false;
+    std::uintptr_t locator{};
+    std::memcpy(&locator,reinterpret_cast<const void*>(
+        vtable-sizeof(std::uintptr_t)),sizeof(locator));
+    if(!inside(locator,24))return false;
+    std::array<std::uint32_t,6> col{};
+    std::memcpy(col.data(),reinterpret_cast<const void*>(locator),24);
+    if(col[0]!=1||col[5]!=locator-base||col[3]==0
+        ||col[3]>=imageSize||col[4]>=imageSize
+        ||!inside(base+col[3],23))return false;
+    const auto name=base+col[3]+16; // MSVC TypeDescriptor name
+    char decorated[80]{};
+    unsigned size{};
+    for(;size<sizeof(decorated)-1&&inside(name+size,1);++size){
+        const char c=*reinterpret_cast<const char*>(name+size);
+        if(c=='\0')break;
+        if((c<'A'||c>'Z')&&(c<'a'||c>'z')
+            &&(c<'0'||c>'9')&&c!='.'&&c!='?'&&c!='@'
+            &&c!='_'&&c!='
+// The following native instruction is itself 'mov rdx,[rax]' to fetch the
+// entity's vtable. Observe that same pointer while it's valid on game thread.
+// We export only a vtable RVA; never a live pointer or fabricated body ID.
+extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
+    const void* nativeEntity,unsigned int sourcePath) {
+    if(!nativeEntity||sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!KharvoxCameraWorldActive()
+        ||KharvoxCameraCutsceneActive()
+        ||KharvoxCameraBossSequenceActive())return;
+    std::uintptr_t vtable{};
+    std::memcpy(&vtable,nativeEntity,sizeof(vtable));
+    const auto* image=reinterpret_cast<const unsigned char*>(GetModuleHandleW(nullptr));
+    if(!image)return;
+    const auto* dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if(dos->e_magic!=IMAGE_DOS_SIGNATURE)return;
+    const auto* nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(
+        image+dos->e_lfanew);
+    if(nt->Signature!=IMAGE_NT_SIGNATURE)return;
+    const auto base=reinterpret_cast<std::uintptr_t>(image);
+    const auto size=static_cast<std::uintptr_t>(nt->OptionalHeader.SizeOfImage);
+    const bool inImage=vtable>=base&&vtable-base<size;
+    std::lock_guard<std::mutex> lock(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_relaxed))
+        return;
+    KharvoxWorldGrabResolvedEntity found{};
+    found.sourcePath=sourcePath;
+    found.nativeHandle=nativeGrabCandidateValid[sourcePath]
+        ?nativeGrabCandidate[sourcePath].nativeHandle:0;
+    found.vtableRva=inImage?static_cast<std::uint64_t>(vtable-base):0;
+    found.vtableInExecutable=inImage;
+    if(inImage)
+        readNativeWorldGrabClassLabel(vtable,base,size,found.nativeClassName);
+    found.levelGeneration=levelTransitionGeneration.load(
+        std::memory_order_acquire);
+    found.sampleSequence=++nativeGrabResolvedSequence;
+    nativeGrabResolvedEntity[sourcePath]=found;
+    nativeGrabResolvedValid[sourcePath]=true;
+}
+
+// Hook ONLY the fourteen bytes after DOOM's native entity manager has
+// returned a non-null entity. The displaced instructions call DOOM's own
+// interactable predicate unchanged. The helper cannot turn a prop into an
+// interactable or modify the game's own classification.
+// These machine bytes are present in the owner's v3 executable report.
+bool installNativeWorldGrabResolvedEntityHooks(unsigned char* image) {
+    if(!image)return false;
+    static constexpr unsigned char signature[14]{
+        0x48,0x8B,0x10, 0x48,0x8B,0xC8,
+        0xFF,0x92,0x00,0x06,0x00,0x00,
+        0x84,0xC0
+    };
+    struct Site { std::uintptr_t rva; unsigned int path; };
+    static constexpr Site sites[2]{{0xD48B7C,0},{0xD48C04,1}};
+    for(const auto& site:sites){
+        if(std::memcmp(image+site.rva,signature,sizeof(signature))!=0){
+            log("[WORLD-GRAB-ENTITY] resolved entity signature mismatch;"
+                " no output probes installed");
+            return false;
+        }
+    }
+    constexpr unsigned char saveXmm[]{
+        0xF3,0x0F,0x7F,0x44,0x24,0x20, 0xF3,0x0F,0x7F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x7F,0x54,0x24,0x40, 0xF3,0x0F,0x7F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x7F,0x64,0x24,0x60, 0xF3,0x0F,0x7F,0x6C,0x24,0x70
+    };
+    constexpr unsigned char loadXmm[]{
+        0xF3,0x0F,0x6F,0x44,0x24,0x20, 0xF3,0x0F,0x6F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x6F,0x54,0x24,0x40, 0xF3,0x0F,0x6F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x6F,0x64,0x24,0x60, 0xF3,0x0F,0x6F,0x6C,0x24,0x70
+    };
+    std::array<unsigned char*,2> stubs{};
+    for(std::size_t i=0;i<2;++i){
+        const auto& site=sites[i];
+        auto* target=image+site.rva;
+        auto* stub=static_cast<unsigned char*>(VirtualAlloc(
+            nullptr,256,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));
+        if(!stub){
+            for(auto* prior:stubs)if(prior)VirtualFree(prior,0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] unable to reserve output trampoline");
+            return false;
+        }
+        stubs[i]=stub;
+        auto* p=stub;
+        emit8(p,0x9C);emit8(p,0x50);emit8(p,0x51);emit8(p,0x52);
+        emit8(p,0x41);emit8(p,0x50);emit8(p,0x41);emit8(p,0x51);
+        emit8(p,0x41);emit8(p,0x52);emit8(p,0x41);emit8(p,0x53);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xEC);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        std::memcpy(p,saveXmm,sizeof(saveXmm));p+=sizeof(saveXmm);
+        emit8(p,0x48);emit8(p,0x89);emit8(p,0xC1); // rcx = native rax
+        emit8(p,0xBA); // edx = native source path
+        const auto path=static_cast<std::uint32_t>(site.path);
+        std::memcpy(p,&path,sizeof(path));p+=sizeof(path);
+        emit8(p,0x48);emit8(p,0xB8);
+        emit64(p,reinterpret_cast<unsigned long long>(
+            observeNativeWorldGrabResolvedEntity));
+        emit8(p,0xFF);emit8(p,0xD0);
+        std::memcpy(p,loadXmm,sizeof(loadXmm));p+=sizeof(loadXmm);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xC4);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        emit8(p,0x41);emit8(p,0x5B);emit8(p,0x41);emit8(p,0x5A);
+        emit8(p,0x41);emit8(p,0x59);emit8(p,0x41);emit8(p,0x58);
+        emit8(p,0x5A);emit8(p,0x59);emit8(p,0x58);emit8(p,0x9D);
+        // The displaced code has NO relative branches and safely executes
+        // in a trampoline: vtable read, virtual predicate call, test AL.
+        std::memcpy(p,signature,sizeof(signature));p+=sizeof(signature);
+        emit8(p,0xFF);emit8(p,0x25);emit8(p,0);emit8(p,0);
+        emit8(p,0);emit8(p,0);
+        emit64(p,reinterpret_cast<unsigned long long>(target+14));
+        if(p>stub+256){
+            for(auto* prior:stubs)if(prior)VirtualFree(prior,0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] output trampoline overflow");
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(),stub,
+            static_cast<SIZE_T>(p-stub));
+    }
+    for(std::size_t i=0;i<2;++i){
+        auto* target=image+sites[i].rva;
+        DWORD oldProtect{};
+        if(!VirtualProtect(target,14,PAGE_EXECUTE_READWRITE,&oldProtect)){
+            // Previously installed stubs remain mapped and active.
+            for(std::size_t j=i;j<2;++j)
+                VirtualFree(stubs[j],0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] output hook VirtualProtect failed");
+            return false;
+        }
+        unsigned char jump[14]{0xFF,0x25,0,0,0,0};
+        const auto address=reinterpret_cast<unsigned long long>(stubs[i]);
+        std::memcpy(jump+6,&address,sizeof(address));
+        std::memcpy(target,jump,sizeof(jump));
+        FlushInstructionCache(GetCurrentProcess(),target,sizeof(jump));
+        VirtualProtect(target,14,oldProtect,&oldProtect);
+    }
+    log("[WORLD-GRAB-ENTITY] native resolved entity vtable fingerprints"
+        " installed (read-only, disabled unless DEV World Grab active)");
+    return true;
+}
+
+extern "C" void __fastcall patchPlayerLedgeTraceAxis(
+    void* rawLedgeJobData, void* rawLedgeMechanic) {
+    if (!rawLedgeJobData || !rawLedgeMechanic
+        || !KharvoxCameraGameplayActive() || KharvoxCameraCutsceneActive()) return;
+
+    // idPlayerMechanicLedgeGrab::ledgeGrabState_t is -1 while merely checking
+    // the surroundings. Once a grab starts, DOOM deliberately aligns this
+    // axis to the detected ledge; never disturb that native animation state.
+    const auto mechanicBytes = static_cast<unsigned char*>(rawLedgeMechanic);
+    if (*reinterpret_cast<const int*>(mechanicBytes + 0x5258) != -1) return;
+
+    float hmdOrigin[3]{};
+    float hmdAxis[9]{};
+    if (!KharvoxCameraGetHeadRenderPose(hmdOrigin, hmdAxis)) return;
+    const float horizontalLength = std::hypot(hmdAxis[0], hmdAxis[1]);
+    if (!std::isfinite(horizontalLength) || horizontalLength < 0.001f) return;
+
+    // At this seam +0x14 is DOOM's already flattened/normalized forward test
+    // axis. Replace only that axis. The untouched native code immediately
+    // derives +0x20/+0x2C right/up axes and constructs every original ledge
+    // trace, so collision, reach, height and surface validation remain native.
+    auto forward = reinterpret_cast<float*>(
+        static_cast<unsigned char*>(rawLedgeJobData) + 0x14);
+    forward[0] = hmdAxis[0] / horizontalLength;
+    forward[1] = hmdAxis[1] / horizontalLength;
+    forward[2] = 0.0f;
+
+}
+
+bool installPlayerLedgeTraceAxisHook(unsigned char* image) {
+    if (!image) return false;
+    // idPlayerMechanicLedgeGrab prepares its normalized forward axis before
+    // deriving the perpendicular trace basis at this instruction boundary.
+    constexpr uintptr_t ledgeAxisRva = 0xDA1870;
+    constexpr unsigned char signature[] = {
+        0x48,0x8B,0x43,0x10,
+        0x48,0x8B,0x88,0x08,0x08,0x00,0x00,
+        0x48,0x8B,0x01
+    };
+    auto target = image + ledgeAxisRva;
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("[LEDGE] player ledge trace-axis signature mismatch; HMD ledge direction disabled");
+        return false;
+    }
+
+    auto stub = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 256, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!stub) {
+        log("[LEDGE] player ledge trace-axis stub allocation failed");
+        return false;
+    }
+    auto p = stub;
+    emit8(p,0x9C); emit8(p,0x50); emit8(p,0x51); emit8(p,0x52);
+    emit8(p,0x41); emit8(p,0x50); emit8(p,0x41); emit8(p,0x51);
+    emit8(p,0x41); emit8(p,0x52); emit8(p,0x41); emit8(p,0x53);
+    emit8(p,0x48); emit8(p,0x81); emit8(p,0xEC); emit8(p,0x80); emit8(p,0); emit8(p,0); emit8(p,0);
+    constexpr unsigned char saveXmm[] = {
+        0xF3,0x0F,0x7F,0x44,0x24,0x20, 0xF3,0x0F,0x7F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x7F,0x54,0x24,0x40, 0xF3,0x0F,0x7F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x7F,0x64,0x24,0x60, 0xF3,0x0F,0x7F,0x6C,0x24,0x70
+    };
+    std::memcpy(p, saveXmm, sizeof(saveXmm)); p += sizeof(saveXmm);
+    emit8(p,0x48); emit8(p,0x89); emit8(p,0xC1); // rcx = rax ledge job data
+    emit8(p,0x48); emit8(p,0x89); emit8(p,0xDA); // rdx = rbx ledge mechanic
+    emit8(p,0x48); emit8(p,0xB8); emit64(p,reinterpret_cast<unsigned long long>(patchPlayerLedgeTraceAxis));
+    emit8(p,0xFF); emit8(p,0xD0);
+    constexpr unsigned char loadXmm[] = {
+        0xF3,0x0F,0x6F,0x44,0x24,0x20, 0xF3,0x0F,0x6F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x6F,0x54,0x24,0x40, 0xF3,0x0F,0x6F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x6F,0x64,0x24,0x60, 0xF3,0x0F,0x6F,0x6C,0x24,0x70
+    };
+    std::memcpy(p, loadXmm, sizeof(loadXmm)); p += sizeof(loadXmm);
+    emit8(p,0x48); emit8(p,0x81); emit8(p,0xC4); emit8(p,0x80); emit8(p,0); emit8(p,0); emit8(p,0);
+    emit8(p,0x41); emit8(p,0x5B); emit8(p,0x41); emit8(p,0x5A);
+    emit8(p,0x41); emit8(p,0x59); emit8(p,0x41); emit8(p,0x58);
+    emit8(p,0x5A); emit8(p,0x59); emit8(p,0x58); emit8(p,0x9D);
+    std::memcpy(p, signature, sizeof(signature)); p += sizeof(signature);
+    emit8(p,0xFF); emit8(p,0x25); emit8(p,0); emit8(p,0); emit8(p,0); emit8(p,0);
+    emit64(p,reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        VirtualFree(stub, 0, MEM_RELEASE);
+        log("[LEDGE] player ledge trace-axis target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto address = reinterpret_cast<unsigned long long>(stub);
+    std::memcpy(jump + 6, &address, sizeof(address));
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
+    log("[LEDGE] native HMD horizontal trace-axis hook installed RVA=0xDA1870");
+    return true;
+}
+
+extern "C" void __fastcall capturePlayerLedgeTransition(
+    void* rawLedgeMechanic, int newState) {
+    if (!rawLedgeMechanic) return;
+    const auto mechanic = static_cast<unsigned char*>(rawLedgeMechanic);
+    const uintptr_t owner = *reinterpret_cast<const uintptr_t*>(mechanic + 0x10);
+    playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
+    playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
+}
+
+bool installPlayerLedgeStateCapture(unsigned char* image) {
+    if (!image) return false;
+    // Tail of idPlayerMechanicLedgeGrab::SetState. The first two writes retain
+    // the old state and the third commits EBP as the new native state.
+    constexpr uintptr_t stateCommitRva = 0xDA24A3;
+    constexpr unsigned char signature[] = {
+        0x8B,0x86,0x58,0x52,0x00,0x00,
+        0x89,0x86,0x5C,0x52,0x00,0x00,
+        0x89,0xAE,0x58,0x52,0x00,0x00
+    };
+    auto target = image + stateCommitRva;
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("[CINEMATIC-CLASS] Ledge state signature mismatch; Jump/Ledge exception disabled");
+        return false;
+    }
+
+    auto stub = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 256, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!stub) {
+        log("[CINEMATIC-CLASS] Ledge state capture stub allocation failed");
+        return false;
+    }
+    auto p = stub;
+    std::memcpy(p, signature, sizeof(signature)); p += sizeof(signature);
+    emit8(p,0x9C); emit8(p,0x50); emit8(p,0x51); emit8(p,0x52);
+    emit8(p,0x41); emit8(p,0x50); emit8(p,0x41); emit8(p,0x51);
+    emit8(p,0x41); emit8(p,0x52); emit8(p,0x41); emit8(p,0x53);
+    emit8(p,0x48); emit8(p,0x81); emit8(p,0xEC); emit8(p,0x80); emit8(p,0); emit8(p,0); emit8(p,0);
+    constexpr unsigned char saveXmm[] = {
+        0xF3,0x0F,0x7F,0x44,0x24,0x20, 0xF3,0x0F,0x7F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x7F,0x54,0x24,0x40, 0xF3,0x0F,0x7F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x7F,0x64,0x24,0x60, 0xF3,0x0F,0x7F,0x6C,0x24,0x70
+    };
+    std::memcpy(p, saveXmm, sizeof(saveXmm)); p += sizeof(saveXmm);
+    emit8(p,0x48); emit8(p,0x89); emit8(p,0xF1); // rcx = rsi mechanic
+    emit8(p,0x8B); emit8(p,0xD5);               // edx = ebp new state
+    emit8(p,0x48); emit8(p,0xB8); emit64(p,reinterpret_cast<unsigned long long>(capturePlayerLedgeTransition));
+    emit8(p,0xFF); emit8(p,0xD0);
+    constexpr unsigned char loadXmm[] = {
+        0xF3,0x0F,0x6F,0x44,0x24,0x20, 0xF3,0x0F,0x6F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x6F,0x54,0x24,0x40, 0xF3,0x0F,0x6F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x6F,0x64,0x24,0x60, 0xF3,0x0F,0x6F,0x6C,0x24,0x70
+    };
+    std::memcpy(p, loadXmm, sizeof(loadXmm)); p += sizeof(loadXmm);
+    emit8(p,0x48); emit8(p,0x81); emit8(p,0xC4); emit8(p,0x80); emit8(p,0); emit8(p,0); emit8(p,0);
+    emit8(p,0x41); emit8(p,0x5B); emit8(p,0x41); emit8(p,0x5A);
+    emit8(p,0x41); emit8(p,0x59); emit8(p,0x41); emit8(p,0x58);
+    emit8(p,0x5A); emit8(p,0x59); emit8(p,0x58); emit8(p,0x9D);
+    emit8(p,0xFF); emit8(p,0x25); emit8(p,0); emit8(p,0); emit8(p,0); emit8(p,0);
+    emit64(p,reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        VirtualFree(stub, 0, MEM_RELEASE);
+        log("[CINEMATIC-CLASS] Ledge state target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto address = reinterpret_cast<unsigned long long>(stub);
+    std::memcpy(jump + 6, &address, sizeof(address));
+    for (size_t index = 14; index < sizeof(jump); ++index) jump[index] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
+    log("[CINEMATIC-CLASS] native Jump/Ledge state capture installed RVA=0xDA24A3");
+    return true;
+}
+
+bool validateSyncAttackClassifier(unsigned char* image) {
+    if (!image) return false;
+    constexpr uintptr_t startSyncAttackRva = 0xDA7980;
+    constexpr unsigned char startSignature[] = {
+        0x48,0x8B,0xC4,0x57,0x41,0x54,0x41,0x55,
+        0x41,0x56,0x41,0x57,0x48,0x83,0xEC,0x60
+    };
+    // The native usability path reads idPlayer+0x3DC9 immediately before its
+    // explicit "instigating a sync attack" diagnostic.
+    constexpr uintptr_t instigatorFlagReadRva = 0x9B2908;
+    constexpr unsigned char flagReadSignature[] = {
+        0x80,0xB8,0xC9,0x3D,0x00,0x00,0x00,0x74,0x26
+    };
+    const bool supported = !std::memcmp(
+            image + startSyncAttackRva, startSignature, sizeof(startSignature))
+        && !std::memcmp(image + instigatorFlagReadRva,
+            flagReadSignature, sizeof(flagReadSignature));
+    syncAttackClassifierSupported.store(supported, std::memory_order_release);
+    log(supported
+        ? "[CINEMATIC-CLASS] native Glory Kill sync-state classifier validated RVA=0xDA7980"
+        : "[CINEMATIC-CLASS] sync-state signature mismatch; Glory Kill exception disabled");
+    return supported;
+}
+
+bool validatePlayerControlClassifier(unsigned char* image) {
+    if (!image) return false;
+    // DOOM 6.66 reflection record for idPlayer::inhibitFlags. The low dword is
+    // the idPlayer field offset; the high dword identifies a four-byte value.
+    // Validate the record before reading the live player object so an unknown
+    // executable revision fails closed to the Comfort Cinewindow.
+    constexpr uintptr_t inhibitFlagsRecordRva = 0x30AACD8;
+    constexpr unsigned char reflectedFieldSignature[]{
+        0x4C,0x4C,0x01,0x00, 0x04,0x00,0x00,0x00
+    };
+    const bool supported = !std::memcmp(
+        image + inhibitFlagsRecordRva + 0x18,
+        reflectedFieldSignature, sizeof(reflectedFieldSignature));
+    playerControlClassifierSupported.store(supported, std::memory_order_release);
+    log(supported
+        ? "[COMFORT-CINEMATIC] native idPlayer inhibitFlags classifier validated offset=0x14C4C"
+        : "[COMFORT-CINEMATIC] player-control metadata mismatch; interactive Projection exception disabled");
+    return supported;
+}
+
+float interlockedFloatLoad(volatile LONG* bits) {
+    const LONG value = InterlockedCompareExchange(bits, 0, 0);
+    float result{};
+    std::memcpy(&result, &value, sizeof(result));
+    return result;
+}
+
+void interlockedFloatStore(volatile LONG* bits, float value) {
+    LONG encoded{};
+    std::memcpy(&encoded, &value, sizeof(encoded));
+    InterlockedExchange(bits, encoded);
+}
+
+bool immersiveCinematicFov(float& fovX, float& fovY) {
+    if (InterlockedCompareExchange(&immersiveCinematicFovRequested, 0, 0) == 0)
+        return false;
+    fovX = interlockedFloatLoad(&immersiveCinematicFovXBits);
+    fovY = interlockedFloatLoad(&immersiveCinematicFovYBits);
+    return std::isfinite(fovX) && std::isfinite(fovY)
+        && fovX > 1.0f && fovY > 1.0f;
+}
+
+using PlayerViewOriginFn = const float*(__fastcall*)(void*);
+using PlayerViewAxisFn = const float*(__fastcall*)(void*);
+using PhysicsGetOriginFn = const float*(__fastcall*)(void*, int);
+std::atomic<PlayerViewAxisFn> originalPlayerViewAxis{};
+std::atomic<bool> playerViewAxisHookInstalled{};
+
+bool readableMemory(const void* address, size_t bytes) {
+    if (!address || !bytes) return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
+    if ((info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) return false;
+    const auto begin = reinterpret_cast<uintptr_t>(address);
+    const auto end = begin + bytes;
+    const auto regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
+    return end >= begin && end <= regionEnd;
+}
+
+
+bool writableMemory(const void* address, size_t bytes) {
+    if (!address || !bytes) return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
+    if ((info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) != 0) return false;
+    const DWORD protection = info.Protect & 0xFF;
+    const bool writable = protection == PAGE_READWRITE
+        || protection == PAGE_WRITECOPY
+        || protection == PAGE_EXECUTE_READWRITE
+        || protection == PAGE_EXECUTE_WRITECOPY;
+    if (!writable) return false;
+    const auto begin = reinterpret_cast<uintptr_t>(address);
+    const auto end = begin + bytes;
+    const auto regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
+    return end >= begin && end <= regionEnd;
+}
+
+int configuredGloryKillSlowmoLevel() {
+    // The opt-in Fast Glory/Chainsaw checkboxes always use the confirmed
+    // Build #83 native FULL-SPEED path, never the retired fractional
+    // 1-9 timescale slider. Checking either one overrides legacy settings.
+    static const bool nativeFastRequested =
+        kharvox::customModEnvironmentEnabled("KHARVOX_MOD_FAST_GLORY_KILLS")
+        || kharvox::customModEnvironmentEnabled("KHARVOX_MOD_FAST_CHAINSAW_KILLS");
+    if(nativeFastRequested)return 0;
+    static const int level = [] {
+        char text[16]{};
+        const DWORD copied = GetEnvironmentVariableA(
+            "KHARVOX_GLORY_KILL_SLOWMO_LEVEL", text, sizeof(text));
+        if (!copied || copied >= sizeof(text)) return 10;
+        char* end{};
+        const long parsed = std::strtol(text, &end, 10);
+        if (end == text) return 10;
+        return std::clamp(static_cast<int>(parsed), 0, 10);
+    }();
+    return level;
+}
+
+std::atomic<float> gloryKillMotionTimescaleOverride{0.0f};
+std::atomic<bool> boxingGuardTimeDilationRequested{};
+std::atomic<bool> storyCinematicFastForwardRequested{};
+std::atomic<bool> latestSyncAttackClassified{};
+std::atomic<bool> latestChainsawTakedownCinematic{};
+
+float gloryKillCustomTimescale(int level) {
+    if (level <= 0) return 1.0f;
+    const float strength = std::clamp(static_cast<float>(level), 1.0f, 9.0f);
+    return 1.0f - 0.60f * (strength / 9.0f);
+}
+
+void logGlorySlowmo(const std::string& text) {
+    const auto path = kharvox::logPathA("KHARVOX.log");
+    if (path.empty()) return;
+    std::ofstream out(path, std::ios::app);
+    out << "[KHARVOX][GLORY-SLOWMO] " << text << '\n';
+}
+
+std::atomic<int> verifiedNativeCvarNameOffset{-1};
+
+volatile LONG* resolveTimescaleCvarCurrent() {
+    static std::atomic<int> state{};
+    static volatile LONG* current{};
+    static std::atomic<unsigned long long> lastAttemptTick{};
+    static std::mutex resolverMutex;
+    int observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    const auto now=GetTickCount64();
+    // The old implementation permanently disabled kill-speed controls if
+    // the very first scan happened while loading or timescale was outside the
+    // valid range. Retry only once every 15 seconds, never on every VR frame.
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    if(!resolverMutex.try_lock())return nullptr;
+    std::lock_guard<std::mutex> lock(resolverMutex,std::adopt_lock);
+    observed=state.load(std::memory_order_acquire);
+    if(observed>0)return current;
+    if(observed<0 && now-lastAttemptTick.load(std::memory_order_acquire)<15000)
+        return nullptr;
+    lastAttemptTick.store(now,std::memory_order_release);
+
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image || !readableMemory(image, sizeof(IMAGE_DOS_HEADER))) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+    const auto dos = reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE
+        || !readableMemory(image + dos->e_lfanew, sizeof(IMAGE_NT_HEADERS64))) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+    const auto nt = reinterpret_cast<const IMAGE_NT_HEADERS64*>(image + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) {
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    constexpr char cvarName[] = "timescale";
+    std::vector<uintptr_t> nameAddresses;
+    const auto section = IMAGE_FIRST_SECTION(nt);
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& sec = section[index];
+        if ((sec.Characteristics & IMAGE_SCN_MEM_READ) == 0) continue;
+        const size_t bytes = std::max<size_t>(sec.Misc.VirtualSize, sec.SizeOfRawData);
+        unsigned char* begin = image + sec.VirtualAddress;
+        if (bytes < sizeof(cvarName) || !readableMemory(begin, bytes)) continue;
+        const auto first = reinterpret_cast<const char*>(begin);
+        const auto last = first + bytes;
+        const auto* cursor = first;
+        while (cursor + sizeof(cvarName) <= last) {
+            const auto* found = std::search(cursor, last,
+                cvarName, cvarName + sizeof(cvarName));
+            if (found == last) break;
+            nameAddresses.push_back(reinterpret_cast<uintptr_t>(found));
+            cursor = found + 1;
+        }
+    }
+    if (nameAddresses.empty()) {
+        logGlorySlowmo("timescale cvar name not found; custom levels unavailable");
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    uintptr_t bestCurrent{};
+    unsigned bestScore{};
+    int bestNameOffset{-1};
+    bool ambiguous{};
+    unsigned topScoreTies{};
+    std::array<uintptr_t,4> topCandidateRvas{};
+    constexpr uint32_t nameOffsets[]{0, 8, 16, 24, 32};
+    for (unsigned index = 0; index < nt->FileHeader.NumberOfSections; ++index) {
+        const auto& sec = section[index];
+        if ((sec.Characteristics & IMAGE_SCN_MEM_WRITE) == 0) continue;
+        const size_t bytes = std::max<size_t>(sec.Misc.VirtualSize, sec.SizeOfRawData);
+        unsigned char* begin = image + sec.VirtualAddress;
+        if (bytes < sizeof(uintptr_t) || !readableMemory(begin, bytes)) continue;
+
+        const uintptr_t sectionBegin = reinterpret_cast<uintptr_t>(begin);
+        const uintptr_t sectionEnd = sectionBegin + bytes;
+        for (uintptr_t address = (sectionBegin + 7u) & ~uintptr_t(7u);
+             address + sizeof(uintptr_t) <= sectionEnd; address += sizeof(uintptr_t)) {
+            uintptr_t pointed{};
+            std::memcpy(&pointed, reinterpret_cast<const void*>(address), sizeof(pointed));
+            if (std::find(nameAddresses.begin(), nameAddresses.end(), pointed)
+                == nameAddresses.end()) continue;
+
+            for (const uint32_t nameOffset : nameOffsets) {
+                if (address < reinterpret_cast<uintptr_t>(image) + nameOffset) continue;
+                const uintptr_t object = address - nameOffset;
+                const uintptr_t valueAddress = object + 0x34;
+                if (!writableMemory(reinterpret_cast<const void*>(valueAddress), sizeof(float)))
+                    continue;
+                float value{};
+                std::memcpy(&value, reinterpret_cast<const void*>(valueAddress), sizeof(value));
+                if (!std::isfinite(value) || value < 0.05f || value > 4.0f) continue;
+
+                unsigned score = 20;
+                if (nameOffset == 0) score += 40;
+                else if (nameOffset == 8) score += 20;
+                if (std::abs(value - 1.0f) < 0.01f) score += 35;
+                else if (value >= 0.5f && value <= 1.5f) score += 15;
+
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestCurrent = valueAddress;
+                    bestNameOffset = static_cast<int>(nameOffset);
+                    ambiguous = false;
+                    topScoreTies = 1;
+                    topCandidateRvas = {valueAddress-reinterpret_cast<uintptr_t>(image),0,0,0};
+                } else if (score == bestScore && valueAddress != bestCurrent) {
+                    ambiguous = true;
+                    if(topScoreTies<topCandidateRvas.size())
+                        topCandidateRvas[topScoreTies]=valueAddress-reinterpret_cast<uintptr_t>(image);
+                    ++topScoreTies;
+                }
+            }
+        }
+    }
+
+    if (!bestCurrent || bestScore < 55 || ambiguous) {
+        // Read-only candidate diagnostics for this exact EXE. Never guess
+        // which identically scored CVar to write; preserve fail-closed mode.
+        std::ostringstream reason;
+        reason << "timescale resolver FAIL nameMatches=" << nameAddresses.size()
+            << " bestScore=" << bestScore << " nameOffset=" << bestNameOffset
+            << " tiedTopCandidates=" << topScoreTies << " firstRvas=";
+        for(size_t n=0;n<std::min<size_t>(topScoreTies,topCandidateRvas.size());++n)
+            reason << "0x" << std::hex << topCandidateRvas[n] << std::dec << ",";
+        logGlorySlowmo(reason.str());
+        logGlorySlowmo("timescale cvar current value could not be resolved uniquely");
+        state.store(-1, std::memory_order_release);
+        return nullptr;
+    }
+
+    current = reinterpret_cast<volatile LONG*>(bestCurrent);
+    verifiedNativeCvarNameOffset.store(bestNameOffset,std::memory_order_release);
+    std::ostringstream message;
+    message << "timescale cvar current resolved RVA=0x"
+        << std::hex << (bestCurrent - reinterpret_cast<uintptr_t>(image))
+        << std::dec << " score=" << bestScore;
+    logGlorySlowmo(message.str());
+    state.store(1, std::memory_order_release);
+    return current;
+}
+
+// DOOM 2016 exposes native hands/weapon reload CVars. A re-drawn Super
+// Shotgun can potentially be returned to its real animation web via those
+// controls. All values are ephemeral, restored on loss of input, and remain
+// entirely DISABLED if the engine's native CVar object cannot be located
+// unambiguously. Never invent an SSG mesh or cosmetic keyframe animation.
+void logNativeSsgReplay(const std::string& message) {
+    const auto path=kharvox::logPathA("KHARVOX.log");
+    if(path.empty())return;
+    std::ofstream f(path,std::ios::app);
+    f << "[KHARVOX][SSG-NATIVE-REPLAY] " << message << '\n';
+}
+
+volatile LONG* resolveVerifiedIntegerCvar(const char* name,int maximum) {
+    // Do not write ANY native CVar until a known working float CVar has
+    // established the actual idCVar object's name-pointer layout.
+    if(!resolveTimescaleCvarCurrent())return nullptr;
+    const int validatedOffset=verifiedNativeCvarNameOffset.load(
+        std::memory_order_acquire);
+    if(validatedOffset<0)return nullptr;
+    auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if(!image||!readableMemory(image,sizeof(IMAGE_DOS_HEADER)))return nullptr;
+    const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if(dos->e_magic!=IMAGE_DOS_SIGNATURE
+        ||!readableMemory(image+dos->e_lfanew,sizeof(IMAGE_NT_HEADERS64)))
+        return nullptr;
+    const auto nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(image+dos->e_lfanew);
+    if(nt->Signature!=IMAGE_NT_SIGNATURE)return nullptr;
+    const size_t length=std::strlen(name)+1;
+    std::vector<uintptr_t> matches;
+    const auto sections=IMAGE_FIRST_SECTION(nt);
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_READ))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<length||!readableMemory(begin,bytes))continue;
+        auto first=reinterpret_cast<const char*>(begin);
+        auto last=first+bytes;
+        auto scan=first;
+        while(scan+length<=last) {
+            auto found=std::search(scan,last,name,name+length);
+            if(found==last)break;
+            matches.push_back(reinterpret_cast<uintptr_t>(found));
+            scan=found+1;
+        }
+    }
+    if(matches.empty())return nullptr;
+    uintptr_t best{};
+    unsigned bestScore{};
+    bool ambiguous{};
+    // Must use exactly the same name-pointer offset as the validated
+    // native timescale idCVar, never guess a different object layout.
+    const uint32_t offsets[]{static_cast<uint32_t>(validatedOffset)};
+    for(unsigned sectionIndex=0;sectionIndex<nt->FileHeader.NumberOfSections;++sectionIndex) {
+        const auto& section=sections[sectionIndex];
+        if(!(section.Characteristics&IMAGE_SCN_MEM_WRITE))continue;
+        const size_t bytes=std::max<size_t>(section.Misc.VirtualSize,section.SizeOfRawData);
+        auto begin=image+section.VirtualAddress;
+        if(bytes<sizeof(uintptr_t)||!readableMemory(begin,bytes))continue;
+        const uintptr_t b=reinterpret_cast<uintptr_t>(begin);
+        const uintptr_t e=b+bytes;
+        for(uintptr_t address=(b+7u)&~uintptr_t(7u);
+            address+sizeof(uintptr_t)<=e;address+=sizeof(uintptr_t)){
+            uintptr_t pointed{};
+            std::memcpy(&pointed,reinterpret_cast<const void*>(address),sizeof(pointed));
+            if(std::find(matches.begin(),matches.end(),pointed)==matches.end())continue;
+            for(const uint32_t offset:offsets) {
+                if(address<reinterpret_cast<uintptr_t>(image)+offset)continue;
+                const uintptr_t object=address-offset;
+                const uintptr_t valueAddress=object+0x34;
+                if(!writableMemory(reinterpret_cast<const void*>(valueAddress),sizeof(LONG)))
+                    continue;
+                LONG value{};
+                std::memcpy(&value,reinterpret_cast<const void*>(valueAddress),sizeof(value));
+                if(value<0||value>maximum)continue;
+                unsigned score=20;
+                if(offset==0)score+=40;
+                else if(offset==8)score+=20;
+                if(value==0)score+=35;
+                else score+=15;
+                if(score>bestScore){bestScore=score;best=valueAddress;ambiguous=false;}
+                else if(score==bestScore&&best!=valueAddress)ambiguous=true;
+            }
+        }
+    }
+    if(!best||ambiguous||bestScore<55)return nullptr;
+    const std::string validated=std::string("verified native CVar ")+name
+        +" via name pointer and writable value (score="+std::to_string(bestScore)+")";
+    if (std::strcmp(name,"g_setting_gk_highlight")==0) logGlorySlowmo(validated);
+    else logNativeSsgReplay(validated);
+    return reinterpret_cast<volatile LONG*>(best);
+}
+
+struct NativeSuperShotgunReplayCvars {
+    bool lookedUp{},supported{},active{};
+    volatile LONG* cosmetic{};
+    volatile LONG* forced{};
+    volatile LONG* fromEmpty{};
+    LONG originalCosmetic{},originalForced{},originalFromEmpty{};
+    unsigned long long pulseUntilTick{};
+};
+
+NativeSuperShotgunReplayCvars nativeSsgReplay;
+std::mutex nativeSsgReplayMutex;
+
+void stopNativeSuperShotgunReplayLocked() {
+    if(!nativeSsgReplay.active)return;
+    InterlockedExchange(nativeSsgReplay.cosmetic,nativeSsgReplay.originalCosmetic);
+    InterlockedExchange(nativeSsgReplay.forced,nativeSsgReplay.originalForced);
+    InterlockedExchange(nativeSsgReplay.fromEmpty,nativeSsgReplay.originalFromEmpty);
+    nativeSsgReplay.active=false;
+    nativeSsgReplay.pulseUntilTick=0;
+    logNativeSsgReplay("native reload request pulse ended; all original game CVar values restored");
+}
+
+void updateGloryKillSlowmoTimescale(bool syncAttackActive) {
+    // One owner for the shared timescale cvar: a gentle pre-combat Boxing
+    // Guard slowdown, optionally a full-speed sync kill, or untouched native.
+    // Never let an expired sync-attack override defeat the guard slowdown.
+    const int level = configuredGloryKillSlowmoLevel();
+    const float motionOverride =
+        gloryKillMotionTimescaleOverride.load(std::memory_order_acquire);
+    const bool boxingRequested =
+        boxingGuardTimeDilationRequested.load(std::memory_order_acquire);
+    const bool guardSlowmo=boxingRequested&&!syncAttackActive;
+    const bool storyFastForward=storyCinematicFastForwardRequested.load(
+        std::memory_order_acquire)&&!syncAttackActive&&!boxingRequested;
+    // Level 0 is the proven native sync bypass: never replace its timing
+    // with the later experimental game-timescale override.
+    const bool configuredOverride=level>0&&level<10;
+    const bool motionOverrideActive=motionOverride>0.f;
+    const bool wantOverride=storyFastForward||guardSlowmo
+        ||(syncAttackActive&&(configuredOverride||motionOverrideActive));
+
+    static SRWLOCK lock = SRWLOCK_INIT;
+    static bool applied{};
+    static bool baselineValid{};
+    static LONG baselineBits{};
+    static float loggedTarget{-1.f};
+    auto current=resolveTimescaleCvarCurrent();
+    if(!current)return;
+    AcquireSRWLockExclusive(&lock);
+
+    if(!wantOverride){
+        if(applied){
+            InterlockedExchange(current,baselineBits);
+            applied=false;
+            loggedTarget=-1.f;
+        }
+        if(!syncAttackActive){
+            baselineBits=InterlockedCompareExchange(current,0,0);
+            baselineValid=true;
+        }
+        ReleaseSRWLockExclusive(&lock);
+        return;
+    }
+    if(!applied){
+        if(!baselineValid)
+            baselineBits=InterlockedCompareExchange(current,0,0);
+        baselineValid=true;
+        applied=true;
+    }
+    constexpr float guardTimeScale=.75f; // noticeable guard slowdown, never freezes time
+    // Story acceleration is opt-in, reversible and never touches execution
+    // or weapon-wheel time dilation. Native CVars remain DOOM-owned when off.
+    constexpr float storyFastForwardTimescale=4.0f;
+    const float target=storyFastForward?storyFastForwardTimescale
+        :guardSlowmo?guardTimeScale
+        :motionOverrideActive?std::clamp(motionOverride,.10f,2.f)
+        :gloryKillCustomTimescale(level);
+    LONG bits{};
+    std::memcpy(&bits,&target,sizeof(bits));
+    InterlockedExchange(current,bits);
+    if(std::abs(loggedTarget-target)>.001f){
+        loggedTarget=target;
+        std::ostringstream verified;
+        const float readback=interlockedFloatLoad(current);
+        verified << (storyFastForward ? "story fast-forward"
+                :guardSlowmo ? "boxing guard" : "sync kill")
+            << " target=" << target << " readback=" << readback
+            << " syncClassified=" << (syncAttackActive?1:0);
+        logGlorySlowmo(verified.str());
+    }
+    ReleaseSRWLockExclusive(&lock);
+}
+
+bool executableMemory(const void* address) {
+    if (!address) return false;
+    MEMORY_BASIC_INFORMATION info{};
+    if (!VirtualQuery(address, &info, sizeof(info)) || info.State != MEM_COMMIT) return false;
+    if ((info.Protect & PAGE_GUARD) != 0) return false;
+    const DWORD protection = info.Protect & 0xFF;
+    return protection == PAGE_EXECUTE || protection == PAGE_EXECUTE_READ
+        || protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
+}
+
+bool readInterlockedLongSafely(volatile LONG* address, std::uint32_t& value) {
+    if (!address) return false;
+#if defined(_MSC_VER)
+    __try {
+        value = static_cast<std::uint32_t>(
+            InterlockedCompareExchange(address, 0, 0));
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        value = 0;
+        return false;
+    }
+#else
+    value = static_cast<std::uint32_t>(
+        InterlockedCompareExchange(address, 0, 0));
+    return true;
+#endif
+}
+
+bool clearInterlockedMaskSafely(volatile LONG* address, std::uint32_t mask) {
+    if (!address) return false;
+#if defined(_MSC_VER)
+    __try {
+        InterlockedAnd(address, static_cast<LONG>(~mask));
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    InterlockedAnd(address, static_cast<LONG>(~mask));
+    return true;
+#endif
+}
+
+bool invokePhysicsGetOriginSafely(PhysicsGetOriginFn getOrigin, void* physics, float origin[3]) {
+    if (!getOrigin || !physics || !origin) return false;
+    const float* current{};
+#if defined(_MSC_VER)
+    __try {
+        current = getOrigin(physics, 0);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    current = getOrigin(physics, 0);
+#endif
+    if (!readableMemory(current, 3 * sizeof(float))
+        || !std::isfinite(current[0]) || !std::isfinite(current[1]) || !std::isfinite(current[2]))
+        return false;
+    for (int axis = 0; axis < 3; ++axis) origin[axis] = current[axis];
+    return true;
+}
+
+void invalidateLevelReferences() {
+    const bool hadPlayer = playerPhysicsOriginValid.exchange(false, std::memory_order_acq_rel);
+    playerPhysicsOwner.store(0, std::memory_order_release);
+    playerLedgeTransitionOwner.store(0, std::memory_order_release);
+    playerLedgeTransitionActive.store(false, std::memory_order_release);
+    playerPhysicsCapturePresent.store(0, std::memory_order_release);
+    stableBodyViewOffsetValid.store(false, std::memory_order_release);
+    stableBodyViewOffsetOwner.store(0, std::memory_order_release);
+    bodyCameraValid.store(false, std::memory_order_release);
+    preCinematicGameplayAxisValid.store(false, std::memory_order_release);
+    if (hadPlayer) {
+        const auto generation = levelTransitionGeneration.fetch_add(
+            1, std::memory_order_acq_rel) + 1;
+        log("level transition: stale player/body references invalidated generation="
+            + std::to_string(generation));
+    }
+}
+
+bool readLivePlayerPhysicsOrigin(float origin[3], uintptr_t* ownerOut = nullptr) {
+    if (!origin || !worldCameraActive.load(std::memory_order_acquire)
+        || !playerPhysicsOriginValid.load(std::memory_order_acquire)) return false;
+    const auto present = cameraPresentSerial.load(std::memory_order_acquire);
+    const auto captured = playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    if (!captured || present < captured || present - captured > 2) return false;
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    if (!owner || owner > UINTPTR_MAX - 0x14E58) return false;
+    auto physics = reinterpret_cast<unsigned char*>(owner + 0x14E58);
+    if (!readableMemory(physics, sizeof(void*))) return false;
+    auto physicsVtable = *reinterpret_cast<void***>(physics);
+    constexpr size_t getOriginSlot = 0x80 / sizeof(void*);
+    if (!readableMemory(physicsVtable, (getOriginSlot + 1) * sizeof(void*))) return false;
+    auto getOrigin = reinterpret_cast<PhysicsGetOriginFn>(physicsVtable[getOriginSlot]);
+    if (!executableMemory(reinterpret_cast<const void*>(getOrigin))) return false;
+    if (!invokePhysicsGetOriginSafely(getOrigin, physics, origin)) return false;
+    if (!playerPhysicsOriginValid.load(std::memory_order_acquire)
+        || playerPhysicsOwner.load(std::memory_order_acquire) != owner) return false;
+    if (ownerOut) *ownerOut = owner;
+    return true;
+}
+
+RenderHeadPose renderHeadPoseForBody(const float axis[9]) {
+    auto head=renderHeadPose();
+    if(head.valid&&head.referenceBodyValid&&KharvoxCameraGameplayActive()
+        &&!KharvoxCameraCutsceneActive()&&!animatedSequenceActive.load()){
+        const float bodyYaw=std::atan2(axis[1],axis[0])*57.2957795131f;
+        kharvox::rebaseHeadToBody(head.referenceBodyYaw,bodyYaw,head.yaw,head.forward,head.lateral);
+    }
+    return head;
+}
+void applyResidualHeadOrientation(float axis[9],const RenderHeadPose& head);
+void applyResidualHeadOrientation(float axis[9]) {
+    const auto head=renderHeadPoseForBody(axis);applyResidualHeadOrientation(axis,head);
+}
+void applyResidualHeadOrientation(float axis[9],const RenderHeadPose& head) {
+    constexpr float degreesToRadians = 0.01745329251994329577f;
+    const float yaw = -(head.yaw + head.artificialYaw) * degreesToRadians;
+    const float pitch = head.pitch * degreesToRadians;
+    const float roll = head.roll * degreesToRadians;
+    const float cy = std::cos(yaw), sy = std::sin(yaw);
+    const float cp = std::cos(pitch), sp = std::sin(pitch);
+    const float cr = std::cos(roll), sr = std::sin(roll);
+    for (int column = 0; column < 3; ++column) {
+        const float yawRow0 = axis[column];
+        const float yawRow1 = axis[3 + column];
+        axis[column] = cy * yawRow0 - sy * yawRow1;
+        axis[3 + column] = sy * yawRow0 + cy * yawRow1;
+
+        const float pitchRow0 = axis[column];
+        const float pitchRow2 = axis[6 + column];
+        axis[column] = cp * pitchRow0 + sp * pitchRow2;
+        axis[6 + column] = -sp * pitchRow0 + cp * pitchRow2;
+
+        const float rollRow1 = axis[3 + column];
+        const float rollRow2 = axis[6 + column];
+        axis[3 + column] = cr * rollRow1 - sr * rollRow2;
+        axis[6 + column] = sr * rollRow1 + cr * rollRow2;
+    }
+}
+
+void publishHudCenterRenderPose(
+    const float anchorOrigin[3], const float anchorAxis[9]) {
+    // One sequence-locked snapshot ties the HUD to the exact camera struct
+    // consumed by this render pass. Reconstructing it later from live player
+    // physics and tracking atomics mixes different update loops.
+    hudRenderPoseSequence.fetch_add(1, std::memory_order_acq_rel);
+    for (int index = 0; index < 3; ++index) {
+        hudRenderAnchorOrigin[index].store(anchorOrigin[index], std::memory_order_relaxed);
+    }
+    for (int index = 0; index < 9; ++index) {
+        hudRenderAnchorAxis[index].store(anchorAxis[index], std::memory_order_relaxed);
+    }
+    hudRenderPosePresent.store(
+        cameraPresentSerial.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    hudRenderPoseValid.store(true, std::memory_order_relaxed);
+    hudRenderPoseSequence.fetch_add(1, std::memory_order_release);
+}
+
+extern "C" const float* __fastcall getVRGameplayViewAxis(void* player) {
+    auto original = originalPlayerViewAxis.load(std::memory_order_acquire);
+    if (!original) return nullptr;
+    const float* nativeAxis = original(player);
+    if (!nativeAxis || !readableMemory(nativeAxis, 9 * sizeof(float))
+        || !headValid.load(std::memory_order_acquire)
+        || !worldCameraActive.load(std::memory_order_acquire)
+        || cutsceneActive.load(std::memory_order_acquire)
+        || reinterpret_cast<uintptr_t>(player) != playerPhysicsOwner.load(std::memory_order_acquire)
+        || KharvoxCameraBossSequenceActive())
+        return nativeAxis;
+
+    const auto imageBase = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    const auto caller = reinterpret_cast<uintptr_t>(_ReturnAddress());
+    const uintptr_t callerRva = imageBase && caller >= imageBase ? caller - imageBase : 0;
+    // The normal gameplay render camera obtains this axis at RVA 0xE3F8F6
+    // (return address 0xE3F8FC). CameraHook composes OpenXR orientation there
+    // after publishing the untouched native body pose. Returning the combined
+    // axis to that one caller would apply HMD orientation twice.
+    if (callerRva == 0xE3F8FC) return nativeAxis;
+
+    thread_local std::array<float, 9> combinedAxis{};
+    std::memcpy(combinedAxis.data(), nativeAxis, sizeof(combinedAxis));
+    applyResidualHeadOrientation(combinedAxis.data());
+
+    return combinedAxis.data();
+}
+
+bool installPlayerViewAxisAdapter(void* player) {
+    if (!player) return false;
+    auto vtable = *reinterpret_cast<void***>(player);
+    constexpr size_t viewAxisSlot = 0x368 / sizeof(void*);
+    if (!readableMemory(vtable, (viewAxisSlot + 1) * sizeof(void*))) return false;
+    auto slot = vtable + viewAxisSlot;
+    const auto adapter = reinterpret_cast<void*>(getVRGameplayViewAxis);
+    if (*slot == adapter) return true;
+    if (playerViewAxisHookInstalled.load(std::memory_order_acquire)) return false;
+    auto original = reinterpret_cast<PlayerViewAxisFn>(*slot);
+    if (!executableMemory(reinterpret_cast<const void*>(original))) return false;
+    originalPlayerViewAxis.store(original, std::memory_order_release);
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(slot, sizeof(void*), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        originalPlayerViewAxis.store(nullptr, std::memory_order_release);
+        log("[VIEW] idPlayer ViewAxis vtable protection failed");
+        return false;
+    }
+    InterlockedExchangePointer(reinterpret_cast<void* volatile*>(slot), adapter);
+    FlushInstructionCache(GetCurrentProcess(), slot, sizeof(void*));
+    DWORD ignored{};
+    VirtualProtect(slot, sizeof(void*), oldProtect, &ignored);
+    playerViewAxisHookInstalled.store(true, std::memory_order_release);
+    log("[VIEW] idPlayer gameplay ViewAxis adapter installed at vtable slot 0x368");
+    return true;
+}
+
+extern "C" const float* __fastcall capturePlayerPhysicsOrigin(void* player) {
+    if (!player) return nullptr;
+    auto playerVtable = *reinterpret_cast<void***>(player);
+    if (!playerVtable) return nullptr;
+    installPlayerViewAxisAdapter(player);
+    auto originalViewOrigin = reinterpret_cast<PlayerViewOriginFn>(playerVtable[0x370 / sizeof(void*)]);
+    if (!originalViewOrigin) return nullptr;
+
+    auto physics = static_cast<unsigned char*>(player) + 0x14E58;
+    auto physicsVtable = *reinterpret_cast<void***>(physics);
+    if (physicsVtable) {
+        auto getOrigin = reinterpret_cast<PhysicsGetOriginFn>(physicsVtable[0x80 / sizeof(void*)]);
+        if (getOrigin) {
+            float origin[3]{};
+            if (invokePhysicsGetOriginSafely(getOrigin, physics, origin)) {
+                for (int axis = 0; axis < 3; ++axis)
+                    playerPhysicsOrigin[axis].store(origin[axis], std::memory_order_relaxed);
+                playerPhysicsOwner.store(reinterpret_cast<uintptr_t>(player), std::memory_order_relaxed);
+                playerPhysicsCapturePresent.store(
+                    cameraPresentSerial.load(std::memory_order_relaxed), std::memory_order_relaxed);
+                playerPhysicsOriginValid.store(true, std::memory_order_release);
+            }
+        }
+    }
+    KharvoxWeaponCaptureAmmoSnapshot(player);
+    return originalViewOrigin(player);
+}
+
+bool installPlayerPhysicsOriginCapture(unsigned char* image) {
+    constexpr uintptr_t callsiteRva = 0xE3F8D3;
+    auto target = image + callsiteRva;
+    constexpr unsigned char signature[] = {
+        0x48,0x8B,0x03,
+        0x48,0x8B,0xCB,
+        0xFF,0x90,0x70,0x03,0x00,0x00,
+        0x48,0x8B,0xCB
+    };
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("player physics-origin capture signature mismatch; stable weapon anchor disabled");
+        return false;
+    }
+
+    auto stub = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 96, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!stub) {
+        log("player physics-origin capture stub allocation failed");
+        return false;
+    }
+    auto p = stub;
+    emit8(p, 0x48); emit8(p, 0x83); emit8(p, 0xEC); emit8(p, 0x20);
+    emit8(p, 0x48); emit8(p, 0x8B); emit8(p, 0xCB);
+    emit8(p, 0x48); emit8(p, 0xB8);
+    emit64(p, reinterpret_cast<unsigned long long>(capturePlayerPhysicsOrigin));
+    emit8(p, 0xFF); emit8(p, 0xD0);
+    emit8(p, 0x48); emit8(p, 0x83); emit8(p, 0xC4); emit8(p, 0x20);
+    emit8(p, 0x48); emit8(p, 0x8B); emit8(p, 0xCB);
+    emit8(p, 0xFF); emit8(p, 0x25); emit8(p, 0); emit8(p, 0); emit8(p, 0); emit8(p, 0);
+    emit64(p, reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        VirtualFree(stub, 0, MEM_RELEASE);
+        log("player physics-origin capture target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto stubAddress = reinterpret_cast<unsigned long long>(stub);
+    std::memcpy(jump + 6, &stubAddress, sizeof(stubAddress));
+    jump[14] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    DWORD ignored{};
+    VirtualProtect(target, sizeof(jump), oldProtect, &ignored);
+    log("stable idPhysics_Player origin capture installed at gameplay RVA 0xE3F8D3");
+    return true;
+}
+
+void selectConfiguredEye(VREye eye) {
+    if (!configuredStereo.load(std::memory_order_acquire) || eye == VREye::Mono) return;
+    currentRenderEye.store(eye, std::memory_order_release);
+    const size_t index = eye == VREye::Left ? 0 : 1;
+    stereoEyeOffset.store(configuredEyeOffset[index].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoFovX.store(configuredEyeFovX[index].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoFovY.store(configuredEyeFovY[index].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoOpticalCenterYaw.store(configuredEyeOpticalCenterYaw[index].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoOpticalCenterPitch.store(configuredEyeOpticalCenterPitch[index].load(std::memory_order_relaxed), std::memory_order_relaxed);
+    stereoEyeEnabled.store(true, std::memory_order_release);
+}
+
+extern "C" void* __fastcall nativeShaderParseContextHook(void* destination, void* source, unsigned int mode) {
+    if (nativeStereoLayoutEnabled.load(std::memory_order_acquire)) {
+        // The parser takes almost all remaining bytes from its shared arena.
+        // Native two-view startup can construct contexts for the same pool on
+        // multiple worker threads, so checking/growing the arena and running
+        // the constructor must be one operation. Otherwise another thread can
+        // observe the freshly grown arena before the first constructor advances
+        // its cursor and both contexts receive the same storage.
+        std::lock_guard<std::mutex> lock(shaderArenaMutex);
+        if (source) {
+        auto pool = *reinterpret_cast<unsigned char**>(static_cast<unsigned char*>(source) + 0x98);
+        if (pool) {
+            auto end = *reinterpret_cast<unsigned char**>(pool + 0x10);
+            auto current = *reinterpret_cast<unsigned char**>(pool + 0x18);
+            const size_t remaining = end && current && end >= current ? size_t(end - current) : 0;
+            if (remaining < 0x50) {
+                ShaderArenaExpansion* expansion{};
+                for (auto& candidate : shaderArenaExpansions) {
+                    if (!candidate.pool) {
+                        expansion = &candidate;
+                        break;
+                    }
+                }
+                if (expansion) {
+                    constexpr size_t expansionBytes = 8ull * 1024ull * 1024ull;
+                    expansion->pool = pool;
+                    expansion->bytes = expansionBytes;
+                    expansion->memory = static_cast<unsigned char*>(VirtualAlloc(
+                        nullptr, expansion->bytes, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
+                    if (expansion->memory) {
+                        // This third-party shader parser receives external arena
+                        // storage and never owns/frees it. Keep every emergency
+                        // block alive for the process: a previously returned
+                        // parser context can still reference its generation.
+                        *reinterpret_cast<unsigned char**>(pool + 0x08) = expansion->memory;
+                        *reinterpret_cast<unsigned char**>(pool + 0x10) = expansion->memory + expansion->bytes;
+                        *reinterpret_cast<unsigned char**>(pool + 0x18) = expansion->memory;
+                        *reinterpret_cast<size_t*>(pool + 0x20) = expansion->bytes;
+                        std::ostringstream out;
+                        out << "[Stereo] expanded exhausted Vulkan shader arena pool=0x" << std::hex
+                            << reinterpret_cast<uintptr_t>(pool) << std::dec
+                            << " oldRemaining=" << remaining << " newBytes=" << expansion->bytes
+                            << " mode=" << mode;
+                        log(out.str());
+                    } else {
+                        log("[Stereo] Vulkan shader arena expansion allocation failed");
+                    }
+                } else {
+                    log("[Stereo] Vulkan shader arena expansion slots exhausted");
+                }
+            }
+        }
+        }
+        return originalShaderParseContext
+            ? originalShaderParseContext(destination, source, mode)
+            : nullptr;
+    }
+    return originalShaderParseContext
+        ? originalShaderParseContext(destination, source, mode)
+        : nullptr;
+}
+
+bool installNativeShaderArenaGuard(unsigned char* image) {
+    constexpr uintptr_t shaderParseContextRva = 0x1CCD5A0;
+    auto target = image + shaderParseContextRva;
+    constexpr unsigned char signature[] = {
+        0x40,0x53,0x48,0x83,0xEC,0x20,0x48,0x89,0x11,0x48,
+        0x8B,0xD9,0x4C,0x8B,0x9A,0x98,0x00,0x00,0x00
+    };
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("[Stereo] Vulkan shader parse-context signature mismatch; native stereo disabled");
+        return false;
+    }
+    auto trampoline = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!trampoline) {
+        log("[Stereo] Vulkan shader arena trampoline allocation failed");
+        return false;
+    }
+    auto cursor = trampoline;
+    std::memcpy(cursor, signature, sizeof(signature));
+    cursor += sizeof(signature);
+    emit8(cursor, 0xFF); emit8(cursor, 0x25);
+    emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0);
+    emit64(cursor, reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+    originalShaderParseContext = reinterpret_cast<ShaderParseContextFn>(trampoline);
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        originalShaderParseContext = nullptr;
+        VirtualFree(trampoline, 0, MEM_RELEASE);
+        log("[Stereo] Vulkan shader arena target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto wrapper = reinterpret_cast<unsigned long long>(nativeShaderParseContextHook);
+    std::memcpy(jump + 6, &wrapper, sizeof(wrapper));
+    for (size_t index = 14; index < sizeof(jump); ++index) jump[index] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
+    log("[Stereo] Vulkan shader arena exhaustion guard installed RVA=0x1CCD5A0");
+    return true;
+}
+
+extern "C" void __fastcall nativeVulkanBackendResizeHook(void* context) {
+    const auto packed = reinterpret_cast<uintptr_t>(context);
+    const auto width = static_cast<unsigned>(packed & 0xFFFFFFFFu);
+    const auto height = static_cast<unsigned>(packed >> 32);
+    const bool looksLikePackedExtent = width > 0 && width <= 16384
+        && height > 0 && height <= 16384;
+    if (nativeStereoLayoutEnabled.load(std::memory_order_acquire) && looksLikePackedExtent) {
+        auto replacement = lastValidVulkanBackendContext.load(std::memory_order_acquire);
+        std::ostringstream out;
+        out << "[Stereo] Vulkan backend context repaired packedExtent="
+            << width << 'x' << height << " replacement=0x" << std::hex
+            << reinterpret_cast<uintptr_t>(replacement);
+        log(out.str());
+        if (replacement && originalVulkanBackendResize) originalVulkanBackendResize(replacement);
+        return;
+    }
+    if (context && !looksLikePackedExtent)
+        lastValidVulkanBackendContext.store(context, std::memory_order_release);
+    if (originalVulkanBackendResize) originalVulkanBackendResize(context);
+}
+
+bool installNativeVulkanBackendGuard(unsigned char* image) {
+    constexpr uintptr_t backendResizeRva = 0x17B9330;
+    auto target = image + backendResizeRva;
+    constexpr unsigned char signature[] = {
+        0x40,0x56,0x57,0x41,0x56,0x48,0x83,0xEC,0x40,
+        0x48,0xC7,0x44,0x24,0x30,0xFE,0xFF,0xFF,0xFF
+    };
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("[Stereo] Vulkan backend-resize signature mismatch; native stereo disabled");
+        return false;
+    }
+    auto trampoline = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!trampoline) {
+        log("[Stereo] Vulkan backend-resize trampoline allocation failed");
+        return false;
+    }
+    auto cursor = trampoline;
+    std::memcpy(cursor, signature, sizeof(signature));
+    cursor += sizeof(signature);
+    emit8(cursor, 0xFF); emit8(cursor, 0x25);
+    emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0);
+    emit64(cursor, reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+    originalVulkanBackendResize = reinterpret_cast<VulkanBackendResizeFn>(trampoline);
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        originalVulkanBackendResize = nullptr;
+        VirtualFree(trampoline, 0, MEM_RELEASE);
+        log("[Stereo] Vulkan backend-resize target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto wrapper = reinterpret_cast<unsigned long long>(nativeVulkanBackendResizeHook);
+    std::memcpy(jump + 6, &wrapper, sizeof(wrapper));
+    for (size_t index = 14; index < sizeof(jump); ++index) jump[index] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
+    log("[Stereo] Vulkan packed-extent backend guard installed RVA=0x17B9330");
+    return true;
+}
+
+extern "C" void __fastcall nativeVulkanBackendOwnerInitHook(void* owner) {
+    if (owner) {
+        auto contextSlot = reinterpret_cast<void* volatile*>(static_cast<unsigned char*>(owner) + 0x178);
+        auto timingContextSlot = reinterpret_cast<void* volatile*>(static_cast<unsigned char*>(owner) + 0x240);
+        auto context = *contextSlot;
+        auto timingContext = *timingContextSlot;
+        const auto packed = reinterpret_cast<uintptr_t>(context);
+        const auto width = static_cast<unsigned>(packed & 0xFFFFFFFFu);
+        const auto height = static_cast<unsigned>(packed >> 32);
+        const bool looksLikePackedExtent = width > 0 && width <= 16384
+            && height > 0 && height <= 16384;
+        const bool nativeStereo = nativeStereoLayoutEnabled.load(std::memory_order_acquire);
+        if (!nativeStereo) {
+            if (!looksLikePackedExtent && context)
+                lastValidVulkanBackendContext.store(context, std::memory_order_release);
+            if (timingContext)
+                lastValidVulkanBackendTimingContext.store(timingContext, std::memory_order_release);
+        } else if (!looksLikePackedExtent && context) {
+            lastValidVulkanBackendContext.store(context, std::memory_order_release);
+        } else if (looksLikePackedExtent) {
+            auto replacement = lastValidVulkanBackendContext.load(std::memory_order_acquire);
+            if (replacement) {
+                InterlockedExchangePointer(contextSlot, replacement);
+                std::ostringstream out;
+                out << "[Stereo] repaired Vulkan backend owner +0x178 packedExtent="
+                    << width << 'x' << height << " replacement=0x" << std::hex
+                    << reinterpret_cast<uintptr_t>(replacement);
+                log(out.str());
+            }
+        }
+        if (nativeStereo) {
+            auto timingReplacement = lastValidVulkanBackendTimingContext.load(std::memory_order_acquire);
+            if (timingReplacement && timingContext != timingReplacement) {
+                InterlockedExchangePointer(timingContextSlot, timingReplacement);
+                std::ostringstream out;
+                out << "[Stereo] repaired Vulkan backend owner +0x240 old=0x" << std::hex
+                    << reinterpret_cast<uintptr_t>(timingContext) << " replacement=0x"
+                    << reinterpret_cast<uintptr_t>(timingReplacement);
+                log(out.str());
+            }
+        }
+    }
+    if (originalVulkanBackendOwnerInit) originalVulkanBackendOwnerInit(owner);
+}
+
+bool installNativeVulkanBackendOwnerGuard(unsigned char* image) {
+    constexpr uintptr_t backendOwnerInitRva = 0x186E000;
+    auto target = image + backendOwnerInitRva;
+    constexpr unsigned char signature[] = {
+        0x48,0x89,0x5C,0x24,0x08,0x48,0x89,0x74,0x24,0x10,
+        0x57,0x48,0x83,0xEC,0x30,0x48,0x8B,0xF9
+    };
+    if (std::memcmp(target, signature, sizeof(signature))) {
+        log("[Stereo] Vulkan backend-owner signature mismatch; native stereo disabled");
+        return false;
+    }
+    auto trampoline = static_cast<unsigned char*>(VirtualAlloc(
+        nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!trampoline) {
+        log("[Stereo] Vulkan backend-owner trampoline allocation failed");
+        return false;
+    }
+    auto cursor = trampoline;
+    std::memcpy(cursor, signature, sizeof(signature));
+    cursor += sizeof(signature);
+    emit8(cursor, 0xFF); emit8(cursor, 0x25);
+    emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0); emit8(cursor, 0);
+    emit64(cursor, reinterpret_cast<unsigned long long>(target + sizeof(signature)));
+    originalVulkanBackendOwnerInit = reinterpret_cast<VulkanBackendOwnerInitFn>(trampoline);
+
+    DWORD oldProtect{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &oldProtect)) {
+        originalVulkanBackendOwnerInit = nullptr;
+        VirtualFree(trampoline, 0, MEM_RELEASE);
+        log("[Stereo] Vulkan backend-owner target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)]{0xFF,0x25,0,0,0,0};
+    const auto wrapper = reinterpret_cast<unsigned long long>(nativeVulkanBackendOwnerInitHook);
+    std::memcpy(jump + 6, &wrapper, sizeof(wrapper));
+    for (size_t index = 14; index < sizeof(jump); ++index) jump[index] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
+    log("[Stereo] Vulkan backend owner-field guard installed RVA=0x186E000");
+    return true;
+}
+
+bool installNativeSameFrameStereo() {
+    const bool splitFrontend = false;
+    const bool nativeTwoView = false;
+    if (!splitFrontend && !nativeTwoView) {
+        return false;
+    }
+    if (nativeTwoView) {
+        // Physical gameplay validation on 2026-08-22 proved that DOOM's
+        // dormant two-view list does not construct valid Vulkan backend owner
+        // state for its second view. Fail closed even if a stale research
+        // marker is created manually; the normal split-frontend experiment is
+        // a separate path and remains available through enable_native_stereo.
+        log("[Stereo] genuine native two-view BLOCKED after invalid Vulkan-view crash");
+        return false;
+    }
+
+    // DOOM 6.66 already contains a native multi-view renderer. Its global
+    // render-view object defaults to the one-view "single" layout. Select the
+    // built-in two-view leftRightStereo layout and keep both views enabled in
+    // every game frame. These writes are gated and signature-checked so the
+    // physically accepted alternating-eye path remains untouched by default.
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) return false;
+    constexpr uintptr_t viewLayoutSlotRva = 0x36111E8;
+    constexpr uintptr_t primaryViewListRva = 0x360F610;
+    constexpr uintptr_t primaryViewStorageRva = 0x360F630;
+    constexpr uintptr_t singleLayoutRva = 0x284FFC8;
+    constexpr uintptr_t leftRightNameRecordRva = 0x2850068;
+    constexpr uintptr_t leftRightNameRva = 0x2850230;
+    constexpr uintptr_t leftRightLayoutRva = 0x2850090;
+    constexpr uintptr_t nextModeNameRecordRva = 0x28500E0;
+    constexpr uintptr_t multiViewCurrentRva = 0x5FB8B20;
+
+    auto layoutSlot = reinterpret_cast<void* volatile*>(image + viewLayoutSlotRva);
+    struct ViewListHeader {
+        void* data;
+        LONG count;
+        LONG capacity;
+        unsigned long long flags;
+    };
+    auto primaryViews = reinterpret_cast<ViewListHeader*>(image + primaryViewListRva);
+    auto currentLayout = *layoutSlot;
+    auto singleLayout = static_cast<void*>(image + singleLayoutRva);
+    auto leftRightLayout = static_cast<void*>(image + leftRightLayoutRva);
+    const auto leftRightName = *reinterpret_cast<const char* const*>(image + leftRightNameRecordRva);
+    const auto expectedLeftRightName = reinterpret_cast<const char*>(image + leftRightNameRva);
+    const auto nextModeName = *reinterpret_cast<const char* const*>(image + nextModeNameRecordRva);
+    const bool tableMatches = leftRightName == expectedLeftRightName
+        && std::strcmp(leftRightName, "leftRightStereo") == 0
+        && nextModeName && std::strcmp(nextModeName, "HDMI3D") == 0;
+    const bool viewStorageMatches = primaryViews->data == image + primaryViewStorageRva
+        && primaryViews->capacity == 1
+        && *(image + primaryViewListRva + 0x13) == 1;
+    if (!tableMatches || !viewStorageMatches
+        || (currentLayout != singleLayout && currentLayout != leftRightLayout)) {
+        std::ostringstream out;
+        out << "[Stereo] native renderer signature mismatch currentLayout=0x" << std::hex
+            << reinterpret_cast<uintptr_t>(currentLayout)
+            << " primaryStorage=0x" << reinterpret_cast<uintptr_t>(primaryViews->data)
+            << std::dec << " capacity=" << primaryViews->capacity
+            << " mode=" << unsigned(*(image + primaryViewListRva + 0x13));
+        log(out.str());
+        return false;
+    }
+
+    // Build two one-entry layouts from DOOM's native leftRightStereo table.
+    // The old proof retained the half-width SBS viewport, even though each
+    // frontend pass ultimately produces a complete frame. That reduced a
+    // 1920x1080 surface to roughly 960x540 before OpenXR upscaling. Each
+    // sequential pass now owns the complete target. The following 0x28-byte
+    // record is the mode terminator.
+    std::memcpy(nativeLeftSingleViewLayout.data(), image + leftRightLayoutRva, 0x28);
+    std::memcpy(nativeLeftSingleViewLayout.data() + 0x28, image + nextModeNameRecordRva, 0x28);
+    std::memcpy(nativeRightSingleViewLayout.data(), image + leftRightLayoutRva + 0x28, 0x28);
+    std::memcpy(nativeRightSingleViewLayout.data() + 0x28, image + nextModeNameRecordRva, 0x28);
+    const float fullOrigin = 0.0f;
+    const float fullExtent = 1.0f;
+    for (auto* layout : {nativeLeftSingleViewLayout.data(), nativeRightSingleViewLayout.data()}) {
+        std::memcpy(layout + 0x0C, &fullOrigin, sizeof(fullOrigin));
+        std::memcpy(layout + 0x14, &fullExtent, sizeof(fullExtent));
+        std::memcpy(layout + 0x18, &fullExtent, sizeof(fullExtent));
+    }
+    // Diagnostic: remove the per-view -1/+1 stereo multiplier from both
+    // records. This isolates viewport/projection behavior from DOOM's world
+    // and screen eye-separation calculations.
+    const float zeroEyeFactor = 0.0f;
+    std::memcpy(nativeLeftSingleViewLayout.data() + 0x20, &zeroEyeFactor, sizeof(zeroEyeFactor));
+    std::memcpy(nativeRightSingleViewLayout.data() + 0x20, &zeroEyeFactor, sizeof(zeroEyeFactor));
+    InterlockedExchangePointer(layoutSlot, singleLayout);
+    nativeStereoLayoutEnabled.store(false, std::memory_order_release);
+    nativeStereoFrameReady.store(false, std::memory_order_release);
+    nativeStereoBootstrapStage.store(0, std::memory_order_release);
+    nativeSameFrameInstalled.store(true, std::memory_order_release);
+    std::ostringstream out;
+    out << "[Stereo] same-frame split-frontend PREPARED leftLayout=0x" << std::hex
+        << reinterpret_cast<uintptr_t>(nativeLeftSingleViewLayout.data())
+        << " rightLayout=0x" << reinterpret_cast<uintptr_t>(nativeRightSingleViewLayout.data())
+        << " sourceLayoutRVA=0x" << leftRightLayoutRva
+        << " viewport=FULL eyeFactor=0 DIAGNOSTIC";
+    log(out.str());
+    return true;
+}
+
+void finishNativeStereoBootstrap() {
+    int expectedStage = 1;
+    if (!nativeStereoBootstrapStage.compare_exchange_strong(
+            expectedStage, 2, std::memory_order_acq_rel)) return;
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) {
+        nativeStereoBootstrapStage.store(0, std::memory_order_release);
+        return;
+    }
+    constexpr uintptr_t viewLayoutSlotRva = 0x36111E8;
+    constexpr uintptr_t primaryViewListRva = 0x360F610;
+    constexpr uintptr_t primaryViewStorageRva = 0x360F630;
+    constexpr uintptr_t reserveViewsRva = 0x1188C70;
+    constexpr uintptr_t constructViewRva = 0x117AF50;
+    constexpr uintptr_t leftRightLayoutRva = 0x2850090;
+    constexpr size_t viewBytes = 0x920;
+    struct ViewListHeader {
+        void* data;
+        LONG count;
+        LONG capacity;
+        unsigned long long flags;
+    };
+    auto views = reinterpret_cast<ViewListHeader*>(image + primaryViewListRva);
+    using ReserveViewsFn = bool(__fastcall*)(ViewListHeader*, int);
+    using ConstructViewFn = void*(__fastcall*)(void*);
+    auto reserveViews = reinterpret_cast<ReserveViewsFn>(image + reserveViewsRva);
+    auto constructView = reinterpret_cast<ConstructViewFn>(image + constructViewRva);
+    const LONG constructedViews = std::max<LONG>(0, views->count);
+    auto mode = image + primaryViewListRva + 0x13;
+    if (*mode == 1 && views->data == image + primaryViewStorageRva && views->capacity == 1)
+        *mode = 2;
+    if (!reserveViews(views, 2) || !views->data || views->capacity < 2) {
+        log("[Stereo] first-acquire native two-view idList conversion failed");
+        nativeStereoBootstrapStage.store(0, std::memory_order_release);
+        return;
+    }
+    for (LONG index = constructedViews; index < 2; ++index)
+        constructView(static_cast<unsigned char*>(views->data) + size_t(index) * viewBytes);
+    InterlockedExchange(&views->count, 0);
+    auto layoutSlot = reinterpret_cast<void* volatile*>(image + viewLayoutSlotRva);
+    InterlockedExchangePointer(layoutSlot, image + leftRightLayoutRva);
+    std::ostringstream out;
+    out << "[Stereo] first-acquire bootstrap frame ARMED viewList count=" << views->count
+        << " capacity=" << views->capacity << " data=0x" << std::hex
+        << reinterpret_cast<uintptr_t>(views->data) << std::dec
+        << " mode=" << unsigned(*mode);
+    log(out.str());
+}
+
+void completeNativeStereoBootstrapAfterRender() {
+    int expectedStage = 2;
+    if (!nativeStereoBootstrapStage.compare_exchange_strong(
+            expectedStage, 0, std::memory_order_acq_rel)) return;
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) return;
+    constexpr uintptr_t viewLayoutSlotRva = 0x36111E8;
+    constexpr uintptr_t primaryViewListRva = 0x360F610;
+    constexpr uintptr_t singleLayoutRva = 0x284FFC8;
+    constexpr size_t viewBytes = 0x920;
+    struct ViewListHeader { void* data; LONG count; LONG capacity; };
+    auto views = reinterpret_cast<ViewListHeader*>(image + primaryViewListRva);
+    std::ostringstream out;
+    out << "[Stereo] bootstrap frame rendered viewList count=" << views->count
+        << " capacity=" << views->capacity << " data=0x" << std::hex
+        << reinterpret_cast<uintptr_t>(views->data);
+    if (views->data && views->capacity >= 2) {
+        for (int index = 0; index < 2; ++index) {
+            auto view = static_cast<unsigned char*>(views->data) + size_t(index) * viewBytes;
+            out << " view" << index << "(+178)=0x"
+                << reinterpret_cast<uintptr_t>(*reinterpret_cast<void**>(view + 0x178))
+                << " view" << index << "(+240)=0x"
+                << reinterpret_cast<uintptr_t>(*reinterpret_cast<void**>(view + 0x240));
+        }
+    }
+    log(out.str());
+    if (nativeTwoViewInstalled.load(std::memory_order_acquire)
+        && nativeStereoLayoutEnabled.load(std::memory_order_acquire)) {
+        nativeStereoFrameReady.store(true, std::memory_order_release);
+        log("[Stereo] genuine native two-view ACTIVE; packed SBS frame ready");
+        return;
+    }
+    InterlockedExchangePointer(
+        reinterpret_cast<void* volatile*>(image + viewLayoutSlotRva), image + singleLayoutRva);
+    nativeStereoLayoutEnabled.store(false, std::memory_order_release);
+    nativeStereoFrameReady.store(false, std::memory_order_release);
+    log("[Stereo] bootstrap complete; single layout selected after first rendered frame");
+}
+
+extern "C" bool __fastcall renderFrontendStereoProof(void* context, void* arg2, void* arg3) {
+    if (!originalRenderFrontend) return false;
+    if (nativeSameFrameInstalled.load(std::memory_order_acquire)) {
+        if (!worldCameraActive.load(std::memory_order_acquire)
+            || cutsceneActive.load(std::memory_order_acquire)) {
+            nativeStereoFrameReady.store(false, std::memory_order_release);
+            return originalRenderFrontend(context, arg2, arg3);
+        }
+        auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+        if (!image) return originalRenderFrontend(context, arg2, arg3);
+        constexpr uintptr_t viewLayoutSlotRva = 0x36111E8;
+        auto layoutSlot = reinterpret_cast<void* volatile*>(image + viewLayoutSlotRva);
+        auto savedLayout = *layoutSlot;
+        // Native layout eye signs provide separation; suppress the alternating
+        // camera offset that was programmed for the preceding fallback frame.
+        stereoEyeOffset.store(0.0f, std::memory_order_relaxed);
+        const auto hitsBefore = InterlockedCompareExchange64(
+            reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+        InterlockedExchangePointer(layoutSlot, nativeLeftSingleViewLayout.data());
+        currentRenderEye.store(VREye::Left, std::memory_order_release);
+        const bool leftResult = originalRenderFrontend(context, arg2, arg3);
+        const auto hitsAfterLeft = InterlockedCompareExchange64(
+            reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+        InterlockedExchangePointer(layoutSlot, nativeRightSingleViewLayout.data());
+        currentRenderEye.store(VREye::Right, std::memory_order_release);
+        const bool rightResult = originalRenderFrontend(context, arg2, arg3);
+        const auto hitsAfterRight = InterlockedCompareExchange64(
+            reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+        InterlockedExchangePointer(layoutSlot, savedLayout);
+        currentRenderEye.store(VREye::Mono, std::memory_order_release);
+        nativeStereoFrameReady.store(true, std::memory_order_release);
+        static std::atomic<unsigned long long> nativeFrame{};
+        const auto frame = nativeFrame.fetch_add(1, std::memory_order_relaxed) + 1;
+        if (frame <= 10 || frame % 300 == 0) {
+            std::ostringstream out;
+            out << "[Stereo] split-frontend gameFrame=" << frame
+                << " left=" << (leftResult ? "OK" : "false")
+                << " right=" << (rightResult ? "OK" : "false")
+                << " cameraHits=" << (hitsAfterLeft - hitsBefore)
+                << '+' << (hitsAfterRight - hitsAfterLeft)
+                << " packedSameFrame=YES";
+            log(out.str());
+        }
+        return leftResult || rightResult;
+    }
+    if (!worldCameraActive.load(std::memory_order_acquire) || !configuredStereo.load(std::memory_order_acquire)) {
+        return originalRenderFrontend(context, arg2, arg3);
+    }
+    static std::atomic<unsigned long long> proofFrame{};
+    const auto frame = proofFrame.fetch_add(1, std::memory_order_relaxed) + 1;
+    const auto before = InterlockedCompareExchange64(reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+    selectConfiguredEye(VREye::Left);
+    const bool leftResult = originalRenderFrontend(context, arg2, arg3);
+    const auto afterLeft = InterlockedCompareExchange64(reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+    selectConfiguredEye(VREye::Right);
+    const bool rightResult = originalRenderFrontend(context, arg2, arg3);
+    const auto afterRight = InterlockedCompareExchange64(reinterpret_cast<volatile LONG64*>(&sample.hits), 0, 0);
+    currentRenderEye.store(VREye::Mono, std::memory_order_release);
+    if (frame <= 10 || frame % 300 == 0) {
+        std::ostringstream out;
+        out << "[Stereo] gameFrame=" << frame
+            << " leftCameraHook=" << (afterLeft > before ? "YES" : "NO")
+            << " rightCameraHook=" << (afterRight > afterLeft ? "YES" : "NO")
+            << " sameFrame=" << ((afterLeft > before && afterRight > afterLeft) ? "YES" : "NO");
+        log(out.str());
+    }
+    return leftResult || rightResult;
+}
+
+bool installSameFrameProofHook() {
+    const bool nativeSplitFrontend = false;
+    if (!nativeSplitFrontend
+        && !kharvox::runtimeFileExists(L"enable_same_frame_stereo")) {
+        log("[Stereo] same-frame proof gated off; M1C alternating fallback");
+        return false;
+    }
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    auto target = image ? image + 0xDC80D0 : nullptr;
+    constexpr unsigned char prefix[] = {0x48,0x89,0x5C,0x24,0x10,0x56,0x48,0x83,0xEC,0x30,0x48,0x8B,0x01,0x49,0x8B,0xF0};
+    if (!target || std::memcmp(target, prefix, sizeof(prefix))) {
+        log("[Stereo] DC80D0 render-front-end signature mismatch; proof hook not installed");
+        return false;
+    }
+    constexpr size_t displacedBytes = sizeof(prefix);
+    auto trampoline = static_cast<unsigned char*>(VirtualAlloc(nullptr, 64, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!trampoline) {
+        log("[Stereo] render-view trampoline allocation failed");
+        return false;
+    }
+    auto p = trampoline;
+    std::memcpy(p, prefix, displacedBytes); p += displacedBytes;
+    emit8(p, 0xFF); emit8(p, 0x25); emit8(p, 0); emit8(p, 0); emit8(p, 0); emit8(p, 0);
+    emit64(p, reinterpret_cast<unsigned long long>(target + displacedBytes));
+    originalRenderFrontend = reinterpret_cast<RenderFrontendFn>(trampoline);
+    DWORD old{};
+    if (!VirtualProtect(target, displacedBytes, PAGE_EXECUTE_READWRITE, &old)) {
+        log("[Stereo] render-front-end target protection failed");
+        originalRenderFrontend = nullptr;
+        return false;
+    }
+    unsigned char jump[displacedBytes] = {0xFF,0x25,0,0,0,0};
+    const auto wrapper = reinterpret_cast<unsigned long long>(renderFrontendStereoProof);
+    std::memcpy(jump + 6, &wrapper, sizeof(wrapper));
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), old, &old);
+    sameFrameInstalled.store(true, std::memory_order_release);
+    std::ostringstream out;
+    out << (nativeSplitFrontend
+        ? "[Stereo] native split-frontend hook installed RVA=0x"
+        : "[Stereo] same-frame render-front-end proof installed RVA=0x") << std::hex
+        << (target - reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)));
+    log(out.str());
+    return true;
+}
+
+bool installCutsceneFovHook() {
+    // Independently measured cinematic FOV signature. Besides identifying the
+    // cinematic path, the adjacent output values expose its
+    // current VR projection FOV. Do the same only while the optional immersive
+    // cinematic presentation is active. The target is an exact frame-matched
+    // OpenXR FOV; any wider render/narrower layer pairing makes rotational
+    // reprojection geometrically incorrect and causes zoom-dependent warping.
+    constexpr unsigned char signature[] = {
+        0xF3,0x0F,0x58,0xC0,0xF3,0x0F,0x11,0x00,
+        // The supported DOOM 6.66 path uses a 0x48-byte frame here. Fail closed
+        // instead of accepting alternate frame layouts.
+        0x48,0x83,0xC4,0x48,0xC3,0xCC
+    };
+    auto target=findTextSignature(signature,sizeof(signature));
+    if(!target){log("DOOMCutsceneFOV signature mismatch; cutscene QUAD unavailable");return false;}
+    auto stub=static_cast<unsigned char*>(VirtualAlloc(nullptr,160,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));
+    if(!stub)return false;
+    auto p=stub;
+    std::memcpy(p,signature,4);p+=4;                 // addss xmm0,xmm0
+    emit8(p,0x49);emit8(p,0xBB);                    // mov r11, &cutsceneFovHits
+    emit64(p,reinterpret_cast<unsigned long long>(&cutsceneFovHits));
+    emit8(p,0xF0);emit8(p,0x49);emit8(p,0xFF);emit8(p,0x03); // lock inc qword [r11]
+    emit8(p,0x49);emit8(p,0xBA);
+    emit64(p,reinterpret_cast<unsigned long long>(&cutsceneFovValue));
+    emit8(p,0xF3);emit8(p,0x41);emit8(p,0x0F);emit8(p,0x11);emit8(p,0x02); // movss [r10],xmm0
+
+    emit8(p,0x49);emit8(p,0xBB);                    // mov r11, &immersiveCinematicFovHookActive
+    emit64(p,reinterpret_cast<unsigned long long>(&immersiveCinematicFovHookActive));
+    emit8(p,0x41);emit8(p,0x83);emit8(p,0x3B);emit8(p,0x00); // cmp dword ptr [r11],0
+    emit8(p,0x0F);emit8(p,0x84);                    // je originalWrite
+    auto disabledJump=p;p+=4;
+
+    emit8(p,0x49);emit8(p,0xBA);                    // mov r10, &immersiveCinematicFovXBits
+    emit64(p,reinterpret_cast<unsigned long long>(&immersiveCinematicFovXBits));
+    emit8(p,0xF3);emit8(p,0x41);emit8(p,0x0F);emit8(p,0x10);emit8(p,0x02); // movss xmm0,[r10]
+    emit8(p,0xF3);emit8(p,0x0F);emit8(p,0x11);emit8(p,0x00); // movss [rax],xmm0
+    emit8(p,0x49);emit8(p,0xBA);                    // mov r10, &immersiveCinematicFovYBits
+    emit64(p,reinterpret_cast<unsigned long long>(&immersiveCinematicFovYBits));
+    emit8(p,0xF3);emit8(p,0x41);emit8(p,0x0F);emit8(p,0x10);emit8(p,0x02); // movss xmm0,[r10]
+    emit8(p,0xF3);emit8(p,0x0F);emit8(p,0x11);emit8(p,0x40);emit8(p,0x04); // movss [rax+4],xmm0
+    emit8(p,0xE9);                                  // jmp epilogue
+    auto epilogueJump=p;p+=4;
+
+    auto originalWrite=p;
+    emit8(p,0xF3);emit8(p,0x0F);emit8(p,0x11);emit8(p,0x00); // movss [rax],xmm0
+    auto epilogue=p;
+    std::memcpy(p,signature+8,6);p+=6;              // stack restore + return
+    const auto disabledRelative=static_cast<unsigned int>(originalWrite-(disabledJump+4));
+    std::memcpy(disabledJump,&disabledRelative,sizeof(disabledRelative));
+    const auto epilogueRelative=static_cast<unsigned int>(epilogue-(epilogueJump+4));
+    std::memcpy(epilogueJump,&epilogueRelative,sizeof(epilogueRelative));
+    DWORD old{};
+    if(!VirtualProtect(target,sizeof(signature),PAGE_EXECUTE_READWRITE,&old))return false;
+    unsigned char jump[sizeof(signature)]={0xFF,0x25,0,0,0,0};
+    const auto address=reinterpret_cast<unsigned long long>(stub);
+    std::memcpy(jump+6,&address,sizeof(address));
+    std::memcpy(target,jump,sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(),target,sizeof(jump));
+    VirtualProtect(target,sizeof(jump),old,&old);
+    std::ostringstream out;out<<"DOOMCutsceneFOV hook installed RVA=0x"<<std::hex<<(target-reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)));
+    log(out.str());return true;
+}
+
+extern "C" void __fastcall patchCamera(void* rawContext, void* rawReturnAddress) {
+    if (!rawContext) return;
+    auto camera = static_cast<float*>(rawContext);
+    const uintptr_t context = reinterpret_cast<uintptr_t>(rawContext);
+    const uintptr_t returnAddress = reinterpret_cast<uintptr_t>(rawReturnAddress);
+    const auto imageBase = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    const uintptr_t callerRva = imageBase ? returnAddress - imageBase : 0;
+    const auto unmodifiedCameraBytes = reinterpret_cast<unsigned char*>(rawContext);
+    const auto unmodifiedPosition = reinterpret_cast<float*>(unmodifiedCameraBytes + 0xC0);
+    const auto unmodifiedBasis = reinterpret_cast<float*>(unmodifiedCameraBytes + 0xCC);
+    if(callerRva==0xA30CFF&&KharvoxCameraBossSequenceActive()){
+        cutsceneActive.store(true,std::memory_order_release);
+        InterlockedExchange(&immersiveCinematicFovHookActive,0);
+        sample.context=context;sample.returnAddress=returnAddress;
+        sample.positionX=unmodifiedPosition[0];sample.positionY=unmodifiedPosition[1];
+        sample.positionZ=unmodifiedPosition[2];
+        sample.fovX=*reinterpret_cast<float*>(unmodifiedCameraBytes+0x70);
+        sample.fovY=*reinterpret_cast<float*>(unmodifiedCameraBytes+0x74);
+        InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(&sample.hits));
+        return; // Native Quad source: no HMD, IPD, paired pose or VR FOV writes.
+    }
+    synchronizeAerAnimatedCameraPose(
+        callerRva, unmodifiedPosition, unmodifiedBasis);
+    if (callerRva == 0xA30CFF) {
+        // Glory kills and other cinematics use a different camera basis. They
+        // must never overwrite the persistent gameplay body pose. In the
+        // optional immersive mode, keep the native animated position but
+        // replace the animated rotation with the current HMD orientation on
+        // top of the gameplay body basis held at cinematic entry. HMD
+        // translation remains disabled so the animation still owns position.
+        const bool wasCutscene = cutsceneActive.exchange(true, std::memory_order_acq_rel);
+        if (!wasCutscene){
+            postCinematicGameplayCameraReturned.store(false, std::memory_order_release);
+            std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+            majorStoryFocus.begin(GetTickCount64());
+        }
+        if (!wasCutscene && bodyCameraValid.load(std::memory_order_acquire)) {
+            preCinematicGameplayAxisValid.store(false, std::memory_order_release);
+            float entryBasis[9]{};
+            float levelEntryBasis[9]{};
+            for (int index = 0; index < 9; ++index)
+                entryBasis[index] = bodyCameraAxis[index].load(std::memory_order_relaxed);
+            const float* heldBasis = entryBasis;
+            if (kharvox::makeGravityLevelBodyBasis(
+                    entryBasis, nullptr, levelEntryBasis))
+                heldBasis = levelEntryBasis;
+            for (int index = 0; index < 9; ++index)
+                preCinematicGameplayAxis[index].store(heldBasis[index], std::memory_order_relaxed);
+            preCinematicGameplayAxisValid.store(true, std::memory_order_release);
+            log("cinematic entry: gravity-level gameplay body basis held");
+        }
+        const bool focusSyncAttack=KharvoxCameraSyncAttackActive();
+        const bool focusChainsaw=latestChainsawTakedownCinematic.load(std::memory_order_acquire);
+        const bool focusLedge=KharvoxCameraLedgeTransitionActive();
+        const bool focusActionActive=focusSyncAttack||focusChainsaw||focusLedge;
+        if(focusActionActive){
+            if(!storyFocusLocalActionTail.exchange(true,std::memory_order_acq_rel))
+                log("[STORY-FOCUS][ACTION-TAIL] execution/ledge observed; authored story yaw blocked until gameplay returns");
+            storyFocusTailReported.store(false,std::memory_order_release);
+        }
+        const bool focusActionTail=storyFocusLocalActionTail.load(std::memory_order_acquire)
+            ||storyFocusXrActionTail.load(std::memory_order_acquire);
+        if(focusActionTail&&!focusActionActive
+            &&InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0
+            &&!storyFocusTailReported.exchange(true,std::memory_order_acq_rel))
+            log("[STORY-FOCUS][ACTION-TAIL] action flag cleared, but cutscene persists; native story yaw remains blocked");
+        for(int axis=0;axis<3;++axis)
+            lastCinematicSourceOrigin[axis].store(unmodifiedPosition[axis],std::memory_order_relaxed);
+        lastCinematicSourceOriginValid.store(true,std::memory_order_release);
+        const bool immersiveHmdRotation =
+            InterlockedCompareExchange(&immersiveCinematicFreelookRequested, 0, 0) != 0
+            && worldCameraActive.load(std::memory_order_acquire)
+            && !KharvoxCameraBossSequenceActive()
+            && preCinematicGameplayAxisValid.load(std::memory_order_acquire)
+            && headValid.load(std::memory_order_acquire);
+        if (immersiveHmdRotation) {
+            // Opt-in story test: DOOM owns the animated yaw (e.g. Pinky on
+            // player's left), while the physical headset still contributes
+            // residual look. The default still freezes the entry body basis.
+            // Exclude ALL executions/ledge/boss events to avoid changing
+            // proven Glory Kill and chainsaw camera mechanics.
+            const bool independentStoryFocus =
+                kharvox::storyFocusCanUseAuthoredYaw(
+                    InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0,
+                    immersiveHmdRotation,
+                    worldCameraActive.load(std::memory_order_acquire),
+                    focusSyncAttack,
+                    focusChainsaw,
+                    focusLedge,
+                    KharvoxCameraBossSequenceActive(),
+                    focusActionTail);
+            // DOOM does not expose a reliable "Pinky story" scene ID here.
+            // Keep native first-person heading disabled through short
+            // interactions. Only substantial, sustained scripted camera yaw
+            // qualifies, and introduce that authored yaw gradually.
+            float hmdBasis[9]{};
+            for(int i=0;i<9;++i)
+                hmdBasis[i]=preCinematicGameplayAxis[i].load(std::memory_order_relaxed);
+            const float heldYaw=std::atan2(hmdBasis[1],hmdBasis[0])*57.2957795131f;
+            const float nativeYaw=std::atan2(unmodifiedBasis[1],unmodifiedBasis[0])*57.2957795131f;
+            const float yawDelta=kharvox::shortestYawDegrees(nativeYaw,heldYaw);
+            kharvox::MajorStoryFocusResult majorFocus{};
+            const bool independentLongStory=independentStoryFocus
+                &&!KharvoxWeaponCollectibleAnimationActive()
+                &&!KharvoxCameraPlayerWeaponControlActive();
+            {
+                std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+                majorFocus=kharvox::updateMajorStoryFocus(
+                    majorStoryFocus,GetTickCount64(),
+                    InterlockedCompareExchange(&storyCameraFocusRequested,0,0)!=0,
+                    independentLongStory,yawDelta);
+            }
+            if(majorFocus.newlyEngaged)
+                log("[STORY-FOCUS][MAJOR] sustained authored story rotation recognized; "
+                    "blending DOOM heading over 500ms, short interactions unaffected");
+            if(majorFocus.weight>0.0f){
+                // Only rotate the gravity-level basis around Z. The headset
+                // still supplies pitch/roll and all translation; never inject
+                // DOOM-authored roll/pitch into the player's VR horizon.
+                const float radians=yawDelta*majorFocus.weight*0.0174532925199433f;
+                const float cosine=std::cos(radians),sine=std::sin(radians);
+                for(int row=0;row<3;++row){
+                    const int base=row*3;
+                    const float x=hmdBasis[base],y=hmdBasis[base+1];
+                    hmdBasis[base]=cosine*x-sine*y;
+                    hmdBasis[base+1]=sine*x+cosine*y;
+                }
+            }
+            applyResidualHeadOrientation(hmdBasis);
+            std::memcpy(unmodifiedBasis,hmdBasis,sizeof(hmdBasis));
+            if(!wasCutscene)
+                log(independentStoryFocus
+                    ?"[STORY-FOCUS][MAJOR] candidate started; Focus dormant pending sustained authored rotation"
+                    :"[IMMERSIVE] animation position + HMD-only rotation ACTIVE; HMD translation disabled");
+        }
+        const float nativeFovX = *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70);
+        const float nativeFovY = *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x74);
+        float targetFovX{}, targetFovY{};
+        if (immersiveCinematicFov(targetFovX, targetFovY)) {
+            *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70) = targetFovX;
+            *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x74) = targetFovY;
+            *(unmodifiedCameraBytes + 0x6F) = 1;
+        }
+        const bool stereoEnabled = stereoEyeEnabled.load(std::memory_order_acquire);
+        // A cinematic can start on an engine worker before XR sees its mode
+        // transition. Arm the existing per-eye FOV writer before that first
+        // producer; otherwise the native 90-degree FOV overwrites this eye.
+        if(stereoEnabled
+            &&InterlockedCompareExchange(&immersiveCinematicFovRequested,0,0)!=0){
+            InterlockedExchange(&immersiveCinematicFovHookActive,1);
+            if(!wasCutscene)log(std::string(kharvox::native::requested()
+                ?"[NATIVE-CINEMATIC] first-source FOV override armed from runtime projection "
+                :"[AER-CINEMATIC] r268 first-eye FOV override armed from runtime projection ")
+                +std::to_string(stereoFovX.load())+"x"+std::to_string(stereoFovY.load()));
+        }
+        float tracedEyeOffset=0.0f;
+        if (stereoEnabled) {
+            // This caller used to return before the normal camera path applied
+            // IPD and optical projection. Glory Kills, ledge transitions and
+            // other immersive cinematics were therefore deliberately mono.
+            // Preserve the native animated centre camera, then derive the
+            // requested eye exactly as gameplay does.
+            const float eyeOffset = stereoEyeOffset.load(std::memory_order_relaxed);
+            tracedEyeOffset=eyeOffset;
+            for (int axis = 0; axis < 3; ++axis)
+                unmodifiedPosition[axis] += unmodifiedBasis[3 + axis] * eyeOffset;
+            rotateCameraBasis(
+                unmodifiedBasis,
+                -stereoOpticalCenterYaw.load(std::memory_order_relaxed),
+                stereoOpticalCenterPitch.load(std::memory_order_relaxed), 0.0f);
+            // Stereo must use the same per-eye render FOV as its cached image.
+            // The enclosing mono cinematic FOV is not the per-eye projection.
+            if(!kharvox::native::requested()||!immersiveCinematicFov(targetFovX,targetFovY)){
+                *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70) =
+                    stereoFovX.load(std::memory_order_relaxed);
+                *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x74) =
+                    stereoFovY.load(std::memory_order_relaxed);
+                *(unmodifiedCameraBytes + 0x6F) = 1;
+            }
+            static std::atomic<bool> stereoCinematicLogged{};
+            if (!stereoCinematicLogged.exchange(true, std::memory_order_acq_rel))
+                log(kharvox::native::requested()
+                    ?"[NATIVE-CINEMATIC] animated center camera projection active; eye separation is applied by the two Native scene roots"
+                    :"[AER-CINEMATIC] cinematic camera now receives per-eye IPD/projection; native animation retained");
+        }
+        sample.context = context;
+        sample.yaw = camera[0];
+        sample.pitch = camera[1];
+        sample.positionX = unmodifiedPosition[0];
+        sample.positionY = unmodifiedPosition[1];
+        sample.positionZ = unmodifiedPosition[2];
+        sample.fovX = nativeFovX;
+        sample.fovY = nativeFovY;
+        sample.returnAddress = returnAddress;
+        const auto cinematicHead=renderHeadPose();
+        if(!kharvox::native::requested()&&stereoEnabled&&tracedEyeOffset!=0
+            &&aerRenderPairEnabled.load(std::memory_order_acquire)){
+            kharvox::AerWorldView observed;
+            std::memcpy(observed.pose.data(),unmodifiedCameraBytes+0xC0,sizeof(observed.pose));
+            std::memcpy(observed.fov.data(),unmodifiedCameraBytes+0x70,sizeof(observed.fov));
+            observed.context=callerRva;observed.poseId=cinematicHead.poseId;
+            observed.present=KharvoxCameraCurrentPresentSerial();
+            observed.level=KharvoxCameraLevelTransitionGeneration();
+            observed.eye=kharvox::aerEyeFromDoomOffset(tracedEyeOffset);observed.domain=1;
+            aerWorldViewHistory.remember(observed);
+        }
+        kharvox::pose_trace::camera(KharvoxCameraCurrentPresentSerial(),context,unmodifiedCameraBytes,
+            tracedEyeOffset,kharvox::native::requested()?2u:262u,callerRva,cinematicHead.poseId,
+            kharvox::native::requested()?-2:kharvox::aerEyeFromDoomOffset(tracedEyeOffset));
+        InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(&sample.hits));
+        return;
+    }
+    const bool gameplayCamera = callerRva == 0xE3F96A;
+    const bool cinematicEnded = gameplayCamera
+        && cutsceneActive.exchange(false, std::memory_order_acq_rel);
+    if(gameplayCamera&&storyFocusLocalActionTail.exchange(false,std::memory_order_acq_rel)){
+        storyFocusTailReported.store(false,std::memory_order_release);
+        log("[STORY-FOCUS][ACTION-TAIL] gameplay camera returned; local action suppression released");
+    }
+    if (cinematicEnded) {
+        {
+            std::lock_guard<std::mutex> lock(majorStoryFocusMutex);
+            if(majorStoryFocus.active){
+                const auto elapsed=GetTickCount64()-majorStoryFocus.beganMs;
+                log("[STORY-FOCUS][MAJOR] scene end durationMs="+std::to_string(elapsed)
+                    +" maxAuthoredYawDeg="+std::to_string(majorStoryFocus.largestNativeYawDegrees)
+                    +" classifiedMajor="+std::to_string(majorStoryFocus.engaged?1:0));
+                majorStoryFocus.reset();
+            }
+        }
+        if(lastCinematicSourceOriginValid.exchange(false,std::memory_order_acq_rel)){
+            float nativeDelta[3]{};
+            for(int axis=0;axis<3;++axis)
+                nativeDelta[axis]=unmodifiedPosition[axis]-
+                    lastCinematicSourceOrigin[axis].load(std::memory_order_relaxed);
+            log("[CAMERA-HANDOFF] native cinematic-to-gameplay source delta xyz="
+                +std::to_string(nativeDelta[0])+","+
+                std::to_string(nativeDelta[1])+","+
+                std::to_string(nativeDelta[2])+" (DOOM units, observational)");
+        }
+        postCinematicGameplayCameraReturned.store(true,std::memory_order_release);
+        log("[IMMERSIVE] cinematic-to-gameplay return: forced gravity-level camera basis until participant guard clears");
+    }
+    // F5-F12 are reserved for weapon calibration. The former F9/F10 camera
+    // probe could still fire during the one frame in which weapon tracking
+    // transitions from invalid to valid and corrupt an otherwise saved pose.
+    const bool moveLeft = false;
+    const bool moveRight = false;
+    if (nativeSameFrameInstalled.load(std::memory_order_acquire)) {
+        const auto eye = currentRenderEye.load(std::memory_order_acquire);
+        if (eye != VREye::Mono) {
+            static std::atomic<unsigned long long> nativeProbeCount{};
+            const auto probe = nativeProbeCount.fetch_add(1, std::memory_order_relaxed) + 1;
+            if (probe <= 80) {
+                std::ostringstream out;
+                out << "[StereoProbe] #" << probe
+                    << " eye=" << (eye == VREye::Left ? "LEFT" : "RIGHT")
+                    << " context=0x" << std::hex << context << std::dec
+                    << std::fixed << std::setprecision(4)
+                    << " fov=" << *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x70)
+                    << 'x' << *reinterpret_cast<float*>(unmodifiedCameraBytes + 0x74)
+                    << " pos=" << unmodifiedPosition[0] << ','
+                    << unmodifiedPosition[1] << ',' << unmodifiedPosition[2]
+                    << " axis0=" << unmodifiedBasis[0] << ','
+                    << unmodifiedBasis[1] << ',' << unmodifiedBasis[2]
+                    << " axis1=" << unmodifiedBasis[3] << ','
+                    << unmodifiedBasis[4] << ',' << unmodifiedBasis[5];
+                log(out.str());
+            }
+        }
+    }
+    float bodyBasis[9]{};
+    std::memcpy(bodyBasis, unmodifiedBasis, sizeof(bodyBasis));
+    // The old exit repair only ran after a generic cinematic had set
+    // preCinematicGameplayAxisValid. Ordinary melee/recoil animation uses this
+    // same gameplay caller and could therefore leave native pitch/roll in the
+    // persistent body pose. Make Z-up leveling the normal gameplay invariant.
+    // Authored animated sequences are classified separately and retain their
+    // native motion; HMD pitch/roll is applied below after this body basis.
+    float fallbackBasis[9]{};
+    const float* fallback = nullptr;
+    if (bodyCameraValid.load(std::memory_order_acquire)) {
+        for (int index = 0; index < 9; ++index)
+            fallbackBasis[index] = bodyCameraAxis[index].load(std::memory_order_relaxed);
+        fallback = fallbackBasis;
+    } else if (preCinematicGameplayAxisValid.load(std::memory_order_acquire)) {
+        for (int index = 0; index < 9; ++index)
+            fallbackBasis[index] = preCinematicGameplayAxis[index].load(std::memory_order_relaxed);
+        fallback = fallbackBasis;
+    }
+    float levelBasis[9]{};
+    const bool preserveAuthoredCameraBasis=kharvox::preserveAnimatedGameplayBodyBasis(
+        animatedSequenceActive.load(std::memory_order_acquire),
+        postCinematicGameplayCameraReturned.load(std::memory_order_acquire));
+    if (kharvox::makeStableGameplayBodyBasis(
+            gameplayCamera,
+            preserveAuthoredCameraBasis,
+            bodyBasis, fallback, levelBasis)) {
+        std::memcpy(bodyBasis, levelBasis, sizeof(bodyBasis));
+        std::memcpy(unmodifiedBasis, bodyBasis, sizeof(bodyBasis));
+    }
+    float stableBodyOrigin[3]{unmodifiedPosition[0], unmodifiedPosition[1], unmodifiedPosition[2]};
+    // Preserve the actual source view before physics reconstruction and before
+    // room-scale/HMD translation modifies the camera storage in place.
+    const float sourceViewBodyOrigin[3]{unmodifiedPosition[0],unmodifiedPosition[1],unmodifiedPosition[2]};
+    const bool mayCalibrateAnchor=kharvox::mayCalibrateBodyAnchor(gameplayCamera,
+        animatedSequenceActive.load(std::memory_order_acquire),
+        KharvoxCameraPlayerWeaponControlActive(),KharvoxCameraBossSequenceActive());
+    const bool existingBodyAnchor=stableBodyViewOffsetValid.load(std::memory_order_acquire)
+        &&stableBodyViewOffsetOwner.load(std::memory_order_relaxed)
+            ==playerPhysicsOwner.load(std::memory_order_acquire);
+    if (playerPhysicsOriginValid.load(std::memory_order_acquire)
+        &&(existingBodyAnchor||mayCalibrateAnchor)) {
+        std::lock_guard<std::mutex> stanceGuard(bodyStanceMutex);
+        const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_relaxed);
+        float physicsOrigin[3]{};
+        for (int index = 0; index < 3; ++index)
+            physicsOrigin[index] = playerPhysicsOrigin[index].load(std::memory_order_relaxed);
+        std::array<float, 3> viewOffsetLocal{};
+        const float offset[3]{
+            unmodifiedPosition[0] - physicsOrigin[0],
+            unmodifiedPosition[1] - physicsOrigin[1],
+            unmodifiedPosition[2] - physicsOrigin[2]
+        };
+        std::array<float, 3> measuredViewOffsetLocal{};
+        for (int row = 0; row < 3; ++row)
+            measuredViewOffsetLocal[row] = offset[0] * bodyBasis[row * 3]
+                + offset[1] * bodyBasis[row * 3 + 1]
+                + offset[2] * bodyBasis[row * 3 + 2];
+        const bool offsetValid = stableBodyViewOffsetValid.load(std::memory_order_acquire)
+            && stableBodyViewOffsetOwner.load(std::memory_order_relaxed) == owner;
+        if (!offsetValid&&mayCalibrateAnchor) {
+            viewOffsetLocal = measuredViewOffsetLocal;
+            stableBodyViewOffsetValid.store(false, std::memory_order_release);
+            for (int row = 0; row < 3; ++row)
+                stableBodyViewOffsetLocal[row].store(viewOffsetLocal[row], std::memory_order_relaxed);
+            stableBodyViewOffsetOwner.store(owner, std::memory_order_relaxed);
+            stableBodyViewOffsetValid.store(true, std::memory_order_release);
+            std::ostringstream out;
+            out << "stable weapon/body anchor calibrated player=0x" << std::hex << owner
+                << std::dec << " localViewOffset=" << viewOffsetLocal[0] << ','
+                << viewOffsetLocal[1] << ',' << viewOffsetLocal[2];
+            log(out.str());
+        } else if(offsetValid) {
+            for (int row = 0; row < 3; ++row)
+                viewOffsetLocal[row] = stableBodyViewOffsetLocal[row].load(std::memory_order_relaxed);
+        } else {
+            viewOffsetLocal=measuredViewOffsetLocal;
+        }
+        // Follow the native stance animation beyond button release. A button
+        // level cannot represent toggle crouch or a geometry-blocked stand.
+        // Reset on every anchor calibration, even if the player address repeats.
+        const float previousUp = viewOffsetLocal[2];
+        if(mayCalibrateAnchor)viewOffsetLocal[2] = bodyStanceHeight.update(measuredViewOffsetLocal[2],
+            previousUp, !offsetValid, crouchRequested.load(std::memory_order_acquire),
+            cameraPresentSerial.load(std::memory_order_acquire),
+            physicsOrigin[0]*bodyBasis[6]+physicsOrigin[1]*bodyBasis[7]+physicsOrigin[2]*bodyBasis[8]);
+        if (viewOffsetLocal[2] != previousUp)
+            stableBodyViewOffsetLocal[2].store(viewOffsetLocal[2], std::memory_order_relaxed);
+        for (int axis = 0; axis < 3; ++axis)
+            stableBodyOrigin[axis] = physicsOrigin[axis]
+                + bodyBasis[axis] * viewOffsetLocal[0]
+                + bodyBasis[3 + axis] * viewOffsetLocal[1]
+                + bodyBasis[6 + axis] * viewOffsetLocal[2];
+    }
+    // Ordinary-camera scripted sequences (including checkpoint entry into the
+    // VEGA scene) never use the generic cutscene caller. Pair the final native
+    // body camera after the physics/view-height reconstruction so that branch
+    // receives the same protection as the explicit cinematic camera.
+    synchronizeAerAnimatedCameraPose(
+        callerRva ^ (uintptr_t{1} << (sizeof(uintptr_t) * 8 - 1)),
+        stableBodyOrigin, bodyBasis);
+    for (int index = 0; index < 3; ++index)
+        bodyCameraOrigin[index].store(stableBodyOrigin[index], std::memory_order_relaxed);
+    for (int index = 0; index < 9; ++index)
+        bodyCameraAxis[index].store(bodyBasis[index], std::memory_order_relaxed);
+    bodyCameraValid.store(true, std::memory_order_release);
+    // OpenXR yaw has the opposite sign from this DOOM render-basis axis.
+    // Apply physical HMD rotation first, then translate to the eye along that
+    // head-relative lateral axis, and apply the static optical-center rotation
+    // last. This prevents an asymmetric frustum from rotating the IPD vector.
+    const bool stereoEnabled = stereoEyeEnabled.load(std::memory_order_acquire);
+    const float opticalYaw = stereoEnabled ? stereoOpticalCenterYaw.load(std::memory_order_relaxed) : 0.0f;
+    const float opticalPitch = stereoEnabled ? stereoOpticalCenterPitch.load(std::memory_order_relaxed) : 0.0f;
+    auto renderHead = renderHeadPose();
+    const float originalHeadYaw=renderHead.yaw;
+    const float currentBodyYaw=std::atan2(unmodifiedBasis[1],unmodifiedBasis[0])*57.2957795131f;
+    float bodyRebaseDelta=0;
+    if(gameplayCamera&&!animatedSequenceActive.load(std::memory_order_acquire)
+        &&renderHead.valid&&renderHead.referenceBodyValid){
+        bodyRebaseDelta=kharvox::rebaseHeadToBody(renderHead.referenceBodyYaw,currentBodyYaw,
+            renderHead.yaw,renderHead.forward,renderHead.lateral);
+    }
+    if(kharvox::pose_trace::active.load(std::memory_order_relaxed)){
+        kharvox::pose_trace::Event e{};e.kind=kharvox::pose_trace::HeadApplied;
+        e.frame=KharvoxCameraCurrentPresentSerial();e.source=context;e.revision=callerRva;
+        e.poseId=renderHead.poseId;
+        e.flags=(renderHead.valid?1u:0u)|(aerRenderPairEnabled.load()?2u:0u);
+        e.data[0]=renderHead.yaw;e.data[1]=renderHead.pitch;e.data[2]=renderHead.roll;
+        e.data[3]=renderHead.forward;e.data[4]=renderHead.lateral;e.data[5]=renderHead.up;
+        e.data[6]=renderHead.artificialYaw;e.data[7]=renderHead.referenceBodyYaw;
+        e.data[8]=currentBodyYaw;e.data[9]=bodyRebaseDelta;e.data[10]=originalHeadYaw;
+        e.flags|=renderHead.referenceBodyValid?4u:0u;kharvox::pose_trace::record(e);
+        e.kind=kharvox::pose_trace::CameraBase;
+        for(int i=0;i<3;++i)e.data[i]=unmodifiedPosition[i];
+        for(int i=0;i<9;++i)e.data[i+3]=unmodifiedBasis[i];
+        e.data[12]=opticalYaw;e.data[13]=opticalPitch;
+        e.data[14]=stereoEnabled?stereoEyeOffset.load(std::memory_order_relaxed):0.f;
+        kharvox::pose_trace::record(e);
+        e.kind=kharvox::pose_trace::BodyAnchor;
+        for(int i=0;i<3;++i)e.data[i]=stableBodyOrigin[i];
+        for(int i=0;i<9;++i)e.data[i+3]=bodyBasis[i];
+        kharvox::pose_trace::record(e);
+    }
+
+    const float hmdYaw = renderHead.valid
+        ? -(renderHead.yaw + renderHead.artificialYaw) : 0.0f;
+    const float hmdPitch = renderHead.valid ? renderHead.pitch : 0.0f;
+    const float hmdRoll = renderHead.valid ? renderHead.roll : 0.0f;
+
+    // Room-scale translation is relative to the automatic initial tracking origin
+    // and expressed in the unmodified DOOM body-camera basis. Applying it
+    // before the HMD rotation keeps leaning independent of head orientation.
+    if (renderHead.valid) {
+        const float forward = renderHead.forward;
+        const float lateral = renderHead.lateral;
+        const float up = renderHead.up;
+        auto position = reinterpret_cast<float*>(unmodifiedCameraBytes + 0xC0);
+        for (int axis = 0; axis < 3; ++axis) {
+            position[axis] += bodyBasis[axis] * forward
+                + bodyBasis[3 + axis] * lateral
+                + bodyBasis[6 + axis] * up;
+        }
+    }
+
+    auto basis = reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(rawContext) + 0xCC);
+    // Position is camera+0xC0 and the freshly copied 3x3 orientation is
+    // camera+0xCC. Rotate without feeding modified gameplay angles back into
+    // DOOM's camera controller.
+    rotateCameraBasis(basis, hmdYaw, hmdPitch, hmdRoll);
+
+    // Capture the centre-eye pose from the same mutable camera object before
+    // per-eye IPD and optical-centre adjustments. It contains DOOM's exact
+    // current movement, room-scale translation, HMD pose and artificial turn
+    // as consumed by this render pass.
+    float hudAnchorOrigin[3]{};
+    float hudAnchorAxis[9]{};
+    auto renderPosition = reinterpret_cast<float*>(
+        reinterpret_cast<unsigned char*>(rawContext) + 0xC0);
+    std::memcpy(hudAnchorOrigin, renderPosition, sizeof(hudAnchorOrigin));
+    std::memcpy(hudAnchorAxis, basis, sizeof(hudAnchorAxis));
+    if (gameplayCamera) {
+        publishHudCenterRenderPose(hudAnchorOrigin, hudAnchorAxis);
+        // Bind the arm HUD to this rendered body, before HMD translation.
+        // Live physics can already be on a different tick during locomotion.
+        KharvoxHudCaptureOffhandRenderFrame(sourceViewBodyOrigin,bodyBasis);
+    }
+
+    const float eyeOffset = stereoEnabled ? stereoEyeOffset.load(std::memory_order_relaxed) : 0.0f;
+    if (moveLeft || moveRight || eyeOffset != 0.0f) {
+        auto position = reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(rawContext) + 0xC0);
+        const float offset = (moveLeft ? -12.0f : (moveRight ? 12.0f : 0.0f)) + eyeOffset;
+        // Basis row 1 is now head-relative but does not yet contain the
+        // per-eye optical-center rotation.
+        for (int axis = 0; axis < 3; ++axis) position[axis] += basis[3 + axis] * offset;
+        InterlockedCompareExchange(&manualPositionApplied, moveLeft ? -1 : 1, 0);
+    } else InterlockedExchange(&manualPositionApplied, 0);
+
+    rotateCameraBasis(basis, -opticalYaw, opticalPitch, 0.0f);
+
+    // The same copy function places world position at camera+0xC0 and the
+    // local orientation basis at +0xCC. Use an exaggerated 12-unit offset
+    // for the M1C eye-translation proof; this does not move the player body.
+    const auto cameraBytes = reinterpret_cast<unsigned char*>(rawContext);
+    const float sourceFovX = *reinterpret_cast<float*>(cameraBytes + 0x70);
+    const float sourceFovY = *reinterpret_cast<float*>(cameraBytes + 0x74);
+    if (stereoEnabled) {
+        auto bytes = reinterpret_cast<unsigned char*>(rawContext);
+        // DOOM only consumes camera+0x70/+0x74 as an explicit projection when
+        // the adjacent custom-FOV flag is set. The immersive cinematic path
+        // already sets this byte, which explains why weapon and attached HUD
+        // projection became rigid only after the first immersive Glory Kill.
+        // Set the same native flag for normal VR gameplay from its first map
+        // frame instead of waiting for a cinematic to initialize it.
+        *(bytes + 0x6F) = 1;
+        *reinterpret_cast<float*>(bytes + 0x70) = stereoFovX.load(std::memory_order_relaxed);
+        *reinterpret_cast<float*>(bytes + 0x74) = stereoFovY.load(std::memory_order_relaxed);
+    }
+    sample.context = context;
+    sample.yaw = camera[0];
+    sample.pitch = camera[1];
+    auto position = reinterpret_cast<float*>(reinterpret_cast<unsigned char*>(rawContext) + 0xC0);
+    sample.positionX = position[0];
+    sample.positionY = position[1];
+    sample.positionZ = position[2];
+    sample.fovX = sourceFovX;
+    sample.fovY = sourceFovY;
+    sample.returnAddress = returnAddress;
+    // SFS produces both eyes from this centered CPU view. Its weapon still
+    // needs the same source-bound body/controller snapshot as AER.
+    const bool centeredSfsSource=kharvox::sfs::vrEnabled();
+    if(gameplayCamera&&stereoEnabled&&(eyeOffset!=0||centeredSfsSource)&&!kharvox::native::requested()){
+        kharvox::AerWorldView observed;
+        std::memcpy(observed.pose.data(),cameraBytes+0xC0,sizeof(observed.pose));
+        std::memcpy(observed.fov.data(),cameraBytes+0x70,sizeof(observed.fov));
+        // The engine can copy a player's main camera through pooled objects.
+        // Keep the validated player/level identity, not a transient copy address.
+        observed.context=playerPhysicsOwner.load(std::memory_order_acquire);observed.poseId=renderHead.poseId;
+        observed.present=KharvoxCameraCurrentPresentSerial();
+        observed.domain=animatedSequenceActive.load(std::memory_order_acquire)?2u:0u;
+        observed.level=KharvoxCameraLevelTransitionGeneration();observed.eye=centeredSfsSource?0:kharvox::aerEyeFromDoomOffset(eyeOffset);
+        aerWorldViewHistory.remember(observed);
+        if(!observed.domain&&aerRenderPairEnabled.load(std::memory_order_acquire)){
+            kharvox::AerWeaponCamera weaponCamera;
+            weaponCamera.key={observed.poseId,observed.level,observed.eye};weaponCamera.present=observed.present;
+            kharvox::bindAerWeaponBodyOrigin(weaponCamera,centeredSfsSource,sourceViewBodyOrigin,stableBodyOrigin);
+            if(centeredSfsSource&&kharvox::extendedDiagnosticsEnabled()){
+                static std::atomic<uint64_t> divergent{};
+                float delta[3]{};for(int i=0;i<3;++i)delta[i]=stableBodyOrigin[i]-sourceViewBodyOrigin[i];
+                if(std::abs(delta[0])>.25f||std::abs(delta[1])>.25f||std::abs(delta[2])>.25f){
+                    const auto count=++divergent;
+                    if(count<=8||count%240==0)log("[SFS-WEAPON-ANCHOR] excludedPhysicsDelta="
+                        +std::to_string(delta[0])+","+std::to_string(delta[1])+","+std::to_string(delta[2])
+                        +" pose="+std::to_string(observed.poseId)+" count="+std::to_string(count));
+                }
+            }
+            std::memcpy(weaponCamera.bodyAxis.data(),bodyBasis,sizeof(bodyBasis));
+            std::memcpy(weaponCamera.headAxis.data(),hudAnchorAxis,sizeof(hudAnchorAxis));
+            weaponCamera.bodyYawDelta=bodyRebaseDelta;
+            std::memcpy(weaponCamera.renderOrigin.data(),observed.pose.data(),3*sizeof(float));
+            weaponCamera.renderOriginValid=true;
+            KharvoxWeaponObserveAerCamera(weaponCamera);
+        }
+    }
+    kharvox::pose_trace::camera(KharvoxCameraCurrentPresentSerial(),context,cameraBytes,eyeOffset,(gameplayCamera?1u:0u)|(kharvox::native::requested()?0u:4u),callerRva,renderHead.poseId,
+        kharvox::native::requested()?-2:kharvox::aerEyeFromDoomOffset(eyeOffset));
+    InterlockedIncrement64(reinterpret_cast<volatile LONG64*>(&sample.hits));
+}
+}
+
+void KharvoxCameraFinishNativeStereoBootstrap() {
+    finishNativeStereoBootstrap();
+}
+
+kharvox::AerWorldViewResult KharvoxCameraAlignAerWorldView(const float pose[12],const float fov[2],
+    kharvox::AerWorldView& source,kharvox::AerWorldView& target){
+    using R=kharvox::AerWorldViewResult;
+    if(kharvox::native::requested()||!KharvoxCameraGameplayActive()||KharvoxCameraCutsceneActive()
+        ||animatedSequenceActive.load(std::memory_order_acquire)||!stereoEyeEnabled.load())return R::Invalid;
+    const auto head=renderHeadPose();const auto offset=stereoEyeOffset.load(std::memory_order_acquire);
+    if(!head.valid||offset==0||!aerRenderPairEnabled.load(std::memory_order_acquire))return R::Invalid;
+    const auto result=aerWorldViewHistory.align(pose,fov,head.poseId,kharvox::aerEyeFromDoomOffset(offset),
+        KharvoxCameraCurrentPresentSerial(),KharvoxCameraLevelTransitionGeneration(),source,target);
+    // A phase change during lookup invalidates the target; never mix the two
+    // publications to manufacture a replacement camera.
+    if(renderHeadPose().poseId!=head.poseId||stereoEyeOffset.load()!=offset)return R::MissingTarget;
+    return result;
+}
+
+kharvox::AerWorldViewResult KharvoxCameraRecognizeAerWorldView(const float pose[12],const float fov[2],kharvox::AerWorldView& source){
+    // A queued draw may belong to the prior cinematic/gameplay camera. Its
+    // exact source identity, not the latest global mode, decides recognition.
+    if(kharvox::native::requested())return kharvox::AerWorldViewResult::Invalid;
+    return aerWorldViewHistory.recognize(pose,fov,KharvoxCameraCurrentPresentSerial(),KharvoxCameraLevelTransitionGeneration(),source);
+}
+void KharvoxCameraRecordAerWorldSource(const kharvox::AerWorldView& source){aerSourceWindow.observe({source.poseId,source.level,source.eye,source.domain});}
+kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource(){return aerSourceWindow.take();}
+bool KharvoxCameraUsesAerGameplaySource(){
+    return aerRenderPairEnabled.load(std::memory_order_acquire)&&!kharvox::native::requested()
+        &&KharvoxCameraGameplayActive()&&!KharvoxCameraCutsceneActive()
+        &&!animatedSequenceActive.load(std::memory_order_acquire);
+}
+
+void KharvoxCameraCompleteNativeStereoBootstrapAfterRender() {
+    completeNativeStereoBootstrapAfterRender();
+}
+
+void KharvoxCameraSetHeadPose(
+    float yawDegrees, float pitchDegrees, float rollDegrees,
+    float forwardUnits, float lateralUnits, float upUnits,
+    bool valid, float referenceBodyYaw, bool referenceBodyValid) {
+    std::lock_guard<std::mutex> guard(headPoseMutex);
+    ++headPoseId;
+    if(kharvox::pose_trace::active.load(std::memory_order_relaxed)){
+        kharvox::pose_trace::Event e{};e.kind=kharvox::pose_trace::HeadPublished;
+        e.poseId=headPoseId;e.frame=KharvoxCameraCurrentPresentSerial();e.flags=valid?1u:0u;
+        e.data[0]=yawDegrees;e.data[1]=pitchDegrees;e.data[2]=rollDegrees;
+        e.data[3]=forwardUnits;e.data[4]=lateralUnits;e.data[5]=upUnits;
+        e.data[6]=referenceBodyYaw;kharvox::pose_trace::record(e);
+    }
+    headReferenceBodyYaw.store(referenceBodyYaw);
+    headReferenceBodyValid.store(referenceBodyValid&&valid);
+    headYaw.store(yawDegrees, std::memory_order_relaxed);
+    headPitch.store(pitchDegrees, std::memory_order_relaxed);
+    headRoll.store(rollDegrees, std::memory_order_relaxed);
+    headForward.store(forwardUnits, std::memory_order_relaxed);
+    headLateral.store(lateralUnits, std::memory_order_relaxed);
+    headUp.store(upUnits, std::memory_order_relaxed);
+    headValid.store(valid, std::memory_order_release);
+}
+
+void KharvoxCameraSetArtificialTurnYaw(float yawDegrees) {
+    std::lock_guard<std::mutex> guard(headPoseMutex);
+    const float previous = artificialTurnYaw.exchange(yawDegrees, std::memory_order_acq_rel);
+    const bool activated = std::abs(previous) < 0.001f && std::abs(yawDegrees) >= 0.001f;
+    const bool cleared = std::abs(previous) >= 0.001f && std::abs(yawDegrees) < 0.001f;
+    if (activated || cleared) {
+        log("[TURN] central artificial render/gameplay yaw=" + std::to_string(yawDegrees));
+    }
+}
+
+unsigned long long KharvoxCameraDiagnosticPoseId() {
+    return renderHeadPose().poseId;
+}
+
+void KharvoxCameraSetCrouchState(bool active) {
+    crouchRequested.store(active, std::memory_order_release);
+}
+
+void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
+    const bool previous=nativeGrabFocusObservationEnabled.exchange(
+        enabled,std::memory_order_acq_rel);
+    if(previous==enabled)return;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    // Release opaque handles on either session transition. The native hook
+    // will publish a fresh sample, if any, during the next DOOM world tick.
+    nativeGrabFocusSequence=0;
+    nativeGrabFocusIndexA=nativeGrabFocusIndexB=0;
+    nativeGrabFocusReference=nativeGrabFocusGeneration=0;
+    nativeGrabCandidate={};
+    nativeGrabCandidateValid={};
+    nativeGrabCandidateSequence=0;
+    nativeGrabResolvedEntity={};
+    nativeGrabResolvedValid={};
+    nativeGrabResolvedSequence=0;
+}
+
+bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) {
+    sample={};
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||nativeGrabFocusSequence==0
+        ||nativeGrabFocusGeneration!=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample.indexA=nativeGrabFocusIndexA;
+    sample.indexB=nativeGrabFocusIndexB;
+    sample.nativeReference=nativeGrabFocusReference;
+    sample.levelGeneration=nativeGrabFocusGeneration;
+    sample.sampleSequence=nativeGrabFocusSequence;
+    return true;
+}
+
+bool KharvoxCameraReadWorldGrabTraceCandidate(
+    unsigned int sourcePath,KharvoxWorldGrabTraceCandidate& sample) {
+    sample={};
+    if(sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!nativeGrabCandidateValid[sourcePath]
+        ||nativeGrabCandidate[sourcePath].levelGeneration
+            !=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample=nativeGrabCandidate[sourcePath];
+    return true;
+}
+
+bool KharvoxCameraReadWorldGrabResolvedEntity(
+    unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample) {
+    sample={};
+    if(sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!nativeGrabResolvedValid[sourcePath]
+        ||nativeGrabResolvedEntity[sourcePath].levelGeneration
+            !=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample=nativeGrabResolvedEntity[sourcePath];
+    return true;
+}
+
+void KharvoxCameraSetFocusHandPose(
+    const float origin[3], const float direction[3], bool valid) {
+    if(!valid||!origin||!direction){
+        focusHandValid.store(false,std::memory_order_release);
+        return;
+    }
+    float lengthSquared{};
+    for(int axis=0;axis<3;++axis){
+        if(!std::isfinite(origin[axis])||!std::isfinite(direction[axis])){
+            focusHandValid.store(false,std::memory_order_release);
+            return;
+        }
+        lengthSquared+=direction[axis]*direction[axis];
+    }
+    if(lengthSquared<0.000001f){
+        focusHandValid.store(false,std::memory_order_release);
+        return;
+    }
+    const float inverseLength=1.0f/std::sqrt(lengthSquared);
+    focusHandValid.store(false,std::memory_order_release);
+    for(int axis=0;axis<3;++axis){
+        focusHandOrigin[axis].store(origin[axis],std::memory_order_relaxed);
+        focusHandDirection[axis].store(direction[axis]*inverseLength,std::memory_order_relaxed);
+    }
+    focusHandValid.store(true,std::memory_order_release);
+}
+
+void KharvoxCameraSetImmersiveCinematicFov(
+    float fovXDegrees, float fovYDegrees,
+    bool requested, bool active) {
+    const auto overrideFov=kharvox::cinematicOverrideFov(stereoEyeEnabled.load(std::memory_order_acquire),
+        kharvox::native::requested(),fovXDegrees,fovYDegrees,stereoFovX.load(),stereoFovY.load());
+    fovXDegrees=overrideFov[0];fovYDegrees=overrideFov[1];
+    const bool valid = std::isfinite(fovXDegrees) && std::isfinite(fovYDegrees)
+        && fovXDegrees > 1.0f && fovYDegrees > 1.0f;
+    if (valid) {
+        interlockedFloatStore(&immersiveCinematicFovXBits, fovXDegrees);
+        interlockedFloatStore(&immersiveCinematicFovYBits, fovYDegrees);
+    }
+    InterlockedExchange(&immersiveCinematicFovRequested, requested && valid ? 1 : 0);
+    const LONG hookEnabled = requested && active && valid ? 1 : 0;
+    const LONG previous = InterlockedExchange(&immersiveCinematicFovHookActive, hookEnabled);
+    if (previous != hookEnabled) {
+        if (hookEnabled) {
+            log("[FOV] immersive exact OpenXR match ACTIVE; cinematic zoom disabled target="
+                + std::to_string(fovXDegrees) + "x" + std::to_string(fovYDegrees));
+        } else if (requested) {
+            log("[FOV] DOOMCutsceneFOV override inactive outside cinematic");
+        }
+    }
+}
+
+void KharvoxCameraSetStoryFocusActionTail(bool blocked) {
+    const bool prior=storyFocusXrActionTail.exchange(blocked,std::memory_order_acq_rel);
+    if(prior!=blocked)
+        log(std::string("[STORY-FOCUS][ACTION-TAIL] XR boundary ")
+            +(blocked?"BLOCKED (execution/ledge tail)":"released"));
+}
+
+void KharvoxCameraSetStoryCameraFocus(bool requested) {
+    const LONG previous=InterlockedExchange(&storyCameraFocusRequested,requested?1:0);
+    if(previous!=(requested?1:0))
+        log(std::string("[STORY-FOCUS] native story camera yaw ")
+            +(requested?"ENABLED (test)":"disabled/default"));
+}
+
+void KharvoxCameraSetImmersiveCinematicFreelook(bool requested) {
+    const LONG enabled = requested ? 1 : 0;
+    const LONG previous = InterlockedExchange(
+        &immersiveCinematicFreelookRequested, enabled);
+    if (previous != enabled)
+        log(std::string("[IMMERSIVE] cinematic HMD freelook ")
+            + (requested ? "ENABLED" : "disabled"));
+}
+
+bool KharvoxCameraInstallDiagnosticHook() {
+    static bool attempted = false;
+    if (attempted) return sample.hits != 0;
+    attempted = true;
+    KharvoxWeaponInstallHook();
+    KharvoxHudInstallHook();
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (image) {
+        installPlayerPhysicsOriginCapture(image);
+        installPlayerFocusTraceHook(image);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        // These extra native DOOM entity hooks exist only in the DLL shipped
+        // with RIPSHIFT VR (Experimental), never Native Full/Patch.
+        installNativeWorldGrabTraceCandidateHooks(image);
+        installNativeWorldGrabResolvedEntityHooks(image);
+#endif
+        installPlayerLedgeStateCapture(image);
+        validateSyncAttackClassifier(image);
+        validatePlayerControlClassifier(image);
+    }
+
+    // Independently measured camera-update signature. This is the tail of the
+    // function that copies camera position and a 3x3 basis into rcx+0xC0.
+    constexpr unsigned char signature[] = {
+        0x89,0x81,0xE8,0x00,0x00,0x00,
+        0x41,0x8B,0x40,0x20,
+        0x89,0x81,0xEC,0x00,0x00,0x00,
+        0xC3
+    };
+    auto target = findTextSignature(signature, sizeof(signature));
+    if (!target) {
+        log("DOOMPatchCamera signature mismatch; native hook not installed");
+        return false;
+    }
+
+    auto stub = static_cast<unsigned char*>(VirtualAlloc(nullptr, 128, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE));
+    if (!stub) {
+        log("DOOMPatchCamera stub allocation failed");
+        return false;
+    }
+
+    auto p = stub;
+    // Execute the two displaced matrix copies, then process the fully
+    // populated camera object in rcx, matching the reference hook timing.
+    std::memcpy(p, signature, sizeof(signature) - 1);
+    p += sizeof(signature) - 1;
+    emit8(p, 0x48); emit8(p, 0x8B); emit8(p, 0x14); emit8(p, 0x24); // rdx = return address
+    emit8(p, 0x50);                                      // push rax
+    emit8(p, 0x48); emit8(p, 0x83); emit8(p, 0xEC); emit8(p, 0x20); // shadow space
+    emit8(p, 0x48); emit8(p, 0xB8);
+    emit64(p, reinterpret_cast<unsigned long long>(patchCamera));
+    emit8(p, 0xFF); emit8(p, 0xD0);                      // call rax
+    emit8(p, 0x48); emit8(p, 0x83); emit8(p, 0xC4); emit8(p, 0x20);
+    emit8(p, 0x58);                                      // pop rax
+    emit8(p, 0xC3);                                      // original return
+
+    DWORD old{};
+    if (!VirtualProtect(target, sizeof(signature), PAGE_EXECUTE_READWRITE, &old)) {
+        log("DOOMPatchCamera target protection failed");
+        return false;
+    }
+    unsigned char jump[sizeof(signature)] = {0xFF,0x25,0,0,0,0};
+    const auto address = reinterpret_cast<unsigned long long>(stub);
+    std::memcpy(jump + 6, &address, sizeof(address));
+    for (size_t i = 14; i < sizeof(jump); ++i) jump[i] = 0x90;
+    std::memcpy(target, jump, sizeof(jump));
+    FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
+    VirtualProtect(target, sizeof(jump), old, &old);
+
+    std::ostringstream installed;
+    installed << "DOOMPatchCamera hook installed RVA=0x" << std::hex
+              << (target - reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr)));
+    log(installed.str());
+    installCutsceneFovHook();
+    if(!kharvox::native::requested()){
+        installNativeSameFrameStereo();
+        installSameFrameProofHook();
+    }
+    return true;
+}
+
+void KharvoxCameraPollDiagnostic() {
+    // Runs for active VR presentation, independently of Extended Logging and
+    // runtime/backend. Keep engine-side shake/kick rotations out of VR views.
+    const auto image=reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    const auto dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    const auto nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(image+dos->e_lfanew);
+    const auto viewEffects=kharvox::enforceViewEffects(image,nt->OptionalHeader.SizeOfImage);
+    static bool viewEffectsLogged=false;
+    if(!viewEffectsLogged||viewEffects==1||viewEffects==2||viewEffects==3){
+        viewEffectsLogged=true;
+        log(viewEffects==4?"[VR-VIEW-EFFECTS] engine layout/value mismatch; enforcement skipped":
+            "[VR-VIEW-EFFECTS] effective view_skipShakes=1 view_skipKicks=1 repairedMask="+std::to_string(viewEffects));
+    }
+    cameraPresentSerial.fetch_add(1, std::memory_order_acq_rel);
+    const auto cutsceneHits=InterlockedCompareExchange64(reinterpret_cast<volatile LONG64*>(&cutsceneFovHits),0,0);
+    static unsigned long long previousCutsceneHits{};
+    if(cutsceneHits!=previousCutsceneHits){
+        static float previousFov{};
+        const float value=cutsceneFovValue;
+        if(std::fabs(value-80.0f)>0.1f&&std::fabs(value-90.0f)>0.1f&&std::fabs(value-previousFov)>0.05f){log("DOOMCutsceneFOV unusual value="+std::to_string(value));previousFov=value;}
+    }
+    previousCutsceneHits=cutsceneHits;
+    const auto positionDirection = InterlockedExchangeAdd(&manualPositionApplied, 0);
+    if (positionDirection == -1 && InterlockedCompareExchange(&manualPositionApplied, -2, -1) == -1)
+        log("F9 DOOMPatchCamera local-X position -12 units applied");
+    if (positionDirection == 1 && InterlockedCompareExchange(&manualPositionApplied, 2, 1) == 1)
+        log("F10 DOOMPatchCamera local-X position +12 units applied");
+
+    const auto hits = sample.hits;
+    static unsigned long long previousHits{};
+    static unsigned stableFrames{}, missingFrames{};
+    const bool hitThisFrame = hits != previousHits;
+    previousHits = hits;
+    static float previousCameraFovX{},previousCameraFovY{};
+    if(hitThisFrame&&(std::fabs(sample.fovX-previousCameraFovX)>1.0f||std::fabs(sample.fovY-previousCameraFovY)>1.0f)){
+        log("DOOM camera source FOV="+std::to_string(sample.fovX)+"x"+std::to_string(sample.fovY));
+        previousCameraFovX=sample.fovX;previousCameraFovY=sample.fovY;
+    }
+    if (hitThisFrame) {
+        missingFrames = 0;
+        // Presentation also requires a fresh player-physics capture, so the
+        // former 20-consecutive-hit debounce added only latency. During a
+        // low-FPS/loading handoff any missed diagnostic frame restarted the
+        // count and could leave a ready level in QUAD for several seconds.
+        constexpr unsigned activationFrames = 3;
+        if (stableFrames < activationFrames) ++stableFrames;
+        if (stableFrames == activationFrames && !worldCameraActive.exchange(true))
+            log("world camera ACTIVE after 3 stable present frames");
+    } else {
+        stableFrames = 0;
+        if (missingFrames < 90) ++missingFrames;
+        if (missingFrames == 3) invalidateLevelReferences();
+        if (missingFrames == 90 && worldCameraActive.exchange(false))
+            log("world camera INACTIVE after 90 present frames without a hit");
+    }
+
+    if (nativeSameFrameInstalled.load(std::memory_order_acquire)) {
+        if (!worldCameraActive.load(std::memory_order_acquire)
+            || cutsceneActive.load(std::memory_order_acquire))
+            nativeStereoFrameReady.store(false, std::memory_order_release);
+    }
+    if (nativeTwoViewInstalled.load(std::memory_order_acquire)) {
+        const bool shouldRenderStereo = worldCameraActive.load(std::memory_order_acquire)
+            && !cutsceneActive.load(std::memory_order_acquire);
+        const bool layoutEnabled = nativeStereoLayoutEnabled.load(std::memory_order_acquire);
+        if (shouldRenderStereo && !layoutEnabled
+            && nativeStereoBootstrapStage.load(std::memory_order_acquire) == 0) {
+            nativeStereoLayoutEnabled.store(true, std::memory_order_release);
+            nativeStereoFrameReady.store(false, std::memory_order_release);
+            nativeStereoBootstrapStage.store(1, std::memory_order_release);
+            log("[Stereo] stable gameplay reached; genuine native two-view bootstrap scheduled");
+        } else if (!shouldRenderStereo && (layoutEnabled
+                   || nativeStereoBootstrapStage.load(std::memory_order_acquire) != 0)) {
+            auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+            if (image) {
+                constexpr uintptr_t viewLayoutSlotRva = 0x36111E8;
+                constexpr uintptr_t singleLayoutRva = 0x284FFC8;
+                InterlockedExchangePointer(
+                    reinterpret_cast<void* volatile*>(image + viewLayoutSlotRva),
+                    image + singleLayoutRva);
+            }
+            nativeStereoBootstrapStage.store(0, std::memory_order_release);
+            nativeStereoLayoutEnabled.store(false, std::memory_order_release);
+            nativeStereoFrameReady.store(false, std::memory_order_release);
+            log("[Stereo] genuine native two-view suspended outside gameplay");
+        }
+    }
+}
+
+bool KharvoxCameraWorldActive() {
+    return worldCameraActive.load(std::memory_order_acquire);
+}
+
+bool KharvoxCameraGameplayActive() {
+    if (!worldCameraActive.load(std::memory_order_acquire)) return false;
+    // Scripted first-person cameras intentionally stop refreshing the native
+    // player hook. Their held body pose remains valid until gameplay returns.
+    if (cutsceneActive.load(std::memory_order_acquire)) return true;
+    if (!playerPhysicsOriginValid.load(std::memory_order_acquire)) return false;
+    const auto present = cameraPresentSerial.load(std::memory_order_acquire);
+    const auto captured = playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    return captured && present >= captured && present - captured <= 2;
+}
+
+bool KharvoxCameraNativeStereoActive() {
+    return nativeStereoFrameReady.load(std::memory_order_acquire);
+}
+
+bool KharvoxCameraNativeTwoViewActive() {
+    return nativeTwoViewInstalled.load(std::memory_order_acquire)
+        && nativeStereoFrameReady.load(std::memory_order_acquire);
+}
+
+bool KharvoxCameraCutsceneActive() { return cutsceneActive.load(std::memory_order_acquire); }
+bool KharvoxCameraReadCinematicSourceOrigin(float origin[3]) {
+    if(!origin||!cutsceneActive.load(std::memory_order_acquire)
+        ||!lastCinematicSourceOriginValid.load(std::memory_order_acquire))
+        return false;
+    for(int i=0;i<3;++i)
+        origin[i]=lastCinematicSourceOrigin[i].load(std::memory_order_relaxed);
+    return std::isfinite(origin[0])&&std::isfinite(origin[1])&&std::isfinite(origin[2]);
+}
+
+void KharvoxCameraSetBoxingGuardSlowmo(bool active) {
+    boxingGuardTimeDilationRequested.store(active,std::memory_order_release);
+}
+void KharvoxCameraResetCombatTimeDilation() {
+    boxingGuardTimeDilationRequested.store(false,std::memory_order_release);
+    storyCinematicFastForwardRequested.store(false,std::memory_order_release);
+    gloryKillMotionTimescaleOverride.store(0.f,std::memory_order_release);
+    latestSyncAttackClassified.store(false,std::memory_order_release);
+    latestChainsawTakedownCinematic.store(false,std::memory_order_release);
+    updateGloryKillSlowmoTimescale(false); // restore native game cvar
+}
+
+void KharvoxCameraSetGloryKillTimescaleOverride(float timescale) {
+    // Fast takedown is an actual speed increase, not merely returning the
+    // globally slowed game clock to 1.0x. Apply against the most recently
+    // validated sync-attack flag in this same XR frame; the older setter only
+    // changed an atomic AFTER KharvoxCameraSyncAttackActive had performed the
+    // timescale write, causing a one-frame lag (often the entire short kill).
+    const float value = timescale > 0.0f
+        ? std::clamp(timescale, 0.10f, 2.0f) : 0.0f;
+    const float old=gloryKillMotionTimescaleOverride.exchange(
+        value,std::memory_order_acq_rel);
+    if(old!=value && (value>=1.0f || old>=1.0f))
+        logGlorySlowmo("fast kill requested timescale="+std::to_string(value));
+    updateGloryKillSlowmoTimescale(
+        latestSyncAttackClassified.load(std::memory_order_acquire)
+        ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+}
+
+bool KharvoxCameraSetStoryCinematicFastForward(bool enabled) {
+    // Never select a guessed pointer. The existing validated resolver may
+    // reject this DOOM binary; if so, leave game time entirely unchanged.
+    if(enabled&&!resolveTimescaleCvarCurrent()) {
+        storyCinematicFastForwardRequested.store(false,std::memory_order_release);
+        logGlorySlowmo("story RS fast-forward UNAVAILABLE: native timescale unresolved");
+        return false;
+    }
+    const bool previous=storyCinematicFastForwardRequested.exchange(
+        enabled,std::memory_order_acq_rel);
+    if(previous!=enabled)
+        logGlorySlowmo(std::string("story RS fast-forward ")
+            +(enabled?"ON (4x requested)":"OFF (restore native)"));
+    updateGloryKillSlowmoTimescale(
+        latestSyncAttackClassified.load(std::memory_order_acquire)
+        ||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+    return true;
+}
+
+void KharvoxCameraSetChainsawTakedownCinematic(bool active) {
+    const bool old=latestChainsawTakedownCinematic.exchange(
+        active,std::memory_order_acq_rel);
+    if(old!=active)
+        logGlorySlowmo(std::string("native chainsaw cinematic ")
+            +(active?"ENTER":"EXIT"));
+}
+
+void KharvoxCameraServiceSuperShotgunNativeReloadReplay(
+    bool requestNewReplay, bool superShotgunActiveAndSafe) {
+    std::lock_guard<std::mutex> guard(nativeSsgReplayMutex);
+    const auto now=GetTickCount64();
+    if(nativeSsgReplay.active
+        &&(!superShotgunActiveAndSafe || now>=nativeSsgReplay.pulseUntilTick))
+        stopNativeSuperShotgunReplayLocked();
+    if(!requestNewReplay||!superShotgunActiveAndSafe||nativeSsgReplay.active)
+        return;
+    if(!nativeSsgReplay.lookedUp) {
+        nativeSsgReplay.lookedUp=true;
+        nativeSsgReplay.cosmetic=resolveVerifiedIntegerCvar(
+            "hands_doCosmeticReloads",1);
+        nativeSsgReplay.forced=resolveVerifiedIntegerCvar(
+            "weapon_useForcedReload",2);
+        nativeSsgReplay.fromEmpty=resolveVerifiedIntegerCvar(
+            "hands_forceReloadFromEmpty",1);
+        nativeSsgReplay.supported=nativeSsgReplay.cosmetic
+            &&nativeSsgReplay.forced&&nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.forced
+            &&nativeSsgReplay.cosmetic!=nativeSsgReplay.fromEmpty
+            &&nativeSsgReplay.forced!=nativeSsgReplay.fromEmpty;
+        if(!nativeSsgReplay.supported)
+            logNativeSsgReplay("native CVar signatures missing/ambiguous; NO game memory changed, fallback remains input gate");
+    }
+    if(!nativeSsgReplay.supported)return;
+    auto& state=nativeSsgReplay;
+    state.originalCosmetic=InterlockedCompareExchange(state.cosmetic,0,0);
+    state.originalForced=InterlockedCompareExchange(state.forced,0,0);
+    state.originalFromEmpty=InterlockedCompareExchange(state.fromEmpty,0,0);
+    // Another mod using forced reload controls wins. Never clobber it.
+    if(state.originalForced!=0||state.originalFromEmpty!=0) {
+        logNativeSsgReplay("native reload CVars already controlled elsewhere; replay skipped");
+        return;
+    }
+    InterlockedExchange(state.cosmetic,1);
+    InterlockedExchange(state.fromEmpty,1);
+    InterlockedExchange(state.forced,2);
+    state.active=true;
+    state.pulseUntilTick=now+250;
+    logNativeSsgReplay("requested ORIGINAL idHands cosmetic reload from empty on SSG re-draw (250ms pulse)");
+}
+
+void logNativeSyncAttackTransition(bool active) {
+    logGlorySlowmo(active
+        ? "native sync-attack flag ENTER" : "native sync-attack flag EXIT");
+}
+
+bool KharvoxCameraSyncAttackActive() {
+    // idPlayer+0x3DC9 is the exact flag DOOM's native usability path checks
+    // before reporting that the local activator is instigating a sync attack.
+    // Campaign Glory Kills hold it for their native sync-attack lifetime.
+    constexpr uintptr_t syncAttackInstigatorOffset = 0x3DC9;
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    bool active = false;
+    if (syncAttackClassifierSupported.load(std::memory_order_acquire)
+        && owner && owner <= UINTPTR_MAX - syncAttackInstigatorOffset - 1
+        && readableMemory(reinterpret_cast<const void*>(owner),
+            syncAttackInstigatorOffset + 1)) {
+#if defined(_MSC_VER)
+        __try {
+            active = *reinterpret_cast<const unsigned char*>(
+                owner + syncAttackInstigatorOffset) != 0;
+        } __except (EXCEPTION_EXECUTE_HANDLER) {
+            active = false;
+        }
+#else
+        active = *reinterpret_cast<const unsigned char*>(
+            owner + syncAttackInstigatorOffset) != 0;
+#endif
+    }
+    const bool previous=latestSyncAttackClassified.exchange(
+        active,std::memory_order_acq_rel);
+    if(active!=previous)
+        logNativeSyncAttackTransition(active);
+    updateGloryKillSlowmoTimescale(
+        active||latestChainsawTakedownCinematic.load(std::memory_order_acquire));
+    return active;
+}
+
+namespace {
+bool readBossSequenceBytes(uintptr_t address,void* output,size_t size){
+    if(!readableMemory(reinterpret_cast<const void*>(address),size))return false;
+#if defined(_MSC_VER)
+    __try {
+        std::memcpy(output,reinterpret_cast<const void*>(address),size);
+        return true;
+    } __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
+#else
+    std::memcpy(output,reinterpret_cast<const void*>(address),size);return true;
+#endif
+}
+using BossObservation=kharvox::CyberdemonSequenceObservation;
+bool readNativeSequencePlayer(uintptr_t& owner){
+    const auto image=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    static const bool supported=[&]{
+        uint64_t listField{};
+        constexpr unsigned char globalRead[]{0x48,0x8b,0x05,0x2c,0x50,0x7b,0x05};
+        unsigned char actual[sizeof(globalRead)]{};
+        return readBossSequenceBytes(image+0x3035f10,&listField,8)
+            &&listField==0x20000a5d48ull
+            &&readBossSequenceBytes(image+0x35a69d,actual,sizeof(actual))
+            &&!std::memcmp(actual,globalRead,sizeof(actual));
+    }();
+    uintptr_t game{},gameAgain{},vtable{},entries{},entriesAgain{};
+    int count{};
+    struct Managed {uint32_t id,check;uintptr_t entity;};
+    Managed player{},again{};
+    if(!supported||!readBossSequenceBytes(image+0x5b0f6d0,&game,8)||!game
+        ||!readBossSequenceBytes(game,&vtable,8)||vtable!=image+0x201e3d8
+        ||!readBossSequenceBytes(game+0xa5d50,&entries,8)||!entries
+        ||!readBossSequenceBytes(game+0xa5d58,&count,4)||count<1||count>4
+        ||!readBossSequenceBytes(entries,&player,sizeof(player))||!player.entity
+        ||player.id!=player.check||player.id==0x1fffffe
+        ||!readBossSequenceBytes(image+0x5b0f6d0,&gameAgain,8)||gameAgain!=game
+        ||!readBossSequenceBytes(game+0xa5d50,&entriesAgain,8)||entriesAgain!=entries
+        ||!readBossSequenceBytes(entries,&again,sizeof(again))
+        ||player.id!=again.id||player.entity!=again.entity||player.check!=again.check)return false;
+    owner=player.entity;return true;
+}
+// The map's camera-only twins transition need not bind idPlayer.syncMaster.
+// Discover its pre-spawned native sequence entities only when a known Hell Guards
+// player sequence first primes this owner. Do not scan the level every frame.
+BossObservation readHellGuardsMapCamera(uintptr_t owner,bool prime,char (&name)[128]){
+    const auto image=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    static const bool supported=[&]{
+        uint64_t spawnedField{},workingField{};
+        return readBossSequenceBytes(image+0x3035ad8,&spawnedField,8)
+            &&spawnedField==0x20000a54d0ull
+            &&readBossSequenceBytes(image+0x300f600,&workingField,8)
+            &&workingField==0x100004e98ull;
+    }();
+    if(!supported)return BossObservation::Inactive;
+    uintptr_t game{},vtable{};
+    const bool validGame=readBossSequenceBytes(image+0x5b0f6d0,&game,8)&&game
+        &&readBossSequenceBytes(game,&vtable,8)&&vtable==image+0x201e3d8;
+    // A null global game pointer is normal between DOOM update phases. It does
+    // not end a map cinematic whose validated native entity is still active.
+    struct Candidate {uintptr_t entity{},decl{};std::array<char,128> name{};};
+    static std::mutex mutex;
+    static uintptr_t cachedOwner{},cachedGame{};
+    static std::array<Candidate,8> candidates{};
+    static size_t candidateCount{};
+    static bool scanned{};
+    static ULONGLONG nextScan{};
+    std::lock_guard lock(mutex);
+    if(kharvox::shouldResetBossMapCameraScope(cachedOwner,cachedGame,owner,game,validGame)){
+        cachedOwner=owner;cachedGame=game;candidateCount=0;scanned=false;nextScan=0;
+    }
+    if(prime&&validGame&&owner&&!scanned&&GetTickCount64()>=nextScan){
+        nextScan=GetTickCount64()+500;
+        struct Managed {uint32_t id,check;uintptr_t entity;uint64_t remaining[2];};
+        uintptr_t entries{},again{};int count{},countAgain{};
+        if(!readBossSequenceBytes(game+0xa54d8,&entries,8)||!entries
+            ||!readBossSequenceBytes(game+0xa54e0,&count,4)||count<1||count>32768)
+            return BossObservation::Unknown;
+        std::vector<Managed> snapshot(static_cast<size_t>(count));
+        if(!readBossSequenceBytes(entries,snapshot.data(),snapshot.size()*sizeof(Managed))
+            ||!readBossSequenceBytes(game+0xa54d8,&again,8)||again!=entries
+            ||!readBossSequenceBytes(game+0xa54e0,&countAgain,4)||countAgain!=count)
+            return BossObservation::Unknown;
+        candidateCount=0;
+        for(const auto& ref:snapshot){
+            Candidate candidate{};uintptr_t text{};
+            if(!ref.entity||ref.id!=ref.check||ref.id==0x1fffffe
+                ||!readBossSequenceBytes(ref.entity,&vtable,8)||vtable!=image+0x21ab128
+                ||!readBossSequenceBytes(ref.entity+0x6d0,&candidate.decl,8)||!candidate.decl
+                ||!readBossSequenceBytes(candidate.decl+8,&text,8)||!text
+                ||!readBossSequenceBytes(text,candidate.name.data(),candidate.name.size()))continue;
+            const auto end=static_cast<const char*>(std::memchr(candidate.name.data(),0,candidate.name.size()));
+            if(!end||!kharvox::isHellGuardsCameraSequence(std::string_view(candidate.name.data(),end-candidate.name.data())))continue;
+            candidate.entity=ref.entity;
+            if(candidateCount<candidates.size())candidates[candidateCount++]=candidate;
+        }
+        scanned=std::any_of(candidates.begin(),candidates.begin()+candidateCount,[](const auto& candidate){
+            return std::string_view(candidate.name.data()).find("_twins_cine_")!=std::string_view::npos;
+        });
+        log("[BOSS-QUAD] r313 Hell Guards map camera candidates="+std::to_string(candidateCount));
+    }
+    // Re-read the native flag even within the same present: a scene can start
+    // after an earlier presentation query but before its first camera write.
+    bool unavailable=false;
+    for(size_t i=0;i<candidateCount;++i){
+        const auto& candidate=candidates[i];uintptr_t decl{};unsigned char working{};
+        if(!readBossSequenceBytes(candidate.entity,&vtable,8)||vtable!=image+0x21ab128
+            ||!readBossSequenceBytes(candidate.entity+0x6d0,&decl,8)||decl!=candidate.decl
+            ||!readBossSequenceBytes(candidate.entity+0x4e98,&working,1)){
+            unavailable=true;continue;
+        }
+        if(!kharvox::isActiveHellGuardsCameraSequence(candidate.name.data(),working))continue;
+        // Revalidate identity after the flag read; cached names cannot authorize a reused object.
+        if(!readBossSequenceBytes(candidate.entity+0x6d0,&decl,8)||decl!=candidate.decl){
+            unavailable=true;continue;
+        }
+        if(!validGame){
+            static std::atomic<bool> retainedLogged{};
+            if(!retainedLogged.exchange(true))log("[BOSS-QUAD] r313 active map camera retained across unavailable global game context");
+        }
+        std::memcpy(name,candidate.name.data(),sizeof(name));
+        return BossObservation::Active;
+    }
+    return unavailable?BossObservation::Unknown:BossObservation::Inactive;
+}
+
+BossObservation readCurrentBossSequenceAt(uintptr_t owner,uintptr_t referenceOffset,char (&name)[128]){
+    const auto image=reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    static const bool supported=[&]{
+        uint64_t masterField{},savedField{},declField{};
+        return readBossSequenceBytes(image+0x30aa120,&masterField,8)
+            &&readBossSequenceBytes(image+0x30aa1f8,&savedField,8)
+            &&readBossSequenceBytes(image+0x307b400,&declField,8)
+            &&masterField==0x200000d198ull&&savedField==0x200000da18ull
+            &&declField==0x8000006d0ull;
+    }();
+    if(!supported||!owner)return BossObservation::Unknown;
+    struct Managed {uint32_t id,check;uintptr_t entity;};
+    Managed master{},again{};
+    uintptr_t vtable{},decl{},text{};
+    if(!readBossSequenceBytes(owner+referenceOffset,&master,sizeof(master)))return BossObservation::Unknown;
+    if(!master.entity)return BossObservation::Inactive;
+    if(master.id!=master.check||master.id==0x1fffffe
+        ||!readBossSequenceBytes(master.entity,&vtable,8)||vtable!=image+0x21ab128
+        ||!readBossSequenceBytes(master.entity+0x6d0,&decl,8)||!decl
+        ||!readBossSequenceBytes(decl+8,&text,8)||!text)return BossObservation::Unknown;
+    if(!readBossSequenceBytes(text,name,sizeof(name))){
+        for(size_t i=0;i<sizeof(name);++i){
+            if(!readBossSequenceBytes(text+i,name+i,1))return BossObservation::Unknown;
+            if(!name[i])break;
+        }
+    }
+    const auto end=static_cast<const char*>(std::memchr(name,0,sizeof(name)));
+    if(!end||!readBossSequenceBytes(owner+referenceOffset,&again,sizeof(again))
+        ||master.id!=again.id||master.check!=again.check||master.entity!=again.entity)return BossObservation::Unknown;
+    return kharvox::isBossQuadSequence(std::string_view(name,end-name))
+        ?BossObservation::Active:BossObservation::Inactive;
+}
+}
+// DOOM reloads campaign game settings after initial process arguments.
+// Reassert Tutorials=OFF only if its exact native integer CVar can be
+// resolved safely; otherwise preserve DOOM-owned state (fail closed).
+void KharvoxCameraEnforceTutorialsDisabled() {
+    static const bool disabled=[] {
+        char value[8]{};
+        return GetEnvironmentVariableA("KHARVOX_DISABLE_TUTORIALS",
+            value,sizeof(value))==1&&value[0]=='1';
+    }();
+    if(!disabled||!KharvoxCameraWorldActive()||KharvoxCameraCutsceneActive())return;
+    static volatile LONG* tutorialValue{};
+    static unsigned long long retryAt{};
+    static bool unavailableLogged{};
+    if(!tutorialValue){
+        const auto now=GetTickCount64();
+        if(now<retryAt)return;
+        retryAt=now+15000;
+        tutorialValue=resolveVerifiedIntegerCvar("g_setting_tutorials",1);
+        if(!tutorialValue){
+            if(!unavailableLogged){
+                logGlorySlowmo("Tutorials native CVar unresolved; launch default requested, no unsafe writes");
+                unavailableLogged=true;
+            }
+            return;
+        }
+        logGlorySlowmo("native DOOM Tutorials CVar verified; maintaining OFF");
+    }
+    const LONG observed=InterlockedCompareExchange(tutorialValue,0,0);
+    if(observed==1){
+        InterlockedExchange(tutorialValue,0);
+        logGlorySlowmo("campaign/settings reload: native Tutorials reset OFF");
+    }
+}
+
+bool KharvoxCameraBossSequenceActive(){
+    char name[128]{};
+    uintptr_t owner{},master{};
+    // Read DOOM's native player list independently of the gameplay physics
+    // capture, which is deliberately invalidated during checkpoint loading.
+    const bool readable=readNativeSequencePlayer(owner)
+        &&readBossSequenceBytes(owner+0xd1a0,&master,sizeof(master));
+    auto observation=readable?readCurrentBossSequenceAt(owner,master?0xd198:0xda18,name)
+        :BossObservation::Unknown;
+    const bool prime=observation==BossObservation::Active&&kharvox::isHellGuardsQuadSequence(name);
+    char mapName[128]{};
+    const auto mapObservation=readHellGuardsMapCamera(owner,prime,mapName);
+    observation=kharvox::combineBossSequenceObservations(observation,mapObservation);
+    if(mapObservation==BossObservation::Active)std::memcpy(name,mapName,sizeof(name));
+    static std::mutex holdMutex;
+    static kharvox::CyberdemonSequenceHold hold;
+    bool active{};
+    {
+        std::lock_guard lock(holdMutex);
+        active=hold.update(observation,KharvoxCameraCurrentPresentSerial(),
+            KharvoxCameraLevelTransitionGeneration(),cutsceneActive.load(std::memory_order_acquire));
+    }
+    static std::atomic<bool> previous{};
+    if(previous.exchange(active,std::memory_order_acq_rel)!=active)
+        log(active?std::string("[BOSS-QUAD] r313 native boss sequence: ")+name
+            :"[BOSS-QUAD] r313 sequence ended/unavailable; automatic presentation restored");
+    return active;
+}
+
+bool KharvoxCameraLedgeTransitionActive() {
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    return owner && playerLedgeTransitionActive.load(std::memory_order_acquire)
+        && playerLedgeTransitionOwner.load(std::memory_order_acquire) == owner;
+}
+
+bool KharvoxCameraPlayerWeaponControlActive() {
+    constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    if (!playerControlClassifierSupported.load(std::memory_order_acquire)
+        || !worldCameraActive.load(std::memory_order_acquire)
+        || !playerPhysicsOriginValid.load(std::memory_order_acquire)
+        || !owner || owner > UINTPTR_MAX - inhibitFlagsOffset - sizeof(uint32_t))
+        return false;
+
+    const auto flagsAddress = reinterpret_cast<const uint32_t*>(
+        owner + inhibitFlagsOffset);
+    if (!readableMemory(flagsAddress, sizeof(*flagsAddress))) return false;
+#if defined(_MSC_VER)
+    __try {
+        return kharvox::playerWeaponControlAvailable(*flagsAddress);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#else
+    return kharvox::playerWeaponControlAvailable(*flagsAddress);
+#endif
+}
+
+bool KharvoxCameraApplyStoryFreeWalk(bool requested, bool eligible) {
+    // DOOM 6.66 reflected player field, validated at startup.
+    // The low two directional inhibit bits are known in related idTech;
+    // corroborate against this DOOM binary's live gameplay baseline AND
+    // a stable, independent cinematic transition before touching memory.
+    constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
+    static uintptr_t baselineOwner{};
+    static std::uint32_t baselineFlags{};
+    static bool baselineKnown{};
+    static bool wasRequested{};
+    static std::uint32_t candidateMask{};
+    static unsigned candidateFrames{};
+    static bool verifiedMovementBits{};
+    static unsigned long long nextReasonLogMs{};
+    const auto now=GetTickCount64();
+    const bool cutscene=KharvoxCameraCutsceneActive();
+    const uintptr_t owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    const bool classifier=playerControlClassifierSupported.load(
+        std::memory_order_acquire);
+    const bool ownerReady=classifier
+        &&playerPhysicsOriginValid.load(std::memory_order_acquire)
+        &&owner&&owner<=UINTPTR_MAX-inhibitFlagsOffset-sizeof(std::uint32_t);
+    volatile LONG* flagsAddress=ownerReady
+        ?reinterpret_cast<volatile LONG*>(owner+inhibitFlagsOffset):nullptr;
+    std::uint32_t current{};
+    const bool readable=flagsAddress
+        &&readableMemory(const_cast<const LONG*>(flagsAddress),sizeof(LONG))
+        &&readInterlockedLongSafely(flagsAddress,current);
+
+    if(!requested||!eligible||!cutscene) {
+        if(wasRequested)
+            log("[STORY-FREE-WALK] request OFF; DOOM resumes ownership of movement inhibition");
+        wasRequested=false;
+        candidateMask=0;
+        candidateFrames=0;
+        verifiedMovementBits=false;
+        if(readable&&!cutscene&&KharvoxCameraGameplayActive()
+            &&(current&kharvox::storyHorizontalInhibitMask)==0) {
+            baselineOwner=owner;
+            baselineFlags=current;
+            baselineKnown=true;
+        }
+        return false;
+    }
+    if(!wasRequested){
+        log("[STORY-FREE-WALK] request ON; checking native player movement-only inhibits");
+        wasRequested=true;
+        nextReasonLogMs=0;
+    }
+    const bool samePlayer=baselineKnown&&owner==baselineOwner;
+    if(!readable||!samePlayer
+        ||(baselineFlags&kharvox::storyHorizontalInhibitMask)!=0) {
+        if(now>=nextReasonLogMs) {
+            log(std::string("[STORY-FREE-WALK] fail closed: ")
+                +(readable?"no matching unrestricted gameplay baseline"
+                    :"native player inhibit flags unavailable"));
+            nextReasonLogMs=now+2500;
+        }
+        return false;
+    }
+    const std::uint32_t movementBits=
+        current&kharvox::storyHorizontalInhibitMask;
+    if(!movementBits) {
+        if(now>=nextReasonLogMs) {
+            log("[STORY-FREE-WALK] no horizontal inhibit bit observed; motion may be held by cinematic physics/anchor");
+            nextReasonLogMs=now+2500;
+        }
+        return verifiedMovementBits;
+    }
+    if(candidateMask!=movementBits) {
+        candidateMask=movementBits;
+        candidateFrames=1;
+    }else if(candidateFrames<6) {
+        ++candidateFrames;
+    }
+    if(candidateFrames<6) return false;
+    if(!kharvox::storyHorizontalWriteAllowed(
+            classifier,samePlayer,cutscene,baselineKnown,baselineFlags,current)
+        ||!writableMemory(const_cast<const LONG*>(flagsAddress),sizeof(LONG))) {
+        if(now>=nextReasonLogMs) {
+            log("[STORY-FREE-WALK] movement-specific write gate rejected; engine flags unchanged");
+            nextReasonLogMs=now+2500;
+        }
+        return false;
+    }
+    // Strictly horizontal inhibit 0x01 and 0x02, never all inhibit flags.
+    // The engine's other control, cutscene, and objective states remain intact.
+    if(!clearInterlockedMaskSafely(flagsAddress,movementBits)) {
+        log("[STORY-FREE-WALK] safe atomic horizontal inhibit clear FAILED");
+        return false;
+    }
+    if(!verifiedMovementBits) {
+        verifiedMovementBits=true;
+        std::ostringstream out;
+        out<<"[STORY-FREE-WALK] horizontal inhibit release APPLIED"
+            <<" before=0x"<<std::hex<<current
+            <<" mask=0x"<<movementBits
+            <<" baseline=0x"<<baselineFlags<<std::dec
+            <<" (walking still requires headset verification)";
+        log(out.str());
+    }
+    return true;
+}
+
+void KharvoxCameraServiceUninterruptedStory(bool active, bool stickMovement) {
+    // Reuse the narrowly validated movement-only idPlayer mask gate.
+    // Crucially: this never calls gameplay scripts or modifies player physics
+    // position, doors, weapons, camera animation, or mission state.
+    const bool requested=active&&stickMovement;
+    const bool attempted=KharvoxCameraApplyStoryFreeWalk(requested,active);
+    static unsigned long long lastProfile{};
+    static bool priorActive{};
+    static uintptr_t lastOwner{};
+    static float lastOrigin[3]{};
+    static bool priorOriginValid{};
+    const unsigned long long now=GetTickCount64();
+    if(!active){
+        if(priorActive)
+            log("[UNINTERRUPTED-STORY] cinematic ended; default engine controls restored");
+        priorActive=false;
+        lastProfile=0;
+        lastOwner=0;
+        priorOriginValid=false;
+        return;
+    }
+    const bool first=!priorActive;
+    priorActive=true;
+    if(!first&&lastProfile&&now-lastProfile<1500) return;
+    lastProfile=now;
+
+    constexpr uintptr_t offset=0x14C4C;
+    const uintptr_t owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    const bool metadata=playerControlClassifierSupported.load(std::memory_order_acquire);
+    const bool ownerOkay=metadata
+        &&playerPhysicsOriginValid.load(std::memory_order_acquire)
+        &&owner&&owner<=UINTPTR_MAX-offset-sizeof(LONG);
+    volatile LONG* address=ownerOkay
+        ?reinterpret_cast<volatile LONG*>(owner+offset):nullptr;
+    std::uint32_t flags{};
+    const bool flagsKnown=address
+        &&readableMemory(const_cast<const LONG*>(address),sizeof(LONG))
+        &&readInterlockedLongSafely(address,flags);
+    // Read snapshots maintained by the existing gameplay camera hook.
+    // Never invoke DOOM physics vtable methods from the XR input thread.
+    const auto serial=cameraPresentSerial.load(std::memory_order_acquire);
+    const auto captured=playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    const bool freshOrigin=ownerOkay&&captured&&serial>=captured
+        &&serial-captured<=2;
+    float origin[3]{};
+    if(freshOrigin)
+        for(int axis=0;axis<3;++axis)
+            origin[axis]=playerPhysicsOrigin[axis].load(std::memory_order_relaxed);
+    float displacement=-1.f;
+    if(freshOrigin&&priorOriginValid&&lastOwner==owner){
+        const float dx=origin[0]-lastOrigin[0];
+        const float dy=origin[1]-lastOrigin[1];
+        const float dz=origin[2]-lastOrigin[2];
+        displacement=std::sqrt(dx*dx+dy*dy+dz*dz);
+    }
+    priorOriginValid=freshOrigin;
+    lastOwner=owner;
+    if(freshOrigin)std::memcpy(lastOrigin,origin,sizeof(lastOrigin));
+    std::ostringstream out;
+    out<<"[UNINTERRUPTED-STORY] scene-hold"
+       <<" cutscene="<<static_cast<int>(cutsceneActive.load(std::memory_order_acquire))
+       <<" stick="<<static_cast<int>(stickMovement)
+       <<" playerMetadata="<<static_cast<int>(metadata)
+       <<" flagsKnown="<<static_cast<int>(flagsKnown)
+       <<" inhibit=0x"<<std::hex<<flags<<std::dec
+       <<" moveBits=0x"<<std::hex
+           <<(flags & kharvox::storyHorizontalInhibitMask)<<std::dec
+       <<" weaponControl="<<static_cast<int>(flagsKnown
+           &&kharvox::playerWeaponControlAvailable(flags))
+       <<" originFresh="<<static_cast<int>(freshOrigin)
+       <<" frameAge="<<(serial>=captured?serial-captured:0ull)
+       <<" displacementUnits="<<displacement
+       <<" horizontalRelease="<<static_cast<int>(attempted)
+       <<" generation="<<levelTransitionGeneration.load(std::memory_order_acquire);
+    log(out.str());
+    if(stickMovement&&!freshOrigin) {
+        log("[UNINTERRUPTED-STORY] player physics hook not refreshing during story; "
+            "input unlock alone cannot prove movement. Script/animation anchor investigation needed.");
+    }
+}
+
+void KharvoxCameraSetGaussChargeMovementOverride(bool active) {
+    constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
+    static std::atomic<std::uint32_t> normalFlags{};
+    static std::atomic<bool> normalFlagsValid{};
+    static std::atomic<std::uint32_t> chargeOnlyMask{};
+    static std::atomic<bool> previouslyActive{};
+    static std::atomic<std::uint32_t> candidateMask{};
+    static std::atomic<unsigned> candidateStableFrames{};
+
+    const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
+    if (!playerControlClassifierSupported.load(std::memory_order_acquire)
+        || !owner || owner > UINTPTR_MAX - inhibitFlagsOffset - sizeof(std::uint32_t)) {
+        normalFlagsValid.store(false, std::memory_order_release);
+        chargeOnlyMask.store(0, std::memory_order_release);
+        previouslyActive.store(false, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+        return;
+    }
+
+    auto flagsAddress = reinterpret_cast<volatile LONG*>(owner + inhibitFlagsOffset);
+    if (!readableMemory(const_cast<const LONG*>(flagsAddress), sizeof(LONG))) return;
+
+    std::uint32_t current{};
+    if (!readInterlockedLongSafely(flagsAddress, current)) {
+        chargeOnlyMask.store(0, std::memory_order_release);
+        return;
+    }
+
+    if (!active) {
+        normalFlags.store(current, std::memory_order_release);
+        normalFlagsValid.store(true, std::memory_order_release);
+        chargeOnlyMask.store(0, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+        if (previouslyActive.exchange(false, std::memory_order_acq_rel))
+            log("[GAUSS] slow-charge movement override released");
+        return;
+    }
+
+    previouslyActive.store(true, std::memory_order_release);
+    if (!normalFlagsValid.load(std::memory_order_acquire)) return;
+    const auto baseline = normalFlags.load(std::memory_order_acquire);
+    const std::uint32_t knownNonMovement =
+        kharvox::playerWeaponControlInhibitMask;
+    const auto discovered = (current & ~baseline) & ~knownNonMovement;
+    // Safe diagnostics only: report why Siege movement stays inhibited without
+    // guessing a physics address or clearing an unverified control bit.
+    static std::atomic<unsigned> diagnosticFrame{};
+    const unsigned observedFrame=diagnosticFrame.fetch_add(1,std::memory_order_relaxed);
+    if((observedFrame%240u)==0u){
+        std::ostringstream o;
+        o<<"[GAUSS] charge movement request baseline=0x"<<std::hex<<baseline
+         <<" current=0x"<<current<<" candidate=0x"<<discovered<<std::dec
+         <<" previouslyValidated=0x"<<std::hex
+         <<chargeOnlyMask.load(std::memory_order_acquire)<<std::dec
+         <<" (unconfirmed masks remain untouched)";
+        log(o.str());
+    }
+    // This RVA is reverse-engineered. Never remove arbitrary newly-seen bits:
+    // require exactly ONE repeatable Gauss-only flag over four consecutive
+    // input frames. Unconfirmed masks fail closed, leaving DOOM's native lock.
+    if (!discovered || (discovered & (discovered - 1)) != 0) {
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+        return;
+    }
+    if (candidateMask.load(std::memory_order_acquire) != discovered) {
+        candidateMask.store(discovered, std::memory_order_release);
+        candidateStableFrames.store(1, std::memory_order_release);
+        return;
+    }
+    const unsigned stable = candidateStableFrames.load(std::memory_order_acquire);
+    if (stable < 4) {
+        candidateStableFrames.store(stable + 1, std::memory_order_release);
+        return;
+    }
+    const auto oldMask = chargeOnlyMask.load(std::memory_order_acquire);
+    if (oldMask && oldMask != discovered) return;
+    if (!oldMask) {
+        chargeOnlyMask.store(discovered, std::memory_order_release);
+        log("[GAUSS] stable single-bit inhibit mask candidate corroborated before clearing");
+    }
+    if (!clearInterlockedMaskSafely(flagsAddress, discovered)) {
+        chargeOnlyMask.store(0, std::memory_order_release);
+        candidateMask.store(0, std::memory_order_release);
+        candidateStableFrames.store(0, std::memory_order_release);
+    }
+}
+
+bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]) {
+    if (!origin || !axis || !bodyCameraValid.load(std::memory_order_acquire)) return false;
+    for (int index = 0; index < 9; ++index)
+        axis[index] = bodyCameraAxis[index].load(std::memory_order_relaxed);
+    uintptr_t liveOwner{};
+    float livePhysicsOrigin[3]{};
+    const bool liveOffsetValid = stableBodyViewOffsetValid.load(std::memory_order_acquire);
+    const uintptr_t offsetOwner = stableBodyViewOffsetOwner.load(std::memory_order_relaxed);
+    if (liveOffsetValid && readLivePlayerPhysicsOrigin(livePhysicsOrigin, &liveOwner)
+        && liveOwner == offsetOwner) {
+        float viewOffsetLocal[3]{};
+        for (int index = 0; index < 3; ++index)
+            viewOffsetLocal[index] = stableBodyViewOffsetLocal[index].load(std::memory_order_relaxed);
+        for (int worldAxis = 0; worldAxis < 3; ++worldAxis)
+            origin[worldAxis] = livePhysicsOrigin[worldAxis]
+                + axis[worldAxis] * viewOffsetLocal[0]
+                + axis[3 + worldAxis] * viewOffsetLocal[1]
+                + axis[6 + worldAxis] * viewOffsetLocal[2];
+        return true;
+    }
+    for (int index = 0; index < 3; ++index)
+        origin[index] = bodyCameraOrigin[index].load(std::memory_order_relaxed);
+    return true;
+}
+
+bool KharvoxCameraGetHeadRenderPose(float origin[3], float axis[9]) {
+    if (!origin || !axis || !KharvoxCameraGetBodyPose(origin, axis)) return false;
+    const auto head = renderHeadPoseForBody(axis);
+    if (!head.valid) return true;
+
+    const float forward = head.forward;
+    const float lateral = head.lateral;
+    const float up = head.up;
+    for (int world = 0; world < 3; ++world)
+        origin[world] += axis[world] * forward
+            + axis[3 + world] * lateral
+            + axis[6 + world] * up;
+
+    applyResidualHeadOrientation(axis,head);
+    if(kharvox::pose_trace::active.load(std::memory_order_relaxed)){
+        kharvox::pose_trace::Event e{};e.kind=kharvox::pose_trace::HeadRenderCenter;
+        e.poseId=head.poseId;e.frame=KharvoxCameraCurrentPresentSerial();
+        for(int i=0;i<3;++i)e.data[i]=origin[i];
+        for(int i=0;i<9;++i)e.data[i+3]=axis[i];
+        kharvox::pose_trace::record(e);
+    }
+    return true;
+}
+
+bool KharvoxCameraGetHudCenterRenderPose(float origin[3], float axis[9]) {
+    if (!origin || !axis
+        || !hudRenderPoseValid.load(std::memory_order_acquire)) return false;
+
+    for (int attempt = 0; attempt < 4; ++attempt) {
+        const auto before = hudRenderPoseSequence.load(std::memory_order_acquire);
+        if (before & 1) continue;
+        for (int index = 0; index < 3; ++index) {
+            origin[index] = hudRenderAnchorOrigin[index].load(std::memory_order_relaxed);
+        }
+        for (int index = 0; index < 9; ++index) {
+            axis[index] = hudRenderAnchorAxis[index].load(std::memory_order_relaxed);
+        }
+        const auto snapshotPresent = hudRenderPosePresent.load(std::memory_order_relaxed);
+        const auto after = hudRenderPoseSequence.load(std::memory_order_acquire);
+        if (before != after || (after & 1)) continue;
+
+        const auto currentPresent = cameraPresentSerial.load(std::memory_order_acquire);
+        if (snapshotPresent == currentPresent) {
+            static std::atomic<bool> exactLogged{};
+            if (!exactLogged.exchange(true, std::memory_order_relaxed))
+                log("[HUD11-FLAT] exact same-render central camera snapshot active");
+            return true;
+        }
+
+        // vkQueuePresentKHR advances cameraPresentSerial before all late HUD
+        // front-end work has necessarily retired. In that short boundary the
+        // most recently published central camera is still the camera which
+        // authored this HUD work. Rejecting it switched one frame to the live
+        // body/head reconstruction, whose timing and body offset differ. Keep
+        // only this precisely bounded one-Present snapshot; anything genuinely
+        // older remains fail-closed and may use the normal fallback path.
+        const bool onePresentBoundary = currentPresent > snapshotPresent
+            && currentPresent - snapshotPresent == 1;
+        if (onePresentBoundary) {
+            static std::atomic<bool> boundaryLogged{};
+            if (!boundaryLogged.exchange(true, std::memory_order_relaxed))
+                log("[HUD15-POSE] one-Present camera boundary retained; live-pose source switch suppressed");
+            return true;
+        }
+
+        static std::atomic<bool> staleLogged{};
+        if (!staleLogged.exchange(true, std::memory_order_relaxed)) {
+            log("[HUD15-POSE] central render-camera snapshot older than one Present; rejected");
+        }
+        return false;
+    }
+    return false;
+}
+
+unsigned long long KharvoxCameraCurrentPresentSerial() {
+    return cameraPresentSerial.load(std::memory_order_acquire);
+}
+
+unsigned long long KharvoxCameraLevelTransitionGeneration() {
+    return levelTransitionGeneration.load(std::memory_order_acquire);
+}
+
+bool KharvoxCameraGetPlayerPhysicsOrigin(float origin[3]) {
+    if (!origin || !playerPhysicsOriginValid.load(std::memory_order_acquire)) return false;
+    for (int index = 0; index < 3; ++index)
+        origin[index] = playerPhysicsOrigin[index].load(std::memory_order_relaxed);
+    return true;
+}
+
+void KharvoxCameraSetStereoEye(float localXUnits, float fovXDegrees, float fovYDegrees, float opticalCenterYawDegrees, float opticalCenterPitchDegrees, bool enabled) {
+    stereoEyeOffset.store(localXUnits, std::memory_order_relaxed);
+    stereoFovX.store(fovXDegrees, std::memory_order_relaxed);
+    stereoFovY.store(fovYDegrees, std::memory_order_relaxed);
+    stereoOpticalCenterYaw.store(opticalCenterYawDegrees, std::memory_order_relaxed);
+    stereoOpticalCenterPitch.store(opticalCenterPitchDegrees, std::memory_order_relaxed);
+    stereoEyeEnabled.store(enabled, std::memory_order_release);
+    // The downstream cutscene FOV writer must use the same programmed eye,
+    // not restore an enclosing mono frustum after the camera hook.
+    if(enabled&&!kharvox::native::requested()){
+        interlockedFloatStore(&immersiveCinematicFovXBits,fovXDegrees);
+        interlockedFloatStore(&immersiveCinematicFovYBits,fovYDegrees);
+    }
+}
+
+void KharvoxCameraSetAnimatedSequenceActive(bool active) {
+    animatedSequenceActive.store(active, std::memory_order_release);
+    if(!active)
+        postCinematicGameplayCameraReturned.store(false,std::memory_order_release);
+}
+
+void KharvoxCameraSetAerRenderPair(int renderEye, bool enabled) {
+    // Only the pair-cache phase is remapped; the physical camera eye is not.
+    const int physicalEye = renderEye;
+    renderEye = kharvox::aerRenderPairPhase(renderEye);
+    std::lock_guard<std::mutex> guard(headPoseMutex);
+    const int normalizedEye = enabled && renderEye == 1 ? 1 : enabled ? 0 : -1;
+    const bool previousEnabled = aerRenderPairEnabled.load(std::memory_order_acquire);
+    if (enabled && (normalizedEye == 0 || !previousEnabled
+            || !aerHeadPairSnapshotValid.load(std::memory_order_acquire))) {
+        aerHeadPairSnapshotValid.store(false, std::memory_order_release);
+        aerHeadPairPose[0].store(headYaw.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[1].store(artificialTurnYaw.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[2].store(headPitch.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[3].store(headRoll.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[4].store(headForward.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[5].store(headLateral.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairPose[6].store(headUp.load(std::memory_order_relaxed), std::memory_order_relaxed);
+        aerHeadPairReferenceYaw=headReferenceBodyYaw.load();
+        aerHeadPairPoseId=headPoseId;
+        // The render worker can consume this ID as soon as headPoseMutex is
+        // released. Register its controller sample BEFORE publishing the pair,
+        // not in the later independent WeaponSetAerRenderPair call.
+        KharvoxWeaponRememberAerInput(aerHeadPairPoseId);
+        aerHeadPairReferenceValid=headReferenceBodyValid.load();
+        aerHeadPairTracked.store(headValid.load(std::memory_order_acquire), std::memory_order_relaxed);
+        aerHeadPairSnapshotValid.store(true, std::memory_order_release);
+    } else if (!enabled) {
+        aerHeadPairSnapshotValid.store(false, std::memory_order_release);
+    }
+    aerCameraPairPoses.begin(physicalEye, enabled);
+    aerRenderPairEnabled.store(enabled, std::memory_order_release);
+}
+
+void KharvoxCameraSetNativeStereoParameters(float halfEyeSeparationUnits, float screenSeparation) {
+    if (!nativeSameFrameInstalled.load(std::memory_order_acquire)
+        && !nativeTwoViewInstalled.load(std::memory_order_acquire)) return;
+    auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) return;
+    // idCVar float current values live at object + 0x34 in this executable.
+    constexpr uintptr_t worldSeparationCurrentRva = 0x5FB88A4;
+    constexpr uintptr_t screenSeparationCurrentRva = 0x5FB8944;
+    // Keep DOOM's native left/right target order. For an HMD the projection
+    // screen separation is zero; only desktop/3D-TV convergence uses a
+    // non-zero screen-space offset.
+    constexpr uintptr_t swapEyesCurrentRva = 0x5FB8A80;
+    LONG worldBits{}, screenBits{};
+    static_assert(sizeof(worldBits) == sizeof(halfEyeSeparationUnits));
+    std::memcpy(&worldBits, &halfEyeSeparationUnits, sizeof(worldBits));
+    std::memcpy(&screenBits, &screenSeparation, sizeof(screenBits));
+    InterlockedExchange(reinterpret_cast<volatile LONG*>(image + worldSeparationCurrentRva), worldBits);
+    InterlockedExchange(reinterpret_cast<volatile LONG*>(image + screenSeparationCurrentRva), screenBits);
+    InterlockedExchange(reinterpret_cast<volatile LONG*>(image + swapEyesCurrentRva), 0);
+    static std::atomic<bool> swapLogged{};
+    if (!swapLogged.exchange(true, std::memory_order_relaxed))
+        log("[Stereo] DOOM HMD projection screenSeparation=0 swapEyes=0");
+}
+
+void KharvoxCameraConfigureEye(VREye eye, float localXUnits, float fovXDegrees, float fovYDegrees,
+    float opticalCenterYawDegrees, float opticalCenterPitchDegrees) {
+    if (eye == VREye::Mono) return;
+    const size_t index = eye == VREye::Left ? 0 : 1;
+    configuredEyeOffset[index].store(localXUnits, std::memory_order_relaxed);
+    configuredEyeFovX[index].store(fovXDegrees, std::memory_order_relaxed);
+    configuredEyeFovY[index].store(fovYDegrees, std::memory_order_relaxed);
+    configuredEyeOpticalCenterYaw[index].store(opticalCenterYawDegrees, std::memory_order_relaxed);
+    configuredEyeOpticalCenterPitch[index].store(opticalCenterPitchDegrees, std::memory_order_relaxed);
+    configuredStereo.store(true, std::memory_order_release);
+}
+
+bool KharvoxSameFrameStereoInstalled() {
+    return sameFrameInstalled.load(std::memory_order_acquire);
+}
+
+VREye KharvoxCameraCurrentEye() {
+    return currentRenderEye.load(std::memory_order_acquire);
+}
+)return false;
+        decorated[size]=c;
+    }
+    if(size<7||size>=sizeof(decorated)-1||decorated[0]!='.'
+        ||decorated[1]!='?'||decorated[2]!='A'
+        ||(decorated[3]!='V'&&decorated[3]!='U'))return false;
+    const char* end=std::strstr(decorated+4,"@@");
+    if(!end)return false;
+    const auto n=static_cast<std::size_t>(end-(decorated+4));
+    if(n==0||n>=output.size())return false;
+    std::memcpy(output.data(),decorated+4,n);
+    output[n]='\0';
+    return true;
+}
+
 // DOOM has ALREADY resolved and null-checked this entity in FocusTracker.
 // The following native instruction is itself 'mov rdx,[rax]' to fetch the
 // entity's vtable. Observe that same pointer while it's valid on game thread.
