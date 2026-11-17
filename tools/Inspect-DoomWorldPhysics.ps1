@@ -60,7 +60,10 @@ public static class KharvoxPhysicsInspector2026 {
             if(s.Name!=".text")continue;
             int end=Math.Min(b.Length,s.Raw+s.Size);
             for(int at=s.Raw;at+7<=end;at++) {
-                if(b[at]!=0x48||b[at+1]!=0x8d||(b[at+2]&0xc7)!=0x05)continue;
+                // REX.W LEA including R8-R15 destination registers. The earlier
+                // scanner missed 4C 8D references, so "none" was inconclusive.
+                if((b[at]!=0x48&&b[at]!=0x4c)
+                    ||b[at+1]!=0x8d||(b[at+2]&0xc7)!=0x05)continue;
                 int ip=s.Rva+at-s.Raw;
                 if(ip+7+ReadInt(b,at+3)==target) {
                     found.Add(ip);if(found.Count>=24)return found;
@@ -69,12 +72,51 @@ public static class KharvoxPhysicsInspector2026 {
         }
         return found;
     }
+    // Print native code windows near known xrefs as RVA-addressed hex rows,
+    // so a disassembler can reconstruct function calls without game access.
+    // Never interpret arbitrary bytes here as a callable ABI.
+    static void AppendCodeWindow(StringBuilder output,byte[] b,
+        List<Sec> sections,int center,int before,int after) {
+        output.AppendLine("  Code window around "+H(center)
+            +" ("+before+" bytes before, "+after+" after):");
+        int start=(center-before)&~15;
+        int end=(center+after+15)&~15;
+        for(int ip=start;ip<end;ip+=16) {
+            int file=ToFile(ip,sections);
+            output.AppendLine("    "+H(ip)+": "+Dump(b,file,16));
+        }
+    }
+    // On-disk PE class RTTI/vtable tables often hold absolute VA pointers,
+    // not RIP-relative LEAs. Find exact aligned references as *data leads*.
+    static List<int> FindAbsoluteVaRefs(byte[] b,List<Sec> sections,long targetVa) {
+        var refs=new List<int>();
+        foreach(var sec in sections) {
+            if(sec.Name!=".rdata"&&sec.Name!=".data")continue;
+            int end=Math.Min(b.Length,sec.Raw+sec.Size);
+            int start=(sec.Raw+7)&~7;
+            for(int file=start;file+8<=end;file+=8) {
+                if(BitConverter.ToInt64(b,file)!=targetVa)continue;
+                refs.Add(sec.Rva+file-sec.Raw);
+                if(refs.Count>=24)return refs;
+            }
+        }
+        return refs;
+    }
+    static void AppendRefList(StringBuilder output,string label,List<int> refs) {
+        var values=new List<string>();
+        foreach(int addr in refs)values.Add(H(addr));
+        output.AppendLine(label+(values.Count==0
+            ?"none":String.Join(", ",values.ToArray())));
+    }
     public static string Scan(string path) {
         byte[] b=File.ReadAllBytes(path);
         if(b.Length<4096||b[0]!=0x4d||b[1]!=0x5a)throw new Exception("Not an MZ executable");
         int pe=ReadInt(b,0x3c);
         if(pe<0||pe+256>=b.Length||ReadInt(b,pe)!=0x4550)throw new Exception("Not a PE executable");
         int count=ReadShort(b,pe+6), pos=pe+24+ReadShort(b,pe+20);
+        bool pe64=ReadShort(b,pe+24)==0x20b;
+        long imageBase=pe64?BitConverter.ToInt64(b,pe+24+24)
+            :BitConverter.ToUInt32(b,pe+24+28);
         var ss=new List<Sec>();
         for(int i=0;i<count;i++){
             int o=pos+i*40;if(o+40>b.Length)break;
@@ -85,6 +127,7 @@ public static class KharvoxPhysicsInspector2026 {
         output.AppendLine("RIPSHIFT DOOM NATIVE PHYSICS - READ ONLY");
         output.AppendLine("Game executable bytes: "+b.Length);
         output.AppendLine("PE sections: "+ss.Count);
+        output.AppendLine("PE image base: 0x"+imageBase.ToString("X"));
         int[] calls={0xd48abf,0xd48b30};
         foreach(int r in calls) {
             int f=ToFile(r,ss), dest=-1;
@@ -107,13 +150,27 @@ public static class KharvoxPhysicsInspector2026 {
                 output.AppendLine("  string RVA="+H(r));
                 if(r<0)continue;
                 var refs=FindRipRefs(b,ss,r);
-                var items=new List<string>();
-                foreach(int addr in refs)items.Add(H(addr));
-                output.AppendLine("  code references (simple RIP LEA): "
-                    +(items.Count==0?"none":String.Join(", ",items.ToArray())));
+                AppendRefList(output,"  code references (RIP LEA): ",refs);
+                if(pe64)AppendRefList(output,"  absolute VA data refs: ",
+                    FindAbsoluteVaRefs(b,ss,imageBase+r));
+                // Exact code xref address windows only, no assumptions
+                // about the surrounding function or a vtable layout.
+                int shown=0;
+                foreach(int codeRef in refs) {
+                    if(shown++>=4)break;
+                    AppendCodeWindow(output,b,ss,codeRef,64,128);
+                }
             }
         }
-        output.AppendLine("All offsets are leads only. Never call an unverified address.");
+        output.AppendLine();
+        output.AppendLine("FOCUSED NATIVE CALLSITE WINDOWS");
+        int[] pivots={0xd48abf,0xd48b30,0x1637ce0,0xd48938,
+            0x122136,0x1b4224,0x1344d54,0x1cdb34,0x13c2374};
+        foreach(int pivot in pivots)
+            AppendCodeWindow(output,b,ss,pivot,96,192);
+        output.AppendLine();
+        output.AppendLine("All offsets are leads only. No method ABI or writable");
+        output.AppendLine("physics target is confirmed by a string or hex window.");
         return output.ToString();
     }
 }
