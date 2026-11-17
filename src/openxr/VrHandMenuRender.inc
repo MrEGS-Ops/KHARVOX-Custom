@@ -298,6 +298,19 @@ void paintVrHandMenu() {
         SelectObject(dc,regular);
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
         const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
+        // Keep active fine-tune/rotation status in the header, where it
+        // remains readable while the user is physically positioning the gun.
+        // The previous bottom strip was easy to miss during calibration.
+        if(weaponCapture){
+            const bool rotating=primary&&m.calibrationGripHeld;
+            fill(310,155,291,37,rotating?RGB(35,85,72):RGB(36,51,68));
+            SelectObject(dc,smallFont);
+            write(321,164,!m.previewValid?"WAITING FOR TRACKING"
+                :rotating?"GLOVE ROTATION ACTIVE"
+                :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
+                m.previewValid?RGB(108,235,161):RGB(239,197,116));
+            SelectObject(dc,regular);
+        }
         const auto kind=KharvoxWeaponKindFromKey(m.weapon());
         const bool heavy=kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun;
@@ -338,12 +351,6 @@ void paintVrHandMenu() {
                 write(49,381,"Align it with the weapon's support grip.",white);
                 write(49,415,"No primary-hand fine-tune controls.",muted);
             }
-            fill(35,473,564,42,primary&&m.calibrationGripHeld
-                ?RGB(35,85,72):RGB(36,51,68));
-            write(47,481,!m.previewValid?"WAITING FOR TRACKING"
-                :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
-                :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
-                m.previewValid?RGB(108,235,161):RGB(239,197,116));
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
                 ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
