@@ -299,6 +299,7 @@ struct State {
     XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
     kharvox::ControllerOnlySafetyState controllerOnlySafety{};
     kharvox::WorldGrabProbeState worldGrabProbe{};
+    kharvox::WorldGrabInspectorSnapshot worldGrabInspector{};
     // Primary-hand calibration only: freeze the NATIVE GUN's physical pose
     // while Grip is held, but sample the live weapon-hand rotation separately
     // for its independently editable glove. Never persisted.
