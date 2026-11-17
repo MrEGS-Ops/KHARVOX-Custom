@@ -384,7 +384,14 @@ void updateVrLiveZoneDraft(){
     if(!kharvox::vrLiveIsGunslingerCapture(target))return;
     const bool right=target==VrLiveCapture::HipRight
         ||target==VrLiveCapture::WheelRight;
-    const bool gripHeld=readFloatAction(right?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
+    // Live OpenXR action state is read here, independently of the local
+    // gameplay-frame input helper; this also works during menu calibration.
+    XrActionStateGetInfo gripInfo{XR_TYPE_ACTION_STATE_GET_INFO};
+    gripInfo.action=right?s.rightWeaponGrip:s.leftWeaponGrip;
+    XrActionStateFloat gripState{XR_TYPE_ACTION_STATE_FLOAT};
+    const bool gripHeld=XR_SUCCEEDED(
+        s.getActionStateFloat(s.session,&gripInfo,&gripState))
+        &&gripState.isActive&&gripState.currentState>.55f;
     m.gunslingerZoneMoving=gripHeld;
     if(!gripHeld||!s.trackingHeadPositionValid||!s.headZeroPositionValid)return;
     // No relative drag offset: the very first held tracked frame snaps the
