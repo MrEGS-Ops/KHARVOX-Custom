@@ -70,9 +70,43 @@ struct WorldGrabCatchGeometry {
     std::array<GrabVec3,3> localAxes{{
         {1.f,0.f,0.f},{0.f,1.f,0.f},{0.f,0.f,1.f}
     }};
+    // Optional real controller orientation in the SAME world basis.
+    // Geometry/hand contact can be observed without it, but a real
+    // hand-ANCHOR cannot be acquired until its axes are validated.
+    bool verifiedHandFrame{};
+    std::array<GrabVec3,3> handAxes{{
+        {1.f,0.f,0.f},{0.f,1.f,0.f},{0.f,0.f,1.f}
+    }};
 };
 inline float grabDot(GrabVec3 a,GrabVec3 b) noexcept {
     return a.x*b.x+a.y*b.y+a.z*b.z;
+}
+inline bool grabOrthonormalAxes(const std::array<GrabVec3,3>& axes) noexcept {
+    for(unsigned i=0;i<3;++i) {
+        if(!grabFinite(axes[i])||std::abs(grabDot(axes[i],axes[i])-1.f)>.02f)
+            return false;
+        for(unsigned j=0;j<i;++j)
+            if(std::abs(grabDot(axes[i],axes[j]))>.02f)
+                return false;
+    }
+    return true;
+}
+// A resolved native body can be anchored ONLY with a valid physical hand
+// pose. This describes a relative pose contract; it does not alter DOOM.
+// On game-thread apply: preserve original object state, suspend native
+// dynamics temporarily, move the SAME body, detach/restore on release.
+struct WorldGrabAnchorPose {
+    bool valid{};
+    GrabVec3 centreMeters{};
+    std::array<GrabVec3,3> bodyAxes{{
+        {1.f,0.f,0.f},{0.f,1.f,0.f},{0.f,0.f,1.f}
+    }};
+};
+inline GrabVec3 grabFromLocal(const std::array<GrabVec3,3>& axes,
+                             GrabVec3 local) noexcept {
+    return grabAdd(grabAdd(grabScale(axes[0],local.x),
+                           grabScale(axes[1],local.y)),
+                   grabScale(axes[2],local.z));
 }
 // Distance from hand to *surface of the item's oriented collider*.
 // For a 1 m cube contacted face-on this reaches zero at exactly 0.5 m
@@ -83,14 +117,7 @@ inline float grabHandToColliderGap(const WorldGrabCatchGeometry& shape) noexcept
         ||!grabFinite(shape.centreMeters)||!grabFinite(shape.handPositionMeters)
         ||!grabFinite(e)||e.x<=0.f||e.y<=0.f||e.z<=0.f)
         return INFINITY;
-    for(unsigned i=0;i<3;++i) {
-        const auto a=shape.localAxes[i];
-        if(!grabFinite(a)||std::abs(grabDot(a,a)-1.f)>.02f)
-            return INFINITY;
-        for(unsigned j=0;j<i;++j)
-            if(std::abs(grabDot(a,shape.localAxes[j]))>.02f)
-                return INFINITY;
-    }
+    if(!grabOrthonormalAxes(shape.localAxes))return INFINITY;
     const auto offset=grabSub(shape.handPositionMeters,shape.centreMeters);
     GrabVec3 nearest=shape.centreMeters;
     const float halfSizes[3]{e.x,e.y,e.z};
@@ -115,7 +142,7 @@ inline bool worldGrabCatchAtHand(const WorldGrabCatchGeometry& shape,
 // The ray SELECTS an object. Grip enables native-Vacuum-style travel to
 // DOOM's ORIGINAL target. The gripping hand is an interception point only.
 // Catch stops attraction before item collection; never pull toward the hand.
-enum class WorldGrabCommand {None,Acquire,VacuumAttract,Catch,CaughtHold,Drop,Throw};
+enum class WorldGrabCommand {None,Acquire,VacuumAttract,Catch,AnchorToHand,Drop,Throw};
 struct WorldGrabInput {
     bool enabled{},gameplay{},controllerTracked{},freeHand{},grip{},trigger{};
     bool weaponSupportBusy{},wheelBusy{},holsterBusy{};
@@ -134,11 +161,13 @@ struct WorldGrabOutput {
     // VACUUM_ATTRACT: let the selected object travel toward DOOM's existing
     // pickup destination, never the hand. CATCH: stop that native motion
     // when the object's measured collider contacts the gripping hand.
-    // CAUGHT_HOLD: keep the intercepted object available for trigger launch.
-    // All states must suppress native pickup consumption and never reclassify
-    // the entity. THROW: copy native grenade ballistics to the SAME body and
-    // restore its original physics after drop/throw. No grenade is spawned.
+    // ANCHOR_TO_HAND: keep the intercepted object's caught relative pose,
+    // updating its desired body transform from the verified hand transform.
+    // Never spring-pull the body to the hand or change Vacuum's destination.
+    // All states must suppress pickup consumption and never reclassify the
+    // entity. THROW/Drop detach and restore native physics state.
     WorldGrabGrenadeBallistics nativeGrenade{};
+    WorldGrabAnchorPose desiredAnchorPose{};
 };
 struct WorldGrabHand {
     // A controller touching an object may grab it at zero ray distance.
@@ -146,6 +175,8 @@ struct WorldGrabHand {
     static constexpr float kMaximumAcquireMeters=.90f;
     std::uint64_t entityId{},physicsBodyId{},levelGeneration{};
     bool previousGrip{},previousTrigger{},observedGrip{},caught{};
+    GrabVec3 centreOffsetInHand{};
+    std::array<GrabVec3,3> bodyAxesInHand{};
 
     WorldGrabOutput update(const WorldGrabInput& in,
                            std::uint64_t entityHeldByOtherHand=0) noexcept {
@@ -181,16 +212,54 @@ struct WorldGrabHand {
                 return out;
             }
             if(caught){
-                out.command=WorldGrabCommand::CaughtHold;
+                const auto& geometry=in.catchGeometry;
+                if(geometry.entityId!=entityId
+                    ||geometry.physicsBodyId!=physicsBodyId
+                    ||geometry.levelGeneration!=levelGeneration
+                    ||!geometry.verifiedHandFrame
+                    ||!grabFinite(geometry.handPositionMeters)
+                    ||!grabOrthonormalAxes(geometry.handAxes)){
+                    out.command=WorldGrabCommand::Drop;
+                    caught=false;
+                    entityId=physicsBodyId=levelGeneration=0;
+                    return out;
+                }
+                out.command=WorldGrabCommand::AnchorToHand;
+                out.desiredAnchorPose.valid=true;
+                out.desiredAnchorPose.centreMeters=grabAdd(
+                    geometry.handPositionMeters,
+                    grabFromLocal(geometry.handAxes,centreOffsetInHand));
+                for(unsigned j=0;j<3;++j)
+                    out.desiredAnchorPose.bodyAxes[j]=grabFromLocal(
+                        geometry.handAxes,bodyAxesInHand[j]);
                 return out;
             }
             // Measured real body bounds prove physical hand interception.
             // Do not redirect Vacuum toward the hand. A native adapter is
             // REQUIRED to enforce the stop while preserving the entity.
             if(worldGrabCatchAtHand(in.catchGeometry,
-                    entityId,physicsBodyId,levelGeneration)){
+                    entityId,physicsBodyId,levelGeneration)
+                &&in.catchGeometry.verifiedHandFrame
+                &&grabOrthonormalAxes(in.catchGeometry.handAxes)){
+                const auto& geom=in.catchGeometry;
+                // Lock the ORIGINAL surface-contact offset when captured.
+                // For a face-on 1 m box, this is +/-0.50 m, not zero.
+                const auto centreOffset=grabSub(
+                    geom.centreMeters,geom.handPositionMeters);
+                centreOffsetInHand={
+                    grabDot(centreOffset,geom.handAxes[0]),
+                    grabDot(centreOffset,geom.handAxes[1]),
+                    grabDot(centreOffset,geom.handAxes[2])
+                };
+                for(unsigned j=0;j<3;++j)
+                    bodyAxesInHand[j]={
+                        grabDot(geom.localAxes[j],geom.handAxes[0]),
+                        grabDot(geom.localAxes[j],geom.handAxes[1]),
+                        grabDot(geom.localAxes[j],geom.handAxes[2])
+                    };
                 caught=true;
                 out.command=WorldGrabCommand::Catch;
+                out.desiredAnchorPose={true,geom.centreMeters,geom.localAxes};
                 return out;
             }
             // No verified collider/consumption guard -> no Vacuum activation:
