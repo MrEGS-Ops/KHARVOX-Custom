@@ -170,12 +170,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{
-            "World Grab: CYAN AIM LASER (0.90m).",
-            "Points along the FREE controller AIM.",
-            "Visible in gameplay, hidden in menus.",
-            "Scene depth hides the beam behind props.",
-            "No verified barrel hit or physics yet.",
-            "Session-only and OFF by default."}}};
+            "WORLD GRAB: cyan free-hand laser.",
+            "Live Inspector shows native entity clues.",
+            "Grip reveals DOOM handles and class",
+            "where readable; physics unverified.",
+            "Object movement is NOT connected yet.",
+            "Experimental-only, OFF each launch."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }
