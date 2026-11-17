@@ -60,6 +60,10 @@ jobs:
             Write-Host "PASS: $script parses correctly"
           }
 
+      - name: Validate DOOM trace candidate hook signatures
+        shell: powershell
+        run: python tests/verify_native_world_grab_signatures.py
+
       - name: Compile read-only DOOM physics inspector
         shell: powershell
         run: |
