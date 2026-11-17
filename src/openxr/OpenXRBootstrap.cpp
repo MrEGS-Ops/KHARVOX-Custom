@@ -4444,6 +4444,40 @@ void updateGameplayActions(XrTime displayTime){
             vectorLength(subtractVector(s.leftGripController.position,s.trackingHeadPosition)),
             vectorLength(subtractVector(s.rightGripController.position,s.trackingHeadPosition))};
         const auto events=s.worldGrabProbe.update(in);
+        // This is a real DOOM FocusTracker observation, sampled on its
+        // native game thread. It is NOT yet a rigid-body hit: never issue
+        // Acquire or turn the laser red solely from these opaque fields.
+        KharvoxCameraEnableWorldGrabNativeFocusObservation(
+            in.enabled&&in.gameplay&&in.controllersReady);
+        if(in.enabled&&in.gameplay){
+            KharvoxWorldGrabNativeFocus nativeFocus{};
+            if(KharvoxCameraReadWorldGrabNativeFocus(nativeFocus)){
+                static unsigned long long lastFocusReportTick{};
+                static unsigned int lastIndexA{},lastIndexB{};
+                static bool lastRefPresent{};
+                static unsigned long long lastFocusLevel{};
+                const bool refPresent=nativeFocus.nativeReference!=0;
+                const unsigned long long now=GetTickCount64();
+                const bool changed=nativeFocus.indexA!=lastIndexA
+                    ||nativeFocus.indexB!=lastIndexB
+                    ||refPresent!=lastRefPresent
+                    ||nativeFocus.levelGeneration!=lastFocusLevel;
+                if((changed&&now-lastFocusReportTick>=1000)
+                    ||now-lastFocusReportTick>=6000){
+                    lastFocusReportTick=now;
+                    lastIndexA=nativeFocus.indexA;
+                    lastIndexB=nativeFocus.indexB;
+                    lastRefPresent=refPresent;
+                    lastFocusLevel=nativeFocus.levelGeneration;
+                    log("[WORLD-GRAB-NATIVE-FOCUS] engine FocusTracker"
+                        " rawIndexA="+std::to_string(nativeFocus.indexA)
+                        +" rawIndexB="+std::to_string(nativeFocus.indexB)
+                        +" opaqueReference="+(refPresent?std::string("present"):std::string("none"))
+                        +" level="+std::to_string(nativeFocus.levelGeneration)
+                        +" (not verified movable physics)");
+                }
+            }
+        }
         if(in.enabled)for(int hand=0;hand<2;++hand){
             if(events.started[hand])
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
