@@ -434,8 +434,17 @@ jobs:
             exit 0
           }
 
+          # User-requested known-good rollback checkpoint: Native #1256
+          # and Experimental #713 both passed for this exact immutable SHA.
+          # Never delete this run in the latest-five cleanup. The source is
+          # pinned separately on backup/world-grab-pre-integration-green-20261118.
+          $rollbackSha = "724a42710f4d650082d8ef934d9bbccc48945967"
           foreach ($run in ($runs | Select-Object -Skip $keep)) {
             if ([int64]$run.id -eq [int64]"${{ github.run_id }}") { continue }
+            if ($run.head_sha -eq $rollbackSha) {
+              Write-Host "Preserving user-requested green rollback build #$($run.run_number) SHA=$rollbackSha"
+              continue
+            }
             Write-Host "Deleting old successful build run #$($run.run_number) id=$($run.id)"
             Invoke-RestMethod -Method Delete -Headers $headers -Uri "$base/actions/runs/$($run.id)"
           }
