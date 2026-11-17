@@ -4508,18 +4508,20 @@ void updateGameplayActions(XrTime displayTime){
                 lastCandidateSequence[path]=candidate.sampleSequence;
                 const auto now=GetTickCount64();
                 auto& clue=inspector.paths[path];
+                // Clear any class label from an older candidate BEFORE
+                // overwriting the saved handle. Never ascribe an old
+                // vtable/class to a newly targeted entity.
+                const bool differentEntity=clue.hasResolved
+                    &&clue.nativeHandle!=candidate.nativeHandle;
+                if(differentEntity){
+                    clue.hasResolved=false;
+                    clue.vtableRva=0;
+                    clue.nativeClassName.clear();
+                }
                 clue.hasCandidate=true;
                 clue.nativeHandle=candidate.nativeHandle;
                 clue.levelGeneration=candidate.levelGeneration;
                 clue.lastCandidateMs=now;
-                // When a trace reports a different entity, old resolved
-                // class fingerprints must not be attributed to the new hit.
-                if(clue.hasResolved&&candidate.nativeHandle!=0
-                    &&clue.nativeHandle!=0
-                    &&clue.nativeHandle!=candidate.nativeHandle){
-                    clue.hasResolved=false;
-                    clue.nativeClassName.clear();
-                }
                 const bool changed=candidate.nativeHandle!=lastNativeCandidate[path];
                 if((changed&&now-lastCandidateReportTick[path]>=1000)
                     ||now-lastCandidateReportTick[path]>=6000){
@@ -4551,6 +4553,9 @@ void updateGameplayActions(XrTime displayTime){
                 lastResolvedSequence[path]=resolved.sampleSequence;
                 const auto now=GetTickCount64();
                 auto& clue=inspector.paths[path];
+                const bool changedEntity=!clue.hasResolved
+                    ||clue.nativeHandle!=resolved.nativeHandle
+                    ||clue.vtableRva!=resolved.vtableRva;
                 clue.hasResolved=true;
                 clue.hasCandidate=true;
                 clue.nativeHandle=resolved.nativeHandle;
@@ -4560,7 +4565,8 @@ void updateGameplayActions(XrTime displayTime){
                 clue.lastResolvedMs=now;
                 clue.lastCandidateMs=now;
                 clue.nativeClassName=resolved.nativeClassName.data();
-                inspector.lastEvent="DOOM resolved native entity; physics unverified";
+                if(changedEntity)inspector.lastEvent=
+                    "DOOM resolved entity (not a physics hit)";
                 const bool changed=resolved.vtableRva!=lastResolvedVtableRva[path]
                     ||resolved.nativeHandle!=lastResolvedHandle[path];
                 if((changed&&now-lastResolvedReportAt[path]>=1000)
@@ -4572,6 +4578,9 @@ void updateGameplayActions(XrTime displayTime){
                         +(path==0?"PRIMARY":"SECONDARY")
                         +" handle="+std::to_string(resolved.nativeHandle)
                         +" entityVtableRva="+std::to_string(resolved.vtableRva)
+                        +" class="+(resolved.nativeClassName[0]
+                          ?std::string(resolved.nativeClassName.data())
+                          :std::string("unknown"))
                         +" inDOOMImage="+(resolved.vtableInExecutable?"yes":"no")
                         +" level="+std::to_string(resolved.levelGeneration)
                         +" (DOOM entity, dynamic physics not verified)");
