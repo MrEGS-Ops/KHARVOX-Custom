@@ -253,6 +253,14 @@ inline bool levelFrontMenuConfirmed(bool frontMenuContext,
 inline constexpr bool levelStatsResetAllowed(bool recordArmed) noexcept {
     return !recordArmed;
 }
+// Exit to Desktop abandons an unfinished ranked run, never saving a PB.
+// No disk I/O or allocations: invoked during DLL_PROCESS_DETACH.
+inline void levelProgressAbandonOnDesktopExit(LevelProgress& progress) noexcept {
+    if(progress.armed&&!progress.completed){
+        progress.armed=false;
+        progress.time.activeLastSample=false;
+    }
+}
 inline void levelProgressDeath(LevelProgress& progress) noexcept {
     if(progress.armed&&!progress.completed&&progress.deaths<1000000000ULL)
         ++progress.deaths;
