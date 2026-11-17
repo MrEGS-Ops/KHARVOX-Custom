@@ -10,9 +10,8 @@ int main(){
     in.targetDistanceMeters=.6f;in.deltaSeconds=1.f/90.f;
     in.handForward={1.f,0.f,0.f};
     in.handPosition={0.f,0.f,0.f};in.objectPosition={.6f,0.f,0.f};
-    // Grip already down on enable: initialization must not auto-grab
+    // Grip already down on enable: initialization must not auto-grab.
     auto& left=controller.hands[0];
-    left.previousGrip=true;
     assert(controller.update(0,in).command==WorldGrabCommand::None);
     in.grip=false;controller.update(0,in);
     in.grip=true;

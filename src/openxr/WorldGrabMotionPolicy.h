@@ -52,7 +52,7 @@ struct WorldGrabHand {
     static constexpr float kMaximumAcquireMeters=.90f;
     static constexpr float kMaximumHoldSeparationMeters=1.40f;
     std::uint64_t entityId{},levelGeneration{};
-    bool previousGrip{},previousTrigger{},velocitySampleValid{};
+    bool previousGrip{},previousTrigger{},velocitySampleValid{},observedGrip{};
     GrabVec3 lastHandPosition{},smoothedHandVelocity{};
 
     WorldGrabOutput update(const WorldGrabInput& in,
@@ -64,7 +64,10 @@ struct WorldGrabHand {
         const bool allowed=in.enabled&&in.gameplay&&in.controllerTracked
             &&in.freeHand&&!in.weaponSupportBusy&&!in.wheelBusy
             &&!in.holsterBusy&&validPose;
-        const bool newGrip=in.grip&&!previousGrip;
+        // A newly enabled/reconnected controller must first report a Grip
+        // release before its next press can acquire an entity.
+        const bool newGrip=observedGrip&&in.grip&&!previousGrip;
+        observedGrip=true;
         const bool newTrigger=in.trigger&&!previousTrigger;
         previousGrip=in.grip;previousTrigger=in.trigger;
         const float dt=in.deltaSeconds;
