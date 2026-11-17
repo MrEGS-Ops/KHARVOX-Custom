@@ -5298,8 +5298,20 @@ void updateGameplayActions(XrTime displayTime){
     const bool worldInteractionFocus=kharvox::worldHandFocusContext(
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
+    // A gripped free hand becomes the native interaction-ray source ONLY
+    // inside the opted-in DEV experiment. The probe already excludes
+    // weapon bracing, shoulder/wheel ownership, menus and invalid tracking.
+    // Normal Hand Focus and USE are restored immediately on Grip release.
+    const bool worldGrabFreeHandFocus=kharvox::worldGrabBorrowNativeFocus(
+        s.vrHandMenu.experimentalWorldGrabProbeEnabled,gameplay,
+        worldInteractionFocus,
+        s.worldGrabProbe.held[s.weaponHandLeft?1u:0u],
+        syncAttackActive||s.chainsawKillLatched
+            ||KharvoxCameraLedgeTransitionActive()
+            ||KharvoxCameraBossSequenceActive());
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
-        ||(s.customMods.boxingGuard&&gameplay)){
+        ||(s.customMods.boxingGuard&&gameplay)
+        ||worldGrabFreeHandFocus){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -5339,16 +5351,20 @@ void updateGameplayActions(XrTime displayTime){
             s.boxingHeadFocus=false;
             log("[FOCUS] guard pose released -> Boxing Guard slowdown ended");
         }
-        const auto& controller=weaponController();
+        // Using an open-hand grab never repositions the weapon; it only
+        // lends the existing DOOM world-interaction ray the free-hand pose.
+        const auto& controller=worldGrabFreeHandFocus
+            ?supportGripController():weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
         // Native actions own HEAD focus for the duration of their authored
         // executions. Otherwise always use the current physical weapon
         // controller (left or right), no persistent toggle/RS dependency.
-        if(kharvox::useWeaponHandFocus(
+        if((worldGrabFreeHandFocus
+            ||kharvox::useWeaponHandFocus(
                 s.customMods.handFocusedRs,worldInteractionFocus,
                 syncAttackActive,
                 s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
-                KharvoxCameraBossSequenceActive())
+                KharvoxCameraBossSequenceActive()))
             &&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
