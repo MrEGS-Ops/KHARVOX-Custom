@@ -124,7 +124,7 @@ public static class KharvoxPhysicsInspector2026 {
                 Rva=ReadInt(b,o+12),Size=ReadInt(b,o+16),Raw=ReadInt(b,o+20)});
         }
         var output=new StringBuilder();
-        output.AppendLine("RIPSHIFT DOOM NATIVE PHYSICS - READ ONLY");
+        output.AppendLine("RIPSHIFT DOOM NATIVE PHYSICS - DEEP CODE WINDOWS v2 - READ ONLY");
         output.AppendLine("Game executable bytes: "+b.Length);
         output.AppendLine("PE sections: "+ss.Count);
         output.AppendLine("PE image base: 0x"+imageBase.ToString("X"));
