@@ -129,7 +129,7 @@ void paintVrHandMenu() {
         &&m.mode==kharvox::VrHandMenuMode::Calibrating;
     const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
         m.mode,m.liveCapture,m.devWeaponAlignment,
-        m.devHolsterZones,m.devControllerInputs);
+        m.devControllerInputs);
     if(disconnectView){
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
@@ -424,87 +424,23 @@ void paintVrHandMenu() {
                     RGB(84,233,214));
                 write(dx+18,dy+94,right?"RIGHT CONTROLLER"
                     :"LEFT CONTROLLER",muted);
-                if(m.devHolsterZones){
-                    // Draw an X/Y cross section of the LIVE, shifted
-                    // Gunslinger volume and the actual controller point.
-                    // A separate depth check ensures the indicator reflects
-                    // all THREE axes, not just a misleading 2D box.
-                    if(tracked){
-                        const auto hand=controllerRelativeToBodyTrackingOrigin(
-                            grip).position;
-                        const auto head=positionRelativeToBodyTrackingOrigin(
-                            s.trackingHeadPosition);
-                        const kharvox::VrLivePoint point{
-                            right?hand.x-head.x:head.x-hand.x,
-                            hand.y-head.y,hand.z-head.z};
-                        const auto shift=hip?s.vrLiveSettings.hipShift[side]
-                            :s.vrLiveSettings.wheelShift[side];
-                        const auto lo=hip
-                            ?kharvox::VrLivePoint{.12f,-1.04f,.02f}
-                            :kharvox::VrLivePoint{-.04f,-.18f,.015f};
-                        const auto hi=hip
-                            ?kharvox::VrLivePoint{.51f,-.48f,.43f}
-                            :kharvox::VrLivePoint{.44f,.36f,.60f};
-                        const bool inside=kharvox::vrLiveInsideBounds(
-                            point,lo,hi,shift);
-                        const bool depth=point.z>=lo.z+shift.z
-                            &&point.z<=hi.z+shift.z;
-                        write(dx+18,dy+124,inside?"INSIDE ZONE"
-                            :"OUTSIDE ZONE",inside
-                                ?RGB(108,235,161):RGB(255,204,128));
-                        const float centerX=(lo.x+hi.x)*.5f+shift.x;
-                        const float centerY=(lo.y+hi.y)*.5f+shift.y;
-                        const int x0=dx+152+static_cast<int>(
-                            (lo.x+shift.x-centerX)*230.f);
-                        const int x1=dx+152+static_cast<int>(
-                            (hi.x+shift.x-centerX)*230.f);
-                        const int y0=dy+228-static_cast<int>(
-                            (hi.y+shift.y-centerY)*180.f);
-                        const int y1=dy+228-static_cast<int>(
-                            (lo.y+shift.y-centerY)*180.f);
-                        fill(x0,y0,x1-x0,3,RGB(84,233,214));
-                        fill(x0,y1-3,x1-x0,3,RGB(84,233,214));
-                        fill(x0,y0,3,y1-y0,RGB(84,233,214));
-                        fill(x1-3,y0,3,y1-y0,RGB(84,233,214));
-                        const int px=std::clamp(dx+152+static_cast<int>(
-                            (point.x-centerX)*230.f),dx+19,dx+dw-19);
-                        const int py=std::clamp(dy+228-static_cast<int>(
-                            (point.y-centerY)*180.f),dy+154,dy+312);
-                        fill(px-6,py-6,13,13,inside
-                            ?RGB(108,235,161):RGB(255,204,128));
-                        write(dx+18,dy+325,depth?"DEPTH (Z): IN RANGE"
-                            :"DEPTH (Z): OUT OF RANGE",depth
-                                ?RGB(108,235,161):RGB(255,204,128));
-                        std::ostringstream z;
-                        z<<std::fixed<<std::setprecision(2)
-                            <<"Z "<<point.z<<"m   ["
-                            <<lo.z+shift.z<<", "<<hi.z+shift.z<<"]";
-                        write(dx+18,dy+354,z.str(),muted);
-                    }else{
-                        write(dx+18,dy+147,"WAITING FOR TRACKING",RGB(255,204,128));
-                        write(dx+18,dy+183,"Keep the matching controller",white);
-                        write(dx+18,dy+216,"and headset tracked.",white);
-                    }
-                }
                 if(m.devControllerInputs){
                     const auto& sample=m.devInput;
                     auto on=[](bool value){return value?"ON":"off";};
-                    const int top=m.devHolsterZones?dy+382:dy+155;
+                    const int top=dy+155;
                     write(dx+18,top,"R TRIGGER: "+std::string(on(sample.rightTrigger))
                         +"   L: "+on(sample.leftTrigger),RGB(84,233,214));
                     write(dx+18,top+27,"GRIP: "+std::string(on(sample.weaponGrip))
                         +"   L3: "+on(sample.leftClick)
                         +"   R3: "+on(sample.rightClick),white);
-                    if(!m.devHolsterZones){
-                        write(dx+18,top+57,"A: "+std::string(on(sample.select))
-                            +"   B: "+on(sample.back),white);
-                        std::ostringstream sticks;
-                        sticks<<std::fixed<<std::setprecision(2)
-                            <<"LEFT STICK "<<sample.leftStickX<<", "
-                            <<sample.leftStickY;
-                        write(dx+18,top+90,sticks.str(),muted);
-                        write(dx+18,top+138,"Input is sampled live.",muted);
-                    }
+                    write(dx+18,top+57,"A: "+std::string(on(sample.select))
+                        +"   B: "+on(sample.back),white);
+                    std::ostringstream sticks;
+                    sticks<<std::fixed<<std::setprecision(2)
+                        <<"LEFT STICK "<<sample.leftStickX<<", "
+                        <<sample.leftStickY;
+                    write(dx+18,top+90,sticks.str(),muted);
+                    write(dx+18,top+138,"Input is sampled live.",muted);
                 }
             }
         }
