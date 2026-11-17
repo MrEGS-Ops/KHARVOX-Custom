@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include "WorldGrabTargetPolicy.h"
 
 // Pure VR-to-physics *intent* stage. No DOOM pointers, CVar changes, save writes,
 // entity scans or physics calls are permitted here. A separately verified
@@ -37,21 +38,23 @@ enum class WorldGrabCommand {None,Acquire,Follow,Drop,Throw};
 struct WorldGrabInput {
     bool enabled{},gameplay{},controllerTracked{},freeHand{},grip{},trigger{};
     bool weaponSupportBusy{},wheelBusy{},holsterBusy{};
-    bool verifiedBarrel{}; // only native class + entity-definition checks can set this
-    std::uint64_t levelGeneration{},entityId{}; // nonzero generation-bound identity
+    // Generic verified native physics hit: no class-name or mesh whitelist.
+    WorldGrabPhysicsHit hit{};
+    std::uint64_t levelGeneration{};
     GrabVec3 handPosition{},handForward{},objectPosition{},objectVelocity{};
     float targetDistanceMeters{},deltaSeconds{};
 };
 struct WorldGrabOutput {
     WorldGrabCommand command{WorldGrabCommand::None};
-    std::uint64_t entityId{};
+    std::uint64_t entityId{},physicsBodyId{};
     GrabVec3 velocity{}; // desired object velocity in metres/sec, NOT a physics write
 };
 struct WorldGrabHand {
-    static constexpr float kMinimumAcquireMeters=.30f;
+    // A controller touching an object may grab it at zero ray distance.
+    static constexpr float kMinimumAcquireMeters=0.f;
     static constexpr float kMaximumAcquireMeters=.90f;
     static constexpr float kMaximumHoldSeparationMeters=1.40f;
-    std::uint64_t entityId{},levelGeneration{};
+    std::uint64_t entityId{},physicsBodyId{},levelGeneration{};
     bool previousGrip{},previousTrigger{},velocitySampleValid{},observedGrip{};
     GrabVec3 lastHandPosition{},smoothedHandVelocity{};
 
@@ -87,11 +90,12 @@ struct WorldGrabHand {
         }
         if(entityId) {
             out.entityId=entityId;
+            out.physicsBodyId=physicsBodyId;
             if(!allowed||!in.grip||in.levelGeneration!=levelGeneration
                 ||grabLength(grabSub(in.handPosition,in.objectPosition))
                     >kMaximumHoldSeparationMeters) {
                 out.command=WorldGrabCommand::Drop;
-                entityId=levelGeneration=0;
+                entityId=physicsBodyId=levelGeneration=0;
                 return out;
             }
             if(newTrigger) {
@@ -100,7 +104,7 @@ struct WorldGrabHand {
                 out.velocity=grabClampLength(grabAdd(
                     grabScale(smoothedHandVelocity,1.7f),
                     grabScale(forward,6.f)),14.f);
-                entityId=levelGeneration=0;
+                entityId=physicsBodyId=levelGeneration=0;
                 return out;
             }
             out.command=WorldGrabCommand::Follow;
@@ -112,15 +116,17 @@ struct WorldGrabHand {
                     grabScale(smoothedHandVelocity,.35f)),8.f);
             return out;
         }
-        if(!allowed||!newGrip||!in.verifiedBarrel||!in.entityId
-            ||in.entityId==entityHeldByOtherHand
-            ||!std::isfinite(in.targetDistanceMeters)
-            ||in.targetDistanceMeters<kMinimumAcquireMeters
-            ||in.targetDistanceMeters>kMaximumAcquireMeters) return out;
-        entityId=in.entityId;
+        if(!allowed||!newGrip
+            ||!worldGrabPhysicsEligible(in.hit,in.levelGeneration,
+                kMaximumAcquireMeters)
+            ||in.hit.distanceMeters<kMinimumAcquireMeters
+            ||in.hit.entityId==entityHeldByOtherHand) return out;
+        entityId=in.hit.entityId;
+        physicsBodyId=in.hit.physicsBodyId;
         levelGeneration=in.levelGeneration;
         out.command=WorldGrabCommand::Acquire;
         out.entityId=entityId;
+        out.physicsBodyId=physicsBodyId;
         return out;
     }
 
