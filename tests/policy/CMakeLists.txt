@@ -165,3 +165,13 @@ else()
   target_compile_options(KharvoxWorldGrabProbeTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME world-grab-input-probe COMMAND KharvoxWorldGrabProbeTests)
+
+# Guard native idHands grip pivots against scripted arcade-terminal outliers.
+add_executable(KharvoxWeaponPivotOutlierTests ../weapon_pivot_outlier_tests.cpp)
+target_compile_features(KharvoxWeaponPivotOutlierTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWeaponPivotOutlierTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWeaponPivotOutlierTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME weapon-pivot-outlier-recovery COMMAND KharvoxWeaponPivotOutlierTests)

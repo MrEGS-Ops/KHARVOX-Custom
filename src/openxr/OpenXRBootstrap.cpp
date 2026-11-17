@@ -2583,6 +2583,21 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
+    // The arcade terminal sometimes leaves the normal gameplay/control
+    // classifier asserted. Also recover when the native weapon GRIP joint
+    // itself demonstrates a large, then restored, scripted displacement.
+    if(KharvoxWeaponConsumeScriptedPivotRecovery()){
+        KharvoxWeaponResetCalibration();
+        s.weaponCalibrated=false;
+        s.weaponTrackingHeld=false;
+        s.lastWeaponRenderedValid=false;
+        s.primaryVisualLocked=false;
+        s.supportVisualLocked=false;
+        s.heavyModeHandoff={};
+        s.twoHandLatched=false;
+        s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+        log("[WEAPON-POSE] post-minigame joint recovered: runtime mount rebuilt; saved grips unchanged");
+    }
     const bool worldInput=!controllerOnlyLocked.load(std::memory_order_acquire)
         &&KharvoxCameraGameplayActive()
         &&!KharvoxWeaponCollectibleAnimationActive()
