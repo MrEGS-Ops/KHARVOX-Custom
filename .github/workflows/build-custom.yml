@@ -64,7 +64,7 @@ jobs:
         shell: powershell
         run: |
           & ./tools/Inspect-DoomWorldPhysics.ps1 -ValidateOnly
-          if ($LASTEXITCODE -ne 0) { throw "Physics inspector compile check failed" }
+          if (-not $?) { throw "Physics inspector compile check failed" }
 
       - name: Test independent KHARVOX resource mod generator
         shell: powershell
