@@ -28,6 +28,17 @@ kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
+ 
+// Read-only observation of DOOM's existing FocusTracker selection state.
+// These are *opaque* native fields, NOT a validated physics entity hit.
+// Does not enable dev CVars, issue extra traces, or write entity memory.
+struct KharvoxWorldGrabNativeFocus {
+    unsigned int indexA{},indexB{};
+    unsigned long long nativeReference{},levelGeneration{},sampleSequence{};
+};
+void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled);
+bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample);
+
 void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
     bool requested, bool active);
