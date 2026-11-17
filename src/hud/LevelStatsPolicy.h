@@ -165,22 +165,93 @@ inline bool levelProgressSetMap(LevelProgress& progress,
     // Merely discovering/choosing a map never starts an attempt.
     return true;
 }
-// Ranked level attempts use real monotonic elapsed time, not the ordinary
-// gameplay-only clock. Menus, cinematics, dialogue, death/reloads and gaps
-// between XR frames all count. ONLY the real DOOM Pause session suspends it.
-// Keep the standalone Campaign and Session clocks on their original policy.
-inline void levelProgressAdvance(LevelProgress& progress,
+// Competitive and live-level clocks use true monotonic elapsed time. Hayden
+// dialogue, cutscenes, Mod Menu, deaths and checkpoint loads all count;
+// ONLY native DOOM Pause suspends them. Regular Campaign/Session timers retain
+// their original playable-gameplay and frame-cap policy.
+inline void advanceLevelElapsedTime(CampaignRunTime& time,
     bool nativeGamePaused,std::uint64_t nowMs) noexcept {
-    if(!progress.armed||progress.completed)return;
-    auto& time=progress.time;
     if(time.activeLastSample&&!nativeGamePaused&&time.lastSampleMs
         &&nowMs>time.lastSampleMs){
-        // Never clamp ranked run time to a rendering frame duration: that
-        // would let a frozen renderer/headset or script lock shorten records.
         time.elapsedMs+=nowMs-time.lastSampleMs;
     }
     time.lastSampleMs=nowMs;
     time.activeLastSample=!nativeGamePaused;
+}
+inline void levelProgressAdvance(LevelProgress& progress,
+    bool nativeGamePaused,std::uint64_t nowMs) noexcept {
+    if(!progress.armed||progress.completed)return;
+    advanceLevelElapsedTime(progress.time,nativeGamePaused,nowMs);
+}
+// Separate live HUD measurements from the opt-in ranked record attempt.
+// Showing LEVEL TIME/LEVEL DEATHS must never arm a record or save one.
+struct LevelLiveStats {
+    CampaignRunTime time{};
+    std::uint64_t deaths{};
+    std::uint64_t observedSessionDeaths{};
+    std::uint64_t generationAtCompletion{};
+    bool started{};
+    bool awaitingNextLevel{};
+    bool endMenuWasVisible{};
+};
+inline void levelLiveStart(LevelLiveStats& live,std::uint64_t nowMs,
+    std::uint64_t sessionDeaths) noexcept {
+    live=LevelLiveStats{};
+    live.started=true;
+    live.observedSessionDeaths=sessionDeaths;
+    live.time.lastSampleMs=nowMs;
+    live.time.activeLastSample=true;
+}
+inline void levelLiveResetCounters(LevelLiveStats& live,std::uint64_t nowMs,
+    std::uint64_t sessionDeaths) noexcept {
+    if(!live.started)return;
+    resetCampaignRunTime(live.time);
+    live.time.lastSampleMs=nowMs;
+    live.time.activeLastSample=true;
+    live.deaths=0;
+    live.observedSessionDeaths=sessionDeaths;
+}
+inline void levelLiveObserveDeaths(LevelLiveStats& live,
+    std::uint64_t sessionDeaths) noexcept {
+    if(!live.started)return;
+    if(sessionDeaths>live.observedSessionDeaths){
+        const auto added=(std::min)(
+            sessionDeaths-live.observedSessionDeaths,1000000000ULL-live.deaths);
+        live.deaths+=added;
+    }
+    // An explicit DEV session-deaths reset can reduce the source counter.
+    live.observedSessionDeaths=sessionDeaths;
+}
+inline void levelLiveAdvance(LevelLiveStats& live,
+    bool nativeGamePaused,std::uint64_t nowMs) noexcept {
+    if(live.started&&!live.awaitingNextLevel)
+        advanceLevelElapsedTime(live.time,nativeGamePaused,nowMs);
+}
+inline void levelLiveObserveEndMenu(LevelLiveStats& live,
+    bool endMenuVisible,std::uint64_t levelGeneration) noexcept {
+    if(endMenuVisible&&!live.endMenuWasVisible&&live.started){
+        live.awaitingNextLevel=true;
+        live.generationAtCompletion=levelGeneration;
+    }
+    live.endMenuWasVisible=endMenuVisible;
+}
+inline bool levelLiveNextLevelReady(const LevelLiveStats& live,
+    bool gameplay,bool endMenuVisible,std::uint64_t levelGeneration) noexcept {
+    return live.started&&live.awaitingNextLevel&&gameplay&&!endMenuVisible
+        &&levelGeneration!=live.generationAtCompletion;
+}
+// DOOM's current level generation also changes on checkpoint reloads. Do
+// NOT treat generation alone as a new level, or a death erases live stats.
+inline constexpr std::uint64_t kLevelFrontMenuCancelDelayMs=10000ULL;
+inline bool levelFrontMenuConfirmed(bool frontMenuContext,
+    std::uint64_t nowMs,std::uint64_t& candidateSinceMs) noexcept {
+    if(!frontMenuContext){candidateSinceMs=0;return false;}
+    if(!candidateSinceMs){candidateSinceMs=nowMs;return false;}
+    return nowMs>=candidateSinceMs
+        &&nowMs-candidateSinceMs>=kLevelFrontMenuCancelDelayMs;
+}
+inline constexpr bool levelStatsResetAllowed(bool recordArmed) noexcept {
+    return !recordArmed;
 }
 inline void levelProgressDeath(LevelProgress& progress) noexcept {
     if(progress.armed&&!progress.completed&&progress.deaths<1000000000ULL)

@@ -482,8 +482,10 @@ struct State {
     kharvox::CampaignRunTime campaignRunTime{};
     kharvox::CampaignRunTime sessionRunTime{}; // never persisted, fresh at process launch
     kharvox::LevelProgress levelProgress{};
+    kharvox::LevelLiveStats levelLiveStats{};
     kharvox::LevelRecords levelRecords{};
     std::uint64_t observedSessionDeaths{};
+    std::uint64_t levelFrontMenuCandidateSinceMs{};
     bool levelRecordsLoaded{};
     std::string lastCompletedMissionKey; // only for LAST LEVEL BEST HUD readout
     std::uint64_t campaignRunTimeLastSavedMs{};
@@ -3385,34 +3387,58 @@ bool resetCampaignRunTimeSaved(){
     s.campaignRunTime=previous;
     return false;
 }
-// Ranked attempts count wall-clock time through RIPSHIFT menus, cutscenes,
-// Hayden dialogue locks, death/reload and controller disconnects. The native
-// DOOM Pause session is the sole exception; gameplay-eligibility still drives
-// the ordinary Campaign and Session clocks.
-void serviceLevelStats(bool gameplay,std::uint64_t now) {
+// Live level HUD stats are always measured after first playable gameplay;
+// opt-in ranked attempts keep their own independent timer/death totals. Neither
+// can be shortened by the RIPSHIFT menu, Hayden, death or checkpoint loading.
+void serviceLevelStats(bool levelPlayable,bool frontMenuContext,std::uint64_t now) {
     auto& progress=s.levelProgress;
+    auto& live=s.levelLiveStats;
     const auto deaths=KharvoxHudCampaignSessionDeaths();
+    const auto generation=KharvoxCameraLevelTransitionGeneration();
+    const bool completedMenu=KharvoxHudEndOfLevelMenuActive();
+    const bool nativePause=KharvoxHudPauseMenuActive();
+    // A short transition/loading quad isn't proof of the title screen.
+    // Only a sustained, normal front-menu presentation cancels an attempt.
+    const bool returnedToMainMenu=kharvox::levelFrontMenuConfirmed(
+        frontMenuContext,now,s.levelFrontMenuCandidateSinceMs);
+    if(returnedToMainMenu&&(progress.armed||live.started)){
+        if(progress.armed)
+            log("[LEVEL-STATS] unfinished ranked attempt cancelled at main menu; no record saved");
+        if(live.started)
+            log("[LEVEL-STATS] independent live level HUD reset at main menu");
+        progress=kharvox::LevelProgress{};
+        live=kharvox::LevelLiveStats{};
+        s.observedSessionDeaths=deaths;
+        return;
+    }
+    // Live counters collect even while both HUD toggles are hidden. Starting
+    // them never chooses a mission, arms a record or modifies saved PBs.
+    if(!live.started&&levelPlayable)
+        kharvox::levelLiveStart(live,now,deaths);
+    if(kharvox::levelLiveNextLevelReady(live,levelPlayable,completedMenu,
+        generation)){
+        kharvox::levelLiveStart(live,now,deaths);
+        log("[LEVEL-STATS] new completed-to-next-level transition; live timer/deaths reset");
+    }
+    kharvox::levelLiveObserveDeaths(live,deaths);
+    kharvox::levelLiveAdvance(live,nativePause,now);
+    kharvox::levelLiveObserveEndMenu(live,completedMenu,generation);
     if(progress.armed&&!progress.completed&&deaths>s.observedSessionDeaths){
-        const auto increment=std::min<std::uint64_t>(
+        const auto increment=(std::min)<std::uint64_t>(
             deaths-s.observedSessionDeaths,1000000000ULL-progress.deaths);
         progress.deaths+=increment;
     }
-    s.observedSessionDeaths=deaths; // handles an explicit DEV session reset
-    const bool completedMenu=KharvoxHudEndOfLevelMenuActive();
-    // Advance BEFORE disarming the run on the end-of-level screen. The
-    // last cinematics/loading transition and its final frame must count.
-    // The native pause latch remains active in pause child settings screens.
-    kharvox::levelProgressAdvance(progress,KharvoxHudPauseMenuActive(),now);
+    s.observedSessionDeaths=deaths;
+    // Advance BEFORE disarming on the end-level results screen. The last
+    // scripted/cinematic frame must count toward the ranked record.
+    kharvox::levelProgressAdvance(progress,nativePause,now);
     if(completedMenu&&!progress.endMenuWasVisible&&progress.armed){
         SYSTEMTIME local{};GetLocalTime(&local);
         const auto date=std::uint32_t(local.wYear)*10000u
             +std::uint32_t(local.wMonth)*100u+std::uint32_t(local.wDay);
         const bool ranked=kharvox::levelProgressComplete(
             progress,s.levelRecords,now,date);
-        progress.generationAtCompletion=KharvoxCameraLevelTransitionGeneration();
-        // The end-of-level results screen owns the achievement banner.
-        // Keep a safe read-only fallback for the last mission's best once
-        // the active record is disarmed, without retaining its timer identity.
+        progress.generationAtCompletion=generation;
         if(kharvox::levelRecordKeyValid(progress.verifiedMapKey))
             s.lastCompletedMissionKey=progress.verifiedMapKey;
         if(ranked){
@@ -3421,9 +3447,8 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
                 log("[STATS] failed to persist ranked level run; retained in memory");
             else log("[STATS] ranked level run saved");
         }
-        // The end-of-level screen also turns OFF the Level Time HUD
-        // toggle. This is distinct from resetting its saved personal bests.
-        // A new explicit TRACK THIS LEVEL enables it again.
+        // Only a finished opt-in record automatically hides LEVEL TIME.
+        // Ordinary standalone live HUD time stays user-controlled.
         if(s.vrLiveSettings.levelDisplayEnabled[0]){
             kharvox::vrStatsSetEnabled(s.vrLiveSettings,4,false);
             if(!kharvox::vrLiveSave(kharvox::runtimePathA(
@@ -3434,21 +3459,19 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
             "Level Time display off; new manual confirmation required");
     }
     progress.endMenuWasVisible=completedMenu;
-    // A checkpoint reload cannot change the manually selected mission.
-    // Once a completed mission advances or restarts, drop its identity and
-    // remain DISARMED until the player confirms a new timed attempt.
-    if(progress.awaitingNextLevel&&!completedMenu&&gameplay
-        &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration())
+    if(progress.awaitingNextLevel&&!completedMenu&&levelPlayable
+        &&progress.generationAtCompletion!=generation)
         kharvox::levelProgressNextUnidentified(progress);
 }
-void serviceCampaignRunTime(bool gameplay){
+void serviceCampaignRunTime(bool gameplay,
+    bool levelPlayable,bool frontMenuContext){
     const bool wasActive=s.campaignRunTime.activeLastSample;
     const auto now=GetTickCount64();
     kharvox::advanceCampaignRunTime(s.campaignRunTime,gameplay,now);
     // Identical active-gameplay policy, independent lifetime and reset.
     // Session time is memory-only and is not restored on the next launch.
     kharvox::advanceCampaignRunTime(s.sessionRunTime,gameplay,now);
-    serviceLevelStats(gameplay,now);
+    serviceLevelStats(levelPlayable,frontMenuContext,now);
     if((wasActive&&!gameplay
         ||s.campaignRunTime.elapsedMs>=s.campaignRunTimeLastSavedMs+30000ULL)
         &&s.campaignRunTime.elapsedMs!=s.campaignRunTimeLastSavedMs)
@@ -3678,7 +3701,8 @@ void updateGameplayActions(XrTime displayTime){
     serviceCampaignRunTime(safetyGameplay&&bothProfiles&&bothTracked
         &&s.controllerOnlySafety.armed&&!s.controllerOnlySafety.reconnectAckRequired
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
-        &&!suppressSetupButtons&&!suppressWelcomeButtons);
+        &&!suppressSetupButtons&&!suppressWelcomeButtons,
+        safetyGameplay,frontMenuContext);
     const bool previousArmed=s.controllerOnlySafety.armed;
     const bool reconnectWasRequired=s.controllerOnlySafety.reconnectAckRequired;
     bool armed=previousArmed;
