@@ -2484,6 +2484,10 @@ bool KharvoxCameraLedgeTransitionActive() {
         && playerLedgeTransitionOwner.load(std::memory_order_acquire) == owner;
 }
 
+bool KharvoxCameraPlayerWeaponControlClassifierReady() {
+    return playerControlClassifierSupported.load(std::memory_order_acquire);
+}
+
 bool KharvoxCameraPlayerWeaponControlActive() {
     constexpr uintptr_t inhibitFlagsOffset = 0x14C4C;
     const uintptr_t owner = playerPhysicsOwner.load(std::memory_order_acquire);
