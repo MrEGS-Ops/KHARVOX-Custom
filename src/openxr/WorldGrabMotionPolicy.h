@@ -34,6 +34,29 @@ inline GrabVec3 grabClampLength(GrabVec3 v,float maxMagnitude) noexcept {
     return grabScale(v,maxMagnitude/length);
 }
 
+// A validated native grenade-launch snapshot, supplied by a future
+// game-thread adapter from DOOM's equipment projectile launch path.
+// Values are in DOOM *native* units, not OpenXR tracking metres.
+// This deliberately contains BALLISTICS only: never transfer a grenade's
+// class, damage, fuse, explosion, scripting, ownership or inventory effects.
+struct WorldGrabGrenadeBallistics {
+    std::uint64_t levelGeneration{};
+    GrabVec3 initialVelocityNative{};
+    float gravityScale{}, linearDamping{};
+    bool verifiedNativeLaunch{},verifiedFlightProperties{};
+};
+inline bool worldGrabGrenadeBallisticsReady(
+    const WorldGrabGrenadeBallistics& grenade,
+    std::uint64_t levelGeneration) noexcept {
+    return levelGeneration!=0&&grenade.levelGeneration==levelGeneration
+        &&grenade.verifiedNativeLaunch&&grenade.verifiedFlightProperties
+        &&grabFinite(grenade.initialVelocityNative)
+        &&grabLength(grenade.initialVelocityNative)>0.f
+        &&std::isfinite(grenade.gravityScale)
+        &&grenade.gravityScale>=0.f
+        &&std::isfinite(grenade.linearDamping)
+        &&grenade.linearDamping>=0.f;
+}
 enum class WorldGrabCommand {None,Acquire,Follow,Drop,Throw};
 struct WorldGrabInput {
     bool enabled{},gameplay{},controllerTracked{},freeHand{},grip{},trigger{};
@@ -42,12 +65,19 @@ struct WorldGrabInput {
     WorldGrabPhysicsHit hit{};
     std::uint64_t levelGeneration{};
     GrabVec3 handPosition{},handForward{},objectPosition{},objectVelocity{};
+    // Actual native grenade launch data only. A debug focus handle, laser
+    // or synthetic hand-speed estimate must never qualify as a grenade sample.
+    WorldGrabGrenadeBallistics nativeGrenade{};
     float deltaSeconds{};
 };
 struct WorldGrabOutput {
     WorldGrabCommand command{WorldGrabCommand::None};
     std::uint64_t entityId{},physicsBodyId{};
-    GrabVec3 velocity{}; // desired object velocity in metres/sec, NOT a physics write
+    GrabVec3 velocity{}; // FOLLOW only: metres/sec; never used for a throw
+    // THROW only: copy of native grenade ballistic parameters. A native
+    // adapter must restore the barrel's original flight physics after
+    // release/landing; no grenade entity or explosive flags are copied.
+    WorldGrabGrenadeBallistics nativeGrenade{};
 };
 struct WorldGrabHand {
     // A controller touching an object may grab it at zero ray distance.
@@ -98,12 +128,14 @@ struct WorldGrabHand {
                 entityId=physicsBodyId=levelGeneration=0;
                 return out;
             }
-            if(newTrigger) {
-                const auto forward=grabClampLength(in.handForward,1.f);
+            if(newTrigger&&worldGrabGrenadeBallisticsReady(
+                    in.nativeGrenade,in.levelGeneration)) {
+                // DOOM's native equipment launch velocity / gravity / drag
+                // are passed through UNMODIFIED. In particular, controller
+                // swing speed never alters grenade-style trigger throwing.
+                // This is only an intent; do not spawn a grenade projectile.
                 out.command=WorldGrabCommand::Throw;
-                out.velocity=grabClampLength(grabAdd(
-                    grabScale(smoothedHandVelocity,1.7f),
-                    grabScale(forward,6.f)),14.f);
+                out.nativeGrenade=in.nativeGrenade;
                 entityId=physicsBodyId=levelGeneration=0;
                 return out;
             }
