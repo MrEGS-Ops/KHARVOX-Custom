@@ -17,6 +17,17 @@ inline constexpr bool worldGrabDebugLaserVisible(
   return in.enabled&&in.gameplay&&in.tracked&&in.controllersReady
       &&!in.wheelBusy&&!in.supportBusy&&!in.menuOpen;
 }
+// During a real, free-hand DEV Grip, let DOOM's existing FocusTracker cast
+// from the same physical controller as the debug laser. Weapon-hand focus
+// and native player interaction are restored as soon as Grip releases.
+// This only changes the EXISTING interaction trace source; it is not a
+// separate generic rigid-body raycast and cannot itself make props grabbable.
+inline constexpr bool worldGrabBorrowNativeFocus(
+    bool devEnabled,bool gameplay,bool worldFocusContext,
+    bool freeHandGripHeld,bool nativeActionBusy) noexcept {
+    return devEnabled&&gameplay&&worldFocusContext
+        &&freeHandGripHeld&&!nativeActionBusy;
+}
 struct WorldGrabProbeInput {
   bool enabled{},gameplay{},controllersReady{},supportBusy{},wheelBusy{};
   std::array<bool,2> tracked{},freeHand{},grip{}; // LEFT, RIGHT
