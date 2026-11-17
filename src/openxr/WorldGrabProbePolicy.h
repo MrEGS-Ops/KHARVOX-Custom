@@ -2,6 +2,8 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <string>
 
 // Stage 1: input-only world-grab probe. Never accesses arbitrary DOOM entities,
 // never writes native physics and never clamps locomotion.
@@ -36,6 +38,26 @@ struct WorldGrabProbeInput {
 struct WorldGrabProbeEvents {
   std::array<bool,2> started{},released{},pastReach{};
 };
+// Experimental in-headset visual inspector. It displays DOOM's OWN opaque
+// focus-path observations as clues, not a fabricated physics/body hit.
+struct WorldGrabInspectorPath {
+  std::uint32_t nativeHandle{};
+  std::uint64_t vtableRva{},levelGeneration{},lastCandidateMs{},lastResolvedMs{};
+  bool hasCandidate{},hasResolved{},vtableInExecutable{};
+  std::string nativeClassName;
+};
+struct WorldGrabInspectorSnapshot {
+  std::array<WorldGrabInspectorPath,2> paths{};
+  std::uint32_t focusIndexA{},focusIndexB{};
+  bool nativeFocusSeen{},focusHasReference{};
+  std::uint64_t focusLastMs{};
+  bool enabled{},gripHeld{},freeHandRight{};
+  std::string lastEvent{"Grip to inspect DOOM focus candidates"};
+};
+inline bool worldGrabInspectorFresh(std::uint64_t nowMs,
+    std::uint64_t lastSeenMs,std::uint64_t ttlMs=1750) noexcept {
+  return lastSeenMs!=0&&nowMs>=lastSeenMs&&nowMs-lastSeenMs<=ttlMs;
+}
 struct WorldGrabProbeState {
   static constexpr float kReachMeters=.90f; // advisory only
   std::array<bool,2> gripLast{},held{},wasPastReach{};
