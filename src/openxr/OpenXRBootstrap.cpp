@@ -71,6 +71,7 @@
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
+#include "WorldGrabProbePolicy.h"
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
@@ -294,6 +295,7 @@ struct State {
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
     XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
     kharvox::ControllerOnlySafetyState controllerOnlySafety{};
+    kharvox::WorldGrabProbeState worldGrabProbe{};
     // Primary-hand calibration only: freeze the NATIVE GUN's physical pose
     // while Grip is held, but sample the live weapon-hand rotation separately
     // for its independently editable glove. Never persisted.
@@ -4458,6 +4460,40 @@ void updateGameplayActions(XrTime displayTime){
             log(std::string("[INPUT] ")+weaponGripName()+" -> weapon mod/secondary fire "
                 +(secondaryFireGripDown?"pressed":"released"));
         s.secondaryFireGripPressed=secondaryFireGripDown;
+    }
+    // DEV Experimental: input-only grabbing probe, never physics mutation.
+    // Preserve native support Grip, Gunslinger selection and weapon handling.
+    {
+        kharvox::WorldGrabProbeInput in{};
+        in.enabled=s.vrHandMenu.experimentalWorldGrabProbeEnabled;
+        in.gameplay=gameplay;
+        in.controllersReady=!controllerOnlyLocked.load(std::memory_order_acquire)
+            &&s.trackingHeadPositionValid;
+        in.tracked={s.leftGripController.valid&&s.leftGripController.positionTracked,
+                    s.rightGripController.valid&&s.rightGripController.positionTracked};
+        in.freeHand={!s.weaponHandLeft,s.weaponHandLeft};
+        in.grip={s.weaponHandLeft?false:supportGripDown,
+                 s.weaponHandLeft?supportGripDown:false};
+        in.supportBusy=s.twoHandLatched||s.twoHandCalibrationMode
+            ||supportGripInCaptureRange();
+        in.wheelBusy=s.behindHeadWheelActive
+            ||s.wheelSupportGripSuppressedUntilRelease
+            ||quickHolsterGripConsumed;
+        if(s.trackingHeadPositionValid)in.distanceFromHead={
+            vectorLength(subtractVector(s.leftGripController.position,s.trackingHeadPosition)),
+            vectorLength(subtractVector(s.rightGripController.position,s.trackingHeadPosition))};
+        const auto events=s.worldGrabProbe.update(in);
+        if(in.enabled)for(int hand=0;hand<2;++hand){
+            if(events.started[hand])
+                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
+                    +" free-hand Grip detected; NO world object attached");
+            if(events.pastReach[hand])
+                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
+                    +" 0.90m advisory reach exceeded; NO movement restriction");
+            if(events.released[hand])
+                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
+                    +" Grip released; NO world physics modified");
+        }
     }
     const bool manualMove=std::abs(s.leftStick.x)>.15f||std::abs(s.leftStick.y)>.15f;
     // Manual locomotion is body-relative by default. Native room-scale body
