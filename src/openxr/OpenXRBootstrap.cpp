@@ -4426,7 +4426,10 @@ void updateGameplayActions(XrTime displayTime){
     // Preserve native support Grip, Gunslinger selection and weapon handling.
     {
         kharvox::WorldGrabProbeInput in{};
-        in.enabled=s.vrHandMenu.experimentalWorldGrabProbeEnabled;
+        // Only the separate Experimental DLL exposes live world grabbing.
+        // Normal Native Full/Patch never enables observation/laser/input.
+        in.enabled=KHARVOX_EXPERIMENTAL_WORLD_GRAB
+            &&s.vrHandMenu.experimentalWorldGrabProbeEnabled;
         in.gameplay=gameplay;
         in.controllersReady=!controllerOnlyLocked.load(std::memory_order_acquire)
             &&s.trackingHeadPositionValid;
@@ -5302,7 +5305,8 @@ void updateGameplayActions(XrTime displayTime){
     // inside the opted-in DEV experiment. The probe already excludes
     // weapon bracing, shoulder/wheel ownership, menus and invalid tracking.
     // Normal Hand Focus and USE are restored immediately on Grip release.
-    const bool worldGrabFreeHandFocus=kharvox::worldGrabBorrowNativeFocus(
+    const bool worldGrabFreeHandFocus=KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        &&kharvox::worldGrabBorrowNativeFocus(
         s.vrHandMenu.experimentalWorldGrabProbeEnabled,gameplay,
         worldInteractionFocus,
         s.worldGrabProbe.held[s.weaponHandLeft?1u:0u],
@@ -8780,7 +8784,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto& freeAim=currentHandGameplay.leftHanded
         ?(aerSourceQualified?aerCapturedInput.rightAim:sourceRightAimController)
         :(aerSourceQualified?aerCapturedInput.leftAim:sourceLeftAimController);
-    const bool showGrabAim=kharvox::worldGrabDebugLaserVisible({
+    const bool showGrabAim=KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        &&kharvox::worldGrabDebugLaserVisible({
         s.vrHandMenu.experimentalWorldGrabProbeEnabled,
         handGameplayActive,
         freeAim.valid&&freeAim.positionTracked,
