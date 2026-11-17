@@ -90,6 +90,13 @@ int main() {
     // Trigger cannot auto-acquire while Grip remains down.
     in.trigger=false;
     assert(controller.update(0,in).command==WorldGrabCommand::None);
+    // Release without throw drops the selected entity.
+    right.grip=false;
+    const auto dropped=controller.update(1,right);
+    assert(dropped.command==WorldGrabCommand::Drop);
+    assert(dropped.entityId==73);
+    assert(controller.hands[1].entityId==0);
+
     // A separate catch test: unverified collider or active pickup
     // consumption MUST NEVER cause attraction/catch.
     WorldGrabInput unguarded=in;
@@ -111,12 +118,6 @@ int main() {
     assert(controller.update(0,unguarded).command==WorldGrabCommand::Catch);
     controller.reset();
 
-    // Release without throw drops the selected entity.
-    right.grip=false;
-    const auto dropped=controller.update(1,right);
-    assert(dropped.command==WorldGrabCommand::Drop);
-    assert(dropped.entityId==73);
-    assert(controller.hands[1].entityId==0);
 
     // Tracking loss and level transitions revoke temporary Vacuum intent.
     controller.reset();
