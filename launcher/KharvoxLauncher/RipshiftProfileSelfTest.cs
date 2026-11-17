@@ -82,10 +82,18 @@ internal static class RipshiftProfileSelfTest
             if (renderScale.Value != 125m || !useFsr.Checked)
                 throw new InvalidDataException(
                     "RIPSHIFT must not override explicitly selected RenderScale or FSR.");
-            if (Control<CheckBox>(form, "swapJumpCrouch").Checked)
-                throw new InvalidDataException("Jump/Crouch swap must default to OFF.");
-            // A saved v36 override used to keep this switch on unexpectedly.
-            // Upgrade only once; future deliberate user choices remain valid.
+            var swapJumpCrouch = Control<CheckBox>(form, "swapJumpCrouch");
+            Assert(swapJumpCrouch, false);
+            if (swapJumpCrouch.TabStop || form.CreateLaunchOptions().SwapJumpCrouch)
+                throw new InvalidDataException("Jump/Crouch swap must be greyed out and disabled.");
+            // A disabled WinForms checkbox can still be changed from code;
+            // the launcher must never forward the deprecated swap setting.
+            swapJumpCrouch.Checked = true;
+            if (form.CreateLaunchOptions().SwapJumpCrouch)
+                throw new InvalidDataException("Disabled Jump/Crouch swap leaked into gameplay.");
+            swapJumpCrouch.Checked = false;
+            // Preserve legacy JSON parsing for compatibility, but the
+            // disabled RIPSHIFT launcher UI must never apply that preference.
             var oldSettingsPath = path + ".legacy";
             try
             {
@@ -96,7 +104,12 @@ internal static class RipshiftProfileSelfTest
                 File.WriteAllText(oldSettingsPath,
                     "{\"SettingsVersion\":37,\"SwapJumpCrouch\":true,\"RendererMode\":\"VULKAN_SFS\"}");
                 if (!LauncherSettingsStore.Load(oldSettingsPath).SwapJumpCrouch)
-                    throw new InvalidDataException("Explicit v37 jump/crouch user choice was lost.");
+                    throw new InvalidDataException("Legacy v37 jump/crouch flag parsing changed.");
+                using var legacyForm = new MainForm(oldSettingsPath);
+                var legacySwap = Control<CheckBox>(legacyForm, "swapJumpCrouch");
+                Assert(legacySwap, false);
+                if (legacyForm.CreateLaunchOptions().SwapJumpCrouch)
+                    throw new InvalidDataException("Old saved swap must not affect RIPSHIFT gameplay.");
             }
             finally { try { File.Delete(oldSettingsPath); } catch { } }
             var turnSpeed = Control<TrackBar>(form, "smoothSpeed");
