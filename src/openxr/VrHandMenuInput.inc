@@ -658,6 +658,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     if(bEdge){
         const bool wasLiveModCapture=m.liveCapture!=kharvox::VrLiveCapture::None;
         m.liveCapture=kharvox::VrLiveCapture::None;
+        m.gunslingerZoneDraftValid=false;
+        m.gunslingerZoneMoving=false;
         m.autoSelectingWeapon=false;
         m.pendingNativeSelection=0;
         m.previewValid=false;
@@ -718,7 +720,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }
     if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Calibrating){
         if(m.liveCapture!=kharvox::VrLiveCapture::None){
-            if(triggerEdge||aEdge)captureVrLivePosition();
+            updateVrLiveZoneDraft();
+            const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
+                ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
+            if(triggerEdge||(crouch&&aEdge))captureVrLivePosition();
         }else{
             updateVrMenuPreview(primaryWeaponGripDown);
             serviceVrWeaponFineTune(primaryWeaponGripDown);

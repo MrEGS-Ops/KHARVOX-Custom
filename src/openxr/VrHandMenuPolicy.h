@@ -550,6 +550,9 @@ struct VrHandMenuState {
     bool recordSortDeaths{}; // TIME or DEATHS ranking; no duplicate counters
     int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
+    VrLivePoint gunslingerZoneDraft{}; // temporary position; only RT commits
+    bool gunslingerZoneDraftValid{};
+    bool gunslingerZoneMoving{}; // true only while matching Grip held
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
     int pendingNativeSelection{}; // 1=BFG (Y), 2=Chainsaw (X)

@@ -150,6 +150,8 @@ struct VrHandMenuSurface {
 VrHandMenuSurface vrHandMenuSurface;
 EyeSwapchain pauseBindings;
 bool pauseBindingsReady{};
+EyeSwapchain gunslingerZonePreview;
+bool gunslingerZonePreviewReady{};
 struct HeadPose { XrQuaternionf orientation{0,0,0,1}; XrVector3f position{}; float yaw{},pitch{},roll{}; bool valid{}; };
 struct ControllerPose {
     bool valid{},linearVelocityValid{},positionTracked{};
@@ -5897,6 +5899,7 @@ bool initializeSwapchainImages(EyeSwapchain& swapchain) {
 }
 
 #include "PauseBindings.inc"
+#include "GunslingerZonePreview.inc"
 // Show only a REAL reconnect event: the cold-start physical-controller
 // verification lock is temporary and never asks for hidden thumbstick input.
 bool controllerReconnectBannerVisible(){
@@ -6075,6 +6078,10 @@ bool createSwapchains() {
     log(initializePauseBindings(formats)
         ? "[PAUSE-BINDINGS] static controller image uploaded; pause root only"
         : "[PAUSE-BINDINGS] image unavailable; normal pause menu retained");
+    // A visual-only resource; failure never affects gameplay or calibration.
+    log(initializeGunslingerZonePreview(formats)
+        ? "[GUNSLINGER-PREVIEW] wireframe texture ready"
+        : "[GUNSLINGER-PREVIEW] unavailable; gameplay unaffected");
     log(initializeVrHandMenuSurface(formats)
         ? "[VR-HAND-MENU] dedicated OpenXR compositor panel ready"
         : "[VR-HAND-MENU] overlay unavailable; native gameplay unaffected");
@@ -9516,7 +9523,74 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         vrMenuLayer.size={1.28f,.96f};
     }
 
-    std::array<const XrCompositionLayerBaseHeader*,9> layers{};
+    // Visualise the current zone before placing it in the normal Gunslinger
+    // settings. During placement the unsaved draft follows held Grip and
+    // freezes at the last valid position on release; Right Trigger commits.
+    // Three perpendicular rings form an ellipsoid with the exact X/Y/Z
+    // extents of the real rectangular zone (not an altered hitbox).
+    std::array<XrCompositionLayerQuad,3> gunslingerZoneLayers{};
+    uint32_t gunslingerZoneLayerCount{};
+    const auto& zm=s.vrHandMenu;
+    const bool zoneCapturing=zm.mode==kharvox::VrHandMenuMode::Calibrating
+        &&kharvox::vrLiveIsGunslingerCapture(zm.liveCapture);
+    const bool zoneBrowsing=zm.mode==kharvox::VrHandMenuMode::Menu
+        &&zm.page==kharvox::VrMenuPage::Mods
+        &&zm.selectedMod==kharvox::VrLiveMod::Gunslinger
+        &&zm.navigation.settingsColumn
+        &&zm.navigation.actionIndex>=0&&zm.navigation.actionIndex<4;
+    if(gunslingerZonePreviewReady&&(zoneCapturing||zoneBrowsing)
+        &&s.trackingHeadPositionValid&&s.headZeroValid
+        &&s.headZeroPositionValid&&s.sessionState==XR_SESSION_STATE_FOCUSED
+        &&gunslingerZonePreview.handle!=XR_NULL_HANDLE){
+        using C=kharvox::VrLiveCapture;
+        constexpr std::array<C,4> targets{C::HipRight,C::HipLeft,C::WheelRight,C::WheelLeft};
+        const auto target=zoneCapturing?zm.liveCapture
+            :targets[static_cast<size_t>(zm.navigation.actionIndex)];
+        const bool hip=target==C::HipRight||target==C::HipLeft;
+        const bool right=target==C::HipRight||target==C::WheelRight;
+        const auto zoneCenter=zoneCapturing&&zm.gunslingerZoneDraftValid
+            ?zm.gunslingerZoneDraft:kharvox::vrLiveZoneCenter(s.vrLiveSettings,target);
+        const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+        const XrVector3f bodyCenter{head.x+(right?zoneCenter.x:-zoneCenter.x),
+            head.y+zoneCenter.y,head.z+zoneCenter.z};
+        // Reverse the same head/body yaw compensation used by hit detection.
+        const auto yawAccepted=yawQuaternion(
+            s.controllerFrameYaw.acceptedForPose(s.acceptedPhysicalYaw));
+        const auto yawPendingInv=conjugate(yawQuaternion(
+            s.controllerFrameYaw.turnForPose(artificialTurnVisualYaw())));
+        const auto bodyRotation=multiply(yawAccepted,yawPendingInv);
+        const auto trackingCenter=addVector(s.bodyFollowPosition,
+            rotateVector(bodyRotation,bodyCenter));
+        const auto centerWorld=addVector(s.headZeroPosition,
+            rotateVector(s.headZero,trackingCenter));
+        const auto zoneRotation=multiply(s.headZero,bodyRotation);
+        const auto lo=hip?kharvox::VrLivePoint{.12f,-1.04f,.02f}
+            :kharvox::VrLivePoint{-.04f,-.18f,.015f};
+        const auto hi=hip?kharvox::VrLivePoint{.51f,-.48f,.43f}
+            :kharvox::VrLivePoint{.44f,.36f,.60f};
+        const float width=hi.x-lo.x,height=hi.y-lo.y,depth=hi.z-lo.z;
+        const float q=std::sqrt(.5f);
+        const std::array<XrQuaternionf,3> rotations{{
+            {0.f,0.f,0.f,1.f},{q,0.f,0.f,q},{0.f,q,0.f,q}}};
+        const std::array<XrExtent2Df,3> sizes{{
+            {width,height},{width,depth},{depth,height}}};
+        for(size_t ring=0;ring<gunslingerZoneLayers.size();++ring){
+            auto& marker=gunslingerZoneLayers[ring];
+            marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
+            marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            marker.space=s.space;
+            marker.eyeVisibility=XR_EYE_VISIBILITY_BOTH;
+            marker.subImage.swapchain=gunslingerZonePreview.handle;
+            marker.subImage.imageRect={{0,0},{
+                static_cast<int32_t>(gunslingerZonePreview.width),
+                static_cast<int32_t>(gunslingerZonePreview.height)}};
+            marker.pose.position=centerWorld;
+            marker.pose.orientation=multiply(zoneRotation,rotations[ring]);
+            marker.size=sizes[ring];
+            ++gunslingerZoneLayerCount;
+        }
+    }
+    std::array<const XrCompositionLayerBaseHeader*,12> layers{};
     uint32_t layerCount{};
     layers[layerCount++]=s.quadMode
         ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad)
@@ -9537,6 +9611,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             log(activated.str());
         }
     }
+    for(uint32_t i=0;i<gunslingerZoneLayerCount;++i)
+        layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&gunslingerZoneLayers[i]);
     if(vrMenuImageAcquired)
         layers[layerCount++]=reinterpret_cast<const XrCompositionLayerBaseHeader*>(&vrMenuLayer);
     XrFrameEndInfo ei{XR_TYPE_FRAME_END_INFO};
