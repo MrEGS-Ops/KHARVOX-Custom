@@ -475,6 +475,8 @@ bool handleVrLevelRecordTrack(int missionIndex){
         menu.message="Cannot start: invalid campaign mission.";
         return false;
     }
+    // Beginning another attempt must not resurrect an earlier result toast.
+    s.levelResultNoticeStartedAtMs.store(0,std::memory_order_release);
     // A replay of the SAME mission must also start a clean attempt. Preserve
     // all previously saved Level Best times and HUD preferences.
     s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();

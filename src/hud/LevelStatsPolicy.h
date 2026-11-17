@@ -144,6 +144,15 @@ struct LevelProgress {
     bool endMenuWasVisible{};
     std::uint64_t generationAtCompletion{};
 };
+// Transient result toast is separate from the persistent record/LevelProgress.
+// One 5-second window starts on the actual completion edge, never on each
+// render frame or when revisiting an end-of-level/front menu.
+inline constexpr std::uint64_t kLevelResultNoticeDurationMs=5000;
+inline constexpr bool levelResultNoticeVisible(
+    std::uint64_t startedAtMs,std::uint64_t nowMs) noexcept {
+    return startedAtMs!=0 && nowMs>=startedAtMs
+        &&nowMs-startedAtMs<kLevelResultNoticeDurationMs;
+}
 inline bool levelProgressStartAttempt(LevelProgress& progress,
     const std::string& verifiedKey,std::uint64_t nowMs=0) {
     if(!levelRecordKeyValid(verifiedKey))return false;

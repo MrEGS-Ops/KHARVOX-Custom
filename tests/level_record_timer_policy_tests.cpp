@@ -12,6 +12,18 @@
 
 int main(){
     using namespace kharvox;
+    // The completed record is permanent, its XR result toast is not.
+    assert(!levelResultNoticeVisible(0,20000));
+    assert(!levelResultNoticeVisible(10000,9999));
+    assert(levelResultNoticeVisible(10000,10000));
+    assert(levelResultNoticeVisible(10000,14999));
+    assert(!levelResultNoticeVisible(10000,15000)); // exact 5s deadline
+    assert(!levelResultNoticeVisible(10000,500000)); // long after completion
+    // Native Pause, main menu and rendering do not extend the deadline:
+    // the completed result still exists, but visibility is purely elapsed time.
+    const std::uint64_t completedNoticeAt=556420;
+    assert(levelResultNoticeVisible(completedNoticeAt,completedNoticeAt+4999));
+    assert(!levelResultNoticeVisible(completedNoticeAt,completedNoticeAt+5000));
     LevelProgress attempt{};
     const std::uint64_t start=1000;
     assert(levelProgressStartAttempt(attempt,"campaign/01",start));

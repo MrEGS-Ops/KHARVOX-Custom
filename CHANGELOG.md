@@ -20,6 +20,7 @@ Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR 
 - Gameplay controller reconnection handling pauses safely on genuine loss of tracking and avoids unwanted controller-input events.
 
 ### HUD statistics and personal records
+- Completed level / NEW PERSONAL BEST result notices automatically disappear after five seconds of real elapsed time; the notification is transient and does not affect saved personal bests. The XR quad is dismissed at the same deadline so the notice cannot remain stuck over later menus.
 - Independent HUD displays for campaign/session deaths and time, level time, level deaths and level best, with configurable positioning.
 - Overlapping enabled HUD readouts resolve by disabling the conflicting earlier display.
 - Level recording supports explicit start/stop, completed personal records, time/deaths ranking and saved results.

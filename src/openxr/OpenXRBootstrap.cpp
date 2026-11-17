@@ -476,6 +476,8 @@ struct State {
     kharvox::CampaignRunTime campaignRunTime{};
     kharvox::CampaignRunTime sessionRunTime{}; // never persisted, fresh at process launch
     kharvox::LevelProgress levelProgress{};
+    // Display-only, monotonic five-second completion toast; never persisted.
+    std::atomic<std::uint64_t> levelResultNoticeStartedAtMs{};
     kharvox::LevelLiveStats levelLiveStats{};
     kharvox::LevelRecords levelRecords{};
     std::uint64_t observedSessionDeaths{};
@@ -3433,6 +3435,11 @@ void serviceLevelStats(bool levelPlayable,bool frontMenuContext,std::uint64_t no
             +std::uint32_t(local.wMonth)*100u+std::uint32_t(local.wDay);
         const bool ranked=kharvox::levelProgressComplete(
             progress,s.levelRecords,now,date);
+        // Publish once on the completion edge. Never refresh this timestamp
+        // while a completed record remains in memory or the menu stays open.
+        s.levelResultNoticeStartedAtMs.store(
+            progress.completed&&progress.completedTimeMs>0?now:0,
+            std::memory_order_release);
         progress.generationAtCompletion=generation;
         if(kharvox::levelRecordKeyValid(progress.verifiedMapKey))
             s.lastCompletedMissionKey=progress.verifiedMapKey;
@@ -8519,6 +8526,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&!s.immersiveCinematicActive;
     const bool resultsBannerView=KharvoxHudEndOfLevelMenuActive()
         &&s.levelProgress.completed&&s.levelProgress.completedTimeMs>0
+        &&kharvox::levelResultNoticeVisible(
+            s.levelResultNoticeStartedAtMs.load(std::memory_order_acquire),
+            GetTickCount64())
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerReconnectBannerVisible()
         &&!s.firstTimeSetupNotice.visible&&!s.gameplayWelcomeNotice.visible;

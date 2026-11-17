@@ -91,7 +91,10 @@ void paintVrHandMenu() {
     const bool resultView=!disconnectView&&!firstTimeSetupView
         &&!gameplayWelcomeView&&m.mode==kharvox::VrHandMenuMode::Closed
         &&KharvoxHudEndOfLevelMenuActive()
-        &&s.levelProgress.completed&&s.levelProgress.completedTimeMs>0;
+        &&s.levelProgress.completed&&s.levelProgress.completedTimeMs>0
+        &&kharvox::levelResultNoticeVisible(
+            s.levelResultNoticeStartedAtMs.load(std::memory_order_acquire),
+            GetTickCount64());
     const bool statsGameplay=KharvoxCameraGameplayActive()
         &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
