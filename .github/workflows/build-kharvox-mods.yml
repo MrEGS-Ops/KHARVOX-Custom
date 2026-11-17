@@ -28,7 +28,7 @@ concurrency:
 jobs:
   retail-preview:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 115
     steps:
       - name: Checkout source and full provenance history
         uses: actions/checkout@v4
@@ -45,7 +45,7 @@ jobs:
           $repo = "${{ github.repository }}"
           $nativePaths = @("src","tests","CMakeLists.txt","config/user_calibration_defaults","launcher/KharvoxLauncher","supervisor","tools","assets",".github/workflows/build-custom.yml")
           $selected = $null
-          for ($attempt = 1; $attempt -le 120 -and $null -eq $selected; $attempt++) {
+          for ($attempt = 1; $attempt -le 240 -and $null -eq $selected; $attempt++) {
             $raw = gh run list --repo $repo --workflow build-custom.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,conclusion,status
             if ($LASTEXITCODE -ne 0) { throw "Cannot query KHARVOX native builds." }
             foreach ($candidate in @($raw | ConvertFrom-Json)) {
@@ -55,7 +55,7 @@ jobs:
               git diff --quiet $candidate.headSha "${{ github.sha }}" -- $nativePaths
               if ($LASTEXITCODE -eq 0) { $selected = $candidate; break }
             }
-            if ($null -eq $selected) { Write-Host "Waiting for a green same-source native build: $attempt/120"; Start-Sleep -Seconds 15 }
+            if ($null -eq $selected) { Write-Host "Waiting for a green same-source native build: $attempt/240"; Start-Sleep -Seconds 15 }
           }
           if ($null -eq $selected) { throw "No successful matching native build; refusing to package stale gameplay." }
           "NATIVE_RUN_ID=$($selected.databaseId)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -79,6 +79,35 @@ jobs:
           $stamp = Get-Content -LiteralPath (Join-Path $root "PATCH-BUILD.txt") -Raw
           $provenance = Get-Content -LiteralPath (Join-Path $root "PATCH-MANIFEST.json") -Raw | ConvertFrom-Json
           if (!$stamp.Contains("RIPSHIFT_NATIVE_BUNDLE_1") -or !$stamp.Contains("kind=full") -or !$stamp.Contains("commit=$env:NATIVE_COMMIT") -or $provenance.kind -ne "full" -or $provenance.commit -ne $env:NATIVE_COMMIT -or $provenance.branch -ne "${{ github.ref_name }}") { throw "Native SHA/branch manifest mismatch." }
+          # Replace only the native runtime DLL and its capability stamp with
+          # the independently compiled WORLD_GRAB=ON DLL from this SAME commit.
+          # Native Full/Patch remain unchanged and World Grab-free.
+          $experimentalStage = Join-Path $env:RUNNER_TEMP "ripshift-world-grab-experimental"
+          New-Item -ItemType Directory -Force -Path $experimentalStage | Out-Null
+          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name RIPSHIFT-Experimental-World-Grab-Layer --dir $experimentalStage
+          if ($LASTEXITCODE -ne 0) { throw "Matching experimental World Grab runtime missing" }
+          $expDll = Join-Path $experimentalStage "KharvoxLayer.dll"
+          $expSfs = Join-Path $experimentalStage "native_sfs_build.txt"
+          $expInfo = Join-Path $experimentalStage "EXPERIMENTAL-WORLD-GRAB-STAMP.txt"
+          foreach ($path in @($expDll,$expSfs,$expInfo)) {
+            if (!(Test-Path -LiteralPath $path)) { throw "Incomplete experimental runtime overlay: $path" }
+          }
+          $expMetadata = @(Get-Content -LiteralPath $expInfo)
+          $expHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $expDll).Hash.ToLowerInvariant()
+          $nativeHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $root "KharvoxLayer.dll")).Hash.ToLowerInvariant()
+          $expStamp = @(Get-Content -LiteralPath $expSfs)
+          if ($expMetadata.Count -ne 4 -or $expMetadata[0] -ne "RIPSHIFT_EXPERIMENTAL_WORLD_GRAB_1" -or
+              $expMetadata[1] -ne "commit=$env:NATIVE_COMMIT" -or
+              $expMetadata[2] -ne "experimental_sha256=$expHash" -or
+              $expMetadata[3] -ne "native_sha256=$nativeHash" -or
+              $expHash -eq $nativeHash -or
+              $expStamp.Count -ne 2 -or $expStamp[0] -ne "KHARVOX_NATIVE_SFS_1" -or
+              $expStamp[1].ToLowerInvariant() -ne $expHash) {
+            throw "Experimental runtime signature, commit or SFS stamp mismatch"
+          }
+          Copy-Item -LiteralPath $expDll -Destination (Join-Path $root "KharvoxLayer.dll") -Force
+          Copy-Item -LiteralPath $expSfs -Destination (Join-Path $root "native_sfs_build.txt") -Force
+          Write-Host "Experimental-only World Grab runtime overlaid; standard Native Full/Patch DLL untouched"
           if (Test-Path -LiteralPath (Join-Path $root "UserData")) { throw "Developer UserData was bundled unexpectedly." }
           if (Test-Path -LiteralPath (Join-Path $root "NativeBridge")) { throw "Legacy manager NativeBridge wrapper was bundled." }
           $factory = Join-Path $root "CalibrationDefaults"
