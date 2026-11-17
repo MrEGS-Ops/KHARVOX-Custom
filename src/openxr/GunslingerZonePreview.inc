@@ -1,5 +1,6 @@
+// The ninth ring is an explicit blue horizontal equator at zone mid-height.
 // Transparent ring texture used by the normal Gunslinger positioning overlay.
-// Eight intersecting, angled circular planes form a 3D zone cage with
+// Nine intersecting, angled circular planes form a 3D zone cage with
 // depth visible even from hip-level views. Native detection is unchanged.
 bool initializeGunslingerZonePreview(const std::vector<int64_t>& formats) {
     if (gunslingerZonePreviewReady) return true;
