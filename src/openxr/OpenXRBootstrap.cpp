@@ -49,6 +49,7 @@
 #include "../hud/LevelStatsPolicy.h"
 #include "../weapon/WeaponHook.h"
 #include "../weapon/WeaponControllerPosePolicy.h"
+#include "ScriptedWeaponPoseBoundary.h"
 #include "../weapon/BackWeaponPolicy.h"
 #include "../weapon/QuickHolsterPolicy.h"
 #include "../fsr/Fsr1Policy.h"
@@ -422,6 +423,7 @@ struct State {
     kharvox::PostCinematicYawGuard postCinematicYawGuard{};
     bool gameplayRecenterPending{true};
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
+    kharvox::ScriptedWeaponPoseBoundary scriptedWeaponBoundary{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
     bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
@@ -2579,13 +2581,35 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
-    const bool gameplay=!controllerOnlyLocked.load(std::memory_order_acquire)
+    const bool worldInput=!controllerOnlyLocked.load(std::memory_order_acquire)
         &&KharvoxCameraGameplayActive()
         &&!KharvoxWeaponCollectibleAnimationActive()
         &&!KharvoxCameraCutsceneActive()&&!KharvoxHudPauseMenuActive()
         &&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
+    const auto transition=s.scriptedWeaponBoundary.update(
+        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive());
+    if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Suspend){
+        KharvoxWeaponSetScriptedInteractionSuspended(true);
+        log("[WEAPON-POSE] scripted terminal/control lock: temporary grip pivot capture suspended");
+    }else if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Restore){
+        // Resample native weapon root and controller basis only. These are
+        // runtime caches, NOT the user's independently saved grip profiles.
+        KharvoxWeaponSetScriptedInteractionSuspended(false);
+        KharvoxWeaponResetCalibration();
+        s.weaponCalibrated=false;
+        s.weaponTrackingHeld=false;
+        s.primaryVisualLocked=false;
+        s.supportVisualLocked=false;
+        s.lastWeaponRenderedValid=false;
+        s.calibrationFrozenGunValid=false;
+        s.heavyModeHandoff={};
+        s.twoHandLatched=false;
+        s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
+        log("[WEAPON-POSE] native weapon control restored: rebuilt transient caches without changing UserData");
+    }
+    const bool gameplay=worldInput&&!s.scriptedWeaponBoundary.suspended;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
         s.calibrationFrozenGunValid=false;
         s.recoilState={};

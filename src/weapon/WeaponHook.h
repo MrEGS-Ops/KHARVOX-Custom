@@ -77,6 +77,8 @@ bool KharvoxWeaponGetLaserMuzzlePose(float origin[3], float direction[3],
 const char* KharvoxWeaponKindKey(KharvoxWeaponKind kind);
 const char* KharvoxWeaponKindDisplayName(KharvoxWeaponKind kind);
 KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key);
+// Clears ONLY temporary animated grip snapshots, not UserData settings.
+void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend);
 void KharvoxWeaponResetCalibration();
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,

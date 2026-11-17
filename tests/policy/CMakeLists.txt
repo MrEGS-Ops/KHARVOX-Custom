@@ -150,3 +150,8 @@ else()
   target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME level-record-timer-no-menu-or-cutscene-exploit COMMAND KharvoxLevelRecordTimerPolicyTests)
+
+# Regression: interactive scripted terminal must not permanently move VR guns.
+add_executable(KharvoxScriptedWeaponPoseBoundaryTests ../scripted_weapon_pose_boundary_tests.cpp)
+target_compile_features(KharvoxScriptedWeaponPoseBoundaryTests PRIVATE cxx_std_17)
+add_test(NAME scripted-terminal-weapon-pose-recovery COMMAND KharvoxScriptedWeaponPoseBoundaryTests)
