@@ -144,6 +144,19 @@ int main(){
     assert(vrConfirmLevelStart(timedStart,1,12002));
     assert(!vrConfirmLevelStart(timedStart,-1,12003));
     assert(!vrConfirmLevelStart(timedStart,13,12003));
+    // STOP RECORD uses a separate, time-limited confirmation. A pending
+    // START cannot also confirm a stop, nor vice versa.
+    VrHandMenuState timedStop{};
+    assert(!vrConfirmLevelStart(timedStop,3,16000));
+    assert(!vrLevelStopPending(timedStop,16001));
+    assert(!vrConfirmLevelStop(timedStop,16001));
+    assert(vrLevelStopPending(timedStop,16002));
+    assert(!vrLevelStartPending(timedStop,3,16002));
+    assert(vrConfirmLevelStop(timedStop,16002));
+    assert(!vrLevelStopPending(timedStop,16003));
+    assert(!vrConfirmLevelStop(timedStop,18000));
+    assert(!vrConfirmLevelStop(timedStop,25001)); // timed out
+    assert(vrConfirmLevelStop(timedStop,25002));
     assert(!vrStatsSetCorner(levelWidgets,4,-2));
     assert(!vrStatsSetEnabled(levelWidgets,7,true));
     // Active level statistics start ONLY after a confirmed timed attempt.
