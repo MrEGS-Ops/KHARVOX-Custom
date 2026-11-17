@@ -26,8 +26,11 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             true,D::StatsReset});
         rows.push_back({"Level Records / Reset",VrLiveMod::Stats,
             true,D::LevelRecordsReset});
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        // World Object Grab DEV switch is packaged solely in Experimental.
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             s.vrHandMenu.experimentalWorldGrabProbeEnabled,D::Experimental});
+#endif
         return rows;
     }
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
