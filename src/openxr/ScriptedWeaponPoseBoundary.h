@@ -7,7 +7,16 @@ struct ScriptedWeaponPoseBoundary {
     enum class Change {None,Suspend,Restore};
     bool observedControl{},suspended{};
     unsigned missing{},restored{};
-    Change update(bool gameplay,bool weaponControl) noexcept {
+    Change update(bool gameplay,bool weaponControl,
+                  bool nativeWeaponWheelActive=false) noexcept {
+        // The native radial menu can inhibit firing while it is displayed.
+        // Its transient control lock is NOT a scripted terminal interaction.
+        // Never suspend the tracked weapon controller on this signal.
+        if(nativeWeaponWheelActive){
+            missing=restored=0;
+            if(suspended){suspended=false;return Change::Restore;}
+            return Change::None;
+        }
         if(!gameplay){restored=0;return Change::None;}
         if(weaponControl){
             observedControl=true;missing=0;

@@ -61,6 +61,9 @@ bool KharvoxWeaponChaingunRotorModeActive();
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
 bool KharvoxWeaponHolstered();
+// Rendering-only: hide the first-person gun while the native wheel is open.
+// Never changes weapon selection, projectile state, grip calibration, or UserData.
+void KharvoxWeaponSetWheelPresentationActive(bool active);
 // Called from the proven idPlayer gameplay-camera path. Internally throttled;
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);

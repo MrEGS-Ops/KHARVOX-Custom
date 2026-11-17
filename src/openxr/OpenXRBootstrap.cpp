@@ -428,8 +428,6 @@ struct State {
     kharvox::ScriptedWeaponPoseBoundary scriptedWeaponBoundary{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
-    bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
-    XrTime bfgGripHoldStart{},bfgPulseUntil{};
     kharvox::BackWeaponState backWeaponState{};
     kharvox::BackWeaponKind favoriteBackWeapon{kharvox::BackWeaponKind::CombatShotgun};
     kharvox::BackWeaponPulse backWeaponPulse{kharvox::BackWeaponPulse::None};
@@ -1836,8 +1834,8 @@ void updateVirtualButtons(bool fire,bool gamepadA,bool gamepadB,bool weaponMod,b
     if(missionInfo)buttons|=XINPUT_GAMEPAD_BACK;
     if(switchWeaponMod)buttons|=XINPUT_GAMEPAD_DPAD_UP;
     if(cycleEquipment)buttons|=XINPUT_GAMEPAD_DPAD_LEFT;
-    // DOOM treats native Xbox-Y as its BFG channel. Only left-grip hold may
-    // synthesize it; right-stick-click USE deliberately uses D-pad Right.
+    // DOOM treats native Xbox-Y as BFG. Only explicit Gunslinger/quick-holster
+    // weapon selection requests may synthesize it, never an ordinary Grip hold.
     if(bfg)buttons|=XINPUT_GAMEPAD_Y;
     if(pause)buttons|=XINPUT_GAMEPAD_START;
     const BYTE oldLeftTrigger=virtualLeftTrigger.exchange(leftTrigger,std::memory_order_relaxed);
@@ -2401,8 +2399,6 @@ void selectPhysicalWeaponHand(bool left,const char* action){
     s.supportGripPressed=false;
     s.interactionProfilesDirty=true;
     s.interactionProfilesKnown=false;
-    s.bfgGripHoldStart=0;
-    s.bfgGripTriggered=false;
     s.grenadeGesture={};
     s.equipmentThrowPulseUntil=0;
     log(std::string("[WEAPON-HAND] ")+action+" -> "
@@ -2606,7 +2602,8 @@ void updateWeapon6Dof(){
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
     const auto transition=s.scriptedWeaponBoundary.update(
-        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive());
+        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive(),
+        s.hudWeaponWheelPresented);
     if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Suspend){
         KharvoxWeaponSetScriptedInteractionSuspended(true);
         log("[WEAPON-POSE] scripted terminal/control lock: temporary grip pivot capture suspended");
@@ -2795,7 +2792,7 @@ void updateWeapon6Dof(){
             s.twoHandLatched=false;
             s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
             writeTwoHandStatus(s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-                ?std::string("CALIBRATION: hold ")+supportGripName()+" for 650 ms to equip BFG 9000, then release it"
+                ?"CALIBRATION: select BFG 9000 with Gunslinger, then release Grip"
                 :std::string("CALIBRATION: selected ")+weaponKindName(s.twoHandCalibrationTarget)
                     +"; switch from "+weaponKindName(kind)+" before capture");
         }else if(!calibration->valid){
@@ -3518,6 +3515,7 @@ void serviceCampaignRunTime(bool gameplay,
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.heavyAlternateInputForwarded=false;
@@ -3540,6 +3538,7 @@ void updateGameplayActions(XrTime displayTime){
     XrActiveActionSet active{s.gameplayActionSet,XR_NULL_PATH}; XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets=1; sync.activeActionSets=&active;
     if(XR_FAILED(s.syncActionsFn(s.session,&sync))
         ||s.sessionState!=XR_SESSION_STATE_FOCUSED){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.motionWheelState={};
@@ -3595,8 +3594,6 @@ void updateGameplayActions(XrTime displayTime){
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
         s.grenadeGesture={};
-        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
         s.backWeaponState.selectionPhase=kharvox::BackWeaponSelectionPhase::Idle;
         s.backWeaponState.pendingTarget=kharvox::BackWeaponKind::Unknown;
@@ -3795,7 +3792,6 @@ void updateGameplayActions(XrTime displayTime){
         s.grenadeGesture={};s.equipmentGrip.cancel();
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
-        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.backWeaponPulseUntil=0;s.weaponSwitchPulseUntil=0;
         s.motionWheelState={};s.behindHeadWheelActive=false;
         s.behindHeadWheelSide=-1;s.wheelWeaponGripSuppressedUntilRelease=true;
@@ -4013,12 +4009,11 @@ void updateGameplayActions(XrTime displayTime){
             selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
-            // two-hand acquisition, equipment use or the held BFG shortcut.
+            // two-hand acquisition or equipment use.
             s.wheelWeaponGripSuppressedUntilRelease=true;
             // Suppress any grip already held by the newly assigned support hand
-            // until release. Prevents accidental equipment cycling or BFG select.
+            // until release. Prevents accidental equipment cycling.
             s.wheelSupportGripSuppressedUntilRelease=true;
-            s.bfgGripSuppressedUntilRelease=true;
             log(std::string("[WEAPON-WHEEL] physical wheel confirmed with ")
                 +(selectedSide==0?"right":"left")+" weapon hand");
         }
@@ -4110,7 +4105,7 @@ void updateGameplayActions(XrTime displayTime){
             +(supportGripDown?"pressed":"released"));
         s.supportGripPressed=supportGripDown;
     }
-    constexpr XrDuration bfgGripHoldDuration=650000000;
+    // Grip-hold BFG selection was retired: Gunslinger/weapon select owns it.
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
     // A native keyboard hotkey is immediate, but DOOM may not equip the
     // requested weapon until a later game frame. Keep the previous gun in its
@@ -4136,33 +4131,8 @@ void updateGameplayActions(XrTime displayTime){
         &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
         &&triggerDown;
     KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
-    const bool bfgCalibrationAccess=s.twoHandCalibrationMode
-        &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-        &&activeWeaponKind!=KharvoxWeaponKind::Bfg;
-    const bool supportGripOwnsPress=s.twoHandLatched
-        ||(s.twoHandCalibrationMode&&!bfgCalibrationAccess);
-    if(!supportGripDown){
-        s.bfgGripHoldStart=0;
-        s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=false;
-    }else if(!gameplay||supportGripOwnsPress||s.behindHeadWheelActive
-        ||s.wheelSupportGripSuppressedUntilRelease){
-        // An acquired support grip owns this press. Calibration owns it too,
-        // except while BFG is the selected target and still needs the native
-        // long-grip shortcut to become the active weapon.
-        s.bfgGripHoldStart=0;
-        s.bfgGripSuppressedUntilRelease=true;
-    }else if(!s.bfgGripSuppressedUntilRelease&&!s.bfgGripTriggered){
-        if(!s.bfgGripHoldStart)s.bfgGripHoldStart=displayTime;
-        else if(displayTime-s.bfgGripHoldStart>=bfgGripHoldDuration){
-            s.bfgGripTriggered=true;
-            s.bfgPulseUntil=displayTime+100000000;
-            log(std::string("[INPUT] ")+supportGripName()+" hold -> native Xbox-Y/JOY4 BFG pulse"
-                +(bfgCalibrationAccess?" for calibration access":""));
-        }
-    }
-    if(!gameplay)s.bfgPulseUntil=0;
-    const bool bfgPulse=gameplay&&displayTime<s.bfgPulseUntil;
+    // The support-hand Grip remains free for weapon bracing and the
+    // experimental native-physics grabbing feature. No hidden Xbox-Y pulse.
     const bool gestureWheel=anyGestureWheelEnabled
         &&s.behindHeadWheelActive;
     const char* weaponSelectControl=gestureWheel?"behind-head gesture"
@@ -4216,6 +4186,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&((weaponSelectDown&&s.weaponWheelOpened)||s.wheelCancelDrain.active());
     s.actionSpeedWheelObserved=weaponWheelActive;
+    // Render-only gun suppression while the actual wheel is open.
+    KharvoxWeaponSetWheelPresentationActive(weaponWheelActive);
     if(weaponWheelActive!=s.hudWeaponWheelPresented){
         // Reset renderer-local wheel transform/pivot at BOTH edges. Original
         // native menu size and distance remain unchanged.
@@ -4311,7 +4283,6 @@ void updateGameplayActions(XrTime displayTime){
             // drop native weapon-mod input or latch suppression until release.
             if(kharvox::quickHipConsumesGrip(action)){
                 quickHolsterGripConsumed=true;
-                s.bfgGripSuppressedUntilRelease=true;
                 if(weaponHandAtThisHip)
                     s.wheelWeaponGripSuppressedUntilRelease=true;
                 else s.wheelSupportGripSuppressedUntilRelease=true;
@@ -4362,8 +4333,7 @@ void updateGameplayActions(XrTime displayTime){
                 }else log("[QUICK-HOTKEY] native selection failed; original hand retained");
                 s.wheelWeaponGripSuppressedUntilRelease=true;
                 s.wheelSupportGripSuppressedUntilRelease=true;
-                s.bfgGripSuppressedUntilRelease=true;
-                log(std::string("[QUICK-HOTKEY] ")
+                            log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")
                     +" Grip PRESS -> direct native weapon="
                     +backWeaponKindKey(plan.weapon)
@@ -5138,7 +5108,6 @@ void updateGameplayActions(XrTime displayTime){
             static_cast<std::int64_t>(displayTime));
         if(action==kharvox::ChestGrenadeAction::Cycle){
             s.grenadeCyclePulseUntil=displayTime+100000000;
-            s.bfgGripSuppressedUntilRelease=true;
             kharvox::queueControllerZoneCue(
                 s.handZoneCues[equipmentHapticHand],hapticNow,85,.72f,195.f);
             s.nextCookPulseAt=hapticNow+350;
@@ -5147,8 +5116,6 @@ void updateGameplayActions(XrTime displayTime){
             s.equipmentThrowPulseUntil=displayTime+100000000;
             log("[GRENADE] pulled outside chest and released Grip -> one native throw");
         }
-        if(s.grenadeGesture.held&&s.grenadeGesture.armed)
-            s.bfgGripSuppressedUntilRelease=true;
         // Quiet periodic heartbeat only after the 'pin' has been pulled.
         // Native damage/firing rumble is always higher priority.
         if(s.grenadeGesture.held&&s.grenadeGesture.armed
@@ -5219,7 +5186,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool rightShoulderDown=nativeWeaponSelectDown
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
-        const bool yDown=bfgPulse||backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
+        const bool yDown=backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
         // A first-run setup popup is modal to DOOM's front-menu button
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.
