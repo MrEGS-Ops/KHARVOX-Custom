@@ -38,6 +38,17 @@ struct KharvoxWorldGrabNativeFocus {
 };
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled);
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample);
+// Candidate handles intercepted immediately before DOOM resolves two native
+// trace hits into entities. May include static/invalid/non-interactable hits.
+// Deliberately NOT a movable physics result or a physics object pointer.
+struct KharvoxWorldGrabTraceCandidate {
+    unsigned int nativeHandle{};
+    unsigned int sourcePath{}; // 0 = primary, 1 = secondary FocusTracker trace
+    unsigned long long levelGeneration{},sampleSequence{};
+};
+bool KharvoxCameraReadWorldGrabTraceCandidate(
+    unsigned int sourcePath,KharvoxWorldGrabTraceCandidate& sample);
+
 
 void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
