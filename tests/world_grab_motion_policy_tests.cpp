@@ -14,6 +14,7 @@ int main() {
     // DOOM's original Vacuum destination is intentionally NOT an input.
     in.catchGeometry={42,420,5,true,true,
         {0.f,0.f,0.f},{.5f,.5f,.5f},{1.5f,0.f,0.f}};
+    in.catchGeometry.verifiedHandFrame=true;
 
     // A held Grip on enable must not auto-acquire.
     in.grip=true;
@@ -70,7 +71,26 @@ int main() {
     assert(caught.command==WorldGrabCommand::Catch);
     assert(controller.hands[0].caught);
     in.catchGeometry.handPositionMeters={2.f,0.f,0.f};
-    assert(controller.update(0,in).command==WorldGrabCommand::CaughtHold);
+    const auto anchored=controller.update(0,in);
+    assert(anchored.command==WorldGrabCommand::AnchorToHand);
+    assert(anchored.desiredAnchorPose.valid);
+    // At catch: object centre=0, hand=.5, so anchor offset=-.5.
+    // After moving the hand to x=2, centre must be x=1.5.
+    assert(std::abs(anchored.desiredAnchorPose.centreMeters.x-1.5f)<.00001f);
+    assert(anchored.desiredAnchorPose.centreMeters.y==0.f);
+    // Rotating the hand must rotate the saved *relative* object offset,
+    // not snap the box's centre to the controller's position.
+    in.catchGeometry.handAxes={{{0.f,1.f,0.f},{-1.f,0.f,0.f},{0.f,0.f,1.f}}};
+    const auto rotated=controller.update(0,in);
+    assert(rotated.command==WorldGrabCommand::AnchorToHand);
+    assert(rotated.desiredAnchorPose.valid);
+    assert(std::abs(rotated.desiredAnchorPose.centreMeters.x-2.f)<.00001f);
+    assert(std::abs(rotated.desiredAnchorPose.centreMeters.y+.5f)<.00001f);
+    assert(std::abs(rotated.desiredAnchorPose.bodyAxes[0].x)<.00001f);
+    assert(std::abs(rotated.desiredAnchorPose.bodyAxes[0].y-1.f)<.00001f);
+    // Invalid hand orientation detaches rather than writing a bad pose.
+    // Tested using a second selected object below instead of dropping this
+    // first one before validating grenade launch.
 
     const WorldGrabGrenadeBallistics grenade{
         5,{123.f,17.f,-4.f},.75f,.035f,true,true
@@ -104,6 +124,7 @@ int main() {
     unguarded.grip=true;
     unguarded.trigger=false;
     unguarded.catchGeometry.handPositionMeters={.5f,0.f,0.f};
+    unguarded.catchGeometry.verifiedHandFrame=true;
     controller.update(0,unguarded);
     unguarded.grip=false;
     controller.update(0,unguarded);
@@ -116,6 +137,9 @@ int main() {
     assert(controller.update(0,unguarded).command==WorldGrabCommand::None);
     unguarded.catchGeometry.verifiedCollisionBounds=true;
     assert(controller.update(0,unguarded).command==WorldGrabCommand::Catch);
+    unguarded.catchGeometry.verifiedHandFrame=false;
+    assert(controller.update(0,unguarded).command==WorldGrabCommand::Drop);
+    assert(controller.hands[0].entityId==0);
     controller.reset();
 
 
