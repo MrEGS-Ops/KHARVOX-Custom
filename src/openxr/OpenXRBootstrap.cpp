@@ -50,6 +50,7 @@
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
+#include "WeaponControlReentryPolicy.h"
 #include "MovementDirectionPolicy.h"
 #include "SnapTurnStereoPolicy.h"
 #include "PostCinematicYawPolicy.h"
@@ -203,6 +204,7 @@ struct State {
     XrAction doomJump{XR_NULL_HANDLE}; XrAction doomCrouch{XR_NULL_HANDLE};
     XrAction doomMelee{XR_NULL_HANDLE}; XrAction doomEquipment{XR_NULL_HANDLE};
     kharvox::EquipmentGripPolicy equipmentGrip;
+    kharvox::WeaponControlReentryPolicy weaponControlReentry;
     XrAction doomSecondaryFireGrip{XR_NULL_HANDLE};
     XrAction doomSupportGrip{XR_NULL_HANDLE};
     XrAction doomPause{XR_NULL_HANDLE}; XrAction doomMissionInfo{XR_NULL_HANDLE};
@@ -1854,7 +1856,26 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
-    const bool gameplay=KharvoxCameraGameplayActive()
+    const bool nativeGameplay=KharvoxCameraGameplayActive();
+    const bool controlClassifierReady=KharvoxCameraPlayerWeaponControlClassifierReady();
+    const bool nativeWeaponControl=KharvoxCameraPlayerWeaponControlActive();
+    const auto reentry=s.weaponControlReentry.update(
+        controlClassifierReady,nativeGameplay,nativeWeaponControl);
+    if(reentry!=kharvox::WeaponControlTransition::None){
+        // A terminal/minigame may preserve the ordinary world camera but
+        // change the native viewmodel basis. Invalidate ONLY transient 6DoF
+        // anchors; personal weapon and support-hand calibrations are untouched.
+        KharvoxWeaponSetControllerPose(0,0,0,0,0,0,0,0,0,1,false);
+        KharvoxWeaponResetCalibration();
+        s.weaponCalibrated=false;
+        s.weaponTrackingHeld=false;
+        s.weaponPoseSubmitted=false;
+        log(reentry==kharvox::WeaponControlTransition::Suspended
+            ?"[WEAPON] native interaction interrupted weapon controls; controller anchor suspended"
+            :"[WEAPON] native interaction released weapon controls; fresh tracked anchor required");
+    }
+    const bool gameplay=nativeGameplay
+        &&(!controlClassifierReady||nativeWeaponControl)
         &&!KharvoxWeaponCollectibleAnimationActive()
         &&!KharvoxCameraCutsceneActive()&&!KharvoxHudPauseMenuActive()
         &&!KharvoxHudDeathMenuActive()
