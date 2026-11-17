@@ -9642,8 +9642,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 static_cast<int32_t>(gunslingerZonePreview.width),
                 static_cast<int32_t>(gunslingerZonePreview.height)}};
             marker.pose.position=centerWorld;
-            marker.pose.orientation=multiply(zoneRotation,sectionRotation);
-            marker.size=sectionSize;
+            marker.pose.orientation=multiply(zoneRotation,axis);
+            marker.size=crossSection;
             ++gunslingerZoneLayerCount;
         }
     }
