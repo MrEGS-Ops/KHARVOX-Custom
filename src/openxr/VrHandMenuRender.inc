@@ -272,7 +272,8 @@ void paintVrHandMenu() {
             }else if(i==6){
                 write(x+16,y+5,"LEVEL DEATHS",muted);
                 SelectObject(dc,regular);
-                write(x+16,y+28,std::to_string(s.levelProgress.deaths),RGB(235,92,99));
+                write(x+16,y+28,std::to_string(s.levelProgress.armed
+                    ?s.levelProgress.deaths:s.levelLiveStats.deaths),RGB(235,92,99));
             }else{
                 const bool lastLevel=i==5&&!s.levelProgress.armed
                     &&!s.lastCompletedMissionKey.empty();
@@ -285,7 +286,8 @@ void paintVrHandMenu() {
                 SelectObject(dc,regular);
                 const auto displayedTime=i==2?s.campaignRunTime.elapsedMs:
                     i==3?s.sessionRunTime.elapsedMs:
-                    i==4?s.levelProgress.time.elapsedMs:best;
+                    i==4?(s.levelProgress.armed
+                         ?s.levelProgress.time.elapsedMs:s.levelLiveStats.time.elapsedMs):best;
                 write(x+16,y+28,i==5&&!best?"--:--:--":
                     kharvox::campaignRunTimeText(displayedTime),
                     RGB(84,233,214));

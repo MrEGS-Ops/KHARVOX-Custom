@@ -66,5 +66,52 @@ int main(){
     advanceCampaignRunTime(normal,true,5000);  // transition excluded
     advanceCampaignRunTime(normal,true,7000);  // capped to 250
     assert(normal.elapsedMs==250);
+
+    // Live HUD counters work without TRACK THIS LEVEL and never save a PB.
+    LevelLiveStats live{};
+    assert(!live.started&&!attempt.armed);
+    levelLiveStart(live,2000,12); // 12 prior session deaths not this level
+    assert(live.started&&live.deaths==0&&live.time.elapsedMs==0);
+    levelLiveAdvance(live,false,2500);
+    levelLiveObserveDeaths(live,13);
+    assert(live.time.elapsedMs==500&&live.deaths==1);
+    // Checkpoint reloads and cinematic/menu delays do not restart the level.
+    levelLiveAdvance(live,false,122500);
+    levelLiveObserveDeaths(live,14);
+    assert(live.time.elapsedMs==120500&&live.deaths==2);
+    assert(!live.awaitingNextLevel);
+    levelLiveObserveEndMenu(live,false,42); // generation changed on reload
+    assert(!levelLiveNextLevelReady(live,true,false,42));
+    levelLiveAdvance(live,true,122600); // native Pause enters
+    levelLiveAdvance(live,true,222600);
+    assert(live.time.elapsedMs==120500);
+    levelLiveAdvance(live,false,222700); // resume edge
+    levelLiveAdvance(live,false,223700);
+    assert(live.time.elapsedMs==121500);
+    assert(records.runs.size()==1); // only completed TRACK attempt from above
+    // After actual end-of-level results, next level may start fresh.
+    levelLiveObserveEndMenu(live,true,42);
+    assert(live.awaitingNextLevel);
+    assert(!levelLiveNextLevelReady(live,false,true,43));
+    assert(levelLiveNextLevelReady(live,true,false,43));
+    levelLiveStart(live,224000,14);
+    assert(live.time.elapsedMs==0&&live.deaths==0&&!live.awaitingNextLevel);
+    // A DEV session-death reset must not count as negative deaths.
+    levelLiveObserveDeaths(live,0);
+    levelLiveObserveDeaths(live,1);
+    assert(live.deaths==1);
+    levelLiveResetCounters(live,225000,1);
+    assert(live.deaths==0&&live.time.elapsedMs==0);
+    assert(!levelStatsResetAllowed(true)&&levelStatsResetAllowed(false));
+    // Only a settled title-screen context cancels an unfinished run;
+    // brief loading frames or checkpoint transitions must not.
+    std::uint64_t frontMenuSince{};
+    assert(!levelFrontMenuConfirmed(false,1000,frontMenuSince));
+    assert(!levelFrontMenuConfirmed(true,2000,frontMenuSince));
+    assert(!levelFrontMenuConfirmed(true,2000+kLevelFrontMenuCancelDelayMs-1,frontMenuSince));
+    assert(!levelFrontMenuConfirmed(false,12001,frontMenuSince));
+    assert(frontMenuSince==0);
+    assert(!levelFrontMenuConfirmed(true,13000,frontMenuSince));
+    assert(levelFrontMenuConfirmed(true,13000+kLevelFrontMenuCancelDelayMs,frontMenuSince));
     return 0;
 }

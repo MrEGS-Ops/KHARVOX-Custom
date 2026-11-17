@@ -504,6 +504,15 @@ bool handleVrStatsMenuAction(int action,bool dev){
         // The reset never calls vrLiveSave or modifies display switches,
         // saved corners, weapon profiles or any other user preferences.
         if(action!=130&&action!=131)return false;
+        // The campaign/session source counters feed level-death attribution.
+        // Any DEV stats reset during an armed run could falsify a record.
+        if(!kharvox::levelStatsResetAllowed(s.levelProgress.armed)){
+            menu.pendingStatsReset=-1;
+            menu.confirmDeathResetUntilMs=0;
+            menu.message="Stats resets locked during a tracked level. "
+                "Finish the run or start a new attempt.";
+            return true;
+        }
         const int resetKey=action==131?4:item;
         const auto now=GetTickCount64();
         if(menu.pendingStatsReset!=resetKey||!menu.confirmDeathResetUntilMs
@@ -531,8 +540,10 @@ bool handleVrStatsMenuAction(int action,bool dev){
             }
             KharvoxHudResetCampaignSessionDeaths();
             kharvox::resetCampaignRunTime(s.sessionRunTime);
-            // Reset the active level's live counters but never its
-            // persistent personal best (that belongs to DEV > Records).
+            // This is not an active ranked run (those resets are blocked).
+            // Reset the independent live level HUD too, without touching PBs.
+            kharvox::levelLiveResetCounters(s.levelLiveStats,
+                GetTickCount64(),KharvoxHudCampaignSessionDeaths());
             kharvox::resetCampaignRunTime(s.levelProgress.time);
             s.levelProgress.deaths=0;
             s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
@@ -554,6 +565,8 @@ bool handleVrStatsMenuAction(int action,bool dev){
                 :"Failed to save campaign death reset.";
         }else if(item==1){
             KharvoxHudResetCampaignSessionDeaths();
+            s.observedSessionDeaths=0;
+            s.levelLiveStats.observedSessionDeaths=0;
             menu.message="This session's death count reset to 0.";
         }else if(item==2){
             menu.message=resetCampaignRunTimeSaved()
