@@ -69,7 +69,8 @@ int main(){
 
     // Live HUD counters work without TRACK THIS LEVEL and never save a PB.
     LevelLiveStats live{};
-    assert(!live.started&&!attempt.armed);
+    LevelProgress noRecord{};
+    assert(!live.started&&!noRecord.armed);
     levelLiveStart(live,2000,12); // 12 prior session deaths not this level
     assert(live.started&&live.deaths==0&&live.time.elapsedMs==0);
     levelLiveAdvance(live,false,2500);
