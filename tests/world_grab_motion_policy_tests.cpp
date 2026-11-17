@@ -34,8 +34,8 @@ int main() {
     // Contact is object-specific: a 1 m cube face reaches a hand at x=.5
     // when its centre is x=0. Object centre must never touch the hand.
     assert(std::abs(grabHandToColliderGap(in.catchGeometry)-1.f)<.00001f);
-    in.catchGeometry.handPositionMeters={.515f,0.f,0.f};
-    assert(grabHandToColliderGap(in.catchGeometry)>.014f);
+    in.catchGeometry.handPositionMeters={.52f,0.f,0.f};
+    assert(grabHandToColliderGap(in.catchGeometry)>.019f);
     assert(controller.update(0,in).command==WorldGrabCommand::VacuumAttract);
 
     // One object cannot be assigned to both hands simultaneously.
