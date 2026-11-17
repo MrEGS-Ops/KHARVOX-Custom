@@ -114,6 +114,7 @@ std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<bool> chaingunTurretModeActive{};
 std::atomic<bool> chaingunRotorModeActive{};
 std::atomic<bool> weaponHolstered{};
+std::atomic<bool> weaponWheelPresentationActive{};
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
 using InventoryItemFn = void*(__fastcall*)(void*, int);
@@ -2066,15 +2067,14 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         submittedOrigin = pairedOrigin;
         submittedAxis = pairedAxis;
     }
-    // Invisible Quick Holsters: keep native weapon/render state advancing,
-    // but shrink ONLY the confirmed first-person weapon presentation while
-    // stowed. This avoids the old world-underflow pose hack, leaves gameplay
-    // physics untouched, and lets drawing restore full scale instantly.
-    // 0.001 is nonzero so native transforms never become singular.
-    const bool hideHolsteredPresentation=weaponPresentation
-        &&weaponHolstered.load(std::memory_order_acquire);
-    const float submittedModelScale=hideHolsteredPresentation
-        ?0.001f:modelScale;
+    // The verified first-person render-only scale gate is already used by
+    // quick holsters. Apply it to the open radial weapon wheel too, so the
+    // selected gun cannot be drawn through the native selection canvas.
+    // No inventory, physics, tracking, calibration, or weapon mode is changed.
+    const bool hidePresentation=weaponPresentation
+        &&(weaponHolstered.load(std::memory_order_acquire)
+            ||weaponWheelPresentationActive.load(std::memory_order_acquire));
+    const float submittedModelScale=hidePresentation?0.001f:modelScale;
     // Preserve DOOM's original first-person weapon submission depth.
     // Hand projection maintains its own near-plane behaviour.
     // Cache DOOM's original arguments even when a chainsaw kill owns the
@@ -2818,6 +2818,10 @@ bool KharvoxWeaponChaingunTurretModeActive() {
 }
 bool KharvoxWeaponChaingunRotorModeActive() {
     return chaingunRotorModeActive.load(std::memory_order_acquire);
+}
+
+void KharvoxWeaponSetWheelPresentationActive(bool active) {
+    weaponWheelPresentationActive.store(active, std::memory_order_release);
 }
 
 void KharvoxWeaponSetHolstered(bool holstered) {
