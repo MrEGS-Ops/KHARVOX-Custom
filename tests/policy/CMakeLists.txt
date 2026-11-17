@@ -160,3 +160,14 @@ else()
   target_compile_options(KharvoxWorldGrabProbeTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME world-grab-input-probe COMMAND KharvoxWorldGrabProbeTests)
+
+# Real grab/hold/throw intent and constraints. The native physics adapter
+# remains unbound until the DOOM entity trace and write ABI are verified.
+add_executable(KharvoxWorldGrabMotionPolicyTests ../world_grab_motion_policy_tests.cpp)
+target_compile_features(KharvoxWorldGrabMotionPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWorldGrabMotionPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWorldGrabMotionPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME world-grab-motion-intent COMMAND KharvoxWorldGrabMotionPolicyTests)
