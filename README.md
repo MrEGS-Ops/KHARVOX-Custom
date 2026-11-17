@@ -86,6 +86,13 @@ RIPSHIFT VR is an independent community add-on and is not endorsed by CactusVRSt
 
 Review [LICENSE.txt](LICENSE.txt) and [Docs/THIRD_PARTY_NOTICES.txt](Docs/THIRD_PARTY_NOTICES.txt) for applicable licences. This repository does not include DOOM itself.
 
+## Known Bugs
+
+Unresolved headset-reported issues are tracked until they are verified fixed in-game. See [Known Bugs](docs/KNOWN-BUGS.md) for details and testing status.
+
+- **Lazarus Labs — weapon changes position after completing the minigame.** **Workaround:** Restart from checkpoint. The experimental recovery workaround was retired because it did not fix the issue.
+- **Equipped gun visible inside the Gunslinger weapon wheel (build 658).** A render-only correction is under test; not confirmed fixed until headset verification.
+
 ## Compatibility notes
 
 RIPSHIFT depends on KHARVOX's native runtime interfaces. Do not rename `KharvoxLayer.dll`, `KharvoxLayer.json`, protocol environment variables beginning with `KHARVOX_`, or original KHARVOX configuration filenames. They are **technical compatibility identifiers**, not RIPSHIFT product branding.

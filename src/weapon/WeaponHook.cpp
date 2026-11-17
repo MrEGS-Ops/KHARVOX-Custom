@@ -6,7 +6,6 @@
 #include "WeaponHook.h"
 #include "WeaponControllerPosePolicy.h"
 #include "WeaponIdentityPolicy.h"
-#include "WeaponPivotOutlierPolicy.h"
 #include "AerWeaponPairPolicy.h"
 #include "AerWeaponPoseCache.h"
 #include "CollectiblePresentation.h"
@@ -114,6 +113,7 @@ std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<bool> chaingunTurretModeActive{};
 std::atomic<bool> chaingunRotorModeActive{};
 std::atomic<bool> weaponHolstered{};
+std::atomic<bool> weaponWheelPresentationActive{}; // native wheel render-only state
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
 using InventoryItemFn = void*(__fastcall*)(void*, int);
@@ -162,18 +162,7 @@ HideRenderModelMeshFn hideRenderModelMesh{};
 WeaponRenderUpdateFn originalWeaponRenderUpdate{};
 std::array<std::atomic<float>, 3> animatedGripPivot{};
 std::atomic<bool> animatedGripPivotValid{};
-std::atomic<bool> scriptedInteractionSuspended{};
 std::atomic<uint64_t> animatedGripPivotTickMs{}; // read-only published timestamp
-std::array<std::atomic<float>, 3> neutralGripPivot{};
-std::atomic<bool> neutralGripPivotValid{};
-std::atomic<unsigned> neutralGripPivotGeneration{};
-std::atomic<bool> scriptedPivotRecoveredPending{};
-kharvox::ScriptedWeaponPivotRecovery pivotRecoveryState{};
-std::atomic<KharvoxWeaponKind> neutralGripPivotWeapon{
-    KharvoxWeaponKind::Unknown};
-unsigned neutralGripPivotWarmup{};
-unsigned neutralGripPivotSamples{};
-std::array<float, 3> neutralGripPivotSum{};
 std::atomic<uintptr_t> lastControllerRootEntity{};
 std::array<std::atomic<float>, 3> lastNativeControllerRootOrigin{};
 std::array<std::atomic<float>, 9> lastNativeControllerRootAxis{};
@@ -551,65 +540,6 @@ void captureAnimatedGripPivot(void* hands) {
     float origin[3]{};
     if(!readAnimatedGripPivot(hands,origin))return;
 
-    const unsigned generation=pose.resetGeneration.load(
-        std::memory_order_acquire);
-    const auto currentWeapon=activeWeaponKind.load(
-        std::memory_order_acquire);
-    if(neutralGripPivotGeneration.load(std::memory_order_acquire)!=generation
-        ||neutralGripPivotWeapon.load(std::memory_order_acquire)!=currentWeapon){
-        // Never carry a previous weapon's settled handle point across
-        // inventory switches. Reset only the READ-ONLY neutral sampling;
-        // NEVER reset, rewrite or translate approved calibration profiles.
-        neutralGripPivotValid.store(false,std::memory_order_release);
-        neutralGripPivotGeneration.store(generation,std::memory_order_release);
-        neutralGripPivotWeapon.store(currentWeapon,std::memory_order_release);
-        neutralGripPivotWarmup=0;
-        neutralGripPivotSamples=0;
-        neutralGripPivotSum.fill(0.0f);
-        pivotRecoveryState={};
-        scriptedPivotRecoveredPending.store(false,std::memory_order_release);
-    }
-    // Capture a short settled neutral window after gameplay/cutscene entry.
-    // This becomes the LateUpdate reference used to remove only global
-    // first-person pose translation from attached weapon render entities.
-    if (!neutralGripPivotValid.load(std::memory_order_acquire)) {
-        if (neutralGripPivotWarmup < 45) {
-            ++neutralGripPivotWarmup;
-        } else if (neutralGripPivotSamples < 30) {
-            for (int index = 0; index < 3; ++index)
-                neutralGripPivotSum[index] += origin[index];
-            ++neutralGripPivotSamples;
-            if (neutralGripPivotSamples == 30) {
-                for (int index = 0; index < 3; ++index)
-                    neutralGripPivot[index].store(neutralGripPivotSum[index] / 30.0f,
-                                                  std::memory_order_relaxed);
-                neutralGripPivotValid.store(true, std::memory_order_release);
-                std::ostringstream neutral;
-                neutral << "weapon LateUpdate neutral pivot generation=" << generation << " pivot="
-                        << neutralGripPivot[0].load(std::memory_order_relaxed) << ','
-                        << neutralGripPivot[1].load(std::memory_order_relaxed) << ','
-                        << neutralGripPivot[2].load(std::memory_order_relaxed);
-                log(neutral.str());
-            }
-        }
-    }
-    // A scripted in-world terminal can leave the native idHands joint
-    // translated far from its regular grip while gameplay stays active.
-    // Freeze that outlier to the known normal joint, not a corrupt offset.
-    if(neutralGripPivotValid.load(std::memory_order_acquire)){
-        float neutral[3]{};
-        for(int i=0;i<3;++i)
-            neutral[i]=neutralGripPivot[i].load(std::memory_order_relaxed);
-        const bool outlier=kharvox::weaponPivotOutlier(origin,neutral);
-        const auto event=pivotRecoveryState.observe(outlier);
-        if(outlier)for(int i=0;i<3;++i)origin[i]=neutral[i];
-        if(event==kharvox::ScriptedWeaponPivotRecovery::Event::Quarantine)
-            log("[WEAPON-PIVOT] large native joint displacement: using neutral grip until DOOM restores the joint");
-        else if(event==kharvox::ScriptedWeaponPivotRecovery::Event::Recovered){
-            scriptedPivotRecoveredPending.store(true,std::memory_order_release);
-            log("[WEAPON-PIVOT] native joint stable again; scheduling transient 6DoF cache rebuild");
-        }
-    }
     for (int index = 0; index < 3; ++index)
         animatedGripPivot[index].store(origin[index], std::memory_order_relaxed);
     animatedGripPivotTickMs.store(GetTickCount64(), std::memory_order_release);
@@ -1742,10 +1672,7 @@ void dumpBoneSnapshot(void* hands) {
     out << "PIVOT current=";
     for (int index = 0; index < 3; ++index)
         out << (index ? "," : "") << animatedGripPivot[index].load(std::memory_order_relaxed);
-    out << " neutral=";
-    for (int index = 0; index < 3; ++index)
-        out << (index ? "," : "") << neutralGripPivot[index].load(std::memory_order_relaxed);
-    out << " neutralValid=" << neutralGripPivotValid.load(std::memory_order_acquire) << '\n';
+    out << '\n';
 
     const auto dumpSubmittedTransform = [&](const char* name, uintptr_t entity,
                                             const auto& origin, const auto& axis) {
@@ -1913,10 +1840,8 @@ extern "C" void __fastcall updateHandsTransformHook(void* hands) {
     // constructed.  The native update itself owns that transition, but our
     // model/joint helper calls require a fully active gameplay camera.
     if (collectible || !KharvoxCameraGameplayActive()
-        || KharvoxCameraCutsceneActive()
-        || scriptedInteractionSuspended.load(std::memory_order_acquire)) {
+        || KharvoxCameraCutsceneActive()) {
         animatedGripPivotValid.store(false, std::memory_order_release);
-        neutralGripPivotValid.store(false, std::memory_order_release);
         controllerRootProbeValid = false;
         activeHands = nullptr;
         return;
@@ -2066,15 +1991,14 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         submittedOrigin = pairedOrigin;
         submittedAxis = pairedAxis;
     }
-    // Invisible Quick Holsters: keep native weapon/render state advancing,
-    // but shrink ONLY the confirmed first-person weapon presentation while
-    // stowed. This avoids the old world-underflow pose hack, leaves gameplay
-    // physics untouched, and lets drawing restore full scale instantly.
-    // 0.001 is nonzero so native transforms never become singular.
-    const bool hideHolsteredPresentation=weaponPresentation
-        &&weaponHolstered.load(std::memory_order_acquire);
-    const float submittedModelScale=hideHolsteredPresentation
-        ?0.001f:modelScale;
+    // While the native radial wheel is open, shrink ONLY the verified
+    // first-person weapon model, not the wheel HUD. This extends the existing
+    // quick-holster render gate without altering gameplay physics or UserData.
+    // 0.001 is nonzero so the native model matrix remains invertible.
+    const bool hidePresentation=verifiedWeaponCaller
+        &&(weaponWheelPresentationActive.load(std::memory_order_acquire)
+            ||(weaponPresentation&&weaponHolstered.load(std::memory_order_acquire)));
+    const float submittedModelScale=hidePresentation?0.001f:modelScale;
     // Preserve DOOM's original first-person weapon submission depth.
     // Hand projection maintains its own near-plane behaviour.
     // Cache DOOM's original arguments even when a chainsaw kill owns the
@@ -2469,15 +2393,6 @@ bool synchronizeAerAnimatedWeaponProp(
             float joint[3]{},delta[3]{};
             const auto adjustment=configuredWeaponPivotAdjustment();
             if(readAnimatedGripPivot(activeHands,joint)){
-                // The final weapon-prop correction MUST use the same bounded
-                // joint as the root, or the prop can reintroduce the offset.
-                if(neutralGripPivotValid.load(std::memory_order_acquire)){
-                    float neutral[3]{};
-                    for(int i=0;i<3;++i)
-                        neutral[i]=neutralGripPivot[i].load(std::memory_order_relaxed);
-                    if(kharvox::weaponPivotOutlier(joint,neutral))
-                        std::memcpy(joint,neutral,sizeof(neutral));
-                }
                 gripCorrected=kharvox::correctAerPropGrip(
                     weaponRootSource,sourceRootOrigin.data(),
                     sourceRootAxis.data(),joint,adjustment.data(),
@@ -2820,6 +2735,13 @@ bool KharvoxWeaponChaingunRotorModeActive() {
     return chaingunRotorModeActive.load(std::memory_order_acquire);
 }
 
+void KharvoxWeaponSetWheelPresentationActive(bool active) {
+    const bool previous=weaponWheelPresentationActive.exchange(active,std::memory_order_acq_rel);
+    if(previous!=active)
+        log(active?"[WEAPON-WHEEL] first-person gun render suppressed":
+                   "[WEAPON-WHEEL] first-person gun render restored");
+}
+
 void KharvoxWeaponSetHolstered(bool holstered) {
     const bool previous = weaponHolstered.exchange(holstered, std::memory_order_acq_rel);
     if (previous != holstered)
@@ -3074,20 +2996,9 @@ KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key) {
     return KharvoxWeaponKind::Unknown;
 }
 
-bool KharvoxWeaponConsumeScriptedPivotRecovery(){
-    return scriptedPivotRecoveredPending.exchange(false,std::memory_order_acq_rel);
-}
-void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend){
-    scriptedInteractionSuspended.store(suspend,std::memory_order_release);
-    if(suspend){
-        animatedGripPivotValid.store(false,std::memory_order_release);
-        neutralGripPivotValid.store(false,std::memory_order_release);
-    }
-}
 void KharvoxWeaponResetCalibration() {
     std::lock_guard lock(controllerInputMutex);
     animatedGripPivotValid.store(false,std::memory_order_release);
-    neutralGripPivotValid.store(false,std::memory_order_release);
     weaponSourceEpoch.fetch_add(1,std::memory_order_acq_rel);
     pose.valid.store(false, std::memory_order_release);
     if (installed.load(std::memory_order_acquire)) {

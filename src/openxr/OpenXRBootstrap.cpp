@@ -49,7 +49,6 @@
 #include "../hud/LevelStatsPolicy.h"
 #include "../weapon/WeaponHook.h"
 #include "../weapon/WeaponControllerPosePolicy.h"
-#include "ScriptedWeaponPoseBoundary.h"
 #include "../weapon/BackWeaponPolicy.h"
 #include "../weapon/QuickHolsterPolicy.h"
 #include "../fsr/Fsr1Policy.h"
@@ -423,7 +422,6 @@ struct State {
     kharvox::PostCinematicYawGuard postCinematicYawGuard{};
     bool gameplayRecenterPending{true};
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
-    kharvox::ScriptedWeaponPoseBoundary scriptedWeaponBoundary{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
     bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
@@ -2581,21 +2579,6 @@ bool supportGripInCaptureRange(){
     return vectorLength(subtractVector(grip.position,target))<=active.captureRadius;
 }
 void updateWeapon6Dof(){
-    // The arcade terminal sometimes leaves the normal gameplay/control
-    // classifier asserted. Also recover when the native weapon GRIP joint
-    // itself demonstrates a large, then restored, scripted displacement.
-    if(KharvoxWeaponConsumeScriptedPivotRecovery()){
-        KharvoxWeaponResetCalibration();
-        s.weaponCalibrated=false;
-        s.weaponTrackingHeld=false;
-        s.lastWeaponRenderedValid=false;
-        s.primaryVisualLocked=false;
-        s.supportVisualLocked=false;
-        s.heavyModeHandoff={};
-        s.twoHandLatched=false;
-        s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
-        log("[WEAPON-POSE] post-minigame joint recovered: runtime mount rebuilt; saved grips unchanged");
-    }
     const bool worldInput=!controllerOnlyLocked.load(std::memory_order_acquire)
         &&KharvoxCameraGameplayActive()
         &&!KharvoxWeaponCollectibleAnimationActive()
@@ -2603,28 +2586,7 @@ void updateWeapon6Dof(){
         &&!KharvoxHudDeathMenuActive()
         &&!KharvoxHudFullscreenMenuActive()
         &&!s.cinematicBodyPoseHeld;
-    const auto transition=s.scriptedWeaponBoundary.update(
-        worldInput,worldInput&&KharvoxCameraPlayerWeaponControlActive());
-    if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Suspend){
-        KharvoxWeaponSetScriptedInteractionSuspended(true);
-        log("[WEAPON-POSE] scripted terminal/control lock: temporary grip pivot capture suspended");
-    }else if(transition==kharvox::ScriptedWeaponPoseBoundary::Change::Restore){
-        // Resample native weapon root and controller basis only. These are
-        // runtime caches, NOT the user's independently saved grip profiles.
-        KharvoxWeaponSetScriptedInteractionSuspended(false);
-        KharvoxWeaponResetCalibration();
-        s.weaponCalibrated=false;
-        s.weaponTrackingHeld=false;
-        s.primaryVisualLocked=false;
-        s.supportVisualLocked=false;
-        s.lastWeaponRenderedValid=false;
-        s.calibrationFrozenGunValid=false;
-        s.heavyModeHandoff={};
-        s.twoHandLatched=false;
-        s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
-        log("[WEAPON-POSE] native weapon control restored: rebuilt transient caches without changing UserData");
-    }
-    const bool gameplay=worldInput&&!s.scriptedWeaponBoundary.suspended;
+    const bool gameplay=worldInput;
     if(!s.weapon6Dof||!s.headZeroValid||!gameplay){
         s.calibrationFrozenGunValid=false;
         s.recoilState={};
@@ -3516,6 +3478,7 @@ void serviceCampaignRunTime(bool gameplay,
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
     if(!s.actionsReady){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.heavyAlternateInputForwarded=false;
@@ -3538,6 +3501,7 @@ void updateGameplayActions(XrTime displayTime){
     XrActiveActionSet active{s.gameplayActionSet,XR_NULL_PATH}; XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets=1; sync.activeActionSets=&active;
     if(XR_FAILED(s.syncActionsFn(s.session,&sync))
         ||s.sessionState!=XR_SESSION_STATE_FOCUSED){
+        KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         s.motionWheelState={};
@@ -3571,6 +3535,7 @@ void updateGameplayActions(XrTime displayTime){
             KharvoxHudResetWeaponWheelPresentation();
             s.hudWeaponWheelPresented=false;
         }
+        KharvoxWeaponSetWheelPresentationActive(false);
         s.behindHeadWheelActive=false;s.behindHeadWheelSide=-1;
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
         s.wheelCancelDrain.reset();
@@ -4184,6 +4149,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool weaponWheelActive=gameplay&&!s.customMods.disableWeaponWheel
         &&((weaponSelectDown&&s.weaponWheelOpened)||s.wheelCancelDrain.active());
     s.actionSpeedWheelObserved=weaponWheelActive;
+    // Build 658: DOOM was drawing the equipped gun over the wheel canvas.
+    KharvoxWeaponSetWheelPresentationActive(weaponWheelActive);
     if(weaponWheelActive!=s.hudWeaponWheelPresented){
         // Reset renderer-local wheel transform/pivot at BOTH edges. Original
         // native menu size and distance remain unchanged.

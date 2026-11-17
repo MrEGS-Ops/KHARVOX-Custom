@@ -61,6 +61,8 @@ bool KharvoxWeaponChaingunRotorModeActive();
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
 bool KharvoxWeaponHolstered();
+// Hide only the equipped first-person model while the native radial wheel is open.
+void KharvoxWeaponSetWheelPresentationActive(bool active);
 // Called from the proven idPlayer gameplay-camera path. Internally throttled;
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
@@ -77,11 +79,6 @@ bool KharvoxWeaponGetLaserMuzzlePose(float origin[3], float direction[3],
 const char* KharvoxWeaponKindKey(KharvoxWeaponKind kind);
 const char* KharvoxWeaponKindDisplayName(KharvoxWeaponKind kind);
 KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key);
-// Clears ONLY temporary animated grip snapshots, not UserData settings.
-void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend);
-// True once when the native animated grip returns from an extreme scripted
-// displacement. Consumer resets runtime caches ONLY, not saved calibration.
-bool KharvoxWeaponConsumeScriptedPivotRecovery();
 void KharvoxWeaponResetCalibration();
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,
