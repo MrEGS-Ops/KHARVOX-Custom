@@ -38,6 +38,12 @@
 
 **The current cyan laser is visual-only. Red indication and actual object grabbing are not connected to the game yet.** Do not give the tester another laser-only screenshot task.
 
+## Concrete next native investigation (no headset test)
+- A local, read-only inspector is committed at `tools/Inspect-DoomWorldPhysics.ps1`. It reads DOOMx64vk.exe on the owner's PC without loading an injected DLL, enabling developer/cheat CVars, or changing game files.
+- Run from the repository checkout: `powershell -ExecutionPolicy Bypass -File .\\tools\\Inspect-DoomWorldPhysics.ps1` (use `-ExePath` only for a custom Steam install). It writes `tools/DOOM-native-physics-report.txt`; this report is intentionally ignored by no gameplay code and can be shared for reverse engineering.
+- The inspector validates the two observed FocusTracker-to-native trace queue CALL targets and enumerates string locations and simple RIP-relative references to physics-class symbols. It does **not** by itself prove a native dynamic-physics setter, and it does not convert this build into a playable grab.
+- Build CI now checks PowerShell syntax and compiles the analyzer without requiring DOOMx64vk.exe on the runner. GitHub build success has not yet been verified.
+
 ## Boundaries
 - Never use the retired player idPhysics velocity setter (previously caused void teleport).
 - Do not enable developer/cheat CVars, install additional loaders, write game archives or touch UserData.
