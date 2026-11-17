@@ -1,26 +1,32 @@
-# KHARVOX Custom Changelog
+# RIPSHIFT VR — Changelog
 
-Permanent history for the custom branch. Old successful workflow runs and artifacts may be removed, while this file stays in the repository.
+Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR installation. This changelog describes the current experimental work; successful builds and code tests do not substitute for headset verification.
 
-## Clean custom core
+## 17 November 2026 — Experimental
 
-Base: official KHARVOX main at `ff348bb`.
+### Launcher and installation
+- RIPSHIFT launches from its own folder and uses the separately installed original KHARVOX runtime.
+- Locate the original KHARVOX launcher on first setup; detect or browse for the DOOM game folder separately.
+- Preserve existing UserData settings and weapon calibration during upgrades.
+- Keep gameplay configuration in the in-headset RIPSHIFT Mod Menu rather than a separate external mod manager.
 
-### Retained custom features
-- Custom Mods button and separate Custom Mods window.
-- Weapon Wheel Remap.
-- Glory Kill Slow-Mo slider.
+### Combat and VR controls
+- Gunslinger supports either weapon hand, behind-head weapon selection and configurable left/right hip quick holsters.
+- Weapon Grip Calibration maintains independent left/right primary and support grips, with fine-tune, rotation and alternate-fire calibration for Gauss/Chaingun.
+- PAINSAW adds physical trigger-based chainsaw operation; Physical Glory Kills and KILLTIME configure execution behaviour.
+- Two-handed weapon stability, physical jumping, physical crouch and A-button manual crouch are available.
+- Gameplay controller reconnection handling pauses safely on genuine loss of tracking and avoids unwanted controller-input events.
 
-### Build and update infrastructure
-- Install-once watcher with fast patching for later builds.
-- Full build artifact for first install.
-- Small patch artifact for later updates.
-- Watcher waits for DOOM to close before patching.
-- Previous patched files retained under `.rollback\previous`.
-- Build/patch number shown in the launcher title bar.
-- Runtime and diagnostic logs stored under the installed build's `logs\` folder instead of `%TEMP%`.
-- Build caching enabled for vcpkg dependencies and native CMake output.
-- Retention policy keeps only the latest 5 successful build runs and their artifacts.
+### HUD statistics and personal records
+- Independent HUD displays for campaign/session deaths and time, level time, level deaths and level best, with configurable positioning.
+- Overlapping enabled HUD readouts resolve by disabling the conflicting earlier display.
+- Level recording supports explicit start/stop, completed personal records, time/deaths ranking and saved results.
+- Unfinished recording is disarmed when leaving a level or exiting to desktop; current timer and record behaviour still requires full headset audit.
 
-## VEGA
-Future local KHARVOX integration work uses the codename **VEGA** in the repository and codebase.
+### Maintenance
+- Remove the obsolete OpenXR chainsaw-zone outline overlay and its dedicated debug resource path. Chainsaw gameplay and haptics are not intentionally changed.
+- Retain the original KHARVOX installation as an external requirement; RIPSHIFT packages only its own runtime and necessary dependencies.
+
+## Verification
+- Headset audit on 17 November: 31 original passes; medical-station interaction subsequently accepted, with collectible behaviour unchanged.
+- Level timer, death counter, personal records and additional menu options remain subject to user testing.
