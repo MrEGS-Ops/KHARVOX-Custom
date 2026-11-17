@@ -114,6 +114,9 @@ unsigned long long nativeGrabFocusReference{},nativeGrabFocusGeneration{};
 std::array<KharvoxWorldGrabTraceCandidate,2> nativeGrabCandidate{};
 std::array<bool,2> nativeGrabCandidateValid{};
 unsigned long long nativeGrabCandidateSequence{};
+std::array<KharvoxWorldGrabResolvedEntity,2> nativeGrabResolvedEntity{};
+std::array<bool,2> nativeGrabResolvedValid{};
+unsigned long long nativeGrabResolvedSequence{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -605,6 +608,146 @@ bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
     }
     log("[WORLD-GRAB-NATIVE] signature-verified primary/secondary native"
         " hit-handle observer installed; read-only, DEV-gated");
+    return true;
+}
+
+
+// DOOM has ALREADY resolved and null-checked this entity in FocusTracker.
+// The following native instruction is itself 'mov rdx,[rax]' to fetch the
+// entity's vtable. Observe that same pointer while it's valid on game thread.
+// We export only a vtable RVA; never a live pointer or fabricated body ID.
+extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
+    const void* nativeEntity,unsigned int sourcePath) {
+    if(!nativeEntity||sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!KharvoxCameraWorldActive()
+        ||KharvoxCameraCutsceneActive()
+        ||KharvoxCameraBossSequenceActive())return;
+    std::uintptr_t vtable{};
+    std::memcpy(&vtable,nativeEntity,sizeof(vtable));
+    const auto* image=reinterpret_cast<const unsigned char*>(GetModuleHandleW(nullptr));
+    if(!image)return;
+    const auto* dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+    if(dos->e_magic!=IMAGE_DOS_SIGNATURE)return;
+    const auto* nt=reinterpret_cast<const IMAGE_NT_HEADERS64*>(
+        image+dos->e_lfanew);
+    if(nt->Signature!=IMAGE_NT_SIGNATURE)return;
+    const auto base=reinterpret_cast<std::uintptr_t>(image);
+    const auto size=static_cast<std::uintptr_t>(nt->OptionalHeader.SizeOfImage);
+    const bool inImage=vtable>=base&&vtable-base<size;
+    std::lock_guard<std::mutex> lock(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_relaxed))
+        return;
+    KharvoxWorldGrabResolvedEntity found{};
+    found.sourcePath=sourcePath;
+    found.nativeHandle=nativeGrabCandidateValid[sourcePath]
+        ?nativeGrabCandidate[sourcePath].nativeHandle:0;
+    found.vtableRva=inImage?static_cast<std::uint64_t>(vtable-base):0;
+    found.vtableInExecutable=inImage;
+    found.levelGeneration=levelTransitionGeneration.load(
+        std::memory_order_acquire);
+    found.sampleSequence=++nativeGrabResolvedSequence;
+    nativeGrabResolvedEntity[sourcePath]=found;
+    nativeGrabResolvedValid[sourcePath]=true;
+}
+
+// Hook ONLY the fourteen bytes after DOOM's native entity manager has
+// returned a non-null entity. The displaced instructions call DOOM's own
+// interactable predicate unchanged. The helper cannot turn a prop into an
+// interactable or modify the game's own classification.
+// These machine bytes are present in the owner's v3 executable report.
+bool installNativeWorldGrabResolvedEntityHooks(unsigned char* image) {
+    if(!image)return false;
+    static constexpr unsigned char signature[14]{
+        0x48,0x8B,0x10, 0x48,0x8B,0xC8,
+        0xFF,0x92,0x00,0x06,0x00,0x00,
+        0x84,0xC0
+    };
+    struct Site { std::uintptr_t rva; unsigned int path; };
+    static constexpr Site sites[2]{{0xD48B7C,0},{0xD48C04,1}};
+    for(const auto& site:sites){
+        if(std::memcmp(image+site.rva,signature,sizeof(signature))!=0){
+            log("[WORLD-GRAB-ENTITY] resolved entity signature mismatch;"
+                " no output probes installed");
+            return false;
+        }
+    }
+    constexpr unsigned char saveXmm[]{
+        0xF3,0x0F,0x7F,0x44,0x24,0x20, 0xF3,0x0F,0x7F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x7F,0x54,0x24,0x40, 0xF3,0x0F,0x7F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x7F,0x64,0x24,0x60, 0xF3,0x0F,0x7F,0x6C,0x24,0x70
+    };
+    constexpr unsigned char loadXmm[]{
+        0xF3,0x0F,0x6F,0x44,0x24,0x20, 0xF3,0x0F,0x6F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x6F,0x54,0x24,0x40, 0xF3,0x0F,0x6F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x6F,0x64,0x24,0x60, 0xF3,0x0F,0x6F,0x6C,0x24,0x70
+    };
+    std::array<unsigned char*,2> stubs{};
+    for(std::size_t i=0;i<2;++i){
+        const auto& site=sites[i];
+        auto* target=image+site.rva;
+        auto* stub=static_cast<unsigned char*>(VirtualAlloc(
+            nullptr,256,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));
+        if(!stub){
+            for(auto* prior:stubs)if(prior)VirtualFree(prior,0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] unable to reserve output trampoline");
+            return false;
+        }
+        stubs[i]=stub;
+        auto* p=stub;
+        emit8(p,0x9C);emit8(p,0x50);emit8(p,0x51);emit8(p,0x52);
+        emit8(p,0x41);emit8(p,0x50);emit8(p,0x41);emit8(p,0x51);
+        emit8(p,0x41);emit8(p,0x52);emit8(p,0x41);emit8(p,0x53);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xEC);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        std::memcpy(p,saveXmm,sizeof(saveXmm));p+=sizeof(saveXmm);
+        emit8(p,0x48);emit8(p,0x89);emit8(p,0xC1); // rcx = native rax
+        emit8(p,0xBA); // edx = native source path
+        const auto path=static_cast<std::uint32_t>(site.path);
+        std::memcpy(p,&path,sizeof(path));p+=sizeof(path);
+        emit8(p,0x48);emit8(p,0xB8);
+        emit64(p,reinterpret_cast<unsigned long long>(
+            observeNativeWorldGrabResolvedEntity));
+        emit8(p,0xFF);emit8(p,0xD0);
+        std::memcpy(p,loadXmm,sizeof(loadXmm));p+=sizeof(loadXmm);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xC4);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        emit8(p,0x41);emit8(p,0x5B);emit8(p,0x41);emit8(p,0x5A);
+        emit8(p,0x41);emit8(p,0x59);emit8(p,0x41);emit8(p,0x58);
+        emit8(p,0x5A);emit8(p,0x59);emit8(p,0x58);emit8(p,0x9D);
+        // The displaced code has NO relative branches and safely executes
+        // in a trampoline: vtable read, virtual predicate call, test AL.
+        std::memcpy(p,signature,sizeof(signature));p+=sizeof(signature);
+        emit8(p,0xFF);emit8(p,0x25);emit8(p,0);emit8(p,0);
+        emit8(p,0);emit8(p,0);
+        emit64(p,reinterpret_cast<unsigned long long>(target+14));
+        if(p>stub+256){
+            for(auto* prior:stubs)if(prior)VirtualFree(prior,0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] output trampoline overflow");
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(),stub,
+            static_cast<SIZE_T>(p-stub));
+    }
+    for(std::size_t i=0;i<2;++i){
+        auto* target=image+sites[i].rva;
+        DWORD oldProtect{};
+        if(!VirtualProtect(target,14,PAGE_EXECUTE_READWRITE,&oldProtect)){
+            // Previously installed stubs remain mapped and active.
+            for(std::size_t j=i;j<2;++j)
+                VirtualFree(stubs[j],0,MEM_RELEASE);
+            log("[WORLD-GRAB-ENTITY] output hook VirtualProtect failed");
+            return false;
+        }
+        unsigned char jump[14]{0xFF,0x25,0,0,0,0};
+        const auto address=reinterpret_cast<unsigned long long>(stubs[i]);
+        std::memcpy(jump+6,&address,sizeof(address));
+        std::memcpy(target,jump,sizeof(jump));
+        FlushInstructionCache(GetCurrentProcess(),target,sizeof(jump));
+        VirtualProtect(target,14,oldProtect,&oldProtect);
+    }
+    log("[WORLD-GRAB-ENTITY] native resolved entity vtable fingerprints"
+        " installed (read-only, disabled unless DEV World Grab active)");
     return true;
 }
 
@@ -2819,6 +2962,9 @@ void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     nativeGrabCandidate={};
     nativeGrabCandidateValid={};
     nativeGrabCandidateSequence=0;
+    nativeGrabResolvedEntity={};
+    nativeGrabResolvedValid={};
+    nativeGrabResolvedSequence=0;
 }
 
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) {
@@ -2851,6 +2997,22 @@ bool KharvoxCameraReadWorldGrabTraceCandidate(
             !=KharvoxCameraLevelTransitionGeneration())
         return false;
     sample=nativeGrabCandidate[sourcePath];
+    return true;
+}
+
+bool KharvoxCameraReadWorldGrabResolvedEntity(
+    unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample) {
+    sample={};
+    if(sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!nativeGrabResolvedValid[sourcePath]
+        ||nativeGrabResolvedEntity[sourcePath].levelGeneration
+            !=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample=nativeGrabResolvedEntity[sourcePath];
     return true;
 }
 
@@ -2940,6 +3102,7 @@ bool KharvoxCameraInstallDiagnosticHook() {
         installPlayerPhysicsOriginCapture(image);
         installPlayerFocusTraceHook(image);
         installNativeWorldGrabTraceCandidateHooks(image);
+        installNativeWorldGrabResolvedEntityHooks(image);
         installPlayerLedgeStateCapture(image);
         validateSyncAttackClassifier(image);
         validatePlayerControlClassifier(image);
