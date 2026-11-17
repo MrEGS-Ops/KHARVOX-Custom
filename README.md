@@ -92,7 +92,7 @@ Designed and tested with **KHARVOX v1.1.1**. Compatibility with earlier or later
 
 | Component | Credit |
 | --- | --- |
-| RIPSHIFT VR gameplay enhancements and launcher | **MrEGS_** |
+| RIPSHIFT VR gameplay enhancements and modified KHARVOX launcher | **[MrEGS_](https://www.twitch.tv/mregs_)** |
 | Original KHARVOX DOOM (2016) VR conversion | **[CactusVRStudios](https://github.com/CactusVRStudios/KHARVOX)** |
 | DOOM (2016) | Its respective publisher and developers |
 
