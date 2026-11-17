@@ -148,8 +148,8 @@ inline float recoilDynamicRecoveryScale(float multiplier) noexcept {
 inline WeaponRecoilOutput advanceWeaponRecoil(
     WeaponRecoilState& state,const WeaponRecoilSettings& settings,
     WeaponRecoilInput input) noexcept {
-    // The pistol is intentionally excluded: its infinite ammo cannot
-    // provide a reliable shot confirmation, and its owner wants no recoil.
+    // Index 0 uses unlimited ammunition, so there is no reliable ammo-debit
+    // signal for optional physical recoil. Do not modify native firing.
     if(!input.gameplay||input.weapon<=0
         ||input.weapon>=static_cast<int>(kWeaponRecoilProfiles.size())
         ||!validWeaponRecoilSettings(settings)

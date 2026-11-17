@@ -2611,8 +2611,8 @@ void updateWeapon6Dof(){
 
     // OpenXR can briefly invalidate controller poses while the headset is
     // recentered. Keep the last submitted transform active during that gap;
-    // disabling the hook for even one gameplay frame lets the native viewmodel
-    // take over and its hit/pushback offset can become the new visible pose.
+    // disabling the hook for even one gameplay frame can briefly restore the
+    // native viewmodel instead of the tracked controller-driven pose.
     // The controller's system laser is its OpenXR AIM ray. Drive the native
     // barrel with that exact orientation; do not silently switch to GRIP or
     // use the support-hand angle. Weapon-hand visuals use independent GRIP.
@@ -2963,8 +2963,8 @@ void updateWeapon6Dof(){
         // Confirm each recoil impulse from the existing validated native
         // ammo snapshot for ALL finite-ammo weapons. One observed debit
         // produces one kick (high-rate fire may coalesce several bullets).
-        // Pistol has unlimited ammo and deliberately remains recoil-free.
-        // Unsupported/stale native inventories fail closed: no guessed kick.
+        // Unlimited-ammo weapons have no reliable ammo-debit confirmation.
+        // Unsupported/stale inventories fail closed; native firing is unchanged.
         KharvoxWeaponGetAmmoTotal(kind,nativeAmmoTotal);
     }
     const auto recoil=kharvox::advanceWeaponRecoil(
