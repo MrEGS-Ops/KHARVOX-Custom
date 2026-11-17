@@ -114,5 +114,28 @@ int main(){
     assert(frontMenuSince==0);
     assert(!levelFrontMenuConfirmed(true,13000,frontMenuSince));
     assert(levelFrontMenuConfirmed(true,13000+kLevelFrontMenuCancelDelayMs,frontMenuSince));
+    // Exit to Desktop must abandon an unfinished run without saving a result.
+    LevelProgress quitRun{};
+    LevelRecords completedResults{};
+    assert(levelRecordsAddRun(completedResults,"campaign/02",
+        LevelRun{720000,2,20261117}));
+    assert(levelProgressStartAttempt(quitRun,"campaign/02",2000000));
+    levelProgressAdvance(quitRun,false,2075000);
+    levelProgressDeath(quitRun);
+    assert(quitRun.armed&&quitRun.time.elapsedMs==75000&&quitRun.deaths==1);
+    levelProgressAbandonOnDesktopExit(quitRun);
+    assert(!quitRun.armed&&!quitRun.completed
+        &&!quitRun.time.activeLastSample);
+    assert(!levelProgressComplete(quitRun,completedResults,2080000,20261117));
+    assert(levelBestFor(completedResults,"campaign/02")==720000);
+    assert(completedResults.runs.at("campaign/02").size()==1);
+    levelProgressAbandonOnDesktopExit(quitRun); // shutdown can repeat safely
+    LevelProgress alreadyFinished{};
+    assert(levelProgressStartAttempt(alreadyFinished,"campaign/03",3000000));
+    levelProgressAdvance(alreadyFinished,false,3200000);
+    assert(levelProgressComplete(alreadyFinished,completedResults,3200000,20261117));
+    levelProgressAbandonOnDesktopExit(alreadyFinished);
+    assert(alreadyFinished.completed
+        &&levelBestFor(completedResults,"campaign/03")==200000);
     return 0;
 }
