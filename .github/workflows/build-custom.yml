@@ -29,7 +29,7 @@ concurrency:
 jobs:
   build:
     runs-on: windows-latest
-    timeout-minutes: 45
+    timeout-minutes: 85
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -176,7 +176,7 @@ jobs:
 
       - name: Configure native
         shell: powershell
-        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+        run: cmake -S . -B build/native -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF -DKHARVOX_EXPERIMENTAL_WORLD_GRAB=OFF "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
 
       - name: Build native Release
         shell: powershell
@@ -192,6 +192,40 @@ jobs:
           $lines = Get-Content $stamp
           $hash = (Get-FileHash -Algorithm SHA256 $layer).Hash
           if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1] -ne $hash) { throw "SFS capability stamp mismatch" }
+
+      # Both DLL variants are built from the SAME source commit. The normal
+      # Native Full/Patch uploads stay strictly WORLD_GRAB=OFF. The additional
+      # ON artifact is downloaded ONLY by RIPSHIFT VR (Experimental).
+      - name: Configure experimental World Grab runtime
+        shell: powershell
+        run: cmake -S . -B build/experimental -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_BUILD_SFS_COMPILER=ON -DBUILD_TESTING=OFF -DKHARVOX_EXPERIMENTAL_WORLD_GRAB=ON "-DKHARVOX_SPIRV_CROSS_SOURCE=$env:KHARVOX_VCPKG_ROOT\include\spirv_cross" "-DKHARVOX_SPIRV_CROSS_LIB=$env:KHARVOX_VCPKG_ROOT\lib" "-DKHARVOX_GLSLANG_ROOT=$env:KHARVOX_VCPKG_ROOT"
+
+      - name: Compile experimental World Grab DLL
+        shell: powershell
+        run: cmake --build build/experimental --config Release --target KharvoxLayer --parallel
+
+      - name: Verify distinct experimental DLL and SFS stamp
+        shell: powershell
+        run: |
+          $base = "build/native/Release/KharvoxLayer.dll"
+          $experimental = "build/experimental/Release/KharvoxLayer.dll"
+          $stamp = "build/experimental/Release/native_sfs_build.txt"
+          if (!(Test-Path $base) -or !(Test-Path $experimental) -or !(Test-Path $stamp)) { throw "One runtime DLL or experimental SFS stamp missing" }
+          $baseHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $base).Hash.ToLowerInvariant()
+          $experimentalHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $experimental).Hash.ToLowerInvariant()
+          if ($baseHash -eq $experimentalHash) { throw "Experimental and native runtimes are identical: compiled World Grab split missing" }
+          $lines = @(Get-Content -LiteralPath $stamp)
+          if ($lines.Count -ne 2 -or $lines[0] -ne "KHARVOX_NATIVE_SFS_1" -or $lines[1].ToLowerInvariant() -ne $experimentalHash) { throw "Experimental SFS capability stamp mismatch" }
+          $stage = "out/experimental-world-grab"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item -LiteralPath $experimental -Destination "$stage/KharvoxLayer.dll" -Force
+          Copy-Item -LiteralPath $stamp -Destination "$stage/native_sfs_build.txt" -Force
+          @(
+            "RIPSHIFT_EXPERIMENTAL_WORLD_GRAB_1"
+            "commit=${{ github.sha }}"
+            "experimental_sha256=$experimentalHash"
+            "native_sha256=$baseHash"
+          ) | Set-Content -Encoding ascii -LiteralPath "$stage/EXPERIMENTAL-WORLD-GRAB-STAMP.txt"
 
       - name: Test DOOM user mod discovery and selection persistence
         shell: powershell
@@ -362,6 +396,15 @@ jobs:
         with:
           name: RIPSHIFT-Native-Patch
           path: out/watcher/patch
+          if-no-files-found: error
+          compression-level: 1
+          retention-days: 30
+
+      - name: Upload experimental-only World Grab DLL
+        uses: actions/upload-artifact@v4
+        with:
+          name: RIPSHIFT-Experimental-World-Grab-Layer
+          path: out/experimental-world-grab
           if-no-files-found: error
           compression-level: 1
           retention-days: 30
