@@ -67,6 +67,11 @@ int main(){
     // A tracked grip cannot automatically reattach after throwing.
     in.trigger=false;
     assert(controller.update(0,in).command==WorldGrabCommand::None);
+    // Off-hand trigger must NOT throw with an absent grenade profile.
+    right.trigger=true;
+    const auto rightUnsampled=controller.update(1,right);
+    assert(rightUnsampled.command==WorldGrabCommand::Follow);
+    assert(controller.hands[1].entityId==73);
     // Disable while holding drops, never throws.
     right.enabled=false;
     assert(controller.update(1,right).command==WorldGrabCommand::Drop);
