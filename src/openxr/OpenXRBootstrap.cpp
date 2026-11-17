@@ -3385,8 +3385,10 @@ bool resetCampaignRunTimeSaved(){
     s.campaignRunTime=previous;
     return false;
 }
-// The level timer shares the existing playable-gameplay gate. Death and
-// completion observations are independent of whether a HUD item is visible.
+// Ranked attempts count wall-clock time through RIPSHIFT menus, cutscenes,
+// Hayden dialogue locks, death/reload and controller disconnects. The native
+// DOOM Pause session is the sole exception; gameplay-eligibility still drives
+// the ordinary Campaign and Session clocks.
 void serviceLevelStats(bool gameplay,std::uint64_t now) {
     auto& progress=s.levelProgress;
     const auto deaths=KharvoxHudCampaignSessionDeaths();
@@ -3397,6 +3399,10 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
     }
     s.observedSessionDeaths=deaths; // handles an explicit DEV session reset
     const bool completedMenu=KharvoxHudEndOfLevelMenuActive();
+    // Advance BEFORE disarming the run on the end-of-level screen. The
+    // last cinematics/loading transition and its final frame must count.
+    // The native pause latch remains active in pause child settings screens.
+    kharvox::levelProgressAdvance(progress,KharvoxHudPauseMenuActive(),now);
     if(completedMenu&&!progress.endMenuWasVisible&&progress.armed){
         SYSTEMTIME local{};GetLocalTime(&local);
         const auto date=std::uint32_t(local.wYear)*10000u
@@ -3434,7 +3440,6 @@ void serviceLevelStats(bool gameplay,std::uint64_t now) {
     if(progress.awaitingNextLevel&&!completedMenu&&gameplay
         &&progress.generationAtCompletion!=KharvoxCameraLevelTransitionGeneration())
         kharvox::levelProgressNextUnidentified(progress);
-    kharvox::levelProgressAdvance(progress,gameplay,now);
 }
 void serviceCampaignRunTime(bool gameplay){
     const bool wasActive=s.campaignRunTime.activeLastSample;

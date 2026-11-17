@@ -139,3 +139,14 @@ else()
   target_compile_options(KharvoxWeaponRecoilPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME recoil-first-shot-grace-and-900pct COMMAND KharvoxWeaponRecoilPolicyTests)
+
+# Ranked level records must use monotonic real time and ignore only DOOM's
+# native Pause session. Regular gameplay-only timers remain unchanged.
+add_executable(KharvoxLevelRecordTimerPolicyTests ../level_record_timer_policy_tests.cpp)
+target_compile_features(KharvoxLevelRecordTimerPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME level-record-timer-no-menu-or-cutscene-exploit COMMAND KharvoxLevelRecordTimerPolicyTests)

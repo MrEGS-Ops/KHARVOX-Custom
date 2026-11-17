@@ -422,7 +422,7 @@ bool handleVrLevelRecordTrack(int missionIndex){
         return true; // First press only arms confirmation; time is unchanged.
     }
     const auto& mission=kharvox::kCampaignMissions[missionIndex];
-    if(!kharvox::levelProgressStartAttempt(s.levelProgress,mission.key)){
+    if(!kharvox::levelProgressStartAttempt(s.levelProgress,mission.key,now)){
         menu.message="Cannot start: invalid campaign mission.";
         return false;
     }
@@ -449,7 +449,7 @@ bool handleVrLevelRecordTrack(int missionIndex){
     menu.cursorX=menu.cursorY=-1.f;
     menu.message=std::string("Timed level attempt started: ")+mission.title;
     log(std::string("[LEVEL-STATS] confirmed timed attempt; Mod Menu closed, mission=")
-        +mission.key+"; timer advances only during live gameplay");
+        +mission.key+"; ranked timer counts all elapsed time except native DOOM Pause");
     return true;
 }
 // Record resets are separate from Stats RESET ALL. Neither reset

@@ -145,11 +145,15 @@ struct LevelProgress {
     std::uint64_t generationAtCompletion{};
 };
 inline bool levelProgressStartAttempt(LevelProgress& progress,
-    const std::string& verifiedKey) {
+    const std::string& verifiedKey,std::uint64_t nowMs=0) {
     if(!levelRecordKeyValid(verifiedKey))return false;
     progress=LevelProgress{};
     progress.verifiedMapKey=verifiedKey;
     progress.armed=true;
+    // The competitive clock begins at the user's confirmation, not at the
+    // next rendered frame or after the RIPSHIFT Mod Menu closes.
+    progress.time.lastSampleMs=nowMs;
+    progress.time.activeLastSample=true;
     return true;
 }
 inline bool levelProgressSetMap(LevelProgress& progress,
@@ -161,10 +165,22 @@ inline bool levelProgressSetMap(LevelProgress& progress,
     // Merely discovering/choosing a map never starts an attempt.
     return true;
 }
+// Ranked level attempts use real monotonic elapsed time, not the ordinary
+// gameplay-only clock. Menus, cinematics, dialogue, death/reloads and gaps
+// between XR frames all count. ONLY the real DOOM Pause session suspends it.
+// Keep the standalone Campaign and Session clocks on their original policy.
 inline void levelProgressAdvance(LevelProgress& progress,
-    bool active,std::uint64_t nowMs) noexcept {
-    advanceCampaignRunTime(progress.time,
-        progress.armed&&!progress.completed&&active,nowMs);
+    bool nativeGamePaused,std::uint64_t nowMs) noexcept {
+    if(!progress.armed||progress.completed)return;
+    auto& time=progress.time;
+    if(time.activeLastSample&&!nativeGamePaused&&time.lastSampleMs
+        &&nowMs>time.lastSampleMs){
+        // Never clamp ranked run time to a rendering frame duration: that
+        // would let a frozen renderer/headset or script lock shorten records.
+        time.elapsedMs+=nowMs-time.lastSampleMs;
+    }
+    time.lastSampleMs=nowMs;
+    time.activeLastSample=!nativeGamePaused;
 }
 inline void levelProgressDeath(LevelProgress& progress) noexcept {
     if(progress.armed&&!progress.completed&&progress.deaths<1000000000ULL)
