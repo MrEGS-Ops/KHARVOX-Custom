@@ -110,6 +110,9 @@ std::mutex nativeGrabFocusMutex;
 unsigned long long nativeGrabFocusSequence{};
 unsigned int nativeGrabFocusIndexA{},nativeGrabFocusIndexB{};
 unsigned long long nativeGrabFocusReference{},nativeGrabFocusGeneration{};
+std::array<KharvoxWorldGrabTraceCandidate,2> nativeGrabCandidate{};
+std::array<bool,2> nativeGrabCandidateValid{};
+unsigned long long nativeGrabCandidateSequence{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -444,6 +447,163 @@ bool installPlayerFocusTraceHook(unsigned char* image) {
     FlushInstructionCache(GetCurrentProcess(), target, sizeof(jump));
     VirtualProtect(target, sizeof(jump), oldProtect, &oldProtect);
     log("[FOCUS] native FocusTracker world-interaction HAND/HEAD ray hook installed RVA=0xD48938");
+    return true;
+}
+
+
+extern "C" void __fastcall observeNativeWorldGrabTraceCandidate(
+    const void* candidateStorage,unsigned int sourcePath) {
+    // DOOM has reached its own collision-result -> entity resolver. At
+    // this exact boundary, the native caller passes this same address as a
+    // handle lookup input. We observe only the first 32 bits and do NOT
+    // dereference a candidate entity or interpret it as a physics body.
+    if(!candidateStorage||sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!KharvoxCameraWorldActive()
+        ||KharvoxCameraCutsceneActive()
+        ||KharvoxCameraBossSequenceActive())return;
+    unsigned int handle{};
+    std::memcpy(&handle,candidateStorage,sizeof(handle));
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_relaxed))
+        return;
+    KharvoxWorldGrabTraceCandidate next{};
+    next.nativeHandle=handle;
+    next.sourcePath=sourcePath;
+    next.levelGeneration=levelTransitionGeneration.load(std::memory_order_acquire);
+    next.sampleSequence=++nativeGrabCandidateSequence;
+    nativeGrabCandidate[sourcePath]=next;
+    nativeGrabCandidateValid[sourcePath]=true;
+}
+
+// Two signature-verified FocusTracker callsites are immediately upstream
+// of DOOM's own entity manager virtual call (+0x7F8). They have already
+// passed native trace tests, but NOT dynamic-physics eligibility. Passively
+// observe the lookup handle without bypassing the engine's classification.
+// No cheater CVars, extra traces, object memory writes or user input changes.
+bool installNativeWorldGrabTraceCandidateHooks(unsigned char* image) {
+    if(!image)return false;
+    constexpr unsigned char sigPrimary[14]{
+        0x48,0x8B,0x0D,0x69,0x6B,0xDC,0x04,
+        0x48,0x8D,0x55,0x6C,0x48,0x8B,0x01
+    };
+    constexpr unsigned char sigSecondary[14]{
+        0x48,0x8B,0x0D,0xE1,0x6A,0xDC,0x04,
+        0x48,0x8D,0x55,0xDC,0x48,0x8B,0x01
+    };
+    struct CandidateSite {
+        std::uintptr_t rva;
+        unsigned char frameOffset;
+        unsigned int path;
+        const unsigned char* signature;
+    };
+    constexpr CandidateSite sites[2]{
+        {0xD48B60,0x6C,0,sigPrimary},
+        {0xD48BE8,0xDC,1,sigSecondary}
+    };
+    const auto globalSlot=[&](const CandidateSite& site){
+        std::int32_t displacement{};
+        std::memcpy(&displacement,site.signature+3,sizeof(displacement));
+        return image+site.rva+7+displacement;
+    };
+    // Both native sites must refer to the very same entity manager slot.
+    // If either byte signature or manager slot differs, install NEITHER.
+    for(const auto& site:sites){
+        if(std::memcmp(image+site.rva,site.signature,14)!=0){
+            log("[WORLD-GRAB-NATIVE] trace candidate signature mismatch; hook disabled");
+            return false;
+        }
+    }
+    if(globalSlot(sites[0])!=globalSlot(sites[1])){
+        log("[WORLD-GRAB-NATIVE] native entity manager mismatch; hook disabled");
+        return false;
+    }
+    constexpr unsigned char saveXmm[]{
+        0xF3,0x0F,0x7F,0x44,0x24,0x20, 0xF3,0x0F,0x7F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x7F,0x54,0x24,0x40, 0xF3,0x0F,0x7F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x7F,0x64,0x24,0x60, 0xF3,0x0F,0x7F,0x6C,0x24,0x70
+    };
+    constexpr unsigned char loadXmm[]{
+        0xF3,0x0F,0x6F,0x44,0x24,0x20, 0xF3,0x0F,0x6F,0x4C,0x24,0x30,
+        0xF3,0x0F,0x6F,0x54,0x24,0x40, 0xF3,0x0F,0x6F,0x5C,0x24,0x50,
+        0xF3,0x0F,0x6F,0x64,0x24,0x60, 0xF3,0x0F,0x6F,0x6C,0x24,0x70
+    };
+    std::array<unsigned char*,2> stubs{};
+    // Prepare BOTH stubs before touching executable text.
+    for(std::size_t i=0;i<2;++i){
+        const auto& site=sites[i];
+        auto* target=image+site.rva;
+        auto* stub=static_cast<unsigned char*>(VirtualAlloc(
+            nullptr,256,MEM_COMMIT|MEM_RESERVE,PAGE_EXECUTE_READWRITE));
+        if(!stub){
+            for(auto* old:stubs)if(old)VirtualFree(old,0,MEM_RELEASE);
+            log("[WORLD-GRAB-NATIVE] trace candidate trampoline allocation failed");
+            return false;
+        }
+        stubs[i]=stub;
+        auto* p=stub;
+        // Same Win64 volatile register / XMM preservation as established
+        // RIPSHIFT FocusTracker hook. Exactly 64 pushed bytes; aligned stack.
+        emit8(p,0x9C);emit8(p,0x50);emit8(p,0x51);emit8(p,0x52);
+        emit8(p,0x41);emit8(p,0x50);emit8(p,0x41);emit8(p,0x51);
+        emit8(p,0x41);emit8(p,0x52);emit8(p,0x41);emit8(p,0x53);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xEC);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        std::memcpy(p,saveXmm,sizeof(saveXmm));p+=sizeof(saveXmm);
+        emit8(p,0x48);emit8(p,0x8D);emit8(p,0x4D);
+        emit8(p,site.frameOffset);  // rcx = &native handle on DOOM stack
+        emit8(p,0xBA);             // edx = primary or secondary trace path
+        std::uint32_t path=site.path;
+        std::memcpy(p,&path,sizeof(path));p+=sizeof(path);
+        emit8(p,0x48);emit8(p,0xB8);
+        emit64(p,reinterpret_cast<unsigned long long>(
+            observeNativeWorldGrabTraceCandidate));
+        emit8(p,0xFF);emit8(p,0xD0);
+        std::memcpy(p,loadXmm,sizeof(loadXmm));p+=sizeof(loadXmm);
+        emit8(p,0x48);emit8(p,0x81);emit8(p,0xC4);emit8(p,0x80);
+        emit8(p,0);emit8(p,0);emit8(p,0);
+        emit8(p,0x41);emit8(p,0x5B);emit8(p,0x41);emit8(p,0x5A);
+        emit8(p,0x41);emit8(p,0x59);emit8(p,0x41);emit8(p,0x58);
+        emit8(p,0x5A);emit8(p,0x59);emit8(p,0x58);emit8(p,0x9D);
+        // Relocate the native RIP-relative global load to an absolute
+        // address. The next two original instructions are replayed exactly,
+        // with RCX/RDX/RAX reaching DOOM's vtable call unchanged.
+        emit8(p,0x48);emit8(p,0xB9);
+        emit64(p,reinterpret_cast<unsigned long long>(globalSlot(site)));
+        emit8(p,0x48);emit8(p,0x8B);emit8(p,0x09);
+        emit8(p,0x48);emit8(p,0x8D);emit8(p,0x55);
+        emit8(p,site.frameOffset);
+        emit8(p,0x48);emit8(p,0x8B);emit8(p,0x01);
+        emit8(p,0xFF);emit8(p,0x25);emit8(p,0);emit8(p,0);
+        emit8(p,0);emit8(p,0);
+        emit64(p,reinterpret_cast<unsigned long long>(target+14));
+        if(p>stub+256){
+            for(auto* old:stubs)if(old)VirtualFree(old,0,MEM_RELEASE);
+            log("[WORLD-GRAB-NATIVE] candidate trampoline overflow; disabled");
+            return false;
+        }
+        FlushInstructionCache(GetCurrentProcess(),stub,
+            static_cast<SIZE_T>(p-stub));
+    }
+    for(std::size_t i=0;i<2;++i){
+        auto* target=image+sites[i].rva;
+        DWORD oldProtect{};
+        if(!VirtualProtect(target,14,PAGE_EXECUTE_READWRITE,&oldProtect)){
+            log("[WORLD-GRAB-NATIVE] candidate hook protection failed");
+            // Earlier successfully installed stubs stay mapped.
+            for(std::size_t j=i;j<2;++j)
+                VirtualFree(stubs[j],0,MEM_RELEASE);
+            return false;
+        }
+        unsigned char jump[14]{0xFF,0x25,0,0,0,0};
+        const auto absolute=reinterpret_cast<unsigned long long>(stubs[i]);
+        std::memcpy(jump+6,&absolute,sizeof(absolute));
+        std::memcpy(target,jump,sizeof(jump));
+        FlushInstructionCache(GetCurrentProcess(),target,sizeof(jump));
+        VirtualProtect(target,14,oldProtect,&oldProtect);
+    }
+    log("[WORLD-GRAB-NATIVE] signature-verified primary/secondary native"
+        " hit-handle observer installed; read-only, DEV-gated");
     return true;
 }
 
