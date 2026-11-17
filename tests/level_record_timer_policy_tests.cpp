@@ -137,5 +137,22 @@ int main(){
     levelProgressAbandonOnDesktopExit(alreadyFinished);
     assert(alreadyFinished.completed
         &&levelBestFor(completedResults,"campaign/03")==200000);
+    // Manual STOP RECORD abandons an active run and preserves completed PBs.
+    LevelProgress manualStop{};
+    assert(levelProgressStartAttempt(manualStop,"campaign/02",4000000));
+    levelProgressAdvance(manualStop,false,4080000);
+    levelProgressDeath(manualStop);
+    assert(manualStop.time.elapsedMs==80000&&manualStop.deaths==1);
+    const auto beforeStopBest=levelBestFor(completedResults,"campaign/02");
+    assert(levelProgressStopRecord(manualStop));
+    assert(!manualStop.armed&&!manualStop.completed
+        &&manualStop.time.elapsedMs==0&&manualStop.deaths==0);
+    assert(!levelProgressComplete(manualStop,completedResults,4090000,20261117));
+    assert(levelBestFor(completedResults,"campaign/02")==beforeStopBest);
+    assert(!levelProgressStopRecord(manualStop)); // no active run
+    assert(!levelProgressStopRecord(alreadyFinished)); // completed PB safe
+    // A new attempt may be started normally without inheriting old deaths.
+    assert(levelProgressStartAttempt(manualStop,"campaign/02",4100000));
+    assert(manualStop.armed&&manualStop.time.elapsedMs==0&&manualStop.deaths==0);
     return 0;
 }

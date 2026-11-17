@@ -253,6 +253,13 @@ inline bool levelFrontMenuConfirmed(bool frontMenuContext,
 inline constexpr bool levelStatsResetAllowed(bool recordArmed) noexcept {
     return !recordArmed;
 }
+// Manually stopping a record discards only the uncompleted attempt. Live HUD
+// measurements and persisted leaderboard results remain independent.
+inline bool levelProgressStopRecord(LevelProgress& progress) noexcept {
+    if(!progress.armed||progress.completed)return false;
+    progress=LevelProgress{};
+    return true;
+}
 // Exit to Desktop abandons an unfinished ranked run, never saving a PB.
 // No disk I/O or allocations: invoked during DLL_PROCESS_DETACH.
 inline void levelProgressAbandonOnDesktopExit(LevelProgress& progress) noexcept {

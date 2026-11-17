@@ -612,6 +612,26 @@ inline bool vrConfirmLevelStart(VrHandMenuState& menu,
     menu.confirmDeathResetUntilMs=0;
     return true;
 }
+// STOP RECORD has its own confirmation key. It cannot accidentally confirm
+// a pending START or DEV reset, and times out after the same six seconds.
+inline constexpr int kVrLevelStopConfirmKey=40;
+inline bool vrLevelStopPending(const VrHandMenuState& menu,
+    std::uint64_t nowMs) noexcept {
+    return menu.pendingStatsReset==kVrLevelStopConfirmKey
+        &&menu.confirmDeathResetUntilMs!=0
+        &&nowMs<=menu.confirmDeathResetUntilMs;
+}
+inline bool vrConfirmLevelStop(VrHandMenuState& menu,
+    std::uint64_t nowMs) noexcept {
+    if(!vrLevelStopPending(menu,nowMs)){
+        menu.pendingStatsReset=kVrLevelStopConfirmKey;
+        menu.confirmDeathResetUntilMs=nowMs+kVrLevelStartConfirmWindowMs;
+        return false;
+    }
+    menu.pendingStatsReset=-1;
+    menu.confirmDeathResetUntilMs=0;
+    return true;
+}
 inline bool isVrMenuInputOwner(const VrHandMenuState& m) noexcept {
     return m.mode!=VrHandMenuMode::Closed;
 }

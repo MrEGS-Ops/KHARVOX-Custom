@@ -560,10 +560,12 @@ void paintVrHandMenu() {
             write(538,437,"Press twice within 6 seconds.",RGB(84,233,214));
         }else{
             const auto& mission=kharvox::kCampaignMissions[chosen];
-            const bool current=s.levelProgress.armed
+            const bool recording=s.levelProgress.armed&&!s.levelProgress.completed;
+            const bool current=recording
                 &&s.levelProgress.verifiedMapKey==mission.key;
-            const bool confirming=kharvox::vrLevelStartPending(
-                m,chosen,GetTickCount64());
+            const bool confirming=recording
+                ?kharvox::vrLevelStopPending(m,GetTickCount64())
+                :kharvox::vrLevelStartPending(m,chosen,GetTickCount64());
             const auto ranked=kharvox::levelRankedRuns(
                 s.levelRecords,mission.key,m.recordSortDeaths);
             write(538,152,mission.title,white);
@@ -590,11 +592,15 @@ void paintVrHandMenu() {
             fill(531,565,384,53,m.hovered==130
                 ||(m.navigation.settingsColumn&&m.navigation.actionIndex==1)
                 ?RGB(52,83,99):RGB(39,49,63));
-            write(550,579,confirming?"CONFIRM START (SECOND PRESS)"
-                :current?"RESTART TIMED RUN":"TRACK THIS LEVEL",
+            write(550,579,recording
+                ?(confirming?"CONFIRM STOP (SECOND PRESS)":"STOP RECORD")
+                :(confirming?"CONFIRM START (SECOND PRESS)":"TRACK THIS LEVEL"),
                 confirming?RGB(255,207,66):white);
-            write(538,632,confirming?"Menu closes; timer and deaths reset."
-                :"Double-confirm to start a timed attempt.",
+            write(538,632,recording
+                ?(confirming?"Discard attempt; prior records stay."
+                    :"Double-confirm to abandon active record.")
+                :(confirming?"Menu closes; timer and deaths reset."
+                    :"Double-confirm to start a timed attempt."),
                 confirming?RGB(255,207,66):muted);
         }
         write(40,646,"LEFT STICK: browse   A: select   B: back",muted);

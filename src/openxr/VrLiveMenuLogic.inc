@@ -416,6 +416,26 @@ bool handleVrLevelRecordTrack(int missionIndex){
         kharvox::kCampaignMissions.size()))return false;
     auto& menu=s.vrHandMenu;
     const auto now=GetTickCount64();
+    // While ANY mission is being recorded the action becomes STOP RECORD.
+    // We never silently replace an unfinished run by choosing another row.
+    if(s.levelProgress.armed&&!s.levelProgress.completed){
+        if(!kharvox::vrConfirmLevelStop(menu,now)){
+            menu.message="Press STOP RECORD again within 6 seconds to discard "
+                "the unfinished attempt. Previous records are safe.";
+            return true;
+        }
+        if(!kharvox::levelProgressStopRecord(s.levelProgress)){
+            menu.message="No active record to stop.";
+            return false;
+        }
+        s.observedSessionDeaths=KharvoxHudCampaignSessionDeaths();
+        // The live HUD clock/death totals never stopped, and display settings
+        // stay exactly as the user chose them. Only the ranked run is removed.
+        menu.message="Record stopped. Unfinished attempt discarded; "
+            "live Level Time and Level Deaths restored.";
+        log("[LEVEL-STATS] manual STOP RECORD confirmed; no result saved");
+        return true;
+    }
     if(!kharvox::vrConfirmLevelStart(menu,missionIndex,now)){
         menu.message="This Mod Menu will close and the timer will start. "
             "Press TRACK THIS LEVEL again within 6 seconds to confirm.";
