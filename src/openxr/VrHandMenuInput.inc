@@ -776,6 +776,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 if(dev)handleVrLevelRecordReset(130);
                 else handleVrLevelRecordTrack(m.recordSelected);
             }
+            // Choosing/browsing a mission updates the PB displayed on HUD,
+            // without starting a competitive attempt or changing live counters.
+            if(!dev&&(previousRecord!=m.recordSelected
+                ||(chosen>=1000&&chosen<1000+count)||chosen==130))
+                m.hudRecordSelected=m.recordSelected;
         }else if(m.page==kharvox::VrMenuPage::Stats
             ||m.page==kharvox::VrMenuPage::DevStats){
             const bool dev=m.page==kharvox::VrMenuPage::DevStats;
