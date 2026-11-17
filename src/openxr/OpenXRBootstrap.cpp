@@ -4506,6 +4506,40 @@ void updateGameplayActions(XrTime displayTime){
                 }
             }
         }
+        // DOOM has also resolved valid entity pointers at the two native
+        // FocusTracker output sites. Log ONLY image-relative vtable
+        // fingerprints and native handles, not live pointers or body data.
+        // A positive resolver result is still NOT sufficient for red laser
+        // feedback, grabbing, or Vacuum-style physics.
+        if(in.enabled&&in.gameplay){
+            static std::array<unsigned long long,2> lastResolvedSequence{};
+            static std::array<unsigned long long,2> lastResolvedReportAt{};
+            static std::array<unsigned long long,2> lastResolvedVtableRva{};
+            static std::array<unsigned int,2> lastResolvedHandle{};
+            for(unsigned int path=0;path<2;++path){
+                KharvoxWorldGrabResolvedEntity resolved{};
+                if(!KharvoxCameraReadWorldGrabResolvedEntity(path,resolved)
+                    ||resolved.sampleSequence==lastResolvedSequence[path])
+                    continue;
+                lastResolvedSequence[path]=resolved.sampleSequence;
+                const auto now=GetTickCount64();
+                const bool changed=resolved.vtableRva!=lastResolvedVtableRva[path]
+                    ||resolved.nativeHandle!=lastResolvedHandle[path];
+                if((changed&&now-lastResolvedReportAt[path]>=1000)
+                    ||now-lastResolvedReportAt[path]>=6000){
+                    lastResolvedReportAt[path]=now;
+                    lastResolvedVtableRva[path]=resolved.vtableRva;
+                    lastResolvedHandle[path]=resolved.nativeHandle;
+                    log(std::string("[WORLD-GRAB-RESOLVED] ")
+                        +(path==0?"PRIMARY":"SECONDARY")
+                        +" handle="+std::to_string(resolved.nativeHandle)
+                        +" entityVtableRva="+std::to_string(resolved.vtableRva)
+                        +" inDOOMImage="+(resolved.vtableInExecutable?"yes":"no")
+                        +" level="+std::to_string(resolved.levelGeneration)
+                        +" (DOOM entity, dynamic physics not verified)");
+                }
+            }
+        }
         if(in.enabled)for(int hand=0;hand<2;++hand){
             if(events.started[hand])
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
