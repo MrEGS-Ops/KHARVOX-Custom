@@ -45,6 +45,15 @@
 - `CameraHook.cpp` now captures only those already-read opaque selection fields in DEV Experimental mode, without following the reference, calling unidentified vtable entries or touching physics. `CameraHook.h` provides a synchronized read-only snapshot to `OpenXRBootstrap.cpp`; DEV logs changes at a throttled cadence.
 - **What remains unknown:** whether a loose physics barrel ever appears in FocusTracker selection; the generic collision query's resolved result layout, object's idPhysics interface, and a signature-verified impulse method.
 
+## Native item Vacuum rune as the hand-centred pull source — research decision
+- DOOM (2016) has a campaign **Vacuum** rune; its documented effect is increasing the effective absorption / collection range for **dropped health and ammo**. The game documentation does **not** verify that this is a generic rigid-body attraction force; it may operate on pickup-specific movement/consumption logic.
+- Proposed reuse: identify the *native dropped-item attraction routine*, if any, and test whether its target-location input can be supplied with the **selected free-hand controller's world-space location** instead of the player-body position. Read-only verification before trying a redirect or extending it to non-pickup props.
+- The candidate must already be a valid dynamic rigid-body hit from the native trace; Vacuum must NEVER be used to select all nearby props, convert a barrel into a pickup, collect/delete an object, change ammo/health, or disable its native collision.
+- Grip engages **one targeted movable object** within the existing 0.90 m acquisition limit. Pull toward the free hand; stop/hold at the hand while Grip remains down. Releasing Grip drops the object's original native body. Trigger uses separately verified grenade ballistics and no Vacuum pickup logic.
+- Important constraint: if the rune only changes pickup radius, **there is no reusable pulling force**. In that case a signed native idPhysics impulse/drag interface is still required; do not invent an engine pointer or silently claim that the spring-follow policy is native Vacuum.
+- Current implementation: the generic `WorldGrabMotionPolicy.h` computes a capped spring-follow *intent* only. No Vacuum routine, arbitrary hand-target pointer, entity-to-rigidbody adapter, or native physics writer has been verified/installed.
+- This design does not depend on the player equipping Vacuum or turning an existing rune ON globally. Existing health/ammo pickup behaviour remains untouched.
+
 ## Grenade-derived trigger throwing — 17 November 2026
 - Confirmed from the live source: RIPSHIFT's optional Physical Grenade Throw responds to controller Grip release outside the chest pocket by setting `equipmentThrowPulseUntil` for 100 ms; the input mapper then sends the existing equipment-button input to DOOM. This code does **not** contain DOOM's grenade launch speed, arc, drag, impact physics, damage or fuse values.
 - The desired barrel mechanic is **trigger-to-throw, not hand-swing-to-throw**. The barrel stays its original object; do not spawn a grenade or duplicate explosive properties. Reuse DOOM's *verified native grenade launch* vector, gravity scale and damping, then restore the barrel's original flight parameters once the temporary flight interval ends. A falling barrel's collision shape and object-specific behaviour remain its own.
@@ -80,3 +89,4 @@
 - Never use the retired player idPhysics velocity setter (previously caused void teleport).
 - Do not enable developer/cheat CVars, install additional loaders, write game archives or touch UserData.
 - Opt-in DEV testing only until the actual native adapter passes in-headset verification.
+- Do not patch the Vacuum rune or globally increase pickup radius to implement grabbing; preserve its original pickup behaviour.
