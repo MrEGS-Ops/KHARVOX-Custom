@@ -118,6 +118,13 @@ void paintVrHandMenu() {
         s.vrLiveSettings.levelDisplayPosition[0],
         s.vrLiveSettings.levelDisplayPosition[1],
         s.vrLiveSettings.levelDisplayPosition[2]};
+    // Experimental-only native entity inspector shares the transparent
+    // in-game stats quad. Hidden in menus, cutscenes and notices.
+    const bool grabInspectorView=KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        &&s.worldGrabInspector.enabled&&statsGameplay
+        &&m.mode==kharvox::VrHandMenuMode::Closed
+        &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView;
+    constexpr int inspectorX=492,inspectorY=90,inspectorW=445,inspectorH=245;
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
@@ -153,13 +160,18 @@ void paintVrHandMenu() {
         fill(resultX,resultY,resultW,resultH,RGB(17,23,31));
         fill(resultX,resultY,7,resultH,accent);
         fill(resultX+7,resultY,resultW-7,3,accent);
-    }else if(statsLiveView){
-        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+    }else if(statsLiveView||grabInspectorView){
+        if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
             fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
+        }
+        if(grabInspectorView){
+            fill(inspectorX,inspectorY,inspectorW,inspectorH,RGB(13,23,34));
+            fill(inspectorX,inspectorY,6,inspectorH,RGB(55,209,214));
+            fill(inspectorX+6,inspectorY,inspectorW-6,3,RGB(55,209,214));
         }
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
@@ -261,8 +273,8 @@ void paintVrHandMenu() {
         }
         write(resultX+27,resultY+92,
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
-    }else if(statsLiveView){
-        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+    }else if(statsLiveView||grabInspectorView){
+        if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
@@ -1180,7 +1192,7 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
-            :statsLiveView
+            :(statsLiveView||grabInspectorView)
                 ?([&](){
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
@@ -1191,6 +1203,10 @@ void paintVrHandMenu() {
                         if(x>=left&&x<left+width&&y>=top&&y<top+counterH)
                             return 220;
                     }
+                    if(grabInspectorView
+                        &&x>=inspectorX&&x<inspectorX+inspectorW
+                        &&y>=inspectorY&&y<inspectorY+inspectorH)
+                        return 235;
                     return 0;
                 }())
             :(!calibrationView
