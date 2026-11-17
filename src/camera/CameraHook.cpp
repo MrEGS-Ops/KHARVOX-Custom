@@ -2815,6 +2815,9 @@ void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     nativeGrabFocusSequence=0;
     nativeGrabFocusIndexA=nativeGrabFocusIndexB=0;
     nativeGrabFocusReference=nativeGrabFocusGeneration=0;
+    nativeGrabCandidate={};
+    nativeGrabCandidateValid={};
+    nativeGrabCandidateSequence=0;
 }
 
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) {
@@ -2831,6 +2834,22 @@ bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) 
     sample.nativeReference=nativeGrabFocusReference;
     sample.levelGeneration=nativeGrabFocusGeneration;
     sample.sampleSequence=nativeGrabFocusSequence;
+    return true;
+}
+
+bool KharvoxCameraReadWorldGrabTraceCandidate(
+    unsigned int sourcePath,KharvoxWorldGrabTraceCandidate& sample) {
+    sample={};
+    if(sourcePath>=2
+        ||!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> guard(nativeGrabFocusMutex);
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ||!nativeGrabCandidateValid[sourcePath]
+        ||nativeGrabCandidate[sourcePath].levelGeneration
+            !=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample=nativeGrabCandidate[sourcePath];
     return true;
 }
 
@@ -2919,6 +2938,7 @@ bool KharvoxCameraInstallDiagnosticHook() {
     if (image) {
         installPlayerPhysicsOriginCapture(image);
         installPlayerFocusTraceHook(image);
+        installNativeWorldGrabTraceCandidateHooks(image);
         installPlayerLedgeStateCapture(image);
         validateSyncAttackClassifier(image);
         validatePlayerControlClassifier(image);
