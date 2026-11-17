@@ -333,6 +333,73 @@ void paintVrHandMenu() {
                 }
             }
         }
+        if(grabInspectorView){
+            const auto& inspect=s.worldGrabInspector;
+            const auto now=GetTickCount64();
+            const auto generation=KharvoxCameraLevelTransitionGeneration();
+            const kharvox::WorldGrabInspectorPath* chosen=nullptr;
+            int chosenPath=-1;
+            bool resolved=false;
+            std::uint64_t newestAt{};
+            // Prefer recently RESOLVED entities, then raw candidates.
+            // These come from DOOM FocusTracker, not a verified physics ray.
+            for(int i=0;i<2;++i){
+                const auto& p=inspect.paths[i];
+                if(p.levelGeneration!=generation)continue;
+                const bool r=p.hasResolved
+                    &&kharvox::worldGrabInspectorFresh(now,p.lastResolvedMs);
+                const bool c=p.hasCandidate
+                    &&kharvox::worldGrabInspectorFresh(now,p.lastCandidateMs);
+                if(!r&&!c)continue;
+                const auto last=r?p.lastResolvedMs:p.lastCandidateMs;
+                if(!chosen||(!resolved&&r)
+                    ||(resolved==r&&last>newestAt)){
+                    chosen=&p;chosenPath=i;resolved=r;newestAt=last;
+                }
+            }
+            auto hex=[](std::uint64_t n){
+                std::ostringstream o;o<<std::uppercase<<std::hex<<n;
+                return o.str();
+            };
+            const COLORREF aqua=RGB(84,233,214);
+            const COLORREF gold=RGB(255,203,117);
+            const int left=inspectorX+22;
+            SelectObject(dc,smallFont);
+            write(left,inspectorY+12,"WORLD GRAB / LIVE INSPECTOR",aqua);
+            write(left,inspectorY+43,
+                std::string("FREE HAND: ")+(inspect.freeHandRight?"RIGHT":"LEFT")
+                +"     GRIP: "+(inspect.gripHeld?"HELD":"RELEASED"),
+                inspect.gripHeld?RGB(128,255,177):white);
+            if(chosen){
+                const auto name=chosen->nativeClassName.empty()
+                    ?std::string("UNKNOWN (NO NATIVE NAME)")
+                    :chosen->nativeClassName.substr(0,31);
+                write(left,inspectorY+73,"CLASS: "+name,
+                    chosen->nativeClassName.empty()?gold:RGB(128,255,177));
+                write(left,inspectorY+101,
+                    "ENTITY HANDLE: "+std::to_string(chosen->nativeHandle)
+                    +"  / "+(chosenPath==0?"PRIMARY":"SECONDARY"),white);
+                write(left,inspectorY+129,
+                    resolved?"VTABLE RVA: 0x"+hex(chosen->vtableRva)
+                            :"VTABLE: NOT YET RESOLVED",muted);
+            }else{
+                write(left,inspectorY+73,"CLASS: WAITING FOR DOOM...",gold);
+                write(left,inspectorY+101,
+                    "ENTITY: NO FRESH ENGINE CANDIDATE",white);
+                write(left,inspectorY+129,
+                    inspect.nativeFocusSeen
+                        ?("FOCUS: A="+std::to_string(inspect.focusIndexA)
+                            +" B="+std::to_string(inspect.focusIndexB))
+                        :"FOCUS: NOT OBSERVED",muted);
+            }
+            write(left,inspectorY+159,
+                "PHYSICS BODY / SIZE: UNVERIFIED",gold);
+            write(left,inspectorY+186,
+                "VACUUM / ANCHOR / THROW: NOT LINKED",gold);
+            auto event=inspect.lastEvent;
+            if(event.size()>40)event=event.substr(0,40);
+            write(left,inspectorY+213,"EVENT: "+event,muted);
+        }
     }else if(calibrationView){
         // Status is a SECOND ROW beneath the title. No badge/text may
         // overlap or truncate LIVE CALIBRATION on either controller mode.
