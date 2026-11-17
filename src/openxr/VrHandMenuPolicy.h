@@ -106,20 +106,20 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    HolsterZones,ControllerMonitor,Experimental,StatsReset,LevelRecordsReset
+    ControllerMonitor,Experimental,StatsReset,LevelRecordsReset
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
 inline constexpr bool vrDevCalibrationPanelVisible(
     VrHandMenuMode mode,VrLiveCapture capture,
-    bool weaponAlignment,bool holsterZones,bool controllerInputs) noexcept {
+    bool weaponAlignment,bool controllerInputs) noexcept {
     if(mode!=VrHandMenuMode::Calibrating)return false;
     if(capture==VrLiveCapture::None)return weaponAlignment;
     if(capture==VrLiveCapture::HipRight
         ||capture==VrLiveCapture::HipLeft
         ||capture==VrLiveCapture::WheelRight
         ||capture==VrLiveCapture::WheelLeft)
-        return holsterZones||controllerInputs;
+        return controllerInputs;
     return false;
 }
 struct VrDevControllerInputSnapshot {
@@ -132,7 +132,6 @@ struct VrDevControllerInputSnapshot {
 inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept {
     return option==VrMenuDevOption::WeaponAlignment
         ||option==VrMenuDevOption::HandFocus
-        ||option==VrMenuDevOption::HolsterZones
         ||option==VrMenuDevOption::ControllerMonitor;
 }
 // Two independent notices: first-install setup appears on DOOM's front
@@ -570,7 +569,7 @@ struct VrHandMenuState {
     VrMenuHoldShortcut shortcut{};
     VrMenuNavigation navigation{};
     VrMenuDeveloperReveal devReveal{};
-    bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
+    bool devWeaponAlignment{},devControllerInputs{};
     bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
