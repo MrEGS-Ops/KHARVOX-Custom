@@ -216,6 +216,10 @@ if(BUILD_TESTING)
 endif()
 
 option(KHARVOX_BUILD_LAYER "Build the KHARVOX Vulkan compatibility layer" ON)
+# Only the separately packaged RIPSHIFT Experimental DLL may install
+# World Grab's engine entity probes and expose its DEV menu toggle.
+# The standard Native Full/Patch runtime builds with this strictly OFF.
+option(KHARVOX_EXPERIMENTAL_WORLD_GRAB "Enable opt-in experimental DOOM World Grab runtime" OFF)
 set(KHARVOX_PSVR2_TOOLKIT_SOURCE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/tools/PSVR2Toolkit" CACHE PATH
   "Path to a PSVR2 Toolkit source checkout")
@@ -250,6 +254,8 @@ if(KHARVOX_BUILD_LAYER)
   target_include_directories(KharvoxNativeStereo PRIVATE src/native/upstream/include third-party/minhook/include third-party/vulkan-headers/include third-party/openxr-sdk/include)
   add_library(KharvoxLayer SHARED $<TARGET_OBJECTS:KharvoxNativeStereo> src/vulkan/KharvoxLayer.cpp src/openxr/OpenXRBootstrap.cpp src/bhaptics/BhapticsIpcClient.cpp src/psvr2/Psvr2IpcClient.cpp src/fsr/Fsr1Upscaler.cpp src/hands/HandRenderer.cpp src/hands/HandSceneDepthTracker.cpp src/camera/CameraHook.cpp src/hud/HudHook.cpp src/hud/HudGpuDiagnostic.cpp src/weapon/WeaponHook.cpp src/debug/CameraScanner.cpp src/vulkan/KharvoxLayer.def src/common/Version.rc)
   target_compile_features(KharvoxLayer PRIVATE cxx_std_17)
+  target_compile_definitions(KharvoxLayer PRIVATE
+    KHARVOX_EXPERIMENTAL_WORLD_GRAB=$<BOOL:${KHARVOX_EXPERIMENTAL_WORLD_GRAB}>)
   if(KHARVOX_BUILD_SFS_COMPILER)
     target_sources(KharvoxLayer PRIVATE src/sfs/NativeSfs.cpp)
     target_compile_definitions(KharvoxNativeStereo PRIVATE KHARVOX_HAVE_SFS_COMPILER)
