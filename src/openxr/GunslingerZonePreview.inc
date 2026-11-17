@@ -1,8 +1,7 @@
-// The ninth ring is an explicit blue horizontal equator at zone mid-height.
-// Transparent circle-stroke texture used by nine intersecting in-world
-// planes in the regular Gunslinger placement screen. The combined layers
-// form a visible 3D wire cage from hip-level viewpoints. This is a visual
-// overlay only, not a change to native weapon/zone detection.
+// Transparent circular-stroke texture used by three perpendicular OpenXR
+// world-space quads in the normal Gunslinger zone calibration preview.
+// XY / XZ / YZ cross at the same centre; XZ is visible looking downward.
+// This visual guide never changes the native rectangular activation area.
 bool initializeGunslingerZonePreview(const std::vector<int64_t>& formats) {
     if (gunslingerZonePreviewReady) return true;
     auto& vk = s.vk;
