@@ -9621,10 +9621,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Visualise the current zone before placing it in the normal Gunslinger
     // settings. During placement the unsaved draft follows held Grip and
     // freezes at the last valid position on release; Right Trigger commits.
-    // A volumetric wire cage of eight intersecting curved meridian loops,
-    // not a single flat disk. The cage spans the native rectangular zone's
-    // X/Y/Z extents without changing collision or activation.
-    // Multiple diagonal planes remain visible even when held at hip height.
+    // Three orthogonal planes form the simple X/Y/Z zone reference:
+    // XY vertical, XZ horizontal face-up, YZ vertical facing inward.
+    // Each ring uses the native zone's full extent on its two axes.
+    // No diagonal rings; no change to native rectangular detection.
     std::array<XrCompositionLayerQuad,3> gunslingerZoneLayers{};
 
     uint32_t gunslingerZoneLayerCount{};
