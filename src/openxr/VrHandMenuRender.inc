@@ -162,7 +162,7 @@ void paintVrHandMenu() {
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
         fill(22,144,590,432,RGB(15,22,32));
-        fill(22,144,590,58,RGB(27,48,61));
+        fill(22,144,590,74,RGB(27,48,61));
         fill(22,144,5,432,RGB(55,209,214));
         if(devPanel){
             fill(630,144,308,432,RGB(18,29,41));
@@ -294,10 +294,18 @@ void paintVrHandMenu() {
             }
         }
     }else if(calibrationView){
-        write(39,155,"LIVE CALIBRATION",white);
-        SelectObject(dc,regular);
+        // Status is a SECOND ROW beneath the title. No badge/text may
+        // overlap or truncate LIVE CALIBRATION on either controller mode.
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
         const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
+        write(39,149,"LIVE CALIBRATION",white);
+        SelectObject(dc,smallFont);
+        write(39,187,!weaponCapture?"ZONE PLACEMENT"
+            :!m.previewValid?"WAITING FOR TRACKING"
+            :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
+            :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
+            m.previewValid?RGB(108,235,161):RGB(239,197,116));
+        SelectObject(dc,regular);
         const auto kind=KharvoxWeaponKindFromKey(m.weapon());
         const bool heavy=kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun;
@@ -338,12 +346,7 @@ void paintVrHandMenu() {
                 write(49,381,"Align it with the weapon's support grip.",white);
                 write(49,415,"No primary-hand fine-tune controls.",muted);
             }
-            fill(35,473,564,42,primary&&m.calibrationGripHeld
-                ?RGB(35,85,72):RGB(36,51,68));
-            write(47,481,!m.previewValid?"WAITING FOR TRACKING"
-                :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
-                :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
-                m.previewValid?RGB(108,235,161):RGB(239,197,116));
+            // Active mode is displayed below LIVE CALIBRATION in header.
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
                 ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
