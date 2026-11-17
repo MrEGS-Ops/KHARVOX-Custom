@@ -51,6 +51,7 @@ inline bool worldGrabGrenadeBallisticsReady(
     return levelGeneration!=0&&grenade.levelGeneration==levelGeneration
         &&grenade.verifiedNativeLaunch&&grenade.verifiedFlightProperties
         &&grabFinite(grenade.initialVelocityNative)
+        &&std::isfinite(grabLength(grenade.initialVelocityNative))
         &&grabLength(grenade.initialVelocityNative)>0.f
         &&std::isfinite(grenade.gravityScale)
         &&grenade.gravityScale>=0.f
