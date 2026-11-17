@@ -14,6 +14,17 @@
 - The envhazard/barrels/red declaration uses idProp2 with physicsAttributes="barrels" and isStatic=false, but class/declaration strings are **not** the eligibility criterion.
 - RIPSHIFT's FocusTracker trace hook at RVA 0xD48938 modifies an interaction ray. This does not yet establish the engine's generic collision hit output.
 
+## User's DOOM-native-physics-report.txt — verified 17 Nov 2026
+- The owner's on-disk `DOOMx64vk.exe` measures **101,529,088 bytes** and has **11 PE sections**. Those values matched the earlier read-only trace dump's EXE size.
+- Confirmed actual `CALL rel32` instructions: RVA `0xD48ABF` -> `0x1637CE0`, and `0xD48B30` -> `0x1637CE0`. The destination is a trace-request builder/queue, **not** a resolved collision hit.
+- On-disk class-name string and simple RIP-relative LEA code references:
+  - `g_dragEntity` string RVA `0x2222208` -> code `0x122136`.
+  - `idProp_Moveable` string RVA `0x240C420` -> code `0x1B4224`, `0x1344D54`.
+  - `idProp2` string RVA `0x246C570` -> code `0x1CDB34`, `0x13C2374`.
+  - `idPhysics_RigidBody` string RVA `0x264DB58`, `idPhysics_RigidBody3DOF` RVA `0x26E58D0`, `idDragEntity` RVA `0x263F048`, `ApplyImpulse` RVA `0x252C979`. The original *simple* LEA scan found no references to these latter strings; **that does not prove absence of a function**.
+  - `physicsAttributes` string RVA `0x254C5C0`; `isStatic` RVA `0x254C5D8`. Neither is a confirmed native property offset in a live object.
+- `tools/Inspect-DoomWorldPhysics.ps1` was advanced to dump RVA-labelled code windows around the precise reference sites, inspect REX extended-register LEA references and search data sections for exact absolute-VA RTTI references. This is offline analysis, not engine modification; no fresh output has yet been evaluated.
+
 ## Native trace reverse engineering — confirmed from earlier uploaded byte dumps
 - Recovered `KHARVOX-TraceBytes.log` and `KHARVOX-TraceResults.log` (read-only copies of the user's DOOMx64vk.exe machine-code windows).
 - FocusTracker has **two** direct relative CALL instructions to RVA `0x1637CE0`, at RVAs `0xD48ABF` and `0xD48B30`. The destination is a native **trace request queue/builder** (not a verified generic raycast result getter); its entry signature begins `48 89 5C 24 18 48 89 74 24 20 41 56`.
@@ -40,8 +51,8 @@
 
 ## Concrete next native investigation (no headset test)
 - A local, read-only inspector is committed at `tools/Inspect-DoomWorldPhysics.ps1`. It reads DOOMx64vk.exe on the owner's PC without loading an injected DLL, enabling developer/cheat CVars, or changing game files.
-- Run from the repository checkout: `powershell -ExecutionPolicy Bypass -File .\\tools\\Inspect-DoomWorldPhysics.ps1` (use `-ExePath` only for a custom Steam install). It writes `tools/DOOM-native-physics-report.txt`; this report is intentionally ignored by no gameplay code and can be shared for reverse engineering.
-- The inspector validates the two observed FocusTracker-to-native trace queue CALL targets and enumerates string locations and simple RIP-relative references to physics-class symbols. It does **not** by itself prove a native dynamic-physics setter, and it does not convert this build into a playable grab.
+- Run from the repository checkout: `powershell -ExecutionPolicy Bypass -File .\\tools\\Inspect-DoomWorldPhysics.ps1` (use `-ExePath` only for a custom Steam install). It writes `tools/DOOM-native-physics-report.txt`; this report is a read-only analysis artifact; it is never consumed by gameplay.
+- The upgraded inspector also extracts focused native code windows for every located class/string reference, the two FocusTracker calls, and the queue builder; it checks simple REX LEAs and absolute-VA data references. It **does not** prove a native dynamic-physics setter or make the build playable.
 - Build CI now checks PowerShell syntax and compiles the analyzer without requiring DOOMx64vk.exe on the runner. GitHub build success has not yet been verified.
 
 ## Boundaries
