@@ -901,7 +901,8 @@ void HandRenderer::record(VkCommandBuffer commandBuffer,std::uint32_t eye,
 bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     const HandSceneTarget&target,const HandEyeView&view,
     const HandPose&leftGrip,const HandPose&rightGrip,
-    const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,const HandPose&laser){
+    const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
+    const HandPose&laser,const HandPose&grabDebugLaser){
     if(!impl_->initialized||!target.colorView||!target.depthView
         ||target.colorFormat==VK_FORMAT_UNDEFINED
         ||!handSceneDepthFormat(target.depthFormat)
