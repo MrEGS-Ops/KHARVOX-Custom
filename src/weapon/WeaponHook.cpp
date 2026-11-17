@@ -2050,9 +2050,8 @@ extern "C" void __fastcall weaponRenderUpdateHook(
         &&weaponHolstered.load(std::memory_order_acquire);
     const float submittedModelScale=hideHolsteredPresentation
         ?0.001f:modelScale;
-    // Restore the pre-clipping-fix weapon submission depth. DOOM's own
-    // child rendering owns this depthHack; only the separately restored hand
-    // projection uses its previous three-unit near plane.
+    // Preserve DOOM's original first-person weapon submission depth.
+    // Hand projection maintains its own near-plane behaviour.
     // Cache DOOM's original arguments even when a chainsaw kill owns the
     // camera. This is observational only; existing VR transform submission,
     // holster logic and material/lighting behaviour are unchanged.
@@ -2377,11 +2376,8 @@ bool buildControllerTransform(uintptr_t entity, const float* nativeOrigin, const
     std::array<float, 3> desiredLocalOrigin{};
     if (animatedGripPivotValid.load(std::memory_order_acquire)) {
         const auto adjustment = configuredWeaponPivotAdjustment();
-        // The frozen neutral pivot introduced during wall-pushback experiments
-        // can capture an already-displaced DOOM attachment pose and hold that
-        // displacement until the next weapon switch. Restore the actual
-        // animated native attachment, exactly as before the wall experiment.
-        // Do not touch user hand poses, two-hand transitions, or gun fine-tune.
+        // Follow the current animated DOOM weapon attachment pivot.
+        // Leave hand calibration, two-hand transitions, and fine-tune intact.
         std::array<float, 3> gripPivot{};
         for (int index = 0; index < 3; ++index)
             gripPivot[index] = animatedGripPivot[index].load(std::memory_order_relaxed) + adjustment[index];
@@ -2503,9 +2499,8 @@ void updateCustomHandsWeaponDepth(unsigned char* entity, bool prop) {
     if (!TryAcquireSRWLockExclusive(&lock)) return;
     float before{}, after{};
     std::memcpy(&before, entity + depthOffset, sizeof(before));
-    // Return to the pre-clipping hand/weapon depth behaviour. This hook
-    // edits only a currently controller-driven weapon entity; preserve its
-    // native value in cinematics, tracking loss and collectible animations.
+    // Controller-driven weapon depth changes apply only during live gameplay.
+    // Preserve native values for cinematics, tracking loss and collectibles.
     const bool active = controllerPlacementActive()
         && !readCollectibleAnimation(activeHands)
         && KharvoxCameraGameplayActive() && !KharvoxCameraCutsceneActive();
@@ -2632,9 +2627,7 @@ bool KharvoxWeaponInstallHook() {
     if (!image) return false;
     installWeaponAmmoSnapshot(image);
     installHandsResourceResolverNullGuard(image);
-    // Stock DOOM wall/weapon presentation restored. Do not patch its native
-    // hands front-pushback animation: the attempted suppression caused
-    // persistent gun pose offsets after near-wall contact in Quest testing.
+    // Leave DOOM's native weapon/world response untouched.
     const bool hitReactionOverrideArmed = armHandsHitReactionSuppression(image);
     // The optional validated CVar profile now owns g_weaponkick. Do not
     // arm the old unconditional integer override when the checkbox is off.

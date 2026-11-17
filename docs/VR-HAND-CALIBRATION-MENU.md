@@ -12,11 +12,9 @@ The "APPLY RIGHT -> LEFT" action and its automatic factory-relative mirroring co
 
 **Updated factory calibration ZIP:** The owner's latest uploaded `UserData(1).zip` (14 November) replaces the three calibration factory files under `config/user_calibration_defaults/`: weapon-hand positions/rotations/fine-tune and right-primary/left-primary support grips. Fresh installations and per-weapon Reset use those exact values. Existing editable UserData is preserved. The archive has NO `weapon_recoil_saved.cfg` and NO `chaingun_rotor` grip lines; neither a recoil preset nor an unmeasured Rotor pose is invented. Previous Gunslinger hip factory shifts remain unchanged.
 
-## Gun pass-through versus hand occlusion
+## World geometry and hand rendering
 
-DOOM's *first-person gun pushback animation* is separate from the world depth buffer. The signature-verified native wall-pushback suppression installed for tracked 6DoF/hand gameplay attempts to prevent the gun visibly backing off before a wall or box, without changing player collision or gameplay projectiles. The in-scene Vulkan hand renderer uses **the existing DOOM scene depth**: hand pixels that fall behind real world surfaces fail the depth test, giving hand/world **visual occlusion**, while the gun remains native render geometry and may visibly extend into the object when the early retreat is suppressed.
-
-This is visual occlusion, **not actual hand physics**. It does not forcibly stop the physical tracking controller at a wall. The fallback 2D hand overlay has no world-depth information, so it is now **withheld during tracked custom-hands gameplay** whenever DOOM's scene-integrated depth attachment is unavailable. In that rare case the glove temporarily disappears rather than visibly passing through a wall; a `[HAND-WORLD-OCCLUSION]` diagnostic is logged. The native gun and physical controller remain untouched. To implement physical hand-surface constraints or remove any remaining native gun retreat paths, a separately verified world-geometry contact query / executable trace is required; do not fake it by perturbing the user-approved grip calibration anchors or disabling world collision.
+Weapon positioning retains DOOM's native world interaction. The optional scene-integrated hand renderer uses the existing world depth buffer for visual occlusion where available. This is a rendering distinction, not a change to gameplay collision or controller tracking. If the world-depth attachment is unavailable, the fallback hand overlay is withheld during tracked custom-hands gameplay rather than rendered through geometry.
 
 ## Controls
 
@@ -33,12 +31,6 @@ This is visual occlusion, **not actual hand physics**. It does not forcibly stop
 ## Two-hand Gauss Siege / Chaingun Turret transitions
 
 When the support Grip stays latched during normal gameplay and the Gauss Cannon or Chaingun changes between its normal/alternate modes, the native gun-only offset, support-hand grab point and visible primary wrist orientation ease from the previous profile to the saved alternate profile over **320 ms** (smoothstep). The live two-hand solver and displayed support glove use the identical intermediate support point; the user does **not** need to release/re-grip to apply the new handle position. Reversing modes during a transition starts from the currently displayed position instead of snapping to the other endpoint. Releasing the support Grip, switching weapons or entering the calibration page stops the transition immediately. Both approved normal/alternate profile endpoints stay exactly as saved.
-
-## Original DOOM wall behavior restored (14 Nov)
-
-Quest 3 testing showed the experimental anti-pushback combination could leave the visible weapon permanently displaced after approaching a wall, until switching weapons. That is worse than stock collision. Both custom interventions have been **reverted**: the native `hands_moving_front_pushback_into` suppression memory patch is no longer installed, and the gun attachment again uses DOOM's current animated `righthandattach` pivot rather than a sampled/frozen locator.
-
-DOOM's normal first-person weapon retreat near walls is restored; environmental pass-through is **not** promised. The physical OpenXR controller tracking, user-calibrated left/right weapon hand positions, immutable factory defaults, 1 cm gun offsets, and Gauss Siege/Chaingun Turret 320 ms two-hand grip blending remain unchanged. A new Windows native build and headset test must verify that no gun position persists after pulling away from the wall.
 
 ## Hold joysticks for comfortable 1 cm gun fine-tune
 
@@ -90,7 +82,7 @@ When Weapon Grip Calibration and custom hand models are active in **normal gamep
 
 ## Settings and backups
 
-With visible custom hands, the equipped weapon's aim is controlled by the primary controller's OpenXR AIM pose, or by the working two-hand orientation solver while the support Grip is actually latched in normal gameplay. Saved normal-position Y/Z adjustments and 1cm XYZ fine-tune translate **the native weapon** relative to the controller-fixed primary glove. The virtual weapon hand uses the physical primary GRIP tracking origin and remains stationary relative to that controller during all fine-tune steps; its stored per-weapon visual rotation still works separately. Fine-tune never changes gun quaternion, calibration/reset does not delete user profiles, and scene-depth/clipping, left-hand GLBs, Gunslinger, holsters and native launcher are unchanged.
+With visible custom hands, the equipped weapon's aim is controlled by the primary controller's OpenXR AIM pose, or by the working two-hand orientation solver while the support Grip is actually latched in normal gameplay. Saved normal-position Y/Z adjustments and 1cm XYZ fine-tune translate **the native weapon** relative to the controller-fixed primary glove. The virtual weapon hand uses the physical primary GRIP tracking origin and remains stationary relative to that controller during all fine-tune steps; its stored per-weapon visual rotation still works separately. Fine-tune never changes gun quaternion, calibration/reset does not delete user profiles, and scene-depth rendering, left-hand GLBs, Gunslinger, holsters and native launcher are unchanged.
 
 The **editable** primary glove poses, rotations and separately persisted gun-only `_finetune_offset` values are stored at `UserData/offhand_right_hand_positions.cfg`. The right-primary support grips are in `UserData/two_hand_weapon_profiles_saved.cfg`; left-primary support grips are in `UserData/two_hand_weapon_profiles_left_primary_saved.cfg`. On a fresh install these are seeded from the owner's uploaded calibration files shipped read-only in `NativeBridge/CalibrationDefaults/`. Per-weapon Reset restores matching factory values without deleting other weapon calibrations, while writing `.before-vr-reset.bak` beside the active files. The updater preserves the entire `UserData` directory.
 
