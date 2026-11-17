@@ -387,6 +387,8 @@ void updateVrLiveZoneDraft(){
     const bool gripHeld=readFloatAction(right?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
     m.gunslingerZoneMoving=gripHeld;
     if(!gripHeld||!s.trackingHeadPositionValid||!s.headZeroPositionValid)return;
+    // No relative drag offset: the very first held tracked frame snaps the
+    // marker centre to the controller grip pose, then follows it 1:1.
     const auto& controller=right?s.rightGripController:s.leftGripController;
     if(!controller.valid||!controller.positionTracked)return;
     const auto relative=controllerRelativeToBodyTrackingOrigin(controller).position;

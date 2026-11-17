@@ -326,14 +326,17 @@ inline VrLivePoint vrLiveZoneCenter(const VrLiveSettings& s,VrLiveCapture target
 }
 inline bool vrLiveUpdateZoneDraft(VrLivePoint& draft,bool gripHeld,bool tracked,
                                   VrLivePoint controllerRelative,VrLiveCapture target) noexcept {
+    // On the FIRST valid tracked Grip frame, the preview immediately
+    // SNAPS to the tracked controller grip centre (zero carried offset).
+    // While held it follows each new controller pose. On release the
+    // caller leaves this last draft untouched. Save validation is separate;
+    // an out-of-range preview is allowed visually but cannot be committed.
     if(!vrLiveIsGunslingerCapture(target)||!gripHeld||!tracked
-        ||!vrLiveValidPoint(controllerRelative))return false;
-    const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
-    const auto base=hip?vrLiveHipDefaultCenter():vrLiveWheelDefaultCenter();
-    if(!vrLiveValidShift({controllerRelative.x-base.x,
-                          controllerRelative.y-base.y,
-                          controllerRelative.z-base.z}))return false;
+        ||!std::isfinite(controllerRelative.x)
+        ||!std::isfinite(controllerRelative.y)
+        ||!std::isfinite(controllerRelative.z))return false;
     draft=controllerRelative;
+
     return true;
 }
 inline bool vrLiveCapturePoint(VrLiveSettings& s,VrLiveCapture target,

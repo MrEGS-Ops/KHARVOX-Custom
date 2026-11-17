@@ -21,6 +21,19 @@ inline constexpr bool useWeaponHandFocus(bool handFocusEnabled,
         && !ledgeTransition && !bossSequence;
 }
 
+// Hand Focus uses the physical click on the CURRENT weapon hand. The other
+// thumbstick retains Pause. Both signals must be single-controller, isolated
+// release pulses from OffHandStickInput; chords and long R3 menu holds are
+// consumed before routing. Physical GK without Hand Focus preserves RS Use.
+inline constexpr bool handFocusUseClick(bool handFocusEnabled,
+    bool weaponHandLeft,bool isolatedRightClick,bool isolatedLeftClick) noexcept {
+    return handFocusEnabled&&weaponHandLeft?isolatedLeftClick:isolatedRightClick;
+}
+inline constexpr bool handFocusPauseClick(bool handFocusEnabled,
+    bool weaponHandLeft,bool isolatedRightClick,bool isolatedLeftClick) noexcept {
+    return handFocusEnabled&&weaponHandLeft?isolatedRightClick:isolatedLeftClick;
+}
+
 // Native FocusTracker works in all playable WORLD views, including
 // first-person interactable transitions whose player-physics snapshot can be
 // older than a render frame. Prefer a valid controller ray without requiring

@@ -22,6 +22,22 @@ int main(){
         (void)leftWeaponHand;
         assert(useWeaponHandFocus(true,true,false,false,false,false));
     }
+    // The physical click for Use follows the WEAPON hand, not the launcher
+    // default handedness; the other click remains Pause.
+    assert(handFocusUseClick(true,false,true,false));
+    assert(!handFocusUseClick(true,false,false,true));
+    assert(handFocusUseClick(true,true,false,true));
+    assert(!handFocusUseClick(true,true,true,false));
+    assert(handFocusPauseClick(true,false,false,true));
+    assert(!handFocusPauseClick(true,false,true,false));
+    assert(handFocusPauseClick(true,true,true,false));
+    assert(!handFocusPauseClick(true,true,false,true));
+    // Physical GK without Hand Focus keeps its original right-click Use
+    // route; disabling focus does not change the old pause binding.
+    assert(handFocusUseClick(false,true,true,false));
+    assert(!handFocusUseClick(false,true,false,true));
+    assert(handFocusPauseClick(false,true,false,true));
+    assert(!handFocusPauseClick(false,true,true,false));
     // Native executions/ledge/scripted boss sequences temporarily use HEAD.
     assert(!useWeaponHandFocus(true,true,true,false,false,false));
     assert(!useWeaponHandFocus(true,true,false,true,false,false));
