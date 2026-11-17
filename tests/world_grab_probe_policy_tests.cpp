@@ -29,12 +29,21 @@ int main(){
   p.grip={true,true};
   auto e=state.update(p);
   assert(e.started[0]&&!e.started[1]);
+  // The native interaction ray follows ONLY a valid DEV free-hand Grip.
+  assert(state.held[0]);
+  assert(worldGrabBorrowNativeFocus(true,true,true,state.held[0],false));
+  assert(!worldGrabBorrowNativeFocus(false,true,true,true,false));
+  assert(!worldGrabBorrowNativeFocus(true,false,true,true,false));
+  assert(!worldGrabBorrowNativeFocus(true,true,false,true,false));
+  assert(!worldGrabBorrowNativeFocus(true,true,true,false,false));
+  assert(!worldGrabBorrowNativeFocus(true,true,true,true,true));
   assert(!state.update(p).started[0]);
   p.distanceFromHead[0]=1.1f;
   assert(state.update(p).pastReach[0]);
   assert(!state.update(p).pastReach[0]);
   p.supportBusy=true;
   assert(state.update(p).released[0]);
+  assert(!worldGrabBorrowNativeFocus(true,true,true,state.held[0],false));
   p.supportBusy=false;
   assert(!state.update(p).started[0]); // fresh press required
   p.grip={false,false};state.update(p);
