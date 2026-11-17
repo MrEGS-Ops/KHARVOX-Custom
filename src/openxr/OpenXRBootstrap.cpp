@@ -260,8 +260,6 @@ struct State {
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
-    bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
-    XrTime bfgGripHoldStart{},bfgPulseUntil{};
     kharvox::BackWeaponState backWeaponState{};
     kharvox::BackWeaponKind favoriteBackWeapon{kharvox::BackWeaponKind::CombatShotgun};
     kharvox::BackWeaponPulse backWeaponPulse{kharvox::BackWeaponPulse::None};
@@ -1924,7 +1922,7 @@ void updateWeapon6Dof(){
             s.twoHandLatched=false;
             s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
             writeTwoHandStatus(s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-                ?std::string("CALIBRATION: hold ")+supportGripName()+" for 650 ms to equip BFG 9000, then release it"
+                ?"CALIBRATION: select BFG 9000 using the weapon wheel or Gunslinger, then release grip"
                 :std::string("CALIBRATION: selected ")+weaponKindName(s.twoHandCalibrationTarget)
                     +"; switch from "+weaponKindName(kind)+" before capture");
         }else if(!calibration->valid){
@@ -2012,8 +2010,6 @@ void updateGameplayActions(XrTime displayTime){
         s.physicalPunchArmed={false,false};s.physicalPunchCooldownUntil=0;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
-        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
         s.backWeaponState.selectionPhase=kharvox::BackWeaponSelectionPhase::Idle;
         s.backWeaponState.pendingTarget=kharvox::BackWeaponKind::Unknown;
@@ -2084,34 +2080,9 @@ void updateGameplayActions(XrTime displayTime){
             +(supportGripDown?"pressed":"released"));
         s.supportGripPressed=supportGripDown;
     }
-    constexpr XrDuration bfgGripHoldDuration=650000000;
+    // BFG is selected only by Gunslinger/weapon selection; Grip is reserved
+    // for support-hand use and the opt-in physics interaction experiment.
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
-    const bool bfgCalibrationAccess=s.twoHandCalibrationMode
-        &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-        &&activeWeaponKind!=KharvoxWeaponKind::Bfg;
-    const bool supportGripOwnsPress=s.twoHandLatched
-        ||(s.twoHandCalibrationMode&&!bfgCalibrationAccess);
-    if(!supportGripDown){
-        s.bfgGripHoldStart=0;
-        s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=false;
-    }else if(!gameplay||supportGripOwnsPress){
-        // An acquired support grip owns this press. Calibration owns it too,
-        // except while BFG is the selected target and still needs the native
-        // long-grip shortcut to become the active weapon.
-        s.bfgGripHoldStart=0;
-        s.bfgGripSuppressedUntilRelease=true;
-    }else if(!s.bfgGripSuppressedUntilRelease&&!s.bfgGripTriggered){
-        if(!s.bfgGripHoldStart)s.bfgGripHoldStart=displayTime;
-        else if(displayTime-s.bfgGripHoldStart>=bfgGripHoldDuration){
-            s.bfgGripTriggered=true;
-            s.bfgPulseUntil=displayTime+100000000;
-            log(std::string("[INPUT] ")+supportGripName()+" hold -> native Xbox-Y/JOY4 BFG pulse"
-                +(bfgCalibrationAccess?" for calibration access":""));
-        }
-    }
-    if(!gameplay)s.bfgPulseUntil=0;
-    const bool bfgPulse=gameplay&&displayTime<s.bfgPulseUntil;
     if(weaponSelectDown&&!s.weaponSelectPressed){
         s.weaponSelectPressedTime=displayTime;
         s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
@@ -2496,7 +2467,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool rightShoulderDown=nativeWeaponSelectDown
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
-        const bool yDown=bfgPulse||backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
+        const bool yDown=backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
         updateVirtualButtons(rightTriggerDown,gamepadADown,gamepadBDown,
             leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
             leftShoulderDown,rightShoulderDown,backDown,
