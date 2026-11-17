@@ -1,4 +1,5 @@
-// Transparent circle-stroke texture used by eight intersecting in-world
+// The ninth ring is an explicit blue horizontal equator at zone mid-height.
+// Transparent circle-stroke texture used by nine intersecting in-world
 // planes in the regular Gunslinger placement screen. The combined layers
 // form a visible 3D wire cage from hip-level viewpoints. This is a visual
 // overlay only, not a change to native weapon/zone detection.
