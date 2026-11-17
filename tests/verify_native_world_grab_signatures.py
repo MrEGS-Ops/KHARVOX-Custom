@@ -41,3 +41,26 @@ assert "installNativeWorldGrabTraceCandidateHooks(image);" in source
 assert "KharvoxCameraReadWorldGrabTraceCandidate(" in source
 assert "observeNativeWorldGrabTraceCandidate" in source
 print("PASS: DOOM FocusTracker candidate hook signatures, native shared manager, and integration")
+# DOOM's native resolver has returned a non-null entity. These two
+# fourteen-byte windows immediately begin with its own vtable load and
+# predicate call. Relocating this whole span requires NO rel32 adjustment.
+# The predicate must continue executing identically after the probe.
+resolved = re.search(
+    r"static constexpr unsigned char signature\[14\]\s*\{([^}]+)\};",
+    source,
+)
+assert resolved, "Missing post-entity-resolution 14-byte signature"
+resolved_bytes = bytes(int(x,16) for x in re.findall(
+    r"0x[0-9A-Fa-f]+", resolved.group(1)
+))
+assert resolved_bytes == bytes.fromhex(
+    "48 8B 10 48 8B C8 FF 92 00 06 00 00 84 C0"
+)
+assert "{0xD48B7C,0}" in source and "{0xD48C04,1}" in source
+assert "installNativeWorldGrabResolvedEntityHooks(image);" in source
+assert "observeNativeWorldGrabResolvedEntity" in source
+assert "KharvoxCameraReadWorldGrabResolvedEntity(" in source
+assert "std::memcpy(p,signature,sizeof(signature))" in source
+assert "nativeGrabFocusObservationEnabled.load(" in source
+print("PASS: native non-null entity resolver hook signatures and dev-mode gating")
+
