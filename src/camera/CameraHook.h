@@ -48,6 +48,17 @@ struct KharvoxWorldGrabTraceCandidate {
 };
 bool KharvoxCameraReadWorldGrabTraceCandidate(
     unsigned int sourcePath,KharvoxWorldGrabTraceCandidate& sample);
+// Observation at the next native FocusTracker boundary: DOOM's own entity
+// manager has resolved a non-null candidate, before interactable filtering.
+// No entity pointer leaves the game thread. The vtable RVA is an opaque
+// fingerprint, NOT evidence of a movable physics body.
+struct KharvoxWorldGrabResolvedEntity {
+    unsigned int sourcePath{},nativeHandle{};
+    std::uint64_t vtableRva{},levelGeneration{},sampleSequence{};
+    bool vtableInExecutable{};
+};
+bool KharvoxCameraReadWorldGrabResolvedEntity(
+    unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample);
 
 
 void KharvoxCameraSetImmersiveCinematicFov(
