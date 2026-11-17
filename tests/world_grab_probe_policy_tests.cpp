@@ -17,6 +17,18 @@ int main(){
   assert(!worldGrabDebugLaserVisible(ray));
   ray.controllersReady=true;ray.enabled=false;
   assert(!worldGrabDebugLaserVisible(ray));
+  // The in-headset inspector must discard stale map/FocusTracker data.
+  assert(!worldGrabInspectorFresh(1000,0));
+  assert(worldGrabInspectorFresh(1000,1000));
+  assert(worldGrabInspectorFresh(2750,1000));
+  assert(!worldGrabInspectorFresh(2751,1000));
+  assert(!worldGrabInspectorFresh(1000,1001));
+  WorldGrabInspectorSnapshot inspect{};
+  assert(!inspect.enabled);
+  inspect.paths[0].nativeClassName="idProp_Moveable";
+  inspect.paths[0].nativeHandle=42;
+  assert(inspect.paths[0].nativeHandle==42);
+  assert(inspect.paths[0].nativeClassName=="idProp_Moveable");
   WorldGrabProbeState state{};
   WorldGrabProbeInput p{};
   p.gameplay=p.controllersReady=true;
