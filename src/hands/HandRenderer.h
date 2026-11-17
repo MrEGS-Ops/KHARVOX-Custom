@@ -84,7 +84,8 @@ public:
         const HandSceneTarget& target, const HandEyeView& view,
         const HandPose& leftGrip, const HandPose& rightGrip,
         const HandVisibilityOutput& visibility,
-        const HandGameplayState& gameplay, const HandPose& laser = {});
+        const HandGameplayState& gameplay, const HandPose& laser = {},
+        const HandPose& grabDebugLaser = {});
     void finishSceneIntegratedFrame();
 
 private:

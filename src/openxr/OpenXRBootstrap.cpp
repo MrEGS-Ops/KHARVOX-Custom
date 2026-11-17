@@ -165,6 +165,8 @@ struct AerCapturedInput {
     float artificialTurn{};uint64_t snapGeneration{};
     XrPosef center{};
     XrPosef laserBodyTracking{};
+    // Preserve exact source-time AIM (not GRIP) poses for each eye.
+    ControllerPose leftAim{},rightAim{};
 };
 struct EyeRenderProjection { XrFovf symmetricFov{}; };
 enum class TurnMode { Off, Smooth, Snap };
@@ -213,6 +215,7 @@ struct State {
     kharvox::ControllerFrameYaw controllerFrameYaw;
     kharvox::AerInputHistory<AerCapturedInput> aerInputHistory;
     ControllerPose aerPairInputLeft{},aerPairInputRight{};
+    ControllerPose aerPairInputLeftAim{},aerPairInputRightAim{};
     uint64_t aerPairInputPoseId{},integratedPairSourcePoseId{},aerPublishedSourcePoseId{};
     XrPosef aerPairInputCenter{};unsigned aerPublishedDomain{};
     kharvox::AerInputHistory<XrVector3f> aerCinematicPairAnchors;
@@ -237,6 +240,7 @@ struct State {
     Fsr1Upscaler fsr1{}; bool fsr1Requested{}; bool fsr1InitializationAttempted{};
     kharvox::hands::HandRenderer handRenderer{}; bool showHands{showHandsRequested()};
     kharvox::hands::HandPose integratedPairLeftHand{},integratedPairRightHand{};
+    kharvox::hands::HandPose integratedPairGrabDebugLaser{};
     kharvox::hands::HandVisibilityOutput integratedPairHandVisibility{};
     kharvox::hands::HandGameplayState integratedPairHandGameplay{};
     bool integratedPairHandsValid{};std::array<bool,2> stereoCacheHasIntegratedHands{};
@@ -7027,6 +7031,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // the next prediction; compositing fresh hands onto it creates a time skew.
     const auto sourceLeftGripController=s.leftGripController;
     const auto sourceRightGripController=s.rightGripController;
+    const auto sourceLeftAimController=s.leftController;
+    const auto sourceRightAimController=s.rightController;
     const auto sourceSupportVisualPose=s.supportVisualPose;
     const auto sourcePrimaryVisualPose=s.primaryVisualPose;
     const bool sourceSupportVisualLocked=s.supportVisualLocked;
@@ -8656,6 +8662,21 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
         nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft};
+    // Debugging uses the FREE controller's native OpenXR AIM, not GRIP.
+    const auto& freeAim=currentHandGameplay.leftHanded
+        ?(aerSourceQualified?aerCapturedInput.rightAim:sourceRightAimController)
+        :(aerSourceQualified?aerCapturedInput.leftAim:sourceLeftAimController);
+    const bool showGrabAim=kharvox::worldGrabDebugLaserVisible({
+        s.vrHandMenu.experimentalWorldGrabProbeEnabled,
+        handGameplayActive,
+        freeAim.valid&&freeAim.positionTracked,
+        !controllerOnlyLocked.load(std::memory_order_acquire)
+            &&s.trackingHeadPositionValid,
+        s.behindHeadWheelActive||s.hudWeaponWheelPresented,
+        s.twoHandLatched||s.twoHandCalibrationMode,
+        s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed});
+    const auto sourceGrabAim=showGrabAim
+        ?handPose(freeAim):kharvox::hands::HandPose{};
     // AER completes a stereo pair over two native frames. Hold the same
     // controller sample for both eyes so scene integration cannot reintroduce
     // near-field stereo shimmer/double vision.
@@ -8664,6 +8685,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.integratedPairSourcePoseId=aerSourceQualified?aerSourceObservation.key.poseId:0;
         s.integratedPairLeftHand=sourceLeftHandPose;
         s.integratedPairRightHand=sourceRightHandPose;
+        s.integratedPairGrabDebugLaser=sourceGrabAim;
         s.integratedPairHandVisibility=handVisibility;
         s.integratedPairHandGameplay=currentHandGameplay;
         s.integratedPairHandsValid=true;
@@ -8701,6 +8723,9 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             kharvox::sfs::sourceLayout(s.device,src,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR),it->second.extent,it->second.format,
             s.stereoCacheRevision[currentRenderEye]+1);
     kharvox::hands::HandPose sceneLaser{};
+    // Stable source-paired cyan debug laser; never changes muzzle laser.
+    const auto grabDebugLaser=showGrabAim
+        ?s.integratedPairGrabDebugLaser:kharvox::hands::HandPose{};
     XrVector3f laserOrigin{},laserDirection{};
     if(s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
         &&(!aerSourceMode||aerSourceQualified)
@@ -8741,7 +8766,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             &&handSceneTarget.colorFormat==it->second.format;
         if(!available){
             static bool laserDepthMissingLogged=false;
-            if(sceneLaser.valid&&!laserDepthMissingLogged){
+            if((sceneLaser.valid||grabDebugLaser.valid)&&!laserDepthMissingLogged){
                 log("[LASER] scene depth unavailable; beam withheld (no overlay fallback)");
                 laserDepthMissingLogged=true;
             }
@@ -8781,7 +8806,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const bool integrated=s.handRenderer.recordSceneIntegrated(
             s.commandBuffer,handSceneTarget,sourceHandView,
             integratedLeftHandPose,integratedRightHandPose,
-            freshAerHands?kharvox::hands::HandVisibilityOutput{}:integratedHandVisibility,integratedHandGameplay,sceneLaser);
+            freshAerHands?kharvox::hands::HandVisibilityOutput{}:integratedHandVisibility,
+            integratedHandGameplay,sceneLaser,grabDebugLaser);
         static bool laserSceneLogged=false;
         if(integrated&&sceneLaser.valid&&!laserSceneLogged){
             log("[LASER] scene-depth beam recorded with completed weapon source; compositor ribbons removed");
@@ -9861,10 +9887,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         if(s.aerPairInputPoseId!=inputPoseId){
             s.aerPairInputPoseId=inputPoseId;s.aerPairInputCenter=locatedMonoPose;
             s.aerPairInputLeft=s.leftGripController;s.aerPairInputRight=s.rightGripController;
+            s.aerPairInputLeftAim=s.leftController;s.aerPairInputRightAim=s.rightController;
         }
         s.aerInputHistory.remember({inputPoseId,KharvoxCameraLevelTransitionGeneration(),s.renderEye},
             {s.programmedEyePose[s.renderEye],s.programmedEyeFov[s.renderEye],
-             s.aerPairInputLeft,s.aerPairInputRight,s.programmedEyeArtificialTurn[s.renderEye],s.programmedEyeSnapGeneration[s.renderEye],s.aerPairInputCenter,laserBodyTrackingTransform()});
+             s.aerPairInputLeft,s.aerPairInputRight,s.programmedEyeArtificialTurn[s.renderEye],s.programmedEyeSnapGeneration[s.renderEye],s.aerPairInputCenter,laserBodyTrackingTransform(),
+             s.aerPairInputLeftAim,s.aerPairInputRightAim});
         traceEye(kharvox::pose_trace::Programmed,s.renderEye,s.programmedEyePose[s.renderEye],eyeRenderProjection(s.programmedEyeFov[s.renderEye]).symmetricFov,frame.predictedDisplayTime,0,0,0,poseTraceProgrammedIds[s.renderEye]);
     }
     if(XR_SUCCEEDED(r)&&s.submittedLayerFrames==1)log("Frame 1 submitted mode="+(s.quadMode?std::string("QUAD"):std::string("PROJECTION"))+" result="+result(r), true);

@@ -119,7 +119,7 @@ struct HandRenderer::Impl {
     struct SceneDepth {DepthTarget target;VkExtent2D extent{};VkFormat format{};bool initialized{};};
     std::vector<SceneDepth> sceneDepthCopies;size_t sceneDepthCopiesUsed{};
     std::array<std::vector<VkImageView>,2> eyeViews{};std::array<std::vector<DepthTarget>,2> depthTargets{};std::array<std::vector<VkFramebuffer>,2> framebuffers{};std::array<VkExtent2D,2> extents{};
-    Asset laserAsset{};
+    Asset laserAsset{},grabDebugLaserAsset{};
     std::array<Asset,4> assets{};std::array<bool,4> mirrorX{};HandCalibration leftCalibration{},rightCalibration{};
     std::array<std::array<HandCalibration,2>,
         static_cast<size_t>(KharvoxWeaponKind::Count)> weaponCalibrations{}, defaultWeaponCalibrations{};
@@ -150,7 +150,8 @@ struct HandRenderer::Impl {
     void drawGeometry(VkCommandBuffer commandBuffer,VkPipeline selectedPipeline,
         VkExtent2D extent,const HandEyeView&view,const HandPose&leftGrip,
         const HandPose&rightGrip,const HandVisibilityOutput&visibility,
-        const HandGameplayState&gameplay,const HandPose&laser = {});
+        const HandGameplayState&gameplay,const HandPose&laser = {},
+        const HandPose&grabDebugLaser = {});
     void destroyAsset(Asset&asset);
     HandCalibration& selectedCalibration();
     const HandCalibration& selectedCalibration()const;
@@ -428,10 +429,11 @@ HandRenderer::Impl::ScenePipeline* HandRenderer::Impl::scenePipeline(
 void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     VkPipeline selectedPipeline,VkExtent2D extent,const HandEyeView&view,
     const HandPose&leftGrip,const HandPose&rightGrip,
-    const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,const HandPose&laser){
+    const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
+    const HandPose&laser,const HandPose&grabDebugLaser){
     const bool drawLeft=visibility.left!=HandModelKind::None&&leftGrip.valid;
     const bool drawRight=visibility.right!=HandModelKind::None&&rightGrip.valid;
-    if(!drawLeft&&!drawRight&&!laser.valid)return;
+    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid)return;
     const int32_t rectX=std::clamp(view.imageRectX,0,int32_t(extent.width));
     const int32_t rectY=std::clamp(view.imageRectY,0,int32_t(extent.height));
     const uint32_t requestedWidth=view.imageRectWidth?view.imageRectWidth:extent.width;
@@ -474,16 +476,26 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     };
     if(drawLeft)draw(true,visibility.left,leftGrip);
     if(drawRight)draw(false,visibility.right,rightGrip);
-    if(laser.valid&&laserAsset.ready){
-        const auto descriptor=std::find_if(assets.begin(),assets.end(),[](const Asset& a){return a.ready;});
-        if(descriptor!=assets.end()){
-            struct Push{Mat4 model;Mat4 viewProjection;}push{poseMatrix(laser),viewProjection};
-            vk.cmdPushConstants(commandBuffer,pipelineLayout,VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
-            vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,pipelineLayout,0,1,&descriptor->descriptor,0,nullptr);
-            VkDeviceSize offset{};vk.cmdBindVertexBuffers(commandBuffer,0,1,&laserAsset.vertices,&offset);
-            vk.cmdBindIndexBuffer(commandBuffer,laserAsset.indices,0,VK_INDEX_TYPE_UINT32);
-            vk.cmdDrawIndexed(commandBuffer,laserAsset.indexCount,1,0,0,0);
-        }
+    // Normal weapon muzzle laser and DEV free-hand AIM use separate beams;
+    // both share the game's scene depth and never alter native physics.
+    const auto descriptor=std::find_if(assets.begin(),assets.end(),
+        [](const Asset& a){return a.ready;});
+    if(descriptor!=assets.end()){
+        auto drawBeam=[&](const Asset& beam,const HandPose& pose){
+            if(!pose.valid||!beam.ready)return;
+            struct Push{Mat4 model;Mat4 viewProjection;}
+                push{poseMatrix(pose),viewProjection};
+            vk.cmdPushConstants(commandBuffer,pipelineLayout,
+                VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
+            vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                pipelineLayout,0,1,&descriptor->descriptor,0,nullptr);
+            VkDeviceSize offset{};
+            vk.cmdBindVertexBuffers(commandBuffer,0,1,&beam.vertices,&offset);
+            vk.cmdBindIndexBuffer(commandBuffer,beam.indices,0,VK_INDEX_TYPE_UINT32);
+            vk.cmdDrawIndexed(commandBuffer,beam.indexCount,1,0,0,0);
+        };
+        drawBeam(laserAsset,laser);
+        drawBeam(grabDebugLaserAsset,grabDebugLaser);
     }
 }
 
@@ -733,6 +745,34 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
         &&impl_->buffer(beamIndices.size()*sizeof(uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         beamIndices.data(),impl_->laserAsset.indices,impl_->laserAsset.indexMemory);
     impl_->laserAsset.indexCount=static_cast<uint32_t>(beamIndices.size());
+    // Cyan ~0.90m grab debug pointer: same depth pipeline, distinct mesh.
+    std::vector<Vertex> grabBeamVertices;
+    std::vector<uint32_t> grabBeamIndices;
+    for(unsigned ring=0;ring<2;++ring)for(unsigned i=0;i<8;++i){
+        const float angle=float(i)*6.28318530718f/8.f;
+        Vertex v{};
+        v.position[0]=.003f*std::cos(angle);
+        v.position[1]=.003f*std::sin(angle);
+        v.position[2]=ring?-.90f:0.f;
+        v.normal[0]=std::cos(angle);v.normal[1]=std::sin(angle);
+        v.baseColor[0]=.015f;v.baseColor[1]=.85f;v.baseColor[2]=1.f;
+        v.material[0]=-1.f;
+        grabBeamVertices.push_back(v);
+    }
+    for(uint32_t i=0;i<8;++i){const auto next=(i+1)%8;
+        for(auto v:{i,next,i+8,next,next+8,i+8})grabBeamIndices.push_back(v);
+    }
+    impl_->grabDebugLaserAsset.ready=
+        impl_->buffer(grabBeamVertices.size()*sizeof(Vertex),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,grabBeamVertices.data(),
+            impl_->grabDebugLaserAsset.vertices,
+            impl_->grabDebugLaserAsset.vertexMemory)
+        &&impl_->buffer(grabBeamIndices.size()*sizeof(uint32_t),
+            VK_BUFFER_USAGE_INDEX_BUFFER_BIT,grabBeamIndices.data(),
+            impl_->grabDebugLaserAsset.indices,
+            impl_->grabDebugLaserAsset.indexMemory);
+    impl_->grabDebugLaserAsset.indexCount=
+        static_cast<uint32_t>(grabBeamIndices.size());
     for (size_t eye = 0; eye < 2; eye++) {
       impl_->eyeViews[eye].resize(eyeImages[eye].size());
       impl_->depthTargets[eye].resize(eyeImages[eye].size());
@@ -795,6 +835,7 @@ void HandRenderer::shutdown() {
     if(depth.memory)impl_->vk.freeMemory(impl_->device,depth.memory,nullptr);
   }
   impl_->destroyAsset(impl_->laserAsset);
+  impl_->destroyAsset(impl_->grabDebugLaserAsset);
   for (auto &asset : impl_->assets)
     impl_->destroyAsset(asset);
   if (impl_->pipeline)
@@ -867,7 +908,7 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
         ||target.samples!=VK_SAMPLE_COUNT_1_BIT)return false;
     const bool drawLeft=visibility.left!=HandModelKind::None&&leftGrip.valid;
     const bool drawRight=visibility.right!=HandModelKind::None&&rightGrip.valid;
-    if(!drawLeft&&!drawRight&&!laser.valid)return false;
+    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid)return false;
     impl_->pollCalibration(gameplay);
     auto*scene=impl_->scenePipeline(target);if(!scene)return false;
     Impl::SceneDepth* privateDepth=nullptr;
@@ -909,7 +950,7 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     begin.renderArea={{0,0},target.extent};
     impl_->vk.cmdBeginRenderPass(commandBuffer,&begin,VK_SUBPASS_CONTENTS_INLINE);
     impl_->drawGeometry(commandBuffer,scene->pipeline,target.extent,view,leftGrip,
-        rightGrip,visibility,gameplay,laser);
+        rightGrip,visibility,gameplay,laser,grabDebugLaser);
     impl_->vk.cmdEndRenderPass(commandBuffer);
     return true;
 }
