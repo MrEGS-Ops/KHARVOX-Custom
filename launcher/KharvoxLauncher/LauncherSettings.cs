@@ -4,7 +4,7 @@ namespace KharvoxLauncher;
 
 internal sealed class LauncherSettings
 {
-    internal const int CurrentVersion = 36;
+    internal const int CurrentVersion = 38;
 
     public int SettingsVersion { get; set; }
     public int Preset { get; set; }
@@ -106,11 +106,9 @@ internal sealed class LauncherSettings
 
 internal static class LauncherSettingsStore
 {
+    // No Mod Manager bridge is required; the launcher is portable by default.
     internal static string DefaultPath =>
-        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("KHARVOX_MODS_BRIDGE_FILE"))
-            ? LauncherUserData.PathFor("kharvox-launcher-settings.json")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "KHARVOX", "settings.json");
+        LauncherUserData.PathFor("kharvox-launcher-settings.json");
 
     internal static LauncherSettings Load(string path)
     {
@@ -160,19 +158,23 @@ internal static class LauncherSettingsStore
             settings.DisableAa = false;
         if (settings.SettingsVersion < 31) settings.DisableVrIntro = false;
         if (settings.SettingsVersion < 34) settings.SwapJumpCrouch = false;
+        // Legacy user profiles sometimes carried an accidentally enabled
+        // Jump/Crouch swap. Reset it once on upgrade to v37, but continue
+        // honouring explicit changes saved by the user in v37 and later.
+        if (settings.SettingsVersion < 37) settings.SwapJumpCrouch = false;
         if (settings.SettingsVersion < 35)
         {
             settings.WeaponWheelRemapEnabled = true;
             settings.GloryKillSlowmoLevel = 10;
         }
         settings.GloryKillSlowmoLevel = Math.Max(0, Math.Min(10, settings.GloryKillSlowmoLevel));
-        // Slot 3 used to mean freeform Custom. It is now the named MrEGS_
+        // Slot 3 used to mean freeform Custom. It is now the named RIPSHIFT
         // profile. Preserve every other stored setting, but migrate the
         // former Custom turn controls to the user's new profile defaults.
-        if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.MrEgsPresetIndex)
+        if (settings.SettingsVersion < 36 && settings.Preset == LauncherPresetPolicy.RipshiftPresetIndex)
         {
             settings.TurnMode = 0;
-            settings.SmoothSpeed = LauncherPresetPolicy.MrEgsTurnSpeed;
+            settings.SmoothSpeed = LauncherPresetPolicy.RipshiftTurnSpeed;
         }
         // Adopt the release renderer once for existing Custom profiles. Later AER choices remain valid.
         if (settings.SettingsVersion < 33 && settings.Preset == 3

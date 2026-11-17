@@ -362,7 +362,8 @@ bool HandRenderer::Impl::createCommonResources(){
     if (vk.createRenderPass(device, &renderPassInfo, nullptr, &renderPass) !=
         VK_SUCCESS)
       return false;
-    std::vector<std::uint8_t>vertexSpv,fragmentSpv;if(!readBytes(root/L"HandPbr.vert.spv",vertexSpv)||!readBytes(root/L"HandPbr.frag.spv",fragmentSpv)||vertexSpv.size()%4||fragmentSpv.size()%4){say("hand shader binaries missing or invalid; renderer disabled");return false;}VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};shaderInfo.codeSize=vertexSpv.size();shaderInfo.pCode=reinterpret_cast<const std::uint32_t*>(vertexSpv.data());if(vk.createShaderModule(device,&shaderInfo,nullptr,&vertexShader)!=VK_SUCCESS)return false;shaderInfo.codeSize=fragmentSpv.size();shaderInfo.pCode=reinterpret_cast<const std::uint32_t*>(fragmentSpv.data());if(vk.createShaderModule(device,&shaderInfo,nullptr,&fragmentShader)!=VK_SUCCESS){vk.destroyShaderModule(device,vertexShader,nullptr);vertexShader=VK_NULL_HANDLE;return false;}
+    const auto shaderRoot=std::filesystem::exists(root/L"Shaders")?root/L"Shaders":root;
+    std::vector<std::uint8_t>vertexSpv,fragmentSpv;if(!readBytes(shaderRoot/L"HandPbr.vert.spv",vertexSpv)||!readBytes(shaderRoot/L"HandPbr.frag.spv",fragmentSpv)||vertexSpv.size()%4||fragmentSpv.size()%4){say("hand shader binaries missing or invalid; renderer disabled");return false;}VkShaderModuleCreateInfo shaderInfo{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO};shaderInfo.codeSize=vertexSpv.size();shaderInfo.pCode=reinterpret_cast<const std::uint32_t*>(vertexSpv.data());if(vk.createShaderModule(device,&shaderInfo,nullptr,&vertexShader)!=VK_SUCCESS)return false;shaderInfo.codeSize=fragmentSpv.size();shaderInfo.pCode=reinterpret_cast<const std::uint32_t*>(fragmentSpv.data());if(vk.createShaderModule(device,&shaderInfo,nullptr,&fragmentShader)!=VK_SUCCESS){vk.destroyShaderModule(device,vertexShader,nullptr);vertexShader=VK_NULL_HANDLE;return false;}
     VkPushConstantRange push{};push.stageFlags=VK_SHADER_STAGE_VERTEX_BIT;push.offset=0;push.size=sizeof(Mat4)*2;VkPipelineLayoutCreateInfo pipelineLayoutInfo{VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO};pipelineLayoutInfo.setLayoutCount=1;pipelineLayoutInfo.pSetLayouts=&descriptorLayout;pipelineLayoutInfo.pushConstantRangeCount=1;pipelineLayoutInfo.pPushConstantRanges=&push;bool ok=vk.createPipelineLayout(device,&pipelineLayoutInfo,nullptr,&pipelineLayout)==VK_SUCCESS;
     if(ok)ok=createGraphicsPipeline(renderPass,VK_COMPARE_OP_LESS_OR_EQUAL,
         false,pipeline);
@@ -514,7 +515,9 @@ const HandCalibration&HandRenderer::Impl::selectedCalibration()const{
 }
 
 void HandRenderer::Impl::loadCalibrationFile(const wchar_t* filename, bool defaults){
-    const auto file=defaults?root/filename
+    const auto file=defaults
+        ?(std::filesystem::exists(root/L"Config"/filename)
+            ?root/L"Config"/filename:root/filename)
         :userHandCalibrationDirectory(root)/filename;
     std::ifstream input(file);
     // Repository defaults are the baseline. A legacy v1 save deliberately
@@ -677,8 +680,10 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
     const std::array<std::vector<VkImage>,2>&eyeImages,
     const std::wstring&runtimeDirectory,HandLog logger){
     shutdown();impl_->physical=physicalDevice;impl_->device=device;impl_->queue=queue;impl_->queueFamily=queueFamily;impl_->vk=dispatch;impl_->format=colorFormat;impl_->extents=eyeExtents;impl_->root=runtimeDirectory;impl_->log=std::move(logger);
-    std::unordered_map<std::string,std::string>config;std::ifstream input(impl_->root/L"hand_models.cfg");std::string line;while(std::getline(input,line)){line=trim(line);if(line.empty()||line[0]=='#')continue;const auto equals=line.find('=');if(equals!=std::string::npos)config[trim(line.substr(0,equals))]=trim(line.substr(equals+1));}
-    if(!input&&!std::filesystem::exists(impl_->root/L"hand_models.cfg")){impl_->say("hand_models.cfg missing; static hands disabled");return false;}
+    const auto modelConfig=std::filesystem::exists(impl_->root/L"Config"/L"hand_models.cfg")
+        ?impl_->root/L"Config"/L"hand_models.cfg":impl_->root/L"hand_models.cfg";
+    std::unordered_map<std::string,std::string>config;std::ifstream input(modelConfig);std::string line;while(std::getline(input,line)){line=trim(line);if(line.empty()||line[0]=='#')continue;const auto equals=line.find('=');if(equals!=std::string::npos)config[trim(line.substr(0,equals))]=trim(line.substr(equals+1));}
+    if(!input&&!std::filesystem::exists(modelConfig)){impl_->say("hand_models.cfg missing; static hands disabled");return false;}
     auto vector3=[&](const char*key,float value[3]){std::istringstream stream(config[key]);return bool(stream>>value[0]>>value[1]>>value[2]);};vector3("left_position",impl_->leftCalibration.position);vector3("left_rotation",impl_->leftCalibration.rotationDegrees);vector3("right_position",impl_->rightCalibration.position);vector3("right_rotation",impl_->rightCalibration.rotationDegrees);try{if(config.count("left_scale"))impl_->leftCalibration.scale=std::clamp(std::stof(config["left_scale"]),.05f,2.f);if(config.count("right_scale"))impl_->rightCalibration.scale=std::clamp(std::stof(config["right_scale"]),.05f,2.f);}catch(...){impl_->say("invalid hand scale; using safe defaults");}impl_->mirrorX[0]=config["left_fist_mirror_x"]=="1";impl_->mirrorX[1]=config["right_fist_mirror_x"]=="1";impl_->mirrorX[2]=config["left_gun_mirror_x"]=="1";impl_->mirrorX[3]=config["right_gun_mirror_x"]=="1";
     impl_->loadCalibrationFile(L"hand_models_calibration_default.cfg",true);
     impl_->defaultLeftCalibration=impl_->leftCalibration;impl_->defaultRightCalibration=impl_->rightCalibration;

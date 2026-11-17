@@ -128,3 +128,50 @@ else()
   target_compile_options(KharvoxPrimaryGripAnchorPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME primary-hand-rigid-gun-anchor COMMAND KharvoxPrimaryGripAnchorPolicyTests)
+
+# Recoil is experimental and MUST NOT alter a first-shot projectile.
+# Keep C assert checks active in Release CI builds.
+add_executable(KharvoxWeaponRecoilPolicyTests ../weapon_recoil_policy_tests.cpp)
+target_compile_features(KharvoxWeaponRecoilPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWeaponRecoilPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWeaponRecoilPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME recoil-first-shot-grace-and-900pct COMMAND KharvoxWeaponRecoilPolicyTests)
+
+# Ranked level records must use monotonic real time and ignore only DOOM's
+# native Pause session. Regular gameplay-only timers remain unchanged.
+add_executable(KharvoxLevelRecordTimerPolicyTests ../level_record_timer_policy_tests.cpp)
+target_compile_features(KharvoxLevelRecordTimerPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME level-record-timer-no-menu-or-cutscene-exploit COMMAND KharvoxLevelRecordTimerPolicyTests)
+
+# Regression: interactive scripted terminal must not permanently move VR guns.
+add_executable(KharvoxScriptedWeaponPoseBoundaryTests ../scripted_weapon_pose_boundary_tests.cpp)
+target_compile_features(KharvoxScriptedWeaponPoseBoundaryTests PRIVATE cxx_std_17)
+add_test(NAME scripted-terminal-weapon-pose-recovery COMMAND KharvoxScriptedWeaponPoseBoundaryTests)
+
+# Experimental world grabbing, safe input probe only (no entity physics).
+add_executable(KharvoxWorldGrabProbeTests ../world_grab_probe_policy_tests.cpp)
+target_compile_features(KharvoxWorldGrabProbeTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWorldGrabProbeTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWorldGrabProbeTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME world-grab-input-probe COMMAND KharvoxWorldGrabProbeTests)
+
+# Guard native idHands grip pivots against scripted arcade-terminal outliers.
+add_executable(KharvoxWeaponPivotOutlierTests ../weapon_pivot_outlier_tests.cpp)
+target_compile_features(KharvoxWeaponPivotOutlierTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWeaponPivotOutlierTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWeaponPivotOutlierTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME weapon-pivot-outlier-recovery COMMAND KharvoxWeaponPivotOutlierTests)

@@ -42,6 +42,25 @@ internal static class VulkanSfs
         catch (UnauthorizedAccessException) { return false; }
     }
 
+    // Use the SHADERS from the user's separately installed original
+    // KHARVOX rather than shipping a second complete copy in this add-on.
+    // Developer full-builds may still carry a local profile for diagnostics.
+    internal static string ResolveShaderProfile(string? runtime = null)
+    {
+        runtime ??= AppContext.BaseDirectory;
+        var original = OriginalKharvoxSetup.SavedOriginalDirectory();
+        if (original != null)
+        {
+            var upstream = Path.Combine(original, "sfs-profile");
+            if (HasCompleteShaderProfile(original))
+                return upstream;
+        }
+        var local = Path.Combine(runtime, "sfs-profile");
+        if (HasCompleteShaderProfile(runtime)) return local;
+        throw new InvalidOperationException(
+            "Original KHARVOX SFS shaders not found. Open RIPSHIFT VR and choose the original CactusVRStudios installation again.");
+    }
+
     internal static void EnsureAvailable(string? runtime = null)
     {
         runtime ??= AppContext.BaseDirectory;
@@ -55,12 +74,15 @@ internal static class VulkanSfs
         if (lines.Length != 2 || lines[0] != "KHARVOX_NATIVE_SFS_1" ||
             !hash.Equals(lines[1], StringComparison.OrdinalIgnoreCase))
             throw new InvalidOperationException("The SFS build manifest does not match KharvoxLayer.dll. Rebuild or restore the complete SFS test package.");
+        var licenses = Directory.Exists(Path.Combine(runtime, "Licenses"))
+            ? Path.Combine(runtime, "Licenses")
+            : Path.Combine(runtime, "sfs-compiler-licenses");
         foreach (var name in new[] { "SPIRV-Cross.txt", "glslang.txt", "SPIRV-Tools.txt" })
-            if (!File.Exists(Path.Combine(runtime, "sfs-compiler-licenses", name)))
+            if (!File.Exists(Path.Combine(licenses, name)))
                 throw new InvalidOperationException("SFS compiler license files are missing from the test package.");
-        var profile = Path.Combine(runtime, "sfs-profile");
+        var profile = ResolveShaderProfile(runtime);
         if (!Directory.Exists(profile) || Directory.GetFiles(profile, "*.spv").Length != 75)
-            throw new InvalidOperationException("The local DOOM SFS profile must contain all 75 compiled shaders (sfs-profile).");
+            throw new InvalidOperationException("The original KHARVOX installation must provide all 75 compiled SFS shaders.");
         foreach (var file in Directory.GetFiles(profile, "*.spv"))
         {
             using var shader = new BinaryReader(File.OpenRead(file));
@@ -85,6 +107,6 @@ internal static class VulkanSfs
         start.EnvironmentVariables["KHARVOX_SFS_NATIVE_VR"] = "1";
         if (File.Exists(Path.Combine(runtime, "sfs_source_ring")))
             start.EnvironmentVariables["KHARVOX_SFS_SOURCE_RING"] = "1";
-        start.EnvironmentVariables["KHARVOX_SFS_PROFILE"] = Path.Combine(runtime, "sfs-profile");
+        start.EnvironmentVariables["KHARVOX_SFS_PROFILE"] = ResolveShaderProfile(runtime);
     }
 }

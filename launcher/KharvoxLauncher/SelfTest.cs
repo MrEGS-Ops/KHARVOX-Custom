@@ -43,6 +43,30 @@ internal static class SelfTest
             Require(!KharvoxRunner.ShouldDisableNativeSyncSlowmo(10, false),
                 "both fast-kill mods off must preserve native slow motion");
             VerifyProcessStatusPreservesExitCode();
+            // Saved DOOM settings (CRLF, LF, existing entries and absent keys):
+            // only tutorial suppression may change. The removed experimental
+            // Glory Kill Highlight control must NEVER modify DOOM settings.
+            const string doomProfile = "bindset 0\r\nbind \"JOY10\" \"_inventory\"\r\n"
+                + "g_setting_tutorials \"1\"\r\nseta g_setting_gk_highlight \"1\"\r\n";
+            var revised = DoomGameSettingsOverride.UpdatedContent(doomProfile);
+            Require(revised.Contains("g_setting_tutorials \"0\"\r\n"), "tutorials forced off in saved game settings");
+            Require(revised.Contains("seta g_setting_gk_highlight \"1\"\r\n"),
+                "unsupported GK highlight remains untouched in DOOM settings");
+            Require(revised.Contains("bind \"JOY10\" \"_inventory\""), "controller binds untouched");
+            Require(DoomGameSettingsOverride.UpdatedContent(revised) == revised, "game-settings patch is idempotent");
+            var plain = DoomGameSettingsOverride.UpdatedContent("bindset 0\n");
+            Require(plain.Contains("g_setting_tutorials \"0\"")
+                && !plain.Contains("g_setting_gk_highlight"),
+                "only verified tutorial option added; GK highlight not injected");
+            var simulatedCfg = Path.Combine(testRoot, "DOOMConfig.cfg");
+            File.WriteAllText(simulatedCfg, doomProfile);
+            Require(DoomGameSettingsOverride.TryApply(simulatedCfg, out _), "safe DOOM settings patch");
+            Require(File.ReadAllText(simulatedCfg + ".ripshift-settings-original.bak") == doomProfile,
+                "original DOOM settings backed up before changes");
+            Require(DoomGameSettingsOverride.TryApply(simulatedCfg, out _),
+                "relaunch applies settings idempotently");
+            Require(File.ReadAllText(simulatedCfg + ".ripshift-settings-original.bak") == doomProfile,
+                "original backup never overwritten");
             bool sfsBlocked=false;
             try { VulkanSfs.EnsureAvailable(testRoot); }
             catch (InvalidOperationException e) { sfsBlocked=e.Message==VulkanSfs.Blocker; }
@@ -978,6 +1002,16 @@ internal static class SelfTest
             var aerArgs=(IEnumerable<string>)argumentBuilder.Invoke(null,new object[]{form.CreateLaunchOptions(),false,100m,false})!;
             Require(string.Join(" ",nativeArgs).Contains("+r_useSMP 1"),"native serial renderer argument");
             Require(!aerArgs.Contains("+r_useSMP"),"headset AER restart retains original arguments");
+            Require(KharvoxRunner.NativeTutorialArguments().SequenceEqual(new[] {
+                "+g_setting_tutorials", "0" }), "RIPSHIFT defaults native DOOM tutorials OFF");
+            Require(KharvoxRunner.NativeTutorialArguments(true).SequenceEqual(new[] {
+                "+g_setting_tutorials", "1" }), "native tutorial helper supports explicit enable");
+            Require(nativeArgs.Contains("+g_setting_tutorials")
+                && nativeArgs.ElementAt(Array.IndexOf(nativeArgs.ToArray(), "+g_setting_tutorials") + 1) == "0",
+                "native renderer passes tutorial-off setting");
+            Require(aerArgs.Contains("+g_setting_tutorials")
+                && aerArgs.ElementAt(Array.IndexOf(aerArgs.ToArray(), "+g_setting_tutorials") + 1) == "0",
+                "AER renderer passes tutorial-off setting");
             Require(!KharvoxRunner.NativeShadowDiagnosticArguments(false,true).Any(),
                 "AER and AFW ignore the native shadow diagnostic, including recovery");
             Require(!KharvoxRunner.NativeShadowDiagnosticArguments(true,false).Any(),
@@ -1147,7 +1181,7 @@ internal static class SelfTest
         using var sha = System.Security.Cryptography.SHA256.Create();
         File.WriteAllLines(Path.Combine(runtime, "native_sfs_build.txt"), new[] {
             "KHARVOX_NATIVE_SFS_1", BitConverter.ToString(sha.ComputeHash(File.ReadAllBytes(layer))).Replace("-", "") });
-        var licenses = Path.Combine(runtime, "sfs-compiler-licenses");
+        var licenses = Path.Combine(runtime, "Licenses");
         Directory.CreateDirectory(licenses);
         foreach (var name in new[] { "SPIRV-Cross.txt", "glslang.txt", "SPIRV-Tools.txt" })
             File.WriteAllText(Path.Combine(licenses, name), "Test fixture");

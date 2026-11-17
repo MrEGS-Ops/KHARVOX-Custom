@@ -56,6 +56,7 @@ bool KharvoxWeaponGaussSiegeChargeActive();
 // Only a native Turret-tagged Chaingun declaration counts as alternate.
 // If DOOM does not expose such a declaration, this safely stays false.
 bool KharvoxWeaponChaingunTurretModeActive();
+bool KharvoxWeaponChaingunRotorModeActive();
 // Presentation-only holster state: keeps DOOM's selected weapon alive while
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
@@ -64,6 +65,10 @@ bool KharvoxWeaponHolstered();
 // it never changes inventory or ammo and only publishes a short-lived cache.
 void KharvoxWeaponCaptureAmmoSnapshot(void* player);
 KharvoxWeaponAmmoState KharvoxWeaponGetAmmoState(KharvoxWeaponKind kind);
+// Read-only current ammo total from the SAME already validated native
+// inventory query as the shoulder-weapon snapshot. Used only to confirm a
+// genuine Gauss ammo spend before adding experimental recoil. No new hook.
+bool KharvoxWeaponGetAmmoTotal(KharvoxWeaponKind kind,int& total);
 // Returns the current rendered weapon muzzle in DOOM world coordinates. The
 // pose is taken from the weapon model's animated joint matrices, not inferred
 // from the controller. Chainsaw/fists and stale weapon frames return false.
@@ -72,6 +77,11 @@ bool KharvoxWeaponGetLaserMuzzlePose(float origin[3], float direction[3],
 const char* KharvoxWeaponKindKey(KharvoxWeaponKind kind);
 const char* KharvoxWeaponKindDisplayName(KharvoxWeaponKind kind);
 KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key);
+// Clears ONLY temporary animated grip snapshots, not UserData settings.
+void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend);
+// True once when the native animated grip returns from an extreme scripted
+// displacement. Consumer resets runtime caches ONLY, not saved calibration.
+bool KharvoxWeaponConsumeScriptedPivotRecovery();
 void KharvoxWeaponResetCalibration();
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,

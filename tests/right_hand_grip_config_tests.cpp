@@ -124,6 +124,44 @@ int main(){
  assert(std::abs(a.chaingun.z-.66f)<.0001f);
  assert(std::abs(a.gaussSiegeHand.z-.31f)<.0001f);
  assert(std::abs(a.chaingunTurretHand.z-.30f)<.0001f);
+ // Rotor is a THIRD independent Minigun calibration profile (Normal
+ // and Turret must remain byte-for-byte intact), for BOTH weapon hands.
+ assert(kharvox::validVrPrimaryProfileKey("chaingun_rotor"));
+ assert(kharvox::saveRightHandVisualPose(path,"chaingun_rotor",false,
+     {-.11f,.12f,-.25f},liveRotation,&why,false));
+ assert(kharvox::saveRightHandVisualPose(path,"chaingun_rotor",false,
+     {.14f,.08f,-.27f},liveRotation,&why,true));
+ assert(kharvox::saveHeavyAlternativeSupport(path,"chaingun_rotor",
+     {-.24f,.04f,-.17f},&why,false));
+ assert(kharvox::saveHeavyAlternativeSupport(path,"chaingun_rotor",
+     {.22f,.05f,-.19f},&why,true));
+ a=kharvox::readRightHandGripSettings(path);
+ assert(a.rejected==0&&a.chaingunRotorSupportValid);
+ assert(std::abs(a.chaingunRotorSupport.x+.24f)<.0001f);
+ assert(std::abs(a.leftPrimaryAlternateSupport.at("chaingun_rotor").x-.22f)<.0001f);
+ assert(std::abs(a.visualPositions.at("chaingun_rotor").x+.11f)<.0001f);
+ assert(std::abs(a.leftVisualPositions.at("chaingun_rotor").x-.14f)<.0001f);
+ assert(a.visualRotations.at("chaingun_rotor").valid);
+ assert(a.leftVisualRotations.at("chaingun_rotor").valid);
+ assert(a.chaingunHandValid&&a.chaingunTurretHandValid);
+ assert(std::abs(a.chaingunHand.z-.24f)<.0001f);
+ assert(std::abs(a.chaingunTurretHand.z-.30f)<.0001f);
+ kharvox::RightHandGripOffset rotorPrimary{};
+ kharvox::RightHandGripRotation rotorWrist{};
+ assert(kharvox::rightPrimaryVisualPose(a,"chaingun_rotor",false,
+     rotorPrimary,rotorWrist));
+ assert(std::abs(rotorPrimary.x+.11f)<.0001f&&rotorWrist.valid);
+ assert(std::abs(kharvox::savedPrimaryWeaponGripOffset(
+     a,"chaingun_rotor",true).position.x-.14f)<.0001f);
+ const kharvox::RightHandGripOffset rotorFine{.01f,-.02f,.03f};
+ assert(kharvox::saveRightHandVisualPose(path,"chaingun_rotor",false,
+     {-.11f,.12f,-.25f},liveRotation,&why,false,&rotorFine));
+ a=kharvox::readRightHandGripSettings(path);
+ const auto rotorLoadedTune=kharvox::primaryVisualFineTune(
+     a,"chaingun_rotor",false,false);
+ assert(std::abs(rotorLoadedTune.z-.03f)<.0001f);
+ assert(kharvox::primaryVisualFineTune(
+     a,"chaingun",false,false).z==0.f);
  assert(!kharvox::saveRightHandVisualPose(
      path,"invalid_weapon",false,{0,0,0},liveRotation,&why));
  // Valid model-local glove pose may be more than 85 cm from the gun
@@ -178,9 +216,31 @@ int main(){
  // Per-weapon VR hand menu: right hand saves position + quaternion. Left hand
  // support stores only a point; its quaternion remains a grab-time snapshot.
  auto menu=kharvox::VrHandMenuState{};
+ // Normal Gauss fire remains one-handed regardless of support Grip.
+ // Only the observable active Alt Fire/charge Grip can lock a shot.
+ using kharvox::vrGaussPrimaryFireAllowed;
+ assert(vrGaussPrimaryFireAllowed(true,true,false,false,false,false,false,false,false));
+ assert(vrGaussPrimaryFireAllowed(true,true,false,true,false,false,false,true,false));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,false,false,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,false,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,false,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,true,false,true,true));
+ assert(!vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,true,false));
+ assert(vrGaussPrimaryFireAllowed(true,true,true,true,true,true,true,true,true));
+ assert(vrGaussPrimaryFireAllowed(false,true,true,false,false,false,false,false,false));
+ assert(vrGaussPrimaryFireAllowed(true,false,true,false,false,false,false,false,false));
+ // Gauss and Minigun present only NORMAL and generic ALT FIRE.
+ // Attachment names never select the active grip profile.
  assert(!menu.alternateProfile);
  menu.alternateProfile=true;
- assert(menu.alternateProfile); // Alternate heavy profile is a menu option, not a chord.
+ assert(menu.alternateProfile);
+ using kharvox::vrHeavyAlternateGripActive;
+ assert(vrHeavyAlternateGripActive(true,true,true,false,false));
+ assert(!vrHeavyAlternateGripActive(true,true,false,true,false));
+ assert(vrHeavyAlternateGripActive(false,false,false,true,false));
+ assert(vrHeavyAlternateGripActive(false,false,false,false,true)); // Gauss charge
+ assert(!vrHeavyAlternateGripActive(false,false,false,false,false));
+ assert(!vrHeavyAlternateGripActive(true,true,false,false,false));
  using kharvox::VrMenuShortcutAction;
  auto hold=kharvox::VrMenuHoldShortcut{};
  // Short taps are left alone for Hand Focus.
@@ -349,6 +409,13 @@ int main(){
          <<"gauss_cannon_siege_left_rotation = 0 0 0 1\n"
          <<"gauss_cannon_siege_support_position = -0.1 0.2 0.3\n"
          <<"gauss_cannon_siege_left_primary_support_position = 0.1 0.2 0.3\n"
+         <<"chaingun_rotor_hand_position = 0.22 0.03 -0.18\n"
+         <<"chaingun_rotor_rotation = 0 0 0 1\n"
+         <<"chaingun_rotor_left_hand_position = -0.22 0.04 -0.18\n"
+         <<"chaingun_rotor_left_rotation = 0 0 0 1\n"
+         <<"chaingun_rotor_support_position = -0.1 0.03 -0.2\n"
+         <<"chaingun_turret_hand_position = 0.28 0.02 -0.14\n"
+         <<"chaingun_turret_rotation = 0 0 0 1\n"
          <<"shotgun_hand_position = 0.02 0.03 -0.01\n"
          <<"shotgun_rotation = 0 0 0 1\n";}
  {std::ofstream factory(factorySupport);
@@ -384,6 +451,16 @@ int main(){
  assert(visual.gaussSiegeHandValid);
  assert(std::abs(visual.gaussSiegeHand.x-.30f)<.0001f);
  assert(visual.leftPrimaryAlternateSupport.count("gauss_cannon_siege")==1);
+ // Rotor and Turret factory reset independently return to their own
+ // entries, without touching a different weapon's saved pose.
+ assert(kharvox::restoreVrWeaponCalibrationDefault(
+     path,factoryRight,"chaingun",true,&why));
+ visual=kharvox::readRightHandGripSettings(path);
+ assert(std::abs(visual.visualPositions.at("chaingun_rotor").x-.22f)<.0001f);
+ assert(std::abs(visual.leftVisualPositions.at("chaingun_rotor").x+.22f)<.0001f);
+ assert(std::abs(visual.chaingunTurretHand.x-.28f)<.0001f);
+ assert(std::abs(visual.chaingunRotorSupport.x+.10f)<.0001f);
+ assert(std::abs(visual.visualPositions.at("shotgun").x-.03f)<.0001f);
  // LEFT and RIGHT must now be calibrated independently. Saving LEFT
  // never changes RIGHT; saving RIGHT never changes LEFT. No mirroring.
  assert(kharvox::saveRightHandVisualPose(path,"pistol",false,

@@ -53,7 +53,7 @@ internal sealed class VrGameIntroSession : IDisposable
     {
         markerPath ??= MarkerPath;
         if (!ShouldPlayIntro(!NeedsIntroFile(markerPath), disableVrIntro)) return null;
-        var executable = Path.Combine(directory, "KharvoxLauncher.exe");
+        var executable = typeof(VrGameIntroSession).Assembly.Location;
         if (!File.Exists(executable) || !File.Exists(Path.Combine(directory, "KharvoxLayer.dll")))
         {
             status?.Invoke("VR intro host is missing; skipping intro and starting DOOM.");

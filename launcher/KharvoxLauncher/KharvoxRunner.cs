@@ -158,10 +158,8 @@ internal static class KharvoxRunner
     private static readonly object bhapticsLock = new();
     private static BhapticsBridgeSession? currentBhaptics;
     private static readonly object psvr2Lock = new();
-    private static readonly object supervisorLock = new();
     private static readonly object diagnosticLogLock = new();
     private static Psvr2BridgeSession? currentPsvr2;
-    private static KharvoxSupervisorSession? currentSupervisor;
     private static int launchInProgress;
     internal enum StartupState
     {
@@ -204,7 +202,6 @@ internal static class KharvoxRunner
             if (Volatile.Read(ref launchInProgress) != 0) return false;
             StopBhapticsInBackground();
             StopPsvr2InBackground();
-            StopSupervisor();
             return false;
         }
     }
@@ -267,6 +264,9 @@ internal static class KharvoxRunner
         Action<string>? statusUpdate = null, string? bhapticsAppId = null,
         string? bhapticsApiKey = null)
     {
+        // An already-installed ORIGINAL CactusVRStudios KHARVOX remains a
+        // hard dependency; this add-on never replaces or edits its files.
+        OriginalKharvoxSetup.RequireSelectedOriginal();
         if (RendererSelection.IsSfs(options.RendererMode)) VulkanSfs.EnsureAvailable();
         var runtimeDir = AppContext.BaseDirectory;
         var dllPath = Path.Combine(runtimeDir, "KharvoxLayer.dll");
@@ -275,11 +275,10 @@ internal static class KharvoxRunner
         var loaderLogPath = RuntimeStorage.LogPath("KHARVOX-vulkan-loader-v1.0.log");
         var gameExe = Path.Combine(options.GameDirectory ?? string.Empty, "DOOMx64vk.exe");
         var customMods = CustomModSettingsStore.Load();
-        // Custom native mod controls come from the portable sidecar only
-        // when KHARVOX was started by a bridge-aware Mods application.
-        // No local bridge file = original KHARVOX selections unchanged.
-        var standaloneMods = StandaloneModsBridge.LoadFromEnvironment();
-        standaloneMods?.ApplyTo(customMods);
+        // KHARVOX now runs directly, without the removed desktop Mod Manager
+        // or its updater. Keep the proven core VR mods ON and let the native
+        // in-headset settings handle user-configurable calibrations/toggles.
+        RetailVrDefaults.Apply(customMods);
         // Force the runtime setting off even if saved launcher settings,
         // presets or a direct caller request Virtual Gunstock.
         var effectiveVirtualGunstock =
@@ -347,10 +346,9 @@ internal static class KharvoxRunner
 
         using var gameIntro = await VrGameIntroSession.StartAsync(runtimeDir, statusUpdate, disableVrIntro: options.DisableVrIntro).ConfigureAwait(false);
         WriteManifest(manifestPath, dllPath);
-        EnsureNativeControllerBindings(options.BackWeapon);
+        EnsureNativeControllerBindings(options.BackWeapon, statusUpdate);
         await StopBhapticsAsync().ConfigureAwait(false);
         await StopPsvr2Async().ConfigureAwait(false);
-        StopSupervisor();
         var bhaptics = BhapticsBridgeSession.TryStart(
             options.EnableBhaptics, runtimeDir, statusUpdate,
             bhapticsAppId, bhapticsApiKey, options.ExtendedLogging);
@@ -527,6 +525,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO_HANDOFF");
             psi.EnvironmentVariables["KHARVOX_EXTENDED_LOGGING"] = options.ExtendedLogging ? "1" : "0";
+            psi.EnvironmentVariables["KHARVOX_DISABLE_TUTORIALS"] = "1";
             psi.EnvironmentVariables.Remove("VK_LOADER_DEBUG");
             if (options.ExtendedLogging)
             {
@@ -583,8 +582,7 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_BACK_WEAPON"] = options.BackWeapon;
             // Legacy Wheel Remap checkbox no longer activates any input
             // route. The merged Gunslinger owns this button behaviour.
-            var wheelRemap = standaloneMods?.EffectiveGunslinger
-                ?? customMods.BehindHeadWeaponWheel;
+            var wheelRemap = customMods.BehindHeadWeaponWheel;
             psi.EnvironmentVariables["KHARVOX_WEAPON_WHEEL_REMAP"] = wheelRemap ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOTION_WEAPON_WHEEL"] =
                 (wheelRemap || customMods.BehindHeadWeaponWheel) ? "1" : "0";
@@ -629,7 +627,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_LEFT_WRIST_WHEEL"] = customMods.LeftWristWeaponWheel ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_BEHIND_HEAD_WHEEL_HAND_SELECTION"] = customMods.BehindHeadWheelHandSelection ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_REVENGE_DEMON"] = customMods.RevengeDemon ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_SSG_PERSISTENT_RELOAD"] = customMods.PersistentSuperShotgunReload ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
@@ -715,7 +712,7 @@ internal static class KharvoxRunner
                 " twoHandMode=" + (options.TwoHandCalibration ? "calibration" : "gameplay-test") +
                 " calibrationWeapon=" + options.TwoHandCalibrationWeapon +
                 " backWeapon=" + options.BackWeapon +
-                " gunslingerWheelButtons=" + ((standaloneMods?.EffectiveGunslinger ?? customMods.BehindHeadWeaponWheel) ? "enabled" : "native") +
+                " gunslingerWheelButtons=" + (customMods.BehindHeadWeaponWheel ? "enabled" : "native") +
                 " gloryKillSlowmoLevel=" + options.GloryKillSlowmoLevel +
                 " alignment=" + options.TwoHandAlignment +
                 " virtualGunstock=" + (effectiveVirtualGunstock ? "enabled" : "disabled") +
@@ -769,12 +766,6 @@ internal static class KharvoxRunner
             }
             const long logOffset = 0;
             EnsureNoRunningDoom();
-            var supervisor = KharvoxSupervisorSession.TryStart(customMods, runtimeDir, statusUpdate);
-            lock (supervisorLock)
-            {
-                currentSupervisor?.Dispose();
-                currentSupervisor = supervisor;
-            }
             if (options.ExtendedLogging)
                 AppendRegistryDiagnostics(logPath, launchId, "before-process-start", key,
                     manifestPath);
@@ -841,7 +832,6 @@ internal static class KharvoxRunner
             currentGame?.Dispose();
             currentGame = game;
             await FocusDoomOnceWhenWindowReadyAsync(game, logPath);
-            standaloneMods?.MarkDoomLaunched();
             statusUpdate?.Invoke("DOOM started. Verifying the VR image …");
 
             var startup = await Task.Run(() =>
@@ -983,7 +973,6 @@ internal static class KharvoxRunner
             {
                 await StopBhapticsAsync().ConfigureAwait(false);
                 await StopPsvr2Async().ConfigureAwait(false);
-                StopSupervisor();
             }
         }
     }
@@ -1343,7 +1332,6 @@ internal static class KharvoxRunner
         {
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
-            StopSupervisor();
             return;
         }
         try
@@ -1356,19 +1344,7 @@ internal static class KharvoxRunner
             game.Dispose();
             await StopBhapticsAsync().ConfigureAwait(false);
             await StopPsvr2Async().ConfigureAwait(false);
-            StopSupervisor();
         }
-    }
-
-    private static void StopSupervisor()
-    {
-        KharvoxSupervisorSession? session;
-        lock (supervisorLock)
-        {
-            session = currentSupervisor;
-            currentSupervisor = null;
-        }
-        session?.Dispose();
     }
 
     internal static async Task StopBhapticsAsync()
@@ -1844,12 +1820,12 @@ internal static class KharvoxRunner
         return (Math.Max(1, (int)(1280 * scale)), Math.Max(1, (int)(720 * scale)));
     }
 
-    // DOOM 2016's native Game Settings > Glory Kill Highlight option.
-    // Do not change stagger, Glory Kill availability, animation or timing.
-    // Read-only reference: DOOMLegacyMod's game CVar dump identifies
-    // g_setting_gk_highlight as "show or hide the GK highlight".
-    internal static IEnumerable<string> NativeGloryKillHighlightArguments() =>
-        ["+g_setting_gk_highlight", "0"];
+    // Disable DOOM 2016's native tutorial pop-ups and instruction panels.
+    // Use the actual game setting, not simulated screen-close inputs: suppressing
+    // the tutorial manager's ShowScreen can trap native automap/UI ownership.
+    // Unlike g_showHUD, this preserves objectives, collectibles and prompts.
+    internal static IEnumerable<string> NativeTutorialArguments(bool enabled = false) =>
+        ["+g_setting_tutorials", enabled ? "1" : "0"];
 
     // The former working Build #83 path toggled DOOM's native sync CVars.
     // The legacy slow-motion dropdown AND either fast-execution checkbox may
@@ -1935,10 +1911,7 @@ internal static class KharvoxRunner
             "+r_windowWidth", renderWidth.ToString(Invariant),
             "+r_windowHeight", renderHeight.ToString(Invariant)
         ]);
-        // Always turn off DOOM's own blue/orange stagger outlines in VR.
-        // This does not require DOOMModLoader, alter user config files or
-        // introduce any on-screen launcher option.
-        args.AddRange(NativeGloryKillHighlightArguments());
+        args.AddRange(NativeTutorialArguments()); // Tutorials OFF by default.
 
         // Reuse the native sync-slowdown bypass the user previously confirmed
         // working: checking EITHER fast-kill mod must activate all THREE CVars
@@ -2091,7 +2064,7 @@ internal static class KharvoxRunner
         finally { foreach (var process in processes) process.Dispose(); }
     }
 
-    private static void EnsureNativeControllerBindings(string backWeapon)
+    private static void EnsureNativeControllerBindings(string backWeapon, Action<string>? statusUpdate)
     {
         var roots = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -2109,9 +2082,23 @@ internal static class KharvoxRunner
         }
         catch { }
 
+        // Controller bindings and native tutorials settings target the same
+        // existing DOOMConfig.cfg files. Never touch the encrypted savegame.
+        // Game code can reload settings later, so record FILE status rather
+        // than claiming live success without observing the native value.
+        var discovered = 0;
         foreach (var root in roots.Where(Directory.Exists))
         foreach (var config in Directory.EnumerateFiles(root, "DOOMConfig.cfg", SearchOption.AllDirectories))
+        {
+            discovered++;
             PatchCampaignControllerBindings(config, backWeapon);
+            if (DoomGameSettingsOverride.TryApply(config, out var result))
+                statusUpdate?.Invoke("DOOM settings profile: " + result);
+            else
+                statusUpdate?.Invoke("DOOM settings profile unavailable: " + result);
+        }
+        if (discovered == 0)
+            statusUpdate?.Invoke("DOOMConfig.cfg not found; game settings will use launch requests only.");
     }
 
     internal static void PatchCampaignControllerBindings(string configPath, string backWeapon)
@@ -2270,7 +2257,8 @@ internal static class KharvoxRunner
     internal static string ReadCalibrationWithDefault(
         string directory, string savedFileName, string defaultFileName, string builtInFallback) =>
         ReadCalibration(directory, savedFileName,
-            ReadCalibration(directory, defaultFileName, builtInFallback));
+            ReadCalibration(Path.Combine(directory, "Config"), defaultFileName,
+                ReadCalibration(directory, defaultFileName, builtInFallback)));
 
     private static string Inv(decimal value) => value.ToString(Invariant);
 

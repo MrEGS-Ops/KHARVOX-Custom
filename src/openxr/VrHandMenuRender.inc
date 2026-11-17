@@ -76,13 +76,99 @@ void paintVrHandMenu() {
         FillRect(dc,&rect,brush);
         DeleteObject(brush);
     };
-    const bool calibrationView=m.mode==kharvox::VrHandMenuMode::Calibrating;
-    if(calibrationView){
+    // The 960x720 texture stays shared with the mod menu, but the warning
+    // itself occupies only this small top-centre banner. All other pixels
+    // are transparent while the warning is shown.
+    constexpr int bannerX=166,bannerY=174,bannerW=628,bannerH=108;
+    constexpr int resultX=173,resultY=515,resultW=614,resultH=126;
+    const bool disconnectView=controllerReconnectBannerVisible();
+    const bool firstTimeSetupView=!disconnectView
+        &&s.firstTimeSetupNotice.visible
+        &&m.mode==kharvox::VrHandMenuMode::Closed;
+    const bool gameplayWelcomeView=!disconnectView&&!firstTimeSetupView
+        &&s.gameplayWelcomeNotice.visible
+        &&m.mode==kharvox::VrHandMenuMode::Closed;
+    const bool resultView=!disconnectView&&!firstTimeSetupView
+        &&!gameplayWelcomeView&&m.mode==kharvox::VrHandMenuMode::Closed
+        &&KharvoxHudEndOfLevelMenuActive()
+        &&s.levelProgress.completed&&s.levelProgress.completedTimeMs>0;
+    const bool statsGameplay=KharvoxCameraGameplayActive()
+        &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
+        &&!KharvoxHudDeathMenuActive()&&!KharvoxHudPauseRootVisible()
+        &&!KharvoxHudEndOfLevelMenuActive()
+        &&!s.quadMode&&!s.centeredQuadTransitionPending
+        &&!s.immersiveCinematicActive;
+    const std::array<bool,kharvox::kVrStatsItemCount> statsVisible{
+        s.vrLiveSettings.deathCounterEnabled,
+        s.vrLiveSettings.deathStatisticsEnabled,
+        s.vrLiveSettings.campaignTimerEnabled,
+        s.vrLiveSettings.sessionTimerEnabled,
+        s.vrLiveSettings.levelDisplayEnabled[0],
+        s.vrLiveSettings.levelDisplayEnabled[1],
+        s.vrLiveSettings.levelDisplayEnabled[2]};
+    const std::array<int,kharvox::kVrStatsItemCount> statsCorners{
+        s.vrLiveSettings.deathCounterCorner,
+        s.vrLiveSettings.deathStatisticsCorner,
+        s.vrLiveSettings.campaignTimerCorner,
+        s.vrLiveSettings.sessionTimerCorner,
+        s.vrLiveSettings.levelDisplayPosition[0],
+        s.vrLiveSettings.levelDisplayPosition[1],
+        s.vrLiveSettings.levelDisplayPosition[2]};
+    const bool statsLiveView=kharvox::campaignStatsCanDraw(
+        statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
+        firstTimeSetupView||gameplayWelcomeView,disconnectView)
+        &&std::any_of(statsVisible.begin(),statsVisible.end(),
+            [](bool on){return on;});
+    constexpr int counterH=60;
+    // These independent onboarding panels share one transparent menu Quad.
+    constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
+    constexpr int welcomeX=95,welcomeY=145,welcomeW=770,welcomeH=435;
+    const bool calibrationView=!disconnectView&&!gameplayWelcomeView
+        &&!firstTimeSetupView
+        &&m.mode==kharvox::VrHandMenuMode::Calibrating;
+    const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
+        m.mode,m.liveCapture,m.devWeaponAlignment,
+        m.devHolsterZones,m.devControllerInputs);
+    if(disconnectView){
+        fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
+        fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
+        fill(bannerX+6,bannerY,bannerW-6,3,RGB(76,88,99));
+    }else if(firstTimeSetupView){
+        fill(setupX,setupY,setupW,setupH,RGB(16,29,39));
+        fill(setupX,setupY,7,setupH,RGB(55,209,214));
+        fill(setupX+7,setupY,setupW-7,4,RGB(66,91,105));
+        fill(setupX+24,setupY+73,setupW-48,2,RGB(66,91,105));
+    }else if(gameplayWelcomeView){
+        fill(welcomeX,welcomeY,welcomeW,welcomeH,RGB(16,29,39));
+        fill(welcomeX,welcomeY,7,welcomeH,RGB(55,209,214));
+        fill(welcomeX+7,welcomeY,welcomeW-7,4,RGB(66,91,105));
+        fill(welcomeX+24,welcomeY+75,welcomeW-48,2,RGB(66,91,105));
+    }else if(resultView){
+        const auto accent=s.levelProgress.bestUpdated
+            ?RGB(255,207,66):RGB(55,209,214);
+        fill(resultX,resultY,resultW,resultH,RGB(17,23,31));
+        fill(resultX,resultY,7,resultH,accent);
+        fill(resultX+7,resultY,resultW-7,3,accent);
+    }else if(statsLiveView){
+        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+            const int width=kharvox::campaignStatsPanelWidth(i);
+            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
+            fill(x,y,width,counterH,RGB(19,23,30));
+            fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
+        }
+    }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
         // transparent, so the live weapon can be inspected and aimed.
         fill(22,144,590,432,RGB(15,22,32));
-        fill(22,144,590,58,RGB(27,48,61));
+        fill(22,144,590,72,RGB(27,48,61));
         fill(22,144,5,432,RGB(55,209,214));
+        if(devPanel){
+            fill(630,144,308,432,RGB(18,29,41));
+            fill(630,144,5,432,RGB(55,209,214));
+            fill(630,198,308,2,RGB(76,88,99));
+        }
     }else{
         fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
         fill(0,0,vrMenuW,84,RGB(24,29,40));
@@ -104,11 +190,123 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
-    if(calibrationView){
-        write(39,155,"LIVE CALIBRATION",white);
+    if(disconnectView){
         SelectObject(dc,regular);
+        write(bannerX+24,bannerY+13,"CONTROLLERS DISCONNECTED",white);
+        SelectObject(dc,smallFont);
+        write(bannerX+24,bannerY+58,
+            "Press L3 + R3 together to reconnect.",RGB(255,204,128));
+    }else if(firstTimeSetupView){
+        SelectObject(dc,title);
+        write(setupX+28,setupY+19,"RIPSHIFT - FIRST-TIME SETUP",white);
+        SelectObject(dc,regular);
+        write(setupX+30,setupY+95,
+            "For the best RIPSHIFT VR experience, we recommend",white);
+        write(setupX+30,setupY+128,
+            "disabling two settings in DOOM.",white);
+        // Required first-time setup instruction: high-contrast warning red.
+        write(setupX+44,setupY+201,"TUTORIALS - OFF (REQUIRED)",
+            RGB(255,92,92));
+        write(setupX+44,setupY+249,
+            "GLORY KILL HIGHLIGHT - OFF (OPTIONAL)",white);
+        SelectObject(dc,smallFont);
+        write(setupX+30,setupY+321,
+            "Go to DOOM > Settings > Game to change them manually.",muted);
+        fill(setupX+25,setupY+376,setupW-50,55,RGB(28,57,66));
+        SelectObject(dc,regular);
+        write(setupX+43,setupY+390,
+            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
+        SelectObject(dc,smallFont);
+        write(setupX+30,setupY+452,
+            "This notice will only appear once.",muted);
+    }else if(gameplayWelcomeView){
+        SelectObject(dc,title);
+        write(welcomeX+28,welcomeY+19,"RIPSHIFT - READY TO PLAY",white);
+        SelectObject(dc,regular);
+        write(welcomeX+30,welcomeY+108,
+            "Your VR experience is already configured.",white);
+        write(welcomeX+30,welcomeY+150,
+            "Enjoy the default gameplay first, then",white);
+        write(welcomeX+30,welcomeY+183,
+            "fine-tune it to your liking if needed.",white);
+        SelectObject(dc,smallFont);
+        write(welcomeX+30,welcomeY+245,
+            "Hold R3 during gameplay to adjust settings.",RGB(84,233,214));
+        fill(welcomeX+25,welcomeY+308,welcomeW-50,55,RGB(28,57,66));
+        SelectObject(dc,regular);
+        write(welcomeX+43,welcomeY+323,
+            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
+        SelectObject(dc,smallFont);
+        write(welcomeX+30,welcomeY+386,
+            "This notice will only appear once.",muted);
+    }else if(resultView){
+        const bool newBest=s.levelProgress.bestUpdated;
+        const auto accent=newBest?RGB(255,207,66):RGB(84,233,214);
+        SelectObject(dc,regular);
+        write(resultX+27,resultY+16,newBest?"NEW PERSONAL BEST!"
+            :"LEVEL TIME",accent);
+        SelectObject(dc,smallFont);
+        write(resultX+27,resultY+58,
+            kharvox::campaignRunTimeText(s.levelProgress.completedTimeMs),white);
+        if(newBest){
+            write(resultX+252,resultY+58,s.levelProgress.previousBestMs
+                ?std::string("BEAT PREVIOUS BEST BY ")
+                    +kharvox::campaignRunTimeText(s.levelProgress.bestImprovementMs)
+                :std::string("FIRST RECORDED COMPLETION!"),accent);
+        }else{
+            write(resultX+252,resultY+58,"Personal best unchanged.",muted);
+        }
+        write(resultX+27,resultY+92,
+            "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
+    }else if(statsLiveView){
+        for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+            const int width=kharvox::campaignStatsPanelWidth(i);
+            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
+            SelectObject(dc,smallFont);
+            if(i==0||i==1){
+                write(x+16,y+5,i==0?"CAMPAIGN DEATHS":"SESSION DEATHS",muted);
+                SelectObject(dc,regular);
+                write(x+16,y+28,std::to_string(i==0
+                    ?KharvoxHudCampaignDeathCount()
+                    :KharvoxHudCampaignSessionDeaths()),RGB(235,92,99));
+            }else if(i==6){
+                write(x+16,y+5,"LEVEL DEATHS",muted);
+                SelectObject(dc,regular);
+                write(x+16,y+28,std::to_string(s.levelProgress.armed
+                    ?s.levelProgress.deaths:s.levelLiveStats.deaths),RGB(235,92,99));
+            }else{
+                const bool lastLevel=i==5&&!s.levelProgress.armed
+                    &&!s.lastCompletedMissionKey.empty();
+                const auto& key=lastLevel?s.lastCompletedMissionKey
+                    :s.levelProgress.verifiedMapKey;
+                const auto best=kharvox::levelBestFor(s.levelRecords,key);
+                write(x+16,y+5,i==2?"CAMPAIGN TIME"
+                    :i==3?"SESSION TIME":i==4?"LEVEL TIME"
+                    :lastLevel?"LAST LEVEL BEST":"LEVEL BEST",muted);
+                SelectObject(dc,regular);
+                const auto displayedTime=i==2?s.campaignRunTime.elapsedMs:
+                    i==3?s.sessionRunTime.elapsedMs:
+                    i==4?(s.levelProgress.armed
+                         ?s.levelProgress.time.elapsedMs:s.levelLiveStats.time.elapsedMs):best;
+                write(x+16,y+28,i==5&&!best?"--:--:--":
+                    kharvox::campaignRunTimeText(displayedTime),
+                    RGB(84,233,214));
+            }
+        }
+    }else if(calibrationView){
+        // Status is a SECOND ROW beneath the title. No badge/text may
+        // overlap or truncate LIVE CALIBRATION on either controller mode.
         const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
         const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
+        write(39,149,"LIVE CALIBRATION",white);
+        SelectObject(dc,smallFont);
+        write(39,187,!weaponCapture?"ZONE PLACEMENT"
+            :!m.previewValid?"WAITING FOR TRACKING"
+            :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
+            :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
+            m.previewValid?RGB(108,235,161):RGB(239,197,116));
+        SelectObject(dc,regular);
         const auto kind=KharvoxWeaponKindFromKey(m.weapon());
         const bool heavy=kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun;
@@ -121,26 +319,26 @@ void paintVrHandMenu() {
             write(39,253,target+(primary?" PRIMARY HAND":" SUPPORT HAND"),
                 RGB(84,233,214));
             if(primary){
-                // Use exactly the physical sides selected in the menu.
-                // Position/rotation algorithms are unchanged, only the
-                // pop-up wording is simplified and context-sensitive.
-                const bool tuning=m.calibrationGripHeld;
-                fill(35,289,564,151,tuning?RGB(24,66,65):RGB(31,43,59));
-                fill(35,289,4,151,tuning
+                // Default = 1cm gun fine-tune. Grip temporarily freezes
+                // the gun; the WEAPON hand rotates the visible glove.
+                const bool rotating=m.calibrationGripHeld;
+                fill(35,289,564,151,rotating?RGB(24,66,65):RGB(31,43,59));
+                fill(35,289,4,151,rotating
                     ?RGB(108,235,161):RGB(84,233,214));
-                write(49,298,tuning?"GUN POSITION":"GLOVE ROTATION",
-                    RGB(84,233,214));
-                if(tuning){
-                    write(49,337,"LEFT STICK: move gun left/right/forward",white);
-                    write(49,373,"RIGHT STICK: move gun up/down",white);
-                    write(49,411,"Hold sticks: 1 cm repeating steps",muted);
+                write(49,298,rotating?"GLOVE ROTATION (HOLD GRIP)"
+                    :"GUN FINE-TUNE (NO GRIP)",RGB(84,233,214));
+                if(rotating){
+                    write(49,337,"GUN FROZEN: rotate "+target+" controller.",white);
+                    write(49,373,"Your weapon hand adjusts glove angle.",white);
+                    write(49,411,"Release Grip to lock glove rotation.",muted);
                 }else{
-                    write(49,337,"Move "+other+" controller to rotate glove.",white);
-                    write(49,373,"Hold "+target+" Grip to move GUN.",white);
-                    write(49,411,"Gun offset remains where you left it.",muted);
+                    write(49,337,"LEFT STICK: gun left/right/forward/back",white);
+                    write(49,373,"RIGHT STICK: gun up/down (1 cm)",white);
+                    write(49,411,"Hold "+target+" Grip to rotate glove.",muted);
                 }
-                if(heavy&&m.alternateProfile)
-                    write(39,450,"SIEGE / TURRET PROFILE",RGB(84,233,214));
+                if(heavy)
+                    write(39,450,m.alternateProfile
+                        ?"ALT FIRE PROFILE":"NORMAL PROFILE",RGB(84,233,214));
             }else{
                 fill(35,289,564,151,RGB(31,43,59));
                 fill(35,289,4,151,RGB(84,233,214));
@@ -149,28 +347,415 @@ void paintVrHandMenu() {
                 write(49,381,"Align it with the weapon's support grip.",white);
                 write(49,415,"No primary-hand fine-tune controls.",muted);
             }
-            fill(35,473,564,42,primary&&m.calibrationGripHeld
-                ?RGB(35,85,72):RGB(36,51,68));
-            write(47,481,!m.previewValid?"WAITING FOR TRACKING"
-                :primary&&m.calibrationGripHeld?"GUN POSITION ACTIVE"
-                :primary?"GLOVE ROTATION ACTIVE":"SUPPORT POSITION READY",
-                m.previewValid?RGB(108,235,161):RGB(239,197,116));
         }else{
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
                 ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
             write(39,235,crouch?"PHYSICAL CROUCH":"GUNSLINGER ZONE",white);
             SelectObject(dc,smallFont);
             write(39,295,crouch?"Move HEAD to the target height."
-                :"Move the matching HAND into the target zone.",white);
-            write(39,340,"Press RIGHT TRIGGER to capture.",RGB(84,233,214));
+                :"Hold matching GRIP to move the zone.",white);
+            write(39,340,crouch?"Press RIGHT TRIGGER to capture."
+                :m.gunslingerZoneMoving?"DRAGGING: release GRIP to freeze."
+                :"RELEASED: RIGHT TRIGGER saves.",RGB(84,233,214));
         }
         SelectObject(dc,smallFont);
         write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
         write(39,551,"B: CANCEL",muted);
-    }else if(m.page==kharvox::VrMenuPage::Mods){
-        write(38,24,"KHARVOX VR  /  MOD SETTINGS",white);
+        if(devPanel){
+            // The original diagnostics were only a few words on the
+            // instruction strip. A transparent-alpha mask clipped them,
+            // and a head-zero condition silently suppressed zone status.
+            // Draw an actual independent diagnostic panel on the right.
+            constexpr int dx=632,dy=144,dw=306,dh=432;
+            SelectObject(dc,regular);
+            write(dx+18,dy+14,"DEV DIAGNOSTICS",white);
+            SelectObject(dc,smallFont);
+            if(m.liveCapture==kharvox::VrLiveCapture::None){
+                write(dx+18,dy+69,"WEAPON / HAND ANCHOR",RGB(84,233,214));
+                const auto& hand=s.weaponHandLeft
+                    ?s.leftGripController:s.rightGripController;
+                const bool tracked=hand.valid&&hand.positionTracked
+                    &&s.lastWeaponRenderedValid;
+                write(dx+18,dy+101,tracked
+                    ?"TRACKING: LIVE":"TRACKING: WAITING",tracked
+                        ?RGB(108,235,161):RGB(255,204,128));
+                if(tracked){
+                    // Both coordinates are in OpenXR tracking space.
+                    // The unshifted gun anchor and controller grip remain
+                    // separate even when a 1cm gun fine-tune is applied.
+                    const auto diff=subtractVector(hand.position,
+                        s.lastWeaponRenderedTrackingAnchor);
+                    auto format=[&](const char* label,float value){
+                        std::ostringstream out;
+                        out<<label<<std::fixed<<std::setprecision(3)<<value;
+                        return out.str();
+                    };
+                    write(dx+18,dy+136,format("HAND -> GUN X: ",diff.x),white);
+                    write(dx+18,dy+169,format("HAND -> GUN Y: ",diff.y),white);
+                    write(dx+18,dy+202,format("HAND -> GUN Z: ",diff.z),white);
+                    write(dx+18,dy+251,"TOP VIEW / X-Z",muted);
+                    fill(dx+17,dy+294,270,1,RGB(90,111,130));
+                    fill(dx+152,dy+264,1,108,RGB(90,111,130));
+                    const int hx=dx+152+static_cast<int>(std::clamp(
+                        diff.x*380.f,-119.f,119.f));
+                    const int hz=dy+294+static_cast<int>(std::clamp(
+                        diff.z*280.f,-43.f,43.f));
+                    fill(dx+146,dy+288,13,13,RGB(55,209,214));
+                    fill(hx-5,hz-5,11,11,RGB(255,204,128));
+                    write(dx+18,dy+389,"CYAN gun  /  GOLD controller",muted);
+                }else{
+                    write(dx+18,dy+182,
+                        "Equip the selected weapon and",white);
+                    write(dx+18,dy+213,"keep its hand tracked.",white);
+                }
+            }else{
+                using C=kharvox::VrLiveCapture;
+                const bool hip=m.liveCapture==C::HipRight
+                    ||m.liveCapture==C::HipLeft;
+                const bool right=m.liveCapture==C::HipRight
+                    ||m.liveCapture==C::WheelRight;
+                const int side=right?0:1;
+                const auto& grip=right?s.rightGripController
+                    :s.leftGripController;
+                const bool tracked=s.trackingHeadPositionValid
+                    &&grip.valid&&grip.positionTracked;
+                write(dx+18,dy+64,hip?"HIP ZONE":"HEAD / WHEEL ZONE",
+                    RGB(84,233,214));
+                write(dx+18,dy+94,right?"RIGHT CONTROLLER"
+                    :"LEFT CONTROLLER",muted);
+                if(m.devHolsterZones){
+                    // Draw an X/Y cross section of the LIVE, shifted
+                    // Gunslinger volume and the actual controller point.
+                    // A separate depth check ensures the indicator reflects
+                    // all THREE axes, not just a misleading 2D box.
+                    if(tracked){
+                        const auto hand=controllerRelativeToBodyTrackingOrigin(
+                            grip).position;
+                        const auto head=positionRelativeToBodyTrackingOrigin(
+                            s.trackingHeadPosition);
+                        const kharvox::VrLivePoint point{
+                            right?hand.x-head.x:head.x-hand.x,
+                            hand.y-head.y,hand.z-head.z};
+                        const auto shift=hip?s.vrLiveSettings.hipShift[side]
+                            :s.vrLiveSettings.wheelShift[side];
+                        const auto lo=hip
+                            ?kharvox::VrLivePoint{.12f,-1.04f,.02f}
+                            :kharvox::VrLivePoint{-.04f,-.18f,.015f};
+                        const auto hi=hip
+                            ?kharvox::VrLivePoint{.51f,-.48f,.43f}
+                            :kharvox::VrLivePoint{.44f,.36f,.60f};
+                        const bool inside=kharvox::vrLiveInsideBounds(
+                            point,lo,hi,shift);
+                        const bool depth=point.z>=lo.z+shift.z
+                            &&point.z<=hi.z+shift.z;
+                        write(dx+18,dy+124,inside?"INSIDE ZONE"
+                            :"OUTSIDE ZONE",inside
+                                ?RGB(108,235,161):RGB(255,204,128));
+                        const float centerX=(lo.x+hi.x)*.5f+shift.x;
+                        const float centerY=(lo.y+hi.y)*.5f+shift.y;
+                        const int x0=dx+152+static_cast<int>(
+                            (lo.x+shift.x-centerX)*230.f);
+                        const int x1=dx+152+static_cast<int>(
+                            (hi.x+shift.x-centerX)*230.f);
+                        const int y0=dy+228-static_cast<int>(
+                            (hi.y+shift.y-centerY)*180.f);
+                        const int y1=dy+228-static_cast<int>(
+                            (lo.y+shift.y-centerY)*180.f);
+                        fill(x0,y0,x1-x0,3,RGB(84,233,214));
+                        fill(x0,y1-3,x1-x0,3,RGB(84,233,214));
+                        fill(x0,y0,3,y1-y0,RGB(84,233,214));
+                        fill(x1-3,y0,3,y1-y0,RGB(84,233,214));
+                        const int px=std::clamp(dx+152+static_cast<int>(
+                            (point.x-centerX)*230.f),dx+19,dx+dw-19);
+                        const int py=std::clamp(dy+228-static_cast<int>(
+                            (point.y-centerY)*180.f),dy+154,dy+312);
+                        fill(px-6,py-6,13,13,inside
+                            ?RGB(108,235,161):RGB(255,204,128));
+                        write(dx+18,dy+325,depth?"DEPTH (Z): IN RANGE"
+                            :"DEPTH (Z): OUT OF RANGE",depth
+                                ?RGB(108,235,161):RGB(255,204,128));
+                        std::ostringstream z;
+                        z<<std::fixed<<std::setprecision(2)
+                            <<"Z "<<point.z<<"m   ["
+                            <<lo.z+shift.z<<", "<<hi.z+shift.z<<"]";
+                        write(dx+18,dy+354,z.str(),muted);
+                    }else{
+                        write(dx+18,dy+147,"WAITING FOR TRACKING",RGB(255,204,128));
+                        write(dx+18,dy+183,"Keep the matching controller",white);
+                        write(dx+18,dy+216,"and headset tracked.",white);
+                    }
+                }
+                if(m.devControllerInputs){
+                    const auto& sample=m.devInput;
+                    auto on=[](bool value){return value?"ON":"off";};
+                    const int top=m.devHolsterZones?dy+382:dy+155;
+                    write(dx+18,top,"R TRIGGER: "+std::string(on(sample.rightTrigger))
+                        +"   L: "+on(sample.leftTrigger),RGB(84,233,214));
+                    write(dx+18,top+27,"GRIP: "+std::string(on(sample.weaponGrip))
+                        +"   L3: "+on(sample.leftClick)
+                        +"   R3: "+on(sample.rightClick),white);
+                    if(!m.devHolsterZones){
+                        write(dx+18,top+57,"A: "+std::string(on(sample.select))
+                            +"   B: "+on(sample.back),white);
+                        std::ostringstream sticks;
+                        sticks<<std::fixed<<std::setprecision(2)
+                            <<"LEFT STICK "<<sample.leftStickX<<", "
+                            <<sample.leftStickY;
+                        write(dx+18,top+90,sticks.str(),muted);
+                        write(dx+18,top+138,"Input is sampled live.",muted);
+                    }
+                }
+            }
+        }
+    }else if(m.page==kharvox::VrMenuPage::Records
+        ||m.page==kharvox::VrMenuPage::DevRecords){
+        const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
+        SelectObject(dc,title);
+        write(38,24,dev?"RIPSHIFT VR / DEV / LEVEL RECORDS"
+            :"RIPSHIFT VR / LEVEL RECORDS",white);
         SelectObject(dc,smallFont);
-        write(40,102,"CONFIGURABLE MODS",muted);
+        write(40,100,dev?"SELECT MISSION RECORDS TO RESET"
+            :"MISSION RESULTS / TOP FIVE",muted);
+        const int count=static_cast<int>(kharvox::kCampaignMissions.size())
+            +(dev?1:0);
+        const int chosen=std::clamp(m.recordSelected,0,std::max(0,count-1));
+        for(int shown=0;shown<10;++shown){
+            const int i=shown+m.recordsScroll;
+            if(i>=count)break;
+            const int y=136+shown*45;
+            const bool active=i==chosen;
+            fill(38,y,455,40,active?RGB(32,89,104):
+                m.hovered==1000+i?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,smallFont);
+            if(dev&&i==static_cast<int>(kharvox::kCampaignMissions.size())){
+                write(55,y+10,"ALL LEVEL RECORDS",RGB(255,175,175));
+            }else{
+                const auto& mission=kharvox::kCampaignMissions[i];
+                const bool current=s.levelProgress.armed
+                    &&s.levelProgress.verifiedMapKey==mission.key;
+                write(55,y+10,mission.title,current?RGB(84,233,214):white);
+                if(current)write(439,y+10,"*",RGB(255,207,66));
+            }
+        }
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
+        SelectObject(dc,regular);
+        write(538,115,dev?"RECORD RESET":"MISSION RECORDS",white);
+        SelectObject(dc,smallFont);
+        if(dev){
+            const bool all=chosen==static_cast<int>(
+                kharvox::kCampaignMissions.size());
+            const bool confirming=m.pendingStatsReset==100+chosen
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            write(538,145,all?"ALL MISSIONS"
+                :kharvox::kCampaignMissions[chosen].title,white);
+            fill(531,186,384,58,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                ?RGB(83,52,61):RGB(60,38,48));
+            write(548,202,confirming?"CONFIRM DELETE (SECOND PRESS)"
+                :all?"DELETE ALL LEVEL RECORDS":"DELETE SELECTED MISSION",
+                confirming?RGB(255,175,175):white);
+            write(538,294,all?"Deletes ALL saved mission results."
+                :"Only the selected mission is affected.",muted);
+            write(538,339,"Removes both time and deaths rankings.",muted);
+            write(538,383,"Live stats & HUD settings stay unchanged.",muted);
+            write(538,437,"Press twice within 6 seconds.",RGB(84,233,214));
+        }else{
+            const auto& mission=kharvox::kCampaignMissions[chosen];
+            const bool recording=s.levelProgress.armed&&!s.levelProgress.completed;
+            const bool current=recording
+                &&s.levelProgress.verifiedMapKey==mission.key;
+            const bool confirming=recording
+                ?kharvox::vrLevelStopPending(m,GetTickCount64())
+                :kharvox::vrLevelStartPending(m,chosen,GetTickCount64());
+            const auto ranked=kharvox::levelRankedRuns(
+                s.levelRecords,mission.key,m.recordSortDeaths);
+            write(538,152,mission.title,white);
+            fill(531,190,384,47,m.hovered==131
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                ?RGB(44,76,88):RGB(32,53,65));
+            write(549,203,m.recordSortDeaths?"SORT: FEWEST DEATHS  < >"
+                :"SORT: FASTEST TIME  < >",RGB(84,233,214));
+            write(542,270,"#   TIME",muted);
+            write(701,270,"DEATHS",muted);
+            write(777,270,"DATE",muted);
+            if(ranked.empty())
+                write(540,339,"No completed runs recorded.",muted);
+            for(std::size_t i=0;i<ranked.size();++i){
+                const int y=303+int(i)*48;
+                const auto& run=ranked[i];
+                fill(532,y-5,383,39,i==0?RGB(48,45,33):RGB(25,33,43));
+                write(541,y,std::to_string(i+1),i==0?RGB(255,207,66):muted);
+                write(570,y,kharvox::campaignRunTimeText(run.timeMs),white);
+                write(714,y,run.deaths==kharvox::kLevelDeathsUnknown
+                    ?std::string("--"):std::to_string(run.deaths),white);
+                write(790,y,kharvox::levelRecordDateText(run.dateYmd),muted);
+            }
+            fill(531,565,384,53,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==1)
+                ?RGB(52,83,99):RGB(39,49,63));
+            write(550,579,recording
+                ?(confirming?"CONFIRM STOP (SECOND PRESS)":"STOP RECORD")
+                :(confirming?"CONFIRM START (SECOND PRESS)":"TRACK THIS LEVEL"),
+                confirming?RGB(255,207,66):white);
+            write(538,632,recording
+                ?(confirming?"Discard attempt; prior records stay."
+                    :"Double-confirm to abandon active record.")
+                :(confirming?"Menu closes; timer and deaths reset."
+                    :"Double-confirm to start a timed attempt."),
+                confirming?RGB(255,207,66):muted);
+        }
+        write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
+        write(40,676,m.message.substr(0,105),RGB(84,233,214));
+    }else if(m.page==kharvox::VrMenuPage::Stats
+        ||m.page==kharvox::VrMenuPage::DevStats){
+        const bool dev=m.page==kharvox::VrMenuPage::DevStats;
+        SelectObject(dc,title);
+        write(38,24,dev?"RIPSHIFT VR / DEV / STATS RESET":"RIPSHIFT VR / STATS",white);
+        SelectObject(dc,smallFont);
+        write(40,100,dev?"SELECT A STAT TO RESET":"DISPLAY OPTIONS",muted);
+        const int chosen=std::clamp(m.statsSelected,0,
+            dev?3:kharvox::kVrStatsItemCount);
+        // Identical ten-row, 45px list pattern to the main Mod Menu.
+        // Extra Stats appear by scrolling rather than shrinking buttons.
+        const int statCount=dev?4:kharvox::kVrStatsItemCount+1;
+        for(int shown=0;shown<10;++shown){
+            const int i=shown+m.statsScroll;
+            if(i>=statCount)break;
+            const int y=136+shown*45;
+            const bool active=i==chosen;
+            const bool hovered=m.hovered==1000+i;
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hovered?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,smallFont);
+            write(55,y+10,dev?(i==0?"Campaign Deaths":
+                i==1?"Session Deaths":i==2?"Campaign Run Timer":"Session Timer")
+                :i==kharvox::kVrStatsItemCount?"LEVEL RECORDS  >"
+                    :kharvox::vrStatsLabel(i),white);
+            if(!dev&&i<kharvox::kVrStatsItemCount)
+                write(428,y+10,kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                    ?"ON":"OFF",kharvox::vrStatsEnabled(s.vrLiveSettings,i)
+                        ?RGB(108,235,161):muted);
+        }
+        if(statCount>10)
+            write(48,602,"LEFT STICK: scroll ("+
+                std::to_string(chosen+1)+"/"+std::to_string(statCount)+")",muted);
+        fill(797,16,129,57,m.hovered==95?RGB(47,95,110):RGB(39,49,63));
+        SelectObject(dc,smallFont);
+        write(815,30,"BACK",white);
+        SelectObject(dc,regular);
+        write(538,115,dev?"RESET OPTIONS"
+            :chosen==kharvox::kVrStatsItemCount?"LEVEL RECORDS"
+                :kharvox::vrStatsLabel(chosen),white);
+        if(dev){
+            const bool confirming=m.pendingStatsReset==chosen
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            fill(531,186,384,58,m.hovered==130
+                ||(m.navigation.settingsColumn&&m.navigation.usingStick
+                    &&m.navigation.actionIndex==0)
+                    ?RGB(66,83,99):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(549,202,confirming?"CONFIRM RESET (SECOND PRESS)"
+                :chosen==0?"RESET CAMPAIGN DEATHS"
+                :chosen==1?"RESET SESSION DEATHS"
+                 :chosen==2?"RESET CAMPAIGN TIMER":"RESET SESSION TIMER",
+                confirming?RGB(235,92,99):white);
+            const std::string value=chosen==0
+                ?std::to_string(KharvoxHudCampaignDeathCount())+" deaths"
+                :chosen==1?std::to_string(KharvoxHudCampaignSessionDeaths())+" deaths"
+                :kharvox::campaignRunTimeText(chosen==2
+                    ?s.campaignRunTime.elapsedMs:s.sessionRunTime.elapsedMs);
+            write(538,292,"CURRENT: "+value,RGB(84,233,214));
+            write(538,342,"Each reset needs two presses.",muted);
+            const bool confirmAll=m.pendingStatsReset==4
+                &&m.confirmDeathResetUntilMs
+                &&GetTickCount64()<=m.confirmDeathResetUntilMs;
+            fill(531,397,384,58,m.hovered==131
+                ||(m.navigation.settingsColumn&&m.navigation.usingStick
+                    &&m.navigation.actionIndex==1)
+                    ?RGB(83,52,61):RGB(60,38,48));
+            write(549,412,confirmAll?"CONFIRM RESET ALL (SECOND PRESS)"
+                :"RESET ALL STATS",confirmAll?RGB(255,175,175):white);
+            write(538,475,"Resets deaths, session & level timers.",muted);
+            write(538,510,"Keeps personal bests and HUD settings.",RGB(84,233,214));
+            write(538,552,"Closes the Mod Menu after reset.",muted);
+        }else if(chosen==kharvox::kVrStatsItemCount){
+            SelectObject(dc,smallFont);
+            write(538,208,"VIEW SAVED LEVEL PERSONAL BESTS",white);
+            write(538,267,"Press A to open the Records page.",RGB(84,233,214));
+            write(538,325,"Records survive game restarts.",muted);
+            write(538,380,"DEV has separate record resets.",muted);
+        }else{
+            const bool enabled=kharvox::vrStatsEnabled(s.vrLiveSettings,chosen);
+            fill(531,159,384,60,m.hovered==110
+                ||(m.navigation.settingsColumn&&m.navigation.actionIndex==0)
+                    ?RGB(52,83,99):RGB(39,49,63));
+            fill(553,172,36,36,RGB(54,79,91));
+            if(enabled)fill(562,181,18,18,RGB(76,231,167));
+            SelectObject(dc,regular);
+            write(603,169,enabled?"DISPLAY ENABLED":"DISPLAY DISABLED",white);
+            SelectObject(dc,smallFont);
+            write(538,226,"POSITION ON SCREEN  /  12 x 10",muted);
+            const int currentCell=kharvox::statsGridCellFromPosition(
+                kharvox::vrStatsCorner(s.vrLiveSettings,chosen));
+            // One miniature screen replaces 120 word-labelled buttons.
+            // An occupied cell is dark but still selectable: it evicts the
+            // other display only when the new position is confirmed.
+            fill(kharvox::kStatsMenuGridX-2,kharvox::kStatsMenuGridY-2,
+                kharvox::kStatsGridColumns*kharvox::kStatsMenuGridCellWidth+4,
+                kharvox::kStatsGridRows*kharvox::kStatsMenuGridCellHeight+4,
+                RGB(71,96,108));
+            for(int cell=0;cell<kharvox::kStatsGridCells;++cell){
+                const int col=cell%kharvox::kStatsGridColumns;
+                const int row=cell/kharvox::kStatsGridColumns;
+                const int x=kharvox::kStatsMenuGridX
+                    +col*kharvox::kStatsMenuGridCellWidth;
+                const int y=kharvox::kStatsMenuGridY
+                    +row*kharvox::kStatsMenuGridCellHeight;
+                const bool available=kharvox::statsGridCellSelectable(cell);
+                const bool active=cell==currentCell;
+                const bool focus=m.hovered==130+cell
+                    ||(m.navigation.settingsColumn
+                        &&m.navigation.usingStick
+                        &&m.navigation.actionIndex==cell+1);
+                bool occupied=false;
+                if(available)for(int other=0;other<kharvox::kVrStatsItemCount;++other){
+                    if(other==chosen||!kharvox::vrStatsEnabled(
+                        s.vrLiveSettings,other))continue;
+                    if(kharvox::vrStatsPositionsOverlap(chosen,
+                        kharvox::statsPositionFromGridCell(cell),other,
+                        kharvox::vrStatsCorner(s.vrLiveSettings,other))){
+                        occupied=true;break;
+                    }
+                }
+                fill(x,y,kharvox::kStatsMenuGridCellWidth-1,
+                    kharvox::kStatsMenuGridCellHeight-1,
+                    !available?RGB(3,8,12)
+                    :focus?RGB(42,116,132)
+                    :active?RGB(30,99,103)
+                    :occupied?RGB(20,24,33):RGB(37,53,67));
+                if(active&&available)
+                    fill(x+9,y+8,kharvox::kStatsMenuGridCellWidth-19,
+                        kharvox::kStatsMenuGridCellHeight-17,
+                        RGB(76,231,167));
+            }
+            write(538,572,"Dark = occupied (select to replace).",muted);
+            write(538,607,"Centre blocked; stats track while hidden.",muted);
+        }
+        SelectObject(dc,smallFont);
+        write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
+        write(40,676,m.message.substr(0,105),RGB(84,233,214));
+    }else if(m.page==kharvox::VrMenuPage::Mods
+        ||m.page==kharvox::VrMenuPage::Dev){
+        const bool devPage=m.page==kharvox::VrMenuPage::Dev;
+        write(38,24,devPage?"RIPSHIFT VR  /  DEV":"RIPSHIFT VR  /  MOD SETTINGS",white);
+        SelectObject(dc,smallFont);
+        write(40,102,devPage?"DEVELOPER TOOLS":"CONFIGURABLE MODS",muted);
         write(535,102,m.navigation.settingsColumn?"CONFIG OPTIONS":"MOD OVERVIEW",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
@@ -193,11 +778,12 @@ void paintVrHandMenu() {
             if(active)fill(38,y,5,40,RGB(55,209,214));
             SelectObject(dc,smallFont);
             std::string title=entries[index].title;
-            // Core features are fixed active; only Physical Crouch and
-            // PAINSAW have an ON/OFF switch. Other rows lead to settings.
+            // Core mods stay fixed; Crouch, PAINSAW and the optional
+            // Campaign Deaths has a legacy live ON/OFF control.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].enabled?white:muted);
-            const bool switchable=kharvox::vrLiveModToggleable(entries[index].mod);
+            const bool switchable=!devPage
+                &&kharvox::vrLiveModToggleable(entries[index].mod);
             // The four fixed-on gameplay mods have no "SET" labels.
             // Use a simple disclosure arrow; Crouch/PAINSAW show status.
             write(switchable?436:458,y+10,
@@ -214,7 +800,10 @@ void paintVrHandMenu() {
         // explicitly opens configuration for the highlighted mod.
         if(!m.navigation.settingsColumn){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
-            const auto overview=vrLiveModOverview(mod);
+            const auto overview=entries[overviewSelected].developer
+                ==kharvox::VrMenuDevOption::None
+                    ?vrLiveModOverview(mod)
+                    :vrDevOptionOverview(entries[overviewSelected].developer);
             SelectObject(dc,regular);
             write(536,127,count>0?entries[overviewSelected].title:"No available mods",white);
             SelectObject(dc,smallFont);
@@ -222,22 +811,57 @@ void paintVrHandMenu() {
             for(int line=0;line<6;++line){
                 const char* text=overview.lines[line];
                 if(text&&*text)
-                    write(540,224+line*49,text,line==5?RGB(84,233,214):white);
+                    write(540,224+line*37,text,line==5?RGB(84,233,214):white);
             }
             fill(531,550,384,59,m.hovered==115
                 ?RGB(53,95,108):RGB(36,78,92));
             SelectObject(dc,regular);
-            write(646,563,"CONFIGURE  >",white);
+            write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
             SelectObject(dc,smallFont);
             write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
-        const bool toggleable=kharvox::vrLiveModToggleable(mod);
+        const bool toggleable=!devPage&&kharvox::vrLiveModToggleable(mod);
         const bool enabled=count>0&&entries[selected].enabled;
         SelectObject(dc,regular);
         write(536,126,count>0?entries[selected].title:"No active mods",white);
-        if(toggleable){
+        if(devPage){
+            using D=kharvox::VrMenuDevOption;
+            const auto opt=count>0?entries[selected].developer:D::Experimental;
+            SelectObject(dc,smallFont);
+            write(538,163,opt==D::Experimental
+                ?"EXPERIMENTAL - INPUT ONLY":"SESSION-ONLY DEVELOPER TOOL",muted);
+            if(opt!=D::Experimental){
+                fill(531,186,384,58,m.hovered==130
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,204,opt==D::WeaponStability
+                    ?"OPEN WEAPON RECOIL SETTINGS"
+                     :opt==D::StatsReset
+                        ?"OPEN STATS RESET SETTINGS"
+                    :opt==D::HandFocus
+                        ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
+                            :"SWITCH TO HAND FOCUS")
+                    :(entries[selected].enabled?"TURN VISUALISER OFF"
+                        :"TURN VISUALISER ON"),white);
+            }else{
+                fill(531,186,384,58,m.hovered==130?RGB(52,83,99):RGB(39,49,63));
+                write(548,204,entries[selected].enabled
+                    ?"WORLD GRAB INPUT PROBE: ON"
+                    :"WORLD GRAB INPUT PROBE: OFF",white);
+                write(538,271,"Probes Grip on either FREE hand.",muted);
+                write(538,303,"Advisory arm reach: 0.90m.",muted);
+                write(538,339,"NO object movement or body tether.",RGB(255,187,111));
+                write(538,375,"No verified native prop physics API.",muted);
+            }
+            if(opt==D::StatsReset){
+                write(538,305,"Separate resets for all three Stats.",muted);
+                write(538,348,"Each requires a second confirmation.",muted);
+            }else if(opt!=D::Experimental){
+                write(538,332,"Enabled tools only show in the matching",muted);
+                write(538,361,"calibration screen.",muted);
+            }
+        }else if(toggleable){
             const bool focusToggle=m.navigation.usingStick
                 &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
             fill(531,159,384,60,focusToggle?RGB(52,83,99):RGB(39,49,63));
@@ -250,6 +874,9 @@ void paintVrHandMenu() {
             write(538,155,kharvox::vrLiveModAlwaysEnabled(mod)
                 ?"CORE FEATURE - ALWAYS ACTIVE":"SETTINGS - NO LIVE ON/OFF SWITCH",muted);
         }
+        // DEV settings own their right pane; do not draw the ordinary
+        // mod controls over the diagnostic switches.
+        if(!devPage){
         SelectObject(dc,smallFont);
         if(!editable)
             write(545,251,"Configure in desktop launcher only.",muted);
@@ -260,6 +887,10 @@ void paintVrHandMenu() {
             switch(mod){
                 case kharvox::VrLiveMod::WeaponGrip:
                     options[0]="OPEN WEAPON CALIBRATION";
+                    optionCount=1;
+                    break;
+                case kharvox::VrLiveMod::WeaponRecoil:
+                    options[0]="OPEN RECOIL CALIBRATION";
                     optionCount=1;
                     break;
                 case kharvox::VrLiveMod::Gunslinger:
@@ -278,6 +909,16 @@ void paintVrHandMenu() {
                     options[1]="FASTER (-10 HZ)";
                     options[2]="RESET SPEED";
                     optionCount=3;
+                    break;
+                case kharvox::VrLiveMod::TurnSpeed:
+                    options[0]="SLOWER (-25 DEG/S)";
+                    options[1]="FASTER (+25 DEG/S)";
+                    options[2]="USE LAUNCHER SPEED";
+                    optionCount=3;
+                    break;
+                case kharvox::VrLiveMod::DeathCounter:
+                    options={"TOP LEFT","TOP RIGHT","BOTTOM LEFT","BOTTOM RIGHT",""};
+                    optionCount=4;
                     break;
                 case kharvox::VrLiveMod::PhysicalGloryKills:
                     options[0]="LOWER PUNCH THRESHOLD";
@@ -301,6 +942,11 @@ void paintVrHandMenu() {
             if(mod==kharvox::VrLiveMod::Killtime){
                 write(548,543,"GLORY KILL: "+vrLiveGloryKillSpeedText(),
                     RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::TurnSpeed){
+                write(548,543,"SMOOTH TURN: "+std::to_string(static_cast<int>(
+                    std::lround(s.smoothTurnDegreesPerSecond)))+" DEG/S",
+                    RGB(84,233,214));
+                write(548,576,"SNAP ANGLE UNCHANGED",muted);
             }else if(mod==kharvox::VrLiveMod::PhysicalGloryKills){
                 std::ostringstream speed;
                 speed<<std::fixed<<std::setprecision(1)
@@ -315,6 +961,11 @@ void paintVrHandMenu() {
                     RGB(84,233,214));
                 if(!enabled)
                     write(548,575,"RIGHT STICK DOWN: TOGGLE CROUCH",RGB(84,233,214));
+            }else if(mod==kharvox::VrLiveMod::DeathCounter){
+                write(548,543,"POSITION: "+std::string(kharvox::deathCounterCornerName(
+                    s.vrLiveSettings.deathCounterCorner)),RGB(84,233,214));
+                write(548,574,"DEATHS: "+
+                    std::to_string(KharvoxHudCampaignDeathCount()),muted);
             }else if(mod==kharvox::VrLiveMod::Painsaw){
                 write(548,270,enabled?"PAINSAW CUSTOM SPEED ACTIVE"
                     :"NATIVE CHAINSAW SPEED",RGB(84,233,214));
@@ -322,14 +973,136 @@ void paintVrHandMenu() {
                 write(548,605,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
             }
         }
+        } // !devPage: prevent normal mod settings drawing over DEV
         }
         SelectObject(dc,smallFont);
+        if(devPage){
+            fill(797,16,129,57,m.hovered==95
+                ?RGB(47,95,110):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(815,30,"BACK",white);
+        }
         if(m.navigation.settingsColumn)
-            write(538,638,"B: BACK TO MODS     A: SELECT",muted);
+            write(538,638,devPage?"B: DEV LIST    A: SELECT"
+                :"B: BACK TO MODS     A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
+    }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
+        write(38,24,"RIPSHIFT VR  /  RECOIL CALIBRATION",white);
+        SelectObject(dc,smallFont);
+        write(40,102,"WEAPON PROFILES",muted);
+        write(536,102,"ONE-HANDED WEAPON STABILITY",muted);
+        const int selected=std::clamp(m.selectedRecoilWeapon,0,
+            kharvox::kVrRecoilMenuEntryCount-1);
+        for(int i=0;i<static_cast<int>(kharvox::kWeaponRecoilKinds.size());++i){
+            const int y=136+i*45;
+            const bool active=i==selected;
+            const bool hover=m.hovered==200+i
+                ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                    &&active);
+            fill(38,y,455,40,active?RGB(32,89,104):
+                hover?RGB(44,54,71):RGB(27,32,43));
+            if(active)fill(38,y,5,40,RGB(55,209,214));
+            SelectObject(dc,regular);
+            const auto key=kharvox::kWeaponRecoilKinds[static_cast<std::size_t>(i)];
+            const auto name=KharvoxWeaponKindDisplayName(KharvoxWeaponKindFromKey(key));
+            const char* label=i==7?"Minigun (Normal)"
+                :i==9?"Minigun (Alt Fire)":(name&&*name?name:key);
+            write(56,y+6,label,white);
+            SelectObject(dc,smallFont);
+            const int strength=static_cast<int>(std::lround(
+                s.recoilSettings.strength[static_cast<std::size_t>(i)]*100.f));
+            const bool on=s.recoilSettings.enabled[static_cast<std::size_t>(i)];
+            write(372,y+9,(on?"ON ":"OFF ")+std::to_string(strength)+"%",
+                on?(active?RGB(115,246,178):RGB(91,185,134))
+                  :(active?RGB(244,175,125):muted));
+        }
+        // An extra row below the ten weapon profiles configures the
+        // SHARED build-up. Gauss is excluded and retains manual tuning.
+        const int dynamicY=136+kharvox::kVrRecoilMenuProfileCount*45;
+        const bool dynamicSelected=selected==kharvox::kVrRecoilMenuProfileCount;
+        const bool dynamicHover=m.hovered==210
+            ||(m.navigation.usingStick&&!m.navigation.settingsColumn
+                &&dynamicSelected);
+        fill(38,dynamicY,455,40,dynamicSelected?RGB(32,89,104):
+            dynamicHover?RGB(44,54,71):RGB(27,32,43));
+        if(dynamicSelected)fill(38,dynamicY,5,40,RGB(55,209,214));
+        SelectObject(dc,regular);
+        write(56,dynamicY+6,"SHARED DYNAMIC BUILD-UP",white);
+        SelectObject(dc,smallFont);
+        write(372,dynamicY+9,s.recoilSettings.dynamicEnabled?"ON":"OFF",
+            s.recoilSettings.dynamicEnabled?RGB(115,246,178):muted);
+
+        const std::size_t index=dynamicSelected?0u:
+            static_cast<std::size_t>(selected);
+        const int strength=static_cast<int>(std::lround(
+            s.recoilSettings.strength[index]*100.f));
+        const int recovery=static_cast<int>(std::lround(
+            s.recoilSettings.recovery[index]*100.f));
+        SelectObject(dc,regular);
+        const bool weaponRecoilOn=s.recoilSettings.enabled[index];
+        std::array<std::string,6> controls{};
+        if(dynamicSelected){
+            write(537,126,s.recoilSettings.dynamicEnabled
+                ?"SHARED DYNAMIC: ON":"SHARED DYNAMIC: OFF",
+                s.recoilSettings.dynamicEnabled?
+                    RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                s.recoilSettings.dynamicEnabled
+                    ?"DISABLE SHARED BUILD-UP":"ENABLE SHARED BUILD-UP",
+                "LESS BUILD-UP (-5% PER SHOT)",
+                "MORE BUILD-UP (+5% PER SHOT)",
+                "LOWER MAX MULTIPLIER (-25%)",
+                "HIGHER MAX MULTIPLIER (+25%)",
+                "RESET SHARED DYNAMICS"
+            }};
+        }else{
+            write(537,126,weaponRecoilOn?"THIS WEAPON: RECOIL ON"
+                :"THIS WEAPON: RECOIL OFF",
+                weaponRecoilOn?RGB(108,235,161):RGB(239,197,116));
+            controls={{
+                weaponRecoilOn?"DISABLE FOR THIS WEAPON":"ENABLE FOR THIS WEAPON",
+                "LESS KICK (-10%)",
+                "MORE KICK (+10%, MAX 900%)",
+                "SLOWER RECOVERY (-10%, MIN 25%)",
+                "FASTER RECOVERY (+10%, MAX 900%)",
+                "RESET THIS WEAPON"
+            }};
+        }
+        for(int i=0;i<6;++i){
+            const int y=157+63*i;
+            const bool focus=m.hovered==140+i
+                ||(m.navigation.usingStick&&m.navigation.settingsColumn
+                    &&m.navigation.actionIndex==i);
+            fill(531,y,384,54,focus?RGB(52,83,99):RGB(39,49,63));
+            SelectObject(dc,smallFont);
+            write(548,y+16,controls[static_cast<std::size_t>(i)],white);
+        }
+        SelectObject(dc,smallFont);
+        if(dynamicSelected){
+            const int gain=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicBuildUpPerShot*100.f));
+            const int cap=static_cast<int>(std::lround(
+                s.recoilSettings.dynamicMaxMultiplier*100.f));
+            write(539,548,"+ "+std::to_string(gain)+"% PER SHOT  /  CAP "
+                +std::to_string(cap)+"%",RGB(84,233,214));
+            write(539,579,"Gauss: separate kick/recovery | 2 hands stable",muted);
+        }else{
+            write(539,548,"KICK "+std::to_string(strength)+"%  /  RECOVERY "+
+                std::to_string(recovery)+"%",RGB(84,233,214));
+            write(539,579,selected==6
+                ?"Gauss: independently tuned short punch + full return"
+                :"1 hand: heavy recoil  |  2 hands: stable",muted);
+        }
+        write(539,614,"Close menu to test. B: BACK",muted);
+        write(40,662,m.message.empty()
+            ?"Dynamic build-up uses ammo-confirmed shots; Gauss tuned separately."
+            :m.message.substr(0,98),RGB(84,233,214));
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
     }else{
-    write(38,24,"KHARVOX VR  /  HAND CALIBRATION",white);
+    write(38,24,"RIPSHIFT VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
     write(40,102,"WEAPON PROFILES",muted);
     write(536,102,"SELECT HAND",muted);
@@ -361,7 +1134,8 @@ void paintVrHandMenu() {
     const auto gamepadFocus=[&](int action){
         return m.navigation.usingStick&&m.navigation.settingsColumn
             &&kharvox::vrMenuGripGamepadTarget(m.navigation,
-                m.selectedWeapon,heavy)==action;
+                m.selectedWeapon,heavy,
+                selectedKind==KharvoxWeaponKind::GaussCannon)==action;
     };
     button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
     button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
@@ -374,10 +1148,11 @@ void paintVrHandMenu() {
         ?"PRIMARY: position + rotation"
         :"SUPPORT: position only",muted);
     if(heavy){
-        button(531,306,384,49,m.alternateProfile,m.hovered==32||gamepadFocus(32));
+        button(531,306,384,49,m.alternateProfile,
+            m.hovered==32||gamepadFocus(32));
         write(550,317,m.alternateProfile
             ?(selectedKind==KharvoxWeaponKind::GaussCannon
-                ?"PROFILE: SIEGE":"PROFILE: TURRET")
+                ?"GAUSS CANNON: ALT FIRE":"MINIGUN: ALT FIRE")
             :"PROFILE: NORMAL",white);
     }else{
         write(538,306,primarySelected
@@ -391,8 +1166,16 @@ void paintVrHandMenu() {
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
     SelectObject(dc,smallFont);
-    write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
-    write(538,609,"DEFAULT: factory   L/R/B: custom",muted);
+    if(selectedKind==KharvoxWeaponKind::GaussCannon){
+        button(531,540,384,50,s.vrLiveSettings.gaussRequireTwoHandFire,
+            m.hovered==33||gamepadFocus(33));
+        write(549,552,s.vrLiveSettings.gaussRequireTwoHandFire
+            ?"TWO-HAND FIRE: ON":"TWO-HAND FIRE: OFF",white);
+        write(538,614,"Grip charges; both hands required to fire.",muted);
+    }else{
+        write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
+        write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
+    }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
@@ -403,7 +1186,9 @@ void paintVrHandMenu() {
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
-    if(!calibrationView&&m.cursorX>=0&&m.cursorY>=0
+    if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
+       &&!statsLiveView&&!resultView&&!calibrationView
+       &&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
         HGDIOBJ oldBrush=SelectObject(dc,marker);
@@ -424,8 +1209,34 @@ void paintVrHandMenu() {
         const size_t b=i*4;
         dst[b]=src[b+2];dst[b+1]=src[b+1];dst[b+2]=src[b];
         const int x=int(i%vrMenuW),y=int(i/vrMenuW);
-        dst[b+3]=(!calibrationView
-            ||(x>=22&&x<612&&y>=144&&y<576))?255:0;
+        dst[b+3]=disconnectView
+            ?(x>=bannerX&&x<bannerX+bannerW
+                &&y>=bannerY&&y<bannerY+bannerH?255:0)
+            :firstTimeSetupView
+                ?(x>=setupX&&x<setupX+setupW
+                    &&y>=setupY&&y<setupY+setupH?255:0)
+            :gameplayWelcomeView
+                ?(x>=welcomeX&&x<welcomeX+welcomeW
+                    &&y>=welcomeY&&y<welcomeY+welcomeH?255:0)
+            :resultView
+                ?(x>=resultX&&x<resultX+resultW
+                    &&y>=resultY&&y<resultY+resultH?245:0)
+            :statsLiveView
+                ?([&](){
+                    for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+                        const int width=kharvox::campaignStatsPanelWidth(i);
+                        const int left=kharvox::statsPanelX(
+                            statsCorners[i],vrMenuW,width);
+                        const int top=kharvox::statsPanelY(
+                            statsCorners[i],vrMenuH,counterH);
+                        if(x>=left&&x<left+width&&y>=top&&y<top+counterH)
+                            return 220;
+                    }
+                    return 0;
+                }())
+            :(!calibrationView
+                ||(x>=22&&x<612&&y>=144&&y<576)
+                ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
     }
     SelectObject(dc,oldBitmap);
     DeleteObject(dib);

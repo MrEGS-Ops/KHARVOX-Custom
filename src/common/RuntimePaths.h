@@ -63,6 +63,51 @@ inline std::wstring userDataDirectory(){
     CreateDirectoryW(user.c_str(),nullptr);
     return user;
 }
+// Per-install notice acknowledgements stay in Config, never UserData.
+// A clean reinstall resets both notices, while an in-place update preserves
+// their separate acknowledgements and never affects weapon calibrations.
+inline std::wstring installNoticeMarkerPath(const wchar_t* filename){
+    const auto runtime=runtimeDirectory();
+    const auto slash=runtime.find_last_of(L"\\/");
+    const auto basename=slash==std::wstring::npos?runtime:runtime.substr(slash+1);
+    const bool bridge=_wcsicmp(basename.c_str(),L"NativeBridge")==0;
+    const auto root=bridge&&slash!=std::wstring::npos?runtime.substr(0,slash):runtime;
+    return root+L"\\Config\\"+filename;
+}
+inline bool installNoticeAcknowledged(const wchar_t* filename){
+    const auto path=installNoticeMarkerPath(filename);
+    const DWORD attributes=GetFileAttributesW(path.c_str());
+    return attributes!=INVALID_FILE_ATTRIBUTES && !(attributes&FILE_ATTRIBUTE_DIRECTORY);
+}
+inline bool persistInstallNoticeAcknowledgement(const wchar_t* filename){
+    const auto path=installNoticeMarkerPath(filename);
+    const auto split=path.find_last_of(L"\\/");
+    if(split==std::wstring::npos)return false;
+    const auto folder=path.substr(0,split);
+    if(!CreateDirectoryW(folder.c_str(),nullptr)&&GetLastError()!=ERROR_ALREADY_EXISTS)
+        return false;
+    HANDLE marker=CreateFileW(path.c_str(),GENERIC_WRITE,FILE_SHARE_READ,nullptr,
+        CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr);
+    if(marker==INVALID_HANDLE_VALUE)
+        return GetLastError()==ERROR_FILE_EXISTS && installNoticeAcknowledged(filename);
+    CloseHandle(marker);
+    return installNoticeAcknowledged(filename);
+}
+inline std::wstring firstTimeSetupMarkerPath(){
+    return installNoticeMarkerPath(L"first_time_setup.ack");
+}
+inline bool firstTimeSetupAcknowledged(){
+    return installNoticeAcknowledged(L"first_time_setup.ack");
+}
+inline bool persistFirstTimeSetupAcknowledgement(){
+    return persistInstallNoticeAcknowledgement(L"first_time_setup.ack");
+}
+inline bool gameplayWelcomeAcknowledged(){
+    return installNoticeAcknowledged(L"gameplay_welcome.ack");
+}
+inline bool persistGameplayWelcomeAcknowledgement(){
+    return persistInstallNoticeAcknowledgement(L"gameplay_welcome.ack");
+}
 inline bool isUserConfigName(const wchar_t* name) noexcept {
     if(!name)return false;
     const std::wstring value(name);
@@ -84,7 +129,26 @@ inline bool isUserConfigName(const wchar_t* name) noexcept {
 }
 inline std::wstring runtimePath(const wchar_t* name) {
     if(isUserConfigName(name))return userDataDirectory()+L"\\"+name;
-    return runtimeDirectory()+L"\\"+name;
+    const auto root=runtimeDirectory();
+    const std::wstring file(name);
+    // Keep the native developer layout compatible while putting immutable
+    // retail defaults and only our four shader binaries into subdirectories.
+    if(file.find_first_of(L"\\/")==std::wstring::npos){
+        const bool isDefault=file.size()>=12
+            && _wcsicmp(file.c_str()+file.size()-12,L"_default.cfg")==0;
+        const bool isHandModels=_wcsicmp(file.c_str(),L"hand_models.cfg")==0;
+        const bool isRetailShader=_wcsicmp(file.c_str(),L"Fsr1Easu.spv")==0
+            ||_wcsicmp(file.c_str(),L"Fsr1Rcas.spv")==0
+            ||_wcsicmp(file.c_str(),L"HandPbr.vert.spv")==0
+            ||_wcsicmp(file.c_str(),L"HandPbr.frag.spv")==0;
+        if(isDefault || isHandModels || isRetailShader){
+            const auto subfolder=isRetailShader?L"\\Shaders\\":L"\\Config\\";
+            const auto grouped=root+subfolder+file;
+            if(GetFileAttributesW(grouped.c_str())!=INVALID_FILE_ATTRIBUTES)
+                return grouped;
+        }
+    }
+    return root+L"\\"+name;
 }
 inline std::string runtimePathA(const char* name) {
     std::wstring file;

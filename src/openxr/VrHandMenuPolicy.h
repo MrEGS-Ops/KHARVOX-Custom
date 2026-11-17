@@ -20,8 +20,46 @@ inline constexpr std::array<const char*,10> kVrCalibrationWeapons{
     "bfg","chainsaw"
 };
 enum class VrHandMenuMode { Closed, Menu, Calibrating };
+// A genuine controller disconnect is a gameplay concern. In menus, pause,
+// loading, death screens, cinematics or Quad presentation, neither the
+// two-stick acknowledgement nor the reconnect banner should block inputs.
+inline constexpr bool vrControllerLiveGameplay(
+    bool gameplay,bool world,bool paused,bool fullscreenMenu,
+    bool deathMenu,bool cutscene,bool quadMode,bool otherMenu=false) noexcept {
+    return gameplay&&world&&!paused&&!fullscreenMenu
+        &&!deathMenu&&!cutscene&&!quadMode&&!otherMenu;
+}
+inline constexpr bool vrControllerReconnectBannerVisible(
+    bool locked,bool gameplay,bool world,bool paused,
+    bool fullscreenMenu,bool deathMenu,bool cutscene,bool quadMode,
+    bool otherMenu=false) noexcept {
+    return locked&&vrControllerLiveGameplay(gameplay,world,paused,
+        fullscreenMenu,deathMenu,cutscene,quadMode,otherMenu);
+}
+// One calibration slot per firing state. Neither mode is bound to a
+// particular equipped Gauss or Chaingun attachment.
+inline constexpr bool vrHeavyAlternateGripActive(
+    bool menuOpen,bool matchingSelectedWeapon,bool selectedAlternate,
+    bool nativeSecondaryGrip,bool gaussChargeStillActive) noexcept {
+    if(menuOpen&&matchingSelectedWeapon)return selectedAlternate;
+    return nativeSecondaryGrip||gaussChargeStillActive;
+}
+// Gauss only: NORMAL trigger shots are ALWAYS allowed with one hand.
+// The two-hand interlock applies ONLY when the alternate-fire Grip is
+// actively forwarded to DOOM (the observable charge input). An installed
+// Siege upgrade or its declaration string is NOT evidence of charging.
+// Releasing alternate-fire Grip restores normal one-handed shots.
+inline constexpr bool vrGaussPrimaryFireAllowed(
+    bool requireTwoHands,bool gaussEquipped,bool alternateChargeGripActive,
+    bool primaryGripDown,bool supportGripDown,
+    bool supportLatched,bool supportLatchedToGauss,
+    bool primaryTracked,bool supportTracked) noexcept {
+    if(!requireTwoHands||!gaussEquipped||!alternateChargeGripActive)return true;
+    return primaryGripDown&&supportGripDown&&supportLatched
+        &&supportLatchedToGauss&&primaryTracked&&supportTracked;
+}
 // Grip-held aim preview works on every primary weapon.
-// Siege/Turret is engaged automatically when its mode is selected;
+// Alt Fire is engaged automatically when its mode is selected;
 // Grip itself is reserved for testing position, never alt fire in calibration.
 inline bool vrPrimaryGripHoldPreviewAllowed(VrHandMenuMode mode,
     bool calibratingPrimary,const std::string& weapon) noexcept {
@@ -65,7 +103,121 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     }
     return VrMenuShortcutAction::None;
 }
-enum class VrMenuPage {Mods,WeaponGrip};
+enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
+enum class VrMenuDevOption {
+    None,Folder,WeaponStability,WeaponAlignment,HandFocus,
+    HolsterZones,ControllerMonitor,Experimental,StatsReset,LevelRecordsReset
+};
+// Only show DEV graphics in their intended capture screens. This is a
+// display policy, not an input remap and never changes saved calibration.
+inline constexpr bool vrDevCalibrationPanelVisible(
+    VrHandMenuMode mode,VrLiveCapture capture,
+    bool weaponAlignment,bool holsterZones,bool controllerInputs) noexcept {
+    if(mode!=VrHandMenuMode::Calibrating)return false;
+    if(capture==VrLiveCapture::None)return weaponAlignment;
+    if(capture==VrLiveCapture::HipRight
+        ||capture==VrLiveCapture::HipLeft
+        ||capture==VrLiveCapture::WheelRight
+        ||capture==VrLiveCapture::WheelLeft)
+        return holsterZones||controllerInputs;
+    return false;
+}
+struct VrDevControllerInputSnapshot {
+    bool rightTrigger{},leftTrigger{},leftClick{},rightClick{};
+    bool weaponGrip{},select{},back{};
+    float leftStickX{},leftStickY{};
+};
+// DEV appears only after the secret heading gesture; its switches are
+// launch-scoped so ordinary users never inherit experimental overlays.
+inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept {
+    return option==VrMenuDevOption::WeaponAlignment
+        ||option==VrMenuDevOption::HandFocus
+        ||option==VrMenuDevOption::HolsterZones
+        ||option==VrMenuDevOption::ControllerMonitor;
+}
+// Two independent notices: first-install setup appears on DOOM's front
+// menu and needs a fresh physical L3+R3 chord; the separately persisted
+// gameplay welcome appears on the first playable frame and needs the same
+// acknowledgement chord.
+struct VrFirstTimeSetupNotice {
+    bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
+    unsigned stableMainMenuFrames{};
+};
+inline constexpr bool updateVrFirstTimeSetupNotice(
+    VrFirstTimeSetupNotice& notice,bool mainMenu,bool leftClick,
+    bool rightClick,bool trackedControllers) noexcept {
+    if(notice.acknowledged){notice.visible=false;return false;}
+    if(!mainMenu){
+        notice.visible=false;
+        notice.stableMainMenuFrames=0;
+        notice.bothSticksReleased=false;
+        notice.chordConsumed=false;
+        return false;
+    }
+    // DOOM can spend several startup frames in Quad loading screens.
+    // A stable front-menu presentation is required before showing setup.
+    if(notice.stableMainMenuFrames<180)++notice.stableMainMenuFrames;
+    if(notice.stableMainMenuFrames<180)return false;
+    notice.visible=true;
+    if(!leftClick&&!rightClick){
+        notice.bothSticksReleased=true;
+        notice.chordConsumed=false;
+    }
+    if(!trackedControllers || !notice.bothSticksReleased
+        ||!leftClick||!rightClick||notice.chordConsumed)return false;
+    notice.chordConsumed=true;
+    return true; // caller must persist the install-scoped acknowledgement
+}
+// Independent install-scoped gameplay welcome notice. It is modal, needs
+// a fresh L3+R3 chord, and does not dismiss via a regular face button.
+// The caller is responsible for committing the acknowledgement to Config.
+struct VrGameplayWelcomeNotice {
+    bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
+    unsigned stableGameplayFrames{};
+};
+inline constexpr bool updateVrGameplayWelcomeNotice(
+    VrGameplayWelcomeNotice& notice,bool playableGameplay,
+    bool leftClick,bool rightClick,bool trackedControllers) noexcept {
+    if(notice.acknowledged){notice.visible=false;return false;}
+    if(!playableGameplay){
+        notice.visible=false;
+        notice.stableGameplayFrames=0;
+        notice.bothSticksReleased=false;
+        notice.chordConsumed=false;
+        return false;
+    }
+    if(notice.stableGameplayFrames<20)++notice.stableGameplayFrames;
+    if(notice.stableGameplayFrames<20)return false;
+    notice.visible=true;
+    if(!leftClick&&!rightClick){
+        notice.bothSticksReleased=true;
+        notice.chordConsumed=false;
+    }
+    if(!trackedControllers||!notice.bothSticksReleased
+        ||!leftClick||!rightClick||notice.chordConsumed)return false;
+    notice.chordConsumed=true;
+    return true;
+}
+// Seven pointer-and-trigger taps on the existing MOD SETTINGS heading.
+// This state is transient and defaults to hidden on every new game launch.
+struct VrMenuDeveloperReveal {
+    bool visible{};
+    unsigned taps{};
+    std::uint64_t firstTapMs{};
+};
+inline bool vrMenuDeveloperTap(
+    VrMenuDeveloperReveal& state,std::uint64_t nowMs) noexcept {
+    if(state.taps==0||nowMs<state.firstTapMs
+        ||nowMs-state.firstTapMs>5000ULL){
+        state.taps=0;
+        state.firstTapMs=nowMs;
+    }
+    if(++state.taps<7)return false;
+    state.visible=!state.visible;
+    state.taps=0;
+    state.firstTapMs=0;
+    return true;
+}
 // Independent, edge-triggered left-stick navigation. It never modifies the
 // in-game movement or the right-hand laser/pointer input outside this menu.
 struct VrMenuNavigation {
@@ -103,6 +255,63 @@ inline void vrMenuNavigateStick(VrMenuNavigation& nav,float x,float y,
         }
     }
 }
+// The public Stats panel treats the miniature HUD as a two-dimensional
+// stick-navigable grid; its toggle remains directly above the grid.
+// Each thumbstick deflection is one cell. A new press requires recentering.
+inline void vrStatsNavigateStick(VrMenuNavigation& nav,float x,float y,
+    int& selectedIndex,int savedCell,int listCount=4) noexcept {
+    const bool xEdge=std::isfinite(x)&&std::abs(x)>.75f
+        &&nav.horizontalCentered;
+    const bool yEdge=std::isfinite(y)&&std::abs(y)>.75f
+        &&nav.verticalCentered;
+    if(std::isfinite(x)&&std::abs(x)<.3f)nav.horizontalCentered=true;
+    if(std::isfinite(y)&&std::abs(y)<.3f)nav.verticalCentered=true;
+    if(xEdge){
+        nav.horizontalCentered=false;nav.usingStick=true;
+        if(!nav.settingsColumn){
+            if(x>0.f){nav.settingsColumn=true;nav.actionIndex=0;}
+        }else if(nav.actionIndex==0){
+            if(x<0.f)nav.settingsColumn=false;
+            else nav.actionIndex=1+(statsGridCellSelectable(savedCell)
+                ?savedCell:0);
+        }else{
+            const int old=nav.actionIndex-1;
+            const int row=old/kStatsGridColumns;
+            int col=old%kStatsGridColumns;
+            const int step=x>0.f?1:-1;
+            while(col+step>=0&&col+step<kStatsGridColumns){
+                col+=step;
+                const int candidate=row*kStatsGridColumns+col;
+                if(statsGridCellSelectable(candidate)){
+                    nav.actionIndex=1+candidate;break;
+                }
+            }
+        }
+    }
+    if(yEdge){
+        nav.verticalCentered=false;nav.usingStick=true;
+        if(!nav.settingsColumn){
+            if(listCount>0)selectedIndex=(selectedIndex+
+                (y<0.f?1:listCount-1))%listCount;
+            nav.actionIndex=0;
+        }else if(nav.actionIndex==0){
+            if(y<0.f)nav.actionIndex=1+(statsGridCellSelectable(savedCell)
+                ?savedCell:0);
+        }else{
+            const int old=nav.actionIndex-1,col=old%kStatsGridColumns;
+            int row=old/kStatsGridColumns;
+            const int step=y<0.f?1:-1;
+            if(step<0&&row==0)nav.actionIndex=0;
+            else while(row+step>=0&&row+step<kStatsGridRows){
+                row+=step;
+                const int candidate=row*kStatsGridColumns+col;
+                if(statsGridCellSelectable(candidate)){
+                    nav.actionIndex=1+candidate;break;
+                }
+            }
+        }
+    }
+}
 inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
     int selectedRow,int count,int actionCount,bool toggleable=true) noexcept {
     if(!nav.settingsColumn)return selectedRow>=0&&selectedRow<count
@@ -113,16 +322,32 @@ inline int vrMenuModsGamepadTarget(const VrMenuNavigation& nav,
     return toggleable?(nav.actionIndex==0?110:130+nav.actionIndex-1)
         :130+nav.actionIndex;
 }
+// Dedicated recoil tuning: 9 firearms + separate Minigun Turret mode (10 rows).
+// Controller settings are independent of the primary/off-hand pose profiles.
+// The policy header intentionally has no OpenXR/weapon recoil runtime dependency.
+inline constexpr int kVrRecoilMenuProfileCount=10;
+inline constexpr int kVrRecoilMenuEntryCount=11; // final row: shared dynamics
+inline int vrMenuRecoilGamepadTarget(const VrMenuNavigation& nav,
+                                    int weapon) noexcept {
+    return nav.settingsColumn
+        ?(nav.actionIndex>=0&&nav.actionIndex<6?140+nav.actionIndex:-1)
+        :(weapon>=0&&weapon<kVrRecoilMenuEntryCount?200+weapon:-1);
+}
 inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
-    int selectedWeapon,bool heavy) noexcept {
+    int selectedWeapon,bool heavy,bool gauss=false) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
     // No automatic RIGHT-to-LEFT mirroring: each physical hand is
     // calibrated independently. Preserve CALIBRATE, RESET and BACK.
+    constexpr std::array<int,7> gaussActions{20,21,32,30,31,33,95};
     constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
     constexpr std::array<int,5> normalActions{20,21,30,31,95};
-    return nav.actionIndex>=0&&nav.actionIndex<(heavy?6:5)
-        ?(heavy?heavyActions[nav.actionIndex]:normalActions[nav.actionIndex]):-1;
+    const int count=gauss?7:heavy?6:5;
+    return nav.actionIndex>=0&&nav.actionIndex<count
+        ?gauss?gaussActions[nav.actionIndex]
+              :heavy?heavyActions[nav.actionIndex]
+                    :normalActions[nav.actionIndex]
+        :-1;
 }
 // Grip RELEASED: the opposite controller drives the primary glove's live
 // position/rotation. Grip HELD: the currently valid placement is frozen,
@@ -176,8 +401,10 @@ inline const ControllerPose& vrSupportCalibrationPhysicalGrip(
 // Holding past 340 ms repeats 1 cm every 175 ms (~5.7 cm/second).
 // LEFT stick X = gun left/right; LEFT stick Y = gun forward/back (local Z);
 // RIGHT stick Y = gun up/down. No controller/glove motion or gun rotation.
-// Sticks must be centred on Grip entry, and between direction reversals;
-// changing grip/mode immediately cancels all held-repeat state. At most one
+// Fine-tune is the DEFAULT (Grip released). Grip press suspends nudges
+// and freezes the gun for weapon-hand glove rotation. After a Grip release,
+// sticks must recenter before a new nudge to avoid a surprise movement.
+// At most one
 // step per stick per frame, even after frame delays or tracking stalls.
 inline constexpr std::uint64_t kVrWeaponFineTuneRepeatDelayMs=340;
 inline constexpr std::uint64_t kVrWeaponFineTuneRepeatIntervalMs=175;
@@ -190,7 +417,7 @@ inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
     VrWeaponFineTuneEdges& state,bool allowed,bool gripHeld,
     float leftX,float leftY,float rightY,std::uint64_t nowMs) noexcept {
     RightHandGripOffset step{};
-    if(!allowed||!gripHeld||!std::isfinite(leftX)
+    if(!allowed||gripHeld||!std::isfinite(leftX)
         ||!std::isfinite(leftY)||!std::isfinite(rightY)){
         state={};
         return step;
@@ -202,7 +429,7 @@ inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
         state.active=true;
         state.leftArmed=leftCentered;
         state.rightArmed=rightCentered;
-        return step; // first GRIP frame never moves the gun accidentally
+        return step; // first NO-GRIP frame never moves the gun accidentally
     }
 
     const bool leftStrong=std::max(std::abs(leftX),std::abs(leftY))
@@ -262,14 +489,15 @@ inline RightHandGripOffset vrWeaponFineTuneCentimeterStep(
     }
     return step;
 }
-// One calibration session can alternate Grip-held gun fine-tuning and
-// Grip-released wrist rotation without committing either until SAVE.
-// Every Grip release starts a fresh relative rotation reference, retaining
-// the exact glove rotation from the previous mode with no jump.
+// Grip RELEASED: fine-tune the gun in 1 cm steps (glove rotation locked).
+// Grip HELD: freeze the native gun and rotate the visible glove using the
+// physically tracked WEAPON-HAND controller, never the off-hand controller.
+// Every Grip press establishes a fresh relative reference with no snap.
+// Release Grip to hold the resulting draft glove angle until SAVE.
 struct VrPrimaryRotationEdit {
     bool referenceValid{};
-    RightHandGripRotation controllerAtRelease{};
-    RightHandGripRotation gloveAtRelease{};
+    RightHandGripRotation controllerAtGrip{};
+    RightHandGripRotation gloveAtGrip{};
 };
 inline RightHandGripRotation vrCalibrationMultiplyRotation(
     const RightHandGripRotation& a,
@@ -282,25 +510,25 @@ inline RightHandGripRotation vrCalibrationMultiplyRotation(
 }
 inline RightHandGripRotation vrCalibrationRelativeRotation(
     VrPrimaryRotationEdit& edit,bool weaponGripHeld,
-    const RightHandGripRotation& freeControllerRotation,
+    const RightHandGripRotation& weaponControllerRotation,
     const RightHandGripRotation& currentGloveRotation) noexcept {
-    if(weaponGripHeld){
+    if(!weaponGripHeld){
         edit.referenceValid=false;
-        return currentGloveRotation; // freeze rotation during gun-only nudges
+        return currentGloveRotation; // no Grip: lock angle for gun-only nudges
     }
-    if(!validRightHandRotation(freeControllerRotation)
+    if(!validRightHandRotation(weaponControllerRotation)
         ||!validRightHandRotation(currentGloveRotation))
         return currentGloveRotation; // tracking gap: keep latest valid draft
     if(!edit.referenceValid){
-        edit.controllerAtRelease=freeControllerRotation;
-        edit.gloveAtRelease=currentGloveRotation;
+        edit.controllerAtGrip=weaponControllerRotation;
+        edit.gloveAtGrip=currentGloveRotation;
         edit.referenceValid=true;
-        return currentGloveRotation; // transition frame never snaps the glove
+        return currentGloveRotation; // first Grip frame must not snap
     }
-    const auto& q=edit.controllerAtRelease;
+    const auto& q=edit.controllerAtGrip;
     const RightHandGripRotation inverse{-q.x,-q.y,-q.z,q.w,true};
-    const auto delta=vrCalibrationMultiplyRotation(freeControllerRotation,inverse);
-    auto result=vrCalibrationMultiplyRotation(delta,edit.gloveAtRelease);
+    const auto delta=vrCalibrationMultiplyRotation(weaponControllerRotation,inverse);
+    auto result=vrCalibrationMultiplyRotation(delta,edit.gloveAtGrip);
     const float magnitude=std::sqrt(result.x*result.x+result.y*result.y
         +result.z*result.z+result.w*result.w);
     if(!(magnitude>0.00001f)||!std::isfinite(magnitude))
@@ -316,28 +544,45 @@ struct VrHandMenuState {
     VrLiveMod selectedMod{VrLiveMod::WeaponGrip};
     int modScroll{};
     int selectedRow{};
+    int statsSelected{}; // selected Stats list row, independent from Mods
+    int statsScroll{}; // same 10-row left-list viewport as main Mod Menu
+    int recordSelected{},recordsScroll{};
+    bool recordSortDeaths{}; // TIME or DEATHS ranking; no duplicate counters
+    int pendingStatsReset{-1}; // second press required for destructive reset
     VrLiveCapture liveCapture{VrLiveCapture::None};
+    VrLivePoint gunslingerZoneDraft{}; // temporary position; only RT commits
+    bool gunslingerZoneDraftValid{};
+    bool gunslingerZoneMoving{}; // true only while matching Grip held
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};
     int pendingNativeSelection{}; // 1=BFG (Y), 2=Chainsaw (X)
     long long nativeSelectionPulseUntil{};
     int selectedWeapon{1};
+    int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
-    // Gauss Siege and Chaingun Turret have separate visual hand profiles.
-    bool alternateProfile{};
+    // Both Gauss and Chaingun: NORMAL / ALT FIRE. The latter is a
+    // generic secondary-fire grip slot, regardless of installed attachment.
+    bool alternateProfile{},calibrationAlternateProfile{};
     // Latch holster ownership at capture start; switching hands while
     // calibrating never writes a pose to the wrong physical hand.
     bool calibratingWeaponLeft{};
     VrMenuHoldShortcut shortcut{};
     VrMenuNavigation navigation{};
+    VrMenuDeveloperReveal devReveal{};
+    bool devWeaponAlignment{},devHolsterZones{},devControllerInputs{};
+    bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
+    bool recoilReturnToDev{};
+    std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
+    VrDevControllerInputSnapshot devInput{};
     bool rightTriggerPreviously{},leftTriggerPreviously{};
     bool menuAPreviously{},menuBPreviously{},consumeMenuFaceUntilRelease{};
+    bool consumeMenuTriggerUntilRelease{}; // ignore held pointer trigger on automatic close
     int hovered{-1};
     float cursorX{-1.f},cursorY{-1.f};
     bool previewValid{};
-    bool primaryGripPreviewHeld{}; // freezes valid live pose while Grip held, permits 1cm nudges
+    bool primaryGripPreviewHeld{}; // weapon-hand Grip freezes the gun for glove rotation
     bool calibrationGripHeld{}; // raw physical weapon Grip for contextual VR help, independent of tracking
-    VrPrimaryRotationEdit rotationEdit{}; // resets its free-controller reference whenever Grip is held
+    VrPrimaryRotationEdit rotationEdit{}; // resets WEAPON-HAND reference on Grip release
     std::uint64_t lastPreviewDiagnosticAt{}; // throttled calibration pose log
     VrWeaponFineTuneEdges fineTuneEdges{};
     RightHandGripOffset fineTuneAccumulated{}; // unsaved, local X/Y/Z metres
@@ -348,6 +593,49 @@ struct VrHandMenuState {
     std::string message;
     const char* weapon() const noexcept {return kVrCalibrationWeapons[static_cast<size_t>(selectedWeapon)];}
 };
+// Distinct 20..32 confirmation keys are separate from DEV reset actions
+// (0..4, 10..11). Changing the selected mission or timing out rearms.
+inline constexpr int kVrLevelStartConfirmBase=20;
+inline constexpr std::uint64_t kVrLevelStartConfirmWindowMs=6000;
+inline bool vrLevelStartPending(const VrHandMenuState& menu,
+    int missionIndex,std::uint64_t nowMs) noexcept {
+    return missionIndex>=0&&missionIndex<13
+        &&menu.pendingStatsReset==kVrLevelStartConfirmBase+missionIndex
+        &&menu.confirmDeathResetUntilMs!=0
+        &&nowMs<=menu.confirmDeathResetUntilMs;
+}
+inline bool vrConfirmLevelStart(VrHandMenuState& menu,
+    int missionIndex,std::uint64_t nowMs) noexcept {
+    if(missionIndex<0||missionIndex>=13)return false;
+    if(!vrLevelStartPending(menu,missionIndex,nowMs)){
+        menu.pendingStatsReset=kVrLevelStartConfirmBase+missionIndex;
+        menu.confirmDeathResetUntilMs=nowMs+kVrLevelStartConfirmWindowMs;
+        return false;
+    }
+    menu.pendingStatsReset=-1;
+    menu.confirmDeathResetUntilMs=0;
+    return true;
+}
+// STOP RECORD has its own confirmation key. It cannot accidentally confirm
+// a pending START or DEV reset, and times out after the same six seconds.
+inline constexpr int kVrLevelStopConfirmKey=40;
+inline bool vrLevelStopPending(const VrHandMenuState& menu,
+    std::uint64_t nowMs) noexcept {
+    return menu.pendingStatsReset==kVrLevelStopConfirmKey
+        &&menu.confirmDeathResetUntilMs!=0
+        &&nowMs<=menu.confirmDeathResetUntilMs;
+}
+inline bool vrConfirmLevelStop(VrHandMenuState& menu,
+    std::uint64_t nowMs) noexcept {
+    if(!vrLevelStopPending(menu,nowMs)){
+        menu.pendingStatsReset=kVrLevelStopConfirmKey;
+        menu.confirmDeathResetUntilMs=nowMs+kVrLevelStartConfirmWindowMs;
+        return false;
+    }
+    menu.pendingStatsReset=-1;
+    menu.confirmDeathResetUntilMs=0;
+    return true;
+}
 inline bool isVrMenuInputOwner(const VrHandMenuState& m) noexcept {
     return m.mode!=VrHandMenuMode::Closed;
 }
@@ -397,6 +685,8 @@ inline bool vrPrimaryPoseChangedFromFactory(
     // the primary hand appear calibrated.
     if(!hasSavedVrPrimaryPose(current,weapon,leftHand))return false;
     if(positionChanged(weapon)||rotationChanged(weapon))return true;
+    if(weapon=="chaingun"&&(positionChanged("chaingun_rotor")
+        ||rotationChanged("chaingun_rotor")))return true;
     const std::string alternate=weapon=="gauss_cannon"
         ?"gauss_cannon_siege":weapon=="chaingun"
             ?"chaingun_turret":"";
@@ -472,6 +762,15 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
                     ||key==weapon+"_left_hand_position"||key==weapon+"_left_rotation"
                     ||key==weapon+"_finetune_offset"
                     ||key==weapon+"_left_finetune_offset"
+                    ||(weapon=="chaingun"&&(
+                        key=="chaingun_rotor_hand_position"
+                        ||key=="chaingun_rotor_rotation"
+                        ||key=="chaingun_rotor_left_hand_position"
+                        ||key=="chaingun_rotor_left_rotation"
+                        ||key=="chaingun_rotor_finetune_offset"
+                        ||key=="chaingun_rotor_left_finetune_offset"
+                        ||key=="chaingun_rotor_support_position"
+                        ||key=="chaingun_rotor_left_primary_support_position"))
                     ||(!alternate.empty()&&(
                         key==alternate+"_hand_position"||key==alternate+"_rotation"
                         ||key==alternate+"_left_hand_position"
@@ -542,6 +841,10 @@ inline bool restoreVrWeaponCalibrationDefault(const std::string& path,
                     ||key==name+"_left_finetune_offset";
             };
             if(matches(weapon))return true;
+            if(weapon=="chaingun"&&(matches("chaingun_rotor")
+                ||key=="chaingun_rotor_support_position"
+                ||key=="chaingun_rotor_left_primary_support_position"))
+                return true;
             return !alternate.empty()
                 &&(matches(alternate)||key==alternate+"_support_position"
                    ||key==alternate+"_left_primary_support_position");

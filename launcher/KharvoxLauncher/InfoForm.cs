@@ -61,7 +61,7 @@ internal sealed class InfoForm : Form
 
     internal InfoForm()
     {
-        Text = "KHARVOX Instructions";
+        Text = "RIPSHIFT VR Instructions";
         var applicationIcon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(980, 720);
@@ -106,7 +106,7 @@ internal sealed class InfoForm : Form
         header.RowStyles.Add(new RowStyle(SizeType.Absolute, 25));
         header.Controls.Add(new Label
         {
-            Text = "KHARVOX INSTRUCTIONS",
+            Text = "RIPSHIFT VR INSTRUCTIONS",
             Dock = DockStyle.Fill,
             ForeColor = AccentColor,
             Font = new Font("Segoe UI Semibold", 17F, FontStyle.Bold),
@@ -114,7 +114,7 @@ internal sealed class InfoForm : Form
         });
         header.Controls.Add(new Label
         {
-            Text = "DOOM (2016) VR conversion — controls, options and compatibility",
+            Text = "Gameplay enhancement for KHARVOX — controls and compatibility",
             Dock = DockStyle.Fill,
             ForeColor = MutedColor,
             TextAlign = ContentAlignment.TopLeft
@@ -958,11 +958,15 @@ internal sealed class InfoForm : Form
 
     private static void BuildAbout(FlowLayoutPanel page)
     {
-        AddHeading(page, "KHARVOX — An independent VR compatibility framework");
+        AddHeading(page, "RIPSHIFT VR — A gameplay enhancement for KHARVOX");
         AddParagraph(page,
-            "KHARVOX is an independent community project and is not affiliated with, endorsed by, or sponsored by the publishers or developers of supported games.");
+            "RIPSHIFT VR is developed by MrEGS_. It builds on KHARVOX, the original DOOM (2016) VR conversion by CactusVRStudios.");
         AddParagraph(page,
-            "All trademarks and product names are the property of their respective owners. A legally acquired installation of each supported game is required.");
+            "Independent community add-on. Requires the original KHARVOX installation. Not affiliated with or endorsed by CactusVRStudios.");
+        AddExternalLink(page, "Original KHARVOX — CactusVRStudios",
+            "https://github.com/CactusVRStudios/KHARVOX");
+        AddParagraph(page,
+            "DOOM (2016) and the names, trademarks and original components of KHARVOX remain the property of their respective owners. A legally acquired copy of DOOM (2016) is required.");
         var notices = new LinkLabel { Text = "Licenses and third-party notices", AutoSize = true,
             LinkColor = Color.LightSkyBlue, Margin = new Padding(0, 8, 0, 12) };
         notices.LinkClicked += (_, _) => {
@@ -976,7 +980,8 @@ internal sealed class InfoForm : Form
         };
         page.Controls.Add(notices);
         AddForcedColumnBreak(page);
-        AddParagraph(page, "Made by Cactus", AccentColor, true);
+        AddParagraph(page, "RIPSHIFT VR — Developed by MrEGS_", AccentColor, true);
+        AddParagraph(page, "Original KHARVOX VR conversion — CactusVRStudios.");
         AddHeading(page, "Contributors");
         AddExternalLink(page, "Cabalistic", "https://github.com/fholger");
         AddExternalLink(page, "Dilshan", "https://dilshanvisuals.com");
@@ -1138,7 +1143,7 @@ internal sealed class InfoForm : Form
         {
             MessageBox.Show(
                 "The link could not be opened.\n\n" + uri.AbsoluteUri,
-                "KHARVOX Instructions",
+                "RIPSHIFT VR Instructions",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }

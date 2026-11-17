@@ -270,7 +270,7 @@ internal static class NexusFolderCompanion
             if (viewer.IsHandleCreated && (viewer.ContainsFocus
                 || launcher.ContainsFocus
                 || Application.OpenForms.Cast<Form>().Any(form =>
-                    form.Text == "KHARVOX Custom Mods" && form.ContainsFocus)))
+                    form.Text == "RIPSHIFT VR Mods" && form.ContainsFocus)))
                 SetWindowPos(viewer.Handle, IntPtr.Zero, 0, 0, 0, 0,
                     0x0001 | 0x0002 | 0x0010);
 
@@ -282,7 +282,7 @@ internal static class NexusFolderCompanion
                 trackedBrowser=NexusModsPopup.TryDiscoverPendingBrowser();
             var mods=modsBoundsProvider?.Invoke();
             var modsForm=Application.OpenForms.Cast<Form>().FirstOrDefault(form =>
-                form.Text=="KHARVOX Custom Mods"&&!form.IsDisposed);
+                form.Text=="RIPSHIFT VR Mods"&&!form.IsDisposed);
             if(trackedBrowser!=IntPtr.Zero && mods.HasValue){
                 var rect=mods.Value;
                 if(!browserOffsetKnown){

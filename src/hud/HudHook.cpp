@@ -6,6 +6,7 @@
 #include "HudLayoutPolicy.h"
 #include "WeaponWheelHudPolicy.h"
 #include "HudMenuPolicy.h"
+#include "CampaignDeathCounterPolicy.h"
 
 #include "../camera/CameraHook.h"
 #include "../common/RuntimePaths.h"
@@ -29,6 +30,7 @@ bool KharvoxHudPrepareOriginTransform(void* entity, float* nativeOrigin);
 
 namespace {
 bool readableRange(const void* address, size_t bytes);
+void log(const std::string& text);
 
 std::string calibrationPath() { return kharvox::runtimePathA("hud_role_calibration_saved.cfg"); }
 std::string identityPath() { return kharvox::runtimePathA("hud_roles_saved.cfg"); }
@@ -236,6 +238,38 @@ std::atomic<bool> pauseMenuActive{};
 std::atomic<bool> pauseRootVisible{};
 std::atomic<bool> deathMenuActive{};
 std::atomic<unsigned long long> deathMenuLevelGenerationAtShow{};
+std::atomic<std::uint64_t> campaignDeathCount{};
+std::atomic<std::uint64_t> campaignSessionDeaths{};
+std::mutex campaignDeathCountMutex;
+// The total is independent of the overlay toggle: enabling the display
+// later still shows actual deaths that happened with it hidden.
+void loadCampaignDeathCount(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    std::ifstream input(kharvox::runtimePathA("campaign_death_count.cfg"));
+    std::uint64_t value{};
+    if(input && (input>>value) && value<1000000000ULL)
+        campaignDeathCount.store(value,std::memory_order_release);
+}
+bool saveCampaignDeathCountLocked(std::uint64_t value){
+    const auto path=kharvox::runtimePathA("campaign_death_count.cfg");
+    const auto temporary=path+".tmp";
+    {
+        std::ofstream output(temporary,std::ios::trunc);
+        if(!output)return false;
+        output<<value<<'\n';
+        output.flush();
+        if(!output)return false;
+    }
+    return MoveFileExA(temporary.c_str(),path.c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)!=0;
+}
+void registerCampaignDeath(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    const auto value=campaignDeathCount.fetch_add(1,std::memory_order_acq_rel)+1;
+    campaignSessionDeaths.fetch_add(1,std::memory_order_acq_rel);
+    if(!saveCampaignDeathCountLocked(value))
+        log("Campaign death total updated in memory; UserData save failed");
+}
 std::atomic<unsigned int> endOfLevelScreenMask{};
 std::atomic<unsigned long long> endOfLevelMenuGenerationAtShow{};
 std::atomic<unsigned int> playerUpgradeScreenMask{};
@@ -388,6 +422,15 @@ void pulsePlayerUpgradeManagerQuadSession() {
             KharvoxCameraLevelTransitionGeneration(), std::memory_order_release);
         log("native PlayerUpgrade manager frame; Drone-style centered full-frame Quad/UI session started");
     }
+}
+
+bool ripshiftTutorialsDisabled() {
+    static const bool disabled=[] {
+        char v[8]{};
+        return GetEnvironmentVariableA("KHARVOX_DISABLE_TUTORIALS",v,sizeof(v))==1
+            && v[0]=='1';
+    }();
+    return disabled;
 }
 
 void pulseTutorialActiveSession() {
@@ -657,6 +700,9 @@ LocalizedTextLookup originalLocalizedTextLookup{};
 const char* __fastcall localizedTextBindingHook(const void* key){
     const char* original=originalLocalizedTextLookup(key);
     if(!original)return original;
+    // When native DOOM tutorials are disabled, avoid modifying any native
+    // localized action text. The game still owns its own UI state/lifecycle.
+    if(ripshiftTutorialsDisabled())return original;
     const size_t length=strnlen_s(original,8192);
     if(length==8192||!std::memchr(original,'_',length))return original;
     try {
@@ -1504,16 +1550,16 @@ bool installMenuVtableHook(
 }
 
 void __fastcall campaignDeathShowHook(void* deathScreen, int transitionType) {
-    deathMenuLevelGenerationAtShow.store(
-        KharvoxCameraLevelTransitionGeneration(), std::memory_order_release);
-    if (!deathMenuActive.exchange(true, std::memory_order_acq_rel))
-        log("native CampaignDeath screen shown; Death-menu QUAD active (transition="
-            + std::to_string(transitionType) + ")");
-    if (customMods.revengeDemon) {
-        const bool published = KharvoxCameraWriteRevengeDiscoverySnapshot();
-        log(published
-            ? "[REVENGE] death-time Supervisor bridge snapshot published"
-            : "[REVENGE] death-time Supervisor bridge snapshot unavailable; no speculative killer selected");
+    const auto currentGeneration=KharvoxCameraLevelTransitionGeneration();
+    const auto previousGeneration=deathMenuLevelGenerationAtShow.exchange(
+        currentGeneration,std::memory_order_acq_rel);
+    const bool wasVisible=deathMenuActive.exchange(true,std::memory_order_acq_rel);
+    if(kharvox::campaignDeathOpeningIsNew(
+            wasVisible,previousGeneration,currentGeneration)){
+        registerCampaignDeath();
+        log("native CampaignDeath screen shown; counted one death, total="
+            +std::to_string(campaignDeathCount.load(std::memory_order_relaxed))
+            +" transition="+std::to_string(transitionType));
     }
     originalCampaignDeathShow(deathScreen, transitionType);
 }
@@ -2262,6 +2308,12 @@ void __fastcall tutorialSpriteRenderHook(
         originalTutorialSpriteRender(swf,view,sprite,state,time,flag);
         return;
     }
+    // Native tutorial setting OFF: skip only RIPSHIFT's tutorial screen
+    // repositioning. Preserve every other native HUD, map and UI render path.
+    if (ripshiftTutorialsDisabled() && isTutorialTextRoot(swf,sprite)) {
+        originalTutorialSpriteRender(swf,view,sprite,state,time,flag);
+        return;
+    }
     if (!isTutorialTextRoot(swf, sprite) || !state || !readableRange(state, 24)) {
         originalTutorialSpriteRender(swf, view, sprite, state, time, flag);
         return;
@@ -2370,8 +2422,70 @@ void __fastcall tutorialManagerFrameHook(
     // screen owner is. This is the path used by the Elite Guard/Praetor-token
     // pickup after its short cinematic.
     const auto bytes = static_cast<const unsigned char*>(tutorialManager);
-    if (*reinterpret_cast<void* const*>(bytes + 0x8E8))
+    // Let DOOM's own Tutorial manager finish its native Frame first. Then
+    // close ONLY a verified native Tutorial screen through its own HideScreen
+    // method. Merely skipping ShowScreen/rendering can leave an activator
+    // waiting for dismissal, trapping the game or AutoMap menu input.
+    //
+    // This is a fallback for DOOM re-enabling g_setting_tutorials on loading a
+    // fresh campaign or saved checkpoint. It never touches Dossier, AutoMap,
+    // Upgrade or other full-screen menus, and leaves their lifecycle alone.
+    // Exact executable vtables + previously validated Hide hooks are required.
+    const auto active = readableRange(bytes + 0x8E8, sizeof(void*))
+        ? *reinterpret_cast<void* const*>(bytes + 0x8E8) : nullptr;
+    if (!ripshiftTutorialsDisabled()) {
+        if (active) pulseTutorialActiveSession();
+        return;
+    }
+    // A given tutorial screen is dismissed ONCE per activation, not every VR
+    // frame. Null active-owner naturally rearms the next tutorial encounter.
+    static void* lastOwner{};
+    if (!active) { lastOwner = nullptr; return; }
+    if (active == lastOwner) return;
+    lastOwner = const_cast<void*>(active);
+    if (!readableRange(active, sizeof(void*))) {
+        log("[TUTORIAL-OFF] active Tutorial owner unreadable; leaving native state unchanged");
+        return;
+    }
+    const auto image = reinterpret_cast<unsigned char*>(GetModuleHandleW(nullptr));
+    if (!image) return;
+    const void* screenVtable = *reinterpret_cast<void* const*>(active);
+    PauseScreenTransitionFn hide{};
+    unsigned int bit{};
+    const char* label{};
+    if (screenVtable == image + 0x2257B40) {
+        hide = originalTutorialSimpleHide;
+        bit = tutorialSimpleBit;
+        label = "Tutorial_Simple";
+    } else if (screenVtable == image + 0x2257C30) {
+        hide = originalTutorialVideoHide;
+        bit = tutorialVideoBit;
+        label = "Tutorial_Video";
+    } else if (screenVtable == image + 0x2257D20) {
+        hide = originalTutorialTextHide;
+        bit = tutorialTextBit;
+        label = "Tutorial_Text";
+    } else {
+        // The Tutorial manager can own auxiliary non-tutorial state. Do not
+        // close an unidentified screen or guess its vtable.
+        log("[TUTORIAL-OFF] manager owner is not an exact native tutorial screen; no action");
         pulseTutorialActiveSession();
+        return;
+    }
+    if (!hide) {
+        log("[TUTORIAL-OFF] native HideScreen hook unavailable; refusing guessed call");
+        pulseTutorialActiveSession();
+        return;
+    }
+    hide(lastOwner, 2); // 2 = native closing transition; no fake controller input.
+    endTutorialScreenActivity(bit, label, 2);
+    // The engine may still have a frame of queued UI draw work. Never keep
+    // KHARVOX's 300-second projection/tutorial latch for a dismissed screen.
+    tutorialManagerLastActiveFrameTick.store(0, std::memory_order_release);
+    tutorialSessionUntilTick.store(0, std::memory_order_release);
+    tutorialScreenMask.store(0, std::memory_order_release);
+    log(std::string("[TUTORIAL-OFF] exact native ") + label
+        + " dismissed after manager frame using verified HideScreen");
 }
 
 std::atomic<unsigned long long> hudMovieUntil{};
@@ -3755,6 +3869,7 @@ bool KharvoxHudInstallHook() {
         && _stricmp(hudDebugging, "false") != 0
         && _stricmp(hudDebugging, "off") != 0;
     loadHeadlockedHudSettings();
+    loadCampaignDeathCount();
     loadHudIdentity();
     loadGuiProfileCalibrations();
     offhandCanvasHookReady=installOffhandCanvasHook();
@@ -3782,7 +3897,8 @@ bool KharvoxHudInstallHook() {
             "Gui_EndOfChallenge Update / gameplay counter elements");
     }
     installTutorialLifecycleHooks();
-    installLocalizedBindingHook();
+    if (!ripshiftTutorialsDisabled()) installLocalizedBindingHook();
+    else log("[TUTORIAL] native tutorials OFF; text rewrite and positioning disabled; native UI lifecycle intact");
     installHudMovieHook();
     installPlayerUpgradeManagerFrameHook();
     installPlayerUpgradePickupNotificationHook();
@@ -4120,6 +4236,24 @@ void KharvoxHudEndSuitUpgradeMenuSession() {
 
 bool KharvoxHudPauseMenuActive() {
     return pauseMenuActive.load(std::memory_order_acquire);
+}
+
+std::uint64_t KharvoxHudCampaignSessionDeaths(){
+    return campaignSessionDeaths.load(std::memory_order_acquire);
+}
+void KharvoxHudResetCampaignSessionDeaths(){
+    campaignSessionDeaths.store(0,std::memory_order_release);
+}
+std::uint64_t KharvoxHudCampaignDeathCount(){
+    return campaignDeathCount.load(std::memory_order_acquire);
+}
+bool KharvoxHudResetCampaignDeathCount(){
+    std::lock_guard<std::mutex> guard(campaignDeathCountMutex);
+    const auto previous=campaignDeathCount.load(std::memory_order_acquire);
+    campaignDeathCount.store(0,std::memory_order_release);
+    if(saveCampaignDeathCountLocked(0))return true;
+    campaignDeathCount.store(previous,std::memory_order_release);
+    return false;
 }
 
 bool KharvoxHudDeathMenuActive() {

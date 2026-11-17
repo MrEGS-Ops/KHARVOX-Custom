@@ -56,7 +56,7 @@ public sealed class MainForm : Form
     private readonly CheckBox leftHanded = MakeCheck("Left Hand mode", false);
     private readonly CheckBox swapJumpCrouch = MakeCheck("Swap Jump/Crouch", false);
     private readonly CheckBox hudDebugging = MakeCheck("Enable HUD debugging / calibration", false);
-    private readonly CheckBox extendedLogging = MakeCheck("Extended Logging", false);
+    private readonly CheckBox extendedLogging = MakeCheck("Extended Logging (debug only)", false);
     private readonly CheckBox captureEyes = MakeCheck("Eye capture: Ctrl+Shift+P (next launch)", false);
     private readonly CheckBox disableAa = MakeCheck("Disable AA (both renderers, next launch)", false);
     private readonly CheckBox handsJump = MakeCheck("Hands Jump", true);
@@ -105,7 +105,7 @@ public sealed class MainForm : Form
     internal MainForm(string settingsPath)
     {
         SettingsPath = settingsPath;
-        Text = "KHARVOX Launcher";
+        Text = "_RIPSHIFT - KHARVOX Launcher";
         var applicationIcon = System.Drawing.Icon.ExtractAssociatedIcon(Application.ExecutablePath);
         if (applicationIcon is not null) Icon = applicationIcon;
         ClientSize = new Size(548, 904);
@@ -131,12 +131,14 @@ public sealed class MainForm : Form
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 330));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 172));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 28));
         launcherContent = root;
         viewport.Controls.Add(root);
         Controls.Add(viewport);
         viewport.ClientSizeChanged += (_, _) => LayoutViewport();
 
+        // Keep the original Cactus KHARVOX launcher artwork prominently visible.
+        // RIPSHIFT is credited discreetly in the footer as an independent enhancement.
         var banner = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.Black };
         using (var bannerStream = Assembly.GetExecutingAssembly().GetManifestResourceStream("Kharvox.Branding.Logo"))
         {
@@ -159,7 +161,7 @@ public sealed class MainForm : Form
             TextAlign = ContentAlignment.MiddleLeft,
             ForeColor = Color.WhiteSmoke
         });
-        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "Custom"]);
+        preset.Items.AddRange(["Recommended", "Comfort", "Intense", "_RIPSHIFT"]);
         preset.Dock = DockStyle.Fill;
         preset.SelectedIndexChanged += (_, _) => ApplyPreset();
         profileRow.Controls.Add(preset);
@@ -172,7 +174,7 @@ public sealed class MainForm : Form
             BackColor = Color.FromArgb(184, 145, 0),
             ForeColor = Color.Black,
             Font = new Font(Font, FontStyle.Bold),
-            AccessibleName = "Open KHARVOX Instructions"
+            AccessibleName = "Open RIPSHIFT VR Instructions"
         };
         infoButton.FlatAppearance.BorderColor = Color.FromArgb(212, 172, 24);
         infoButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(205, 164, 12);
@@ -347,9 +349,14 @@ public sealed class MainForm : Form
         leftHanded.Dock = DockStyle.Fill;
         grid.Controls.Add(leftHanded, 0, 3);
         grid.Controls.Add(leftHandSwapMode, 1, 3);
+        // RIPSHIFT's Gunslinger owns the A=crouch/B=jump mapping.
+        // Keep this legacy launcher option visible, greyed out and inert.
         swapJumpCrouch.Dock = DockStyle.Fill;
-        swapJumpCrouch.CheckedChanged += OptionChanged;
-        statusToolTip.SetToolTip(swapJumpCrouch, "Swap the gameplay Jump and Crouch actions on the A/B face buttons. Menu controls stay the same.");
+        swapJumpCrouch.Checked = false;
+        swapJumpCrouch.Enabled = false;
+        swapJumpCrouch.TabStop = false;
+        statusToolTip.SetToolTip(swapJumpCrouch,
+            "Locked by RIPSHIFT: A = Crouch, B = Jump. Physical crouch and Hands Jump still work.");
         grid.Controls.Add(swapJumpCrouch, 0, 4);
         grid.SetColumnSpan(swapJumpCrouch, 2);
         foreach (Control c in new Control[] { turnMode, snapAngle })
@@ -369,6 +376,8 @@ public sealed class MainForm : Form
         gripAlignment.SelectedIndexChanged += WeaponModeChanged;
         hudDebugging.CheckedChanged += OptionChanged;
         extendedLogging.CheckedChanged += OptionChanged;
+        statusToolTip.SetToolTip(extendedLogging,
+            "Extra diagnostic capture and log file writes may affect VR frame times. Leave OFF for normal play.");
         disableAa.CheckedChanged += OptionChanged;
         captureEyes.CheckedChanged += OptionChanged;
 
@@ -410,7 +419,31 @@ public sealed class MainForm : Form
             if (artworkStream is not null)
             {
                 using var embeddedArtwork = Image.FromStream(artworkStream);
-                bloodArtwork.Image = new Bitmap(embeddedArtwork);
+                // Preserve the existing Cactus blood splatter, adding the
+                // user's compact MrEGS emblem in its centre.
+                var composed = new Bitmap(embeddedArtwork.Width, embeddedArtwork.Height);
+                using (var graphics = Graphics.FromImage(composed))
+                {
+                    graphics.DrawImage(embeddedArtwork,
+                        new Rectangle(0, 0, composed.Width, composed.Height));
+                    using var markStream = Assembly.GetExecutingAssembly()
+                        .GetManifestResourceStream("Kharvox.Branding.MrEgsMark");
+                    if (markStream is not null)
+                    {
+                        using var mark = Image.FromStream(markStream);
+                        var size = (int)(Math.Min(composed.Width, composed.Height) * 0.35f);
+                        var rect = new Rectangle((composed.Width - size) / 2,
+                            (composed.Height - size) / 2, size, size);
+                        graphics.InterpolationMode =
+                            System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                        using var circularMask = new System.Drawing.Drawing2D.GraphicsPath();
+                        circularMask.AddEllipse(rect);
+                        graphics.SetClip(circularMask);
+                        graphics.DrawImage(mark, rect);
+                        graphics.ResetClip();
+                    }
+                }
+                bloodArtwork.Image = composed;
             }
         }
         action.Controls.Add(bloodArtwork, 0, 0);
@@ -430,41 +463,86 @@ public sealed class MainForm : Form
         action.Controls.Add(status, 1, 1);
         root.Controls.Add(action);
 
+        // Compact footer: RIPSHIFT on the left, original KHARVOX on the
+        // right, version immediately after CactusVRStudios. Preserve the
+        // original Cactus credit's click/Shift+click actions.
         var footerLabel = new Label
         {
-            Text = "Made by Cactus",
+            Text = "Original KHARVOX by CactusVRStudios",
             Dock = DockStyle.Fill,
             TextAlign = ContentAlignment.MiddleRight,
             ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 8f),
+            Margin = Padding.Empty,
             Cursor = Cursors.Hand
         };
         footerLabel.MouseClick += (_, e) =>
         {
             if (e.Button != MouseButtons.Left) return;
             if ((ModifierKeys & Keys.Shift) != 0) ShowDevMode();
-            else
-            {
-                ShowNextCracktro();
-            }
+            else ShowNextCracktro();
         };
         footerLabel.MouseEnter += (_, _) => footerLabel.ForeColor = Color.Gainsboro;
         footerLabel.MouseLeave += (_, _) => footerLabel.ForeColor = Color.Gray;
+        var ripshiftCredit = new Label
+        {
+            Text = "_RIPSHIFT by MrEGS_",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft,
+            ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 8f),
+            Margin = Padding.Empty,
+            Cursor = Cursors.Hand,
+            AccessibleName = "Visit MrEGS_ on Twitch"
+        };
+        ripshiftCredit.MouseClick += (_, e) =>
+        {
+            if (e.Button != MouseButtons.Left) return;
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = "https://www.twitch.tv/MrEGS_",
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(this, "Unable to open Twitch: " + ex.Message,
+                    "RIPSHIFT VR", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        };
+        ripshiftCredit.MouseEnter += (_, _) => ripshiftCredit.ForeColor = Color.Gainsboro;
+        ripshiftCredit.MouseLeave += (_, _) => ripshiftCredit.ForeColor = Color.Gray;
         var footer = new TableLayoutPanel {
             Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
             Margin = Padding.Empty, Padding = Padding.Empty
         };
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+        footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62));
+        footer.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         var releaseVersion = VrGameIntroSession.ReleaseVersion;
         var releaseInfo = typeof(MainForm).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
-        footer.Controls.Add(new Label {
+        var versionLabel = new Label {
             Text = releaseVersion.ToString(releaseVersion.Build == 0 ? 2 : 3)
                 + (releaseInfo.Contains("-test") ? " Test" : releaseInfo.Contains("-beta") ? " Beta" : releaseInfo.Contains("-rc") ? " RC" : ""),
             Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft,
-            ForeColor = Color.Gray
-        }, 0, 0);
-        footer.Controls.Add(footerLabel, 1, 0);
+            ForeColor = Color.Gray,
+            Font = new Font("Segoe UI", 8f),
+            Margin = new Padding(5, 0, 0, 0)
+        };
+        var sourceAndVersion = new TableLayoutPanel {
+            Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1,
+            Margin = Padding.Empty, Padding = Padding.Empty
+        };
+        sourceAndVersion.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        sourceAndVersion.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 45));
+        sourceAndVersion.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        sourceAndVersion.Controls.Add(footerLabel, 0, 0);
+        sourceAndVersion.Controls.Add(versionLabel, 1, 0);
+        footer.Controls.Add(ripshiftCredit, 0, 0);
+        footer.Controls.Add(sourceAndVersion, 1, 0);
         root.Controls.Add(footer);
         LayoutViewport();
         LoadSettings();
@@ -956,7 +1034,7 @@ public sealed class MainForm : Form
         calibrateHands.Checked ? "rotation" : "off",
         enableBhaptics.Checked,
         usePsvr2Toolkit.Checked,
-        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, swapJumpCrouch.Checked);
+        SelectedBackWeaponKey(), handsJump.Checked, disableAa.Checked, captureEyes.Checked, disableVrIntro.Checked, false);
 
     private void SetRunningState(bool running)
     {
@@ -1036,7 +1114,8 @@ public sealed class MainForm : Form
             leftHandSwapMode.SelectedIndex = s.SettingsVersion >= 13
                 ? ClampInt(s.LeftHandSwapMode, 0, 1) : 0;
             leftHanded.Checked = s.SettingsVersion >= 13 && s.LeftHanded;
-            swapJumpCrouch.Checked = s.SettingsVersion >= 34 && s.SwapJumpCrouch;
+            // Older saved profiles may contain a swap: RIPSHIFT must ignore it.
+            swapJumpCrouch.Checked = false;
             laserSight.Checked = s.SettingsVersion >= 14 && s.LaserSight;
             hudDebugging.Checked = s.SettingsVersion >= 9 && s.HudDebugging;
             extendedLogging.Checked = s.SettingsVersion >= 25 && s.ExtendedLogging;
@@ -1125,7 +1204,7 @@ public sealed class MainForm : Form
                 showHands.Checked,
                 calibrateHands.Checked ? 1 : 0,
                 enableBhaptics.Checked,
-                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, swapJumpCrouch.Checked);
+                usePsvr2Toolkit.Checked, handsJump.Checked, disableAa.Checked, captureEyes.Checked, false);
             s.DisableVrIntro = disableVrIntro.Checked;
             LauncherSettingsStore.Save(SettingsPath, s);
         }

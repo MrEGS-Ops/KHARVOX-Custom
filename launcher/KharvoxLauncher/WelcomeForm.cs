@@ -4,7 +4,7 @@ internal sealed class WelcomeForm : Form
 {
     internal WelcomeForm()
     {
-        Text = "Welcome to KHARVOX";
+        Text = "Welcome to RIPSHIFT VR";
         ClientSize = new Size(540, 225);
         StartPosition = FormStartPosition.CenterParent;
         FormBorderStyle = FormBorderStyle.FixedDialog;
@@ -25,12 +25,12 @@ internal sealed class WelcomeForm : Form
         layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
         layout.Controls.Add(new Label
         {
-            Text = "Welcome to KHARVOX", Dock = DockStyle.Fill,
+            Text = "Welcome to RIPSHIFT VR", Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 17F, FontStyle.Bold)
         });
         layout.Controls.Add(new Label
         {
-            Text = "A VR mod for DOOM (2016).\n\nPlease read the instructions carefully before playing, especially the controller bindings and known limitations.",
+            Text = "A gameplay enhancement for KHARVOX (DOOM 2016 VR).\n\nThe original KHARVOX installation is required. Review controller bindings and limitations before playing.",
             Dock = DockStyle.Fill
         });
         var buttons = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2 };

@@ -54,7 +54,8 @@ inline RightHandGripOffset liveHeavyGripProbePoint(
 inline bool validVrCalibrationWeapon(const std::string& key) noexcept {
     return key=="pistol"||key=="shotgun"||key=="heavy_assault_rifle"||
         key=="plasma_rifle"||key=="rocket_launcher"||key=="super_shotgun"||
-        key=="gauss_cannon"||key=="chaingun"||key=="bfg"||key=="chainsaw";
+        key=="gauss_cannon"||key=="chaingun"||key=="chaingun_rotor"
+        ||key=="bfg"||key=="chainsaw";
 }
 inline bool gripKeySuffix(const std::string& key,const std::string& suffix) noexcept {
     return key.size()>=suffix.size()
@@ -97,8 +98,10 @@ struct RightHandGripSettings {
     bool gaussHandValid{},chaingunHandValid{},
         gaussSiegeHandValid{},chaingunTurretHandValid{};
     RightHandGripRotation gaussSiegeRotation{},chaingunTurretRotation{};
-    RightHandGripOffset gaussSiegeSupport{},chaingunTurretSupport{};
-    bool gaussSiegeSupportValid{},chaingunTurretSupportValid{};
+    RightHandGripOffset gaussSiegeSupport{},chaingunTurretSupport{},
+        chaingunRotorSupport{};
+    bool gaussSiegeSupportValid{},chaingunTurretSupportValid{},
+        chaingunRotorSupportValid{};
     // Move the rendered PRIMARY gun hand DOWN along the gun's own
     // up axis only while two-hand Grip is latched. This compensates for
     // the controller-origin anchor used by the earlier implementation.
@@ -221,7 +224,8 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             &&validVrPrimaryProfileKey(
                 key.substr(0,key.size()-std::string("_left_hand_position").size()));
         const bool leftAlternateSupport=key=="gauss_cannon_siege_left_primary_support_position"
-            ||key=="chaingun_turret_left_primary_support_position";
+            ||key=="chaingun_turret_left_primary_support_position"
+            ||key=="chaingun_rotor_left_primary_support_position";
         const bool genericHandPosition=gripKeySuffix(key,"_hand_position")
             &&validVrCalibrationWeapon(key.substr(0,key.size()-14));
         const bool extendedGrip=leftHandPosition||leftAlternateSupport||genericHandPosition||
@@ -230,7 +234,8 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             ||key=="gauss_cannon_siege_hand_position"
             ||key=="chaingun_turret_hand_position"
             ||key=="gauss_cannon_siege_support_position"
-            ||key=="chaingun_turret_support_position";
+            ||key=="chaingun_turret_support_position"
+            ||key=="chaingun_rotor_support_position";
         if(!(v>>p.x>>p.y>>p.z)||(v>>extra)||
             !(extendedGrip?validRightHandVisualPlacement(p)
                          :validRightHandPlacement(p))){
@@ -260,6 +265,8 @@ inline RightHandGripSettings readRightHandGripSettings(const std::string&path){
             out.gaussSiegeSupport=p;out.gaussSiegeSupportValid=true;++out.accepted;
         }else if(key=="chaingun_turret_support_position"){
             out.chaingunTurretSupport=p;out.chaingunTurretSupportValid=true;++out.accepted;
+        }else if(key=="chaingun_rotor_support_position"){
+            out.chaingunRotorSupport=p;out.chaingunRotorSupportValid=true;++out.accepted;
         }else if(genericHandPosition){
             out.visualPositions[key.substr(0,key.size()-14)]=p;++out.accepted;
         }else ++out.rejected;
@@ -514,11 +521,13 @@ inline bool saveHeavyAlternativeSupport(const std::string&path,
     const std::string&weapon,RightHandGripOffset pos,std::string*why=nullptr,
     bool leftPrimary=false){
     auto fail=[&](const char*msg){if(why)*why=msg;return false;};
-    if((weapon!="gauss_cannon"&&weapon!="chaingun")||
+    if((weapon!="gauss_cannon"&&weapon!="chaingun"
+            &&weapon!="chaingun_rotor")||
        !validRightHandVisualPlacement(pos))
         return fail("unsupported heavy weapon support point");
     const std::string key=weapon+
-        (weapon=="gauss_cannon"?"_siege":"_turret")+
+        (weapon=="gauss_cannon"?"_siege"
+            :weapon=="chaingun"?"_turret":"")+
         (leftPrimary?"_left_primary_support_position":"_support_position");
     namespace fs=std::filesystem;
     const fs::path destination(path),temp(path+".alt-support.tmp");

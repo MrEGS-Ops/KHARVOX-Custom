@@ -28,7 +28,6 @@ struct CustomModFlags {
     bool leftWristWeaponWheel{};
     bool behindHeadWheelHandSelection{true};
     bool physicalCrouch{};
-    bool revengeDemon{};
     bool dynamicShoulderHolster{};
     bool persistentSuperShotgunReload{};
     bool physicalGrenadeThrow{};
@@ -71,7 +70,6 @@ inline CustomModFlags loadCustomModFlags() {
             || !_stricmp(behindHeadHandSelection, "yes")
             || !_stricmp(behindHeadHandSelection, "on"));
     flags.physicalCrouch = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_CROUCH");
-    flags.revengeDemon = customModEnvironmentEnabled("KHARVOX_MOD_REVENGE_DEMON");
     flags.dynamicShoulderHolster = customModEnvironmentEnabled("KHARVOX_MOD_DYNAMIC_SHOULDER");
     flags.persistentSuperShotgunReload = customModEnvironmentEnabled("KHARVOX_MOD_SSG_PERSISTENT_RELOAD");
     flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");

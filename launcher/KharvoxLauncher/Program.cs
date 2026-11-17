@@ -9,22 +9,12 @@ internal static class Program
         if (args.Any(argument => string.Equals(argument, "--self-test-cactus-hand-hud",
                 StringComparison.OrdinalIgnoreCase)))
             return CactusHandHudRestore.RunSelfTest();
-        if (args.Any(argument => string.Equals(argument, "--self-test-glorykill-highlight",
+        if (args.Any(argument => string.Equals(argument, "--self-test-retail-mods",
                 StringComparison.OrdinalIgnoreCase)))
-        {
-            var nativeSetting = KharvoxRunner.NativeGloryKillHighlightArguments().ToArray();
-            if (nativeSetting.Length != 2 || nativeSetting[0] != "+g_setting_gk_highlight"
-                || nativeSetting[1] != "0")
-            {
-                Console.Error.WriteLine("Native DOOM Glory Kill Highlight must be Off.");
-                return 1;
-            }
-            Console.WriteLine("Native DOOM Glory Kill Highlight startup policy passed.");
-            return 0;
-        }
-        if (args.Any(argument => string.Equals(argument, "--self-test-standalone-gestures",
+            return RetailVrDefaults.RunSelfTest();
+        if (args.Any(argument => string.Equals(argument, "--self-test-original-kharvox",
                 StringComparison.OrdinalIgnoreCase)))
-            return StandaloneModsBridge.RunSelfTest();
+            return OriginalKharvoxSetup.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-user-mods",
                 StringComparison.OrdinalIgnoreCase)))
             return DoomUserMods.RunSelfTest();
@@ -59,19 +49,15 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        if (args.Any(argument => string.Equals(argument, "--self-test-mregs-profile",
+        if (args.Any(argument => string.Equals(argument, "--self-test-ripshift-profile",
                 StringComparison.OrdinalIgnoreCase)))
-            return MrEgsProfileSelfTest.Run();
+            return RipshiftProfileSelfTest.Run();
         if (args.Any(argument => string.Equals(argument, "--self-test-shoulder-weapon-lock",
                 StringComparison.OrdinalIgnoreCase)))
             return GunslingerShoulderWeaponLock.RunSelfTest();
         if (args.Any(argument => string.Equals(argument, "--self-test-virtual-gunstock-lock",
                 StringComparison.OrdinalIgnoreCase)))
             return VirtualGunstockGripCalibrationLock.RunSelfTest();
-
-        if (args.Any(argument => string.Equals(argument, "--self-test-embedded-layout",
-                StringComparison.OrdinalIgnoreCase)))
-            return EmbeddedLauncherLayout.SelfTest() ? 0 : 1;
 
         if (args.Any(argument => string.Equals(argument, "--self-test-cactus-launcher",
                 StringComparison.OrdinalIgnoreCase)))
@@ -108,9 +94,11 @@ internal static class Program
 
         try
         {
-            // This executable is the separately packaged, bridge-enabled
-            // derivative. Keep CactusVRStudios' MainForm.cs byte-for-byte
-            // unchanged; identify this modified build at runtime instead.
+            // Restore the original first-run installation picker, but keep
+            // all regular gameplay configuration in KHARVOX VR itself.
+            if (!OriginalKharvoxSetup.EnsureSelected()) return 0;
+            // Direct RIPSHIFT VR launcher: no external Mod Manager or updater.
+            // Preserve CactusVRStudios' original MainForm.cs unchanged.
             LauncherStartupTrace.Mark("MainForm construction begins");
             using (var window = new MainForm())
             {
@@ -121,19 +109,18 @@ internal static class Program
                     LauncherStartupTrace.Mark("MainForm Load event complete");
                 window.Shown += (_, _) =>
                     LauncherStartupTrace.Mark("MainForm Shown (first display)");
-                window.Text = "KHARVOX — Modified VR Launcher (MrEGS)";
-                MrEgsLaunchProfileBridge.Watch(window);
-                EmbeddedLauncherLayout.Watch(window);
+                window.Text = "_RIPSHIFT - KHARVOX Launcher";
+                RipshiftLaunchProfileBridge.Watch(window);
                 GunslingerShoulderWeaponLock.Watch(window);
                 VirtualGunstockGripCalibrationLock.Watch(window);
-                LauncherStartupTrace.Mark("Embedding, Gunslinger and gunstock UI watchers installed");
+                LauncherStartupTrace.Mark("RIPSHIFT VR profile and gunstock lock ready");
                 Application.Run(window);
             }
             return 0;
         }
         catch (InvalidDataException ex)
         {
-            MessageBox.Show(ex.Message, "KHARVOX — Settings need repair",
+            MessageBox.Show(ex.Message, "RIPSHIFT VR — Settings need repair",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
             return 2;
         }
@@ -161,7 +148,7 @@ internal static class Program
             KharvoxLaunchOptions options;
             using (var form = new MainForm())
             {
-                MrEgsLaunchProfileBridge.Watch(form);
+                RipshiftLaunchProfileBridge.Watch(form);
                 options = form.CreateLaunchOptions();
             }
 
