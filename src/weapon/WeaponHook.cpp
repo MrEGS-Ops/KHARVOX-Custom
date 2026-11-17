@@ -161,6 +161,7 @@ HideRenderModelMeshFn hideRenderModelMesh{};
 WeaponRenderUpdateFn originalWeaponRenderUpdate{};
 std::array<std::atomic<float>, 3> animatedGripPivot{};
 std::atomic<bool> animatedGripPivotValid{};
+std::atomic<bool> scriptedInteractionSuspended{};
 std::atomic<uint64_t> animatedGripPivotTickMs{}; // read-only published timestamp
 std::array<std::atomic<float>, 3> neutralGripPivot{};
 std::atomic<bool> neutralGripPivotValid{};
@@ -1889,7 +1890,9 @@ extern "C" void __fastcall updateHandsTransformHook(void* hands) {
     // down and while the replacement player/hands graph is only partially
     // constructed.  The native update itself owns that transition, but our
     // model/joint helper calls require a fully active gameplay camera.
-    if (collectible || !KharvoxCameraGameplayActive()) {
+    if (collectible || !KharvoxCameraGameplayActive()
+        || KharvoxCameraCutsceneActive()
+        || scriptedInteractionSuspended.load(std::memory_order_acquire)) {
         animatedGripPivotValid.store(false, std::memory_order_release);
         neutralGripPivotValid.store(false, std::memory_order_release);
         controllerRootProbeValid = false;
@@ -3037,8 +3040,17 @@ KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key) {
     return KharvoxWeaponKind::Unknown;
 }
 
+void KharvoxWeaponSetScriptedInteractionSuspended(bool suspend){
+    scriptedInteractionSuspended.store(suspend,std::memory_order_release);
+    if(suspend){
+        animatedGripPivotValid.store(false,std::memory_order_release);
+        neutralGripPivotValid.store(false,std::memory_order_release);
+    }
+}
 void KharvoxWeaponResetCalibration() {
     std::lock_guard lock(controllerInputMutex);
+    animatedGripPivotValid.store(false,std::memory_order_release);
+    neutralGripPivotValid.store(false,std::memory_order_release);
     weaponSourceEpoch.fetch_add(1,std::memory_order_acq_rel);
     pose.valid.store(false, std::memory_order_release);
     if (installed.load(std::memory_order_acquire)) {
