@@ -1,4 +1,6 @@
 #pragma once
+#include <array>
+#include <cstdint>
 #include "AerWorldViewHistory.h"
 #include "../common/AerSourceTracking.h"
 
