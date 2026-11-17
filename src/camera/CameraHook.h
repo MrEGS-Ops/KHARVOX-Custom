@@ -42,6 +42,8 @@ bool KharvoxCameraLedgeTransitionActive();
 // view control and weapon buttons. This distinguishes playable first-person
 // scripted intervals from passive scenes which merely render a weapon model.
 bool KharvoxCameraPlayerWeaponControlActive();
+// True only after native DOOM inhibitFlags layout is verified.
+bool KharvoxCameraPlayerWeaponControlClassifierReady();
 bool KharvoxCameraGetBodyPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHeadRenderPose(float origin[3], float axis[9]);
 bool KharvoxCameraGetHudCenterRenderPose(float origin[3], float axis[9]);
