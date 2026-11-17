@@ -279,9 +279,17 @@ void paintVrHandMenu() {
                 write(x+16,y+28,std::to_string(s.levelProgress.armed
                     ?s.levelProgress.deaths:s.levelLiveStats.deaths),RGB(235,92,99));
             }else{
+                const bool chosenLevel=i==5&&!s.levelProgress.armed
+                    &&s.vrHandMenu.hudRecordSelected>=0
+                    &&s.vrHandMenu.hudRecordSelected<static_cast<int>(
+                        kharvox::kCampaignMissions.size());
                 const bool lastLevel=i==5&&!s.levelProgress.armed
-                    &&!s.lastCompletedMissionKey.empty();
-                const auto& key=lastLevel?s.lastCompletedMissionKey
+                    &&!chosenLevel&&!s.lastCompletedMissionKey.empty();
+                const std::string key=s.levelProgress.armed
+                    ?s.levelProgress.verifiedMapKey
+                    :chosenLevel?kharvox::kCampaignMissions[
+                        s.vrHandMenu.hudRecordSelected].key
+                    :lastLevel?s.lastCompletedMissionKey
                     :s.levelProgress.verifiedMapKey;
                 const auto best=kharvox::levelBestFor(s.levelRecords,key);
                 write(x+16,y+5,i==2?"CAMPAIGN TIME"
