@@ -1834,8 +1834,8 @@ void updateVirtualButtons(bool fire,bool gamepadA,bool gamepadB,bool weaponMod,b
     if(missionInfo)buttons|=XINPUT_GAMEPAD_BACK;
     if(switchWeaponMod)buttons|=XINPUT_GAMEPAD_DPAD_UP;
     if(cycleEquipment)buttons|=XINPUT_GAMEPAD_DPAD_LEFT;
-    // DOOM treats native Xbox-Y as its BFG channel. Only left-grip hold may
-    // synthesize it; right-stick-click USE deliberately uses D-pad Right.
+    // DOOM treats native Xbox-Y as BFG. Only explicit Gunslinger/quick-holster
+    // weapon selection requests may synthesize it, never an ordinary Grip hold.
     if(bfg)buttons|=XINPUT_GAMEPAD_Y;
     if(pause)buttons|=XINPUT_GAMEPAD_START;
     const BYTE oldLeftTrigger=virtualLeftTrigger.exchange(leftTrigger,std::memory_order_relaxed);
