@@ -56,6 +56,10 @@ struct KharvoxWorldGrabResolvedEntity {
     unsigned int sourcePath{},nativeHandle{};
     std::uint64_t vtableRva{},levelGeneration{},sampleSequence{};
     bool vtableInExecutable{};
+    // Best-effort MSVC RTTI type, only when a complete-object locator and
+    // TypeDescriptor are validated inside the DOOM image. Empty otherwise.
+    // Class name != map asset name or proof of dynamic/physics eligibility.
+    std::array<char,80> nativeClassName{};
 };
 bool KharvoxCameraReadWorldGrabResolvedEntity(
     unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample);
