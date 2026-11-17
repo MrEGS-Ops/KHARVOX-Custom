@@ -44,6 +44,7 @@ jobs:
               "tools/verify_sfs_payload.ps1",
               "tools/Restore-Cactus-SFS-Profile.ps1",
               "tools/Get-KHARVOX-Custom-Watcher.ps1",
+              "tools/Inspect-DoomWorldPhysics.ps1",
               "tools/Generate-KHARVOX-Mods.py"
           )) {
             if ($script.EndsWith(".py")) { continue }
@@ -58,6 +59,12 @@ jobs:
             }
             Write-Host "PASS: $script parses correctly"
           }
+
+      - name: Compile read-only DOOM physics inspector
+        shell: powershell
+        run: |
+          & ./tools/Inspect-DoomWorldPhysics.ps1 -ValidateOnly
+          if ($LASTEXITCODE -ne 0) { throw "Physics inspector compile check failed" }
 
       - name: Test independent KHARVOX resource mod generator
         shell: powershell
