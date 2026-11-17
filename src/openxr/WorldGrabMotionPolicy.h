@@ -42,7 +42,7 @@ struct WorldGrabInput {
     WorldGrabPhysicsHit hit{};
     std::uint64_t levelGeneration{};
     GrabVec3 handPosition{},handForward{},objectPosition{},objectVelocity{};
-    float targetDistanceMeters{},deltaSeconds{};
+    float deltaSeconds{};
 };
 struct WorldGrabOutput {
     WorldGrabCommand command{WorldGrabCommand::None};
