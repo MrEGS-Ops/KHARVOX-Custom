@@ -20,8 +20,6 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.devWeaponAlignment,D::WeaponAlignment});
         rows.push_back({"Hand Focus",VrLiveMod::HandFocus,
             s.customMods.handFocusedRs,D::HandFocus});
-        rows.push_back({"Holster Zone Visualiser",VrLiveMod::Other,
-            s.vrHandMenu.devHolsterZones,D::HolsterZones});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
         rows.push_back({"Stats / Reset",VrLiveMod::Stats,
@@ -150,10 +148,6 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "your tracked weapon hand and head.",
             "Native scripted actions stay native.",
             "Applies live for this game session.","",""}}};
-        case D::HolsterZones:return {{{"Visualise the active hip or head zone.",
-            "Appears ONLY while calibrating",
-            "Gunslinger hip and wheel positions.",
-            "Uses live zone boundaries.","",""}}};
         case D::ControllerMonitor:return {{{"Show live hand-controller inputs.",
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
