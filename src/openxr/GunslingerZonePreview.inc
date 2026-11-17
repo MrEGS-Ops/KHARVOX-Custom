@@ -1,6 +1,6 @@
 // Transparent ring texture used by the normal Gunslinger positioning overlay.
-// Three perpendicular quads represent an in-world ellipsoid sized to native
-// interaction bounds. This is not part of chainsaw gameplay or detection.
+// Eight intersecting, angled circular planes form a 3D zone cage with
+// depth visible even from hip-level views. Native detection is unchanged.
 bool initializeGunslingerZonePreview(const std::vector<int64_t>& formats) {
     if (gunslingerZonePreviewReady) return true;
     auto& vk = s.vk;
@@ -21,7 +21,7 @@ bool initializeGunslingerZonePreview(const std::vector<int64_t>& formats) {
         const auto p=(size_t(y)*width+x)*4;
         const float r=std::sqrt(nx*nx+ny*ny);
         const float distance=(r-.91f)/.025f;
-        const float a=r<1.f?std::clamp(225.f*std::exp(-.5f*distance*distance),0.f,225.f):0.f;
+        const float a=r<1.f?std::clamp(110.f*std::exp(-.5f*distance*distance),0.f,110.f):0.f;
         const auto opacity=static_cast<unsigned char>(a);
         // Premultiplied colour for the default OpenXR compositing mode.
         pixels[p+0]=static_cast<unsigned char>((75u*opacity)/255u);

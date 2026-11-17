@@ -9540,9 +9540,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Visualise the current zone before placing it in the normal Gunslinger
     // settings. During placement the unsaved draft follows held Grip and
     // freezes at the last valid position on release; Right Trigger commits.
-    // Three perpendicular rings form an ellipsoid with the exact X/Y/Z
-    // extents of the real rectangular zone (not an altered hitbox).
-    std::array<XrCompositionLayerQuad,3> gunslingerZoneLayers{};
+    // A volumetric wire cage of eight intersecting curved meridian loops,
+    // not a single flat disk. The cage spans the native rectangular zone's
+    // X/Y/Z extents without changing collision or activation.
+    // Multiple diagonal planes remain visible even when held at hip height.
+    std::array<XrCompositionLayerQuad,8> gunslingerZoneLayers{};
+
     uint32_t gunslingerZoneLayerCount{};
     const auto& zm=s.vrHandMenu;
     const bool zoneCapturing=zm.mode==kharvox::VrHandMenuMode::Calibrating
@@ -9583,12 +9586,22 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const auto hi=hip?kharvox::VrLivePoint{.51f,-.48f,.43f}
             :kharvox::VrLivePoint{.44f,.36f,.60f};
         const float width=hi.x-lo.x,height=hi.y-lo.y,depth=hi.z-lo.z;
-        const float q=std::sqrt(.5f);
-        const std::array<XrQuaternionf,3> rotations{{
-            {0.f,0.f,0.f,1.f},{q,0.f,0.f,q},{0.f,q,0.f,q}}};
-        const std::array<XrExtent2Df,3> sizes{{
-            {width,height},{width,depth},{depth,height}}};
+        // A single XR quad is ALWAYS flat. Eight rotated quads create a
+        // genuinely spatial cage: four longitudinal sections around Y and
+        // four transverse sections around X. The ellipse on each quad is
+        // stretched to its actual ellipsoid cross-section, not a circle
+        // pretending the interaction box is round.
         for(size_t ring=0;ring<gunslingerZoneLayers.size();++ring){
+            const bool aroundY=ring<4;
+            const float angle=(float(ring%4))*0.7853981633974483f;
+            const float sh=std::sin(angle*.5f),ch=std::cos(angle*.5f);
+            const XrQuaternionf axis=aroundY
+                ?XrQuaternionf{0.f,sh,0.f,ch}
+                :XrQuaternionf{sh,0.f,0.f,ch};
+            const float ca=std::cos(angle),sa=std::sin(angle);
+            const XrExtent2Df crossSection=aroundY
+                ?XrExtent2Df{std::hypot(width*ca,depth*sa),height}
+                :XrExtent2Df{width,std::hypot(height*ca,depth*sa)};
             auto& marker=gunslingerZoneLayers[ring];
             marker=XrCompositionLayerQuad{XR_TYPE_COMPOSITION_LAYER_QUAD};
             marker.layerFlags=XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
@@ -9599,12 +9612,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 static_cast<int32_t>(gunslingerZonePreview.width),
                 static_cast<int32_t>(gunslingerZonePreview.height)}};
             marker.pose.position=centerWorld;
-            marker.pose.orientation=multiply(zoneRotation,rotations[ring]);
-            marker.size=sizes[ring];
+            marker.pose.orientation=multiply(zoneRotation,sectionRotation);
+            marker.size=sectionSize;
             ++gunslingerZoneLayerCount;
         }
     }
-    std::array<const XrCompositionLayerBaseHeader*,12> layers{};
+    std::array<const XrCompositionLayerBaseHeader*,20> layers{};
     uint32_t layerCount{};
     layers[layerCount++]=s.quadMode
         ?reinterpret_cast<const XrCompositionLayerBaseHeader*>(&quad)
