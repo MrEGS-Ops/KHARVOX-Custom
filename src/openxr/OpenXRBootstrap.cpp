@@ -9658,14 +9658,14 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         // pretending the interaction box is round.
         for(size_t ring=0;ring<gunslingerZoneLayers.size();++ring){
             // Explicit horizontal equator (XZ plane) at zone mid-height.
-            // It is face-on when viewed from above a hip holster.
+            // Face normal points UP toward the headset when looking down.
             const bool equator=ring==8;
             const bool aroundY=ring<4;
             const float angle=equator?1.5707963267948966f
                 :float(ring%4)*.7853981633974483f;
             const float sh=std::sin(angle*.5f),ch=std::cos(angle*.5f);
             const XrQuaternionf axis=equator
-                ?XrQuaternionf{.70710678118f,0.f,0.f,.70710678118f}
+                ?XrQuaternionf{-.70710678118f,0.f,0.f,.70710678118f}
                 :aroundY?XrQuaternionf{0.f,sh,0.f,ch}
                     :XrQuaternionf{sh,0.f,0.f,ch};
             const float ca=std::cos(angle),sa=std::sin(angle);
