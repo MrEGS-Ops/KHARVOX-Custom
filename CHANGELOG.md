@@ -11,6 +11,7 @@ Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR 
 - Keep gameplay configuration in the in-headset RIPSHIFT Mod Menu rather than a separate external mod manager.
 
 ### Combat and VR controls
+- Resolved Gunslinger regression: the equipped gun no longer appears inside the open weapon wheel (reported in experimental build 658; subsequently confirmed fixed in-headset).
 - World Use follows the active weapon hand: R3 for right-handed Gunslinger ownership and L3 for left-handed ownership; the opposite short stick click remains Pause, while long R3 retains the Mod Menu.
 - In normal Gunslinger configuration, the selected full-size translucent zone preview snaps to the matching Grip controller centre immediately on hold, follows live, stays on release, and saves only after Right Trigger. B cancels without saving.
 - Gunslinger supports either weapon hand, behind-head weapon selection and configurable left/right hip quick holsters.
