@@ -30,6 +30,10 @@ kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
+// Experimental: actual physical free-hand GRIP pose in DOOM world space.
+// Independent of the laser's AIM pose. Matrix is column-major, 3x3.
+void KharvoxCameraSetWorldGrabHandPose(
+    const float origin[3], const float axis[9], bool valid);
  
 // Read-only observation of DOOM's existing FocusTracker selection state.
 // These are *opaque* native fields, NOT a validated physics entity hit.
