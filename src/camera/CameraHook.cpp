@@ -1174,8 +1174,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local unsigned long long lastScan{};
     static thread_local std::array<float,3> frozenOrigin{};
     static thread_local bool freezeCaptured{},pulseDone{};
-    static thread_local std::array<float,3> anchorOffset{};
-    static thread_local bool anchorCaptured{};
+    // Anchor targets the physics origin at a fixed short distance in
+    // front of the controller. DO NOT capture arbitrary FocusTracker
+    // acquisition distance as a hand-to-object attachment offset.
     static thread_local unsigned long long liftLastPulseAt{},priorWriteAtMs{};
     static thread_local unsigned liftPulseCount{};
     static thread_local std::array<float,3> priorWriteStart{},priorWriteNext{};
@@ -1190,7 +1191,6 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         cachedEntity=reinterpret_cast<std::uintptr_t>(entity);
         cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
         cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
-        anchorCaptured=false;anchorOffset={};
         liftLastPulseAt=0;liftPulseCount=0;
         priorWriteAtMs=0;priorWriteValid=false;
         priorWriteStart={};priorWriteNext={};
@@ -1232,6 +1232,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     reading.pinned=pin.active&&pin.epoch==epoch&&pin.entity==entity;
     reading.pinnedTicks=reading.pinned?pin.ticks:0;
     reading.status=1; // no verified rigid body yet
+    std::array<float,3> loggedHand{},loggedTarget{},loggedPreWriteOrigin{};
+    bool loggedHandValid=false;
     if(cachedBody){
         reading.physicsClass=cachedType;
         std::uintptr_t vtable{};
@@ -1341,9 +1343,18 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                     }
                     reading.distanceFromHand=std::isfinite(distance2)
                         ?std::sqrt(distance2):-1.f;
-                    // Keep the anchor local to the controller. For now
-                    // object-centre reach is advisory, in native DOOM units.
-                    if(std::isfinite(distance2)&&distance2<110.f*110.f){
+                    loggedHand={hand[0],hand[1],hand[2]};
+                    loggedPreWriteOrigin={origin[0],origin[1],origin[2]};
+                    loggedHandValid=true;
+                    // A ray target must begin within 110 native units.
+                    // Once Grip PIN is acquired, allow hand motion within
+                    // a larger tether instead of silently stopping at the
+                    // same acquisition threshold. Still finite and capped.
+                    const bool heldPin=(mode==2||mode==6)
+                        &&pin.active&&pin.epoch==epoch&&pin.entity==entity;
+                    const float allowedReach=heldPin?220.f:110.f;
+                    if(std::isfinite(distance2)
+                        &&distance2<allowedReach*allowedReach){
                         // Lock once, after native RTTI, GetOrigin and
                         // writable storage are all verified. Retain the
                         // engine-resolved entity identity until Grip release;
@@ -1382,22 +1393,22 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             }
                             for(int i=0;i<3;++i)next[i]=frozenOrigin[i];
                             write=true;
-                        }else if(mode==2||mode==6){ // Hand-relative offset with two tested strengths
-                            if(!anchorCaptured){
-                                for(int i=0;i<3;++i)
-                                    anchorOffset[i]=origin[i]-hand[i];
-                                anchorCaptured=true;
-                            }
+                        }else if(mode==2||mode==6){ // short, fixed controller-relative origin target
                             float step2=0.f;
                             for(int i=0;i<3;++i){
-                                next[i]=hand[i]+anchorOffset[i]-origin[i];
+                                // Restore #743's native-origin attachment.
+                                // At acquisition, do not preserve the full
+                                // length of the ray as a floating offset.
+                                const float target=hand[i]+direction[i]*8.f;
+                                loggedTarget[i]=target;
+                                next[i]=target-origin[i];
                                 step2+=next[i]*next[i];
                             }
                             const float step=std::sqrt(step2);
-                            // Strong Anchor explores whether a larger
-                            // correction survives the next engine physics
-                            // update. Neither mode is collision-aware yet.
-                            const float maxStep=mode==6?28.f:12.f;
+                            // Compare the original smaller cap to the
+                            // more aggressive Strong Anchor while using
+                            // precisely the same hand target.
+                            const float maxStep=mode==6?28.f:8.f;
                             const float factor=step>maxStep?maxStep/step:1.f;
                             for(int i=0;i<3;++i)
                                 next[i]=origin[i]+next[i]*factor;
@@ -1498,7 +1509,12 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             +" retainedXYZ="+xyz(reading.retainedDelta)
             +" retentionKnown="+(reading.retentionKnown?"yes":"no")
             +" pinned="+(reading.pinned?"yes":"no")
-            +" pinTicks="+std::to_string(reading.pinnedTicks));
+            +" pinTicks="+std::to_string(reading.pinnedTicks)
+            +" handValid="+(loggedHandValid?"yes":"no")
+            +" handXYZ="+xyz(loggedHand)
+            +" goalXYZ="+xyz(loggedTarget)
+            +" beforeXYZ="+xyz(loggedPreWriteOrigin)
+            +" distance="+std::to_string(reading.distanceFromHand));
     }
 #else
     (void)entity;(void)path;(void)handle;(void)className;

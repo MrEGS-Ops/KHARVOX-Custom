@@ -925,7 +925,7 @@ void paintVrHandMenu() {
             }else{
                 const std::array<const char*,7> labels{{
                     "LASER / BODY INSPECTOR","FREEZE OBJECT POSITION",
-                    "ANCHOR (12-UNIT FOLLOW)","PUSH OBJECT (PULSE)",
+                    "ANCHOR (ORIGIN FOLLOW)","PUSH OBJECT (PULSE)",
                     "PULL OBJECT (PULSE)","STRONG ANCHOR (28 UNITS)",
                     "LIFT PROBE (UP ONLY)"}};
                 const std::array<bool,7> modes{{

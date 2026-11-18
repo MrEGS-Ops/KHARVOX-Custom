@@ -1061,10 +1061,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         }
                         m.message=wasEnabled?"Physics method OFF."
                             :option==1?"FREEZE: pin object physics origin."
-                            :option==2?"ANCHOR: 12-unit hand-offset follow."
+                            :option==2?"ANCHOR: direct short-range origin follow."
                             :option==3?"PUSH: object position pulse."
                             :option==4?"PULL: object position pulse."
-                            :option==5?"STRONG ANCHOR: 28-unit hand-offset follow."
+                            :option==5?"STRONG ANCHOR: 28-unit origin follow."
                             :"LIFT PROBE: eight upward-only steps.";
                         log(std::string("[WORLD-GRAB-PHYS-MODE] ")+m.message);
                     }
