@@ -182,3 +182,14 @@ else()
   target_compile_options(KharvoxWorldGrabMotionPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME world-grab-motion-intent COMMAND KharvoxWorldGrabMotionPolicyTests)
+
+# Five independent DEV World Grab activation strategies, including the
+# no-kick direct path and a bounded native-owner scheduling observation.
+add_executable(KharvoxWorldGrabActivationPolicyTests ../world_grab_activation_policy_tests.cpp)
+target_compile_features(KharvoxWorldGrabActivationPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxWorldGrabActivationPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxWorldGrabActivationPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME world-grab-five-activation-strategies COMMAND KharvoxWorldGrabActivationPolicyTests)
