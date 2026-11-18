@@ -5470,14 +5470,53 @@ void updateGameplayActions(XrTime displayTime){
                     +bodyAxis[6+axis]*localDirection[2];
             }
             KharvoxCameraSetFocusHandPose(worldOrigin,worldDirection,true);
+            // The focus laser uses AIM, but an actual grab attaches to GRIP.
+            // Publish the complete physical GRIP pose, transformed through
+            // the same current native player-body matrix as the focus ray.
+            const auto& gripController=s.weaponHandLeft
+                ?s.rightGripController:s.leftGripController;
+            if(worldGrabFreeHandFocus&&gripController.valid
+                &&gripController.positionTracked){
+                const auto grip=controllerRelativeToBodyTrackingOrigin(
+                    gripController);
+                const float localGrip[3]{
+                    -grip.position.z*s.worldScale,
+                    -grip.position.x*s.worldScale,
+                    grip.position.y*s.worldScale};
+                float nativeGripOrigin[3]{},nativeGripAxis[9]{};
+                for(int j=0;j<3;++j)
+                    nativeGripOrigin[j]=bodyOrigin[j]
+                        +bodyAxis[j]*localGrip[0]
+                        +bodyAxis[3+j]*localGrip[1]
+                        +bodyAxis[6+j]*localGrip[2];
+                for(int col=0;col<3;++col){
+                    const XrVector3f trackingAxis=rotateVector(
+                        grip.orientation,col==0?XrVector3f{1,0,0}
+                            :col==1?XrVector3f{0,1,0}
+                                   :XrVector3f{0,0,1});
+                    const float localAxis[3]{
+                        -trackingAxis.z,-trackingAxis.x,trackingAxis.y};
+                    for(int j=0;j<3;++j)
+                        nativeGripAxis[col*3+j]=
+                            bodyAxis[j]*localAxis[0]
+                            +bodyAxis[3+j]*localAxis[1]
+                            +bodyAxis[6+j]*localAxis[2];
+                }
+                KharvoxCameraSetWorldGrabHandPose(
+                    nativeGripOrigin,nativeGripAxis,true);
+            }else{
+                KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
+            }
         }else{
             KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+            KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
         }
     }else{
         s.boxingPoseStartedAt=0;
         s.headFocusHeldUntil=0;
         s.boxingHeadFocus=false;
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
     }
     // All three are independent mods. Boxing overrides fast kill timing only
     // while head-focus boxing mode is active. Otherwise checkbox-controlled
