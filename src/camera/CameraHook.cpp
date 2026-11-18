@@ -716,15 +716,20 @@ bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
 }
 // Experimental hand-centred collision proxy: not DOOM's native player
 // capsule and NOT a claimed reverse-engineered Kick callback. The candidate
-// rigid-body vtable vector setter is bound only if the user's exact DOOM
-// executable matches the complete 27-byte code signature. This is a single
+// rigid-body activation and vector setter are bound only if the user's
+// exact DOOM executable matches both complete code signatures. This is a single
 // low-strength vector pulse while free-hand Grip is held. All other physics
 // methods and the player's collision body remain untouched.
 bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
     std::uintptr_t imageBase,const float away[3],
-    float before[3],float after[3]) {
+    float before[3],float after[3],int& restBefore,int& restAfter) {
     if(!body||!vtable||!imageBase||!away||!before||!after)return false;
     constexpr std::uintptr_t candidateRva=0x179FBB0;
+    constexpr std::uintptr_t wakeRva=0x179A8F0;
+    constexpr unsigned char wakeSignature[]{
+        0xC7,0x81,0x70,0x01,0x00,0x00,
+        0xFF,0xFF,0xFF,0xFF,0xC3
+    };
     constexpr unsigned char expected[]{
         0x8B,0x02,0x89,0x81,0xD4,0x01,0x00,0x00,
         0x8B,0x42,0x04,0x89,0x81,0xD8,0x01,0x00,0x00,
@@ -741,7 +746,26 @@ bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
             sizeof(expected))
         ||std::memcmp(reinterpret_cast<const void*>(candidate),
             expected,sizeof(expected))!=0)return false;
-    // The verified code writes a 3-float vector at 0x1D4. Its physical
+    // +0x110: exact native method which clears the rigid-body sleep
+    // marker (atRest at +0x170 becomes -1). This method was recovered
+    // from the user's executable, and checked before calling.
+    std::uintptr_t wake{};
+    if(!readableMemory(reinterpret_cast<const void*>(vtable+0x110),
+            sizeof(wake)))return false;
+    std::memcpy(&wake,reinterpret_cast<const void*>(vtable+0x110),
+        sizeof(wake));
+    if(wake!=imageBase+wakeRva
+        ||!executableMemory(reinterpret_cast<const void*>(wake))
+        ||!readableMemory(reinterpret_cast<const void*>(wake),
+            sizeof(wakeSignature))
+        ||std::memcmp(reinterpret_cast<const void*>(wake),
+            wakeSignature,sizeof(wakeSignature))!=0)return false;
+    auto* restField=reinterpret_cast<int*>(
+        static_cast<unsigned char*>(body)+0x170);
+    if(!writableMemory(restField,sizeof(int)))return false;
+    restBefore=*restField;
+    restAfter=restBefore;
+    // The verified vector setter writes a 3-float vector at 0x1D4. Its physical
     // meaning is an experiment, NOT an established native ApplyImpulse ABI.
     auto* vector=reinterpret_cast<float*>(
         static_cast<unsigned char*>(body)+0x1D4);
@@ -754,13 +778,19 @@ bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
     float next[3]{};
     for(int i=0;i<3;++i)next[i]=before[i]+away[i]*9.f;
     next[2]+=0.5f;
+    using WakeFn=void(__fastcall*)(void*);
     using Fn=void(__fastcall*)(void*,const float*);
 #if defined(_MSC_VER)
-    __try {reinterpret_cast<Fn>(candidate)(body,next);}
+    __try {
+        reinterpret_cast<WakeFn>(wake)(body);
+        reinterpret_cast<Fn>(candidate)(body,next);
+    }
     __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
 #else
+    reinterpret_cast<WakeFn>(wake)(body);
     reinterpret_cast<Fn>(candidate)(body,next);
 #endif
+    restAfter=*restField;
     for(int i=0;i<3;++i)after[i]=vector[i];
     return std::isfinite(after[0])&&std::isfinite(after[1])
         &&std::isfinite(after[2]);
@@ -1502,8 +1532,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             for(int i=0;i<3;++i)
                                 away[i]=(origin[i]-hand[i])/length;
                             float before[3]{},after[3]{};
+                            int restBefore{},restAfter{};
                             const bool applied=experimentalHandKickVector(
-                                cachedBody,vtable,imageBase,away,before,after);
+                                cachedBody,vtable,imageBase,away,before,after,
+                                restBefore,restAfter);
                             if(applied)handKickPulseAt=now;
                             log(std::string("[WORLD-GRAB-HAND-KICK] handle=")
                                 +std::to_string(handle)+" class="+type
@@ -1511,6 +1543,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 +" envelope=120-native-units"
                                 +" strength=9 velocity-vector-units"
                                 +" applied="+(applied?"yes":"NO; ABI/field validation failed")
+                                +" atRestBefore="+std::to_string(restBefore)
+                                +" atRestAfter="+std::to_string(restAfter)
                                 +" previousXYZ="+std::to_string(before[0])+","
                                     +std::to_string(before[1])+","+std::to_string(before[2])
                                 +" afterXYZ="+std::to_string(after[0])+","
