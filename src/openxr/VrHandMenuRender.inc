@@ -393,9 +393,16 @@ void paintVrHandMenu() {
                         :"FOCUS: NOT OBSERVED",muted);
             }
             write(left,inspectorY+159,
-                "PHYSICS BODY / SIZE: UNVERIFIED",gold);
+                std::string("NATIVE DRAG: ")
+                +(inspect.nativeDragStatus==2?"FIRE BRIDGED (TEST)"
+                    :inspect.nativeDragStatus==1?"ENGINE READY / GRIP TO TRY"
+                    :inspect.nativeDragStatus<0?"G_DRAGENTITY UNAVAILABLE"
+                    :"OFF / NO METHOD"),gold);
             write(left,inspectorY+186,
-                "VACUUM / ANCHOR / THROW: NOT LINKED",gold);
+                std::string("DRAG METHOD: ")
+                +(inspect.nativeDragMode==1?"HEAD / SPRING"
+                    :inspect.nativeDragMode==2?"HAND / SPRING"
+                    :inspect.nativeDragMode==3?"HAND / SNAP":"NONE"),gold);
             auto event=inspect.lastEvent;
             if(event.size()>40)event=event.substr(0,40);
             write(left,inspectorY+213,"EVENT: "+event,muted);
@@ -869,7 +876,8 @@ void paintVrHandMenu() {
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
-                ?"EXPERIMENTAL - LASER AIM":"SESSION-ONLY DEVELOPER TOOL",muted);
+                ?"WORLD GRAB - NATIVE PHYSICS METHODS"
+                :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
@@ -883,14 +891,25 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                fill(531,186,384,58,m.hovered==130?RGB(52,83,99):RGB(39,49,63));
-                write(548,204,entries[selected].enabled
-                    ?"FREE-HAND AIM LASER: ON"
-                    :"FREE-HAND AIM LASER: OFF",white);
-                write(538,271,"Cyan beam from free controller AIM.",muted);
-                write(538,303,"0.90m reach; scene-depth occluded.",muted);
-                write(538,339,"AIM ONLY: barrel hit not verified.",RGB(255,187,111));
-                write(538,375,"Native object movement pending.",muted);
+                const std::array<const char*,4> labels{{
+                    "LASER / INSPECTOR","HEAD DRAG (SPRING)",
+                    "HAND DRAG (SPRING)","HAND DRAG (SNAP)"}};
+                const std::array<bool,4> modes{{
+                    m.experimentalWorldGrabProbeEnabled,m.experimentalGrabHeadDrag,
+                    m.experimentalGrabHandDrag,m.experimentalGrabSnapDrag}};
+                for(int index=0;index<4;++index){
+                    const int y=186+index*68;
+                    const bool focused=m.hovered==130+index
+                        ||(m.navigation.usingStick
+                            &&m.navigation.actionIndex==index);
+                    fill(531,y,384,58,focused?RGB(52,83,99):RGB(39,49,63));
+                    write(548,y+17,std::string(labels[index])
+                        +(modes[index]?" : ON":" : OFF"),
+                        modes[index]?RGB(128,255,177):white);
+                }
+                write(538,474,"GRIP = native FIRE / DOOM physics drag.",muted);
+                write(538,505,"Test each mode separately with movable props.",muted);
+                write(538,536,"Unverified engine route; gun may also fire.",RGB(255,187,111));
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

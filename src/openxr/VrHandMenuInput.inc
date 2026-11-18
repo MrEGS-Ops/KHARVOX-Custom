@@ -843,7 +843,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 using kharvox::VrLiveMod;
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
-                    return 1; // DEV Experimental has one safe input-probe toggle
+                    return entry.developer==kharvox::VrMenuDevOption::Experimental
+                        ?4:1; // laser + three distinct drag strategies
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -911,7 +912,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
-                    m.message="INPUT PROBE ONLY: no props moved or player tethered.";
+                    m.message="Try native physics drag methods separately.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -999,7 +1000,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&m.navigation.settingsColumn&&chosen==130&&n>0){
+            }else if(devPage&&m.navigation.settingsColumn
+                &&chosen>=130&&chosen<=133&&n>0){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1014,12 +1016,33 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
                 }else if(kind==D::Experimental){
-                    m.experimentalWorldGrabProbeEnabled=
-                        !m.experimentalWorldGrabProbeEnabled;
-                    if(!m.experimentalWorldGrabProbeEnabled)s.worldGrabProbe={};
-                    m.message=m.experimentalWorldGrabProbeEnabled
-                        ?"Free-hand cyan AIM LASER ON (physics pending)."
-                        :"Free-hand cyan AIM LASER OFF.";
+                    const int option=chosen-130;
+                    if(option==0){
+                        m.experimentalWorldGrabProbeEnabled=
+                            !m.experimentalWorldGrabProbeEnabled;
+                        if(!m.experimentalWorldGrabProbeEnabled)s.worldGrabProbe={};
+                        m.message=m.experimentalWorldGrabProbeEnabled
+                            ?"World Grab laser / inspector ON."
+                            :"World Grab experiment OFF; drag restored.";
+                    }else{
+                        const bool wasEnabled=option==1?m.experimentalGrabHeadDrag
+                            :option==2?m.experimentalGrabHandDrag
+                            :m.experimentalGrabSnapDrag;
+                        m.experimentalGrabHeadDrag=false;
+                        m.experimentalGrabHandDrag=false;
+                        m.experimentalGrabSnapDrag=false;
+                        if(!wasEnabled){
+                            if(option==1)m.experimentalGrabHeadDrag=true;
+                            if(option==2)m.experimentalGrabHandDrag=true;
+                            if(option==3)m.experimentalGrabSnapDrag=true;
+                            m.experimentalWorldGrabProbeEnabled=true;
+                        }
+                        m.message=wasEnabled?"Drag method OFF."
+                            :option==1?"Native HEAD / SPRING drag armed."
+                            :option==2?"Native HAND / SPRING drag armed."
+                            :"Native HAND / SNAP drag armed.";
+                        log(std::string("[WORLD-GRAB-METHOD] ")+m.message);
+                    }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){

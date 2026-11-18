@@ -572,6 +572,8 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
+    bool experimentalGrabHeadDrag{},experimentalGrabHandDrag{},experimentalGrabSnapDrag{};
+    // Each method is independently toggleable, mutually exclusive at runtime.
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};

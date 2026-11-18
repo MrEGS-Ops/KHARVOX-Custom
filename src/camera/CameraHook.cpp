@@ -2997,6 +2997,73 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
+int KharvoxCameraServiceNativeWorldDrag(int mode,bool gripHeld) {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    static std::mutex mutex;
+    static bool lookedUp=false,ready=false,active=false;
+    static volatile LONG *drag=nullptr,*damping=nullptr,*showSelection=nullptr;
+    static LONG oldDrag=0,oldDamping=0,oldSelection=0;
+    static int previousMode=0;
+    std::lock_guard<std::mutex> lock(mutex);
+    if(mode>=1&&mode<=3&&!lookedUp){
+        lookedUp=true;
+        // The existing resolver verifies native name-pointer layout against
+        // DOOM's timescale CVar. No guessed physics offsets or pointers.
+        drag=resolveVerifiedIntegerCvar("g_dragEntity",1);
+        damping=resolveVerifiedIntegerCvar("g_dragDamping",0x7fffffff);
+        showSelection=resolveVerifiedIntegerCvar("g_dragShowSelection",1);
+        if(damping){
+            const LONG bits=InterlockedCompareExchange(damping,0,0);
+            float value{};
+            std::memcpy(&value,&bits,sizeof(value));
+            if(!std::isfinite(value)||value<0.f||value>1.f)damping=nullptr;
+        }
+        ready=drag!=nullptr;
+        log(std::string("[WORLD-GRAB-DRAG] native drag CVar=")
+            +(ready?"RESOLVED":"UNAVAILABLE")
+            +" damping="+(damping?"RESOLVED":"UNAVAILABLE")
+            +" selection="+(showSelection?"RESOLVED":"UNAVAILABLE"));
+    }
+    const bool want=ready&&mode>=1&&mode<=3&&gripHeld
+        &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxCameraBossSequenceActive();
+    if(!want){
+        if(active){
+            InterlockedExchange(drag,oldDrag);
+            if(damping)InterlockedExchange(damping,oldDamping);
+            if(showSelection)InterlockedExchange(showSelection,oldSelection);
+            active=false;previousMode=0;
+            log("[WORLD-GRAB-DRAG] grip/mode released; engine CVars restored");
+        }
+        return !lookedUp?0:(ready?1:-1);
+    }
+    if(!active){
+        oldDrag=InterlockedCompareExchange(drag,0,0);
+        if(damping)oldDamping=InterlockedCompareExchange(damping,0,0);
+        if(showSelection)oldSelection=InterlockedCompareExchange(showSelection,0,0);
+        active=true;
+    }
+    InterlockedExchange(drag,1);
+    if(showSelection)InterlockedExchange(showSelection,1);
+    if(damping){
+        const float requestedDamping=mode==3?0.f:0.5f;
+        LONG bits{};
+        std::memcpy(&bits,&requestedDamping,sizeof(bits));
+        InterlockedExchange(damping,bits);
+    }
+    if(previousMode!=mode){
+        previousMode=mode;
+        log(std::string("[WORLD-GRAB-DRAG] native FIRE input bridged mode=")
+            +std::to_string(mode)
+            +(mode==1?" HEAD-SPRING":mode==2?" HAND-SPRING":" HAND-SNAP")
+            +"; engine attachment still requires headset validation");
+    }
+    return 2;
+#else
+    (void)mode;(void)gripHeld;return -1;
+#endif
+}
+
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     const bool previous=nativeGrabFocusObservationEnabled.exchange(
         enabled,std::memory_order_acq_rel);

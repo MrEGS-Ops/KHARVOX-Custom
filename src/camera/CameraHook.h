@@ -39,6 +39,10 @@ struct KharvoxWorldGrabNativeFocus {
     unsigned long long nativeReference{},levelGeneration{},sampleSequence{};
 };
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled);
+// Experimental game-owned g_dragEntity physics route.
+// 1=head/spring, 2=hand/spring, 3=hand/snap; 0=off.
+// Result: -1 unsupported, 0 idle, 1 ready, 2 bridged (not proof of attachment).
+int KharvoxCameraServiceNativeWorldDrag(int mode,bool gripHeld);
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample);
 // Candidate handles intercepted immediately before DOOM resolves two native
 // trace hits into entities. May include static/invalid/non-interactable hits.
