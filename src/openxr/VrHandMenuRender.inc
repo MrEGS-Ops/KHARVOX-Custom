@@ -841,9 +841,11 @@ void paintVrHandMenu() {
             write(48,602,"LEFT STICK: scroll  ("+
                 std::to_string(selected+1)+"/"+std::to_string(count)+")",muted);
         }
-        // LEFT: browse. RIGHT: meaningful gameplay description until A
-        // explicitly opens configuration for the highlighted mod.
-        if(!m.navigation.settingsColumn){
+        // Experimental is the one DEV row whose right-side switches are
+        // visible and pointer-clickable as soon as the row is highlighted.
+        const bool expInline=devPage&&count>0
+            &&entries[selected].developer==kharvox::VrMenuDevOption::Experimental;
+        if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
             const auto overview=entries[overviewSelected].developer
                 ==kharvox::VrMenuDevOption::None
@@ -891,13 +893,15 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,4> labels{{
-                    "LASER / INSPECTOR","HEAD DRAG (SPRING)",
-                    "HAND DRAG (SPRING)","HAND DRAG (SNAP)"}};
-                const std::array<bool,4> modes{{
-                    m.experimentalWorldGrabProbeEnabled,m.experimentalGrabHeadDrag,
-                    m.experimentalGrabHandDrag,m.experimentalGrabSnapDrag}};
-                for(int index=0;index<4;++index){
+                const std::array<const char*,5> labels{{
+                    "LASER / BODY INSPECTOR","FREEZE OBJECT POSITION",
+                    "ANCHOR TO FREE HAND","PUSH OBJECT (PULSE)",
+                    "PULL OBJECT (PULSE)"}};
+                const std::array<bool,5> modes{{
+                    m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
+                    m.experimentalAnchorBody,m.experimentalPushBody,
+                    m.experimentalPullBody}};
+                for(int index=0;index<5;++index){
                     const int y=186+index*68;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
@@ -907,9 +911,8 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,474,"GRIP = native FIRE / DOOM physics drag.",muted);
-                write(538,505,"Test each mode separately with movable props.",muted);
-                write(538,536,"Unverified engine route; gun may also fire.",RGB(255,187,111));
+                write(538,545,"Grip attempts direct native physics edits.",RGB(255,187,111));
+                write(538,578,"Experimental; changes may be ignored by DOOM.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

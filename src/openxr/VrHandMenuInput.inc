@@ -496,12 +496,15 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                     return 1000+s.vrHandMenu.modScroll+i;
         }
         if(pixelX>=531&&pixelX<=915){
-            if(!s.vrHandMenu.navigation.settingsColumn){
-                if(pixelY>=550&&pixelY<609)return 115; // CONFIGURE
-                return -1; // right panel overview is read-only
-            }
             const auto list=activeVrMenuEntries();
             const int row=s.vrHandMenu.selectedRow;
+            const bool expInline=row>=0&&row<static_cast<int>(list.size())
+                &&s.vrHandMenu.page==kharvox::VrMenuPage::Dev
+                &&list[row].developer==kharvox::VrMenuDevOption::Experimental;
+            if(!s.vrHandMenu.navigation.settingsColumn&&!expInline){
+                if(pixelY>=550&&pixelY<609)return 115;
+                return -1;
+            }
             if(row<0||row>=static_cast<int>(list.size()))return -1;
             const bool toggleable=s.vrHandMenu.page==kharvox::VrMenuPage::Mods
                 &&kharvox::vrLiveModToggleable(list[row].mod);
@@ -844,7 +847,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?4:1; // laser + three distinct drag strategies
+                        ?5:1; // laser + four physics experiments
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -864,8 +867,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             // Overview is browse-only. Stick horizontal cannot silently
             // open a config or make A adjust a value. A / CONFIGURE enters
             // the right-side options; B returns to the overview.
+            const bool experimentalSelected=devPage&&n>0
+                &&rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental;
             kharvox::vrMenuNavigateStick(m.navigation,
-                m.navigation.settingsColumn?s.leftStick.x:0.f,
+                (m.navigation.settingsColumn||experimentalSelected)
+                    ?s.leftStick.x:0.f,
                 s.leftStick.y,n,m.selectedRow,previousOptions);
             if(n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
@@ -912,7 +918,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
-                    m.message="Try native physics drag methods separately.";
+                    m.message="Experimental physics switches are shown on the right.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -968,7 +974,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     }
                 }else{
                     m.navigation.settingsColumn=false;
-                    m.message="Browse mod details. A opens configuration.";
+                    m.message=devPage&&rows[newRow].developer
+                        ==kharvox::VrMenuDevOption::Experimental
+                        ?"Experimental switches visible on right."
+                        :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
                 m.selectedMod=rows[m.selectedRow].mod;
@@ -1000,8 +1009,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&m.navigation.settingsColumn
-                &&chosen>=130&&chosen<=133&&n>0){
+            }else if(devPage&&chosen>=130&&chosen<=134&&n>0
+                &&(m.navigation.settingsColumn
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1022,26 +1032,29 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             !m.experimentalWorldGrabProbeEnabled;
                         if(!m.experimentalWorldGrabProbeEnabled)s.worldGrabProbe={};
                         m.message=m.experimentalWorldGrabProbeEnabled
-                            ?"World Grab laser / inspector ON."
-                            :"World Grab experiment OFF; drag restored.";
+                            ?"Physics object inspector ON."
+                            :"Physics experiments OFF; inspect inactive.";
                     }else{
-                        const bool wasEnabled=option==1?m.experimentalGrabHeadDrag
-                            :option==2?m.experimentalGrabHandDrag
-                            :m.experimentalGrabSnapDrag;
-                        m.experimentalGrabHeadDrag=false;
-                        m.experimentalGrabHandDrag=false;
-                        m.experimentalGrabSnapDrag=false;
+                        const bool wasEnabled=option==1?m.experimentalFreezeBody
+                            :option==2?m.experimentalAnchorBody
+                            :option==3?m.experimentalPushBody:m.experimentalPullBody;
+                        m.experimentalFreezeBody=false;
+                        m.experimentalAnchorBody=false;
+                        m.experimentalPushBody=false;
+                        m.experimentalPullBody=false;
                         if(!wasEnabled){
-                            if(option==1)m.experimentalGrabHeadDrag=true;
-                            if(option==2)m.experimentalGrabHandDrag=true;
-                            if(option==3)m.experimentalGrabSnapDrag=true;
+                            if(option==1)m.experimentalFreezeBody=true;
+                            if(option==2)m.experimentalAnchorBody=true;
+                            if(option==3)m.experimentalPushBody=true;
+                            if(option==4)m.experimentalPullBody=true;
                             m.experimentalWorldGrabProbeEnabled=true;
                         }
-                        m.message=wasEnabled?"Drag method OFF."
-                            :option==1?"Native HEAD / SPRING drag armed."
-                            :option==2?"Native HAND / SPRING drag armed."
-                            :"Native HAND / SNAP drag armed.";
-                        log(std::string("[WORLD-GRAB-METHOD] ")+m.message);
+                        m.message=wasEnabled?"Physics method OFF."
+                            :option==1?"FREEZE: pin object physics origin."
+                            :option==2?"ANCHOR: follow free hand position."
+                            :option==3?"PUSH: object position pulse."
+                            :"PULL: object position pulse.";
+                        log(std::string("[WORLD-GRAB-PHYS-MODE] ")+m.message);
                     }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
