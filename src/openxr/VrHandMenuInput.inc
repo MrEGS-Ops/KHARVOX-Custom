@@ -512,7 +512,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?6:5;
+            const int optionCount=expInline?7:5;
             const int optionStep=expInline?44:68;
             const int optionHeight=expInline?42:58;
             for(int i=0;i<optionCount;++i)
@@ -853,7 +853,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?6:1; // inspector + five independent activation strategies
+                        ?7:1; // inspector + five activation tests + preserved Strong Anchor
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1018,7 +1018,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=135&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=136&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
@@ -1055,7 +1055,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             :option==2?"TEST 2: verified native body wake + hand control."
                             :option==3?"TEST 3: wake + 0.35-unit contact proxy (not a collision callback)."
                             :option==4?"TEST 4: wake + 0.20-unit vertical micro-movement."
-                            :"TEST 5: wake, observe native motion for 350ms, then follow.";
+                            :option==5?"TEST 5: wake, observe native motion for 350ms, then follow."
+                            :"STRONG ANCHOR: original 28-unit follow with native-motion gate.";
                         log(std::string("[WORLD-GRAB-ACTIVATION-TEST] ")+m.message);
                     }
                 }
