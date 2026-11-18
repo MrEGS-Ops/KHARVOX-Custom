@@ -720,6 +720,7 @@ bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
 // exact DOOM executable matches both complete code signatures. This is a single
 // low-strength vector pulse while free-hand Grip is held. All other physics
 // methods and the player's collision body remain untouched.
+bool executableMemory(const void* address);
 bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
     std::uintptr_t imageBase,const float away[3],
     float before[3],float after[3],int& restBefore,int& restAfter) {
