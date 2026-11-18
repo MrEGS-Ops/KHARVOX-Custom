@@ -4479,6 +4479,9 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsReadbackDelta=sample.readbackDelta;
             inspector.physicsRetainedDelta=sample.retainedDelta;
             inspector.physicsRetentionKnown=sample.retentionKnown;
+            inspector.physicsRestKnown=sample.nativeRestKnown;
+            inspector.physicsNativeMotionCandidate=sample.nativeMotionCandidate;
+            inspector.physicsAtRest=sample.nativeAtRest;
             inspector.physicsPinned=sample.pinned;
             inspector.physicsPinnedTicks=sample.pinnedTicks;
             const auto callbackNow=GetTickCount64();

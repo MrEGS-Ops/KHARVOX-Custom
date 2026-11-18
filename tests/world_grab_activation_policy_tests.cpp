@@ -1,4 +1,5 @@
 #include "../src/openxr/WorldGrabActivationTestPolicy.h"
+#include "../src/openxr/WorldGrabSyncPolicy.h"
 #include <cassert>
 #include <initializer_list>
 using namespace kharvox;
@@ -31,6 +32,12 @@ int main(){
     assert(!worldGrabActivationFollowReady(5,false,349));
     assert(worldGrabActivationFollowReady(5,true,20));
     assert(worldGrabActivationFollowReady(5,false,350));
+    assert(worldGrabNativeWakeCandidate(true,1,true,-1,false,false));
+    assert(!worldGrabNativeWakeCandidate(true,1,true,-1,true,false));
+    assert(!worldGrabNativeWakeCandidate(true,1,true,-1,false,true));
+    assert(worldGrabPassiveMotionCandidate(1.0f,false,false));
+    assert(!worldGrabPassiveMotionCandidate(1.0f,true,false));
+    assert(!worldGrabPassiveMotionCandidate(1.0f,false,true));
     // Working Strong Anchor is NOT retired: it remains separately selectable
     // and deliberately uses the original native-motion gate.
     assert(worldGrabStrongAnchor(6));

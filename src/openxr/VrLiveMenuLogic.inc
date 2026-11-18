@@ -171,12 +171,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{
-            "Five no-kick activation experiments.",
-            "A: Direct    B: Native Wake",
-            "C: Contact Proxy    D: Micro Move",
-            "E: Owner / Entity Tick Probe",
-            "Select one mode; test fresh props.",
-            "All are temporary, DEV-only."}}};
+            "SYNC INSPECTOR: physics vs visible pose.",
+            "Compare untouched, Grip, release, kick.",
+            "Five activation tests remain selectable.",
+            "Strong Anchor preserved as control.",
+            "Native motion evidence != body readback.",
+            "See WORLD-GRAB-KICK-FINGERPRINT logs."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }

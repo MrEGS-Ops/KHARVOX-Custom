@@ -61,6 +61,8 @@ struct WorldGrabInspectorSnapshot {
   unsigned int physicsWakeNudges{};
   std::array<float,3> physicsRequestedDelta{},physicsReadbackDelta{},physicsRetainedDelta{};
   bool physicsRetentionKnown{};
+  bool physicsRestKnown{},physicsNativeMotionCandidate{};
+  int physicsAtRest{};
   bool physicsPinned{};
   unsigned int physicsPinnedTicks{};
   unsigned long long physicsCallbackAgeMs{};

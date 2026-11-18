@@ -124,7 +124,7 @@ void paintVrHandMenu() {
         &&s.worldGrabInspector.enabled&&statsGameplay
         &&m.mode==kharvox::VrHandMenuMode::Closed
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView;
-    constexpr int inspectorX=492,inspectorY=90,inspectorW=445,inspectorH=245;
+    constexpr int inspectorX=492,inspectorY=90,inspectorW=445,inspectorH=365;
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
@@ -409,7 +409,7 @@ void paintVrHandMenu() {
                     :inspect.physicsMode==4?"4 MICRO MOVE"
                     :inspect.physicsMode==5?"5 ENTITY TICK"
                     :inspect.physicsMode==6?"STRONG ANCHOR":"INSPECT")
-                +" / "+(inspect.physicsChanged?"READBACK MOVED"
+                +" / "+(inspect.physicsChanged?"MEMORY READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
             if(inspect.physicsStatus>=2){
@@ -437,6 +437,21 @@ void paintVrHandMenu() {
                 if(event.size()>40)event=event.substr(0,40);
                 write(left,inspectorY+213,"EVENT: "+event,muted);
             }
+            // Only the physics-body state is verified. A model-render
+            // transform has NOT been independently identified.
+            write(left,inspectorY+267,
+                std::string("BODY STATE: ")
+                +(inspect.physicsRestKnown
+                    ?inspect.physicsAtRest==-1?"AWAKE":"REST "
+                        +std::to_string(inspect.physicsAtRest)
+                    :"UNKNOWN"),
+                inspect.physicsRestKnown?RGB(128,255,177):gold);
+            write(left,inspectorY+290,
+                std::string("NATIVE MOTION: ")
+                +(inspect.physicsNativeMotionCandidate?"CANDIDATE":"UNVERIFIED"),
+                inspect.physicsNativeMotionCandidate?RGB(128,255,177):gold);
+            write(left,inspectorY+314,"ENTITY / MODEL POSE: UNVERIFIED",gold);
+            write(left,inspectorY+339,"BODY READBACK != VISIBLE FOLLOW",RGB(255,187,111));
         }
     }else if(calibrationView){
         // Status is a SECOND ROW beneath the title. No badge/text may
@@ -933,7 +948,7 @@ void paintVrHandMenu() {
                         :"TURN VISUALISER ON"),white);
             }else{
                 const std::array<const char*,7> labels{{
-                    "INSPECTOR / LASER", "1 DIRECT / NO KICK",
+                    "SYNC INSPECTOR / LASER", "1 DIRECT / NO KICK",
                     "2 VERIFIED NATIVE WAKE", "3 CONTACT PROXY",
                     "4 MICRO MOVE", "5 ENTITY TICK PROBE",
                     "STRONG ANCHOR (PRESERVED)"}};
@@ -955,10 +970,10 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,490,"Tests 1-5: fresh un-kicked object.",RGB(255,187,111));
-                write(538,519,"Strong Anchor: original kick-then-hold fallback.",muted);
-                write(538,548,"#3 uses a position proxy, NOT a collision hook.",muted);
-                write(538,577,"#5 observes native motion; no guessed entity ABI.",muted);
+                write(538,511,"Sync: untouched, Grip, release, then kick.",RGB(255,187,111));
+                write(538,539,"Strong Anchor stays as working control.",muted);
+                write(538,567,"Physics memory != visible barrel movement.",muted);
+                write(538,595,"Logs: SYNC / KICK-FINGERPRINT.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

@@ -64,6 +64,9 @@ struct KharvoxWorldGrabPhysicsSample {
     // and what remains at the next physics observer callback.
     std::array<float,3> requestedDelta{},readbackDelta{},retainedDelta{};
     bool retentionKnown{};
+    // These are body-only state / passive evidence, NOT visual-model proof.
+    bool nativeRestKnown{},nativeMotionCandidate{};
+    int nativeAtRest{};
     bool pinned{};
     unsigned int pinnedTicks{};
     float origin[3]{};

@@ -24,6 +24,7 @@
 #include "../weapon/WeaponHook.h"
 #include "../openxr/HandFocusPolicy.h"
 #include "../openxr/WorldGrabActivationTestPolicy.h"
+#include "../openxr/WorldGrabSyncPolicy.h"
 
 #include <windows.h>
 #include <intrin.h>
@@ -1550,6 +1551,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             }
             if(plausible){
                 reading.status=2;
+                reading.nativeRestKnown=experimentalReadRigidBodyRest(
+                    cachedBody,imageBase,reading.nativeAtRest);
                 if(priorWriteValid&&now>priorWriteAtMs){
                     reading.retentionKnown=true;
                     for(int axis=0;axis<3;++axis)
@@ -1608,9 +1611,12 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 }
                 const bool noRecentWrite=!priorWriteValid
                     ||(now>=priorWriteAtMs&&now-priorWriteAtMs>500);
-                const bool wakeCandidate=fingerprintValid&&priorRestKnown
-                    &&nativeRestKnown&&priorRest>=0&&nativeRest==-1;
-                const bool motionCandidate=fingerprintValid&&nativeDelta2>0.01f;
+                const bool wakeCandidate=kharvox::worldGrabNativeWakeCandidate(
+                    fingerprintValid&&priorRestKnown,priorRest,
+                    nativeRestKnown,nativeRest,!noRecentWrite,pin.active);
+                const bool motionCandidate=fingerprintValid
+                    &&kharvox::worldGrabPassiveMotionCandidate(
+                        nativeDelta2,!noRecentWrite,pin.active);
                 if(!pin.active&&noRecentWrite&&(wakeCandidate||motionCandidate)
                     &&(!lastFingerprintLog||now-lastFingerprintLog>=650)){
                     lastFingerprintLog=now;
@@ -1630,6 +1636,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 fingerprintOrigin={origin[0],origin[1],origin[2]};
                 priorRest=nativeRest;priorRestKnown=nativeRestKnown;
                 fingerprintValid=true;
+                reading.nativeMotionCandidate=lastNativeMotionSeen&&nativeMotionAt
+                    &&now>=nativeMotionAt&&now-nativeMotionAt<=1000
+                    &&noRecentWrite;
                 if(now>=lastChangedAt)
                     reading.originUnchangedMs=now-lastChangedAt;
                 const auto owner=reinterpret_cast<std::uintptr_t>(cachedBody);
