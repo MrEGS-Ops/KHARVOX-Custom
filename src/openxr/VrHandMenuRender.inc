@@ -924,9 +924,9 @@ void paintVrHandMenu() {
                         :"TURN VISUALISER ON"),white);
             }else{
                 const std::array<const char*,7> labels{{
-                    "LASER / BODY INSPECTOR","FREEZE OBJECT POSITION",
-                    "ANCHOR (ORIGIN FOLLOW)","PUSH OBJECT (PULSE)",
-                    "PULL OBJECT (PULSE)","STRONG ANCHOR (28 UNITS)",
+                    "LASER / BODY INSPECTOR","NATIVE WAKE TRACE (RO)",
+                    "ANCHOR (ORIGIN FOLLOW)","NATIVE IMPULSE TRACE (RO)",
+                    "CONTACT PROXY (TINY NUDGE)","STRONG ANCHOR",
                     "LIFT PROBE (UP ONLY)"}};
                 const std::array<bool,7> modes{{
                     m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
@@ -943,8 +943,8 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,548,"LIFT: 8 steps, 6 units each; logs retained Z.",RGB(255,187,111));
-                write(538,577,"ANCHOR: hold Grip; move hand off target.",muted);
+                write(538,548,"WAKE/IMPULSE: trace only until verified.",RGB(255,187,111));
+                write(538,577,"CONTACT: <=48 units; ANCHOR: hold Grip.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
