@@ -23,6 +23,7 @@
 #include "../hud/HudHook.h"
 #include "../weapon/WeaponHook.h"
 #include "../openxr/HandFocusPolicy.h"
+#include "../openxr/WorldGrabActivationTestPolicy.h"
 
 #include <windows.h>
 #include <intrin.h>
@@ -133,6 +134,7 @@ struct ExperimentalPinnedBody {
     std::array<char,80> type{};
     // Native movement, not a successful memory write, arms the grab.
     bool active{},followReady{},relativeCaptured{};
+    bool activationWakeAttempted{},activationProbeDone{};
     // Body pose in physical controller GRIP space (never AIM ray space).
     // Rotation and hand-to-object offset are captured together at catch.
     std::array<float,3> relativePosition{},initialRelativePosition{};
@@ -917,88 +919,6 @@ bool worldGrabRelativeTarget(const ExperimentalPinnedBody& pin,
     }
     return plausibleRigidBodyAxis(axisOut.data());
 }
-// Experimental hand-centred collision proxy: not DOOM's native player
-// capsule and NOT a claimed reverse-engineered Kick callback. The candidate
-// rigid-body activation and vector setter are bound only if the user's
-// exact DOOM executable matches both complete code signatures. This is a single
-// low-strength vector pulse while free-hand Grip is held. All other physics
-// methods and the player's collision body remain untouched.
-bool executableMemory(const void* address);
-bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
-    std::uintptr_t imageBase,const float away[3],
-    float before[3],float after[3],int& restBefore,int& restAfter) {
-    if(!body||!vtable||!imageBase||!away||!before||!after)return false;
-    constexpr std::uintptr_t candidateRva=0x179FBB0;
-    constexpr std::uintptr_t wakeRva=0x179A8F0;
-    constexpr unsigned char wakeSignature[]{
-        0xC7,0x81,0x70,0x01,0x00,0x00,
-        0xFF,0xFF,0xFF,0xFF,0xC3
-    };
-    constexpr unsigned char expected[]{
-        0x8B,0x02,0x89,0x81,0xD4,0x01,0x00,0x00,
-        0x8B,0x42,0x04,0x89,0x81,0xD8,0x01,0x00,0x00,
-        0x8B,0x42,0x08,0x89,0x81,0xDC,0x01,0x00,0x00,0xC3
-    };
-    if(!readableMemory(reinterpret_cast<const void*>(vtable+0x98),
-            sizeof(std::uintptr_t)))return false;
-    std::uintptr_t candidate{};
-    std::memcpy(&candidate,reinterpret_cast<const void*>(vtable+0x98),
-        sizeof(candidate));
-    if(candidate!=imageBase+candidateRva
-        ||!executableMemory(reinterpret_cast<const void*>(candidate))
-        ||!readableMemory(reinterpret_cast<const void*>(candidate),
-            sizeof(expected))
-        ||std::memcmp(reinterpret_cast<const void*>(candidate),
-            expected,sizeof(expected))!=0)return false;
-    // +0x110: exact native method which clears the rigid-body sleep
-    // marker (atRest at +0x170 becomes -1). This method was recovered
-    // from the user's executable, and checked before calling.
-    std::uintptr_t wake{};
-    if(!readableMemory(reinterpret_cast<const void*>(vtable+0x110),
-            sizeof(wake)))return false;
-    std::memcpy(&wake,reinterpret_cast<const void*>(vtable+0x110),
-        sizeof(wake));
-    if(wake!=imageBase+wakeRva
-        ||!executableMemory(reinterpret_cast<const void*>(wake))
-        ||!readableMemory(reinterpret_cast<const void*>(wake),
-            sizeof(wakeSignature))
-        ||std::memcmp(reinterpret_cast<const void*>(wake),
-            wakeSignature,sizeof(wakeSignature))!=0)return false;
-    auto* restField=reinterpret_cast<int*>(
-        static_cast<unsigned char*>(body)+0x170);
-    if(!writableMemory(restField,sizeof(int)))return false;
-    restBefore=*restField;
-    restAfter=restBefore;
-    // The verified vector setter writes a 3-float vector at 0x1D4. Its physical
-    // meaning is an experiment, NOT an established native ApplyImpulse ABI.
-    auto* vector=reinterpret_cast<float*>(
-        static_cast<unsigned char*>(body)+0x1D4);
-    if(!writableMemory(vector,sizeof(float)*3))return false;
-    for(int i=0;i<3;++i){
-        before[i]=vector[i];
-        if(!std::isfinite(before[i])||std::abs(before[i])>10000.f
-            ||!std::isfinite(away[i]))return false;
-    }
-    float next[3]{};
-    for(int i=0;i<3;++i)next[i]=before[i]+away[i]*9.f;
-    next[2]+=0.5f;
-    using WakeFn=void(__fastcall*)(void*);
-    using Fn=void(__fastcall*)(void*,const float*);
-#if defined(_MSC_VER)
-    __try {
-        reinterpret_cast<WakeFn>(wake)(body);
-        reinterpret_cast<Fn>(candidate)(body,next);
-    }
-    __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
-#else
-    reinterpret_cast<WakeFn>(wake)(body);
-    reinterpret_cast<Fn>(candidate)(body,next);
-#endif
-    restAfter=*restField;
-    for(int i=0;i<3;++i)after[i]=vector[i];
-    return std::isfinite(after[0])&&std::isfinite(after[1])
-        &&std::isfinite(after[2]);
-}
 void experimentalNativeBodyProbe(const void* entity,unsigned path,
     unsigned handle,const char* className,
     std::uintptr_t imageBase,std::uintptr_t imageSize);
@@ -1547,7 +1467,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     // Only entities with proven moveable prop types can be locked.
     const auto epochNow=experimentalPhysicsEpoch.load(std::memory_order_acquire);
     auto& pin=experimentalPinnedBody;
-    if(mode==2||mode==6){
+    if(kharvox::worldGrabActivationTestValid(mode)){
         if(type!="idProp2"&&type!="idProp_Moveable")return;
         if(pin.active&&pin.epoch==epochNow
             &&pin.entity!=entity)return;
@@ -1558,18 +1478,12 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local void* cachedBody{};
     static thread_local std::array<char,64> cachedType{};
     static thread_local unsigned long long lastScan{};
-    static thread_local std::array<float,3> frozenOrigin{};
-    static thread_local bool freezeCaptured{},pulseDone{};
-    // Anchor targets the physics origin at a fixed short distance in
-    // front of the controller. DO NOT capture arbitrary FocusTracker
-    // acquisition distance as a hand-to-object attachment offset.
-    static thread_local unsigned long long liftLastPulseAt{},priorWriteAtMs{};
-    static thread_local unsigned liftPulseCount{};
+    // Retain an individual verified physics origin for the active item;
+    // no retired kick/lift/freeze pulse state survives mode switching.
+    static thread_local unsigned long long priorWriteAtMs{};
     static thread_local std::array<float,3> priorWriteStart{},priorWriteNext{};
     static thread_local bool priorWriteValid{};
     static thread_local bool originScanned{};
-    static thread_local unsigned long long handKickPulseAt{};
-    static thread_local bool handKickFollowUpDone{};
     static thread_local unsigned long long nativeMotionAt{};
     static thread_local bool lastNativeMotionSeen{};
     static thread_local std::uintptr_t uniqueOriginOffset{};
@@ -1580,12 +1494,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         ||cachedHandle!=handle||cachedEpoch!=epoch){
         cachedEntity=reinterpret_cast<std::uintptr_t>(entity);
         cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
-        cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
-        liftLastPulseAt=0;liftPulseCount=0;
+        cachedType={};lastScan=0;
         priorWriteAtMs=0;priorWriteValid=false;
         priorWriteStart={};priorWriteNext={};
         originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
-        handKickPulseAt=0;handKickFollowUpDone=false;
         nativeMotionAt=0;lastNativeMotionSeen=false;
     }
     if(!cachedBody&&now-lastScan>=500){
@@ -1733,10 +1645,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 reading.writable=mutableOrigin!=nullptr;
                 if(reading.writable)reading.status=3;
                 ExperimentalGripWorldPose gripPose{};
-                const bool anchorMode=mode==2||mode==6;
+                const bool anchorMode=kharvox::worldGrabActivationTestValid(mode);
                 const bool gripPoseValid=anchorMode
                     &&currentWorldGrabGripPose(gripPose);
-                if(mode>0&&(reading.writable||mode==8)
+                if(mode>0&&reading.writable
                     &&focusHandValid.load(std::memory_order_acquire)
                     &&(!anchorMode||gripPoseValid)){
                     float hand[3]{},direction[3]{};
@@ -1756,16 +1668,16 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                     // Once Grip PIN is acquired, allow hand motion within
                     // a larger tether instead of silently stopping at the
                     // same acquisition threshold. Still finite and capped.
-                    const bool heldPin=(mode==2||mode==6)
+                    const bool heldPin=(kharvox::worldGrabActivationTestValid(mode))
                         &&pin.active&&pin.epoch==epoch&&pin.entity==entity;
-                    const float allowedReach=mode==8?144.f:(heldPin?220.f:110.f);
+                    const float allowedReach=heldPin?220.f:110.f;
                     if(std::isfinite(distance2)
                         &&distance2<allowedReach*allowedReach){
                         // Lock once, after native RTTI, GetOrigin and
                         // writable storage are all verified. Retain the
                         // engine-resolved entity identity until Grip release;
                         // never retarget merely because the hand aim rotates.
-                        if((mode==2||mode==6)&&!pin.active
+                        if((kharvox::worldGrabActivationTestValid(mode))&&!pin.active
                             &&(type=="idProp2"||type=="idProp_Moveable")
                             &&readableMemory(entity,sizeof(std::uintptr_t))){
                             std::uintptr_t entityVtable{};
@@ -1782,8 +1694,61 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 std::strncpy(pin.type.data(),type.c_str(),
                                     pin.type.size()-1);
                                 pin.active=true;
-                                pin.followReady=lastNativeMotionSeen
+                                const bool priorNativeMotion=lastNativeMotionSeen
                                     &&nativeMotionAt&&now-nativeMotionAt<=1000;
+                                pin.followReady=kharvox::worldGrabActivationFollowReady(
+                                    mode,priorNativeMotion,0);
+                                // Native method is signature-verified on the exact
+                                // DOOM executable. No guessed entity vtable calls.
+                                if(kharvox::worldGrabActivationNeedsWake(mode)){
+                                    int restBefore{},restAfter{};
+                                    pin.activationWakeAttempted=true;
+                                    const bool woke=experimentalRigidBodyRestState(
+                                        cachedBody,imageBase,false,
+                                        &restBefore,&restAfter);
+                                    log("[WORLD-GRAB-ACTIVATION] mode="
+                                        +std::to_string(mode)
+                                        +" handle="+std::to_string(handle)
+                                        +" nativeWake="+(woke?"yes":"NO")
+                                        +" atRestBefore="+std::to_string(restBefore)
+                                        +" atRestAfter="+std::to_string(restAfter)
+                                        +" priorNativeMotion="
+                                            +(priorNativeMotion?"yes":"no"));
+                                }
+                                // A tiny, one-shot *position* proxy can provoke
+                                // normal collision/physics processing indirectly.
+                                // These are NOT native collision event calls.
+                                if(kharvox::worldGrabActivationContactProxy(mode)
+                                    ||kharvox::worldGrabActivationMicroMove(mode)){
+                                    float targetProbe[3]{origin[0],origin[1],origin[2]};
+                                    if(kharvox::worldGrabActivationContactProxy(mode)){
+                                        const float len=std::sqrt(std::max(distance2,0.00001f));
+                                        for(int component=0;component<3;++component)
+                                            targetProbe[component]+=
+                                                (hand[component]-origin[component])
+                                                *0.35f/len;
+                                    }else{
+                                        targetProbe[2]+=0.20f;
+                                    }
+                                    const bool moved=nativeBodyWriteOrigin(
+                                        mutableOrigin,targetProbe);
+                                    pin.activationProbeDone=moved;
+                                    if(moved){
+                                        for(int component=0;component<3;++component){
+                                            origin[component]=targetProbe[component];
+                                            reading.origin[component]=targetProbe[component];
+                                        }
+                                    }
+                                    log("[WORLD-GRAB-ACTIVATION-PROXY] mode="
+                                        +std::to_string(mode)
+                                        +" handle="+std::to_string(handle)
+                                        +" requestedDeltaXYZ="
+                                            +std::to_string(targetProbe[0]-loggedPreWriteOrigin[0])
+                                            +","+std::to_string(targetProbe[1]-loggedPreWriteOrigin[1])
+                                            +","+std::to_string(targetProbe[2]-loggedPreWriteOrigin[2])
+                                        +" write="+(moved?"yes":"NO")
+                                        +" realCollisionEvent=no");
+                                }
                                 log(std::string("[WORLD-GRAB-PIN] ACQUIRED class=")
                                     +type+" handle="+std::to_string(handle)
                                     +" epoch="+std::to_string(epoch)
@@ -1794,73 +1759,25 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         reading.pinned=pin.active&&pin.entity==entity
                             &&pin.epoch==epoch;
                         reading.pinnedTicks=reading.pinned?pin.ticks:0;
-                        if(reading.pinned&&!pin.followReady&&lastNativeMotionSeen
-                            &&nativeMotionAt&&now-nativeMotionAt<=1000){
+                        const bool nativeMoved=lastNativeMotionSeen&&nativeMotionAt
+                            &&now-nativeMotionAt<=1000;
+                        if(reading.pinned&&!pin.followReady
+                            &&kharvox::worldGrabActivationFollowReady(
+                                mode,nativeMoved,now-pin.startAtMs)){
                             pin.followReady=true;
-                            log("[WORLD-GRAB-PIN] NATIVE-MOTION-SEEN handle="
-                                +std::to_string(handle)+"; following enabled");
+                            log("[WORLD-GRAB-OWNER-TICK] mode="
+                                +std::to_string(mode)
+                                +" handle="+std::to_string(handle)
+                                +" observedNativeMotion="+(nativeMoved?"yes":"no")
+                                +" waitedMs="+std::to_string(now-pin.startAtMs)
+                                +" manualFollow=now"
+                                +" entitySchedulerABI=unverified");
                         }
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
-                        if(mode==8&&!pulseDone&&reading.distanceFromHand<=120.f){
-                            // One-shot virtual hand contact, max ~1m using
-                            // native-unit approximation. The actual native
-                            // idPhysics_Player collision shape is NEVER resized.
-                            pulseDone=true;
-                            const float length=std::sqrt(std::max(distance2,1e-8f));
-                            float away[3]{};
-                            for(int i=0;i<3;++i)
-                                away[i]=(origin[i]-hand[i])/length;
-                            float before[3]{},after[3]{};
-                            int restBefore{},restAfter{};
-                            const bool applied=experimentalHandKickVector(
-                                cachedBody,vtable,imageBase,away,before,after,
-                                restBefore,restAfter);
-                            if(applied)handKickPulseAt=now;
-                            log(std::string("[WORLD-GRAB-HAND-KICK] handle=")
-                                +std::to_string(handle)+" class="+type
-                                +" distance="+std::to_string(reading.distanceFromHand)
-                                +" envelope=120-native-units"
-                                +" strength=9 velocity-vector-units"
-                                +" applied="+(applied?"yes":"NO; ABI/field validation failed")
-                                +" atRestBefore="+std::to_string(restBefore)
-                                +" atRestAfter="+std::to_string(restAfter)
-                                +" previousXYZ="+std::to_string(before[0])+","
-                                    +std::to_string(before[1])+","+std::to_string(before[2])
-                                +" afterXYZ="+std::to_string(after[0])+","
-                                    +std::to_string(after[1])+","+std::to_string(after[2])
-                                +" callbackGapMs="+std::to_string(reading.callbackGapMs)
-                                +" originUnchangedMs="+std::to_string(reading.originUnchangedMs));
-                        }
-                        if(mode==1||mode==3){ // Native method-discovery tests (read only)
-                            if(!pulseDone){
-                                pulseDone=true;
-                                // We have not verified an Activate or
-                                // ApplyImpulse ABI for idTech 6. Log candidate
-                                // entry points but never call guessed slots.
-                                std::ostringstream report;
-                                report<<(mode==1?"[WORLD-GRAB-WAKE-TEST]"
-                                    :"[WORLD-GRAB-IMPULSE-TEST]")
-                                    <<" handle="<<handle
-                                    <<" rigidBody vtable functions";
-                                for(std::uintptr_t slot=0x58;slot<=0xC0;slot+=8){
-                                    std::uintptr_t candidate{};
-                                    if(readableMemory(reinterpret_cast<void*>(vtable+slot),
-                                            sizeof(candidate)))
-                                        std::memcpy(&candidate,
-                                            reinterpret_cast<void*>(vtable+slot),
-                                            sizeof(candidate));
-                                    report<<" +0x"<<std::hex<<slot<<"=";
-                                    if(candidate>=imageBase&&candidate-imageBase<imageSize)
-                                        report<<"RVA0x"<<(candidate-imageBase);
-                                    else report<<"unverified";
-                                }
-                                report<<std::dec<<" nativeCall=BLOCKED_UNVERIFIED"
-                                    <<" origin="<<origin[0]<<","<<origin[1]<<","<<origin[2]
-                                    <<" callbackGapMs="<<reading.callbackGapMs;
-                                log(report.str());
-                            }
-                        }else if(mode==2||mode==6){ // Physical GRIP-relative 6DoF
+                        if(kharvox::worldGrabActivationTestValid(mode)){
+                            // All five tests use the SAME validated 6DoF
+                            // attachment; only activation strategy varies.
                             if(reading.pinned&&pin.followReady&&gripPoseValid){
                                 std::uintptr_t axisFn{};
                                 if(readableMemory(reinterpret_cast<const void*>(
@@ -1930,7 +1847,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                             step2+=delta*delta;
                                         }
                                         const float step=std::sqrt(step2);
-                                        const float maxStep=mode==6?28.f:8.f;
+                                        const float maxStep=8.f;
                                         const float factor=step>maxStep?maxStep/step:1.f;
                                         for(int i=0;i<3;++i)
                                             next[i]=origin[i]+(target[i]-origin[i])*factor;
@@ -1967,32 +1884,6 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                     +std::to_string(handle)
                                     +" no position writes before activation");
                             }
-                        }else if(mode==7){ // Distinct one-way vertical retention test
-                            if(liftPulseCount<8
-                                &&(liftLastPulseAt==0||now-liftLastPulseAt>=200)){
-                                // Small measured upward-only displacement.
-                                // If DOOM reverts the Z component, the next
-                                // callback exposes the rejection separately.
-                                next[2]+=6.f;
-                                ++liftPulseCount;
-                                liftLastPulseAt=now;
-                                write=true;
-                                log(std::string("[WORLD-GRAB-LIFT] handle=")
-                                    +std::to_string(handle)+" pulse="
-                                    +std::to_string(liftPulseCount)
-                                    +" requestedUp=6"
-                                    +" unchangedMs="+std::to_string(reading.originUnchangedMs));
-                            }
-                        }else if(mode==4&&!pulseDone
-                            &&reading.distanceFromHand<=48.f){
-                            // One tiny hand-proximity contact proxy, not an
-                            // enlarged native player collision capsule.
-                            for(int i=0;i<3;++i)
-                                next[i]=origin[i]+direction[i]*0.35f;
-                            pulseDone=true;write=true;
-                            log("[WORLD-GRAB-CONTACT-TEST] one-shot 0.35-unit"
-                                " proximity pulse handle="+std::to_string(handle)
-                                +" distance="+std::to_string(reading.distanceFromHand));
                         }
                         if(write){
                             for(int i=0;i<3;++i)
@@ -2001,7 +1892,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         // The physics solver must not retain old linear or
                         // angular momentum while manual hand posing owns the
                         // rigid-body transform.
-                        if((mode==2||mode==6)&&reading.pinned
+                        if((kharvox::worldGrabActivationTestValid(mode))&&reading.pinned
                             &&pin.followReady&&pin.relativeCaptured){
                             const bool cleared=experimentalZeroRigidBodyMomentum(
                                 cachedBody,imageBase);
@@ -2037,17 +1928,6 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 if(reading.changed)reading.status=5;
                             }
                         }
-                    }
-                    if(mode==8&&handKickPulseAt&&!handKickFollowUpDone
-                        &&now-handKickPulseAt>=500){
-                        handKickFollowUpDone=true;
-                        log(std::string("[WORLD-GRAB-HAND-KICK-RESULT] handle=")
-                            +std::to_string(handle)
-                            +" afterMs="+std::to_string(now-handKickPulseAt)
-                            +" originUnchangedMs="+std::to_string(reading.originUnchangedMs)
-                            +" nativeMotionObserved="+(lastNativeMotionSeen?"yes":"no")
-                            +" originXYZ="+std::to_string(origin[0])+","
-                                +std::to_string(origin[1])+","+std::to_string(origin[2]));
                     }
                 }
             }
@@ -2085,7 +1965,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 +std::to_string(reading.origin[2]));
     }
     static thread_local unsigned long long lastAxisLogAt{};
-    if((mode==2||mode==6||mode==7)&&reading.status>=2
+    if(kharvox::worldGrabActivationTestValid(mode)&&reading.status>=2
         &&now-lastAxisLogAt>=800){
         lastAxisLogAt=now;
         const auto xyz=[](const std::array<float,3>& a){
@@ -2204,7 +2084,7 @@ void experimentalPinnedBodyTick() {
                 +std::to_string(priorMomentum[5]));
         pin={};
     };
-    if((mode!=2&&mode!=6)||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
+    if(!kharvox::worldGrabActivationTestValid(mode)||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
     if(pin.generation!=generation){release("level-changed");return;}
     if(!focusHandValid.load(std::memory_order_acquire)){
         release("hand-aim-invalid");return;
@@ -4161,13 +4041,11 @@ void KharvoxCameraSetCrouchState(bool active) {
 
 void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    // -1=off; 0=inspect; 1=freeze; 2=Anchor; 3=Push; 4=Pull;
-    // 1=Wake mapping (read-only); 2=Anchor; 3=Impulse mapping
-    // (read-only); 4=Contact proxy pulse; 6=Strong Anchor;
-    // 7=Lift Probe; 8=Grip Hand Kick vector experiment. Mode 5 was retired.
-    // Build #748 erroneously clamped all requested modes to <=4, silently
-    // disabling Strong Anchor and Lift even though the XR menu sent 6/7.
-    const bool supported=(mode>=0&&mode<=4)||mode==6||mode==7||mode==8;
+    // -1=disabled, 0=inspector, 1=direct no motion gate,
+    // 2=native wake, 3=wake + contact proxy, 4=wake + micro move,
+    // 5=owner/native tick diagnostic with a bounded hand-follow fallback.
+    // Retired kick, lift, impulse mapping and strong-anchor modes are rejected.
+    const bool supported=mode==0||kharvox::worldGrabActivationTestValid(mode);
     const int selected=enabled&&supported?mode:-1;
     const int previous=experimentalPhysicsMode.exchange(selected,std::memory_order_acq_rel);
     if(previous!=selected){
