@@ -404,10 +404,10 @@ void paintVrHandMenu() {
                 +"  STATUS="+std::to_string(inspect.physicsStatus),gold);
             write(left,inspectorY+186,
                 std::string("METHOD: ")
-                +(inspect.physicsMode==1?"FREEZE":inspect.physicsMode==2?"HAND ANCHOR"
-                    :inspect.physicsMode==3?"PUSH":inspect.physicsMode==4?"PULL"
-                    :inspect.physicsMode==6?"STRONG ANCHOR"
-                    :inspect.physicsMode==7?"LIFT PROBE":"INSPECT")
+                +(inspect.physicsMode==1?"1 DIRECT":inspect.physicsMode==2?"2 NATIVE WAKE"
+                    :inspect.physicsMode==3?"3 CONTACT PROXY"
+                    :inspect.physicsMode==4?"4 MICRO MOVE"
+                    :inspect.physicsMode==5?"5 ENTITY TICK":"INSPECT")
                 +" / "+(inspect.physicsChanged?"READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
@@ -890,12 +890,20 @@ void paintVrHandMenu() {
                 if(text&&*text)
                     write(540,224+line*37,text,line==5?RGB(84,233,214):white);
             }
-            fill(531,550,384,59,m.hovered==115
-                ?RGB(53,95,108):RGB(36,78,92));
-            SelectObject(dc,regular);
-            write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
+            const bool devFolder=!devPage&&count>0
+                &&entries[overviewSelected].developer==kharvox::VrMenuDevOption::Folder;
+            if(!devFolder){
+                fill(531,550,384,59,m.hovered==115
+                    ?RGB(53,95,108):RGB(36,78,92));
+                SelectObject(dc,regular);
+                write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
+            }else{
+                SelectObject(dc,smallFont);
+                write(538,563,"Select DEV to enter tools directly.",RGB(84,233,214));
+            }
             SelectObject(dc,smallFont);
-            write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
+            write(538,618,devFolder?"A / POINTER: OPEN DEV    B: CLOSE"
+                :"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
         const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
         const bool editable=kharvox::vrLiveModEditable(mod);
@@ -923,17 +931,18 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,8> labels{{
-                    "LASER / BODY INSPECTOR","NATIVE WAKE TRACE (RO)",
-                    "ANCHOR (ORIGIN FOLLOW)","NATIVE IMPULSE TRACE (RO)",
-                    "CONTACT PROXY (TINY NUDGE)","STRONG ANCHOR",
-                    "LIFT PROBE (UP ONLY)","GRIP HAND KICK (~1M)"}};
-                const std::array<bool,8> modes{{
-                    m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
-                    m.experimentalAnchorBody,m.experimentalPushBody,
-                    m.experimentalPullBody,m.experimentalStrongAnchor,
-                    m.experimentalLiftProbe,m.experimentalHandKickProbe}};
-                for(int index=0;index<8;++index){
+                const std::array<const char*,6> labels{{
+                    "INSPECTOR / LASER", "1 DIRECT / NO KICK",
+                    "2 VERIFIED NATIVE WAKE", "3 CONTACT PROXY",
+                    "4 MICRO MOVE", "5 ENTITY TICK PROBE"}};
+                const std::array<bool,6> modes{{
+                    m.experimentalWorldGrabProbeEnabled,
+                    m.experimentalActivationMode==1,
+                    m.experimentalActivationMode==2,
+                    m.experimentalActivationMode==3,
+                    m.experimentalActivationMode==4,
+                    m.experimentalActivationMode==5}};
+                for(int index=0;index<6;++index){
                     const int y=186+index*44;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
@@ -943,8 +952,10 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,548,"HAND KICK: one low-strength native vector pulse.",RGB(255,187,111));
-                write(538,577,"Grip aims at prop; no native player-capsule changes.",muted);
+                write(538,490,"Test a fresh, un-kicked movable object.",RGB(255,187,111));
+                write(538,519,"One test at a time; switching releases Grip.",muted);
+                write(538,548,"#3 uses a position proxy, NOT a collision hook.",muted);
+                write(538,577,"#5 observes native motion; no guessed entity ABI.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
