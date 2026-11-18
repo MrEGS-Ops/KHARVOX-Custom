@@ -56,6 +56,8 @@ struct KharvoxWorldGrabPhysicsSample {
     // proof the actual rigid-body simulation is running.
     unsigned long long callbackAtMs{},callbackGapMs{},originUnchangedMs{};
     unsigned int wakeNudges{};
+    bool pinned{};
+    unsigned int pinnedTicks{};
     float origin[3]{};
     std::array<char,64> physicsClass{};
 };

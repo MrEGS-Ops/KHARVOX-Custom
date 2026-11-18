@@ -4480,6 +4480,8 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsCallbackGapMs=sample.callbackGapMs;
             inspector.physicsOriginUnchangedMs=sample.originUnchangedMs;
             inspector.physicsWakeNudges=sample.wakeNudges;
+            inspector.physicsPinned=sample.pinned;
+            inspector.physicsPinnedTicks=sample.pinnedTicks;
             const auto callbackNow=GetTickCount64();
             inspector.physicsCallbackAgeMs=callbackNow>=sample.callbackAtMs
                 ?callbackNow-sample.callbackAtMs:0;

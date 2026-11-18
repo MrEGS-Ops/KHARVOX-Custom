@@ -59,6 +59,8 @@ struct WorldGrabInspectorSnapshot {
   float physicsDistanceFromHand{-1.f};
   unsigned long long physicsCallbackAtMs{},physicsCallbackGapMs{},physicsOriginUnchangedMs{};
   unsigned int physicsWakeNudges{};
+  bool physicsPinned{};
+  unsigned int physicsPinnedTicks{};
   unsigned long long physicsCallbackAgeMs{};
   float physicsOrigin[3]{};
   std::string physicsClass;

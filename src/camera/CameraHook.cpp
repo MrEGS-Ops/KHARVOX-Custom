@@ -120,6 +120,19 @@ std::atomic<int> experimentalPhysicsMode{-1};
 std::atomic<unsigned long long> experimentalPhysicsEpoch{};
 std::mutex experimentalPhysicsMutex;
 KharvoxWorldGrabPhysicsSample experimentalPhysicsSample{};
+// EXCLUSIVE game-thread grab selection. FocusTracker is only the acquisition
+// ray: after Grip starts, subsequent FocusTracker hits must NOT steal it.
+// No live entity pointer is ever exported to the OpenXR/render thread.
+struct ExperimentalPinnedBody {
+    const void* entity{};
+    std::uintptr_t entityVtable{},imageBase{},imageSize{};
+    unsigned handle{},path{},ticks{};
+    unsigned long long epoch{},generation{},startAtMs{},lastTickAtMs{},
+        lastReportedAtMs{};
+    std::array<char,80> type{};
+    bool active{};
+};
+thread_local ExperimentalPinnedBody experimentalPinnedBody{};
 unsigned long long nativeGrabResolvedSequence{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
@@ -312,6 +325,7 @@ void emit64(unsigned char*& p, unsigned long long value) {
     p += sizeof(value);
 }
 
+void experimentalPinnedBodyTick();
 extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     if(!rawFocusTrace)return;
     // World interactions can run when the native player-physics snapshot is
@@ -321,6 +335,12 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     const bool world=KharvoxCameraWorldActive();
     const bool cinematic=KharvoxCameraCutsceneActive();
     const bool boss=KharvoxCameraBossSequenceActive();
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Called by DOOM every FocusTracker world update, even when the ray
+    // no longer resolves the barrel. This is NOT an OpenXR render-frame
+    // callback and never touches entity pointers on another thread.
+    if(world&&!cinematic&&!boss)experimentalPinnedBodyTick();
+#endif
     if(world&&!cinematic&&!boss
         &&nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)){
         // Previously uploaded native machine-code dump at RVA 0xD481E0
@@ -1136,6 +1156,16 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     if(type=="idWorldspawn"||type.find("Player")!=std::string::npos
         ||type.find("Projectile")!=std::string::npos
         ||type.find("idAI")!=std::string::npos)return;
+    // While an Anchor is physically held, DOOM's changing focus hit is
+    // intentionally ignored: the originally acquired entity owns the grab.
+    // Only entities with proven moveable prop types can be locked.
+    const auto epochNow=experimentalPhysicsEpoch.load(std::memory_order_acquire);
+    auto& pin=experimentalPinnedBody;
+    if(mode==2){
+        if(type!="idProp2"&&type!="idProp_Moveable")return;
+        if(pin.active&&pin.epoch==epochNow
+            &&pin.entity!=entity)return;
+    }
     static thread_local std::uintptr_t cachedEntity{};
     static thread_local unsigned cachedHandle{};
     static thread_local unsigned long long cachedEpoch{};
@@ -1195,6 +1225,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     reading.handle=handle;reading.path=path;reading.mode=mode;
     reading.callbackAtMs=now;reading.wakeNudges=wakeNudgeCount;
     reading.generation=levelTransitionGeneration.load(std::memory_order_acquire);
+    reading.pinned=pin.active&&pin.epoch==epoch&&pin.entity==entity;
+    reading.pinnedTicks=reading.pinned?pin.ticks:0;
     reading.status=1; // no verified rigid body yet
     if(cachedBody){
         reading.physicsClass=cachedType;
@@ -1303,6 +1335,35 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                     // Keep the anchor local to the controller. For now
                     // object-centre reach is advisory, in native DOOM units.
                     if(std::isfinite(distance2)&&distance2<110.f*110.f){
+                        // Lock once, after native RTTI, GetOrigin and
+                        // writable storage are all verified. Retain the
+                        // engine-resolved entity identity until Grip release;
+                        // never retarget merely because the hand aim rotates.
+                        if(mode==2&&!pin.active
+                            &&(type=="idProp2"||type=="idProp_Moveable")
+                            &&readableMemory(entity,sizeof(std::uintptr_t))){
+                            std::uintptr_t entityVtable{};
+                            std::memcpy(&entityVtable,entity,sizeof(entityVtable));
+                            if(entityVtable>=imageBase
+                                &&entityVtable-imageBase<imageSize){
+                                pin={};
+                                pin.entity=entity;pin.entityVtable=entityVtable;
+                                pin.imageBase=imageBase;pin.imageSize=imageSize;
+                                pin.handle=handle;pin.path=path;
+                                pin.epoch=epoch;pin.generation=reading.generation;
+                                pin.startAtMs=now;
+                                std::strncpy(pin.type.data(),type.c_str(),
+                                    pin.type.size()-1);
+                                pin.active=true;
+                                log(std::string("[WORLD-GRAB-PIN] ACQUIRED class=")
+                                    +type+" handle="+std::to_string(handle)
+                                    +" epoch="+std::to_string(epoch)
+                                    +" distance="+std::to_string(reading.distanceFromHand));
+                            }
+                        }
+                        reading.pinned=pin.active&&pin.entity==entity
+                            &&pin.epoch==epoch;
+                        reading.pinnedTicks=reading.pinned?pin.ticks:0;
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
                         if(mode==1){ // Pin the position at first Grip
@@ -1393,6 +1454,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             +" callbackGapMs="+std::to_string(reading.callbackGapMs)
             +" unchangedMs="+std::to_string(reading.originUnchangedMs)
             +" wakeNudges="+std::to_string(reading.wakeNudges)
+            +" pinned="+(reading.pinned?"yes":"no")
+            +" pinTicks="+std::to_string(reading.pinnedTicks)
             +" position="+std::to_string(reading.origin[0])+","
                 +std::to_string(reading.origin[1])+","
                 +std::to_string(reading.origin[2]));
@@ -1400,6 +1463,52 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
 #else
     (void)entity;(void)path;(void)handle;(void)className;
     (void)imageBase;(void)imageSize;
+#endif
+}
+
+// Revisit the exact locked entity from the EXISTING DOOM world callback.
+// The laser can now point away without losing the grab. We check the original
+// vtable on every access; a release, level change or invalidated address
+// immediately tears down the pointer rather than transferring ownership.
+void experimentalPinnedBodyTick() {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    auto& pin=experimentalPinnedBody;
+    if(!pin.active)return;
+    const auto now=GetTickCount64();
+    const auto epoch=experimentalPhysicsEpoch.load(std::memory_order_acquire);
+    const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
+    const int mode=experimentalPhysicsMode.load(std::memory_order_acquire);
+    const auto release=[&](const char* reason){
+        log(std::string("[WORLD-GRAB-PIN] RELEASE reason=")+reason
+            +" handle="+std::to_string(pin.handle)
+            +" ticks="+std::to_string(pin.ticks));
+        pin={};
+    };
+    if(mode!=2||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
+    if(pin.generation!=generation){release("level-changed");return;}
+    if(now-pin.startAtMs>20000){release("test-hold-timeout-20s");return;}
+    if(!focusHandValid.load(std::memory_order_acquire)){
+        release("hand-pose-invalid");return;
+    }
+    if(!readableMemory(pin.entity,sizeof(std::uintptr_t))){
+        release("entity-unreadable");return;
+    }
+    std::uintptr_t currentVtable{};
+    std::memcpy(&currentVtable,pin.entity,sizeof(currentVtable));
+    if(currentVtable!=pin.entityVtable){
+        release("entity-vtable-changed");return;
+    }
+    if(now-pin.lastTickAtMs<8)return; // no duplicate writes in one world tick
+    pin.lastTickAtMs=now;++pin.ticks;
+    experimentalNativeBodyProbe(pin.entity,pin.path,pin.handle,
+        pin.type.data(),pin.imageBase,pin.imageSize);
+    if(pin.active&&(pin.ticks<=2||now-pin.lastReportedAtMs>=1000)){
+        pin.lastReportedAtMs=now;
+        log(std::string("[WORLD-GRAB-PIN] RETAINED handle=")
+            +std::to_string(pin.handle)
+            +" ticks="+std::to_string(pin.ticks)
+            +" ageMs="+std::to_string(now-pin.startAtMs));
+    }
 #endif
 }
 

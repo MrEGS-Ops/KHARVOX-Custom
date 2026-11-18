@@ -374,13 +374,19 @@ void paintVrHandMenu() {
                 const auto name=chosen->nativeClassName.empty()
                     ?std::string("UNKNOWN (NO NATIVE NAME)")
                     :chosen->nativeClassName.substr(0,31);
-                write(left,inspectorY+73,"CLASS: "+name,
-                    chosen->nativeClassName.empty()?gold:RGB(128,255,177));
+                write(left,inspectorY+73,
+                    inspect.physicsPinned?"CLASS: LOCKED "+inspect.physicsClass
+                        :"CLASS: "+name,
+                    inspect.physicsPinned?RGB(128,255,177)
+                        :chosen->nativeClassName.empty()?gold:RGB(128,255,177));
                 write(left,inspectorY+101,
-                    "ENTITY HANDLE: "+std::to_string(chosen->nativeHandle)
-                    +"  / "+(chosenPath==0?"PRIMARY":"SECONDARY"),white);
+                    "ENTITY HANDLE: "+std::to_string(
+                        inspect.physicsPinned?inspect.physicsHandle:chosen->nativeHandle)
+                    +"  / "+(inspect.physicsPinned?"GRIP LOCK"
+                        :chosenPath==0?"PRIMARY":"SECONDARY"),white);
                 write(left,inspectorY+129,
-                    resolved?"VTABLE RVA: 0x"+hex(chosen->vtableRva)
+                    inspect.physicsPinned?"FOCUS MAY MOVE; GRAB STAYS LOCKED"
+                    :resolved?"VTABLE RVA: 0x"+hex(chosen->vtableRva)
                             :"VTABLE: NOT YET RESOLVED",muted);
             }else{
                 write(left,inspectorY+73,"CLASS: WAITING FOR DOOM...",gold);
@@ -410,9 +416,11 @@ void paintVrHandMenu() {
                     :inspect.physicsStorageRoute==3?"MATCHED-ORIGIN-VEC3"
                     :"NO WRITE STORAGE";
                 write(left,inspectorY+213,
-                    std::string(route)+" CBAGE="+std::to_string(inspect.physicsCallbackAgeMs)
-                    +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)
-                    +"ms NUDGE="+std::to_string(inspect.physicsWakeNudges),
+                    std::string(route)
+                    +" PIN="+(inspect.physicsPinned?"LOCKED":"OPEN")
+                    +" T="+std::to_string(inspect.physicsPinnedTicks)
+                    +" AGE="+std::to_string(inspect.physicsCallbackAgeMs)
+                    +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)+"ms",
                     inspect.physicsCallbackAgeMs>600?RGB(255,187,111)
                         :inspect.physicsWritable?RGB(128,255,177):muted);
             }else{
