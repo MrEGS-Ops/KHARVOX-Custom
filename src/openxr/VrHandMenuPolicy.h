@@ -573,8 +573,8 @@ struct VrHandMenuState {
     bool devWeaponAlignment{},devControllerInputs{};
     bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
     bool experimentalFreezeBody{},experimentalAnchorBody{},experimentalPushBody{},experimentalPullBody{};
-    bool experimentalWakeNudge{};
-    // Five independent physics experiments; only one writer operates at once.
+    bool experimentalStrongAnchor{},experimentalLiftProbe{};
+    // Six physics experiments are mutually exclusive, with one live writer.
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};

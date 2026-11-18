@@ -1161,7 +1161,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     // Only entities with proven moveable prop types can be locked.
     const auto epochNow=experimentalPhysicsEpoch.load(std::memory_order_acquire);
     auto& pin=experimentalPinnedBody;
-    if(mode==2){
+    if(mode==2||mode==6){
         if(type!="idProp2"&&type!="idProp_Moveable")return;
         if(pin.active&&pin.epoch==epochNow
             &&pin.entity!=entity)return;
@@ -1176,8 +1176,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local bool freezeCaptured{},pulseDone{};
     static thread_local std::array<float,3> anchorOffset{};
     static thread_local bool anchorCaptured{};
-    static thread_local unsigned long long wakeLastNudgeAt{};
-    static thread_local unsigned wakeNudgeCount{};
+    static thread_local unsigned long long liftLastPulseAt{},priorWriteAtMs{};
+    static thread_local unsigned liftPulseCount{};
+    static thread_local std::array<float,3> priorWriteStart{},priorWriteNext{};
+    static thread_local bool priorWriteValid{};
     static thread_local bool originScanned{};
     static thread_local std::uintptr_t uniqueOriginOffset{};
     static thread_local int originMatchCount{};
@@ -1189,7 +1191,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
         cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
         anchorCaptured=false;anchorOffset={};
-        wakeLastNudgeAt=0;wakeNudgeCount=0;
+        liftLastPulseAt=0;liftPulseCount=0;
+        priorWriteAtMs=0;priorWriteValid=false;
+        priorWriteStart={};priorWriteNext={};
         originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
     }
     if(!cachedBody&&now-lastScan>=500){
@@ -1223,7 +1227,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     }
     KharvoxWorldGrabPhysicsSample reading{};
     reading.handle=handle;reading.path=path;reading.mode=mode;
-    reading.callbackAtMs=now;reading.wakeNudges=wakeNudgeCount;
+    reading.callbackAtMs=now;reading.wakeNudges=0;
     reading.generation=levelTransitionGeneration.load(std::memory_order_acquire);
     reading.pinned=pin.active&&pin.epoch==epoch&&pin.entity==entity;
     reading.pinnedTicks=reading.pinned?pin.ticks:0;
@@ -1246,6 +1250,11 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             }
             if(plausible){
                 reading.status=2;
+                if(priorWriteValid&&now>priorWriteAtMs){
+                    reading.retentionKnown=true;
+                    for(int axis=0;axis<3;++axis)
+                        reading.retainedDelta[axis]=origin[axis]-priorWriteStart[axis];
+                }
                 // Count live native-entity callbacks separately from actual
                 // physics movement. This directly tests the #743 observation:
                 // the entity can remain targetable after DOOM stops simulating.
@@ -1339,7 +1348,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         // writable storage are all verified. Retain the
                         // engine-resolved entity identity until Grip release;
                         // never retarget merely because the hand aim rotates.
-                        if(mode==2&&!pin.active
+                        if((mode==2||mode==6)&&!pin.active
                             &&(type=="idProp2"||type=="idProp_Moveable")
                             &&readableMemory(entity,sizeof(std::uintptr_t))){
                             std::uintptr_t entityVtable{};
@@ -1373,7 +1382,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             }
                             for(int i=0;i<3;++i)next[i]=frozenOrigin[i];
                             write=true;
-                        }else if(mode==2){ // Capture a hand-relative offset, no centre snap
+                        }else if(mode==2||mode==6){ // Hand-relative offset with two tested strengths
                             if(!anchorCaptured){
                                 for(int i=0;i<3;++i)
                                     anchorOffset[i]=origin[i]-hand[i];
@@ -1385,26 +1394,28 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 step2+=next[i]*next[i];
                             }
                             const float step=std::sqrt(step2);
-                            // 12 native units max correction (was 8).
-                            // Still not a collision-aware physics constraint.
-                            const float factor=step>12.f?12.f/step:1.f;
+                            // Strong Anchor explores whether a larger
+                            // correction survives the next engine physics
+                            // update. Neither mode is collision-aware yet.
+                            const float maxStep=mode==6?28.f:12.f;
+                            const float factor=step>maxStep?maxStep/step:1.f;
                             for(int i=0;i<3;++i)
                                 next[i]=origin[i]+next[i]*factor;
                             write=step>0.005f;
-                        }else if(mode==5){ // Nudge sleeping body, without guessed engine ABI
-                            if(wakeNudgeCount<8
-                                &&(wakeLastNudgeAt==0||now-wakeLastNudgeAt>=180)){
-                                // Small symmetric vertical displacement only:
-                                // no downward clipping and zero net drift.
-                                next[2]+=wakeNudgeCount%2==0?1.f:-1.f;
-                                ++wakeNudgeCount;
-                                wakeLastNudgeAt=now;
-                                reading.wakeNudges=wakeNudgeCount;
+                        }else if(mode==7){ // Distinct one-way vertical retention test
+                            if(liftPulseCount<8
+                                &&(liftLastPulseAt==0||now-liftLastPulseAt>=200)){
+                                // Small measured upward-only displacement.
+                                // If DOOM reverts the Z component, the next
+                                // callback exposes the rejection separately.
+                                next[2]+=6.f;
+                                ++liftPulseCount;
+                                liftLastPulseAt=now;
                                 write=true;
-                                log(std::string("[WORLD-GRAB-WAKE-NUDGE] handle=")
+                                log(std::string("[WORLD-GRAB-LIFT] handle=")
                                     +std::to_string(handle)+" pulse="
-                                    +std::to_string(wakeNudgeCount)
-                                    +" callbackGapMs="+std::to_string(reading.callbackGapMs)
+                                    +std::to_string(liftPulseCount)
+                                    +" requestedUp=6"
                                     +" unchangedMs="+std::to_string(reading.originUnchangedMs));
                             }
                         }else if(!pulseDone){ // Push / pull impulse imitation
@@ -1412,14 +1423,23 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 next[i]=origin[i]+direction[i]*(mode==3?18.f:-18.f);
                             pulseDone=true;write=true;
                         }
+                        if(write){
+                            for(int i=0;i<3;++i)
+                                reading.requestedDelta[i]=next[i]-origin[i];
+                        }
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
+                            priorWriteValid=true;priorWriteAtMs=now;
+                            priorWriteStart={origin[0],origin[1],origin[2]};
+                            priorWriteNext={next[0],next[1],next[2]};
                             const float* check=nativeBodyCallOrigin(cachedBody,function);
                             if(check&&readableMemory(check,12)){
                                 float amount=0.f;
                                 for(int i=0;i<3;++i){
                                     const float d=check[i]-origin[i];
-                                    reading.origin[i]=check[i];amount+=d*d;
+                                    reading.origin[i]=check[i];
+                                    reading.readbackDelta[i]=d;
+                                    amount+=d*d;
                                 }
                                 reading.changed=amount>0.00001f;
                                 if(reading.changed)reading.status=5;
@@ -1456,9 +1476,29 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             +" wakeNudges="+std::to_string(reading.wakeNudges)
             +" pinned="+(reading.pinned?"yes":"no")
             +" pinTicks="+std::to_string(reading.pinnedTicks)
+            +" retentionKnown="+(reading.retentionKnown?"yes":"no")
             +" position="+std::to_string(reading.origin[0])+","
                 +std::to_string(reading.origin[1])+","
                 +std::to_string(reading.origin[2]));
+    }
+    static thread_local unsigned long long lastAxisLogAt{};
+    if((mode==2||mode==6||mode==7)&&reading.status>=2
+        &&now-lastAxisLogAt>=800){
+        lastAxisLogAt=now;
+        const auto xyz=[](const std::array<float,3>& a){
+            return std::to_string(a[0])+","+std::to_string(a[1])
+                +","+std::to_string(a[2]);
+        };
+        log(std::string("[WORLD-GRAB-AXIS] handle=")
+            +std::to_string(handle)
+            +" method="+std::to_string(mode)
+            +" status="+std::to_string(reading.status)
+            +" requestedXYZ="+xyz(reading.requestedDelta)
+            +" readbackXYZ="+xyz(reading.readbackDelta)
+            +" retainedXYZ="+xyz(reading.retainedDelta)
+            +" retentionKnown="+(reading.retentionKnown?"yes":"no")
+            +" pinned="+(reading.pinned?"yes":"no")
+            +" pinTicks="+std::to_string(reading.pinnedTicks));
     }
 #else
     (void)entity;(void)path;(void)handle;(void)className;
@@ -1484,7 +1524,7 @@ void experimentalPinnedBodyTick() {
             +" ticks="+std::to_string(pin.ticks));
         pin={};
     };
-    if(mode!=2||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
+    if((mode!=2&&mode!=6)||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
     if(pin.generation!=generation){release("level-changed");return;}
     if(now-pin.startAtMs>20000){release("test-hold-timeout-20s");return;}
     if(!focusHandValid.load(std::memory_order_acquire)){

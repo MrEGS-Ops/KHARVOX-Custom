@@ -406,7 +406,8 @@ void paintVrHandMenu() {
                 std::string("METHOD: ")
                 +(inspect.physicsMode==1?"FREEZE":inspect.physicsMode==2?"HAND ANCHOR"
                     :inspect.physicsMode==3?"PUSH":inspect.physicsMode==4?"PULL"
-                    :inspect.physicsMode==5?"WAKE NUDGE":"INSPECT")
+                    :inspect.physicsMode==6?"STRONG ANCHOR"
+                    :inspect.physicsMode==7?"LIFT PROBE":"INSPECT")
                 +" / "+(inspect.physicsChanged?"READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
@@ -423,6 +424,13 @@ void paintVrHandMenu() {
                     +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)+"ms",
                     inspect.physicsCallbackAgeMs>600?RGB(255,187,111)
                         :inspect.physicsWritable?RGB(128,255,177):muted);
+                write(left,inspectorY+238,
+                    std::string("DELTA Z req=")
+                    +std::to_string(inspect.physicsRequestedDelta[2])
+                    +" got="+std::to_string(inspect.physicsReadbackDelta[2])
+                    +" kept="+(inspect.physicsRetentionKnown
+                        ?std::to_string(inspect.physicsRetainedDelta[2]):"WAIT"),
+                    inspect.physicsRetentionKnown?RGB(128,255,177):muted);
             }else{
                 auto event=inspect.lastEvent;
                 if(event.size()>40)event=event.substr(0,40);
@@ -915,26 +923,28 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,6> labels{{
+                const std::array<const char*,7> labels{{
                     "LASER / BODY INSPECTOR","FREEZE OBJECT POSITION",
-                    "ANCHOR (KEEP HAND OFFSET)","PUSH OBJECT (PULSE)",
-                    "PULL OBJECT (PULSE)","WAKE NUDGE (DIAGNOSTIC)"}};
-                const std::array<bool,6> modes{{
+                    "ANCHOR (12-UNIT FOLLOW)","PUSH OBJECT (PULSE)",
+                    "PULL OBJECT (PULSE)","STRONG ANCHOR (28 UNITS)",
+                    "LIFT PROBE (UP ONLY)"}};
+                const std::array<bool,7> modes{{
                     m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
                     m.experimentalAnchorBody,m.experimentalPushBody,
-                    m.experimentalPullBody,m.experimentalWakeNudge}};
-                for(int index=0;index<6;++index){
-                    const int y=186+index*58;
+                    m.experimentalPullBody,m.experimentalStrongAnchor,
+                    m.experimentalLiftProbe}};
+                for(int index=0;index<7;++index){
+                    const int y=186+index*49;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
                             &&m.navigation.actionIndex==index);
-                    fill(531,y,384,52,focused?RGB(52,83,99):RGB(39,49,63));
-                    write(548,y+17,std::string(labels[index])
+                    fill(531,y,384,45,focused?RGB(52,83,99):RGB(39,49,63));
+                    write(548,y+13,std::string(labels[index])
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,544,"WAKE NUDGE = 8 tiny alternating vertical edits.",RGB(255,187,111));
-                write(538,574,"Diagnostics: callback active != physics awake.",muted);
+                write(538,548,"LIFT: 8 steps, 6 units each; logs retained Z.",RGB(255,187,111));
+                write(538,577,"ANCHOR: hold Grip; move hand off target.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

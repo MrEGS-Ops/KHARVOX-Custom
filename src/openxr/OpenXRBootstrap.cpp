@@ -4422,7 +4422,8 @@ void updateGameplayActions(XrTime displayTime){
             s.vrHandMenu.experimentalAnchorBody?2:
             s.vrHandMenu.experimentalPushBody?3:
             s.vrHandMenu.experimentalPullBody?4:
-            s.vrHandMenu.experimentalWakeNudge?5:0;
+            s.vrHandMenu.experimentalStrongAnchor?6:
+            s.vrHandMenu.experimentalLiftProbe?7:0;
         const unsigned freeSide=s.weaponHandLeft?1u:0u;
         const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
             &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
@@ -4445,6 +4446,10 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsCallbackGapMs=sample.callbackGapMs;
             inspector.physicsOriginUnchangedMs=sample.originUnchangedMs;
             inspector.physicsWakeNudges=sample.wakeNudges;
+            inspector.physicsRequestedDelta=sample.requestedDelta;
+            inspector.physicsReadbackDelta=sample.readbackDelta;
+            inspector.physicsRetainedDelta=sample.retainedDelta;
+            inspector.physicsRetentionKnown=sample.retentionKnown;
             inspector.physicsPinned=sample.pinned;
             inspector.physicsPinnedTicks=sample.pinnedTicks;
             const auto callbackNow=GetTickCount64();
