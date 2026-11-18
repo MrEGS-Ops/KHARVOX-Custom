@@ -923,28 +923,28 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,7> labels{{
+                const std::array<const char*,8> labels{{
                     "LASER / BODY INSPECTOR","NATIVE WAKE TRACE (RO)",
                     "ANCHOR (ORIGIN FOLLOW)","NATIVE IMPULSE TRACE (RO)",
                     "CONTACT PROXY (TINY NUDGE)","STRONG ANCHOR",
-                    "LIFT PROBE (UP ONLY)"}};
-                const std::array<bool,7> modes{{
+                    "LIFT PROBE (UP ONLY)","GRIP HAND KICK (~1M)"}};
+                const std::array<bool,8> modes{{
                     m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
                     m.experimentalAnchorBody,m.experimentalPushBody,
                     m.experimentalPullBody,m.experimentalStrongAnchor,
-                    m.experimentalLiftProbe}};
-                for(int index=0;index<7;++index){
-                    const int y=186+index*49;
+                    m.experimentalLiftProbe,m.experimentalHandKickProbe}};
+                for(int index=0;index<8;++index){
+                    const int y=186+index*44;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
                             &&m.navigation.actionIndex==index);
-                    fill(531,y,384,45,focused?RGB(52,83,99):RGB(39,49,63));
+                    fill(531,y,384,42,focused?RGB(52,83,99):RGB(39,49,63));
                     write(548,y+13,std::string(labels[index])
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,548,"WAKE/IMPULSE: trace only until verified.",RGB(255,187,111));
-                write(538,577,"CONTACT: <=48 units; ANCHOR: hold Grip.",muted);
+                write(538,548,"HAND KICK: one low-strength native vector pulse.",RGB(255,187,111));
+                write(538,577,"Grip aims at prop; no native player-capsule changes.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
