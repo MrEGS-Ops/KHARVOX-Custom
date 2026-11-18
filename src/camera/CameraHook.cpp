@@ -685,6 +685,9 @@ bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
     return true;
 }
 
+// The validation helpers are defined later in this translation unit.
+bool readableMemory(const void* address, size_t bytes);
+bool writableMemory(const void* address, size_t bytes);
 bool plausibleRigidBodyAxis(const float* axis){
     if(!axis||!readableMemory(axis,sizeof(float)*9))return false;
     for(int i=0;i<9;++i)if(!std::isfinite(axis[i])||std::abs(axis[i])>1.1f)return false;
