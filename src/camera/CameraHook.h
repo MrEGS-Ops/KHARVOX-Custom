@@ -52,6 +52,11 @@ struct KharvoxWorldGrabPhysicsSample {
     // pointer, 3=unique origin-vector match inside physics object.
     int storageRoute{},originMatches{};
     float distanceFromHand{-1.f};
+    // All times are based on the native observer: callback time is NOT
+    // proof the actual rigid-body simulation is running.
+    unsigned long long callbackAtMs{},callbackGapMs{},originUnchangedMs{};
+    unsigned int wakeNudges{};
+    bool lastWriteRetained{};
     float origin[3]{};
     std::array<char,64> physicsClass{};
 };

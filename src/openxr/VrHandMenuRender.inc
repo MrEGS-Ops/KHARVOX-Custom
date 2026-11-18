@@ -399,7 +399,8 @@ void paintVrHandMenu() {
             write(left,inspectorY+186,
                 std::string("METHOD: ")
                 +(inspect.physicsMode==1?"FREEZE":inspect.physicsMode==2?"HAND ANCHOR"
-                    :inspect.physicsMode==3?"PUSH":inspect.physicsMode==4?"PULL":"INSPECT")
+                    :inspect.physicsMode==3?"PUSH":inspect.physicsMode==4?"PULL"
+                    :inspect.physicsMode==5?"WAKE NUDGE":"INSPECT")
                 +" / "+(inspect.physicsChanged?"READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
@@ -409,9 +410,9 @@ void paintVrHandMenu() {
                     :inspect.physicsStorageRoute==3?"MATCHED-ORIGIN-VEC3"
                     :"NO WRITE STORAGE";
                 write(left,inspectorY+213,std::string("STORAGE: ")+route
-                    +" D="+std::to_string(int(inspect.physicsDistanceFromHand))
-                    +" MATCHES="+std::to_string(inspect.physicsOriginMatches),
-                    inspect.physicsWritable?RGB(128,255,177):muted);
+                    +" GAP="+std::to_string(inspect.physicsCallbackGapMs)
+                    +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)
+                    +"ms",inspect.physicsWritable?RGB(128,255,177):muted);
             }else{
                 auto event=inspect.lastEvent;
                 if(event.size()>40)event=event.substr(0,40);
@@ -904,26 +905,26 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,5> labels{{
+                const std::array<const char*,6> labels{{
                     "LASER / BODY INSPECTOR","FREEZE OBJECT POSITION",
-                    "ANCHOR TO FREE HAND","PUSH OBJECT (PULSE)",
-                    "PULL OBJECT (PULSE)"}};
-                const std::array<bool,5> modes{{
+                    "ANCHOR (KEEP HAND OFFSET)","PUSH OBJECT (PULSE)",
+                    "PULL OBJECT (PULSE)","WAKE NUDGE (DIAGNOSTIC)"}};
+                const std::array<bool,6> modes{{
                     m.experimentalWorldGrabProbeEnabled,m.experimentalFreezeBody,
                     m.experimentalAnchorBody,m.experimentalPushBody,
-                    m.experimentalPullBody}};
-                for(int index=0;index<5;++index){
-                    const int y=186+index*68;
+                    m.experimentalPullBody,m.experimentalWakeNudge}};
+                for(int index=0;index<6;++index){
+                    const int y=186+index*58;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
                             &&m.navigation.actionIndex==index);
-                    fill(531,y,384,58,focused?RGB(52,83,99):RGB(39,49,63));
+                    fill(531,y,384,52,focused?RGB(52,83,99):RGB(39,49,63));
                     write(548,y+17,std::string(labels[index])
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,545,"Grip attempts direct native physics edits.",RGB(255,187,111));
-                write(538,578,"Experimental; changes may be ignored by DOOM.",muted);
+                write(538,544,"WAKE NUDGE = 8 tiny alternating vertical edits.",RGB(255,187,111));
+                write(538,574,"Diagnostics: callback active != physics awake.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

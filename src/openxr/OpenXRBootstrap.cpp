@@ -4456,7 +4456,8 @@ void updateGameplayActions(XrTime displayTime){
         const int physicsMode=s.vrHandMenu.experimentalFreezeBody?1:
             s.vrHandMenu.experimentalAnchorBody?2:
             s.vrHandMenu.experimentalPushBody?3:
-            s.vrHandMenu.experimentalPullBody?4:0;
+            s.vrHandMenu.experimentalPullBody?4:
+            s.vrHandMenu.experimentalWakeNudge?5:0;
         const unsigned freeSide=s.weaponHandLeft?1u:0u;
         const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
             &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
@@ -4475,6 +4476,11 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsStorageRoute=sample.storageRoute;
             inspector.physicsOriginMatches=sample.originMatches;
             inspector.physicsDistanceFromHand=sample.distanceFromHand;
+            inspector.physicsCallbackAtMs=sample.callbackAtMs;
+            inspector.physicsCallbackGapMs=sample.callbackGapMs;
+            inspector.physicsOriginUnchangedMs=sample.originUnchangedMs;
+            inspector.physicsWakeNudges=sample.wakeNudges;
+            inspector.physicsLastWriteRetained=sample.lastWriteRetained;
             for(int axis=0;axis<3;++axis)
                 inspector.physicsOrigin[axis]=sample.origin[axis];
         }

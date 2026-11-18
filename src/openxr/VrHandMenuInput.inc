@@ -510,8 +510,12 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            for(int i=0;i<5;++i)
-                if(pixelY>=optionY+i*68&&pixelY<optionY+58+i*68)
+            const int optionCount=expInline?6:5;
+            const int optionStep=expInline?58:68;
+            const int optionHeight=expInline?52:58;
+            for(int i=0;i<optionCount;++i)
+                if(pixelY>=optionY+i*optionStep
+                    &&pixelY<optionY+optionHeight+i*optionStep)
                     return 130+i;
         }
         return -1;
@@ -847,7 +851,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?5:1; // laser + four physics experiments
+                        ?6:1; // laser + five physics experiments
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1009,7 +1013,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=134&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=135&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
@@ -1037,23 +1041,27 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     }else{
                         const bool wasEnabled=option==1?m.experimentalFreezeBody
                             :option==2?m.experimentalAnchorBody
-                            :option==3?m.experimentalPushBody:m.experimentalPullBody;
+                            :option==3?m.experimentalPushBody
+                            :option==4?m.experimentalPullBody:m.experimentalWakeNudge;
                         m.experimentalFreezeBody=false;
                         m.experimentalAnchorBody=false;
                         m.experimentalPushBody=false;
                         m.experimentalPullBody=false;
+                        m.experimentalWakeNudge=false;
                         if(!wasEnabled){
                             if(option==1)m.experimentalFreezeBody=true;
                             if(option==2)m.experimentalAnchorBody=true;
                             if(option==3)m.experimentalPushBody=true;
                             if(option==4)m.experimentalPullBody=true;
+                            if(option==5)m.experimentalWakeNudge=true;
                             m.experimentalWorldGrabProbeEnabled=true;
                         }
                         m.message=wasEnabled?"Physics method OFF."
                             :option==1?"FREEZE: pin object physics origin."
                             :option==2?"ANCHOR: follow free hand position."
                             :option==3?"PUSH: object position pulse."
-                            :"PULL: object position pulse.";
+                            :option==4?"PULL: object position pulse."
+                            :"WAKE NUDGE: tiny up/down pulses on native body.";
                         log(std::string("[WORLD-GRAB-PHYS-MODE] ")+m.message);
                     }
                 }

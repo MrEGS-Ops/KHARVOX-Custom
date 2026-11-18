@@ -1144,6 +1144,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local unsigned long long lastScan{};
     static thread_local std::array<float,3> frozenOrigin{};
     static thread_local bool freezeCaptured{},pulseDone{};
+    static thread_local std::array<float,3> anchorOffset{};
+    static thread_local bool anchorCaptured{};
+    static thread_local unsigned long long wakeLastNudgeAt{};
+    static thread_local unsigned wakeNudgeCount{};
     static thread_local bool originScanned{};
     static thread_local std::uintptr_t uniqueOriginOffset{};
     static thread_local int originMatchCount{};
@@ -1154,6 +1158,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         cachedEntity=reinterpret_cast<std::uintptr_t>(entity);
         cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
         cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
+        anchorCaptured=false;anchorOffset={};
+        wakeLastNudgeAt=0;wakeNudgeCount=0;
         originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
     }
     if(!cachedBody&&now-lastScan>=500){
@@ -1187,6 +1193,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     }
     KharvoxWorldGrabPhysicsSample reading{};
     reading.handle=handle;reading.path=path;reading.mode=mode;
+    reading.callbackAtMs=now;reading.wakeNudges=wakeNudgeCount;
     reading.generation=levelTransitionGeneration.load(std::memory_order_acquire);
     reading.status=1; // no verified rigid body yet
     if(cachedBody){
@@ -1207,6 +1214,31 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             }
             if(plausible){
                 reading.status=2;
+                // Count live native-entity callbacks separately from actual
+                // physics movement. This directly tests the #743 observation:
+                // the entity can remain targetable after DOOM stops simulating.
+                static thread_local const void* sampledBody{};
+                static thread_local unsigned long long lastSampleAt{},lastChangedAt{};
+                static thread_local std::array<float,3> lastObserved{};
+                static thread_local bool lastSampleValid{};
+                if(sampledBody!=cachedBody){
+                    sampledBody=cachedBody;lastSampleAt=0;lastChangedAt=now;
+                    lastSampleValid=false;
+                }
+                if(lastSampleAt&&now>=lastSampleAt)
+                    reading.callbackGapMs=now-lastSampleAt;
+                if(lastSampleValid){
+                    float magnitude{};
+                    for(int axis=0;axis<3;++axis){
+                        const float d=origin[axis]-lastObserved[axis];
+                        magnitude+=d*d;
+                    }
+                    if(magnitude>0.01f*0.01f)lastChangedAt=now;
+                }
+                lastObserved={origin[0],origin[1],origin[2]};
+                lastSampleValid=true;lastSampleAt=now;
+                if(now>=lastChangedAt)
+                    reading.originUnchangedMs=now-lastChangedAt;
                 const auto owner=reinterpret_cast<std::uintptr_t>(cachedBody);
                 const auto field=reinterpret_cast<std::uintptr_t>(location);
                 // Build #742 found real idPhysics_RigidBody instances but
@@ -1280,17 +1312,40 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             }
                             for(int i=0;i<3;++i)next[i]=frozenOrigin[i];
                             write=true;
-                        }else if(mode==2){ // Hand-follow anchor
+                        }else if(mode==2){ // Capture a hand-relative offset, no centre snap
+                            if(!anchorCaptured){
+                                for(int i=0;i<3;++i)
+                                    anchorOffset[i]=origin[i]-hand[i];
+                                anchorCaptured=true;
+                            }
                             float step2=0.f;
                             for(int i=0;i<3;++i){
-                                next[i]=hand[i]+direction[i]*8.f-origin[i];
+                                next[i]=hand[i]+anchorOffset[i]-origin[i];
                                 step2+=next[i]*next[i];
                             }
                             const float step=std::sqrt(step2);
-                            const float factor=step>8.f?8.f/step:1.f;
+                            // 12 native units max correction (was 8).
+                            // Still not a collision-aware physics constraint.
+                            const float factor=step>12.f?12.f/step:1.f;
                             for(int i=0;i<3;++i)
                                 next[i]=origin[i]+next[i]*factor;
-                            write=true;
+                            write=step>0.005f;
+                        }else if(mode==5){ // Nudge sleeping body, without guessed engine ABI
+                            if(wakeNudgeCount<8
+                                &&(wakeLastNudgeAt==0||now-wakeLastNudgeAt>=180)){
+                                // Small symmetric vertical displacement only:
+                                // no downward clipping and zero net drift.
+                                next[2]+=wakeNudgeCount%2==0?1.f:-1.f;
+                                ++wakeNudgeCount;
+                                wakeLastNudgeAt=now;
+                                reading.wakeNudges=wakeNudgeCount;
+                                write=true;
+                                log(std::string("[WORLD-GRAB-WAKE-NUDGE] handle=")
+                                    +std::to_string(handle)+" pulse="
+                                    +std::to_string(wakeNudgeCount)
+                                    +" callbackGapMs="+std::to_string(reading.callbackGapMs)
+                                    +" unchangedMs="+std::to_string(reading.originUnchangedMs));
+                            }
                         }else if(!pulseDone){ // Push / pull impulse imitation
                             for(int i=0;i<3;++i)
                                 next[i]=origin[i]+direction[i]*(mode==3?18.f:-18.f);
@@ -1335,6 +1390,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             +" storeRoute="+std::to_string(reading.storageRoute)
             +" matchingVectors="+std::to_string(reading.originMatches)
             +" handDistance="+std::to_string(reading.distanceFromHand)
+            +" callbackGapMs="+std::to_string(reading.callbackGapMs)
+            +" unchangedMs="+std::to_string(reading.originUnchangedMs)
+            +" wakeNudges="+std::to_string(reading.wakeNudges)
             +" position="+std::to_string(reading.origin[0])+","
                 +std::to_string(reading.origin[1])+","
                 +std::to_string(reading.origin[2]));
