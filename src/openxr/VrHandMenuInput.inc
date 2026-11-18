@@ -1060,11 +1060,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             m.experimentalWorldGrabProbeEnabled=true;
                         }
                         m.message=wasEnabled?"Physics method OFF."
-                            :option==1?"FREEZE: pin object physics origin."
+                            :option==1?"WAKE TRACE: map native function candidates (read only)."
                             :option==2?"ANCHOR: direct short-range origin follow."
-                            :option==3?"PUSH: object position pulse."
-                            :option==4?"PULL: object position pulse."
-                            :option==5?"STRONG ANCHOR: 28-unit origin follow."
+                            :option==3?"IMPULSE TRACE: map native functions (read only)."
+                            :option==4?"CONTACT: one tiny 0.35-unit close-range pulse."
+                            :option==5?"STRONG ANCHOR: native-motion gate and rotation lock."
                             :"LIFT PROBE: eight upward-only steps.";
                         log(std::string("[WORLD-GRAB-PHYS-MODE] ")+m.message);
                     }
