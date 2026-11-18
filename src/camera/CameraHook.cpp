@@ -130,7 +130,10 @@ struct ExperimentalPinnedBody {
     unsigned long long epoch{},generation{},startAtMs{},lastTickAtMs{},
         lastReportedAtMs{};
     std::array<char,80> type{};
-    bool active{};
+    // Native movement, not a successful memory write, arms the grab.
+    bool active{},followReady{},axisCaptured{};
+    std::array<float,9> heldAxis{};
+    unsigned long long lastWaitLogAt{},lastAxisLogAt{};
 };
 thread_local ExperimentalPinnedBody experimentalPinnedBody{};
 unsigned long long nativeGrabResolvedSequence{};
@@ -682,6 +685,32 @@ bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
     return true;
 }
 
+bool plausibleRigidBodyAxis(const float* axis){
+    if(!axis||!readableMemory(axis,sizeof(float)*9))return false;
+    for(int i=0;i<9;++i)if(!std::isfinite(axis[i])||std::abs(axis[i])>1.1f)return false;
+    for(int row=0;row<3;++row){
+        const float length=axis[row*3]*axis[row*3]
+            +axis[row*3+1]*axis[row*3+1]+axis[row*3+2]*axis[row*3+2];
+        if(length<0.8f||length>1.2f)return false;
+        for(int prev=0;prev<row;++prev){
+            const float dot=axis[row*3]*axis[prev*3]
+                +axis[row*3+1]*axis[prev*3+1]
+                +axis[row*3+2]*axis[prev*3+2];
+            if(std::abs(dot)>0.15f)return false;
+        }
+    }
+    return true;
+}
+bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
+    if(!plausibleRigidBodyAxis(axis)||!writableMemory(axis,sizeof(float)*9))
+        return false;
+#if defined(_MSC_VER)
+    __try{std::memcpy(axis,wanted.data(),sizeof(float)*9);return true;}
+    __except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#else
+    std::memcpy(axis,wanted.data(),sizeof(float)*9);return true;
+#endif
+}
 void experimentalNativeBodyProbe(const void* entity,unsigned path,
     unsigned handle,const char* className,
     std::uintptr_t imageBase,std::uintptr_t imageSize);
@@ -1182,6 +1211,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local std::array<float,3> priorWriteStart{},priorWriteNext{};
     static thread_local bool priorWriteValid{};
     static thread_local bool originScanned{};
+    static thread_local unsigned long long nativeMotionAt{};
+    static thread_local bool lastNativeMotionSeen{};
     static thread_local std::uintptr_t uniqueOriginOffset{};
     static thread_local int originMatchCount{};
     const auto now=GetTickCount64();
@@ -1195,6 +1226,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         priorWriteAtMs=0;priorWriteValid=false;
         priorWriteStart={};priorWriteNext={};
         originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
+        nativeMotionAt=0;lastNativeMotionSeen=false;
     }
     if(!cachedBody&&now-lastScan>=500){
         lastScan=now;
@@ -1267,6 +1299,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 if(sampledBody!=cachedBody){
                     sampledBody=cachedBody;lastSampleAt=0;lastChangedAt=now;
                     lastSampleValid=false;
+                    nativeMotionAt=0;lastNativeMotionSeen=false;
                 }
                 if(lastSampleAt&&now>=lastSampleAt)
                     reading.callbackGapMs=now-lastSampleAt;
@@ -1276,7 +1309,14 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         const float d=origin[axis]-lastObserved[axis];
                         magnitude+=d*d;
                     }
-                    if(magnitude>0.01f*0.01f)lastChangedAt=now;
+                    if(magnitude>0.01f*0.01f){
+                        lastChangedAt=now;
+                        // Experimental direct writes cannot prove a native
+                        // rigid body has resumed simulation.
+                        if(!priorWriteValid||now-priorWriteAtMs>300){
+                            nativeMotionAt=now;lastNativeMotionSeen=true;
+                        }
+                    }
                 }
                 lastObserved={origin[0],origin[1],origin[2]};
                 lastSampleValid=true;lastSampleAt=now;
@@ -1375,15 +1415,24 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 std::strncpy(pin.type.data(),type.c_str(),
                                     pin.type.size()-1);
                                 pin.active=true;
+                                pin.followReady=lastNativeMotionSeen
+                                    &&nativeMotionAt&&now-nativeMotionAt<=1000;
                                 log(std::string("[WORLD-GRAB-PIN] ACQUIRED class=")
                                     +type+" handle="+std::to_string(handle)
                                     +" epoch="+std::to_string(epoch)
-                                    +" distance="+std::to_string(reading.distanceFromHand));
+                                    +" distance="+std::to_string(reading.distanceFromHand)
+                                    +" followReady="+(pin.followReady?"yes":"no"));
                             }
                         }
                         reading.pinned=pin.active&&pin.entity==entity
                             &&pin.epoch==epoch;
                         reading.pinnedTicks=reading.pinned?pin.ticks:0;
+                        if(reading.pinned&&!pin.followReady&&lastNativeMotionSeen
+                            &&nativeMotionAt&&now-nativeMotionAt<=1000){
+                            pin.followReady=true;
+                            log("[WORLD-GRAB-PIN] NATIVE-MOTION-SEEN handle="
+                                +std::to_string(handle)+"; following enabled");
+                        }
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
                         if(mode==1){ // Pin the position at first Grip
