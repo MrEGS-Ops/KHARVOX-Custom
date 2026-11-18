@@ -4423,7 +4423,8 @@ void updateGameplayActions(XrTime displayTime){
             s.vrHandMenu.experimentalPushBody?3:
             s.vrHandMenu.experimentalPullBody?4:
             s.vrHandMenu.experimentalStrongAnchor?6:
-            s.vrHandMenu.experimentalLiftProbe?7:0;
+            s.vrHandMenu.experimentalLiftProbe?7:
+            s.vrHandMenu.experimentalHandKickProbe?8:0;
         const unsigned freeSide=s.weaponHandLeft?1u:0u;
         const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
             &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
