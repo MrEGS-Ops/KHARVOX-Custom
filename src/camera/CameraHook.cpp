@@ -125,7 +125,8 @@ KharvoxWorldGrabPhysicsSample experimentalPhysicsSample{};
 // No live entity pointer is ever exported to the OpenXR/render thread.
 struct ExperimentalPinnedBody {
     const void* entity{};
-    std::uintptr_t entityVtable{},imageBase{},imageSize{};
+    void* body{};
+    std::uintptr_t entityVtable{},bodyVtable{},imageBase{},imageSize{};
     unsigned handle{},path{},ticks{};
     unsigned long long epoch{},generation{},startAtMs{},lastTickAtMs{},
         lastReportedAtMs{};
@@ -725,6 +726,62 @@ bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
     __except(EXCEPTION_EXECUTE_HANDLER){return false;}
 #else
     std::memcpy(axis,wanted.data(),sizeof(float)*9);return true;
+#endif
+}
+// Experimental only: the supplied exact DOOM executable's native
+// idPhysics_RigidBody::ApplyImpulse implementation reads/writes linear
+// momentum at +0x1EC..+0x1F4 and angular momentum at +0x1F8..+0x200.
+// Verify BOTH instruction signatures before touching the state. Clearing
+// stale momentum when a manually posed object is held/released prevents
+// residual solver energy from turning a gentle drop into a spin/launch.
+// This is NOT a guessed vtable invocation, and never runs on vanilla builds.
+bool experimentalZeroRigidBodyMomentum(
+    void* body,std::uintptr_t imageBase,std::array<float,6>* before=nullptr){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!body||!imageBase)return false;
+    static constexpr unsigned char linearSig[]{
+        0xF3,0x0F,0x10,0x87,0xEC,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x06,
+        0xF3,0x0F,0x11,0x87,0xEC,0x01,0x00,0x00
+    };
+    static constexpr unsigned char angularSig[]{
+        0xF3,0x0F,0x11,0xA7,0xF8,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x87,0xFC,0x01,0x00,0x00
+    };
+    const auto* linearCode=reinterpret_cast<const unsigned char*>(
+        imageBase+0x179A958);
+    const auto* angularCode=reinterpret_cast<const unsigned char*>(
+        imageBase+0x179AA70);
+    if(!readableMemory(linearCode,sizeof(linearSig))
+        ||!readableMemory(angularCode,sizeof(angularSig))
+        ||std::memcmp(linearCode,linearSig,sizeof(linearSig))!=0
+        ||std::memcmp(angularCode,angularSig,sizeof(angularSig))!=0)
+        return false;
+    auto* bytes=static_cast<unsigned char*>(body);
+    auto* linear=reinterpret_cast<float*>(bytes+0x1EC);
+    auto* angular=reinterpret_cast<float*>(bytes+0x1F8);
+    if(!writableMemory(linear,3*sizeof(float))
+        ||!writableMemory(angular,3*sizeof(float)))return false;
+    std::array<float,6> prior{};
+    for(int i=0;i<3;++i){
+        prior[i]=linear[i];prior[i+3]=angular[i];
+    }
+    for(float value:prior)
+        if(!std::isfinite(value)||std::abs(value)>1e8f)return false;
+    constexpr float zero[3]{0,0,0};
+#if defined(_MSC_VER)
+    __try{
+        std::memcpy(linear,zero,sizeof(zero));
+        std::memcpy(angular,zero,sizeof(zero));
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#else
+    std::memcpy(linear,zero,sizeof(zero));
+    std::memcpy(angular,zero,sizeof(zero));
+#endif
+    if(before)*before=prior;
+    return true;
+#else
+    (void)body;(void)imageBase;(void)before;return false;
 #endif
 }
 // Matrices are column-major (DOOM's native body axis layout). A rigid body
@@ -1577,6 +1634,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 &&entityVtable-imageBase<imageSize){
                                 pin={};
                                 pin.entity=entity;pin.entityVtable=entityVtable;
+                                pin.body=cachedBody;pin.bodyVtable=vtable;
                                 pin.imageBase=imageBase;pin.imageSize=imageSize;
                                 pin.handle=handle;pin.path=path;
                                 pin.epoch=epoch;pin.generation=reading.generation;
@@ -1770,6 +1828,13 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             for(int i=0;i<3;++i)
                                 reading.requestedDelta[i]=next[i]-origin[i];
                         }
+                        // The physics solver must not retain old linear or
+                        // angular momentum while manual hand posing owns the
+                        // rigid-body transform.
+                        if((mode==2||mode==6)&&reading.pinned
+                            &&pin.followReady&&pin.relativeCaptured)
+                            experimentalZeroRigidBodyMomentum(
+                                cachedBody,imageBase);
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
                             priorWriteValid=true;priorWriteAtMs=now;
@@ -1878,14 +1943,36 @@ void experimentalPinnedBodyTick() {
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
     const int mode=experimentalPhysicsMode.load(std::memory_order_acquire);
     const auto release=[&](const char* reason){
+        std::array<float,6> priorMomentum{};
+        bool settled=false;
+        // Only inspect the rigid body when the same level is live, the
+        // original entity/body vtables are still readable and unchanged.
+        if(pin.body&&pin.generation==generation
+            &&KharvoxCameraWorldActive()
+            &&readableMemory(pin.entity,sizeof(std::uintptr_t))
+            &&readableMemory(pin.body,sizeof(std::uintptr_t))){
+            std::uintptr_t entityVtable{},bodyVtable{};
+            std::memcpy(&entityVtable,pin.entity,sizeof(entityVtable));
+            std::memcpy(&bodyVtable,pin.body,sizeof(bodyVtable));
+            if(entityVtable==pin.entityVtable
+                &&bodyVtable==pin.bodyVtable)
+                settled=experimentalZeroRigidBodyMomentum(
+                    pin.body,pin.imageBase,&priorMomentum);
+        }
         log(std::string("[WORLD-GRAB-PIN] RELEASE reason=")+reason
             +" handle="+std::to_string(pin.handle)
-            +" ticks="+std::to_string(pin.ticks));
+            +" ticks="+std::to_string(pin.ticks)
+            +" zeroedMomentum="+(settled?"yes":"no")
+            +" linearBefore="+std::to_string(priorMomentum[0])+","
+                +std::to_string(priorMomentum[1])+","
+                +std::to_string(priorMomentum[2])
+            +" angularBefore="+std::to_string(priorMomentum[3])+","
+                +std::to_string(priorMomentum[4])+","
+                +std::to_string(priorMomentum[5]));
         pin={};
     };
     if((mode!=2&&mode!=6)||pin.epoch!=epoch){release("grip-or-mode-ended");return;}
     if(pin.generation!=generation){release("level-changed");return;}
-    if(now-pin.startAtMs>20000){release("test-hold-timeout-20s");return;}
     if(!focusHandValid.load(std::memory_order_acquire)){
         release("hand-aim-invalid");return;
     }
