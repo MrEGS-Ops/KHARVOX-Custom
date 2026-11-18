@@ -1,5 +1,6 @@
 #include "../src/openxr/WorldGrabActivationTestPolicy.h"
 #include <cassert>
+#include <initializer_list>
 using namespace kharvox;
 int main(){
     // A: immediate acquisition without relying on a pre-existing kick.
