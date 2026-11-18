@@ -8,6 +8,14 @@ namespace kharvox {
 inline constexpr bool worldGrabActivationTestValid(int mode) noexcept {
     return mode >= 1 && mode <= 5;
 }
+// Preserve the previously working gated, 28-unit Strong Anchor unchanged
+// as its own DEV choice. It is NOT one of the five no-kick hypotheses.
+inline constexpr bool worldGrabStrongAnchor(int mode) noexcept {
+    return mode == 6;
+}
+inline constexpr bool worldGrabAnchorMode(int mode) noexcept {
+    return worldGrabActivationTestValid(mode) || worldGrabStrongAnchor(mode);
+}
 inline constexpr bool worldGrabActivationNeedsWake(int mode) noexcept {
     return mode >= 2 && mode <= 5;
 }
@@ -29,6 +37,17 @@ inline constexpr bool worldGrabActivationFollowReady(
     if(nativeMotionObserved)return true;
     return heldMs >= (mode==5?350u:80u);
 }
+inline constexpr bool worldGrabAnchorFollowReady(
+    int mode, bool nativeMotionObserved, std::uint64_t heldMs) noexcept {
+    // Original Strong Anchor waits for demonstrated DOOM-native movement;
+    // all five new tests retain their independent activation policy.
+    return worldGrabStrongAnchor(mode) ? nativeMotionObserved
+        : worldGrabActivationFollowReady(mode,nativeMotionObserved,heldMs);
+}
+static_assert(worldGrabStrongAnchor(6) && worldGrabAnchorMode(6)
+    && !worldGrabAnchorMode(7));
+static_assert(!worldGrabAnchorFollowReady(6,false,1000)
+    && worldGrabAnchorFollowReady(6,true,0));
 static_assert(!worldGrabActivationTestValid(0)
     && worldGrabActivationTestValid(1)
     && worldGrabActivationTestValid(5)
