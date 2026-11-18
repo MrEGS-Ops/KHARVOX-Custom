@@ -407,7 +407,8 @@ void paintVrHandMenu() {
                 +(inspect.physicsMode==1?"1 DIRECT":inspect.physicsMode==2?"2 NATIVE WAKE"
                     :inspect.physicsMode==3?"3 CONTACT PROXY"
                     :inspect.physicsMode==4?"4 MICRO MOVE"
-                    :inspect.physicsMode==5?"5 ENTITY TICK":"INSPECT")
+                    :inspect.physicsMode==5?"5 ENTITY TICK"
+                    :inspect.physicsMode==6?"STRONG ANCHOR":"INSPECT")
                 +" / "+(inspect.physicsChanged?"READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
@@ -931,18 +932,20 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,6> labels{{
+                const std::array<const char*,7> labels{{
                     "INSPECTOR / LASER", "1 DIRECT / NO KICK",
                     "2 VERIFIED NATIVE WAKE", "3 CONTACT PROXY",
-                    "4 MICRO MOVE", "5 ENTITY TICK PROBE"}};
-                const std::array<bool,6> modes{{
+                    "4 MICRO MOVE", "5 ENTITY TICK PROBE",
+                    "STRONG ANCHOR (PRESERVED)"}};
+                const std::array<bool,7> modes{{
                     m.experimentalWorldGrabProbeEnabled,
                     m.experimentalActivationMode==1,
                     m.experimentalActivationMode==2,
                     m.experimentalActivationMode==3,
                     m.experimentalActivationMode==4,
-                    m.experimentalActivationMode==5}};
-                for(int index=0;index<6;++index){
+                    m.experimentalActivationMode==5,
+                    m.experimentalActivationMode==6}};
+                for(int index=0;index<7;++index){
                     const int y=186+index*44;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
@@ -952,8 +955,8 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,490,"Test a fresh, un-kicked movable object.",RGB(255,187,111));
-                write(538,519,"One test at a time; switching releases Grip.",muted);
+                write(538,490,"Tests 1-5: fresh un-kicked object.",RGB(255,187,111));
+                write(538,519,"Strong Anchor: original kick-then-hold fallback.",muted);
                 write(538,548,"#3 uses a position proxy, NOT a collision hook.",muted);
                 write(538,577,"#5 observes native motion; no guessed entity ABI.",muted);
             }
