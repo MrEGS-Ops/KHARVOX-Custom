@@ -1734,6 +1734,13 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                         mutableOrigin,targetProbe);
                                     pin.activationProbeDone=moved;
                                     if(moved){
+                                        // Our deliberate proxy write is NOT
+                                        // evidence of native solver motion.
+                                        priorWriteValid=true;priorWriteAtMs=now;
+                                        priorWriteStart=loggedPreWriteOrigin;
+                                        priorWriteNext={
+                                            targetProbe[0],targetProbe[1],
+                                            targetProbe[2]};
                                         for(int component=0;component<3;++component){
                                             origin[component]=targetProbe[component];
                                             reading.origin[component]=targetProbe[component];
@@ -1765,7 +1772,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             &&kharvox::worldGrabActivationFollowReady(
                                 mode,nativeMoved,now-pin.startAtMs)){
                             pin.followReady=true;
-                            log("[WORLD-GRAB-OWNER-TICK] mode="
+                            log("[WORLD-GRAB-ACTIVATION-READY] mode="
                                 +std::to_string(mode)
                                 +" handle="+std::to_string(handle)
                                 +" observedNativeMotion="+(nativeMoved?"yes":"no")
