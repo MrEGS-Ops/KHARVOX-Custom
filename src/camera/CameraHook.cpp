@@ -1435,13 +1435,34 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         }
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
-                        if(mode==1){ // Pin the position at first Grip
-                            if(!freezeCaptured){
-                                frozenOrigin={origin[0],origin[1],origin[2]};
-                                freezeCaptured=true;
+                        if(mode==1||mode==3){ // Native method-discovery tests (read only)
+                            if(!pulseDone){
+                                pulseDone=true;
+                                // We have not verified an Activate or
+                                // ApplyImpulse ABI for idTech 6. Log candidate
+                                // entry points but never call guessed slots.
+                                std::ostringstream report;
+                                report<<(mode==1?"[WORLD-GRAB-WAKE-TEST]"
+                                    :"[WORLD-GRAB-IMPULSE-TEST]")
+                                    <<" handle="<<handle
+                                    <<" rigidBody vtable functions";
+                                for(std::uintptr_t slot=0x58;slot<=0xC0;slot+=8){
+                                    std::uintptr_t candidate{};
+                                    if(readableMemory(reinterpret_cast<void*>(vtable+slot),
+                                            sizeof(candidate)))
+                                        std::memcpy(&candidate,
+                                            reinterpret_cast<void*>(vtable+slot),
+                                            sizeof(candidate));
+                                    report<<" +0x"<<std::hex<<slot<<"=";
+                                    if(candidate>=imageBase&&candidate-imageBase<imageSize)
+                                        report<<"RVA0x"<<(candidate-imageBase);
+                                    else report<<"unverified";
+                                }
+                                report<<std::dec<<" nativeCall=BLOCKED_UNVERIFIED"
+                                    <<" origin="<<origin[0]<<","<<origin[1]<<","<<origin[2]
+                                    <<" callbackGapMs="<<reading.callbackGapMs;
+                                log(report.str());
                             }
-                            for(int i=0;i<3;++i)next[i]=frozenOrigin[i];
-                            write=true;
                         }else if(mode==2||mode==6){ // short, fixed controller-relative origin target
                             float step2=0.f;
                             for(int i=0;i<3;++i){
@@ -1461,7 +1482,14 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             const float factor=step>maxStep?maxStep/step:1.f;
                             for(int i=0;i<3;++i)
                                 next[i]=origin[i]+next[i]*factor;
-                            write=step>0.005f;
+                            write=step>0.005f&&pin.followReady;
+                            if(!pin.followReady&&(pin.lastWaitLogAt==0
+                                ||now-pin.lastWaitLogAt>=1000)){
+                                pin.lastWaitLogAt=now;
+                                log("[WORLD-GRAB-PIN] WAITING-NATIVE-MOTION handle="
+                                    +std::to_string(handle)
+                                    +" no position writes before activation");
+                            }
                         }else if(mode==7){ // Distinct one-way vertical retention test
                             if(liftPulseCount<8
                                 &&(liftLastPulseAt==0||now-liftLastPulseAt>=200)){
@@ -1478,14 +1506,57 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                     +" requestedUp=6"
                                     +" unchangedMs="+std::to_string(reading.originUnchangedMs));
                             }
-                        }else if(!pulseDone){ // Push / pull impulse imitation
+                        }else if(mode==4&&!pulseDone
+                            &&reading.distanceFromHand<=48.f){
+                            // One tiny hand-proximity contact proxy, not an
+                            // enlarged native player collision capsule.
                             for(int i=0;i<3;++i)
-                                next[i]=origin[i]+direction[i]*(mode==3?18.f:-18.f);
+                                next[i]=origin[i]+direction[i]*0.35f;
                             pulseDone=true;write=true;
+                            log("[WORLD-GRAB-CONTACT-TEST] one-shot 0.35-unit"
+                                " proximity pulse handle="+std::to_string(handle)
+                                +" distance="+std::to_string(reading.distanceFromHand));
                         }
                         if(write){
                             for(int i=0;i<3;++i)
                                 reading.requestedDelta[i]=next[i]-origin[i];
+                        }
+                        // Hold initial orientation while an active prop is
+                        // attached. The +0x88 candidate must return a real
+                        // orthonormal 3x3 matrix or this fails closed.
+                        if((mode==2||mode==6)&&reading.pinned
+                            &&pin.followReady){
+                            std::uintptr_t axisFn{};
+                            if(readableMemory(reinterpret_cast<const void*>(vtable+0x88),
+                                    sizeof(axisFn)))
+                                std::memcpy(&axisFn,
+                                    reinterpret_cast<const void*>(vtable+0x88),
+                                    sizeof(axisFn));
+                            const float* rawAxis=executableMemory(
+                                reinterpret_cast<const void*>(axisFn))
+                                ?nativeBodyCallOrigin(cachedBody,axisFn):nullptr;
+                            if(plausibleRigidBodyAxis(rawAxis)
+                                &&writableMemory(rawAxis,sizeof(float)*9)){
+                                if(!pin.axisCaptured){
+                                    std::memcpy(pin.heldAxis.data(),rawAxis,
+                                        sizeof(float)*9);
+                                    pin.axisCaptured=true;
+                                    log("[WORLD-GRAB-ROTATION] captured rigid"
+                                        " body orientation handle="+std::to_string(handle));
+                                }else if(nativeBodyWriteAxis(
+                                    const_cast<float*>(rawAxis),pin.heldAxis)
+                                    &&(pin.lastAxisLogAt==0
+                                        ||now-pin.lastAxisLogAt>=1000)){
+                                    pin.lastAxisLogAt=now;
+                                    log("[WORLD-GRAB-ROTATION] held original"
+                                        " orientation handle="+std::to_string(handle));
+                                }
+                            }else if(pin.lastAxisLogAt==0
+                                ||now-pin.lastAxisLogAt>=3000){
+                                pin.lastAxisLogAt=now;
+                                log("[WORLD-GRAB-ROTATION] GetAxis not verified;"
+                                    " lock disabled for handle="+std::to_string(handle));
+                            }
                         }
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
@@ -3544,7 +3615,9 @@ void KharvoxCameraSetCrouchState(bool active) {
 void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     // -1=off; 0=inspect; 1=freeze; 2=Anchor; 3=Push; 4=Pull;
-    // 6=Strong Anchor; 7=Lift Probe. Mode 5 was retired.
+    // 1=Wake mapping (read-only); 2=Anchor; 3=Impulse mapping
+    // (read-only); 4=Contact proxy pulse; 6=Strong Anchor;
+    // 7=Lift Probe. Mode 5 was retired.
     // Build #748 erroneously clamped all requested modes to <=4, silently
     // disabling Strong Anchor and Lift even though the XR menu sent 6/7.
     const bool supported=mode>=0&&mode<=4||mode==6||mode==7;
