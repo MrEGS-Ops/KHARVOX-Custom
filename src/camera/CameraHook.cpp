@@ -116,6 +116,10 @@ std::array<bool,2> nativeGrabCandidateValid{};
 unsigned long long nativeGrabCandidateSequence{};
 std::array<KharvoxWorldGrabResolvedEntity,2> nativeGrabResolvedEntity{};
 std::array<bool,2> nativeGrabResolvedValid{};
+std::atomic<int> experimentalPhysicsMode{-1};
+std::atomic<unsigned long long> experimentalPhysicsEpoch{};
+std::mutex experimentalPhysicsMutex;
+KharvoxWorldGrabPhysicsSample experimentalPhysicsSample{};
 unsigned long long nativeGrabResolvedSequence{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
@@ -658,6 +662,10 @@ bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
     return true;
 }
 
+void experimentalNativeBodyProbe(const void* entity,unsigned path,
+    unsigned handle,const char* className,
+    std::uintptr_t imageBase,std::uintptr_t imageSize);
+
 // DOOM has ALREADY resolved and null-checked this entity in FocusTracker.
 // The following native instruction is itself 'mov rdx,[rax]' to fetch the
 // entity's vtable. Observe that same pointer while it's valid on game thread.
@@ -681,6 +689,7 @@ extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
     const auto base=reinterpret_cast<std::uintptr_t>(image);
     const auto size=static_cast<std::uintptr_t>(nt->OptionalHeader.SizeOfImage);
     const bool inImage=vtable>=base&&vtable-base<size;
+    {
     std::lock_guard<std::mutex> lock(nativeGrabFocusMutex);
     if(!nativeGrabFocusObservationEnabled.load(std::memory_order_relaxed))
         return;
@@ -697,6 +706,20 @@ extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
     found.sampleSequence=++nativeGrabResolvedSequence;
     nativeGrabResolvedEntity[sourcePath]=found;
     nativeGrabResolvedValid[sourcePath]=true;
+    }
+    // This is a real native entity pointer already checked by DOOM.
+    // Do not expose it to the XR thread or keep it after this callback.
+    unsigned observedHandle{};
+    {
+        std::lock_guard<std::mutex> lock(nativeGrabFocusMutex);
+        if(nativeGrabCandidateValid[sourcePath])
+            observedHandle=nativeGrabCandidate[sourcePath].nativeHandle;
+    }
+    std::array<char,80> observedClass{};
+    if(inImage)
+        readNativeWorldGrabClassLabel(vtable,base,size,observedClass);
+    experimentalNativeBodyProbe(nativeEntity,sourcePath,observedHandle,
+        observedClass.data(),base,size);
 }
 
 // Hook ONLY the fourteen bytes after DOOM's native entity manager has
@@ -1071,6 +1094,198 @@ bool writableMemory(const void* address, size_t bytes) {
     const auto end = begin + bytes;
     const auto regionEnd = reinterpret_cast<uintptr_t>(info.BaseAddress) + info.RegionSize;
     return end >= begin && end <= regionEnd;
+}
+
+// Native world-object experiment: the DOOM entity is already resolved on
+// the game thread by FocusTracker. A physics body is accepted ONLY after
+// MSVC RTTI identifies an idPhysics_RigidBody subtype. Its GetOrigin
+// virtual offset is *hypothetical* for props (player was verified at 0x80).
+// The direct float mutation intentionally tests whether DOOM's next physics
+// tick honours that existing state. It never alters a random unknown offset.
+const float* nativeBodyCallOrigin(void* body,std::uintptr_t function) {
+    if(!body||!function)return nullptr;
+    using Fn=const float* (__fastcall*)(void*,int);
+#if defined(_MSC_VER)
+    __try { return reinterpret_cast<Fn>(function)(body,0); }
+    __except(EXCEPTION_EXECUTE_HANDLER) { return nullptr; }
+#else
+    return reinterpret_cast<Fn>(function)(body,0);
+#endif
+}
+bool nativeBodyWriteOrigin(float* field,const float value[3]) {
+    if(!field||!value||!writableMemory(field,sizeof(float)*3))return false;
+#if defined(_MSC_VER)
+    __try{
+        field[0]=value[0];field[1]=value[1];field[2]=value[2];
+        return true;
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#else
+    for(int i=0;i<3;++i)field[i]=value[i];
+    return true;
+#endif
+}
+void experimentalNativeBodyProbe(const void* entity,unsigned path,
+    unsigned handle,const char* className,
+    std::uintptr_t imageBase,std::uintptr_t imageSize) {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    const int mode=experimentalPhysicsMode.load(std::memory_order_acquire);
+    if(mode<0||!entity||path>=2)return;
+    const std::string type=className?className:"";
+    if(type=="idWorldspawn"||type.find("Player")!=std::string::npos
+        ||type.find("Projectile")!=std::string::npos
+        ||type.find("idAI")!=std::string::npos)return;
+    static thread_local std::uintptr_t cachedEntity{};
+    static thread_local unsigned cachedHandle{};
+    static thread_local unsigned long long cachedEpoch{};
+    static thread_local void* cachedBody{};
+    static thread_local std::array<char,64> cachedType{};
+    static thread_local unsigned long long lastScan{};
+    static thread_local std::array<float,3> frozenOrigin{};
+    static thread_local bool freezeCaptured{},pulseDone{};
+    const auto now=GetTickCount64();
+    const auto epoch=experimentalPhysicsEpoch.load(std::memory_order_acquire);
+    if(cachedEntity!=reinterpret_cast<std::uintptr_t>(entity)
+        ||cachedHandle!=handle||cachedEpoch!=epoch){
+        cachedEntity=reinterpret_cast<std::uintptr_t>(entity);
+        cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
+        cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
+    }
+    if(!cachedBody&&now-lastScan>=500){
+        lastScan=now;
+        // Search the first 16KB of this native entity. The physics vtable
+        // may be embedded OR referred to by an aligned pointer member.
+        for(std::size_t off=0;off<0x4000;off+=sizeof(void*)){
+            const auto* slot=static_cast<const unsigned char*>(entity)+off;
+            if(!readableMemory(slot,sizeof(void*)))break;
+            std::uintptr_t candidate{};
+            std::memcpy(&candidate,slot,sizeof(candidate));
+            for(int layout=0;layout<2;++layout){
+                const void* body=layout==0?static_cast<const void*>(slot)
+                    :reinterpret_cast<const void*>(candidate);
+                if(layout==1&&(!candidate||!readableMemory(body,sizeof(void*))))
+                    continue;
+                std::uintptr_t vtable{};
+                std::memcpy(&vtable,body,sizeof(vtable));
+                if(vtable<imageBase||vtable-imageBase>=imageSize)continue;
+                std::array<char,80> label{};
+                if(!readNativeWorldGrabClassLabel(vtable,imageBase,imageSize,label))
+                    continue;
+                if(std::string(label.data()).rfind("idPhysics_RigidBody",0)!=0)
+                    continue;
+                cachedBody=const_cast<void*>(body);
+                std::strncpy(cachedType.data(),label.data(),cachedType.size()-1);
+                break;
+            }
+            if(cachedBody)break;
+        }
+    }
+    KharvoxWorldGrabPhysicsSample reading{};
+    reading.handle=handle;reading.path=path;reading.mode=mode;
+    reading.generation=levelTransitionGeneration.load(std::memory_order_acquire);
+    reading.status=1; // no verified rigid body yet
+    if(cachedBody){
+        reading.physicsClass=cachedType;
+        std::uintptr_t vtable{};
+        std::memcpy(&vtable,cachedBody,sizeof(vtable));
+        std::uintptr_t function{};
+        if(readableMemory(reinterpret_cast<const void*>(vtable+0x80),sizeof(function)))
+            std::memcpy(&function,reinterpret_cast<const void*>(vtable+0x80),sizeof(function));
+        const float* location=executableMemory(reinterpret_cast<const void*>(function))
+            ?nativeBodyCallOrigin(cachedBody,function):nullptr;
+        if(location&&readableMemory(location,12)){
+            float origin[3]{};
+            bool plausible=true;
+            for(int i=0;i<3;++i){
+                origin[i]=location[i];reading.origin[i]=origin[i];
+                plausible=plausible&&std::isfinite(origin[i])&&std::abs(origin[i])<1e6f;
+            }
+            if(plausible){
+                reading.status=2;
+                const auto owner=reinterpret_cast<std::uintptr_t>(cachedBody);
+                const auto field=reinterpret_cast<std::uintptr_t>(location);
+                reading.writable=field>=owner&&field-owner<=0x4000-12
+                    &&writableMemory(location,12);
+                if(reading.writable)reading.status=3;
+                if(mode>0&&reading.writable
+                    &&focusHandValid.load(std::memory_order_acquire)){
+                    float hand[3]{},direction[3]{};
+                    float distance2=0.f;
+                    for(int i=0;i<3;++i){
+                        hand[i]=focusHandOrigin[i].load(std::memory_order_relaxed);
+                        direction[i]=focusHandDirection[i].load(std::memory_order_relaxed);
+                        const float d=origin[i]-hand[i];distance2+=d*d;
+                    }
+                    // Aim at an existing movable object close to the hand.
+                    if(std::isfinite(distance2)&&distance2<110.f*110.f){
+                        float next[3]{origin[0],origin[1],origin[2]};
+                        bool write=false;
+                        if(mode==1){ // Pin the position at first Grip
+                            if(!freezeCaptured){
+                                frozenOrigin={origin[0],origin[1],origin[2]};
+                                freezeCaptured=true;
+                            }
+                            for(int i=0;i<3;++i)next[i]=frozenOrigin[i];
+                            write=true;
+                        }else if(mode==2){ // Hand-follow anchor
+                            float step2=0.f;
+                            for(int i=0;i<3;++i){
+                                next[i]=hand[i]+direction[i]*8.f-origin[i];
+                                step2+=next[i]*next[i];
+                            }
+                            const float step=std::sqrt(step2);
+                            const float factor=step>8.f?8.f/step:1.f;
+                            for(int i=0;i<3;++i)
+                                next[i]=origin[i]+next[i]*factor;
+                            write=true;
+                        }else if(!pulseDone){ // Push / pull impulse imitation
+                            for(int i=0;i<3;++i)
+                                next[i]=origin[i]+direction[i]*(mode==3?18.f:-18.f);
+                            pulseDone=true;write=true;
+                        }
+                        if(write&&nativeBodyWriteOrigin(const_cast<float*>(location),next)){
+                            reading.status=4;
+                            const float* check=nativeBodyCallOrigin(cachedBody,function);
+                            if(check&&readableMemory(check,12)){
+                                float amount=0.f;
+                                for(int i=0;i<3;++i){
+                                    const float d=check[i]-origin[i];
+                                    reading.origin[i]=check[i];amount+=d*d;
+                                }
+                                reading.changed=amount>0.00001f;
+                                if(reading.changed)reading.status=5;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(experimentalPhysicsMutex);
+        reading.sequence=experimentalPhysicsSample.sequence+1;
+        experimentalPhysicsSample=reading;
+    }
+    static thread_local unsigned lastLoggedHandle{};
+    static thread_local int lastLoggedStatus{};
+    static thread_local unsigned long long lastLoggedAt{};
+    if(handle!=lastLoggedHandle||reading.status!=lastLoggedStatus
+        ||now-lastLoggedAt>=5000){
+        lastLoggedHandle=handle;lastLoggedStatus=reading.status;lastLoggedAt=now;
+        log(std::string("[WORLD-GRAB-PHYS] class=")+type
+            +" handle="+std::to_string(handle)
+            +" body="+(reading.physicsClass[0]
+                ?std::string(reading.physicsClass.data()):"NONE")
+            +" method="+std::to_string(mode)
+            +" status="+std::to_string(reading.status)
+            +" writable="+(reading.writable?"yes":"no")
+            +" position="+std::to_string(reading.origin[0])+","
+                +std::to_string(reading.origin[1])+","
+                +std::to_string(reading.origin[2]));
+    }
+#else
+    (void)entity;(void)path;(void)handle;(void)className;
+    (void)imageBase;(void)imageSize;
+#endif
 }
 
 int configuredGloryKillSlowmoLevel() {
@@ -2997,70 +3212,28 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
-int KharvoxCameraServiceNativeWorldDrag(int mode,bool gripHeld) {
+void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    static std::mutex mutex;
-    static bool lookedUp=false,ready=false,active=false;
-    static volatile LONG *drag=nullptr,*damping=nullptr,*showSelection=nullptr;
-    static LONG oldDrag=0,oldDamping=0,oldSelection=0;
-    static int previousMode=0;
-    std::lock_guard<std::mutex> lock(mutex);
-    if(mode>=1&&mode<=3&&gripHeld&&!lookedUp){
-        lookedUp=true;
-        // The existing resolver verifies native name-pointer layout against
-        // DOOM's timescale CVar. No guessed physics offsets or pointers.
-        drag=resolveVerifiedIntegerCvar("g_dragEntity",1);
-        damping=resolveVerifiedIntegerCvar("g_dragDamping",0x7fffffff);
-        showSelection=resolveVerifiedIntegerCvar("g_dragShowSelection",1);
-        if(damping){
-            const LONG bits=InterlockedCompareExchange(damping,0,0);
-            float value{};
-            std::memcpy(&value,&bits,sizeof(value));
-            if(!std::isfinite(value)||value<0.f||value>1.f)damping=nullptr;
-        }
-        ready=drag!=nullptr;
-        log(std::string("[WORLD-GRAB-DRAG] native drag CVar=")
-            +(ready?"RESOLVED":"UNAVAILABLE")
-            +" damping="+(damping?"RESOLVED":"UNAVAILABLE")
-            +" selection="+(showSelection?"RESOLVED":"UNAVAILABLE"));
-    }
-    const bool want=ready&&mode>=1&&mode<=3&&gripHeld
-        &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
-        &&!KharvoxCameraBossSequenceActive();
-    if(!want){
-        if(active){
-            InterlockedExchange(drag,oldDrag);
-            if(damping)InterlockedExchange(damping,oldDamping);
-            if(showSelection)InterlockedExchange(showSelection,oldSelection);
-            active=false;previousMode=0;
-            log("[WORLD-GRAB-DRAG] grip/mode released; engine CVars restored");
-        }
-        return !lookedUp?0:(ready?1:-1);
-    }
-    if(!active){
-        oldDrag=InterlockedCompareExchange(drag,0,0);
-        if(damping)oldDamping=InterlockedCompareExchange(damping,0,0);
-        if(showSelection)oldSelection=InterlockedCompareExchange(showSelection,0,0);
-        active=true;
-    }
-    InterlockedExchange(drag,1);
-    if(showSelection)InterlockedExchange(showSelection,1);
-    if(damping){
-        const float requestedDamping=mode==3?0.f:0.5f;
-        LONG bits{};
-        std::memcpy(&bits,&requestedDamping,sizeof(bits));
-        InterlockedExchange(damping,bits);
-    }
-    if(previousMode!=mode){
-        previousMode=mode;
-        log(std::string("[WORLD-GRAB-DRAG] native FIRE input bridged mode=")
-            +std::to_string(mode)
-            +(mode==1?" HEAD-SPRING":mode==2?" HAND-SPRING":" HAND-SNAP")
-            +"; engine attachment still requires headset validation");
-    }
-    return 2;
+    // -1=off, 0=inspector, 1-4=physics-writing method during Grip.
+    const int selected=enabled&&mode>=0&&mode<=4?mode:-1;
+    const int previous=experimentalPhysicsMode.exchange(selected,std::memory_order_acq_rel);
+    if(previous!=selected)
+        experimentalPhysicsEpoch.fetch_add(1,std::memory_order_acq_rel);
 #else
-    (void)mode;(void)gripHeld;return -1;
+    (void)mode;(void)enabled;
+#endif
+}
+bool KharvoxCameraReadWorldGrabPhysics(KharvoxWorldGrabPhysicsSample& sample) {
+    sample={};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    std::lock_guard<std::mutex> lock(experimentalPhysicsMutex);
+    if(!experimentalPhysicsSample.sequence
+        ||experimentalPhysicsSample.generation!=KharvoxCameraLevelTransitionGeneration())
+        return false;
+    sample=experimentalPhysicsSample;
+    return true;
+#else
+    return false;
 #endif
 }
 
