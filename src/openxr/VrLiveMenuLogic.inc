@@ -138,9 +138,10 @@ VrLiveModOverview vrLiveModOverview(kharvox::VrLiveMod mod){
 VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
     using D=kharvox::VrMenuDevOption;
     switch(option){
-        case D::Folder:return {{{"Experimental controls and diagnostics.",
-            "Open DEV to access specialist tools.",
-            "Normal mod settings remain unchanged.","","",""}}};
+        case D::Folder:return {{{"Open the developer tools directly.",
+            "Select DEV to enter its own menu.",
+            "No separate Configure screen.",
+            "Normal mod settings remain unchanged.","",""}}};
         case D::WeaponStability:
             return vrLiveModOverview(kharvox::VrLiveMod::WeaponRecoil);
         case D::WeaponAlignment:return {{{"Display live gun and hand anchor data.",
@@ -170,12 +171,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{
-            "WORLD GRAB: cyan free-hand laser.",
-            "Live Inspector shows native entity clues.",
-            "Grip reveals DOOM handles and class",
-            "where readable; physics unverified.",
-            "Object movement is NOT connected yet.",
-            "Experimental-only, OFF each launch."}}};
+            "Five no-kick activation experiments.",
+            "A: Direct    B: Native Wake",
+            "C: Contact Proxy    D: Micro Move",
+            "E: Owner / Entity Tick Probe",
+            "Select one mode; test fresh props.",
+            "All are temporary, DEV-only."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }
