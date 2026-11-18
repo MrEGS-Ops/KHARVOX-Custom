@@ -52,8 +52,11 @@ struct WorldGrabInspectorSnapshot {
   bool nativeFocusSeen{},focusHasReference{};
   std::uint64_t focusLastMs{};
   bool enabled{},gripHeld{},freeHandRight{};
-  int nativeDragMode{},nativeDragStatus{};
-  bool nativeDragHolding{};
+  int physicsMode{},physicsStatus{};
+  bool physicsWritable{},physicsChanged{};
+  unsigned int physicsHandle{};
+  float physicsOrigin[3]{};
+  std::string physicsClass;
   std::string lastEvent{"Grip to inspect DOOM focus candidates"};
 };
 inline bool worldGrabInspectorFresh(std::uint64_t nowMs,

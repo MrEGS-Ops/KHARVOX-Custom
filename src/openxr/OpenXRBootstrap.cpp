@@ -4453,17 +4453,28 @@ void updateGameplayActions(XrTime displayTime){
         inspector.gripHeld=inspector.enabled&&(in.grip[0]||in.grip[1]);
         inspector.freeHandRight=s.weaponHandLeft;
         if(!inspector.enabled)inspector={};
-        const int dragMode=s.vrHandMenu.experimentalGrabHeadDrag?1:
-            s.vrHandMenu.experimentalGrabHandDrag?2:
-            s.vrHandMenu.experimentalGrabSnapDrag?3:0;
+        const int physicsMode=s.vrHandMenu.experimentalFreezeBody?1:
+            s.vrHandMenu.experimentalAnchorBody?2:
+            s.vrHandMenu.experimentalPushBody?3:
+            s.vrHandMenu.experimentalPullBody?4:0;
         const unsigned freeSide=s.weaponHandLeft?1u:0u;
-        const bool nativeDragAttempt=in.enabled&&in.gameplay&&in.controllersReady
+        const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
             &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
-        inspector.nativeDragMode=dragMode;
-        inspector.nativeDragStatus=KharvoxCameraServiceNativeWorldDrag(
-            in.enabled?dragMode:0,nativeDragAttempt);
-        inspector.nativeDragHolding=nativeDragAttempt
-            &&inspector.nativeDragStatus==2;
+        // Mode 0 is still an active body-inspection pass. Native entity
+        // pointers remain DOOM-thread only, inside the existing hook.
+        KharvoxCameraConfigureWorldGrabPhysics(
+            physicsHeld?physicsMode:0,in.enabled&&in.gameplay&&in.controllersReady);
+        inspector.physicsMode=physicsMode;
+        KharvoxWorldGrabPhysicsSample sample{};
+        if(KharvoxCameraReadWorldGrabPhysics(sample)){
+            inspector.physicsStatus=sample.status;
+            inspector.physicsWritable=sample.writable;
+            inspector.physicsChanged=sample.changed;
+            inspector.physicsClass=sample.physicsClass.data();
+            inspector.physicsHandle=sample.handle;
+            for(int axis=0;axis<3;++axis)
+                inspector.physicsOrigin[axis]=sample.origin[axis];
+        }
         // This is a real DOOM FocusTracker observation, sampled on its
         // native game thread. It is NOT yet a rigid-body hit: never issue
         // Acquire or turn the laser red solely from these opaque fields.
@@ -4603,18 +4614,18 @@ void updateGameplayActions(XrTime displayTime){
                 inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
                     +" Grip pressed - looking for native object";
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" free-hand Grip detected; native drag="
-                    +(inspector.nativeDragHolding?std::string("FIRE HELD")
-                        :std::string("not armed")));
+                    +" free-hand Grip detected; physics method="
+                    +std::to_string(physicsMode)
+                    +" status="+std::to_string(inspector.physicsStatus));
             }
             if(events.pastReach[hand])
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
                     +" 0.90m advisory reach exceeded; NO movement restriction");
             if(events.released[hand]){
                 inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
-                    +" Grip released - native drag stopped";
+                    +" Grip released - physics edit stopped";
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" Grip released; native drag route disabled");
+                    +" Grip released; physics edit stopped";
             }
         }
     }
@@ -5320,13 +5331,9 @@ void updateGameplayActions(XrTime displayTime){
         const bool nativeUiLeftTriggerDown=restrictedLeftHandSwap?menuFireDown:menuEquipmentDown;
         const bool nativeUiLeftShoulderDown=restrictedLeftHandSwap?menuWeaponGripDown:menuSupportGripDown;
         const bool nativeUiRightShoulderDown=restrictedLeftHandSwap?menuSupportGripDown:menuWeaponGripDown;
-        // DOOM's built-in g_dragEntity consumes FIRE to acquire/drag.
-        // Never borrow FIRE outside the selected DEV experiment.
-        const bool experimentalDragFire=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-            &&s.worldGrabInspector.nativeDragHolding;
+        // Experimental position edits do not synthesize weapon firing.
         const bool rightTriggerDown=gameplay
-            ?(nativeFireDown||experimentalDragFire)
-            :(nativeUiMenu&&nativeUiRightTriggerDown);
+            ?nativeFireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
         const bool leftTriggerDown=weaponModDown||(nativeUiMenu&&nativeUiLeftTriggerDown);
         const bool rightThumbDown=nativeMeleeDown||(nativeUiMenu&&meleeDown);
         const bool leftShoulderDown=gameplayEquipmentDown||(nativeUiMenu&&nativeUiLeftShoulderDown);
@@ -5376,8 +5383,7 @@ void updateGameplayActions(XrTime displayTime){
     // Normal Hand Focus and USE are restored immediately on Grip release.
     const bool worldGrabFreeHandFocus=KHARVOX_EXPERIMENTAL_WORLD_GRAB
         &&kharvox::worldGrabBorrowNativeFocus(
-        s.vrHandMenu.experimentalWorldGrabProbeEnabled
-            &&!s.vrHandMenu.experimentalGrabHeadDrag,gameplay,
+        s.vrHandMenu.experimentalWorldGrabProbeEnabled,gameplay,
         worldInteractionFocus,
         s.worldGrabProbe.held[s.weaponHandLeft?1u:0u],
         syncAttackActive||s.chainsawKillLatched

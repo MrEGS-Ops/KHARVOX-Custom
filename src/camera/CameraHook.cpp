@@ -1096,6 +1096,8 @@ bool writableMemory(const void* address, size_t bytes) {
     return end >= begin && end <= regionEnd;
 }
 
+// Executable-memory helper is defined later in CameraHook.cpp.
+bool executableMemory(const void* address);
 // Native world-object experiment: the DOOM entity is already resolved on
 // the game thread by FocusTracker. A physics body is accepted ONLY after
 // MSVC RTTI identifies an idPhysics_RigidBody subtype. Its GetOrigin

@@ -393,16 +393,16 @@ void paintVrHandMenu() {
                         :"FOCUS: NOT OBSERVED",muted);
             }
             write(left,inspectorY+159,
-                std::string("NATIVE DRAG: ")
-                +(inspect.nativeDragStatus==2?"FIRE BRIDGED (TEST)"
-                    :inspect.nativeDragStatus==1?"CVAR FOUND / GRIP TO TRY"
-                    :inspect.nativeDragStatus<0?"G_DRAGENTITY UNAVAILABLE"
-                    :"OFF / NO METHOD"),gold);
+                std::string("NATIVE PHYSICS: ")
+                +(inspect.physicsClass.empty()?"NOT FOUND":inspect.physicsClass.substr(0,25))
+                +"  STATUS="+std::to_string(inspect.physicsStatus),gold);
             write(left,inspectorY+186,
-                std::string("DRAG METHOD: ")
-                +(inspect.nativeDragMode==1?"HEAD / SPRING"
-                    :inspect.nativeDragMode==2?"HAND / SPRING"
-                    :inspect.nativeDragMode==3?"HAND / SNAP":"NONE"),gold);
+                std::string("METHOD: ")
+                +(inspect.physicsMode==1?"FREEZE":inspect.physicsMode==2?"HAND ANCHOR"
+                    :inspect.physicsMode==3?"PUSH":inspect.physicsMode==4?"PULL":"INSPECT")
+                +" / "+(inspect.physicsChanged?"READBACK MOVED"
+                    :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
+                    :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
             auto event=inspect.lastEvent;
             if(event.size()>40)event=event.substr(0,40);
             write(left,inspectorY+213,"EVENT: "+event,muted);
