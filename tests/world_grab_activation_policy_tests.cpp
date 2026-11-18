@@ -1,6 +1,7 @@
 #include "../src/openxr/WorldGrabActivationTestPolicy.h"
 #include "../src/openxr/WorldGrabSyncPolicy.h"
 #include <cassert>
+#include <initializer_list>
 using namespace kharvox;
 int main(){
     assert(worldGrabStrongAnchor(6)&&worldGrabAnchorMode(6));

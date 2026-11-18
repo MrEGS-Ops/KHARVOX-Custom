@@ -808,6 +808,38 @@ bool experimentalZeroRigidBodyMomentum(
     (void)body;(void)imageBase;(void)before;return false;
 #endif
 }
+// Read momentum with the same instruction-signature verification as the
+// existing reset function, but WITHOUT mutating any native physics state.
+bool experimentalReadRigidBodyMomentum(
+    const void* body,std::uintptr_t imageBase,std::array<float,6>& out){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!body||!imageBase)return false;
+    static constexpr unsigned char linearSig[]{
+        0xF3,0x0F,0x10,0x87,0xEC,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x06,
+        0xF3,0x0F,0x11,0x87,0xEC,0x01,0x00,0x00
+    };
+    static constexpr unsigned char angularSig[]{
+        0xF3,0x0F,0x11,0xA7,0xF8,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x87,0xFC,0x01,0x00,0x00
+    };
+    const auto* linearCode=reinterpret_cast<const unsigned char*>(
+        imageBase+0x179A958);
+    const auto* angularCode=reinterpret_cast<const unsigned char*>(
+        imageBase+0x179AA70);
+    const auto* memory=static_cast<const unsigned char*>(body)+0x1EC;
+    if(!readableMemory(linearCode,sizeof(linearSig))
+        ||!readableMemory(angularCode,sizeof(angularSig))
+        ||std::memcmp(linearCode,linearSig,sizeof(linearSig))!=0
+        ||std::memcmp(angularCode,angularSig,sizeof(angularSig))!=0
+        ||!readableMemory(memory,sizeof(float)*6))return false;
+    std::memcpy(out.data(),memory,sizeof(float)*6);
+    for(float x:out)if(!std::isfinite(x)||std::abs(x)>1e8f)return false;
+    return true;
+#else
+    (void)body;(void)imageBase;(void)out;return false;
+#endif
+}
 bool executableMemory(const void* address);
 // Native Activate is validated by its exact instruction signature. This
 // read-only diagnostic does NOT treat origin memory as visible model pose.
@@ -1811,6 +1843,18 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 pin.followReady=true;
                                 reading.activationNativeEvidence=true;
                                 reading.activationFollowing=true;
+                                std::array<float,6> momentum{};
+                                const bool momentumKnown=experimentalReadRigidBodyMomentum(
+                                    cachedBody,imageBase,momentum);
+                                log("[WORLD-GRAB-AUTO] MOMENTUM_AT_WAKE handle="
+                                    +std::to_string(handle)
+                                    +" known="+(momentumKnown?"yes":"no")
+                                    +" linearXYZ="+std::to_string(momentum[0])+","
+                                        +std::to_string(momentum[1])+","
+                                        +std::to_string(momentum[2])
+                                    +" angularXYZ="+std::to_string(momentum[3])+","
+                                        +std::to_string(momentum[4])+","
+                                        +std::to_string(momentum[5]));
                                 log("[WORLD-GRAB-AUTO] NATIVE_EVIDENCE handle="
                                     +std::to_string(handle)
                                     +" stage="+std::to_string(pin.activationStage)
@@ -1898,6 +1942,19 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 int rest{};
                                 const bool restKnown=experimentalReadRigidBodyRest(
                                     cachedBody,imageBase,rest);
+                                std::array<float,6> momentum{};
+                                const bool momentumKnown=experimentalReadRigidBodyMomentum(
+                                    cachedBody,imageBase,momentum);
+                                log("[WORLD-GRAB-AUTO] MOMENTUM_SNAPSHOT handle="
+                                    +std::to_string(handle)
+                                    +" stage="+std::to_string(pin.activationStage)
+                                    +" known="+(momentumKnown?"yes":"no")
+                                    +" linearXYZ="+std::to_string(momentum[0])+","
+                                        +std::to_string(momentum[1])+","
+                                        +std::to_string(momentum[2])
+                                    +" angularXYZ="+std::to_string(momentum[3])+","
+                                        +std::to_string(momentum[4])+","
+                                        +std::to_string(momentum[5]));
                                 log("[WORLD-GRAB-AUTO] OBSERVE handle="
                                     +std::to_string(handle)
                                     +" stage="+std::to_string(pin.activationStage)
