@@ -4480,7 +4480,28 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsCallbackGapMs=sample.callbackGapMs;
             inspector.physicsOriginUnchangedMs=sample.originUnchangedMs;
             inspector.physicsWakeNudges=sample.wakeNudges;
-            inspector.physicsLastWriteRetained=sample.lastWriteRetained;
+            const auto callbackNow=GetTickCount64();
+            inspector.physicsCallbackAgeMs=callbackNow>=sample.callbackAtMs
+                ?callbackNow-sample.callbackAtMs:0;
+            // Deliberately report a missed native callback even when the
+            // camera hook has stopped logging for the selected prop.
+            // A callback gap is NOT the same as a sleeping physics body.
+            static bool callbackWasStale{};
+            static unsigned long long lastCallbackReport{};
+            const bool stale=inspector.physicsCallbackAgeMs>600;
+            if(physicsHeld&&(stale!=callbackWasStale
+                ||callbackNow-lastCallbackReport>4000)){
+                callbackWasStale=stale;
+                lastCallbackReport=callbackNow;
+                log(std::string("[WORLD-GRAB-ACTIVE-WINDOW] method=")
+                    +std::to_string(physicsMode)
+                    +" handle="+std::to_string(sample.handle)
+                    +" callbackAgeMs="+std::to_string(inspector.physicsCallbackAgeMs)
+                    +" callbackGapMs="+std::to_string(sample.callbackGapMs)
+                    +" originUnchangedMs="+std::to_string(sample.originUnchangedMs)
+                    +" wakeNudges="+std::to_string(sample.wakeNudges)
+                    +" callbackState="+(stale?"STALE":"LIVE"));
+            }
             for(int axis=0;axis<3;++axis)
                 inspector.physicsOrigin[axis]=sample.origin[axis];
         }

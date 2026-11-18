@@ -409,10 +409,12 @@ void paintVrHandMenu() {
                     :inspect.physicsStorageRoute==2?"GETTER-EXTERNAL"
                     :inspect.physicsStorageRoute==3?"MATCHED-ORIGIN-VEC3"
                     :"NO WRITE STORAGE";
-                write(left,inspectorY+213,std::string("STORAGE: ")+route
-                    +" GAP="+std::to_string(inspect.physicsCallbackGapMs)
+                write(left,inspectorY+213,
+                    std::string(route)+" CBAGE="+std::to_string(inspect.physicsCallbackAgeMs)
                     +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)
-                    +"ms",inspect.physicsWritable?RGB(128,255,177):muted);
+                    +"ms NUDGE="+std::to_string(inspect.physicsWakeNudges),
+                    inspect.physicsCallbackAgeMs>600?RGB(255,187,111)
+                        :inspect.physicsWritable?RGB(128,255,177):muted);
             }else{
                 auto event=inspect.lastEvent;
                 if(event.size()>40)event=event.substr(0,40);
