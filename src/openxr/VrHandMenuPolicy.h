@@ -572,9 +572,9 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
-    bool experimentalFreezeBody{},experimentalAnchorBody{},experimentalPushBody{},experimentalPullBody{};
-    bool experimentalStrongAnchor{},experimentalLiftProbe{},experimentalHandKickProbe{};
-    // Physics experiments are mutually exclusive; Grip Hand Kick is session-only.
+    // Zero = inspector only. 1-5 are mutually exclusive, experimental
+    // activation strategies; never persisted to UserData or normal builds.
+    int experimentalActivationMode{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};
