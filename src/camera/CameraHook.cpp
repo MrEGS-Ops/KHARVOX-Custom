@@ -131,11 +131,24 @@ struct ExperimentalPinnedBody {
         lastReportedAtMs{};
     std::array<char,80> type{};
     // Native movement, not a successful memory write, arms the grab.
-    bool active{},followReady{},axisCaptured{};
-    std::array<float,9> heldAxis{};
+    bool active{},followReady{},relativeCaptured{};
+    // Body pose in physical controller GRIP space (never AIM ray space).
+    // Rotation and hand-to-object offset are captured together at catch.
+    std::array<float,3> relativePosition{};
+    std::array<float,9> relativeAxis{};
     unsigned long long lastWaitLogAt{},lastAxisLogAt{};
 };
 thread_local ExperimentalPinnedBody experimentalPinnedBody{};
+// The XR thread publishes the tracked physical GRIP transform; DOOM's
+// world thread reads a complete pose snapshot (not torn per-axis atomics).
+struct ExperimentalGripWorldPose {
+    std::array<float,3> origin{};
+    std::array<float,9> axis{};
+    unsigned long long updatedAtMs{};
+    bool valid{};
+};
+std::mutex experimentalGripPoseMutex;
+ExperimentalGripWorldPose experimentalGripPose{};
 unsigned long long nativeGrabResolvedSequence{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
@@ -713,6 +726,68 @@ bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
 #else
     std::memcpy(axis,wanted.data(),sizeof(float)*9);return true;
 #endif
+}
+// Matrices are column-major (DOOM's native body axis layout). A rigid body
+// held by the physical controller must keep exactly this relative 6DoF pose:
+//   offset = gripAxis^-1 * (bodyOrigin - gripOrigin)
+//   localAxis = gripAxis^-1 * bodyAxis
+// Every native game tick:
+//   bodyOrigin = gripOrigin + gripAxis * offset
+//   bodyAxis = gripAxis * localAxis
+bool currentWorldGrabGripPose(ExperimentalGripWorldPose& pose){
+    {
+        std::lock_guard<std::mutex> lock(experimentalGripPoseMutex);
+        pose=experimentalGripPose;
+    }
+    const auto now=GetTickCount64();
+    return pose.valid&&pose.updatedAtMs&&now>=pose.updatedAtMs
+        &&now-pose.updatedAtMs<=250
+        &&plausibleRigidBodyAxis(pose.axis.data());
+}
+bool captureWorldGrabRelativePose(ExperimentalPinnedBody& pin,
+    const ExperimentalGripWorldPose& grip,const float bodyOrigin[3],
+    const float bodyAxis[9]){
+    if(!plausibleRigidBodyAxis(bodyAxis)
+        ||!plausibleRigidBodyAxis(grip.axis.data()))return false;
+    for(int local=0;local<3;++local){
+        float offset{};
+        for(int world=0;world<3;++world)
+            offset+=grip.axis[local*3+world]
+                *(bodyOrigin[world]-grip.origin[world]);
+        if(!std::isfinite(offset)||std::abs(offset)>250.f)return false;
+        pin.relativePosition[local]=offset;
+        for(int col=0;col<3;++col){
+            float relative{};
+            for(int world=0;world<3;++world)
+                relative+=grip.axis[local*3+world]
+                    *bodyAxis[col*3+world];
+            pin.relativeAxis[col*3+local]=relative;
+        }
+    }
+    pin.relativeCaptured=plausibleRigidBodyAxis(pin.relativeAxis.data());
+    return pin.relativeCaptured;
+}
+bool worldGrabRelativeTarget(const ExperimentalPinnedBody& pin,
+    const ExperimentalGripWorldPose& grip,float originOut[3],
+    std::array<float,9>& axisOut){
+    if(!pin.relativeCaptured||!plausibleRigidBodyAxis(grip.axis.data()))
+        return false;
+    for(int world=0;world<3;++world){
+        float position=grip.origin[world];
+        for(int local=0;local<3;++local)
+            position+=grip.axis[local*3+world]
+                *pin.relativePosition[local];
+        if(!std::isfinite(position))return false;
+        originOut[world]=position;
+        for(int col=0;col<3;++col){
+            float basis{};
+            for(int local=0;local<3;++local)
+                basis+=grip.axis[local*3+world]
+                    *pin.relativeAxis[col*3+local];
+            axisOut[col*3+world]=basis;
+        }
+    }
+    return plausibleRigidBodyAxis(axisOut.data());
 }
 // Experimental hand-centred collision proxy: not DOOM's native player
 // capsule and NOT a claimed reverse-engineered Kick callback. The candidate
@@ -1460,12 +1535,18 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 }
                 reading.writable=mutableOrigin!=nullptr;
                 if(reading.writable)reading.status=3;
+                ExperimentalGripWorldPose gripPose{};
+                const bool anchorMode=mode==2||mode==6;
+                const bool gripPoseValid=anchorMode
+                    &&currentWorldGrabGripPose(gripPose);
                 if(mode>0&&(reading.writable||mode==8)
-                    &&focusHandValid.load(std::memory_order_acquire)){
+                    &&focusHandValid.load(std::memory_order_acquire)
+                    &&(!anchorMode||gripPoseValid)){
                     float hand[3]{},direction[3]{};
                     float distance2=0.f;
                     for(int i=0;i<3;++i){
-                        hand[i]=focusHandOrigin[i].load(std::memory_order_relaxed);
+                        hand[i]=anchorMode?gripPose.origin[i]
+                            :focusHandOrigin[i].load(std::memory_order_relaxed);
                         direction[i]=focusHandDirection[i].load(std::memory_order_relaxed);
                         const float d=origin[i]-hand[i];distance2+=d*d;
                     }
@@ -1581,28 +1662,78 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                     <<" callbackGapMs="<<reading.callbackGapMs;
                                 log(report.str());
                             }
-                        }else if(mode==2||mode==6){ // short, fixed controller-relative origin target
-                            float step2=0.f;
-                            for(int i=0;i<3;++i){
-                                // Restore #743's native-origin attachment.
-                                // At acquisition, do not preserve the full
-                                // length of the ray as a floating offset.
-                                const float target=hand[i]+direction[i]*8.f;
-                                loggedTarget[i]=target;
-                                next[i]=target-origin[i];
-                                step2+=next[i]*next[i];
-                            }
-                            const float step=std::sqrt(step2);
-                            // Compare the original smaller cap to the
-                            // more aggressive Strong Anchor while using
-                            // precisely the same hand target.
-                            const float maxStep=mode==6?28.f:8.f;
-                            const float factor=step>maxStep?maxStep/step:1.f;
-                            for(int i=0;i<3;++i)
-                                next[i]=origin[i]+next[i]*factor;
-                            write=step>0.005f&&pin.followReady;
-                            if(!pin.followReady&&(pin.lastWaitLogAt==0
-                                ||now-pin.lastWaitLogAt>=1000)){
+                        }else if(mode==2||mode==6){ // Physical GRIP-relative 6DoF
+                            if(reading.pinned&&pin.followReady&&gripPoseValid){
+                                std::uintptr_t axisFn{};
+                                if(readableMemory(reinterpret_cast<const void*>(
+                                        vtable+0x88),sizeof(axisFn)))
+                                    std::memcpy(&axisFn,
+                                        reinterpret_cast<const void*>(vtable+0x88),
+                                        sizeof(axisFn));
+                                const float* bodyAxis=executableMemory(
+                                    reinterpret_cast<const void*>(axisFn))
+                                    ?nativeBodyCallOrigin(cachedBody,axisFn):nullptr;
+                                if(plausibleRigidBodyAxis(bodyAxis)
+                                    &&writableMemory(bodyAxis,sizeof(float)*9)){
+                                    if(!pin.relativeCaptured){
+                                        if(captureWorldGrabRelativePose(
+                                                pin,gripPose,origin,bodyAxis)){
+                                            log("[WORLD-GRAB-HAND-RELATIVE] CAPTURED"
+                                                " handle="+std::to_string(handle)
+                                                +" gripXYZ="+std::to_string(gripPose.origin[0])
+                                                    +","+std::to_string(gripPose.origin[1])
+                                                    +","+std::to_string(gripPose.origin[2])
+                                                +" bodyXYZ="+std::to_string(origin[0])
+                                                    +","+std::to_string(origin[1])
+                                                    +","+std::to_string(origin[2])
+                                                +" offsetGripXYZ="+std::to_string(pin.relativePosition[0])
+                                                    +","+std::to_string(pin.relativePosition[1])
+                                                    +","+std::to_string(pin.relativePosition[2]));
+                                        }
+                                    }
+                                    float target[3]{};
+                                    std::array<float,9> targetAxis{};
+                                    if(worldGrabRelativeTarget(
+                                            pin,gripPose,target,targetAxis)){
+                                        float step2{};
+                                        for(int i=0;i<3;++i){
+                                            loggedTarget[i]=target[i];
+                                            const float delta=target[i]-origin[i];
+                                            step2+=delta*delta;
+                                        }
+                                        const float step=std::sqrt(step2);
+                                        const float maxStep=mode==6?28.f:8.f;
+                                        const float factor=step>maxStep?maxStep/step:1.f;
+                                        for(int i=0;i<3;++i)
+                                            next[i]=origin[i]+(target[i]-origin[i])*factor;
+                                        write=step>0.005f;
+                                        const bool rotated=nativeBodyWriteAxis(
+                                            const_cast<float*>(bodyAxis),
+                                            targetAxis);
+                                        if(pin.lastAxisLogAt==0
+                                            ||now-pin.lastAxisLogAt>=1000){
+                                            pin.lastAxisLogAt=now;
+                                            log("[WORLD-GRAB-HAND-RELATIVE] FOLLOW"
+                                                " handle="+std::to_string(handle)
+                                                +" gripXYZ="+std::to_string(gripPose.origin[0])
+                                                    +","+std::to_string(gripPose.origin[1])
+                                                    +","+std::to_string(gripPose.origin[2])
+                                                +" targetXYZ="+std::to_string(target[0])
+                                                    +","+std::to_string(target[1])
+                                                    +","+std::to_string(target[2])
+                                                +" error="+std::to_string(step)
+                                                +" rotationApplied="+(rotated?"yes":"no"));
+                                        }
+                                    }
+                                }else if(pin.lastAxisLogAt==0
+                                    ||now-pin.lastAxisLogAt>=1000){
+                                    pin.lastAxisLogAt=now;
+                                    log("[WORLD-GRAB-HAND-RELATIVE]"
+                                        " body GetAxis unavailable; no unsafe fallback");
+                                }
+                            }else if(!pin.followReady
+                                &&(pin.lastWaitLogAt==0
+                                    ||now-pin.lastWaitLogAt>=1000)){
                                 pin.lastWaitLogAt=now;
                                 log("[WORLD-GRAB-PIN] WAITING-NATIVE-MOTION handle="
                                     +std::to_string(handle)
@@ -1638,43 +1769,6 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         if(write){
                             for(int i=0;i<3;++i)
                                 reading.requestedDelta[i]=next[i]-origin[i];
-                        }
-                        // Hold initial orientation while an active prop is
-                        // attached. The +0x88 candidate must return a real
-                        // orthonormal 3x3 matrix or this fails closed.
-                        if((mode==2||mode==6)&&reading.pinned
-                            &&pin.followReady){
-                            std::uintptr_t axisFn{};
-                            if(readableMemory(reinterpret_cast<const void*>(vtable+0x88),
-                                    sizeof(axisFn)))
-                                std::memcpy(&axisFn,
-                                    reinterpret_cast<const void*>(vtable+0x88),
-                                    sizeof(axisFn));
-                            const float* rawAxis=executableMemory(
-                                reinterpret_cast<const void*>(axisFn))
-                                ?nativeBodyCallOrigin(cachedBody,axisFn):nullptr;
-                            if(plausibleRigidBodyAxis(rawAxis)
-                                &&writableMemory(rawAxis,sizeof(float)*9)){
-                                if(!pin.axisCaptured){
-                                    std::memcpy(pin.heldAxis.data(),rawAxis,
-                                        sizeof(float)*9);
-                                    pin.axisCaptured=true;
-                                    log("[WORLD-GRAB-ROTATION] captured rigid"
-                                        " body orientation handle="+std::to_string(handle));
-                                }else if(nativeBodyWriteAxis(
-                                    const_cast<float*>(rawAxis),pin.heldAxis)
-                                    &&(pin.lastAxisLogAt==0
-                                        ||now-pin.lastAxisLogAt>=1000)){
-                                    pin.lastAxisLogAt=now;
-                                    log("[WORLD-GRAB-ROTATION] held original"
-                                        " orientation handle="+std::to_string(handle));
-                                }
-                            }else if(pin.lastAxisLogAt==0
-                                ||now-pin.lastAxisLogAt>=3000){
-                                pin.lastAxisLogAt=now;
-                                log("[WORLD-GRAB-ROTATION] GetAxis not verified;"
-                                    " lock disabled for handle="+std::to_string(handle));
-                            }
                         }
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
@@ -1793,7 +1887,11 @@ void experimentalPinnedBodyTick() {
     if(pin.generation!=generation){release("level-changed");return;}
     if(now-pin.startAtMs>20000){release("test-hold-timeout-20s");return;}
     if(!focusHandValid.load(std::memory_order_acquire)){
-        release("hand-pose-invalid");return;
+        release("hand-aim-invalid");return;
+    }
+    ExperimentalGripWorldPose currentGrip{};
+    if(!currentWorldGrabGripPose(currentGrip)){
+        release("physical-grip-pose-invalid");return;
     }
     if(!readableMemory(pin.entity,sizeof(std::uintptr_t))){
         release("entity-unreadable");return;
@@ -3869,6 +3967,23 @@ void KharvoxCameraSetFocusHandPose(
         focusHandDirection[axis].store(direction[axis]*inverseLength,std::memory_order_relaxed);
     }
     focusHandValid.store(true,std::memory_order_release);
+}
+
+void KharvoxCameraSetWorldGrabHandPose(
+    const float origin[3],const float axis[9],bool valid){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    std::lock_guard<std::mutex> lock(experimentalGripPoseMutex);
+    experimentalGripPose.valid=false;
+    if(!valid||!origin||!axis||!plausibleRigidBodyAxis(axis))return;
+    for(int i=0;i<3;++i)
+        if(!std::isfinite(origin[i])||std::abs(origin[i])>1e6f)return;
+    std::copy(origin,origin+3,experimentalGripPose.origin.begin());
+    std::copy(axis,axis+9,experimentalGripPose.axis.begin());
+    experimentalGripPose.updatedAtMs=GetTickCount64();
+    experimentalGripPose.valid=true;
+#else
+    (void)origin;(void)axis;(void)valid;
+#endif
 }
 
 void KharvoxCameraSetImmersiveCinematicFov(
