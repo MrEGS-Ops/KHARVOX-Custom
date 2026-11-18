@@ -142,6 +142,21 @@ struct ExperimentalPinnedBody {
     unsigned long long lastWaitLogAt{},lastAxisLogAt{};
 };
 thread_local ExperimentalPinnedBody experimentalPinnedBody{};
+// Short-lived, read-only after-release observation. It remains on DOOM's
+// world thread and is never published to the XR thread. The full entity and
+// physics vtable identity, plus the live level generation, are checked before
+// EVERY sample; no released-body position or momentum writes occur here.
+struct ExperimentalDropTrace {
+    const void* entity{};
+    void* body{};
+    std::uintptr_t entityVtable{},bodyVtable{};
+    unsigned handle{};
+    unsigned long long generation{},startedAtMs{},lastSampleAtMs{};
+    std::array<float,3> releasedOrigin{},lastOrigin{};
+    unsigned samples{};
+    bool active{};
+};
+thread_local ExperimentalDropTrace experimentalDropTrace{};
 // The XR thread publishes the tracked physical GRIP transform; DOOM's
 // world thread reads a complete pose snapshot (not torn per-axis atomics).
 struct ExperimentalGripWorldPose {
@@ -1436,6 +1451,75 @@ const float* nativeBodyCallOrigin(void* body,std::uintptr_t function) {
     return reinterpret_cast<Fn>(function)(body,0);
 #endif
 }
+// Capture DOOM's actual free-body behaviour after release. This deliberately
+// runs without an active pin so a change in the controller's ray target does
+// not hide a delayed native collision correction or downward impulse.
+void observeExperimentalDropTrace() {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    auto& trace=experimentalDropTrace;
+    if(!trace.active)return;
+    const auto now=GetTickCount64();
+    if(now<trace.startedAtMs||now-trace.startedAtMs>850
+        ||trace.generation!=levelTransitionGeneration.load(
+            std::memory_order_acquire)
+        ||!KharvoxCameraWorldActive()
+        ||!readableMemory(trace.entity,sizeof(std::uintptr_t))
+        ||!readableMemory(trace.body,sizeof(std::uintptr_t))){
+        trace={};
+        return;
+    }
+    if(now-trace.startedAtMs<25
+        ||(trace.lastSampleAtMs&&now-trace.lastSampleAtMs<85))
+        return;
+    std::uintptr_t entityVtable{},bodyVtable{};
+    std::memcpy(&entityVtable,trace.entity,sizeof(entityVtable));
+    std::memcpy(&bodyVtable,trace.body,sizeof(bodyVtable));
+    if(entityVtable!=trace.entityVtable
+        ||bodyVtable!=trace.bodyVtable){trace={};return;}
+    std::uintptr_t getter{};
+    if(!readableMemory(reinterpret_cast<const void*>(bodyVtable+0x80),
+            sizeof(getter))){trace={};return;}
+    std::memcpy(&getter,reinterpret_cast<const void*>(bodyVtable+0x80),
+        sizeof(getter));
+    const float* position=executableMemory(
+        reinterpret_cast<const void*>(getter))
+        ?nativeBodyCallOrigin(trace.body,getter):nullptr;
+    if(!position||!readableMemory(position,sizeof(float)*3)){
+        trace={};return;
+    }
+    std::array<float,3> current{};
+    for(int i=0;i<3;++i){
+        current[i]=position[i];
+        if(!std::isfinite(current[i])||std::abs(current[i])>1e6f){
+            trace={};return;
+        }
+    }
+    const auto elapsed=now-trace.startedAtMs;
+    const auto sampleGap=now-(trace.lastSampleAtMs
+        ?trace.lastSampleAtMs:trace.startedAtMs);
+    const float zRate=sampleGap>0
+        ?(current[2]-trace.lastOrigin[2])*1000.f/float(sampleGap):0.f;
+    int restValue{};
+    bool restKnown=false;
+    const auto* restField=static_cast<const unsigned char*>(trace.body)+0x170;
+    if(readableMemory(restField,sizeof(restValue))){
+        std::memcpy(&restValue,restField,sizeof(restValue));
+        restKnown=true;
+    }
+    log("[WORLD-GRAB-DROP-TRACE] handle="+std::to_string(trace.handle)
+        +" elapsedMs="+std::to_string(elapsed)
+        +" deltaFromReleaseXYZ="
+            +std::to_string(current[0]-trace.releasedOrigin[0])+","
+            +std::to_string(current[1]-trace.releasedOrigin[1])+","
+            +std::to_string(current[2]-trace.releasedOrigin[2])
+        +" zRateNativePerSecond="+std::to_string(zRate)
+        +" atRest="+(restKnown?std::to_string(restValue):"unreadable")
+        +" sample="+std::to_string(++trace.samples));
+    trace.lastOrigin=current;
+    trace.lastSampleAtMs=now;
+    if(elapsed>=650)trace={};
+#endif
+}
 bool nativeBodyWriteOrigin(float* field,const float value[3]) {
     if(!field||!value||!writableMemory(field,sizeof(float)*3))return false;
 #if defined(_MSC_VER)
@@ -2036,6 +2120,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
 // immediately tears down the pointer rather than transferring ownership.
 void experimentalPinnedBodyTick() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    observeExperimentalDropTrace();
     auto& pin=experimentalPinnedBody;
     if(!pin.active)return;
     const auto now=GetTickCount64();
@@ -2064,6 +2149,44 @@ void experimentalPinnedBodyTick() {
                     pin.body,pin.imageBase,&priorMomentum);
                 reactivated=experimentalRigidBodyRestState(
                     pin.body,pin.imageBase,false,&restBefore,&restAfter);
+                // A fresh trace supersedes any previous release. Never
+                // carry a body pointer across a level change or a vtable
+                // mismatch; only the verified, live object is observed.
+                std::uintptr_t getter{};
+                if(readableMemory(reinterpret_cast<const void*>(
+                        bodyVtable+0x80),sizeof(getter))){
+                    std::memcpy(&getter,reinterpret_cast<const void*>(
+                        bodyVtable+0x80),sizeof(getter));
+                    const float* origin=executableMemory(
+                        reinterpret_cast<const void*>(getter))
+                        ?nativeBodyCallOrigin(pin.body,getter):nullptr;
+                    if(origin&&readableMemory(origin,sizeof(float)*3)){
+                        std::array<float,3> xyz{origin[0],origin[1],origin[2]};
+                        bool plausible=true;
+                        for(float value:xyz)
+                            plausible=plausible&&std::isfinite(value)
+                                &&std::abs(value)<1e6f;
+                        if(plausible){
+                            experimentalDropTrace={};
+                            auto& trace=experimentalDropTrace;
+                            trace.active=true;
+                            trace.entity=pin.entity;trace.body=pin.body;
+                            trace.entityVtable=entityVtable;
+                            trace.bodyVtable=bodyVtable;
+                            trace.handle=pin.handle;
+                            trace.generation=generation;
+                            trace.startedAtMs=now;
+                            trace.releasedOrigin=xyz;
+                            trace.lastOrigin=xyz;
+                            log("[WORLD-GRAB-DROP-TRACE] BEGIN handle="
+                                +std::to_string(pin.handle)
+                                +" releaseXYZ="+std::to_string(xyz[0])+","
+                                    +std::to_string(xyz[1])+","
+                                    +std::to_string(xyz[2])
+                                +" reactivated="+(reactivated?"yes":"NO"));
+                        }
+                    }
+                }
             }
         }
         log(std::string("[WORLD-GRAB-PIN] RELEASE reason=")+reason
