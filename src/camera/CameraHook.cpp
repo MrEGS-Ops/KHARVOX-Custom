@@ -135,8 +135,10 @@ struct ExperimentalPinnedBody {
     bool active{},followReady{},relativeCaptured{};
     // Body pose in physical controller GRIP space (never AIM ray space).
     // Rotation and hand-to-object offset are captured together at catch.
-    std::array<float,3> relativePosition{};
+    std::array<float,3> relativePosition{},initialRelativePosition{};
     std::array<float,9> relativeAxis{};
+    unsigned long long pickupCapturedAtMs{},lastRestLogAt{};
+    bool pickupSettledLogged{};
     unsigned long long lastWaitLogAt{},lastAxisLogAt{};
 };
 thread_local ExperimentalPinnedBody experimentalPinnedBody{};
@@ -784,6 +786,55 @@ bool experimentalZeroRigidBodyMomentum(
     (void)body;(void)imageBase;(void)before;return false;
 #endif
 }
+// Suspend the native rigid-body integrator while the object is physically
+// attached to the VR hand. Simply writing origin each tick while leaving
+// the solver active allows gravity/collision momentum to accumulate. Clearing
+// momentum alone (Build 767) did not prevent the downward launch on release.
+// +0x170 is the native signed atRest field, independently verified by the
+// exact DOOM implementation at RVA 0x179A8F0 (writes -1). During a held
+// attachment we use a nonnegative "resting" value (0); on Drop we invoke
+// the original native Activate method to restore ordinary gravity.
+// No engine-wide gravity settings or normal player physics are modified.
+bool experimentalRigidBodyRestState(
+    void* body,std::uintptr_t imageBase,bool suspended,
+    int* previous=nullptr,int* current=nullptr){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!body||!imageBase)return false;
+    constexpr std::uintptr_t wakeRva=0x179A8F0;
+    constexpr unsigned char wakeSignature[]{
+        0xC7,0x81,0x70,0x01,0x00,0x00,
+        0xFF,0xFF,0xFF,0xFF,0xC3
+    };
+    const void* fn=reinterpret_cast<const void*>(imageBase+wakeRva);
+    if(!executableMemory(fn)
+        ||!readableMemory(fn,sizeof(wakeSignature))
+        ||std::memcmp(fn,wakeSignature,sizeof(wakeSignature))!=0)return false;
+    auto* atRest=reinterpret_cast<int*>(
+        static_cast<unsigned char*>(body)+0x170);
+    if(!writableMemory(atRest,sizeof(int)))return false;
+    if(previous)*previous=*atRest;
+#if defined(_MSC_VER)
+    __try{
+        if(suspended)*atRest=0;
+        else{
+            using ActivateFn=void(__fastcall*)(void*);
+            reinterpret_cast<ActivateFn>(imageBase+wakeRva)(body);
+        }
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#else
+    if(suspended)*atRest=0;
+    else{
+        using ActivateFn=void(__fastcall*)(void*);
+        reinterpret_cast<ActivateFn>(imageBase+wakeRva)(body);
+    }
+#endif
+    if(current)*current=*atRest;
+    return *atRest==(suspended?0:-1);
+#else
+    (void)body;(void)imageBase;(void)suspended;
+    (void)previous;(void)current;return false;
+#endif
+}
 // Matrices are column-major (DOOM's native body axis layout). A rigid body
 // held by the physical controller must keep exactly this relative 6DoF pose:
 //   offset = gripAxis^-1 * (bodyOrigin - gripOrigin)
@@ -822,6 +873,10 @@ bool captureWorldGrabRelativePose(ExperimentalPinnedBody& pin,
         }
     }
     pin.relativeCaptured=plausibleRigidBodyAxis(pin.relativeAxis.data());
+    if(pin.relativeCaptured){
+        pin.initialRelativePosition=pin.relativePosition;
+        pin.pickupCapturedAtMs=GetTickCount64();
+    }
     return pin.relativeCaptured;
 }
 bool worldGrabRelativeTarget(const ExperimentalPinnedBody& pin,
@@ -1749,6 +1804,36 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                                     +","+std::to_string(pin.relativePosition[2]));
                                         }
                                     }
+                                    // Bring the item's PHYSICS ORIGIN near the
+                                    // palm instead of keeping its original
+                                    // distance along the acquisition ray.
+                                    // XR controller forward is -GRIP local Z
+                                    // in our native basis. Keep ~20 native
+                                    // units (~16cm) in front and 4 below
+                                    // the palm, blended over 280ms to avoid
+                                    // a collision-inducing initial snap.
+                                    if(pin.relativeCaptured
+                                        &&pin.pickupCapturedAtMs){
+                                        const float progress=std::clamp(
+                                            float(now-pin.pickupCapturedAtMs)/280.f,
+                                            0.f,1.f);
+                                        const float eased=progress*progress
+                                            *(3.f-2.f*progress);
+                                        constexpr float palmOffset[3]{
+                                            0.f,-4.f,-20.f};
+                                        for(int component=0;component<3;++component)
+                                            pin.relativePosition[component]=
+                                                pin.initialRelativePosition[component]
+                                                    *(1.f-eased)
+                                                +palmOffset[component]*eased;
+                                        if(progress>=1.f&&!pin.pickupSettledLogged){
+                                            pin.pickupSettledLogged=true;
+                                            log("[WORLD-GRAB-PALM] SETTLED handle="
+                                                +std::to_string(handle)
+                                                +" localTarget=0,-4,-20"
+                                                +" travelMs=280");
+                                        }
+                                    }
                                     float target[3]{};
                                     std::array<float,9> targetAxis{};
                                     if(worldGrabRelativeTarget(
@@ -1832,9 +1917,23 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         // angular momentum while manual hand posing owns the
                         // rigid-body transform.
                         if((mode==2||mode==6)&&reading.pinned
-                            &&pin.followReady&&pin.relativeCaptured)
-                            experimentalZeroRigidBodyMomentum(
+                            &&pin.followReady&&pin.relativeCaptured){
+                            const bool cleared=experimentalZeroRigidBodyMomentum(
                                 cachedBody,imageBase);
+                            int atRestBefore{},atRestAfter{};
+                            const bool suspended=experimentalRigidBodyRestState(
+                                cachedBody,imageBase,true,
+                                &atRestBefore,&atRestAfter);
+                            if(pin.lastRestLogAt==0||now-pin.lastRestLogAt>=1200){
+                                pin.lastRestLogAt=now;
+                                log("[WORLD-GRAB-REST] HELD handle="
+                                    +std::to_string(handle)
+                                    +" frozen="+(suspended?"yes":"no")
+                                    +" momentumClear="+(cleared?"yes":"no")
+                                    +" atRestBefore="+std::to_string(atRestBefore)
+                                    +" atRestAfter="+std::to_string(atRestAfter));
+                            }
+                        }
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
                             priorWriteValid=true;priorWriteAtMs=now;
@@ -1944,7 +2043,8 @@ void experimentalPinnedBodyTick() {
     const int mode=experimentalPhysicsMode.load(std::memory_order_acquire);
     const auto release=[&](const char* reason){
         std::array<float,6> priorMomentum{};
-        bool settled=false;
+        bool settled=false,reactivated=false;
+        int restBefore{},restAfter{};
         // Only inspect the rigid body when the same level is live, the
         // original entity/body vtables are still readable and unchanged.
         if(pin.body&&pin.generation==generation
@@ -1955,14 +2055,23 @@ void experimentalPinnedBodyTick() {
             std::memcpy(&entityVtable,pin.entity,sizeof(entityVtable));
             std::memcpy(&bodyVtable,pin.body,sizeof(bodyVtable));
             if(entityVtable==pin.entityVtable
-                &&bodyVtable==pin.bodyVtable)
+                &&bodyVtable==pin.bodyVtable){
+                // On release, the rigid body starts with ZERO momentum,
+                // THEN its own native Activate restores normal physics.
+                // Do not apply hand-swing velocity or downward impulses.
                 settled=experimentalZeroRigidBodyMomentum(
                     pin.body,pin.imageBase,&priorMomentum);
+                reactivated=experimentalRigidBodyRestState(
+                    pin.body,pin.imageBase,false,&restBefore,&restAfter);
+            }
         }
         log(std::string("[WORLD-GRAB-PIN] RELEASE reason=")+reason
             +" handle="+std::to_string(pin.handle)
             +" ticks="+std::to_string(pin.ticks)
             +" zeroedMomentum="+(settled?"yes":"no")
+            +" reactivated="+(reactivated?"yes":"no")
+            +" atRestBefore="+std::to_string(restBefore)
+            +" atRestAfter="+std::to_string(restAfter)
             +" linearBefore="+std::to_string(priorMomentum[0])+","
                 +std::to_string(priorMomentum[1])+","
                 +std::to_string(priorMomentum[2])
