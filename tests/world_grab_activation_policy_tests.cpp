@@ -31,6 +31,14 @@ int main(){
     assert(!worldGrabActivationFollowReady(5,false,349));
     assert(worldGrabActivationFollowReady(5,true,20));
     assert(worldGrabActivationFollowReady(5,false,350));
+    // Working Strong Anchor is NOT retired: it remains separately selectable
+    // and deliberately uses the original native-motion gate.
+    assert(worldGrabStrongAnchor(6));
+    assert(worldGrabAnchorMode(6));
+    assert(!worldGrabAnchorFollowReady(6,false,5000));
+    assert(worldGrabAnchorFollowReady(6,true,0));
+    assert(worldGrabAnchorMode(1) && worldGrabAnchorMode(5));
+    assert(!worldGrabAnchorMode(7));
     // Retired methods cannot be selected from the controller or native bridge.
     for(int mode:{-1,0,6,7,8,100})
         assert(!worldGrabActivationTestValid(mode));
