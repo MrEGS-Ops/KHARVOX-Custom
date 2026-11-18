@@ -22,8 +22,12 @@ inline constexpr bool worldGrabActivationOwnerTickProbe(int mode) noexcept {
 }
 inline constexpr bool worldGrabActivationFollowReady(
     int mode, bool nativeMotionObserved, std::uint64_t heldMs) noexcept {
-    return worldGrabActivationTestValid(mode)
-        && (mode != 5 || nativeMotionObserved || heldMs >= 350);
+    if(!worldGrabActivationTestValid(mode))return false;
+    // Direct bypasses the artificial native-motion gate. Wake/proxy methods
+    // get real game ticks before temporary held-body suspension begins.
+    if(mode==1)return true;
+    if(nativeMotionObserved)return true;
+    return heldMs >= (mode==5?350u:80u);
 }
 static_assert(!worldGrabActivationTestValid(0)
     && worldGrabActivationTestValid(1)
@@ -36,6 +40,8 @@ static_assert(worldGrabActivationContactProxy(3)
     && !worldGrabActivationMicroMove(3)
     && worldGrabActivationMicroMove(4));
 static_assert(worldGrabActivationFollowReady(1,false,0)
+    && !worldGrabActivationFollowReady(2,false,79)
+    && worldGrabActivationFollowReady(2,false,80)
     && !worldGrabActivationFollowReady(5,false,349)
     && worldGrabActivationFollowReady(5,false,350)
     && worldGrabActivationFollowReady(5,true,0));
