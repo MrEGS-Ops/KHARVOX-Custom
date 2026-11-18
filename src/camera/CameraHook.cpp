@@ -714,6 +714,57 @@ bool nativeBodyWriteAxis(float* axis,const std::array<float,9>& wanted){
     std::memcpy(axis,wanted.data(),sizeof(float)*9);return true;
 #endif
 }
+// Experimental hand-centred collision proxy: not DOOM's native player
+// capsule and NOT a claimed reverse-engineered Kick callback. The candidate
+// rigid-body vtable vector setter is bound only if the user's exact DOOM
+// executable matches the complete 27-byte code signature. This is a single
+// low-strength vector pulse while free-hand Grip is held. All other physics
+// methods and the player's collision body remain untouched.
+bool experimentalHandKickVector(void* body,std::uintptr_t vtable,
+    std::uintptr_t imageBase,const float away[3],
+    float before[3],float after[3]) {
+    if(!body||!vtable||!imageBase||!away||!before||!after)return false;
+    constexpr std::uintptr_t candidateRva=0x179FBB0;
+    constexpr unsigned char expected[]{
+        0x8B,0x02,0x89,0x81,0xD4,0x01,0x00,0x00,
+        0x8B,0x42,0x04,0x89,0x81,0xD8,0x01,0x00,0x00,
+        0x8B,0x42,0x08,0x89,0x81,0xDC,0x01,0x00,0x00,0xC3
+    };
+    if(!readableMemory(reinterpret_cast<const void*>(vtable+0x98),
+            sizeof(std::uintptr_t)))return false;
+    std::uintptr_t candidate{};
+    std::memcpy(&candidate,reinterpret_cast<const void*>(vtable+0x98),
+        sizeof(candidate));
+    if(candidate!=imageBase+candidateRva
+        ||!executableMemory(reinterpret_cast<const void*>(candidate))
+        ||!readableMemory(reinterpret_cast<const void*>(candidate),
+            sizeof(expected))
+        ||std::memcmp(reinterpret_cast<const void*>(candidate),
+            expected,sizeof(expected))!=0)return false;
+    // The verified code writes a 3-float vector at 0x1D4. Its physical
+    // meaning is an experiment, NOT an established native ApplyImpulse ABI.
+    auto* vector=reinterpret_cast<float*>(
+        static_cast<unsigned char*>(body)+0x1D4);
+    if(!writableMemory(vector,sizeof(float)*3))return false;
+    for(int i=0;i<3;++i){
+        before[i]=vector[i];
+        if(!std::isfinite(before[i])||std::abs(before[i])>10000.f
+            ||!std::isfinite(away[i]))return false;
+    }
+    float next[3]{};
+    for(int i=0;i<3;++i)next[i]=before[i]+away[i]*9.f;
+    next[2]+=0.5f;
+    using Fn=void(__fastcall*)(void*,const float*);
+#if defined(_MSC_VER)
+    __try {reinterpret_cast<Fn>(candidate)(body,next);}
+    __except(EXCEPTION_EXECUTE_HANDLER) {return false;}
+#else
+    reinterpret_cast<Fn>(candidate)(body,next);
+#endif
+    for(int i=0;i<3;++i)after[i]=vector[i];
+    return std::isfinite(after[0])&&std::isfinite(after[1])
+        &&std::isfinite(after[2]);
+}
 void experimentalNativeBodyProbe(const void* entity,unsigned path,
     unsigned handle,const char* className,
     std::uintptr_t imageBase,std::uintptr_t imageSize);
@@ -1214,6 +1265,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local std::array<float,3> priorWriteStart{},priorWriteNext{};
     static thread_local bool priorWriteValid{};
     static thread_local bool originScanned{};
+    static thread_local unsigned long long handKickPulseAt{};
+    static thread_local bool handKickFollowUpDone{};
     static thread_local unsigned long long nativeMotionAt{};
     static thread_local bool lastNativeMotionSeen{};
     static thread_local std::uintptr_t uniqueOriginOffset{};
@@ -1229,6 +1282,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         priorWriteAtMs=0;priorWriteValid=false;
         priorWriteStart={};priorWriteNext={};
         originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
+        handKickPulseAt=0;handKickFollowUpDone=false;
         nativeMotionAt=0;lastNativeMotionSeen=false;
     }
     if(!cachedBody&&now-lastScan>=500){
@@ -1375,7 +1429,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 }
                 reading.writable=mutableOrigin!=nullptr;
                 if(reading.writable)reading.status=3;
-                if(mode>0&&reading.writable
+                if(mode>0&&(reading.writable||mode==8)
                     &&focusHandValid.load(std::memory_order_acquire)){
                     float hand[3]{},direction[3]{};
                     float distance2=0.f;
@@ -1395,7 +1449,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                     // same acquisition threshold. Still finite and capped.
                     const bool heldPin=(mode==2||mode==6)
                         &&pin.active&&pin.epoch==epoch&&pin.entity==entity;
-                    const float allowedReach=heldPin?220.f:110.f;
+                    const float allowedReach=mode==8?144.f:(heldPin?220.f:110.f);
                     if(std::isfinite(distance2)
                         &&distance2<allowedReach*allowedReach){
                         // Lock once, after native RTTI, GetOrigin and
@@ -1438,6 +1492,32 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         }
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
+                        if(mode==8&&!pulseDone&&reading.distanceFromHand<=120.f){
+                            // One-shot virtual hand contact, max ~1m using
+                            // native-unit approximation. The actual native
+                            // idPhysics_Player collision shape is NEVER resized.
+                            pulseDone=true;
+                            const float length=std::sqrt(std::max(distance2,1e-8f));
+                            float away[3]{};
+                            for(int i=0;i<3;++i)
+                                away[i]=(origin[i]-hand[i])/length;
+                            float before[3]{},after[3]{};
+                            const bool applied=experimentalHandKickVector(
+                                cachedBody,vtable,imageBase,away,before,after);
+                            if(applied)handKickPulseAt=now;
+                            log(std::string("[WORLD-GRAB-HAND-KICK] handle=")
+                                +std::to_string(handle)+" class="+type
+                                +" distance="+std::to_string(reading.distanceFromHand)
+                                +" envelope=120-native-units"
+                                +" strength=9 velocity-vector-units"
+                                +" applied="+(applied?"yes":"NO; ABI/field validation failed")
+                                +" previousXYZ="+std::to_string(before[0])+","
+                                    +std::to_string(before[1])+","+std::to_string(before[2])
+                                +" afterXYZ="+std::to_string(after[0])+","
+                                    +std::to_string(after[1])+","+std::to_string(after[2])
+                                +" callbackGapMs="+std::to_string(reading.callbackGapMs)
+                                +" originUnchangedMs="+std::to_string(reading.originUnchangedMs));
+                        }
                         if(mode==1||mode==3){ // Native method-discovery tests (read only)
                             if(!pulseDone){
                                 pulseDone=true;
@@ -1579,6 +1659,17 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 if(reading.changed)reading.status=5;
                             }
                         }
+                    }
+                    if(mode==8&&handKickPulseAt&&!handKickFollowUpDone
+                        &&now-handKickPulseAt>=500){
+                        handKickFollowUpDone=true;
+                        log(std::string("[WORLD-GRAB-HAND-KICK-RESULT] handle=")
+                            +std::to_string(handle)
+                            +" afterMs="+std::to_string(now-handKickPulseAt)
+                            +" originUnchangedMs="+std::to_string(reading.originUnchangedMs)
+                            +" nativeMotionObserved="+(lastNativeMotionSeen?"yes":"no")
+                            +" originXYZ="+std::to_string(origin[0])+","
+                                +std::to_string(origin[1])+","+std::to_string(origin[2]));
                     }
                 }
             }
@@ -3620,10 +3711,10 @@ void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
     // -1=off; 0=inspect; 1=freeze; 2=Anchor; 3=Push; 4=Pull;
     // 1=Wake mapping (read-only); 2=Anchor; 3=Impulse mapping
     // (read-only); 4=Contact proxy pulse; 6=Strong Anchor;
-    // 7=Lift Probe. Mode 5 was retired.
+    // 7=Lift Probe; 8=Grip Hand Kick vector experiment. Mode 5 was retired.
     // Build #748 erroneously clamped all requested modes to <=4, silently
     // disabling Strong Anchor and Lift even though the XR menu sent 6/7.
-    const bool supported=mode>=0&&mode<=4||mode==6||mode==7;
+    const bool supported=(mode>=0&&mode<=4)||mode==6||mode==7||mode==8;
     const int selected=enabled&&supported?mode:-1;
     const int previous=experimentalPhysicsMode.exchange(selected,std::memory_order_acq_rel);
     if(previous!=selected){
