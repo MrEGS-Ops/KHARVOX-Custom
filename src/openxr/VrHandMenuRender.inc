@@ -395,7 +395,7 @@ void paintVrHandMenu() {
             write(left,inspectorY+159,
                 std::string("NATIVE DRAG: ")
                 +(inspect.nativeDragStatus==2?"FIRE BRIDGED (TEST)"
-                    :inspect.nativeDragStatus==1?"ENGINE READY / GRIP TO TRY"
+                    :inspect.nativeDragStatus==1?"CVAR FOUND / GRIP TO TRY"
                     :inspect.nativeDragStatus<0?"G_DRAGENTITY UNAVAILABLE"
                     :"OFF / NO METHOD"),gold);
             write(left,inspectorY+186,

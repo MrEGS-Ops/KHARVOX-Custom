@@ -3005,7 +3005,7 @@ int KharvoxCameraServiceNativeWorldDrag(int mode,bool gripHeld) {
     static LONG oldDrag=0,oldDamping=0,oldSelection=0;
     static int previousMode=0;
     std::lock_guard<std::mutex> lock(mutex);
-    if(mode>=1&&mode<=3&&!lookedUp){
+    if(mode>=1&&mode<=3&&gripHeld&&!lookedUp){
         lookedUp=true;
         // The existing resolver verifies native name-pointer layout against
         // DOOM's timescale CVar. No guessed physics offsets or pointers.
