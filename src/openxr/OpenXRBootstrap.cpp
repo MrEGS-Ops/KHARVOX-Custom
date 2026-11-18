@@ -4404,6 +4404,28 @@ void updateGameplayActions(XrTime displayTime){
         in.freeHand={!s.weaponHandLeft,s.weaponHandLeft};
         in.grip={s.weaponHandLeft?false:supportGripDown,
                  s.weaponHandLeft?supportGripDown:false};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        // The raw Quest Grip action can have a single missing input sample.
+        // Once a DEV grab is already held, tolerate up to 55ms of false
+        // readings. Never delay cancellation for tracking/scene problems,
+        // wheel ownership, or genuine two-hand weapon use.
+        const unsigned grabFreeSide=s.weaponHandLeft?1u:0u;
+        static std::array<unsigned long long,2> grabGripMissingSinceMs{};
+        if(in.enabled&&in.gameplay&&in.controllersReady
+            &&in.tracked[grabFreeSide]&&in.freeHand[grabFreeSide]){
+            if(in.grip[grabFreeSide]){
+                grabGripMissingSinceMs[grabFreeSide]=0;
+            }else if(s.worldGrabProbe.held[grabFreeSide]){
+                const auto nowMs=GetTickCount64();
+                auto& missing=grabGripMissingSinceMs[grabFreeSide];
+                if(!missing)missing=nowMs;
+                if(nowMs>=missing&&nowMs-missing<=55)
+                    in.grip[grabFreeSide]=true;
+            }
+        }else{
+            grabGripMissingSinceMs={};
+        }
+#endif
         in.supportBusy=s.twoHandLatched||s.twoHandCalibrationMode
             ||supportGripInCaptureRange();
         in.wheelBusy=s.behindHeadWheelActive
@@ -4413,6 +4435,18 @@ void updateGameplayActions(XrTime displayTime){
             vectorLength(subtractVector(s.leftGripController.position,s.trackingHeadPosition)),
             vectorLength(subtractVector(s.rightGripController.position,s.trackingHeadPosition))};
         const auto events=s.worldGrabProbe.update(in);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        if(events.released[s.weaponHandLeft?1u:0u]){
+            const unsigned side=s.weaponHandLeft?1u:0u;
+            log(std::string("[WORLD-GRAB-INPUT] RELEASE ")
+                +" rawGrip="+(supportGripDown?"yes":"no")
+                +" tracked="+(in.tracked[side]?"yes":"no")
+                +" gameplay="+(in.gameplay?"yes":"no")
+                +" controllersReady="+(in.controllersReady?"yes":"no")
+                +" supportBusy="+(in.supportBusy?"yes":"no")
+                +" wheelBusy="+(in.wheelBusy?"yes":"no"));
+        }
+#endif
         auto& inspector=s.worldGrabInspector;
         inspector.enabled=in.enabled&&in.gameplay&&in.controllersReady;
         inspector.gripHeld=inspector.enabled&&(in.grip[0]||in.grip[1]);
