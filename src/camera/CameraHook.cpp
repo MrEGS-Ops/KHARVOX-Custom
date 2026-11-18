@@ -804,53 +804,47 @@ bool experimentalZeroRigidBodyMomentum(
 #endif
 }
 bool executableMemory(const void* address);
-// Suspend the native rigid-body integrator while the object is physically
-// attached to the VR hand. Simply writing origin each tick while leaving
-// the solver active allows gravity/collision momentum to accumulate. Clearing
-// momentum alone (Build 767) did not prevent the downward launch on release.
-// +0x170 is the native signed atRest field, independently verified by the
-// exact DOOM implementation at RVA 0x179A8F0 (writes -1). During a held
-// attachment we use a nonnegative "resting" value (0); on Drop we invoke
-// the original native Activate method to restore ordinary gravity.
-// No engine-wide gravity settings or normal player physics are modified.
-bool experimentalRigidBodyRestState(
-    void* body,std::uintptr_t imageBase,bool suspended,
-    int* previous=nullptr,int* current=nullptr){
+// Native Activate is validated by its exact instruction signature. This
+// read-only diagnostic does NOT treat origin memory as visible model pose.
+bool experimentalReadRigidBodyRest(
+    const void* body,std::uintptr_t imageBase,int& rest){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     if(!body||!imageBase)return false;
-    constexpr std::uintptr_t wakeRva=0x179A8F0;
-    constexpr unsigned char wakeSignature[]{
-        0xC7,0x81,0x70,0x01,0x00,0x00,
-        0xFF,0xFF,0xFF,0xFF,0xC3
+    constexpr unsigned char signature[]{
+        0xC7,0x81,0x70,0x01,0x00,0x00,0xFF,0xFF,0xFF,0xFF,0xC3
     };
-    const void* fn=reinterpret_cast<const void*>(imageBase+wakeRva);
-    if(!executableMemory(fn)
-        ||!readableMemory(fn,sizeof(wakeSignature))
-        ||std::memcmp(fn,wakeSignature,sizeof(wakeSignature))!=0)return false;
-    auto* atRest=reinterpret_cast<int*>(
-        static_cast<unsigned char*>(body)+0x170);
-    if(!writableMemory(atRest,sizeof(int)))return false;
-    if(previous)*previous=*atRest;
-#if defined(_MSC_VER)
-    __try{
-        if(suspended)*atRest=0;
-        else{
-            using ActivateFn=void(__fastcall*)(void*);
-            reinterpret_cast<ActivateFn>(imageBase+wakeRva)(body);
-        }
-    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+    const void* code=reinterpret_cast<const void*>(imageBase+0x179A8F0);
+    const void* field=static_cast<const unsigned char*>(body)+0x170;
+    if(!executableMemory(code)||!readableMemory(code,sizeof(signature))
+        ||std::memcmp(code,signature,sizeof(signature))!=0
+        ||!readableMemory(field,sizeof(rest)))return false;
+    std::memcpy(&rest,field,sizeof(rest));
+    return true;
 #else
-    if(suspended)*atRest=0;
-    else{
-        using ActivateFn=void(__fastcall*)(void*);
-        reinterpret_cast<ActivateFn>(imageBase+wakeRva)(body);
-    }
+    (void)body;(void)imageBase;(void)rest;return false;
 #endif
-    if(current)*current=*atRest;
-    return *atRest==(suspended?0:-1);
+}
+bool experimentalActivateRigidBody(
+    void* body,std::uintptr_t imageBase,
+    int* previous=nullptr,int* current=nullptr){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    int before{};
+    if(!experimentalReadRigidBodyRest(body,imageBase,before))return false;
+    if(previous)*previous=before;
+    using Fn=void(__fastcall*)(void*);
+#if defined(_MSC_VER)
+    __try{reinterpret_cast<Fn>(imageBase+0x179A8F0)(body);}
+    __except(EXCEPTION_EXECUTE_HANDLER){return false;}
 #else
-    (void)body;(void)imageBase;(void)suspended;
-    (void)previous;(void)current;return false;
+    reinterpret_cast<Fn>(imageBase+0x179A8F0)(body);
+#endif
+    int after{};
+    if(!experimentalReadRigidBodyRest(body,imageBase,after))return false;
+    if(current)*current=after;
+    return after==-1;
+#else
+    (void)body;(void)imageBase;(void)previous;(void)current;
+    return false;
 #endif
 }
 // Matrices are column-major (DOOM's native body axis layout). A rigid body
@@ -1592,6 +1586,50 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 }
                 lastObserved={origin[0],origin[1],origin[2]};
                 lastSampleValid=true;lastSampleAt=now;
+                // Passive kick fingerprint: only a candidate, not a native
+                // kick callback. Compare consecutive targeted body snapshots
+                // without an active grab or recent RIPSHIFT position write.
+                static thread_local const void* fingerprintBody{};
+                static thread_local bool fingerprintValid{},priorRestKnown{};
+                static thread_local int priorRest{};
+                static thread_local std::array<float,3> fingerprintOrigin{};
+                static thread_local unsigned long long lastFingerprintLog{};
+                if(fingerprintBody!=cachedBody){
+                    fingerprintBody=cachedBody;fingerprintValid=false;
+                    priorRestKnown=false;lastFingerprintLog=0;
+                }
+                int nativeRest{};
+                const bool nativeRestKnown=experimentalReadRigidBodyRest(
+                    cachedBody,imageBase,nativeRest);
+                float nativeDelta2{};
+                for(int i=0;i<3;++i){
+                    const float delta=origin[i]-fingerprintOrigin[i];
+                    nativeDelta2+=delta*delta;
+                }
+                const bool noRecentWrite=!priorWriteValid
+                    ||(now>=priorWriteAtMs&&now-priorWriteAtMs>500);
+                const bool wakeCandidate=fingerprintValid&&priorRestKnown
+                    &&nativeRestKnown&&priorRest>=0&&nativeRest==-1;
+                const bool motionCandidate=fingerprintValid&&nativeDelta2>0.01f;
+                if(!pin.active&&noRecentWrite&&(wakeCandidate||motionCandidate)
+                    &&(!lastFingerprintLog||now-lastFingerprintLog>=650)){
+                    lastFingerprintLog=now;
+                    log("[WORLD-GRAB-KICK-FINGERPRINT] handle="
+                        +std::to_string(handle)
+                        +" candidate="+(wakeCandidate?"REST-TO-AWAKE":"PASSIVE-BODY-MOTION")
+                        +" priorRest="+(priorRestKnown
+                            ?std::to_string(priorRest):"unknown")
+                        +" currentRest="+(nativeRestKnown
+                            ?std::to_string(nativeRest):"unknown")
+                        +" deltaXYZ="
+                            +std::to_string(origin[0]-fingerprintOrigin[0])+","
+                            +std::to_string(origin[1]-fingerprintOrigin[1])+","
+                            +std::to_string(origin[2]-fingerprintOrigin[2])
+                        +" kickCallbackVerified=no");
+                }
+                fingerprintOrigin={origin[0],origin[1],origin[2]};
+                priorRest=nativeRest;priorRestKnown=nativeRestKnown;
+                fingerprintValid=true;
                 if(now>=lastChangedAt)
                     reading.originUnchangedMs=now-lastChangedAt;
                 const auto owner=reinterpret_cast<std::uintptr_t>(cachedBody);
@@ -1703,9 +1741,8 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 if(kharvox::worldGrabActivationNeedsWake(mode)){
                                     int restBefore{},restAfter{};
                                     pin.activationWakeAttempted=true;
-                                    const bool woke=experimentalRigidBodyRestState(
-                                        cachedBody,imageBase,false,
-                                        &restBefore,&restAfter);
+                                    const bool woke=experimentalActivateRigidBody(
+                                        cachedBody,imageBase,&restBefore,&restAfter);
                                     log("[WORLD-GRAB-ACTIVATION] mode="
                                         +std::to_string(mode)
                                         +" handle="+std::to_string(handle)
@@ -1896,25 +1933,23 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                             for(int i=0;i<3;++i)
                                 reading.requestedDelta[i]=next[i]-origin[i];
                         }
-                        // The physics solver must not retain old linear or
-                        // angular momentum while manual hand posing owns the
-                        // rigid-body transform.
-                        if((kharvox::worldGrabAnchorMode(mode))&&reading.pinned
+                        // Build 788 froze visible barrels by forcing atRest=0
+                        // while changing their physics coordinates. Keep
+                        // native simulation awake during hand-relative follow.
+                        if(kharvox::worldGrabAnchorMode(mode)&&reading.pinned
                             &&pin.followReady&&pin.relativeCaptured){
                             const bool cleared=experimentalZeroRigidBodyMomentum(
                                 cachedBody,imageBase);
-                            int atRestBefore{},atRestAfter{};
-                            const bool suspended=experimentalRigidBodyRestState(
-                                cachedBody,imageBase,true,
-                                &atRestBefore,&atRestAfter);
-                            if(pin.lastRestLogAt==0||now-pin.lastRestLogAt>=1200){
+                            int rest{};
+                            const bool known=experimentalReadRigidBodyRest(
+                                cachedBody,imageBase,rest);
+                            if(!pin.lastRestLogAt||now-pin.lastRestLogAt>=1200){
                                 pin.lastRestLogAt=now;
-                                log("[WORLD-GRAB-REST] HELD handle="
+                                log("[WORLD-GRAB-HOLD-SYNC] handle="
                                     +std::to_string(handle)
-                                    +" frozen="+(suspended?"yes":"no")
-                                    +" momentumClear="+(cleared?"yes":"no")
-                                    +" atRestBefore="+std::to_string(atRestBefore)
-                                    +" atRestAfter="+std::to_string(atRestAfter));
+                                    +" forcedRest=no momentumClear="+(cleared?"yes":"no")
+                                    +" nativeRest="+(known?std::to_string(rest):"unknown")
+                                    +" modelPoseVerified=no");
                             }
                         }
                         if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
@@ -1944,6 +1979,27 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         std::lock_guard<std::mutex> lock(experimentalPhysicsMutex);
         reading.sequence=experimentalPhysicsSample.sequence+1;
         experimentalPhysicsSample=reading;
+    }
+    // Synchronization evidence: body origin and rest field are observable,
+    // native entity/render-model transforms are NOT yet verified.
+    static thread_local unsigned long long lastSyncLog{};
+    static thread_local unsigned lastSyncHandle{};
+    if(reading.status>=2&&(handle!=lastSyncHandle
+        ||now-lastSyncLog>=(reading.pinned?900u:2200u))){
+        lastSyncLog=now;lastSyncHandle=handle;
+        int rest{};
+        const bool known=experimentalReadRigidBodyRest(cachedBody,imageBase,rest);
+        log("[WORLD-GRAB-SYNC] handle="+std::to_string(handle)
+            +" phase="+(reading.pinned?"HELD":"PASSIVE")
+            +" method="+std::to_string(mode)
+            +" bodyXYZ="+std::to_string(reading.origin[0])+","
+                +std::to_string(reading.origin[1])+","
+                +std::to_string(reading.origin[2])
+            +" nativeRest="+(known?std::to_string(rest):"unknown")
+            +" bodyReadback="+(reading.changed?"CHANGED":"UNCHANGED")
+            +" retainedKnown="+(reading.retentionKnown?"yes":"no")
+            +" nativeMotionNotProvedByWrite=yes"
+            +" entityPoseVerified=no modelPoseVerified=no");
     }
     static thread_local unsigned lastLoggedHandle{};
     static thread_local int lastLoggedStatus{};
@@ -2034,8 +2090,8 @@ void experimentalPinnedBodyTick() {
                 // Do not apply hand-swing velocity or downward impulses.
                 settled=experimentalZeroRigidBodyMomentum(
                     pin.body,pin.imageBase,&priorMomentum);
-                reactivated=experimentalRigidBodyRestState(
-                    pin.body,pin.imageBase,false,&restBefore,&restAfter);
+                reactivated=experimentalActivateRigidBody(
+                    pin.body,pin.imageBase,&restBefore,&restAfter);
                 // A fresh trace supersedes any previous release. Never
                 // carry a body pointer across a level change or a vtable
                 // mismatch; only the verified, live object is observed.
