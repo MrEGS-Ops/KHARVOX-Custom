@@ -4625,7 +4625,7 @@ void updateGameplayActions(XrTime displayTime){
                 inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
                     +" Grip released - physics edit stopped";
                 log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" Grip released; physics edit stopped";
+                    +" Grip released; physics edit stopped");
             }
         }
     }
