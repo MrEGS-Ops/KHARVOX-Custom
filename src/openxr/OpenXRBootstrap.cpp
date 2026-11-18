@@ -429,8 +429,6 @@ struct State {
     bool weapon6Dof{},weaponCalibrated{},weaponGameplayActivated{},weaponPoseSubmitted{},weaponTrackingHeld{};WeaponPose weaponBaseline{};
     bool laserSightEnabled{};
     bool twoHandEnabled{},twoHandCalibrationMode{},twoHandLatched{},supportGripPressed{},virtualGunstockEnabled{};
-    bool bfgGripTriggered{},bfgGripSuppressedUntilRelease{};
-    XrTime bfgGripHoldStart{},bfgPulseUntil{};
     kharvox::BackWeaponState backWeaponState{};
     kharvox::BackWeaponKind favoriteBackWeapon{kharvox::BackWeaponKind::CombatShotgun};
     kharvox::BackWeaponPulse backWeaponPulse{kharvox::BackWeaponPulse::None};
@@ -2404,8 +2402,6 @@ void selectPhysicalWeaponHand(bool left,const char* action){
     s.supportGripPressed=false;
     s.interactionProfilesDirty=true;
     s.interactionProfilesKnown=false;
-    s.bfgGripHoldStart=0;
-    s.bfgGripTriggered=false;
     s.grenadeGesture={};
     s.equipmentThrowPulseUntil=0;
     log(std::string("[WEAPON-HAND] ")+action+" -> "
@@ -2762,7 +2758,7 @@ void updateWeapon6Dof(){
             s.twoHandLatched=false;
             s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
             writeTwoHandStatus(s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-                ?std::string("CALIBRATION: hold ")+supportGripName()+" for 650 ms to equip BFG 9000, then release it"
+                ?std::string("CALIBRATION: equip BFG with Gunslinger before capture")
                 :std::string("CALIBRATION: selected ")+weaponKindName(s.twoHandCalibrationTarget)
                     +"; switch from "+weaponKindName(kind)+" before capture");
         }else if(!calibration->valid){
@@ -3569,8 +3565,6 @@ void updateGameplayActions(XrTime displayTime){
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
         s.grenadeGesture={};
-        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=s.supportGripPressed;
         s.backWeaponState.zoneActive=false;
         s.backWeaponState.selectionPhase=kharvox::BackWeaponSelectionPhase::Idle;
         s.backWeaponState.pendingTarget=kharvox::BackWeaponKind::Unknown;
@@ -3769,7 +3763,6 @@ void updateGameplayActions(XrTime displayTime){
         s.grenadeGesture={};s.equipmentGrip.cancel();
         s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
         s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
-        s.bfgGripHoldStart=0;s.bfgPulseUntil=0;s.bfgGripTriggered=false;
         s.backWeaponPulseUntil=0;s.weaponSwitchPulseUntil=0;
         s.motionWheelState={};s.behindHeadWheelActive=false;
         s.behindHeadWheelSide=-1;s.wheelWeaponGripSuppressedUntilRelease=true;
@@ -3990,7 +3983,6 @@ void updateGameplayActions(XrTime displayTime){
             // Suppress any grip already held by the newly assigned support hand
             // until release. Prevents accidental equipment cycling or BFG select.
             s.wheelSupportGripSuppressedUntilRelease=true;
-            s.bfgGripSuppressedUntilRelease=true;
             log(std::string("[WEAPON-WHEEL] physical wheel confirmed with ")
                 +(selectedSide==0?"right":"left")+" weapon hand");
         }
@@ -4055,7 +4047,6 @@ void updateGameplayActions(XrTime displayTime){
             +(supportGripDown?"pressed":"released"));
         s.supportGripPressed=supportGripDown;
     }
-    constexpr XrDuration bfgGripHoldDuration=650000000;
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
     // A native keyboard hotkey is immediate, but DOOM may not equip the
     // requested weapon until a later game frame. Keep the previous gun in its
@@ -4081,33 +4072,9 @@ void updateGameplayActions(XrTime displayTime){
         &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
         &&triggerDown;
     KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
-    const bool bfgCalibrationAccess=s.twoHandCalibrationMode
-        &&s.twoHandCalibrationTarget==KharvoxWeaponKind::Bfg
-        &&activeWeaponKind!=KharvoxWeaponKind::Bfg;
-    const bool supportGripOwnsPress=s.twoHandLatched
-        ||(s.twoHandCalibrationMode&&!bfgCalibrationAccess);
-    if(!supportGripDown){
-        s.bfgGripHoldStart=0;
-        s.bfgGripTriggered=false;
-        s.bfgGripSuppressedUntilRelease=false;
-    }else if(!gameplay||supportGripOwnsPress||s.behindHeadWheelActive
-        ||s.wheelSupportGripSuppressedUntilRelease){
-        // An acquired support grip owns this press. Calibration owns it too,
-        // except while BFG is the selected target and still needs the native
-        // long-grip shortcut to become the active weapon.
-        s.bfgGripHoldStart=0;
-        s.bfgGripSuppressedUntilRelease=true;
-    }else if(!s.bfgGripSuppressedUntilRelease&&!s.bfgGripTriggered){
-        if(!s.bfgGripHoldStart)s.bfgGripHoldStart=displayTime;
-        else if(displayTime-s.bfgGripHoldStart>=bfgGripHoldDuration){
-            s.bfgGripTriggered=true;
-            s.bfgPulseUntil=displayTime+100000000;
-            log(std::string("[INPUT] ")+supportGripName()+" hold -> native Xbox-Y/JOY4 BFG pulse"
-                +(bfgCalibrationAccess?" for calibration access":""));
-        }
-    }
-    if(!gameplay)s.bfgPulseUntil=0;
-    const bool bfgPulse=gameplay&&displayTime<s.bfgPulseUntil;
+    // Native Xbox-Y is still used by Gunslinger quick-hip and the
+    // explicit in-menu BFG calibration selection. Holding the support Grip
+    // NEVER equips BFG; that Grip belongs to two-hand play and world grab.
     const bool gestureWheel=anyGestureWheelEnabled
         &&s.behindHeadWheelActive;
     const char* weaponSelectControl=gestureWheel?"behind-head gesture"
@@ -4258,7 +4225,6 @@ void updateGameplayActions(XrTime displayTime){
             // drop native weapon-mod input or latch suppression until release.
             if(kharvox::quickHipConsumesGrip(action)){
                 quickHolsterGripConsumed=true;
-                s.bfgGripSuppressedUntilRelease=true;
                 if(weaponHandAtThisHip)
                     s.wheelWeaponGripSuppressedUntilRelease=true;
                 else s.wheelSupportGripSuppressedUntilRelease=true;
@@ -4309,7 +4275,6 @@ void updateGameplayActions(XrTime displayTime){
                 }else log("[QUICK-HOTKEY] native selection failed; original hand retained");
                 s.wheelWeaponGripSuppressedUntilRelease=true;
                 s.wheelSupportGripSuppressedUntilRelease=true;
-                s.bfgGripSuppressedUntilRelease=true;
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")
                     +" Grip PRESS -> direct native weapon="
@@ -5289,7 +5254,6 @@ void updateGameplayActions(XrTime displayTime){
             static_cast<std::int64_t>(displayTime));
         if(action==kharvox::ChestGrenadeAction::Cycle){
             s.grenadeCyclePulseUntil=displayTime+100000000;
-            s.bfgGripSuppressedUntilRelease=true;
             kharvox::queueControllerZoneCue(
                 s.handZoneCues[equipmentHapticHand],hapticNow,85,.72f,195.f);
             s.nextCookPulseAt=hapticNow+350;
@@ -5299,7 +5263,6 @@ void updateGameplayActions(XrTime displayTime){
             log("[GRENADE] pulled outside chest and released Grip -> one native throw");
         }
         if(s.grenadeGesture.held&&s.grenadeGesture.armed)
-            s.bfgGripSuppressedUntilRelease=true;
         // Quiet periodic heartbeat only after the 'pin' has been pulled.
         // Native damage/firing rumble is always higher priority.
         if(s.grenadeGesture.held&&s.grenadeGesture.armed
@@ -5372,7 +5335,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool rightShoulderDown=nativeWeaponSelectDown
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
-        const bool yDown=bfgPulse||backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
+        const bool yDown=backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
         // A first-run setup popup is modal to DOOM's front-menu button
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.
