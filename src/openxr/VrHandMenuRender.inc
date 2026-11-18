@@ -403,9 +403,20 @@ void paintVrHandMenu() {
                 +" / "+(inspect.physicsChanged?"READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
-            auto event=inspect.lastEvent;
-            if(event.size()>40)event=event.substr(0,40);
-            write(left,inspectorY+213,"EVENT: "+event,muted);
+            if(inspect.physicsStatus>=2){
+                const char* route=inspect.physicsStorageRoute==1?"GETTER-OWNED"
+                    :inspect.physicsStorageRoute==2?"GETTER-EXTERNAL"
+                    :inspect.physicsStorageRoute==3?"MATCHED-ORIGIN-VEC3"
+                    :"NO WRITE STORAGE";
+                write(left,inspectorY+213,std::string("STORAGE: ")+route
+                    +" D="+std::to_string(int(inspect.physicsDistanceFromHand))
+                    +" MATCHES="+std::to_string(inspect.physicsOriginMatches),
+                    inspect.physicsWritable?RGB(128,255,177):muted);
+            }else{
+                auto event=inspect.lastEvent;
+                if(event.size()>40)event=event.substr(0,40);
+                write(left,inspectorY+213,"EVENT: "+event,muted);
+            }
         }
     }else if(calibrationView){
         // Status is a SECOND ROW beneath the title. No badge/text may

@@ -55,6 +55,8 @@ struct WorldGrabInspectorSnapshot {
   int physicsMode{},physicsStatus{};
   bool physicsWritable{},physicsChanged{};
   unsigned int physicsHandle{};
+  int physicsStorageRoute{},physicsOriginMatches{};
+  float physicsDistanceFromHand{-1.f};
   float physicsOrigin[3]{};
   std::string physicsClass;
   std::string lastEvent{"Grip to inspect DOOM focus candidates"};

@@ -48,6 +48,10 @@ struct KharvoxWorldGrabPhysicsSample {
     int mode{},status{}; // 1=no body, 2=origin readable, 3=writable,
                          // 4=write committed, 5=readback position changed
     bool writable{},changed{};
+    // 0=none, 1=physics-owned GetOrigin pointer, 2=external GetOrigin
+    // pointer, 3=unique origin-vector match inside physics object.
+    int storageRoute{},originMatches{};
+    float distanceFromHand{-1.f};
     float origin[3]{};
     std::array<char,64> physicsClass{};
 };

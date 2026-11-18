@@ -1144,6 +1144,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     static thread_local unsigned long long lastScan{};
     static thread_local std::array<float,3> frozenOrigin{};
     static thread_local bool freezeCaptured{},pulseDone{};
+    static thread_local bool originScanned{};
+    static thread_local std::uintptr_t uniqueOriginOffset{};
+    static thread_local int originMatchCount{};
     const auto now=GetTickCount64();
     const auto epoch=experimentalPhysicsEpoch.load(std::memory_order_acquire);
     if(cachedEntity!=reinterpret_cast<std::uintptr_t>(entity)
@@ -1151,6 +1154,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
         cachedEntity=reinterpret_cast<std::uintptr_t>(entity);
         cachedHandle=handle;cachedEpoch=epoch;cachedBody=nullptr;
         cachedType={};lastScan=0;freezeCaptured=false;pulseDone=false;
+        originScanned=false;uniqueOriginOffset=0;originMatchCount=0;
     }
     if(!cachedBody&&now-lastScan>=500){
         lastScan=now;
@@ -1205,8 +1209,53 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                 reading.status=2;
                 const auto owner=reinterpret_cast<std::uintptr_t>(cachedBody);
                 const auto field=reinterpret_cast<std::uintptr_t>(location);
-                reading.writable=field>=owner&&field-owner<=0x4000-12
-                    &&writableMemory(location,12);
+                // Build #742 found real idPhysics_RigidBody instances but
+                // rejected all writes because GetOrigin() returns a pointer
+                // OUTSIDE the first 16KB of its physics object. The owner
+                // test was our restriction, not a native engine prohibition.
+                // Experimental route A: accept the getter-returned address
+                // whenever VirtualQuery reports a genuinely writable page.
+                const bool inPhysicsObject=field>=owner
+                    &&field-owner<=0x4000-12;
+                const bool getterWritable=writableMemory(location,12);
+                float* mutableOrigin=getterWritable
+                    ?const_cast<float*>(location):nullptr;
+                reading.storageRoute=getterWritable
+                    ?(inPhysicsObject?1:2):0;
+                // Experimental route B: if GetOrigin points at read-only
+                // storage, find a UNIQUE matching vec3 within this proven
+                // rigid body's own writable memory. Exact origin values
+                // are the identity check: never guess an arbitrary offset.
+                if(!mutableOrigin){
+                    if(!originScanned){
+                        originScanned=true;
+                        const auto* bytes=static_cast<const unsigned char*>(cachedBody);
+                        for(std::size_t off=8;off+12<0x4000;off+=4){
+                            const void* address=bytes+off;
+                            if(!writableMemory(address,12))continue;
+                            float xyz[3]{};
+                            std::memcpy(xyz,address,sizeof(xyz));
+                            bool matches=true;
+                            for(int j=0;j<3;++j)
+                                matches=matches&&std::isfinite(xyz[j])
+                                    &&std::abs(xyz[j]-origin[j])<0.0001f;
+                            if(matches){
+                                uniqueOriginOffset=off;
+                                ++originMatchCount;
+                            }
+                        }
+                    }
+                    reading.originMatches=originMatchCount;
+                    if(originMatchCount==1&&uniqueOriginOffset>0){
+                        auto* candidate=static_cast<unsigned char*>(cachedBody)
+                            +uniqueOriginOffset;
+                        if(writableMemory(candidate,12)){
+                            mutableOrigin=reinterpret_cast<float*>(candidate);
+                            reading.storageRoute=3;
+                        }
+                    }
+                }
+                reading.writable=mutableOrigin!=nullptr;
                 if(reading.writable)reading.status=3;
                 if(mode>0&&reading.writable
                     &&focusHandValid.load(std::memory_order_acquire)){
@@ -1217,7 +1266,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         direction[i]=focusHandDirection[i].load(std::memory_order_relaxed);
                         const float d=origin[i]-hand[i];distance2+=d*d;
                     }
-                    // Aim at an existing movable object close to the hand.
+                    reading.distanceFromHand=std::isfinite(distance2)
+                        ?std::sqrt(distance2):-1.f;
+                    // Keep the anchor local to the controller. For now
+                    // object-centre reach is advisory, in native DOOM units.
                     if(std::isfinite(distance2)&&distance2<110.f*110.f){
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
@@ -1244,7 +1296,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 next[i]=origin[i]+direction[i]*(mode==3?18.f:-18.f);
                             pulseDone=true;write=true;
                         }
-                        if(write&&nativeBodyWriteOrigin(const_cast<float*>(location),next)){
+                        if(write&&nativeBodyWriteOrigin(mutableOrigin,next)){
                             reading.status=4;
                             const float* check=nativeBodyCallOrigin(cachedBody,function);
                             if(check&&readableMemory(check,12)){
@@ -1280,6 +1332,9 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
             +" method="+std::to_string(mode)
             +" status="+std::to_string(reading.status)
             +" writable="+(reading.writable?"yes":"no")
+            +" storeRoute="+std::to_string(reading.storageRoute)
+            +" matchingVectors="+std::to_string(reading.originMatches)
+            +" handDistance="+std::to_string(reading.distanceFromHand)
             +" position="+std::to_string(reading.origin[0])+","
                 +std::to_string(reading.origin[1])+","
                 +std::to_string(reading.origin[2]));

@@ -4472,6 +4472,9 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsChanged=sample.changed;
             inspector.physicsClass=sample.physicsClass.data();
             inspector.physicsHandle=sample.handle;
+            inspector.physicsStorageRoute=sample.storageRoute;
+            inspector.physicsOriginMatches=sample.originMatches;
+            inspector.physicsDistanceFromHand=sample.distanceFromHand;
             for(int axis=0;axis<3;++axis)
                 inspector.physicsOrigin[axis]=sample.origin[axis];
         }
