@@ -133,9 +133,13 @@ struct ExperimentalPinnedBody {
     unsigned long long epoch{},generation{},startAtMs{},lastTickAtMs{},
         lastReportedAtMs{};
     std::array<char,80> type{};
-    // Native movement, not a successful memory write, arms the grab.
+    // Automatic activation sequence. Stage 5 keeps Grip attached while
+    // the tester physically kicks the STILL inactive object.
     bool active{},followReady{},relativeCaptured{};
     bool activationWakeAttempted{},activationProbeDone{};
+    unsigned activationStage{};
+    unsigned long long stageStartedAtMs{},lastStageLogAtMs{};
+    std::array<float,3> stageStartOrigin{};
     // Body pose in physical controller GRIP space (never AIM ray space).
     // Rotation and hand-to-object offset are captured together at catch.
     std::array<float,3> relativePosition{},initialRelativePosition{};
@@ -1530,6 +1534,10 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
     reading.generation=levelTransitionGeneration.load(std::memory_order_acquire);
     reading.pinned=pin.active&&pin.epoch==epoch&&pin.entity==entity;
     reading.pinnedTicks=reading.pinned?pin.ticks:0;
+    reading.activationStage=reading.pinned?pin.activationStage:0;
+    reading.activationStageAgeMs=reading.pinned&&now>=pin.stageStartedAtMs
+        ?now-pin.stageStartedAtMs:0;
+    reading.activationFollowing=reading.pinned&&pin.followReady;
     reading.status=1; // no verified rigid body yet
     std::array<float,3> loggedHand{},loggedTarget{},loggedPreWriteOrigin{};
     bool loggedHandValid=false;
@@ -1745,63 +1753,39 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                     &&nativeMotionAt&&now-nativeMotionAt<=1000;
                                 pin.followReady=kharvox::worldGrabAnchorFollowReady(
                                     mode,priorNativeMotion,0);
-                                // Native method is signature-verified on the exact
-                                // DOOM executable. No guessed entity vtable calls.
-                                if(kharvox::worldGrabActivationNeedsWake(mode)){
-                                    int restBefore{},restAfter{};
-                                    pin.activationWakeAttempted=true;
-                                    const bool woke=experimentalActivateRigidBody(
-                                        cachedBody,imageBase,&restBefore,&restAfter);
-                                    log("[WORLD-GRAB-ACTIVATION] mode="
-                                        +std::to_string(mode)
-                                        +" handle="+std::to_string(handle)
-                                        +" nativeWake="+(woke?"yes":"NO")
-                                        +" atRestBefore="+std::to_string(restBefore)
-                                        +" atRestAfter="+std::to_string(restAfter)
-                                        +" priorNativeMotion="
-                                            +(priorNativeMotion?"yes":"no"));
-                                }
-                                // A tiny, one-shot *position* proxy can provoke
-                                // normal collision/physics processing indirectly.
-                                // These are NOT native collision event calls.
-                                if(kharvox::worldGrabActivationContactProxy(mode)
-                                    ||kharvox::worldGrabActivationMicroMove(mode)){
-                                    float targetProbe[3]{origin[0],origin[1],origin[2]};
-                                    if(kharvox::worldGrabActivationContactProxy(mode)){
-                                        const float len=std::sqrt(std::max(distance2,0.00001f));
-                                        for(int component=0;component<3;++component)
-                                            targetProbe[component]+=
-                                                (hand[component]-origin[component])
-                                                *0.35f/len;
-                                    }else{
-                                        targetProbe[2]+=0.20f;
-                                    }
-                                    const bool moved=nativeBodyWriteOrigin(
-                                        mutableOrigin,targetProbe);
-                                    pin.activationProbeDone=moved;
-                                    if(moved){
-                                        // Our deliberate proxy write is NOT
-                                        // evidence of native solver motion.
-                                        priorWriteValid=true;priorWriteAtMs=now;
-                                        priorWriteStart=loggedPreWriteOrigin;
-                                        priorWriteNext={
-                                            targetProbe[0],targetProbe[1],
-                                            targetProbe[2]};
-                                        for(int component=0;component<3;++component){
-                                            origin[component]=targetProbe[component];
-                                            reading.origin[component]=targetProbe[component];
-                                        }
-                                    }
-                                    log("[WORLD-GRAB-ACTIVATION-PROXY] mode="
-                                        +std::to_string(mode)
-                                        +" handle="+std::to_string(handle)
-                                        +" requestedDeltaXYZ="
-                                            +std::to_string(targetProbe[0]-loggedPreWriteOrigin[0])
-                                            +","+std::to_string(targetProbe[1]-loggedPreWriteOrigin[1])
-                                            +","+std::to_string(targetProbe[2]-loggedPreWriteOrigin[2])
-                                        +" write="+(moved?"yes":"NO")
-                                        +" realCollisionEvent=no");
-                                }
+                                pin.activationStage=kharvox::kWorldGrabStageWake;
+                                pin.stageStartedAtMs=now;
+                                pin.stageStartOrigin={origin[0],origin[1],origin[2]};
+                                int restBefore{},restAfter{};
+                                pin.activationWakeAttempted=true;
+                                const bool woke=experimentalActivateRigidBody(
+                                    cachedBody,imageBase,&restBefore,&restAfter);
+                                log("[WORLD-GRAB-AUTO] START handle="
+                                    +std::to_string(handle)
+                                    +" class="+type
+                                    +" entityVtableRva="+std::to_string(entityVtable-imageBase)
+                                    +" bodyVtableRva="+std::to_string(vtable-imageBase)
+                                    +" gripXYZ="+std::to_string(gripPose.origin[0])+","
+                                        +std::to_string(gripPose.origin[1])+","
+                                        +std::to_string(gripPose.origin[2])
+                                    +" bodyXYZ="+std::to_string(origin[0])+","
+                                        +std::to_string(origin[1])+","
+                                        +std::to_string(origin[2])
+                                    +" handDistance="+std::to_string(reading.distanceFromHand)
+                                    +" storageRoute="+std::to_string(reading.storageRoute)
+                                    +" originWritable="+(reading.writable?"yes":"no")
+                                    +" restState="+(reading.nativeRestKnown
+                                        ?std::to_string(reading.nativeAtRest):"unknown")
+                                    +" renderModelPose=NOT_VERIFIED"
+                                    +" playerContactFilter=NOT_VERIFIED");
+                                log("[WORLD-GRAB-AUTO] ATTEMPT handle="
+                                    +std::to_string(handle)
+                                    +" stage=1 method=NATIVE_WAKE"
+                                    +" nativeCall="+(woke?"success":"failed")
+                                    +" restBefore="+std::to_string(restBefore)
+                                    +" restAfter="+std::to_string(restAfter)
+                                    +" movementEvidence=pending"
+                                    +" visibleResult=USER_VIDEO");
                                 log(std::string("[WORLD-GRAB-PIN] ACQUIRED class=")
                                     +type+" handle="+std::to_string(handle)
                                     +" epoch="+std::to_string(epoch)
@@ -1812,25 +1796,126 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                         reading.pinned=pin.active&&pin.entity==entity
                             &&pin.epoch==epoch;
                         reading.pinnedTicks=reading.pinned?pin.ticks:0;
+                        reading.activationStage=reading.pinned?pin.activationStage:0;
+                        reading.activationStageAgeMs=reading.pinned&&now>=pin.stageStartedAtMs
+                            ?now-pin.stageStartedAtMs:0;
+                        reading.activationFollowing=reading.pinned&&pin.followReady;
                         const bool nativeMoved=lastNativeMotionSeen&&nativeMotionAt
                             &&now-nativeMotionAt<=1000;
-                        if(reading.pinned&&!pin.followReady
-                            &&kharvox::worldGrabAnchorFollowReady(
-                                mode,nativeMoved,now-pin.startAtMs)){
-                            pin.followReady=true;
-                            log("[WORLD-GRAB-ACTIVATION-READY] mode="
-                                +std::to_string(mode)
-                                +" handle="+std::to_string(handle)
-                                +" observedNativeMotion="+(nativeMoved?"yes":"no")
-                                +" waitedMs="+std::to_string(now-pin.startAtMs)
-                                +" manualFollow=now"
-                                +" entitySchedulerABI=unverified");
+                        if(reading.pinned&&!pin.followReady){
+                            const bool validNative=kharvox::worldGrabStageNativeEvidence(
+                                pin.activationStage,pin.stageStartedAtMs,
+                                nativeMotionAt,lastNativeMotionSeen,
+                                priorWriteValid?priorWriteAtMs:0,now);
+                            if(validNative){
+                                pin.followReady=true;
+                                reading.activationNativeEvidence=true;
+                                reading.activationFollowing=true;
+                                log("[WORLD-GRAB-AUTO] NATIVE_EVIDENCE handle="
+                                    +std::to_string(handle)
+                                    +" stage="+std::to_string(pin.activationStage)
+                                    +" method="+kharvox::worldGrabStageName(pin.activationStage)
+                                    +" heldGrip=yes nativeMotion=yes"
+                                    +" visualMovement=USER_CONFIRMATION_REQUIRED"
+                                    +" bodyXYZ="+std::to_string(origin[0])+","
+                                        +std::to_string(origin[1])+","
+                                        +std::to_string(origin[2])
+                                    +" renderModelPose=UNVERIFIED");
+                            }else if(pin.activationStage<kharvox::kWorldGrabStageDirect
+                                &&now>=pin.stageStartedAtMs
+                                &&now-pin.stageStartedAtMs
+                                    >=kharvox::worldGrabStageWindowMs(pin.activationStage)){
+                                const float dx=origin[0]-pin.stageStartOrigin[0];
+                                const float dy=origin[1]-pin.stageStartOrigin[1];
+                                const float dz=origin[2]-pin.stageStartOrigin[2];
+                                int rest{};
+                                const bool restKnown=experimentalReadRigidBodyRest(
+                                    cachedBody,imageBase,rest);
+                                log("[WORLD-GRAB-AUTO] RESULT handle="
+                                    +std::to_string(handle)
+                                    +" stage="+std::to_string(pin.activationStage)
+                                    +" method="+kharvox::worldGrabStageName(pin.activationStage)
+                                    +" nativeEvidence=no"
+                                    +" rest="+(restKnown?std::to_string(rest):"unknown")
+                                    +" bodyDeltaXYZ="+std::to_string(dx)+","
+                                        +std::to_string(dy)+","+std::to_string(dz)
+                                    +" videoResult=UNVERIFIED");
+                                ++pin.activationStage;
+                                pin.stageStartedAtMs=now;
+                                pin.lastStageLogAtMs=0;
+                                pin.stageStartOrigin={origin[0],origin[1],origin[2]};
+                                if(pin.activationStage==kharvox::kWorldGrabStageContact
+                                    ||pin.activationStage==kharvox::kWorldGrabStageMicro){
+                                    float probe[3]{origin[0],origin[1],origin[2]};
+                                    if(pin.activationStage==kharvox::kWorldGrabStageContact){
+                                        const float d=std::sqrt(std::max(distance2,0.00001f));
+                                        for(int i=0;i<3;++i)
+                                            probe[i]+=(hand[i]-origin[i])*0.35f/d;
+                                    }else probe[2]+=0.20f;
+                                    const bool wrote=nativeBodyWriteOrigin(
+                                        mutableOrigin,probe);
+                                    if(wrote){
+                                        priorWriteValid=true;priorWriteAtMs=now;
+                                        priorWriteStart={origin[0],origin[1],origin[2]};
+                                        priorWriteNext={probe[0],probe[1],probe[2]};
+                                    }
+                                    log("[WORLD-GRAB-AUTO] ATTEMPT handle="
+                                        +std::to_string(handle)
+                                        +" stage="+std::to_string(pin.activationStage)
+                                        +" method="+kharvox::worldGrabStageName(pin.activationStage)
+                                        +" positionWrite="+(wrote?"yes":"no")
+                                        +" deltaXYZ="+std::to_string(probe[0]-origin[0])+","
+                                            +std::to_string(probe[1]-origin[1])+","
+                                            +std::to_string(probe[2]-origin[2])
+                                        +" realCollisionEvent=no"
+                                        +" bodyAndModelSync=UNVERIFIED");
+                                }else if(pin.activationStage==kharvox::kWorldGrabStageObserve){
+                                    log("[WORLD-GRAB-AUTO] ATTEMPT handle="
+                                        +std::to_string(handle)
+                                        +" stage=4 method=ENTITY_TICK"
+                                        +" positionWrites=no"
+                                        +" nativeMovement=observing");
+                                }else if(pin.activationStage==kharvox::kWorldGrabStageHeldKick){
+                                    log("[WORLD-GRAB-AUTO] HELD_KICK_WINDOW handle="
+                                        +std::to_string(handle)
+                                        +" GripMustRemainHeld=yes"
+                                        +" noFollowUntilNativeMotion=yes"
+                                        +" windowMs=12000"
+                                        +" physicalKickMayRevealNativeActivation=yes");
+                                }else if(pin.activationStage==kharvox::kWorldGrabStageDirect){
+                                    pin.followReady=true;
+                                    reading.activationFollowing=true;
+                                    log("[WORLD-GRAB-AUTO] FALLBACK handle="
+                                        +std::to_string(handle)
+                                        +" stage=6 method=DIRECT_FOLLOW_FALLBACK"
+                                        +" nativeActivation=UNVERIFIED"
+                                        +" visibleMovement=USER_VIDEO"
+                                        +" originalStrongFollow=28_units");
+                                }
+                            }else if(!pin.lastStageLogAtMs
+                                ||now-pin.lastStageLogAtMs>=350){
+                                pin.lastStageLogAtMs=now;
+                                int rest{};
+                                const bool restKnown=experimentalReadRigidBodyRest(
+                                    cachedBody,imageBase,rest);
+                                log("[WORLD-GRAB-AUTO] OBSERVE handle="
+                                    +std::to_string(handle)
+                                    +" stage="+std::to_string(pin.activationStage)
+                                    +" method="+kharvox::worldGrabStageName(pin.activationStage)
+                                    +" elapsedMs="+std::to_string(now-pin.stageStartedAtMs)
+                                    +" rest="+(restKnown?std::to_string(rest):"unknown")
+                                    +" bodyXYZ="+std::to_string(origin[0])+","
+                                        +std::to_string(origin[1])+","
+                                        +std::to_string(origin[2])
+                                    +" nativeMovement=not_verified"
+                                    +" visualMovement=USER_VIDEO");
+                            }
                         }
                         float next[3]{origin[0],origin[1],origin[2]};
                         bool write=false;
                         if(kharvox::worldGrabAnchorMode(mode)){
-                            // All five tests use the SAME validated 6DoF
-                            // attachment; only activation strategy varies.
+                            // Automatic activation; preserve the native
+                            // Strong Anchor 28-unit-per-tick 6DoF follow.
                             if(reading.pinned&&pin.followReady&&gripPoseValid){
                                 std::uintptr_t axisFn{};
                                 if(readableMemory(reinterpret_cast<const void*>(
@@ -1900,7 +1985,7 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                             step2+=delta*delta;
                                         }
                                         const float step=std::sqrt(step2);
-                                        const float maxStep=mode==6?28.f:8.f;
+                                        constexpr float maxStep=28.f;
                                         const float factor=step>maxStep?maxStep/step:1.f;
                                         for(int i=0;i<3;++i)
                                             next[i]=origin[i]+(target[i]-origin[i])*factor;
@@ -1933,9 +2018,11 @@ void experimentalNativeBodyProbe(const void* entity,unsigned path,
                                 &&(pin.lastWaitLogAt==0
                                     ||now-pin.lastWaitLogAt>=1000)){
                                 pin.lastWaitLogAt=now;
-                                log("[WORLD-GRAB-PIN] WAITING-NATIVE-MOTION handle="
+                                log("[WORLD-GRAB-AUTO] WAITING handle="
                                     +std::to_string(handle)
-                                    +" no position writes before activation");
+                                    +" stage="+std::to_string(pin.activationStage)
+                                    +" method="+kharvox::worldGrabStageName(pin.activationStage)
+                                    +" GripStillHeld=yes; no hand-follow yet");
                             }
                         }
                         if(write){
@@ -2141,6 +2228,14 @@ void experimentalPinnedBodyTick() {
                 }
             }
         }
+        log("[WORLD-GRAB-AUTO] RELEASE handle="+std::to_string(pin.handle)
+            +" stage="+std::to_string(pin.activationStage)
+            +" method="+kharvox::worldGrabStageName(pin.activationStage)
+            +" followReady="+(pin.followReady?"yes":"no")
+            +" relativePoseCaptured="+(pin.relativeCaptured?"yes":"no")
+            +" gripHeldUntilRelease=yes"
+            +" manualKickEvidence=UNVERIFIED"
+            +" userVideoRequired=yes");
         log(std::string("[WORLD-GRAB-PIN] RELEASE reason=")+reason
             +" handle="+std::to_string(pin.handle)
             +" ticks="+std::to_string(pin.ticks)
@@ -4113,11 +4208,9 @@ void KharvoxCameraSetCrouchState(bool active) {
 
 void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    // -1=disabled, 0=inspector, 1=direct no motion gate,
-    // 2=native wake, 3=wake + contact proxy, 4=wake + micro move,
-    // 5=owner/native tick diagnostic with a bounded hand-follow fallback.
-    // Strong Anchor (6) retains native motion gating and the original
-    // higher movement step; retired kick/lift/impulse traces stay disabled.
+    // -1=disabled, 0=inspector, 6=automatic Hand Anchor.
+    // The previous five activation methods are now internal stages,
+    // never independent DEV menu switches.
     const bool supported=mode==0||kharvox::worldGrabAnchorMode(mode);
     const int selected=enabled&&supported?mode:-1;
     const int previous=experimentalPhysicsMode.exchange(selected,std::memory_order_acq_rel);

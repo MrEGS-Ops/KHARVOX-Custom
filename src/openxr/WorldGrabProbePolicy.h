@@ -65,6 +65,9 @@ struct WorldGrabInspectorSnapshot {
   int physicsAtRest{};
   bool physicsPinned{};
   unsigned int physicsPinnedTicks{};
+  unsigned int physicsActivationStage{};
+  unsigned long long physicsActivationStageAgeMs{};
+  bool physicsActivationNativeEvidence{},physicsActivationFollowing{};
   unsigned long long physicsCallbackAgeMs{};
   float physicsOrigin[3]{};
   std::string physicsClass;

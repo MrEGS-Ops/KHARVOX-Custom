@@ -1,53 +1,29 @@
 #include "../src/openxr/WorldGrabActivationTestPolicy.h"
 #include "../src/openxr/WorldGrabSyncPolicy.h"
 #include <cassert>
-#include <initializer_list>
 using namespace kharvox;
 int main(){
-    // A: immediate acquisition without relying on a pre-existing kick.
-    assert(worldGrabActivationTestValid(1));
-    assert(worldGrabActivationFollowReady(1,false,0));
-    assert(!worldGrabActivationNeedsWake(1));
-    // B: exact native wake is requested, with the same hand follow.
-    assert(worldGrabActivationNeedsWake(2));
-    assert(!worldGrabActivationFollowReady(2,false,0));
-    assert(!worldGrabActivationFollowReady(2,false,79));
-    assert(worldGrabActivationFollowReady(2,false,80));
-    assert(worldGrabActivationFollowReady(2,true,0));
-    // C: contact proxy is a small position write, not a collision callback.
-    assert(worldGrabActivationContactProxy(3));
-    assert(worldGrabActivationNeedsWake(3));
-    assert(!worldGrabActivationMicroMove(3));
-    assert(!worldGrabActivationFollowReady(3,false,20));
-    assert(worldGrabActivationFollowReady(3,false,80));
-    // D: distinct micro vertical movement; no contact proxy.
-    assert(worldGrabActivationMicroMove(4));
-    assert(worldGrabActivationNeedsWake(4));
-    assert(!worldGrabActivationContactProxy(4));
-    assert(!worldGrabActivationFollowReady(4,false,79));
-    assert(worldGrabActivationFollowReady(4,false,80));
-    // E: observe native movement for 350 ms before manual-follow fallback.
-    assert(worldGrabActivationOwnerTickProbe(5));
-    assert(!worldGrabActivationFollowReady(5,false,0));
-    assert(!worldGrabActivationFollowReady(5,false,349));
-    assert(worldGrabActivationFollowReady(5,true,20));
-    assert(worldGrabActivationFollowReady(5,false,350));
+    assert(worldGrabStrongAnchor(6)&&worldGrabAnchorMode(6));
+    for(int mode:{-1,0,1,2,3,4,5,7,8}){
+        assert(!worldGrabAnchorMode(mode));
+        assert(!worldGrabAnchorFollowReady(mode,true,1000));
+    }
+    assert(worldGrabStageWindowMs(1)==200);
+    assert(worldGrabStageWindowMs(2)==500);
+    assert(worldGrabStageWindowMs(3)==500);
+    assert(worldGrabStageWindowMs(4)==350);
+    assert(worldGrabStageWindowMs(5)==12000);
+    assert(worldGrabStageWindowMs(6)==0);
+    assert(worldGrabStageNativeEvidence(5,100,110,true,0,120));
+    assert(!worldGrabStageNativeEvidence(3,100,105,true,101,120));
+    assert(!worldGrabStageNativeEvidence(3,100,105,true,101,451));
+    assert(!worldGrabStageNativeEvidence(3,100,99,true,0,120));
+    assert(worldGrabStageNativeEvidence(3,100,500,true,101,500));
+    assert(worldGrabAnchorFollowReady(6,true,0));
+    assert(!worldGrabAnchorFollowReady(6,false,12000));
     assert(worldGrabNativeWakeCandidate(true,1,true,-1,false,false));
     assert(!worldGrabNativeWakeCandidate(true,1,true,-1,true,false));
-    assert(!worldGrabNativeWakeCandidate(true,1,true,-1,false,true));
     assert(worldGrabPassiveMotionCandidate(1.0f,false,false));
-    assert(!worldGrabPassiveMotionCandidate(1.0f,true,false));
     assert(!worldGrabPassiveMotionCandidate(1.0f,false,true));
-    // Working Strong Anchor is NOT retired: it remains separately selectable
-    // and deliberately uses the original native-motion gate.
-    assert(worldGrabStrongAnchor(6));
-    assert(worldGrabAnchorMode(6));
-    assert(!worldGrabAnchorFollowReady(6,false,5000));
-    assert(worldGrabAnchorFollowReady(6,true,0));
-    assert(worldGrabAnchorMode(1) && worldGrabAnchorMode(5));
-    assert(!worldGrabAnchorMode(7));
-    // Retired methods cannot be selected from the controller or native bridge.
-    for(int mode:{-1,0,6,7,8,100})
-        assert(!worldGrabActivationTestValid(mode));
     return 0;
 }

@@ -512,7 +512,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?7:5;
+            const int optionCount=expInline?2:5;
             const int optionStep=expInline?44:68;
             const int optionHeight=expInline?42:58;
             for(int i=0;i<optionCount;++i)
@@ -853,7 +853,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?7:1; // inspector + five activation tests + preserved Strong Anchor
+                        ?2:1; // inspector + one automatic Hand Anchor
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -924,7 +924,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
-                    m.message="Five experimental activation tests on the right.";
+                    m.message="One automatic Hand Anchor, plus the Sync Inspector.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -1018,7 +1018,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=136&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=131&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
@@ -1044,20 +1044,15 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             s.worldGrabProbe={};
                         }
                         m.message=m.experimentalWorldGrabProbeEnabled
-                            ?"World Grab inspector ON."
-                            :"World Grab inspector and activation tests OFF.";
-                    }else{
-                        const bool wasEnabled=m.experimentalActivationMode==option;
-                        m.experimentalActivationMode=wasEnabled?0:option;
+                            ?"Physics / Render Inspector ON."
+                            :"Physics / Render Inspector and Hand Anchor OFF.";
+                    }else if(option==1){
+                        const bool wasEnabled=m.experimentalActivationMode==6;
+                        m.experimentalActivationMode=wasEnabled?0:6;
                         if(!wasEnabled)m.experimentalWorldGrabProbeEnabled=true;
-                        m.message=wasEnabled?"Activation test OFF."
-                            :option==1?"TEST 1: DIRECT / no native-motion gate."
-                            :option==2?"TEST 2: verified native body wake + hand control."
-                            :option==3?"TEST 3: wake + 0.35-unit contact proxy (not a collision callback)."
-                            :option==4?"TEST 4: wake + 0.20-unit vertical micro-movement."
-                            :option==5?"TEST 5: wake, observe native motion for 350ms, then follow."
-                            :"STRONG ANCHOR: original 28-unit follow with native-motion gate.";
-                        log(std::string("[WORLD-GRAB-ACTIVATION-TEST] ")+m.message);
+                        m.message=wasEnabled?"Automatic Hand Anchor OFF."
+                            :"Hand Anchor ON: auto activation, 12s held-kick capture, deep logging.";
+                        log(std::string("[WORLD-GRAB-AUTO] UI ")+m.message);
                     }
                 }
             }else if(!devPage&&m.navigation.settingsColumn

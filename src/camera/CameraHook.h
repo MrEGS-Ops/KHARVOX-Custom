@@ -69,6 +69,9 @@ struct KharvoxWorldGrabPhysicsSample {
     int nativeAtRest{};
     bool pinned{};
     unsigned int pinnedTicks{};
+    unsigned int activationStage{};
+    unsigned long long activationStageAgeMs{};
+    bool activationNativeEvidence{},activationFollowing{};
     float origin[3]{};
     std::array<char,64> physicsClass{};
 };

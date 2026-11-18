@@ -572,8 +572,8 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     bool experimentalWorldGrabProbeEnabled{}; // session-only, defaults OFF
-    // Zero = inspector only. 1-5 are mutually exclusive, experimental
-    // activation strategies; never persisted to UserData or normal builds.
+    // Zero = inspector only, 6 = unified automatic Hand Anchor.
+    // The old five test options are retired and are never persisted.
     int experimentalActivationMode{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press

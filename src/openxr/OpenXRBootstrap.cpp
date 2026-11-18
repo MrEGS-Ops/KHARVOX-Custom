@@ -4452,7 +4452,8 @@ void updateGameplayActions(XrTime displayTime){
         inspector.gripHeld=inspector.enabled&&(in.grip[0]||in.grip[1]);
         inspector.freeHandRight=s.weaponHandLeft;
         if(!inspector.enabled)inspector={};
-        const int physicsMode=s.vrHandMenu.experimentalActivationMode;
+        // Old separate methods 1-5 cannot run or be restored from stale state.
+        const int physicsMode=s.vrHandMenu.experimentalActivationMode==6?6:0;
         const unsigned freeSide=s.weaponHandLeft?1u:0u;
         const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
             &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
@@ -4484,6 +4485,10 @@ void updateGameplayActions(XrTime displayTime){
             inspector.physicsAtRest=sample.nativeAtRest;
             inspector.physicsPinned=sample.pinned;
             inspector.physicsPinnedTicks=sample.pinnedTicks;
+            inspector.physicsActivationStage=sample.activationStage;
+            inspector.physicsActivationStageAgeMs=sample.activationStageAgeMs;
+            inspector.physicsActivationNativeEvidence=sample.activationNativeEvidence;
+            inspector.physicsActivationFollowing=sample.activationFollowing;
             const auto callbackNow=GetTickCount64();
             inspector.physicsCallbackAgeMs=callbackNow>=sample.callbackAtMs
                 ?callbackNow-sample.callbackAtMs:0;

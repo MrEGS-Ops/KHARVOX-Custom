@@ -404,12 +404,7 @@ void paintVrHandMenu() {
                 +"  STATUS="+std::to_string(inspect.physicsStatus),gold);
             write(left,inspectorY+186,
                 std::string("METHOD: ")
-                +(inspect.physicsMode==1?"1 DIRECT":inspect.physicsMode==2?"2 NATIVE WAKE"
-                    :inspect.physicsMode==3?"3 CONTACT PROXY"
-                    :inspect.physicsMode==4?"4 MICRO MOVE"
-                    :inspect.physicsMode==5?"5 ENTITY TICK"
-                    :inspect.physicsMode==6?"STRONG ANCHOR":"INSPECT")
-                +" / "+(inspect.physicsChanged?"MEMORY READBACK MOVED"
+                +(inspect.physicsMode==6?"HAND ANCHOR / AUTO":"INSPECT")                +" / "+(inspect.physicsChanged?"MEMORY READBACK MOVED"
                     :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
                     :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
             if(inspect.physicsStatus>=2){
@@ -450,8 +445,13 @@ void paintVrHandMenu() {
                 std::string("NATIVE MOTION: ")
                 +(inspect.physicsNativeMotionCandidate?"CANDIDATE":"UNVERIFIED"),
                 inspect.physicsNativeMotionCandidate?RGB(128,255,177):gold);
-            write(left,inspectorY+314,"ENTITY / MODEL POSE: UNVERIFIED",gold);
-            write(left,inspectorY+339,"BODY READBACK != VISIBLE FOLLOW",RGB(255,187,111));
+            write(left,inspectorY+314,
+                std::string("AUTO STAGE: ")
+                +std::to_string(inspect.physicsActivationStage)
+                +" AGE="+std::to_string(inspect.physicsActivationStageAgeMs)+"ms"
+                +" FOLLOW="+(inspect.physicsActivationFollowing?"YES":"NO"),
+                inspect.physicsActivationFollowing?RGB(128,255,177):gold);
+            write(left,inspectorY+339,"RENDER MODEL POSE: NOT VERIFIED",RGB(255,187,111));
         }
     }else if(calibrationView){
         // Status is a SECOND ROW beneath the title. No badge/text may
@@ -932,7 +932,7 @@ void paintVrHandMenu() {
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
-                ?"WORLD GRAB - NATIVE PHYSICS METHODS"
+                ?"WORLD GRAB - AUTO ACTIVATION"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
@@ -947,20 +947,13 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,7> labels{{
-                    "SYNC INSPECTOR / LASER", "1 DIRECT / NO KICK",
-                    "2 VERIFIED NATIVE WAKE", "3 CONTACT PROXY",
-                    "4 MICRO MOVE", "5 ENTITY TICK PROBE",
-                    "STRONG ANCHOR (PRESERVED)"}};
-                const std::array<bool,7> modes{{
+                const std::array<const char*,2> labels{{
+                    "PHYSICS / RENDER INSPECTOR",
+                    "HAND ANCHOR (AUTO TEST ALL)"}};
+                const std::array<bool,2> modes{{
                     m.experimentalWorldGrabProbeEnabled,
-                    m.experimentalActivationMode==1,
-                    m.experimentalActivationMode==2,
-                    m.experimentalActivationMode==3,
-                    m.experimentalActivationMode==4,
-                    m.experimentalActivationMode==5,
                     m.experimentalActivationMode==6}};
-                for(int index=0;index<7;++index){
+                for(int index=0;index<2;++index){
                     const int y=186+index*44;
                     const bool focused=m.hovered==130+index
                         ||(m.navigation.usingStick
@@ -970,10 +963,13 @@ void paintVrHandMenu() {
                         +(modes[index]?" : ON":" : OFF"),
                         modes[index]?RGB(128,255,177):white);
                 }
-                write(538,511,"Sync: untouched, Grip, release, then kick.",RGB(255,187,111));
-                write(538,539,"Strong Anchor stays as working control.",muted);
-                write(538,567,"Physics memory != visible barrel movement.",muted);
-                write(538,595,"Logs: SYNC / KICK-FINGERPRINT.",muted);
+                write(538,307,"Grip once; all activation stages auto-run.",RGB(255,187,111));
+                write(538,339,"Keep Grip held; approach and kick barrel.",white);
+                write(538,371,"12s kick window before direct fallback.",muted);
+                write(538,403,"Stage, rest, body, follow and drop logged.",muted);
+                write(538,435,"Model transform still unverified.",muted);
+                write(538,467,"Native player-collision filter not yet found.",muted);
+                write(538,499,"Logs: [WORLD-GRAB-AUTO] / [WORLD-GRAB-SYNC]",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);

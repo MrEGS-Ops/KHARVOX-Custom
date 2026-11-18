@@ -1,67 +1,62 @@
 #pragma once
 #include <cstdint>
-
-// Experimental-only World Grab activation comparison. These modes do not
-// change native DOOM gameplay, inventory or weapon hooks. The game-thread
-// adapter performs every memory validation before touching a rigid body.
+// Single DEV Hand Anchor. The 28-unit hand-relative follow remains mode 6.
+// All activation experiments run automatically after Grip, with a long
+// held-grip manual-kick window before any direct-follow fallback.
 namespace kharvox {
-inline constexpr bool worldGrabActivationTestValid(int mode) noexcept {
-    return mode >= 1 && mode <= 5;
-}
-// Preserve the previously working gated, 28-unit Strong Anchor unchanged
-// as its own DEV choice. It is NOT one of the five no-kick hypotheses.
+inline constexpr int kWorldGrabHandAnchorMode=6;
+inline constexpr unsigned kWorldGrabStageWake=1;
+inline constexpr unsigned kWorldGrabStageContact=2;
+inline constexpr unsigned kWorldGrabStageMicro=3;
+inline constexpr unsigned kWorldGrabStageObserve=4;
+inline constexpr unsigned kWorldGrabStageHeldKick=5;
+inline constexpr unsigned kWorldGrabStageDirect=6;
+inline constexpr std::uint64_t kWorldGrabManualWriteQuarantineMs=350;
 inline constexpr bool worldGrabStrongAnchor(int mode) noexcept {
-    return mode == 6;
+    return mode==kWorldGrabHandAnchorMode;
 }
 inline constexpr bool worldGrabAnchorMode(int mode) noexcept {
-    return worldGrabActivationTestValid(mode) || worldGrabStrongAnchor(mode);
+    return worldGrabStrongAnchor(mode);
 }
-inline constexpr bool worldGrabActivationNeedsWake(int mode) noexcept {
-    return mode >= 2 && mode <= 5;
+inline constexpr const char* worldGrabStageName(unsigned stage) noexcept {
+    switch(stage){
+    case 1:return "NATIVE_WAKE";
+    case 2:return "CONTACT_PROXY";
+    case 3:return "MICRO_MOVE";
+    case 4:return "ENTITY_TICK";
+    case 5:return "HELD_GRIP_KICK_WINDOW";
+    case 6:return "DIRECT_FOLLOW_FALLBACK";
+    default:return "NONE";
+    }
 }
-inline constexpr bool worldGrabActivationContactProxy(int mode) noexcept {
-    return mode == 3; // short position proxy, not a native collision callback
+inline constexpr std::uint64_t worldGrabStageWindowMs(unsigned stage) noexcept {
+    switch(stage){
+    case 1:return 200;
+    case 2:return 500;
+    case 3:return 500;
+    case 4:return 350;
+    case 5:return 12000; // plenty of time to walk into/kick while gripping
+    default:return 0;
+    }
 }
-inline constexpr bool worldGrabActivationMicroMove(int mode) noexcept {
-    return mode == 4; // 0.20 native unit upward offset
-}
-inline constexpr bool worldGrabActivationOwnerTickProbe(int mode) noexcept {
-    return mode == 5; // observe native motion before hand override
-}
-inline constexpr bool worldGrabActivationFollowReady(
-    int mode, bool nativeMotionObserved, std::uint64_t heldMs) noexcept {
-    if(!worldGrabActivationTestValid(mode))return false;
-    // Direct bypasses the artificial native-motion gate. Wake/proxy methods
-    // get real game ticks before temporary held-body suspension begins.
-    if(mode==1)return true;
-    if(nativeMotionObserved)return true;
-    return heldMs >= (mode==5?350u:80u);
+inline constexpr bool worldGrabStageNativeEvidence(
+    unsigned stage,std::uint64_t startedAt,std::uint64_t movementAt,
+    bool motionObserved,std::uint64_t lastManualWriteAt,
+    std::uint64_t now) noexcept {
+    return stage>=1&&stage<=5&&motionObserved&&movementAt>=startedAt
+        &&movementAt!=0&&movementAt<=now
+        &&(!lastManualWriteAt
+            ||(now>=lastManualWriteAt
+                &&now-lastManualWriteAt>kWorldGrabManualWriteQuarantineMs));
 }
 inline constexpr bool worldGrabAnchorFollowReady(
-    int mode, bool nativeMotionObserved, std::uint64_t heldMs) noexcept {
-    // Original Strong Anchor waits for demonstrated DOOM-native movement;
-    // all five new tests retain their independent activation policy.
-    return worldGrabStrongAnchor(mode) ? nativeMotionObserved
-        : worldGrabActivationFollowReady(mode,nativeMotionObserved,heldMs);
+    int mode,bool nativeMotionObserved,std::uint64_t /*heldMs*/) noexcept {
+    return worldGrabAnchorMode(mode)&&nativeMotionObserved;
 }
-static_assert(worldGrabStrongAnchor(6) && worldGrabAnchorMode(6)
-    && !worldGrabAnchorMode(7));
-static_assert(!worldGrabAnchorFollowReady(6,false,1000)
-    && worldGrabAnchorFollowReady(6,true,0));
-static_assert(!worldGrabActivationTestValid(0)
-    && worldGrabActivationTestValid(1)
-    && worldGrabActivationTestValid(5)
-    && !worldGrabActivationTestValid(6));
-static_assert(!worldGrabActivationNeedsWake(1)
-    && worldGrabActivationNeedsWake(2)
-    && worldGrabActivationNeedsWake(5));
-static_assert(worldGrabActivationContactProxy(3)
-    && !worldGrabActivationMicroMove(3)
-    && worldGrabActivationMicroMove(4));
-static_assert(worldGrabActivationFollowReady(1,false,0)
-    && !worldGrabActivationFollowReady(2,false,79)
-    && worldGrabActivationFollowReady(2,false,80)
-    && !worldGrabActivationFollowReady(5,false,349)
-    && worldGrabActivationFollowReady(5,false,350)
-    && worldGrabActivationFollowReady(5,true,0));
+static_assert(worldGrabAnchorMode(6)&&!worldGrabAnchorMode(1)
+    &&!worldGrabAnchorMode(2)&&!worldGrabAnchorMode(3)
+    &&!worldGrabAnchorMode(4)&&!worldGrabAnchorMode(5));
+static_assert(worldGrabStageWindowMs(5)==12000);
+static_assert(worldGrabStageNativeEvidence(5,100,110,true,0,120));
+static_assert(!worldGrabStageNativeEvidence(2,100,110,true,105,120));
 }
