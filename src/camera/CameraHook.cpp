@@ -786,6 +786,7 @@ bool experimentalZeroRigidBodyMomentum(
     (void)body;(void)imageBase;(void)before;return false;
 #endif
 }
+bool executableMemory(const void* address);
 // Suspend the native rigid-body integrator while the object is physically
 // attached to the VR hand. Simply writing origin each tick while leaving
 // the solver active allows gravity/collision momentum to accumulate. Clearing
