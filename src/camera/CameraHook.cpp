@@ -3478,11 +3478,20 @@ void KharvoxCameraSetCrouchState(bool active) {
 
 void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    // -1=off, 0=inspector, 1-4=physics-writing method during Grip.
-    const int selected=enabled&&mode>=0&&mode<=4?mode:-1;
+    // -1=off; 0=inspect; 1=freeze; 2=Anchor; 3=Push; 4=Pull;
+    // 6=Strong Anchor; 7=Lift Probe. Mode 5 was retired.
+    // Build #748 erroneously clamped all requested modes to <=4, silently
+    // disabling Strong Anchor and Lift even though the XR menu sent 6/7.
+    const bool supported=mode>=0&&mode<=4||mode==6||mode==7;
+    const int selected=enabled&&supported?mode:-1;
     const int previous=experimentalPhysicsMode.exchange(selected,std::memory_order_acq_rel);
-    if(previous!=selected)
+    if(previous!=selected){
         experimentalPhysicsEpoch.fetch_add(1,std::memory_order_acq_rel);
+        log("[WORLD-GRAB-NATIVE-MODE] requested="+std::to_string(mode)
+            +" effective="+std::to_string(selected)
+            +" enabled="+(enabled?"yes":"no")
+            +(supported?" accepted":" unsupported"));
+    }
 #else
     (void)mode;(void)enabled;
 #endif
