@@ -119,6 +119,7 @@ std::array<bool,2> nativeGrabResolvedValid{};
 unsigned long long nativeGrabResolvedSequence{};
 std::mutex objectDiscoveryMutex;
 KharvoxObjectDiscoverySnapshot objectDiscoverySnapshot{};
+void objectDiscoveryGameTick();
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
