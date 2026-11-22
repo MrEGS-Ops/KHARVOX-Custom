@@ -902,3 +902,24 @@ if(BUILD_TESTING AND WIN32)
   target_link_libraries(KharvoxIntroMusicTests PRIVATE xaudio2 ole32)
   add_test(NAME vr-intro-music COMMAND KharvoxIntroMusicTests "${CMAKE_CURRENT_BINARY_DIR}/vr-cube-test")
 endif()
+
+# Standalone Object Discovery policy checks run on native CI without an HMD.
+if(BUILD_TESTING)
+  add_executable(KharvoxObjectDiscoverySettingsPolicyTests
+    tests/object_discovery_settings_policy_tests.cpp)
+  target_compile_features(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE cxx_std_17)
+  add_executable(KharvoxObjectGripProfileStoreTests
+    tests/object_grip_profile_store_tests.cpp)
+  target_compile_features(KharvoxObjectGripProfileStoreTests PRIVATE cxx_std_17)
+  if(MSVC)
+    target_compile_options(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE /UNDEBUG)
+    target_compile_options(KharvoxObjectGripProfileStoreTests PRIVATE /UNDEBUG)
+  else()
+    target_compile_options(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE -UNDEBUG)
+    target_compile_options(KharvoxObjectGripProfileStoreTests PRIVATE -UNDEBUG)
+  endif()
+  add_test(NAME object-discovery-radius-and-reach
+    COMMAND KharvoxObjectDiscoverySettingsPolicyTests)
+  add_test(NAME object-grip-profile-identity-and-roundtrip
+    COMMAND KharvoxObjectGripProfileStoreTests)
+endif()
