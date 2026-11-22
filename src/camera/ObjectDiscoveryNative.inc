@@ -25,7 +25,7 @@ struct ObjectDiscoveryHeld {
     unsigned handle{},physicalHand{};
     unsigned long long generation{},capturedAtMs{};
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
-    bool active{},calibrating{},palmSettled{};
+    bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,32> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
@@ -395,7 +395,7 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item) {
 #endif
 }
 void objectDiscoveryReleaseNative() {
-    if(objectDiscoveryHeld.active){
+    if(objectDiscoveryHeld.active&&objectDiscoveryHeld.nativeFollowConfirmed){
         if(auto* item=objectDiscoveryNativeByHandle(
                 objectDiscoveryHeld.handle))
             if(item->generation==objectDiscoveryHeld.generation)
@@ -583,11 +583,16 @@ void objectDiscoveryGameTick() {
                 +(desired[i]-item->origin[i])*factor;
         if(objectDiscoveryAxisOk(desiredAxis)
             &&objectDiscoveryWriteBody(*item,desired,desiredAxis)){
+            held.nativeFollowConfirmed=true;
             std::memcpy(item->origin,desired,sizeof(desired));
             std::memcpy(item->axis,desiredAxis,sizeof(desiredAxis));
             objectDiscoveryPublish(*item,now);
         }
     }
+    // Do not report a "grabbed" object or open calibration if native
+    // physics storage rejected every follow write. A pointer/handle
+    // lookup alone does not prove a functional physical attachment.
+    if(!held.nativeFollowConfirmed)return;
     {
         std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
         auto& f=objectDiscoveryGripFeedback;
@@ -614,10 +619,21 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     if(item&&(item->entity!=entity||item->entityVtable!=ev
         ||item->generation!=generation)){*item={};item=nullptr;}
     if(!item){
-        item=&objectDiscoveryNative[0];
-        for(auto& existing:objectDiscoveryNative)
-            if(!existing.entity||existing.observedAtMs<item->observedAtMs)
+        // Never evict the currently held item's native pointer when
+        // scanning a crowded area; Grip ownership survives ray changes.
+        item=nullptr;
+        for(auto& existing:objectDiscoveryNative){
+            if(objectDiscoveryHeld.active
+                &&existing.handle==objectDiscoveryHeld.handle
+                &&existing.generation==objectDiscoveryHeld.generation)
+                continue;
+            if(!item||!existing.entity
+                ||(item->entity
+                    &&existing.observedAtMs<item->observedAtMs))
                 item=&existing;
+            if(!existing.entity)break;
+        }
+        if(!item)return;
         *item={};item->entity=entity;item->entityVtable=ev;
         item->handle=handle;item->generation=generation;
         item->imageBase=base;item->imageSize=imageSize;
