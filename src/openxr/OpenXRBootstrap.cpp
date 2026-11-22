@@ -5130,6 +5130,14 @@ void updateGameplayActions(XrTime displayTime){
     const bool worldInteractionFocus=kharvox::worldHandFocusContext(
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Opt-in native ray observer; read-only and deliberately never
+    // performs object wake, movement or physics writes.
+    KharvoxCameraEnableWorldGrabNativeFocusObservation(
+        s.vrHandMenu.objectDiscovery.enabled && worldInteractionFocus
+        && s.trackingHeadPositionValid
+        && !controllerOnlyLocked.load(std::memory_order_acquire));
+#endif
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
         ||(s.customMods.boxingGuard&&gameplay)){
         // Boxing Guard's raised-hands stance still activates its own
@@ -6185,6 +6193,9 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     else s.levelRecordsLoaded=true;
     if(!kharvox::vrLiveLoad(kharvox::runtimePathA("vr_live_mods_saved.cfg"),s.vrLiveSettings))
         log("[VR-MODS] WARNING: invalid saved live settings; existing launcher defaults used");
+    if(!kharvox::objectDiscoveryLoad(kharvox::runtimePathA(
+        "object_discovery.cfg"),s.vrHandMenu.objectDiscovery))
+        s.vrHandMenu.objectDiscovery={};
     if(!kharvox::loadWeaponRecoilSettings(
         kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){
         s.recoilSettings={}; // invalid settings must never turn recoil on
