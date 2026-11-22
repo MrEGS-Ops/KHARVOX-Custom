@@ -844,8 +844,7 @@ void paintVrHandMenu() {
                 slider(2,368,"GRAB REACH",cfg.grabReachMetres,1.f,5.f);
                 write(538,480,"Read-only identification enabled.",muted);
                 write(538,518,"Stationary objects cannot be manipulated.",muted);
-                write(538,556,"World-space rings: not yet available.",RGB(255,187,111));
-            }
+                write(538,556,"World-space rings: candidate-only; profile states pending.",RGB(255,187,111));
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
@@ -967,7 +966,6 @@ void paintVrHandMenu() {
             }
         }
         } // !devPage: prevent normal mod settings drawing over DEV
-        }
         SelectObject(dc,smallFont);
         if(devPage){
             fill(797,16,129,57,m.hovered==95
