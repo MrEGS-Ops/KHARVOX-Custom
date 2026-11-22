@@ -8658,6 +8658,58 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         sceneLaser={{laserOrigin.x,laserOrigin.y,laserOrigin.z},
             {rotation.x,rotation.y,rotation.z,rotation.w},true};
     }
+    // Experimental object markers are drawn over the scene with DOOM's
+    // depth attachment; object materials and physics are never modified.
+    std::array<kharvox::hands::ObjectDiscoveryRing,32> discoveryRings{};
+    unsigned discoveryRingCount{};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(s.vrHandMenu.objectDiscovery.enabled&&handGameplayActive
+       &&s.headZeroValid&&s.headZeroPositionValid
+       &&!controllerOnlyLocked.load(std::memory_order_acquire)){
+        KharvoxObjectDiscoverySnapshot points{};
+        float nativeBodyOrigin[3]{},nativeBodyAxis[9]{};
+        if(KharvoxCameraReadObjectDiscovery(points)
+            &&KharvoxCameraGetBodyPose(nativeBodyOrigin,nativeBodyAxis)
+            &&s.worldScale>1.f){
+            const auto tracking=laserBodyTrackingTransform();
+            const auto now=GetTickCount64();
+            for(unsigned i=0;i<points.count
+                &&discoveryRingCount<discoveryRings.size();++i){
+                const auto& target=points.candidates[i];
+                if(!target.handle||target.generation!=points.generation
+                   ||now<target.observedAtMs
+                   ||now-target.observedAtMs>4500)continue;
+                float delta[3]{},local[3]{},radiusSquared{};
+                for(int j=0;j<3;++j){
+                    delta[j]=target.origin[j]-nativeBodyOrigin[j];
+                    radiusSquared+=delta[j]*delta[j];
+                }
+                const float radius=s.vrHandMenu.objectDiscovery.scanRadiusMetres
+                    *s.worldScale;
+                if(!std::isfinite(radiusSquared)
+                    ||radiusSquared>radius*radius)continue;
+                for(int row=0;row<3;++row)
+                    for(int world=0;world<3;++world)
+                        local[row]+=delta[world]*nativeBodyAxis[row*3+world];
+                const XrVector3f relative{
+                    -local[1]/s.worldScale,
+                     local[2]/s.worldScale+.25f,
+                    -local[0]/s.worldScale};
+                const auto mapped=addVector(tracking.position,
+                    rotateVector(tracking.orientation,relative));
+                auto& ring=discoveryRings[discoveryRingCount++];
+                ring.pose.position[0]=mapped.x;
+                ring.pose.position[1]=mapped.y;
+                ring.pose.position[2]=mapped.z;
+                ring.pose.orientation[3]=1.f;
+                ring.pose.valid=true;
+                // No model/declaration key is verified yet, so never show
+                // misleading orange/green profile indicators.
+                ring.state=0;
+            }
+        }
+    }
+#endif
     bool sourceHasIntegratedHands=false;
     auto integrateSceneHands=[&](VkImage source,VkImageLayout oldLayout,const XrPosef& sourcePose,const XrFovf& sourceFov,uint32_t sourceLayer=0){
         kharvox::hands::HandSceneTarget handSceneTarget{};
@@ -8727,7 +8779,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.commandBuffer,handSceneTarget,sourceHandView,
             integratedLeftHandPose,integratedRightHandPose,
             freshAerHands?kharvox::hands::HandVisibilityOutput{}:integratedHandVisibility,
-            integratedHandGameplay,sceneLaser,kharvox::hands::HandPose{});
+            integratedHandGameplay,sceneLaser,kharvox::hands::HandPose{},
+            discoveryRings,discoveryRingCount);
         static bool laserSceneLogged=false;
         if(integrated&&sceneLaser.valid&&!laserSceneLogged){
             log("[LASER] scene-depth beam recorded with completed weapon source; compositor ribbons removed");
@@ -8744,7 +8797,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT,VK_IMAGE_ASPECT_COLOR_BIT,sourceLayer);
         return integrated&&!freshAerHands;
     };
-    const bool sceneIntegrationEligible=(!freshAerHands||sceneLaser.valid)&&handGameplayActive&&stereoNow
+    const bool sceneIntegrationEligible=(!freshAerHands||sceneLaser.valid||discoveryRingCount)&&handGameplayActive&&stereoNow
         &&!nativePackedStereo&&!skipAlternatingCapture
         &&captureViewValid;
     if(sceneIntegrationEligible){
@@ -8778,7 +8831,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 if(!s.quadMode)rawEyeCaptureRecorded[e]=recordEyeSource(e,eyeSource,
                     e==0?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:nativeFrame.eyes[e].layout,
                     eyeSourceExtent,nativeFrame.eyes[e].format,s.stereoCacheRevision[e]+1,sfsBackend?uint32_t(e):0);
-                if(handGameplayActive&&(s.showHands||sceneLaser.valid)){
+                if(handGameplayActive&&(s.showHands||sceneLaser.valid||discoveryRingCount)){
                     integratedNativeHands[e]=integrateSceneHands(eyeSource,
                         e==0?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:nativeFrame.eyes[e].layout,
                         nativeFrame.eyes[e].pose,nativeFrame.eyes[e].fov,sfsBackend?uint32_t(e):0);
