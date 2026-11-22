@@ -5142,12 +5142,216 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    // Opt-in native ray observer; read-only and deliberately never
-    // performs object wake, movement or physics writes.
-    KharvoxCameraEnableWorldGrabNativeFocusObservation(
-        s.vrHandMenu.objectDiscovery.enabled && worldInteractionFocus
-        && s.trackingHeadPositionValid
-        && !controllerOnlyLocked.load(std::memory_order_acquire));
+    // Read feedback before publishing this frame's controller pose. The
+    // native world-thread retains only an exact validated moving body.
+    KharvoxObjectGripFeedback objectFeedback{};
+    const bool objectHeld=KharvoxCameraReadObjectGrip(objectFeedback);
+    const bool objectMode=s.vrHandMenu.objectDiscovery.enabled
+        &&gameplay&&s.trackingHeadPositionValid
+        &&!controllerOnlyLocked.load(std::memory_order_acquire);
+    if(!objectMode){
+        if(s.objectGripCalibrating||s.objectGripWasHeld)
+            KharvoxCameraReleaseObjectGrip();
+        s.objectGripCalibrating=false;
+        s.objectGripWasHeld=false;s.objectGripHasProfile=false;
+    }else if(objectHeld){
+        if(!s.objectGripWasHeld ||s.objectGripHandle!=objectFeedback.handle){
+            s.objectGripHandle=objectFeedback.handle;
+            s.objectGripPhysicalHand=objectFeedback.physicalHand;
+            s.objectGripKey=objectFeedback.modelKey.data();
+            s.objectGripName=kharvox::objectGripAutomaticName(s.objectGripKey);
+            if(s.objectGripName.empty())
+                s.objectGripName="Unidentified Movable Object";
+            const unsigned hand=objectFeedback.physicalHand;
+            const auto model=s.objectGripProfiles.find(s.objectGripKey);
+            const auto local=s.objectGripKey.empty()
+                ?s.objectGripSessionProfiles.find(objectFeedback.handle)
+                :s.objectGripSessionProfiles.end();
+            const kharvox::ObjectGripPose* saved=nullptr;
+            if(model!=s.objectGripProfiles.end()
+                &&kharvox::objectGripConfigured(
+                    s.objectGripProfiles,s.objectGripKey,hand))
+                saved=&model->second.hands[hand];
+            else if(local!=s.objectGripSessionProfiles.end()
+                &&local->second.hands[hand].configured)
+                saved=&local->second.hands[hand];
+            s.objectGripHasProfile=saved!=nullptr;
+            s.objectGripCalibrating=!s.objectGripHasProfile;
+            if(saved){
+                for(int i=0;i<3;++i)
+                    s.objectGripOffsetUnits[i]=
+                        saved->offsetMetres[i]*s.worldScale;
+                s.objectGripRelativeAxis=
+                    kharvox::objectGripQuaternionToAxis(
+                        saved->localRotation);
+            }else{
+                for(int i=0;i<3;++i)
+                    s.objectGripOffsetUnits[i]=
+                        objectFeedback.localOffsetUnits[i];
+                std::copy(std::begin(objectFeedback.localAxis),
+                    std::end(objectFeedback.localAxis),
+                    s.objectGripRelativeAxis.begin());
+            }
+            s.objectGripNudgeAtMs=0;
+            s.objectGripTriggerPrevious=
+                readFloatAction(s.weaponHandLeft
+                    ?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
+            s.objectGripBackPrevious=readBooleanAction(s.doomJump);
+            s.objectGripAprevious=readBooleanAction(s.doomCrouch);
+            log("[OBJECT-GRIP] acquired handle="
+                +std::to_string(s.objectGripHandle)
+                +" model="+s.objectGripName
+                +(s.objectGripHasProfile?" saved":" new"));
+        }
+        s.objectGripWasHeld=true;
+    }else{
+        s.objectGripWasHeld=false;
+        s.objectGripCalibrating=false;
+        s.objectGripHasProfile=false;
+    }
+    const bool objectTrigger=readFloatAction(
+        s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
+    const bool objectBack=readBooleanAction(s.doomJump);
+    const bool objectA=readBooleanAction(s.doomCrouch);
+    if(objectHeld&&objectMode){
+        if(!s.objectGripCalibrating&&objectA&&!s.objectGripAprevious){
+            s.objectGripCalibrating=true;
+            s.objectGripNudgeAtMs=0;
+        }
+        if(s.objectGripCalibrating){
+            if(supportGripDown){
+                // Grip-held rotation keeps the object stationary while the
+                // user rotates the controller; sample native relative pose.
+                std::copy(std::begin(objectFeedback.localOffsetUnits),
+                    std::end(objectFeedback.localOffsetUnits),
+                    s.objectGripOffsetUnits.begin());
+                std::copy(std::begin(objectFeedback.localAxis),
+                    std::end(objectFeedback.localAxis),
+                    s.objectGripRelativeAxis.begin());
+            }else{
+                const auto now=GetTickCount64();
+                if(now>=s.objectGripNudgeAtMs+95){
+                    const auto stick=[](float value){
+                        return value>.48f?1.f:value<-.48f?-1.f:0.f;
+                    };
+                    const auto dx=stick(s.leftStick.x);
+                    const auto dz=stick(s.leftStick.y);
+                    const auto dy=stick(s.rightStick.y);
+                    if(dx||dy||dz){
+                        // Native X/Y/Z are local GRIP axes and are saved
+                        // in metres, independent of DOOM's world scale.
+                        const float step=.01f*s.worldScale;
+                        s.objectGripOffsetUnits[0]+=dx*step;
+                        s.objectGripOffsetUnits[1]+=dy*step;
+                        s.objectGripOffsetUnits[2]+=dz*step;
+                        s.objectGripNudgeAtMs=now;
+                    }
+                }
+            }
+            if(objectBack&&!s.objectGripBackPrevious){
+                s.objectGripCalibrating=false;
+                KharvoxCameraReleaseObjectGrip();
+            }else if(objectTrigger&&!s.objectGripTriggerPrevious){
+                kharvox::ObjectGripPose pose{};
+                pose.configured=true;
+                for(int i=0;i<3;++i)
+                    pose.offsetMetres[i]=s.objectGripOffsetUnits[i]
+                        /s.worldScale;
+                pose.localRotation=kharvox::objectGripAxisToQuaternion(
+                    s.objectGripRelativeAxis.data());
+                if(kharvox::objectGripPoseValid(pose)){
+                    const auto hand=s.objectGripPhysicalHand;
+                    if(kharvox::objectGripKeyValid(s.objectGripKey)){
+                        const auto old=s.objectGripProfiles;
+                        s.objectGripProfiles[s.objectGripKey].hands[hand]=pose;
+                        if(!kharvox::objectGripSave(kharvox::runtimePathA(
+                            "object_grip_profiles.cfg"),s.objectGripProfiles)){
+                            s.objectGripProfiles=old;
+                            log("[OBJECT-GRIP] profile save failed");
+                        }else s.objectGripHasProfile=true;
+                    }else{
+                        // No verified model name: scope this to the live
+                        // native instance, never persist a transient handle.
+                        s.objectGripSessionProfiles[s.objectGripHandle]
+                            .hands[hand]=pose;
+                        s.objectGripHasProfile=true;
+                    }
+                }
+                s.objectGripCalibrating=false;
+                KharvoxCameraReleaseObjectGrip();
+            }
+        }
+    }
+    s.objectGripTriggerPrevious=objectTrigger;
+    s.objectGripBackPrevious=objectBack;
+    s.objectGripAprevious=objectA;
+    // The normal weapon/controller calibration remains completely separate.
+    // No object-grab operation is permitted in a menu, during a cinematic
+    // or when two-hand weapon bracing owns the support Grip.
+    const bool freeHandClear=objectMode&&!s.twoHandLatched
+        &&!s.twoHandCalibrationMode&&!supportGripInCaptureRange()
+        &&!s.behindHeadWheelActive&&!weaponWheelActive
+        &&!quickHolsterGripConsumed&&s.headZeroValid
+        &&s.worldScale>1.f
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+    const auto& gripController=s.weaponHandLeft
+        ?s.rightGripController:s.leftGripController;
+    const auto& aimController=s.weaponHandLeft
+        ?s.rightController:s.leftController;
+    float nativeOrigin[3]{},nativeAxis[9]{},nativeAim[3]{};
+    float bodyOrigin[3]{},bodyAxis[9]{};
+    bool gripPoseValid=freeHandClear&&gripController.valid
+        &&gripController.positionTracked
+        &&aimController.valid&&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis);
+    if(gripPoseValid){
+        const auto grip=controllerRelativeToBodyTrackingOrigin(gripController);
+        const auto aim=controllerRelativeToBodyTrackingOrigin(aimController);
+        const float localPos[3]{
+            -grip.position.z*s.worldScale,
+            -grip.position.x*s.worldScale,
+            grip.position.y*s.worldScale};
+        const auto forward=normalizeVector(rotateVector(
+            aim.orientation,{0.f,0.f,-1.f}));
+        const float localForward[3]{-forward.z,-forward.x,forward.y};
+        for(int j=0;j<3;++j){
+            nativeOrigin[j]=bodyOrigin[j]
+                +bodyAxis[j]*localPos[0]
+                +bodyAxis[3+j]*localPos[1]
+                +bodyAxis[6+j]*localPos[2];
+            nativeAim[j]=bodyAxis[j]*localForward[0]
+                +bodyAxis[3+j]*localForward[1]
+                +bodyAxis[6+j]*localForward[2];
+        }
+        for(int col=0;col<3;++col){
+            const auto v=rotateVector(grip.orientation,
+                col==0?XrVector3f{1.f,0.f,0.f}
+                    :col==1?XrVector3f{0.f,1.f,0.f}
+                            :XrVector3f{0.f,0.f,1.f});
+            const float localDir[3]{-v.z,-v.x,v.y};
+            for(int j=0;j<3;++j)
+                nativeAxis[col*3+j]=bodyAxis[j]*localDir[0]
+                    +bodyAxis[3+j]*localDir[1]
+                    +bodyAxis[6+j]*localDir[2];
+        }
+    }
+    KharvoxCameraEnableWorldGrabNativeFocusObservation(objectMode
+        &&(worldInteractionFocus||s.objectGripCalibrating));
+    KharvoxCameraSetObjectGripInput(
+        gripPoseValid?nativeOrigin:nullptr,
+        gripPoseValid?nativeAxis:nullptr,
+        gripPoseValid?nativeAim:nullptr,
+        supportGripDown,s.weaponHandLeft?1u:0u,
+        s.vrHandMenu.objectDiscovery.grabReachMetres*s.worldScale,
+        gripPoseValid);
+    if(gripPoseValid&&objectHeld){
+        KharvoxCameraSetObjectGripCalibration(
+            s.objectGripCalibrating||s.objectGripHasProfile
+                ?s.objectGripOffsetUnits.data():nullptr,
+            !s.objectGripCalibrating&&s.objectGripHasProfile
+                ?s.objectGripRelativeAxis.data():nullptr,
+            s.objectGripCalibrating,
+            s.objectGripCalibrating&&supportGripDown);
+    }
 #endif
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
         ||(s.customMods.boxingGuard&&gameplay)){
