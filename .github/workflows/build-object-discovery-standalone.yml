@@ -2,7 +2,7 @@ name: KHARVOX Mods Standalone (Experimental)
 
 on:
   push:
-    branches: [feature/object-discovery-cleanup-20261122]
+    branches: [feature/object-discovery-full-grip-calibration-20261123]
     paths:
       - 'src/**'
       - 'tests/**'
@@ -57,7 +57,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $branch = "${{ github.ref_name }}"
-          if ($branch -ne "feature/object-discovery-cleanup-20261122") {
+          if ($branch -ne "feature/object-discovery-full-grip-calibration-20261123") {
             throw "Wrong native branch for standalone experimental build"
           }
           $paths = @("src", "tests", "CMakeLists.txt",
