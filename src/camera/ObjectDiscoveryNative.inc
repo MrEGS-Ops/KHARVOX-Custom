@@ -48,6 +48,22 @@ bool objectDiscoveryAxisOk(const float* axis) {
     }
     return true;
 }
+bool objectDiscoveryReadAxis(const void* body,std::uintptr_t function,
+    float result[9]){
+    if(!body||!function)return false;
+    using Fn=const float* (__fastcall*)(void*,int);
+#if defined(_MSC_VER)
+    __try{
+#endif
+        const auto* p=reinterpret_cast<Fn>(function)(
+            const_cast<void*>(body),0);
+        if(!p||!objectDiscoveryReadable(p,sizeof(float)*9))return false;
+        std::memcpy(result,p,sizeof(float)*9);
+        return objectDiscoveryAxisOk(result);
+#if defined(_MSC_VER)
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#endif
+}
 bool objectDiscoveryReadBodyPose(ObjectDiscoveryNativeRecord& item,
     float origin[3],float axis[9]) {
     if(!item.entity||!item.body
@@ -74,7 +90,7 @@ bool objectDiscoveryReadBodyPose(ObjectDiscoveryNativeRecord& item,
         ||!executableMemory(reinterpret_cast<const void*>(originFn))
         ||!executableMemory(reinterpret_cast<const void*>(axisFn)))return false;
     if(!objectDiscoveryReadOrigin(item.body,originFn,origin)
-        ||!objectDiscoveryReadOrigin(item.body,axisFn,axis)
+        ||!objectDiscoveryReadAxis(item.body,axisFn,axis)
         ||!objectDiscoveryAxisOk(axis))return false;
     return true;
 }
