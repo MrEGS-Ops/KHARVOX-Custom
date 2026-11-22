@@ -5131,8 +5131,7 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
-        ||(s.customMods.boxingGuard&&gameplay)
-        ){
+        ||(s.customMods.boxingGuard&&gameplay)){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -5206,8 +5205,9 @@ void updateGameplayActions(XrTime displayTime){
             KharvoxCameraSetFocusHandPose(worldOrigin,worldDirection,true);
         }else{
             KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
-        }        }else{
-            KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+        }
+    }else{
+        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
             }
     }else{
         s.boxingPoseStartedAt=0;
