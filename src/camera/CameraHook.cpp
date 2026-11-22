@@ -321,9 +321,10 @@ extern "C" void __fastcall patchPlayerFocusTrace(void* rawFocusTrace) {
     const bool cinematic=KharvoxCameraCutsceneActive();
     const bool boss=KharvoxCameraBossSequenceActive();
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    if(world&&!cinematic&&!boss
-        &&nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
-        objectDiscoveryGameTick();
+    // The world tick still releases a latched object when DEV is switched
+    // OFF or a scripted camera temporarily owns focus. It never attempts
+    // new discovery/selection while the observer is disabled.
+    if(world)objectDiscoveryGameTick();
 #endif
     if(world&&!cinematic&&!boss
         &&nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)){
