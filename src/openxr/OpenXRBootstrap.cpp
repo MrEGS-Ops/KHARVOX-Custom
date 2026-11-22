@@ -471,6 +471,7 @@ struct State {
     // Separate from Weapon Grip Calibration: native movable-prop profiles.
     kharvox::ObjectGripProfiles objectGripProfiles{};
     std::map<unsigned,kharvox::ObjectGripProfile> objectGripSessionProfiles{};
+    unsigned long long objectGripSessionGeneration{};
     bool objectGripInputConsumed{},objectGripConsumeTriggerUntilRelease{};
     bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
@@ -5145,6 +5146,17 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Transient native entity handles can be reused by a later level.
+    // Never apply or colour a level-local calibration beyond its map.
+    const auto discoveryGeneration=KharvoxCameraLevelTransitionGeneration();
+    if(s.objectGripSessionGeneration!=discoveryGeneration){
+        s.objectGripSessionProfiles.clear();
+        s.objectGripSessionGeneration=discoveryGeneration;
+        s.objectGripWasHeld=false;
+        s.objectGripCalibrating=false;
+        s.objectGripHasProfile=false;
+        KharvoxCameraReleaseObjectGrip();
+    }
     // Read feedback before publishing this frame's controller pose. The
     // native world-thread retains only an exact validated moving body.
     KharvoxObjectGripFeedback objectFeedback{};
@@ -5364,8 +5376,19 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripCalibrating&&supportGripDown);
     }
 #endif
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    const bool discoveryGripFocused=freeHandClear&&supportGripDown
+        &&!s.objectGripCalibrating
+        &&worldInteractionFocus&&!syncAttackActive
+        &&!s.chainsawKillLatched
+        &&!KharvoxCameraLedgeTransitionActive()
+        &&!KharvoxCameraBossSequenceActive();
+#else
+    const bool discoveryGripFocused=false;
+#endif
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
-        ||(s.customMods.boxingGuard&&gameplay)){
+        ||(s.customMods.boxingGuard&&gameplay)
+        ||discoveryGripFocused){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -5405,16 +5428,21 @@ void updateGameplayActions(XrTime displayTime){
             s.boxingHeadFocus=false;
             log("[FOCUS] guard pose released -> Boxing Guard slowdown ended");
         }
-        const auto& controller=weaponController();
+        // During an opted-in physical prop grab, native FocusTracker
+        // borrows the free-hand AIM direction. Grip never wakes a prop;
+        // it only lets the normal resolver discover the user's target.
+        const auto& controller=discoveryGripFocused
+            ?(s.weaponHandLeft?s.rightController:s.leftController)
+            :weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
         // Native actions own HEAD focus for the duration of their authored
         // executions. Otherwise always use the current physical weapon
         // controller (left or right), no persistent toggle/RS dependency.
-        if(kharvox::useWeaponHandFocus(
+        if((discoveryGripFocused||kharvox::useWeaponHandFocus(
                 s.customMods.handFocusedRs,worldInteractionFocus,
                 syncAttackActive,
                 s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
-                KharvoxCameraBossSequenceActive())
+                KharvoxCameraBossSequenceActive()))
             &&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
