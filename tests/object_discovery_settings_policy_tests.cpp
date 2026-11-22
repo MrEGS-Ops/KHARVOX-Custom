@@ -1,6 +1,8 @@
 #include "../src/openxr/ObjectDiscoverySettingsPolicy.h"
 #include <cassert>
 #include <limits>
+#include <cstdio>
+#include <string>
 
 int main() {
     using namespace kharvox;
@@ -27,4 +29,11 @@ int main() {
         std::numeric_limits<float>::infinity()});
     assert(invalid.scanRadiusMetres == 5.0f);
     assert(invalid.grabReachMetres == 2.0f);
+    const std::string path="object_discovery_policy_test.cfg";
+    assert(objectDiscoverySave(path,{true,12.f,4.5f}));
+    ObjectDiscoverySettings loaded{};
+    assert(objectDiscoveryLoad(path,loaded));
+    assert(loaded.enabled && loaded.scanRadiusMetres==12.f
+           && loaded.grabReachMetres==4.5f);
+    std::remove(path.c_str());
 }
