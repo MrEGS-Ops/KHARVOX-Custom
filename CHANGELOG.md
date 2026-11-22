@@ -28,7 +28,6 @@ Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR 
 - Unfinished recording is disarmed when leaving a level or exiting to desktop; current timer and record behaviour still requires full headset audit.
 
 ### Maintenance
-- DEV Experimental World Grab now draws a separate 0.90 m cyan free-hand AIM laser with scene-depth occlusion; visual direction only, not yet confirmed native barrel collision or physical grabbing.
 - Remove the obsolete OpenXR chainsaw-zone outline overlay and its dedicated debug resource path. Chainsaw gameplay and haptics are not intentionally changed.
 - Retain the original KHARVOX installation as an external requirement; RIPSHIFT packages only its own runtime and necessary dependencies.
 

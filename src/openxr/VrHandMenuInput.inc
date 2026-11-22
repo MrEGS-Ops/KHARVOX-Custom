@@ -512,7 +512,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?2:5;
+            const int optionCount=expInline?0:5;
             const int optionStep=expInline?44:68;
             const int optionHeight=expInline?42:58;
             for(int i=0;i<optionCount;++i)
@@ -853,7 +853,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?2:1; // inspector + one automatic Hand Anchor
+                        ?0:1; // discovery controls return with the scanner implementation
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -924,7 +924,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
-                    m.message="One automatic Hand Anchor, plus the Sync Inspector.";
+                    m.message="Object Discovery Mode is being rebuilt.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -985,7 +985,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.navigation.settingsColumn=false;
                     m.message=devPage&&rows[newRow].developer
                         ==kharvox::VrMenuDevOption::Experimental
-                        ?"Experimental switches visible on right."
+                        ?"Object Discovery Mode is being rebuilt."
                         :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
@@ -1018,9 +1018,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=131&&n>0
-                &&(m.navigation.settingsColumn
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
+            }else if(devPage&&chosen==130&&n>0
+                &&m.navigation.settingsColumn){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1034,26 +1033,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
-                }else if(kind==D::Experimental){
-                    const int option=chosen-130;
-                    if(option==0){
-                        m.experimentalWorldGrabProbeEnabled=
-                            !m.experimentalWorldGrabProbeEnabled;
-                        if(!m.experimentalWorldGrabProbeEnabled){
-                            m.experimentalActivationMode=0;
-                            s.worldGrabProbe={};
-                        }
-                        m.message=m.experimentalWorldGrabProbeEnabled
-                            ?"Physics / Render Inspector ON."
-                            :"Physics / Render Inspector and Hand Anchor OFF.";
-                    }else if(option==1){
-                        const bool wasEnabled=m.experimentalActivationMode==6;
-                        m.experimentalActivationMode=wasEnabled?0:6;
-                        if(!wasEnabled)m.experimentalWorldGrabProbeEnabled=true;
-                        m.message=wasEnabled?"Automatic Hand Anchor OFF."
-                            :"Hand Anchor ON: auto activation, 12s held-kick capture, deep logging.";
-                        log(std::string("[WORLD-GRAB-AUTO] UI ")+m.message);
-                    }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){

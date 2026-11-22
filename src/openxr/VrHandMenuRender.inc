@@ -118,13 +118,6 @@ void paintVrHandMenu() {
         s.vrLiveSettings.levelDisplayPosition[0],
         s.vrLiveSettings.levelDisplayPosition[1],
         s.vrLiveSettings.levelDisplayPosition[2]};
-    // Experimental-only native entity inspector shares the transparent
-    // in-game stats quad. Hidden in menus, cutscenes and notices.
-    const bool grabInspectorView=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        &&s.worldGrabInspector.enabled&&statsGameplay
-        &&m.mode==kharvox::VrHandMenuMode::Closed
-        &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView;
-    constexpr int inspectorX=492,inspectorY=90,inspectorW=445,inspectorH=365;
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
@@ -160,18 +153,13 @@ void paintVrHandMenu() {
         fill(resultX,resultY,resultW,resultH,RGB(17,23,31));
         fill(resultX,resultY,7,resultH,accent);
         fill(resultX+7,resultY,resultW-7,3,accent);
-    }else if(statsLiveView||grabInspectorView){
+    }else if(statsLiveView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
             const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
             fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
-        }
-        if(grabInspectorView){
-            fill(inspectorX,inspectorY,inspectorW,inspectorH,RGB(13,23,34));
-            fill(inspectorX,inspectorY,6,inspectorH,RGB(55,209,214));
-            fill(inspectorX+6,inspectorY,inspectorW-6,3,RGB(55,209,214));
         }
     }else if(calibrationView){
         // Compact left-anchored help box. Everything outside it is truly
@@ -273,7 +261,7 @@ void paintVrHandMenu() {
         }
         write(resultX+27,resultY+92,
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
-    }else if(statsLiveView||grabInspectorView){
+    }else if(statsLiveView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
@@ -332,126 +320,6 @@ void paintVrHandMenu() {
                         write(deathsX,y+28,deathsText,RGB(235,92,99));
                 }
             }
-        }
-        if(grabInspectorView){
-            const auto& inspect=s.worldGrabInspector;
-            const auto now=GetTickCount64();
-            const auto generation=KharvoxCameraLevelTransitionGeneration();
-            const kharvox::WorldGrabInspectorPath* chosen=nullptr;
-            int chosenPath=-1;
-            bool resolved=false;
-            std::uint64_t newestAt{};
-            // Prefer recently RESOLVED entities, then raw candidates.
-            // These come from DOOM FocusTracker, not a verified physics ray.
-            for(int i=0;i<2;++i){
-                const auto& p=inspect.paths[i];
-                if(p.levelGeneration!=generation)continue;
-                const bool r=p.hasResolved
-                    &&kharvox::worldGrabInspectorFresh(now,p.lastResolvedMs);
-                const bool c=p.hasCandidate
-                    &&kharvox::worldGrabInspectorFresh(now,p.lastCandidateMs);
-                if(!r&&!c)continue;
-                const auto last=r?p.lastResolvedMs:p.lastCandidateMs;
-                if(!chosen||(!resolved&&r)
-                    ||(resolved==r&&last>newestAt)){
-                    chosen=&p;chosenPath=i;resolved=r;newestAt=last;
-                }
-            }
-            auto hex=[](std::uint64_t n){
-                std::ostringstream o;o<<std::uppercase<<std::hex<<n;
-                return o.str();
-            };
-            const COLORREF aqua=RGB(84,233,214);
-            const COLORREF gold=RGB(255,203,117);
-            const int left=inspectorX+22;
-            SelectObject(dc,smallFont);
-            write(left,inspectorY+12,"WORLD GRAB / LIVE INSPECTOR",aqua);
-            write(left,inspectorY+43,
-                std::string("FREE HAND: ")+(inspect.freeHandRight?"RIGHT":"LEFT")
-                +"     GRIP: "+(inspect.gripHeld?"HELD":"RELEASED"),
-                inspect.gripHeld?RGB(128,255,177):white);
-            if(chosen){
-                const auto name=chosen->nativeClassName.empty()
-                    ?std::string("UNKNOWN (NO NATIVE NAME)")
-                    :chosen->nativeClassName.substr(0,31);
-                write(left,inspectorY+73,
-                    inspect.physicsPinned?"CLASS: LOCKED "+inspect.physicsClass
-                        :"CLASS: "+name,
-                    inspect.physicsPinned?RGB(128,255,177)
-                        :chosen->nativeClassName.empty()?gold:RGB(128,255,177));
-                write(left,inspectorY+101,
-                    "ENTITY HANDLE: "+std::to_string(
-                        inspect.physicsPinned?inspect.physicsHandle:chosen->nativeHandle)
-                    +"  / "+(inspect.physicsPinned?"GRIP LOCK"
-                        :chosenPath==0?"PRIMARY":"SECONDARY"),white);
-                write(left,inspectorY+129,
-                    inspect.physicsPinned?"FOCUS MAY MOVE; GRAB STAYS LOCKED"
-                    :resolved?"VTABLE RVA: 0x"+hex(chosen->vtableRva)
-                            :"VTABLE: NOT YET RESOLVED",muted);
-            }else{
-                write(left,inspectorY+73,"CLASS: WAITING FOR DOOM...",gold);
-                write(left,inspectorY+101,
-                    "ENTITY: NO FRESH ENGINE CANDIDATE",white);
-                write(left,inspectorY+129,
-                    inspect.nativeFocusSeen
-                        ?("FOCUS: A="+std::to_string(inspect.focusIndexA)
-                            +" B="+std::to_string(inspect.focusIndexB))
-                        :"FOCUS: NOT OBSERVED",muted);
-            }
-            write(left,inspectorY+159,
-                std::string("NATIVE PHYSICS: ")
-                +(inspect.physicsClass.empty()?"NOT FOUND":inspect.physicsClass.substr(0,25))
-                +"  STATUS="+std::to_string(inspect.physicsStatus),gold);
-            write(left,inspectorY+186,
-                std::string("METHOD: ")
-                +(inspect.physicsMode==6?"HAND ANCHOR / AUTO":"INSPECT")                +" / "+(inspect.physicsChanged?"MEMORY READBACK MOVED"
-                    :inspect.physicsStatus==4?"ORIGIN WRITE ATTEMPTED"
-                    :inspect.physicsWritable?"ORIGIN WRITABLE":"NOT WRITABLE"),gold);
-            if(inspect.physicsStatus>=2){
-                const char* route=inspect.physicsStorageRoute==1?"GETTER-OWNED"
-                    :inspect.physicsStorageRoute==2?"GETTER-EXTERNAL"
-                    :inspect.physicsStorageRoute==3?"MATCHED-ORIGIN-VEC3"
-                    :"NO WRITE STORAGE";
-                write(left,inspectorY+213,
-                    std::string(route)
-                    +" PIN="+(inspect.physicsPinned?"LOCKED":"OPEN")
-                    +" T="+std::to_string(inspect.physicsPinnedTicks)
-                    +" AGE="+std::to_string(inspect.physicsCallbackAgeMs)
-                    +"ms STATIC="+std::to_string(inspect.physicsOriginUnchangedMs)+"ms",
-                    inspect.physicsCallbackAgeMs>600?RGB(255,187,111)
-                        :inspect.physicsWritable?RGB(128,255,177):muted);
-                write(left,inspectorY+238,
-                    std::string("DELTA Z req=")
-                    +std::to_string(inspect.physicsRequestedDelta[2])
-                    +" got="+std::to_string(inspect.physicsReadbackDelta[2])
-                    +" kept="+(inspect.physicsRetentionKnown
-                        ?std::to_string(inspect.physicsRetainedDelta[2]):"WAIT"),
-                    inspect.physicsRetentionKnown?RGB(128,255,177):muted);
-            }else{
-                auto event=inspect.lastEvent;
-                if(event.size()>40)event=event.substr(0,40);
-                write(left,inspectorY+213,"EVENT: "+event,muted);
-            }
-            // Only the physics-body state is verified. A model-render
-            // transform has NOT been independently identified.
-            write(left,inspectorY+267,
-                std::string("BODY STATE: ")
-                +(inspect.physicsRestKnown
-                    ?inspect.physicsAtRest==-1?"AWAKE":"REST "
-                        +std::to_string(inspect.physicsAtRest)
-                    :"UNKNOWN"),
-                inspect.physicsRestKnown?RGB(128,255,177):gold);
-            write(left,inspectorY+290,
-                std::string("NATIVE MOTION: ")
-                +(inspect.physicsNativeMotionCandidate?"CANDIDATE":"UNVERIFIED"),
-                inspect.physicsNativeMotionCandidate?RGB(128,255,177):gold);
-            write(left,inspectorY+314,
-                std::string("AUTO STAGE: ")
-                +std::to_string(inspect.physicsActivationStage)
-                +" AGE="+std::to_string(inspect.physicsActivationStageAgeMs)+"ms"
-                +" FOLLOW="+(inspect.physicsActivationFollowing?"YES":"NO"),
-                inspect.physicsActivationFollowing?RGB(128,255,177):gold);
-            write(left,inspectorY+339,"RENDER MODEL POSE: NOT VERIFIED",RGB(255,187,111));
         }
     }else if(calibrationView){
         // Status is a SECOND ROW beneath the title. No badge/text may
@@ -932,7 +800,7 @@ void paintVrHandMenu() {
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
-                ?"WORLD GRAB - AUTO ACTIVATION"
+                ?"OBJECT DISCOVERY MODE"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
@@ -947,29 +815,10 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                const std::array<const char*,2> labels{{
-                    "PHYSICS / RENDER INSPECTOR",
-                    "HAND ANCHOR (AUTO TEST ALL)"}};
-                const std::array<bool,2> modes{{
-                    m.experimentalWorldGrabProbeEnabled,
-                    m.experimentalActivationMode==6}};
-                for(int index=0;index<2;++index){
-                    const int y=186+index*44;
-                    const bool focused=m.hovered==130+index
-                        ||(m.navigation.usingStick
-                            &&m.navigation.actionIndex==index);
-                    fill(531,y,384,42,focused?RGB(52,83,99):RGB(39,49,63));
-                    write(548,y+13,std::string(labels[index])
-                        +(modes[index]?" : ON":" : OFF"),
-                        modes[index]?RGB(128,255,177):white);
-                }
-                write(538,307,"Grip once; all activation stages auto-run.",RGB(255,187,111));
-                write(538,339,"Keep Grip held; approach and kick barrel.",white);
-                write(538,371,"12s kick window before direct fallback.",muted);
-                write(538,403,"Stage, rest, body, follow and drop logged.",muted);
-                write(538,435,"Model transform still unverified.",muted);
-                write(538,467,"Native player-collision filter not yet found.",muted);
-                write(538,499,"Logs: [WORLD-GRAB-AUTO] / [WORLD-GRAB-SYNC]",muted);
+                write(538,204,"Object Discovery Mode is being rebuilt.",white);
+                write(538,242,"Old physics debug tests are retired.",muted);
+                write(538,280,"Passive scanner and direct calibration are next.",muted);
+            }
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
@@ -1338,7 +1187,7 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
-            :(statsLiveView||grabInspectorView)
+            :(statsLiveView)
                 ?([&](){
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
@@ -1349,10 +1198,6 @@ void paintVrHandMenu() {
                         if(x>=left&&x<left+width&&y>=top&&y<top+counterH)
                             return 220;
                     }
-                    if(grabInspectorView
-                        &&x>=inspectorX&&x<inspectorX+inspectorW
-                        &&y>=inspectorY&&y<inspectorY+inspectorH)
-                        return 235;
                     return 0;
                 }())
             :(!calibrationView

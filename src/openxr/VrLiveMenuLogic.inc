@@ -27,9 +27,9 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Level Records / Reset",VrLiveMod::Stats,
             true,D::LevelRecordsReset});
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        // World Object Grab DEV switch is packaged solely in Experimental.
+        // Reserved for the upcoming passive, read-only Object Discovery scanner.
         rows.push_back({"Experimental Features",VrLiveMod::Other,
-            s.vrHandMenu.experimentalWorldGrabProbeEnabled,D::Experimental});
+            false,D::Experimental});
 #endif
         return rows;
     }
@@ -171,12 +171,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::Experimental:return {{{
-            "One automatic Hand Anchor; all tests cycle.",
-            "Grip untouched prop, then kick WITH Grip held.",
-            "Native wake, proxy, micro, tick, held-kick.",
-            "12s kick window; direct fallback follows.",
-            "Physics and render evidence reported separately.",
-            "Logs: WORLD-GRAB-AUTO and SYNC."}}};
+            "Object Discovery Mode is being rebuilt.",
+            "No legacy grip-activation or body-write tests.",
+            "Nearby rings and instant calibration are next.",
+            "The scanner will be read-only before movement.",
+            "Scan radius: 1-15 m (default 5 m).",
+            "Grab reach: 1-5 m (default 2 m)."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }
