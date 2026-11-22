@@ -2,6 +2,15 @@
 
 Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR installation. This changelog describes the current experimental work; successful builds and code tests do not substitute for headset verification.
 
+## 23 November 2026 — Object Discovery (in development)
+
+- New user-toggleable Object Discovery with separate persisted scan radius (1–15 m, default 5 m) and grab reach (1–5 m, default 2 m).
+- Add coloured world-space candidate markers, native-motion-gated object gripping, and an in-game item calibration overlay opened directly after a successful first grab.
+- Generate object profile names from uniquely validated model resource paths, with separate left/right hand offsets and rotations saved in UserData.
+- Make profile colours update on save; keep unknown native model identities session-only rather than assigning unrelated props to the same profile.
+- Release held props through DOOM native gravity without artificial downward throw; keep weapon-hand calibration independent.
+- **Headset acceptance pending:** engine entity-pool discovery and stable model names cannot be established from compilation alone.
+
 ## 17 November 2026 — Experimental
 
 ### Launcher and installation
