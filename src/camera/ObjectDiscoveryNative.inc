@@ -176,6 +176,131 @@ ObjectDiscoveryNativeRecord* objectDiscoveryNativeByHandle(unsigned handle) {
         if(item.handle==handle&&item.entity)return &item;
     return nullptr;
 }
+// Read-only, fail-closed discovery of a native entity-pointer pool.
+// The manager slot is proven by both exact FocusTracker instruction
+// signatures at install time. No speculative calls into DOOM are made.
+// If the manager does not expose a pointer pool, ordinary ray-candidates
+// remain available and this scanner stays disabled.
+struct ObjectDiscoveryNativePool {
+    const unsigned char* begin{};
+    std::uintptr_t imageBase{},imageSize{};
+    unsigned long long generation{},lastAttemptMs{},lastSweepMs{};
+    unsigned cursor{},entries{};
+};
+ObjectDiscoveryNativePool objectDiscoveryNativePool{};
+void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
+    std::uintptr_t size,unsigned handle,unsigned long long generation);
+void objectDiscoveryLocateNativePool(const void* knownEntity,
+    std::uintptr_t imageBase,std::uintptr_t imageSize,
+    unsigned long long generation){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!knownEntity)return;
+    auto& pool=objectDiscoveryNativePool;
+    if(pool.generation!=generation)pool={};
+    const auto now=GetTickCount64();
+    if(pool.begin||now-pool.lastAttemptMs<5000)return;
+    pool.lastAttemptMs=now;pool.generation=generation;
+    // RIP-displacement was verified at FocusTracker's two native
+    // entity-manager callsites. Do not invoke the manager or dereference
+    // it if any page/vtable fails validation.
+    const std::uintptr_t slot=imageBase+0xD48B60+7+0x04DC6B69;
+    if(!objectDiscoveryReadable(reinterpret_cast<const void*>(slot),
+        sizeof(std::uintptr_t)))return;
+    std::uintptr_t manager{};
+    std::memcpy(&manager,reinterpret_cast<const void*>(slot),
+        sizeof(manager));
+    if(!objectDiscoveryReadable(reinterpret_cast<const void*>(manager),
+        0x400))return;
+    std::uintptr_t managerVtable{};
+    std::memcpy(&managerVtable,reinterpret_cast<const void*>(manager),
+        sizeof(managerVtable));
+    if(managerVtable<imageBase
+        ||managerVtable-imageBase>=imageSize)return;
+    constexpr std::size_t testBytes=0x4000;
+    for(std::size_t off=0;off<0x400;off+=sizeof(void*)){
+        const auto field=reinterpret_cast<const unsigned char*>(manager)+off;
+        std::uintptr_t candidate{};
+        std::memcpy(&candidate,field,sizeof(candidate));
+        if(candidate<0x10000||candidate>=imageBase
+            &&candidate-imageBase<imageSize
+            ||!objectDiscoveryReadable(
+                reinterpret_cast<const void*>(candidate),testBytes))
+            continue;
+        auto* table=reinterpret_cast<const unsigned char*>(candidate);
+        bool knownFound{};
+        unsigned entityPointers{};
+        // A real pointer pool must contain the DOOM-resolved entity AND
+        // at least three distinct MSVC idEntity-derived objects.
+        for(unsigned entry=0;entry<testBytes/sizeof(void*);++entry){
+            const void* p{};
+            std::memcpy(&p,table+entry*sizeof(void*),sizeof(p));
+            if(p==knownEntity)knownFound=true;
+            if(!objectDiscoveryReadable(p,sizeof(std::uintptr_t)))continue;
+            std::uintptr_t vt{};
+            std::memcpy(&vt,p,sizeof(vt));
+            if(vt<imageBase||vt-imageBase>=imageSize)continue;
+            std::array<char,80> label{};
+            if(readNativeWorldGrabClassLabel(vt,imageBase,imageSize,label)
+                &&std::strncmp(label.data(),"id",2)==0){
+                ++entityPointers;
+                if(knownFound&&entityPointers>=3)break;
+            }
+        }
+        if(!knownFound||entityPointers<3)continue;
+        pool.begin=table;pool.imageBase=imageBase;
+        pool.imageSize=imageSize;
+        pool.entries=static_cast<unsigned>(testBytes/sizeof(void*));
+        pool.cursor=0;
+        break;
+    }
+#else
+    (void)knownEntity;(void)imageBase;
+    (void)imageSize;(void)generation;
+#endif
+}
+void objectDiscoverySweepNativePool(unsigned long long now,
+    unsigned long long generation){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    auto& pool=objectDiscoveryNativePool;
+    if(!pool.begin||pool.generation!=generation)return;
+    if(now<pool.lastSweepMs||now-pool.lastSweepMs<125)return;
+    pool.lastSweepMs=now;
+    if(!objectDiscoveryReadable(pool.begin,0x4000)){
+        pool={};return;
+    }
+    for(unsigned count=0;count<32&&pool.entries;++count){
+        const unsigned index=pool.cursor++%pool.entries;
+        const void* entity{};
+        std::memcpy(&entity,pool.begin+index*sizeof(void*),
+            sizeof(entity));
+        if(!objectDiscoveryReadable(entity,sizeof(std::uintptr_t)))
+            continue;
+        std::uintptr_t vt{};
+        std::memcpy(&vt,entity,sizeof(vt));
+        if(vt<pool.imageBase||vt-pool.imageBase>=pool.imageSize)
+            continue;
+        std::array<char,80> label{};
+        if(!readNativeWorldGrabClassLabel(
+                vt,pool.imageBase,pool.imageSize,label))continue;
+        if(std::strcmp(label.data(),"idProp2")!=0
+            &&std::strcmp(label.data(),"idProp_Moveable")!=0)continue;
+        unsigned handle=0;
+        for(const auto& seen:objectDiscoveryNative)
+            if(seen.entity==entity&&seen.generation==generation){
+                handle=seen.handle;break;
+            }
+        if(!handle){
+            const auto ptr=reinterpret_cast<std::uintptr_t>(entity);
+            handle=static_cast<unsigned>((ptr>>4)^(ptr>>36));
+            if(!handle)handle=1u;
+        }
+        objectDiscoverySeenEntity(entity,pool.imageBase,pool.imageSize,
+            handle,generation);
+    }
+#else
+    (void)now;(void)generation;
+#endif
+}
 void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
     unsigned long long now) {
     std::lock_guard<std::mutex> lock(objectDiscoveryMutex);
@@ -230,6 +355,7 @@ void objectDiscoveryGameTick() {
         objectDiscoveryReleaseNative();
         return;
     }
+    objectDiscoverySweepNativePool(now,generation);
     for(auto& item:objectDiscoveryNative){
         if(!item.entity)continue;
         if(item.generation!=generation){item={};continue;}
@@ -418,6 +544,9 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
         item->imageBase=base;item->imageSize=imageSize;
     }
     item->observedAtMs=now;
+    // Locate the manager's native entity-pointer pool using this
+    // DOOM-resolved pointer. Falls back to ray-only if not validated.
+    objectDiscoveryLocateNativePool(entity,base,imageSize,generation);
     if(!item->body&&now>=item->lastProbeAtMs
         &&now-item->lastProbeAtMs>=400){
         item->lastProbeAtMs=now;
