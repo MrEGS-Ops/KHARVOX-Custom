@@ -95,6 +95,9 @@ void paintVrHandMenu() {
         &&kharvox::levelResultNoticeVisible(
             s.levelResultNoticeStartedAtMs.load(std::memory_order_acquire),
             GetTickCount64());
+    const bool objectCalibrationView=!disconnectView
+        &&!firstTimeSetupView&&!gameplayWelcomeView
+        &&s.objectGripCalibrating;
     const bool statsGameplay=KharvoxCameraGameplayActive()
         &&KharvoxCameraWorldActive()&&!KharvoxCameraCutsceneActive()
         &&!KharvoxHudPauseMenuActive()&&!KharvoxHudFullscreenMenuActive()
@@ -153,6 +156,10 @@ void paintVrHandMenu() {
         fill(resultX,resultY,resultW,resultH,RGB(17,23,31));
         fill(resultX,resultY,7,resultH,accent);
         fill(resultX+7,resultY,resultW-7,3,accent);
+    }else if(objectCalibrationView){
+        fill(38,150,660,421,RGB(16,25,35));
+        fill(38,150,6,421,RGB(55,209,214));
+        fill(38,150,660,65,RGB(28,55,65));
     }else if(statsLiveView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -261,6 +268,28 @@ void paintVrHandMenu() {
         }
         write(resultX+27,resultY+92,
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
+    }else if(objectCalibrationView){
+        SelectObject(dc,regular);
+        write(56,165,"OBJECT GRIP CALIBRATION",RGB(84,233,214));
+        write(57,227,s.objectGripName.empty()
+            ?"Movable Object":s.objectGripName,white);
+        SelectObject(dc,smallFont);
+        write(57,268,s.objectGripPhysicalHand==0
+            ?"LEFT HAND PROFILE":"RIGHT HAND PROFILE",RGB(84,233,214));
+        const bool rotating=s.supportGripPressed;
+        fill(54,308,620,106,rotating?RGB(22,62,61):RGB(31,43,59));
+        write(68,321,rotating?"ROTATE MODE  -  GRIP HELD"
+            :"FINE-TUNE MODE  -  GRIP RELEASED",RGB(84,233,214));
+        write(68,357,rotating?"Turn your controller to fit the object."
+            :"LEFT STICK: horizontal / forward / back",white);
+        write(68,384,rotating?"Release Grip to return to fine-tune."
+            :"RIGHT STICK: vertical, 1 cm steps",muted);
+        write(57,455,"RIGHT TRIGGER: SAVE PROFILE",RGB(108,235,161));
+        write(57,489,"B: CANCEL / DROP OBJECT",white);
+        write(57,531,s.objectGripKey.empty()
+            ?"Model name unverified: item profile is session-only."
+            :"Profile auto-named from verified model resource.",
+            s.objectGripKey.empty()?RGB(255,196,112):muted);
     }else if(statsLiveView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -1213,6 +1242,8 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
+            :objectCalibrationView
+                ?(x>=38&&x<698&&y>=150&&y<571?245:0)
             :(statsLiveView)
                 ?([&](){
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
