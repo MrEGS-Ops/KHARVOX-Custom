@@ -89,7 +89,8 @@ struct KharvoxObjectGripFeedback {
 // weapon calibration or fixed world geometry. Native bodies stay DOOM-thread.
 void KharvoxCameraSetObjectGripInput(
     const float origin[3],const float axis[9],const float aim[3],
-    bool pressed,unsigned physicalHand,float reachUnits,bool enabled);
+    bool pressed,unsigned physicalHand,float reachUnits,
+    float scanRadiusUnits,bool enabled);
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
     bool calibrating,bool freezeObject);

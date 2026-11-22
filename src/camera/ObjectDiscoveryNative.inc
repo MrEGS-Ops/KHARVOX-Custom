@@ -15,6 +15,7 @@ struct ObjectDiscoveryNativeRecord {
 struct ObjectDiscoveryGripFrame {
     float origin[3]{},axis[9]{},aim[3]{};
     float reachUnits{150.f};
+    float scanUnits{400.f};
     unsigned physicalHand{};
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
@@ -649,6 +650,30 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
             if(item->body)break;
         }
         if(item->body)objectDiscoveryNativeModel(*item);
+    }
+    // Radius filtering applies before a newly resolved entity enters the
+    // persistent discovery list. Grip ownership is independent of this
+    // visual scan boundary and keeps the originally pinned body intact.
+    if(item->body
+        &&(!objectDiscoveryHeld.active
+            ||objectDiscoveryHeld.handle!=handle)){
+        float xyz[3]{},nativeAxis[9]{},player[3]{},playerAxis[9]{};
+        ObjectDiscoveryGripFrame published{};
+        {
+            std::lock_guard<std::mutex> guard(objectDiscoveryGripMutex);
+            published=objectDiscoveryGripInput;
+        }
+        if(objectDiscoveryReadBodyPose(*item,xyz,nativeAxis)
+            &&KharvoxCameraGetBodyPose(player,playerAxis)){
+            float d2{};
+            for(int i=0;i<3;++i){
+                const float delta=xyz[i]-player[i];
+                d2+=delta*delta;
+            }
+            if(d2>published.scanUnits*published.scanUnits){
+                *item={};return;
+            }
+        }
     }
     if(item->body)objectDiscoveryGameTick();
 #else

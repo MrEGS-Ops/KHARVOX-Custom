@@ -5352,6 +5352,7 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeAim:nullptr,
         supportGripDown,s.weaponHandLeft?1u:0u,
         s.vrHandMenu.objectDiscovery.grabReachMetres*s.worldScale,
+        s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
