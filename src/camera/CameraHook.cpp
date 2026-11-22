@@ -3136,8 +3136,14 @@ void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     nativeGrabResolvedEntity={};
     nativeGrabResolvedValid={};
     nativeGrabResolvedSequence=0;
-    objectDiscoveryNative={};
-    objectDiscoveryReleaseNative();
+    // Never touch the DOOM-thread native entity/body cache from this
+    // XR-thread toggle. Only invalidate the shared request; the next game
+    // world callback will safely release its pinned body.
+    if(!enabled){
+        std::lock_guard<std::mutex> gripGuard(objectDiscoveryGripMutex);
+        objectDiscoveryGripInput.enabled=false;
+        ++objectDiscoveryGripInput.releaseSerial;
+    }
     { std::lock_guard<std::mutex> discoveryLock(objectDiscoveryMutex);
       objectDiscoverySnapshot={}; }
 }
