@@ -815,9 +815,36 @@ void paintVrHandMenu() {
                     :(entries[selected].enabled?"TURN VISUALISER OFF"
                         :"TURN VISUALISER ON"),white);
             }else{
-                write(538,204,"Object Discovery Mode is being rebuilt.",white);
-                write(538,242,"Old physics debug tests are retired.",muted);
-                write(538,280,"Passive scanner and direct calibration are next.",muted);
+                const auto& cfg=m.objectDiscovery;
+                const bool hoverToggle=m.hovered==130
+                    ||(m.navigation.usingStick&&m.navigation.actionIndex==0);
+                fill(531,186,384,77,hoverToggle
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,204,std::string("OBJECT DISCOVERY: ")
+                    +(cfg.enabled?"ON":"OFF"),
+                    cfg.enabled?RGB(128,255,177):white);
+                write(548,235,"A / TRIGGER: TOGGLE",muted);
+                const auto slider=[&](int index,int top,
+                    const char* label,float value,float minimum,float maximum){
+                    const bool selected=m.hovered==130+index
+                        ||(m.navigation.usingStick&&m.navigation.actionIndex==index);
+                    fill(531,top,384,77,selected
+                        ?RGB(52,83,99):RGB(39,49,63));
+                    std::ostringstream line;
+                    line<<label<<"  "<<std::fixed<<std::setprecision(
+                        index==1?0:1)<<value<<" m";
+                    write(548,top+7,line.str(),white);
+                    fill(556,top+40,338,4,RGB(85,104,121));
+                    const int markerX=556+static_cast<int>(std::lround(
+                        (value-minimum)/(maximum-minimum)*338.f));
+                    fill(markerX-5,top+31,10,22,RGB(55,209,214));
+                    write(548,top+59,"A: NEXT STEP  POINTER: SELECT",muted);
+                };
+                slider(1,277,"SCAN RADIUS",cfg.scanRadiusMetres,1.f,15.f);
+                slider(2,368,"GRAB REACH",cfg.grabReachMetres,1.f,5.f);
+                write(538,480,"Read-only identification enabled.",muted);
+                write(538,518,"Stationary objects cannot be manipulated.",muted);
+                write(538,556,"World-space rings: not yet available.",RGB(255,187,111));
             }
             }
             if(opt==D::StatsReset){
