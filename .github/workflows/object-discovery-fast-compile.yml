@@ -1,0 +1,34 @@
+name: Object Discovery Native Compile Preflight
+
+on:
+  push:
+    branches: [feature/object-discovery-full-grip-calibration-20261123]
+    paths:
+      - 'src/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/object-discovery-fast-compile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: object-discovery-fast-compile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  experimental-native-syntax:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure experimental native layer without SFS toolchain
+        shell: pwsh
+        run: |
+          cmake -S . -B build/discovery-preflight -A x64 -DKHARVOX_BUILD_LAYER=ON -DKHARVOX_EXPERIMENTAL_WORLD_GRAB=ON -DKHARVOX_BUILD_SFS_COMPILER=OFF -DBUILD_TESTING=OFF
+          if ($LASTEXITCODE -ne 0) { throw "Native preflight configuration failed" }
+      - name: Compile experimental C++ and link layer
+        shell: pwsh
+        run: |
+          cmake --build build/discovery-preflight --config Release --target KharvoxLayer --parallel 4
+          if ($LASTEXITCODE -ne 0) { throw "Experimental native layer compile failed" }
