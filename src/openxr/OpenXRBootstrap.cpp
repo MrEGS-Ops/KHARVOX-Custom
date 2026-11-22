@@ -8720,7 +8720,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
-            ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
+            ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+            ||s.objectGripCalibrating)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
         r=s.acquireImage(vrHandMenuSurface.target.handle,&acquire,&vrMenuImageIndex);
