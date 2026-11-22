@@ -74,7 +74,27 @@ struct KharvoxObjectDiscoveryCandidate {
     unsigned long long generation{},observedAtMs{};
     float origin[3]{};
     bool nativeMotionObserved{};
+    // Only a uniquely validated native model-path string can form a
+    // persistent profile key. An empty key remains grey/unclassified.
+    std::array<char,160> modelKey{};
 };
+struct KharvoxObjectGripFeedback {
+    unsigned int handle{},physicalHand{};
+    bool held{},nativeMotionVerified{};
+    float localOffsetUnits[3]{};
+    float localAxis[9]{};
+    std::array<char,160> modelKey{};
+};
+// Opt-in experimental physical controller GRIP; never affects DOOM's own
+// weapon calibration or fixed world geometry. Native bodies stay DOOM-thread.
+void KharvoxCameraSetObjectGripInput(
+    const float origin[3],const float axis[9],const float aim[3],
+    bool pressed,unsigned physicalHand,float reachUnits,bool enabled);
+void KharvoxCameraSetObjectGripCalibration(
+    const float offsetUnits[3],const float relativeAxis[9],
+    bool calibrating,bool freezeObject);
+void KharvoxCameraReleaseObjectGrip();
+bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {
     std::array<KharvoxObjectDiscoveryCandidate,32> candidates{};
     unsigned int count{};
