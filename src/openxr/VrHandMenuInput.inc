@@ -512,9 +512,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?0:5;
-            const int optionStep=expInline?44:68;
-            const int optionHeight=expInline?42:58;
+            const int optionCount=expInline?3:5;
+            const int optionStep=expInline?91:68;
+            const int optionHeight=expInline?77:58;
             for(int i=0;i<optionCount;++i)
                 if(pixelY>=optionY+i*optionStep
                     &&pixelY<optionY+optionHeight+i*optionStep)
@@ -853,7 +853,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?0:1; // discovery controls return with the scanner implementation
+                        ?3:1; // toggle, scan radius, grab reach
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -924,7 +924,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
-                    m.message="Object Discovery Mode is being rebuilt.";
+                    m.message="Object Discovery settings: select a toggle or slider.";
                 }else{
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -985,7 +985,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.navigation.settingsColumn=false;
                     m.message=devPage&&rows[newRow].developer
                         ==kharvox::VrMenuDevOption::Experimental
-                        ?"Object Discovery Mode is being rebuilt."
+                        ?"Object Discovery settings on right."
                         :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
@@ -1018,8 +1018,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen==130&&n>0
-                &&m.navigation.settingsColumn){
+            }else if(devPage&&chosen>=130&&chosen<=132&&n>0
+                &&(m.navigation.settingsColumn
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1033,6 +1034,46 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
+                }else if(kind==D::Experimental){
+                    const auto previous=m.objectDiscovery;
+                    const int option=chosen-130;
+                    if(option==0){
+                        m.objectDiscovery.enabled=!m.objectDiscovery.enabled;
+                    }else{
+                        const bool pointerSet=pointed==chosen
+                            &&std::isfinite(m.cursorX);
+                        // A advances by one step; the pointer snaps to
+                        // the nearest tick on the displayed slider.
+                        const float fraction=pointerSet?std::clamp(
+                            (m.cursorX-556.f)/338.f,0.f,1.f):-1.f;
+                        if(option==1){
+                            const float next=pointerSet?
+                                1.f+14.f*fraction:
+                                m.objectDiscovery.scanRadiusMetres+1.f;
+                            m.objectDiscovery.scanRadiusMetres=next>15.f?
+                                1.f:next;
+                        }else{
+                            const float next=pointerSet?
+                                1.f+4.f*fraction:
+                                m.objectDiscovery.grabReachMetres+.5f;
+                            m.objectDiscovery.grabReachMetres=next>5.f?
+                                1.f:next;
+                        }
+                    }
+                    m.objectDiscovery=kharvox::sanitizedObjectDiscoverySettings(
+                        m.objectDiscovery);
+                    if(!kharvox::objectDiscoverySave(kharvox::runtimePathA(
+                        "object_discovery.cfg"),m.objectDiscovery)){
+                        m.objectDiscovery=previous;
+                        m.message="Object Discovery: UserData save failed.";
+                    }else{
+                        m.message=std::string("Discovery ")
+                            +(m.objectDiscovery.enabled?"ON":"OFF")
+                            +" scan="+std::to_string(static_cast<int>(
+                                m.objectDiscovery.scanRadiusMetres))
+                            +"m reach="+std::to_string(
+                                m.objectDiscovery.grabReachMetres)+"m";
+                    }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
                 &&(chosen==110||(chosen>=130&&chosen<=134))){
