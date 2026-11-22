@@ -32,6 +32,7 @@ std::mutex objectDiscoveryGripMutex;
 ObjectDiscoveryGripFrame objectDiscoveryGripInput{};
 KharvoxObjectGripFeedback objectDiscoveryGripFeedback{};
 unsigned long long objectDiscoveryReleaseSerial{},objectDiscoveryLastTickMs{};
+bool objectDiscoveryNeedsGripRelease{};
 bool objectDiscoveryReadable(const void* address,std::size_t len) {
     return address&&len&&readableMemory(address,len);
 }
@@ -420,9 +421,12 @@ void objectDiscoveryGameTick() {
     if(!inputValid||input.releaseSerial!=objectDiscoveryReleaseSerial
         ||!KharvoxCameraWorldActive()||KharvoxCameraCutsceneActive()
         ||KharvoxCameraBossSequenceActive()){
+        if(input.releaseSerial!=objectDiscoveryReleaseSerial)
+            objectDiscoveryNeedsGripRelease=true;
         objectDiscoveryReleaseSerial=input.releaseSerial;
         objectDiscoveryReleaseNative();
     }
+    if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
     if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)){
         objectDiscoveryNative={};
@@ -466,7 +470,7 @@ void objectDiscoveryGameTick() {
     }
     if(!inputValid)return;
     if(!objectDiscoveryHeld.active){
-        if(!input.pressed)return;
+        if(!input.pressed||objectDiscoveryNeedsGripRelease)return;
         ObjectDiscoveryNativeRecord* nearest{};
         float best2=input.reachUnits*input.reachUnits;
         for(auto& item:objectDiscoveryNative){
