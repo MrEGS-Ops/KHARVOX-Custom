@@ -470,6 +470,8 @@ struct State {
     kharvox::VrHandMenuState vrHandMenu{};
     // Separate from Weapon Grip Calibration: native movable-prop profiles.
     kharvox::ObjectGripProfiles objectGripProfiles{};
+    std::map<unsigned,kharvox::ObjectGripProfile> objectGripSessionProfiles{};
+    bool objectGripInputConsumed{},objectGripConsumeTriggerUntilRelease{};
     bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
     bool objectGripAprevious{},objectGripHasProfile{};
@@ -5108,7 +5110,8 @@ void updateGameplayActions(XrTime displayTime){
         // A first-run setup popup is modal to DOOM's front-menu button
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.
-        if(suppressSetupButtons||suppressWelcomeButtons)
+        if(suppressSetupButtons||suppressWelcomeButtons
+            ||s.objectGripInputConsumed)
             updateVirtualButtons(false,false,false,false,false,false,false,
                 false,false,false,false,false,false);
         else
@@ -5149,6 +5152,7 @@ void updateGameplayActions(XrTime displayTime){
     const bool objectMode=s.vrHandMenu.objectDiscovery.enabled
         &&gameplay&&s.trackingHeadPositionValid
         &&!controllerOnlyLocked.load(std::memory_order_acquire);
+    s.objectGripInputConsumed=objectHeld&&s.objectGripCalibrating;
     if(!objectMode){
         if(s.objectGripCalibrating||s.objectGripWasHeld)
             KharvoxCameraReleaseObjectGrip();
@@ -5215,10 +5219,12 @@ void updateGameplayActions(XrTime displayTime){
     const bool objectA=readBooleanAction(s.doomCrouch);
     if(objectHeld&&objectMode){
         if(!s.objectGripCalibrating&&objectA&&!s.objectGripAprevious){
+            s.objectGripInputConsumed=true;
             s.objectGripCalibrating=true;
             s.objectGripNudgeAtMs=0;
         }
         if(s.objectGripCalibrating){
+            s.objectGripInputConsumed=true;
             if(supportGripDown){
                 // Grip-held rotation keeps the object stationary while the
                 // user rotates the controller; sample native relative pose.
@@ -5278,10 +5284,14 @@ void updateGameplayActions(XrTime displayTime){
                     }
                 }
                 s.objectGripCalibrating=false;
+                s.objectGripConsumeTriggerUntilRelease=true;
                 KharvoxCameraReleaseObjectGrip();
             }
         }
     }
+    if(!objectTrigger)s.objectGripConsumeTriggerUntilRelease=false;
+    if(s.objectGripConsumeTriggerUntilRelease)
+        s.objectGripInputConsumed=true;
     s.objectGripTriggerPrevious=objectTrigger;
     s.objectGripBackPrevious=objectBack;
     s.objectGripAprevious=objectA;
