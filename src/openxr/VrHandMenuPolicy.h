@@ -1,6 +1,7 @@
 #pragma once
 #include "RightHandGripConfig.h"
 #include "VrLiveModsConfig.h"
+#include "ObjectDiscoverySettingsPolicy.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -571,6 +572,7 @@ struct VrHandMenuState {
     VrMenuNavigation navigation{};
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
+    ObjectDiscoverySettings objectDiscovery{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};
