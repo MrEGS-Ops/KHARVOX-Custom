@@ -8969,11 +8969,11 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 const bool perModel=!key.empty()
                     &&kharvox::objectGripConfigured(
                         s.objectGripProfiles,key,hand);
-                const auto local=s.objectGripSessionProfiles.find(
-                    target.handle);
-                const bool perInstance=local!=
+                const auto sessionProfile=
+                    s.objectGripSessionProfiles.find(target.handle);
+                const bool perInstance=sessionProfile!=
                     s.objectGripSessionProfiles.end()
-                    &&local->second.hands[hand].configured;
+                    &&sessionProfile->second.hands[hand].configured;
                 ring.state=perModel||perInstance?2
                     :target.nativeMotionObserved?1:0;
             }
