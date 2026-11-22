@@ -324,7 +324,81 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
     out.modelKey=item.modelKey;
     for(int i=0;i<3;++i)out.origin[i]=item.origin[i];
 }
+// Gentle native drop. No artificial downward velocity, kick or force.
+// After previously verified real movement and a successful hold, clear any
+// stale solver momentum and resume DOOM's own gravity via its exact
+// signature-checked native Activate implementation. NEVER run on discovery,
+// ray hits, or stationary/unverified bodies.
+bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item) {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!item.nativeMotionObserved
+        ||item.generation!=levelTransitionGeneration.load(
+            std::memory_order_acquire)
+        ||!KharvoxCameraWorldActive())return false;
+    float xyz[3]{},basis[9]{};
+    if(!objectDiscoveryReadBodyPose(item,xyz,basis))return false;
+    const auto base=item.imageBase;
+    const auto* linear=reinterpret_cast<const unsigned char*>(
+        base+0x179A958);
+    const auto* angular=reinterpret_cast<const unsigned char*>(
+        base+0x179AA70);
+    constexpr unsigned char linearSig[]{
+        0xF3,0x0F,0x10,0x87,0xEC,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x06,0xF3,0x0F,0x11,0x87,
+        0xEC,0x01,0x00,0x00
+    };
+    constexpr unsigned char angularSig[]{
+        0xF3,0x0F,0x11,0xA7,0xF8,0x01,0x00,0x00,
+        0xF3,0x0F,0x58,0x87,0xFC,0x01,0x00,0x00
+    };
+    constexpr unsigned char wakeSig[]{
+        0xC7,0x81,0x70,0x01,0x00,0x00,
+        0xFF,0xFF,0xFF,0xFF,0xC3
+    };
+    const auto* wake=reinterpret_cast<const unsigned char*>(
+        base+0x179A8F0);
+    if(!objectDiscoveryReadable(linear,sizeof(linearSig))
+        ||!objectDiscoveryReadable(angular,sizeof(angularSig))
+        ||!objectDiscoveryReadable(wake,sizeof(wakeSig))
+        ||std::memcmp(linear,linearSig,sizeof(linearSig))!=0
+        ||std::memcmp(angular,angularSig,sizeof(angularSig))!=0
+        ||std::memcmp(wake,wakeSig,sizeof(wakeSig))!=0
+        ||!executableMemory(wake))return false;
+    auto* linearVelocity=reinterpret_cast<float*>(
+        static_cast<unsigned char*>(item.body)+0x1EC);
+    auto* angularVelocity=reinterpret_cast<float*>(
+        static_cast<unsigned char*>(item.body)+0x1F8);
+    if(!writableMemory(linearVelocity,3*sizeof(float))
+        ||!writableMemory(angularVelocity,3*sizeof(float)))
+        return false;
+    for(int i=0;i<3;++i)
+        if(!std::isfinite(linearVelocity[i])
+            ||!std::isfinite(angularVelocity[i])
+            ||std::abs(linearVelocity[i])>1e7f
+            ||std::abs(angularVelocity[i])>1e7f)return false;
+#if defined(_MSC_VER)
+    __try{
+#endif
+        constexpr float stopped[3]{0,0,0};
+        std::memcpy(linearVelocity,stopped,sizeof(stopped));
+        std::memcpy(angularVelocity,stopped,sizeof(stopped));
+        using Fn=void (__fastcall*)(void*);
+        reinterpret_cast<Fn>(base+0x179A8F0)(item.body);
+#if defined(_MSC_VER)
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#endif
+    return true;
+#else
+    (void)item;return false;
+#endif
+}
 void objectDiscoveryReleaseNative() {
+    if(objectDiscoveryHeld.active){
+        if(auto* item=objectDiscoveryNativeByHandle(
+                objectDiscoveryHeld.handle))
+            if(item->generation==objectDiscoveryHeld.generation)
+                objectDiscoveryReleaseToGravity(*item);
+    }
     objectDiscoveryHeld={};
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
