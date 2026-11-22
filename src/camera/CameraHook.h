@@ -30,11 +30,6 @@ kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
-// Experimental: actual physical free-hand GRIP pose in DOOM world space.
-// Independent of the laser's AIM pose. Matrix is column-major, 3x3.
-void KharvoxCameraSetWorldGrabHandPose(
-    const float origin[3], const float axis[9], bool valid);
- 
 // Read-only observation of DOOM's existing FocusTracker selection state.
 // These are *opaque* native fields, NOT a validated physics entity hit.
 // Does not enable dev CVars, issue extra traces, or write entity memory.
@@ -43,40 +38,6 @@ struct KharvoxWorldGrabNativeFocus {
     unsigned long long nativeReference{},levelGeneration{},sampleSequence{};
 };
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled);
-// DEV-only native physics inspection. The game thread may edit a proven
-// rigid body's original position buffer. No live entity pointer crosses
-// the DOOM/OpenXR boundary; disabled by default and in Native release.
-struct KharvoxWorldGrabPhysicsSample {
-    unsigned int handle{},path{};
-    unsigned long long generation{},sequence{};
-    int mode{},status{}; // 1=no body, 2=origin readable, 3=writable,
-                         // 4=write committed, 5=readback position changed
-    bool writable{},changed{};
-    // 0=none, 1=physics-owned GetOrigin pointer, 2=external GetOrigin
-    // pointer, 3=unique origin-vector match inside physics object.
-    int storageRoute{},originMatches{};
-    float distanceFromHand{-1.f};
-    // All times are based on the native observer: callback time is NOT
-    // proof the actual rigid-body simulation is running.
-    unsigned long long callbackAtMs{},callbackGapMs{},originUnchangedMs{};
-    unsigned int wakeNudges{};
-    // XYZ vectors in engine units: requested movement, immediate readback,
-    // and what remains at the next physics observer callback.
-    std::array<float,3> requestedDelta{},readbackDelta{},retainedDelta{};
-    bool retentionKnown{};
-    // These are body-only state / passive evidence, NOT visual-model proof.
-    bool nativeRestKnown{},nativeMotionCandidate{};
-    int nativeAtRest{};
-    bool pinned{};
-    unsigned int pinnedTicks{};
-    unsigned int activationStage{};
-    unsigned long long activationStageAgeMs{};
-    bool activationNativeEvidence{},activationFollowing{};
-    float origin[3]{};
-    std::array<char,64> physicsClass{};
-};
-void KharvoxCameraConfigureWorldGrabPhysics(int mode,bool enabled);
-bool KharvoxCameraReadWorldGrabPhysics(KharvoxWorldGrabPhysicsSample& sample);
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample);
 // Candidate handles intercepted immediately before DOOM resolves two native
 // trace hits into entities. May include static/invalid/non-interactable hits.
