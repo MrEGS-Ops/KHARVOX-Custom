@@ -966,6 +966,7 @@ void paintVrHandMenu() {
             }
         }
         } // !devPage: prevent normal mod settings drawing over DEV
+        } // close the selected-mod options pane before the shared footer
         SelectObject(dc,smallFont);
         if(devPage){
             fill(797,16,129,57,m.hovered==95
