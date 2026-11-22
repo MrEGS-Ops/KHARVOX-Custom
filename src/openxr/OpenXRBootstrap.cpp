@@ -8933,9 +8933,20 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 ring.pose.position[2]=mapped.z;
                 ring.pose.orientation[3]=1.f;
                 ring.pose.valid=true;
-                // No model/declaration key is verified yet, so never show
-                // misleading orange/green profile indicators.
-                ring.state=0;
+                // Profile state is checked afresh each rendered frame,
+                // so RT-save changes every matching ring immediately.
+                const std::string key(target.modelKey.data());
+                const unsigned hand=s.weaponHandLeft?1u:0u;
+                const bool perModel=!key.empty()
+                    &&kharvox::objectGripConfigured(
+                        s.objectGripProfiles,key,hand);
+                const auto local=s.objectGripSessionProfiles.find(
+                    target.handle);
+                const bool perInstance=local!=
+                    s.objectGripSessionProfiles.end()
+                    &&local->second.hands[hand].configured;
+                ring.state=perModel||perInstance?2
+                    :target.nativeMotionObserved&&!key.empty()?1:0;
             }
         }
     }
