@@ -150,3 +150,13 @@ else()
   target_compile_options(KharvoxLevelRecordTimerPolicyTests PRIVATE -UNDEBUG)
 endif()
 add_test(NAME level-record-timer-no-menu-or-cutscene-exploit COMMAND KharvoxLevelRecordTimerPolicyTests)
+
+# New Object Discovery radii remain safe and deterministic before runtime wiring.
+add_executable(KharvoxObjectDiscoverySettingsPolicyTests ../object_discovery_settings_policy_tests.cpp)
+target_compile_features(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE cxx_std_17)
+if(MSVC)
+  target_compile_options(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE /UNDEBUG)
+else()
+  target_compile_options(KharvoxObjectDiscoverySettingsPolicyTests PRIVATE -UNDEBUG)
+endif()
+add_test(NAME object-discovery-radius-and-reach COMMAND KharvoxObjectDiscoverySettingsPolicyTests)
