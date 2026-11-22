@@ -19,6 +19,10 @@ struct HandPose {
     bool valid{};
 };
 
+struct ObjectDiscoveryRing {
+    HandPose pose{};
+    unsigned char state{}; // 0=unverified,1=no profile,2=calibrated
+};
 struct HandEyeView {
     HandPose pose{};
     float angleLeft{};
@@ -85,7 +89,9 @@ public:
         const HandPose& leftGrip, const HandPose& rightGrip,
         const HandVisibilityOutput& visibility,
         const HandGameplayState& gameplay, const HandPose& laser = {},
-        const HandPose& grabDebugLaser = {});
+        const HandPose& grabDebugLaser = {},
+        const std::array<ObjectDiscoveryRing,32>& discoveryRings = {},
+        unsigned discoveryRingCount = 0);
     void finishSceneIntegratedFrame();
 
 private:
