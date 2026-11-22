@@ -73,6 +73,7 @@
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
+#include "ObjectGripProfileStore.h"
 #include "WeaponRecoilPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
@@ -467,6 +468,16 @@ struct State {
     kharvox::RightHandGripSettings rightGripSettings{};
     kharvox::RightHandGripSettings rightGripFactorySettings{};
     kharvox::VrHandMenuState vrHandMenu{};
+    // Separate from Weapon Grip Calibration: native movable-prop profiles.
+    kharvox::ObjectGripProfiles objectGripProfiles{};
+    bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
+    bool objectGripTriggerPrevious{},objectGripBackPrevious{};
+    bool objectGripAprevious{},objectGripHasProfile{};
+    unsigned objectGripHandle{},objectGripPhysicalHand{};
+    unsigned long long objectGripNudgeAtMs{};
+    std::string objectGripKey{},objectGripName{};
+    std::array<float,3> objectGripOffsetUnits{};
+    std::array<float,9> objectGripRelativeAxis{};
     kharvox::VrGameplayWelcomeNotice gameplayWelcomeNotice{};
     kharvox::VrFirstTimeSetupNotice firstTimeSetupNotice{};
     bool firstTimeSetupLoaded{},firstTimeSetupBlocksButtonsUntilRelease{};
@@ -6196,6 +6207,10 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     if(!kharvox::objectDiscoveryLoad(kharvox::runtimePathA(
         "object_discovery.cfg"),s.vrHandMenu.objectDiscovery))
         s.vrHandMenu.objectDiscovery={};
+    if(!kharvox::objectGripLoad(kharvox::runtimePathA(
+        "object_grip_profiles.cfg"),s.objectGripProfiles))
+        s.objectGripProfiles={};
+
     if(!kharvox::loadWeaponRecoilSettings(
         kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){
         s.recoilSettings={}; // invalid settings must never turn recoil on
