@@ -117,6 +117,8 @@ unsigned long long nativeGrabCandidateSequence{};
 std::array<KharvoxWorldGrabResolvedEntity,2> nativeGrabResolvedEntity{};
 std::array<bool,2> nativeGrabResolvedValid{};
 unsigned long long nativeGrabResolvedSequence{};
+std::mutex objectDiscoveryMutex;
+KharvoxObjectDiscoverySnapshot objectDiscoverySnapshot{};
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -658,6 +660,113 @@ bool readNativeWorldGrabClassLabel(std::uintptr_t vtable,
     return true;
 }
 
+// Observe ONLY existing DOOM-thread resolved entities. No body writes.
+bool readableMemory(const void* p,size_t n);
+bool executableMemory(const void* p);
+bool objectDiscoveryReadOrigin(const void* body,std::uintptr_t fn,float out[3]){
+    if(!body||!fn)return false;
+    using Fn=const float* (__fastcall*)(void*,int);
+#if defined(_MSC_VER)
+    __try{
+#endif
+        const float* p=reinterpret_cast<Fn>(fn)(const_cast<void*>(body),0);
+        if(!p||!readableMemory(p,sizeof(float)*3))return false;
+        for(int i=0;i<3;++i){
+            out[i]=p[i];
+            if(!std::isfinite(out[i])||std::abs(out[i])>1e6f)return false;
+        }
+        return true;
+#if defined(_MSC_VER)
+    }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
+#endif
+}
+void objectDiscoveryObserveBody(const void* entity,std::uintptr_t base,
+    std::uintptr_t imageSize,unsigned handle,unsigned long long generation){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!entity||!handle)return;
+    static thread_local const void* lastEntity{};
+    static thread_local std::uintptr_t lastEntityVtable{},lastBodyVtable{};
+    static thread_local const void* lastBody{};
+    static thread_local unsigned long long lastScan{};
+    static thread_local float prior[3]{};
+    static thread_local bool hasPrior{},sawMotion{};
+    const auto now=GetTickCount64();
+    std::uintptr_t entityVtable{};
+    if(!readableMemory(entity,sizeof(entityVtable)))return;
+    std::memcpy(&entityVtable,entity,sizeof(entityVtable));
+    if(entity!=lastEntity||entityVtable!=lastEntityVtable){
+        lastEntity=entity;lastEntityVtable=entityVtable;
+        lastBody=nullptr;lastBodyVtable=0;lastScan=0;
+        hasPrior=false;sawMotion=false;
+    }
+    if(!lastBody&&(!lastScan||now-lastScan>=400)){
+        lastScan=now;
+        for(std::size_t off=0;off<0x4000;off+=sizeof(void*)){
+            const auto* slot=static_cast<const unsigned char*>(entity)+off;
+            if(!readableMemory(slot,sizeof(void*)))break;
+            std::uintptr_t pointer{};
+            std::memcpy(&pointer,slot,sizeof(pointer));
+            for(int layout=0;layout<2;++layout){
+                const void* body=layout==0?static_cast<const void*>(slot)
+                    :reinterpret_cast<const void*>(pointer);
+                if(layout==1&&(!pointer
+                    ||!readableMemory(body,sizeof(void*))))continue;
+                std::uintptr_t vt{};
+                std::memcpy(&vt,body,sizeof(vt));
+                if(vt<base||vt-base>=imageSize)continue;
+                std::array<char,80> klass{};
+                if(!readNativeWorldGrabClassLabel(vt,base,imageSize,klass)
+                    ||std::strncmp(klass.data(),"idPhysics_RigidBody",19)!=0)
+                    continue;
+                lastBody=body;lastBodyVtable=vt;break;
+            }
+            if(lastBody)break;
+        }
+    }
+    if(!lastBody||!readableMemory(lastBody,sizeof(std::uintptr_t)))return;
+    std::uintptr_t vt{};
+    std::memcpy(&vt,lastBody,sizeof(vt));
+    if(vt!=lastBodyVtable)return;
+    std::uintptr_t getter{};
+    if(!readableMemory(reinterpret_cast<const void*>(vt+0x80),
+        sizeof(getter)))return;
+    std::memcpy(&getter,reinterpret_cast<const void*>(vt+0x80),
+        sizeof(getter));
+    if(getter<base||getter-base>=imageSize
+        ||!executableMemory(reinterpret_cast<const void*>(getter)))return;
+    float xyz[3]{};
+    if(!objectDiscoveryReadOrigin(lastBody,getter,xyz))return;
+    if(hasPrior){
+        float motion2{};
+        for(int i=0;i<3;++i){const float d=xyz[i]-prior[i];motion2+=d*d;}
+        if(motion2>0.0001f)sawMotion=true;
+    }
+    for(int i=0;i<3;++i)prior[i]=xyz[i];
+    hasPrior=true;
+    std::lock_guard<std::mutex> lock(objectDiscoveryMutex);
+    auto& data=objectDiscoverySnapshot;
+    if(data.generation!=generation){
+        data={};data.generation=generation;
+    }
+    unsigned index=data.count;
+    for(unsigned i=0;i<data.count;++i)
+        if(data.candidates[i].handle==handle){index=i;break;}
+    if(index==data.candidates.size()){
+        index=0;
+        for(unsigned i=1;i<data.count;++i)
+            if(data.candidates[i].observedAtMs<
+               data.candidates[index].observedAtMs)index=i;
+    }else if(index==data.count)++data.count;
+    auto& candidate=data.candidates[index];
+    candidate={};candidate.handle=handle;
+    candidate.generation=generation;candidate.observedAtMs=now;
+    candidate.nativeMotionObserved=sawMotion;
+    for(int i=0;i<3;++i)candidate.origin[i]=xyz[i];
+#else
+    (void)entity;(void)base;(void)imageSize;(void)handle;(void)generation;
+#endif
+}
+
 // DOOM has ALREADY resolved and null-checked this entity in FocusTracker.
 // The following native instruction is itself 'mov rdx,[rax]' to fetch the
 // entity's vtable. Observe that same pointer while it's valid on game thread.
@@ -681,6 +790,8 @@ extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
     const auto base=reinterpret_cast<std::uintptr_t>(image);
     const auto size=static_cast<std::uintptr_t>(nt->OptionalHeader.SizeOfImage);
     const bool inImage=vtable>=base&&vtable-base<size;
+    unsigned targetHandle{};
+    bool discoveryClass{};
     {
     std::lock_guard<std::mutex> lock(nativeGrabFocusMutex);
     if(!nativeGrabFocusObservationEnabled.load(std::memory_order_relaxed))
@@ -696,10 +807,15 @@ extern "C" void __fastcall observeNativeWorldGrabResolvedEntity(
     found.levelGeneration=levelTransitionGeneration.load(
         std::memory_order_acquire);
     found.sampleSequence=++nativeGrabResolvedSequence;
+    targetHandle=found.nativeHandle;
+    discoveryClass=std::strcmp(found.nativeClassName.data(),"idProp2")==0
+        ||std::strcmp(found.nativeClassName.data(),"idProp_Moveable")==0;
     nativeGrabResolvedEntity[sourcePath]=found;
     nativeGrabResolvedValid[sourcePath]=true;
     }
-
+    if(discoveryClass)
+        objectDiscoveryObserveBody(nativeEntity,base,size,targetHandle,
+            levelTransitionGeneration.load(std::memory_order_acquire));
 }
 
 // Hook ONLY the fourteen bytes after DOOM's native entity manager has
@@ -3002,6 +3118,21 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
+bool KharvoxCameraReadObjectDiscovery(
+    KharvoxObjectDiscoverySnapshot& out) {
+    out={};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+        return false;
+    std::lock_guard<std::mutex> lock(objectDiscoveryMutex);
+    if(objectDiscoverySnapshot.generation
+        !=KharvoxCameraLevelTransitionGeneration())return false;
+    out=objectDiscoverySnapshot;
+    return out.count!=0;
+#else
+    return false;
+#endif
+}
 void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     const bool previous=nativeGrabFocusObservationEnabled.exchange(
         enabled,std::memory_order_acq_rel);
@@ -3018,6 +3149,8 @@ void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     nativeGrabResolvedEntity={};
     nativeGrabResolvedValid={};
     nativeGrabResolvedSequence=0;
+    { std::lock_guard<std::mutex> discoveryLock(objectDiscoveryMutex);
+      objectDiscoverySnapshot={}; }
 }
 
 bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample) {
