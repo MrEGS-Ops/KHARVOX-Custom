@@ -1,54 +1,87 @@
-# Object Discovery Mode — replacement design
+# Object Discovery Mode — native experimental implementation
 
-This document records the replacement for the retired World Grab debug and
-activation experiments. **The continuous scanner, rings and in-game item
-calibration are not yet implemented in this cleanup branch.**
+Development branch: `feature/object-discovery-full-grip-calibration-20261123`
 
-## UI and gameplay
-- Opt-in toggle under Mods > DEV > Experimental Features.
-- Continuous, performance-limited scan during normal gameplay.
-- Scan radius user-selectable from **1 to 15 metres**, default **5 m**,
-  in 1 m steps.
-- **Grab reach is a separate slider**, **1–5 metres**, default **2 m**,
-  in 0.5 m steps. Long reach must never bypass native movement evidence.
-- Subtle floating world-space rings (not material changes):
-  * Grey = candidate physics object whose movability is unverified.
-  * Amber = verified movable type with no saved calibration.
-  * Green = same verified type with a saved calibration.
-- Update all visible matching rings immediately after profile save.
-- No free-hand ID circle. No manual naming or catalogue maintenance.
-- Auto-generate profile names from validated model/declaration identity,
-  not temporary in-level object handles.
-- On successful grab of already physically moving unconfigured object,
-  open a compact calibration overlay without the Mods menu.
-- Reuse Weapon Grip Calibration centimetre nudges and controller-driven
-  OBJECT rotation, never rotate the hand/glove; save left/right profiles
-  separately in UserData.
-- Already calibrated objects are grabbable without interrupting play.
+**Runtime validation is pending.** Code and CI compilation alone cannot confirm
+DOOM's unknown entity-manager layout, model resource pointers or in-headset
+physical release. Never replace the last working experimental build until
+headset testing confirms the new runtime.
 
-## Physics safety invariant
-- Scan, proximity, ray hit, lookup and **holding Grip** are strictly
-  read-only while the specific object has no independently verified
-  movement initiated by DOOM's own native physics.
-- No Activate calls, fake kicks, contact proxies, micro moves,
-  force-to-follow, origin/axis/momentum writes, material edits or other
-  changes while the object is stationary.
-- An at-rest flag flipping or a successful native function call is
-  **not** proof of simulated movement; match the verified native body
-  and its instance before allowing any grab.
-- Saved profiles do not permit grabbing inactive individual instances.
-- If tracking disappears or hand tracking takes over, stop safely
-  without treating synthetic inputs as valid controller input.
-- Keep normal weapon/calibration, Gunslinger, HUD and focus behavior.
+## Player controls
 
-## Integration dependencies and limits
-- The surviving DOOM-thread FocusTracker candidate and resolved-entity
-  hooks are **read-only ray observations**; they do not enumerate a
-  radius and do not yet prove actual rigid-body movability.
-- Native proximity enumeration, durable model identity, movement
-  verification, projected world-space rings, calibration overlay and
-  physically stable release need independent implementation and VR testing.
-- The old automatic wake/contact/micro/tick/held-kick sequence, forced
-  direct-follow fallback, momentum reset and physics HUD have been removed.
-- Prior experimental history is retained only in Git history and backup
-  branch `backup/pre-object-discovery-cleanup-20261122`.
+- Mods > DEV > Experimental Features > Object Discovery Mode is toggleable.
+- Scan radius: **1–15 metres** in 1 m increments, default **5 m**.
+- Grab reach: **1–5 metres** in 0.5 m increments, default **2 m**.
+- Scan and reach are separate and saved in UserData/object_discovery.cfg.
+- Grey world-space ring: candidate with no confirmed real native movement.
+- Amber ring: object physically moved in DOOM's own simulation; no saved grip.
+- Green ring: matching verified model profile or current-level profile exists.
+- Every frame reads current profile state, so saving immediately recolours
+  all rendered objects of the same verified model resource.
+- No hand-attached identification circle, old physics inspector or test menu.
+
+## How an item is caught
+
+1. DOOM resolves a native world item or the read-only nearby pool scanner
+   finds it. A strict native RTTI check requires an idPhysics_RigidBody.
+2. The game thread samples its native GetOrigin/GetAxis. Native movement is
+   proven by observed world-origin displacement, not a forced wake or
+   at-rest flag alone. A stale movement observation cannot authorize a grab.
+3. With a valid, unobstructed physical free-hand GRIP, only an individually
+   moving item within selected reach and aligned with free-hand AIM can
+   be caught. Gun bracing/holsters/weapon wheel retain their input priority.
+4. The item is held in controller-relative six-degree-of-freedom pose.
+   An unconfigured item opens a small calibration overlay immediately.
+5. Without Grip: nudge object 1 cm per step using left stick X/Y for
+   horizontal/depth and right stick Y for vertical. With Grip: object stays
+   world-stationary while controller rotates to adjust the relative pose.
+6. RT saves; B cancels. The held object is released without an artificial
+   downward impulse. A while holding an already-profiled item reopens
+   calibration.
+7. DOOM's original native gravity resumes after a signature-verified
+   momentum clear and Activate *only for an item that actually moved
+   before the grab*. Nothing can be activated by scanning or Grip alone.
+
+## Model identity and UserData
+
+- The game-thread scanner only accepts unique and validated native
+  `models/...` resource paths with known model extensions. A generic
+  class, entity handle or raw pointer is not accepted as a persistent key.
+- Automatically generated names derive from the model's filename.
+- A distinct LEFT and RIGHT controller profile saves offset and local
+  quaternion in UserData/object_grip_profiles.cfg.
+- When native model identity cannot be proven, the item can still be
+  calibrated for this level, but the exact instance-only profile is
+  intentionally **not persisted across restarts**. The UI explains this.
+- An unknown model that has moved is amber, not falsely green.
+
+## Scanner safety and limitations
+
+- Native FocusTracker read-only hooks accumulate valid physics candidates.
+- The separate nearby scanner attempts to identify the native entity-pointer
+  pool via the signature-verified manager pointer and an already resolved
+  entity. It traverses bounded pointer entries read-only, rejects invalid
+  memory/RTTI and never invokes unknown virtual functions to enumerate.
+- If pool layout cannot be validated, the system falls back to ray-discovered
+  props; therefore complete 360-degree radius enumeration is **not yet
+  confirmed**.
+- The visual ring system uses existing scene-depth rendering and never
+  edits DOOM's native materials or static world meshes.
+- Native body pointers never cross into the XR thread; immutable snapshots,
+  owner checks, generation, vtables and input age gates protect handoffs.
+- Pausing, losing tracking, switching the mode off or entering cutscenes
+  releases a native object on DOOM's world thread.
+- The old automatic activation-stage scanner and intrusive physics tests
+  must not be reintroduced.
+
+## Acceptance gates
+
+1. Windows compiler and policy tests pass on the experimental branch.
+2. The actual KHARVOX Mods Standalone (Experimental) ZIP packages the
+   matching experimental native DLL and pinned standalone manager.
+3. In headset, ensure scanner detects candidates automatically as the
+   player runs near them and doesn't wake stationary props.
+4. Verify handedness, 1–5 m reach, calibrated offset and rotation, profile
+   load/save, instant amber-to-green and natural gravity release.
+5. Inspect native logs and recorded headset footage for unexpected
+   movement, loss-of-tracking issues, false greens or render depth errors.
