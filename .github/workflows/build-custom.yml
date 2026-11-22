@@ -64,6 +64,16 @@ jobs:
         shell: powershell
         run: python tests/verify_native_world_grab_signatures.py
 
+      - name: Test Object Discovery settings and model-profile integrity
+        shell: powershell
+        run: |
+          cmake -S . -B build/discovery-tests -A x64 -DKHARVOX_BUILD_LAYER=OFF -DKHARVOX_BUILD_SFS_COMPILER=OFF -DBUILD_TESTING=ON
+          if ($LASTEXITCODE -ne 0) { throw "Discovery test configure failed" }
+          cmake --build build/discovery-tests --config Release --target KharvoxObjectDiscoverySettingsPolicyTests KharvoxObjectGripProfileStoreTests
+          if ($LASTEXITCODE -ne 0) { throw "Discovery test compile failed" }
+          ctest --test-dir build/discovery-tests -C Release --output-on-failure -R "^(object-discovery-radius-and-reach|object-grip-profile-identity-and-roundtrip)$"
+          if ($LASTEXITCODE -ne 0) { throw "Discovery policy tests failed" }
+
       - name: Compile read-only DOOM physics inspector
         shell: powershell
         run: |
