@@ -8947,7 +8947,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     s.objectGripSessionProfiles.end()
                     &&local->second.hands[hand].configured;
                 ring.state=perModel||perInstance?2
-                    :target.nativeMotionObserved&&!key.empty()?1:0;
+                    :target.nativeMotionObserved?1:0;
             }
         }
     }
