@@ -5207,9 +5207,6 @@ void updateGameplayActions(XrTime displayTime){
             KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         }
     }else{
-        KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
-            }
-    }else{
         s.boxingPoseStartedAt=0;
         s.headFocusHeldUntil=0;
         s.boxingHeadFocus=false;
