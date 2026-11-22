@@ -1,6 +1,9 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <fstream>
+#include <string>
+#include <iomanip>
 
 namespace kharvox {
 // Pure settings policy. This does not enumerate or modify DOOM entities.
@@ -40,5 +43,48 @@ inline ObjectDiscoverySettings sanitizedObjectDiscoverySettings(
         kObjectDiscoveryMinGrabReachM, kObjectDiscoveryMaxGrabReachM,
         kObjectDiscoveryGrabReachStepM, kObjectDiscoveryDefaultGrabReachM);
     return requested;
+}
+
+inline bool objectDiscoverySave(const std::string& path,
+                                ObjectDiscoverySettings settings) {
+    settings = sanitizedObjectDiscoverySettings(settings);
+    std::ofstream output(path, std::ios::trunc);
+    if (!output) return false;
+    output << "object_discovery_v1\n"
+           << "enabled=" << (settings.enabled ? 1 : 0) << "\n"
+           << "scan_radius_m=" << std::fixed << std::setprecision(1)
+           << settings.scanRadiusMetres << "\n"
+           << "grab_reach_m=" << settings.grabReachMetres << "\n";
+    output.flush();
+    return output.good();
+}
+inline bool objectDiscoveryLoad(const std::string& path,
+                                ObjectDiscoverySettings& result) {
+    std::ifstream input(path);
+    if (!input) return false;
+    std::string header, enabled, scan, reach, extra;
+    if (!std::getline(input,header) || header!="object_discovery_v1"
+        || !std::getline(input,enabled) || !std::getline(input,scan)
+        || !std::getline(input,reach) || std::getline(input,extra))
+        return false;
+    if (enabled!="enabled=0" && enabled!="enabled=1") return false;
+    const auto parse = [](const std::string& item, const char* key, float& out) {
+        const std::string prefix(key);
+        if (item.compare(0,prefix.size(),prefix)!=0) return false;
+        const std::string value=item.substr(prefix.size());
+        if (value.empty()) return false;
+        try {
+            std::size_t consumed{};
+            out=std::stof(value,&consumed);
+            return consumed==value.size()&&std::isfinite(out);
+        } catch (...) {return false;}
+    };
+    ObjectDiscoverySettings parsed{};
+    parsed.enabled=enabled=="enabled=1";
+    if (!parse(scan,"scan_radius_m=",parsed.scanRadiusMetres)
+        || !parse(reach,"grab_reach_m=",parsed.grabReachMetres))
+        return false;
+    result=sanitizedObjectDiscoverySettings(parsed);
+    return true;
 }
 } // namespace kharvox
