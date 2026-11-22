@@ -70,7 +70,6 @@
 #include "HandsJumpPolicy.h"
 #include "GripThresholdPolicy.h"
 #include "EquipmentGripPolicy.h"
-#include "WorldGrabProbePolicy.h"
 #include "OffHandStickInputPolicy.h"
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
@@ -240,7 +239,6 @@ struct State {
     Fsr1Upscaler fsr1{}; bool fsr1Requested{}; bool fsr1InitializationAttempted{};
     kharvox::hands::HandRenderer handRenderer{}; bool showHands{showHandsRequested()};
     kharvox::hands::HandPose integratedPairLeftHand{},integratedPairRightHand{};
-    kharvox::hands::HandPose integratedPairGrabDebugLaser{};
     kharvox::hands::HandVisibilityOutput integratedPairHandVisibility{};
     kharvox::hands::HandGameplayState integratedPairHandGameplay{};
     bool integratedPairHandsValid{};std::array<bool,2> stereoCacheHasIntegratedHands{};
@@ -298,8 +296,6 @@ struct State {
     XrPath leftHandUserPath{XR_NULL_PATH}; XrPath rightHandUserPath{XR_NULL_PATH}; XrPath valveIndexProfilePath{XR_NULL_PATH};
     XrPath questTouchProfilePath{XR_NULL_PATH},questTouchPlusProfilePath{XR_NULL_PATH};
     kharvox::ControllerOnlySafetyState controllerOnlySafety{};
-    kharvox::WorldGrabProbeState worldGrabProbe{};
-    kharvox::WorldGrabInspectorSnapshot worldGrabInspector{};
     // Primary-hand calibration only: freeze the NATIVE GUN's physical pose
     // while Grip is held, but sample the live weapon-hand rotation separately
     // for its independently editable glove. Never persisted.
@@ -4388,286 +4384,6 @@ void updateGameplayActions(XrTime displayTime){
                 +(secondaryFireGripDown?"pressed":"released"));
         s.secondaryFireGripPressed=secondaryFireGripDown;
     }
-    // DEV Experimental: native physics drag attempts plus entity inspector.
-    // Preserve native support Grip, Gunslinger selection and weapon handling.
-    {
-        kharvox::WorldGrabProbeInput in{};
-        // Only the separate Experimental DLL exposes live world grabbing.
-        // Normal Native Full/Patch never enables observation/laser/input.
-        in.enabled=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-            &&s.vrHandMenu.experimentalWorldGrabProbeEnabled;
-        in.gameplay=gameplay;
-        in.controllersReady=!controllerOnlyLocked.load(std::memory_order_acquire)
-            &&s.trackingHeadPositionValid;
-        in.tracked={s.leftGripController.valid&&s.leftGripController.positionTracked,
-                    s.rightGripController.valid&&s.rightGripController.positionTracked};
-        in.freeHand={!s.weaponHandLeft,s.weaponHandLeft};
-        in.grip={s.weaponHandLeft?false:supportGripDown,
-                 s.weaponHandLeft?supportGripDown:false};
-#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        // The raw Quest Grip action can have a single missing input sample.
-        // Once a DEV grab is already held, tolerate up to 55ms of false
-        // readings. Never delay cancellation for tracking/scene problems,
-        // wheel ownership, or genuine two-hand weapon use.
-        const unsigned grabFreeSide=s.weaponHandLeft?1u:0u;
-        static std::array<unsigned long long,2> grabGripMissingSinceMs{};
-        if(in.enabled&&in.gameplay&&in.controllersReady
-            &&in.tracked[grabFreeSide]&&in.freeHand[grabFreeSide]){
-            if(in.grip[grabFreeSide]){
-                grabGripMissingSinceMs[grabFreeSide]=0;
-            }else if(s.worldGrabProbe.held[grabFreeSide]){
-                const auto nowMs=GetTickCount64();
-                auto& missing=grabGripMissingSinceMs[grabFreeSide];
-                if(!missing)missing=nowMs;
-                if(nowMs>=missing&&nowMs-missing<=55)
-                    in.grip[grabFreeSide]=true;
-            }
-        }else{
-            grabGripMissingSinceMs={};
-        }
-#endif
-        in.supportBusy=s.twoHandLatched||s.twoHandCalibrationMode
-            ||supportGripInCaptureRange();
-        in.wheelBusy=s.behindHeadWheelActive
-            ||s.wheelSupportGripSuppressedUntilRelease
-            ||quickHolsterGripConsumed;
-        if(s.trackingHeadPositionValid)in.distanceFromHead={
-            vectorLength(subtractVector(s.leftGripController.position,s.trackingHeadPosition)),
-            vectorLength(subtractVector(s.rightGripController.position,s.trackingHeadPosition))};
-        const auto events=s.worldGrabProbe.update(in);
-#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        if(events.released[s.weaponHandLeft?1u:0u]){
-            const unsigned side=s.weaponHandLeft?1u:0u;
-            log(std::string("[WORLD-GRAB-INPUT] RELEASE ")
-                +" rawGrip="+(supportGripDown?"yes":"no")
-                +" tracked="+(in.tracked[side]?"yes":"no")
-                +" gameplay="+(in.gameplay?"yes":"no")
-                +" controllersReady="+(in.controllersReady?"yes":"no")
-                +" supportBusy="+(in.supportBusy?"yes":"no")
-                +" wheelBusy="+(in.wheelBusy?"yes":"no"));
-        }
-#endif
-        auto& inspector=s.worldGrabInspector;
-        inspector.enabled=in.enabled&&in.gameplay&&in.controllersReady;
-        inspector.gripHeld=inspector.enabled&&(in.grip[0]||in.grip[1]);
-        inspector.freeHandRight=s.weaponHandLeft;
-        if(!inspector.enabled)inspector={};
-        // Old separate methods 1-5 cannot run or be restored from stale state.
-        const int physicsMode=s.vrHandMenu.experimentalActivationMode==6?6:0;
-        const unsigned freeSide=s.weaponHandLeft?1u:0u;
-        const bool physicsHeld=in.enabled&&in.gameplay&&in.controllersReady
-            &&s.worldGrabProbe.held[freeSide]&&!in.supportBusy&&!in.wheelBusy;
-        // Mode 0 is still an active body-inspection pass. Native entity
-        // pointers remain DOOM-thread only, inside the existing hook.
-        KharvoxCameraConfigureWorldGrabPhysics(
-            physicsHeld?physicsMode:0,in.enabled&&in.gameplay&&in.controllersReady);
-        inspector.physicsMode=physicsMode;
-        KharvoxWorldGrabPhysicsSample sample{};
-        if(KharvoxCameraReadWorldGrabPhysics(sample)){
-            inspector.physicsStatus=sample.status;
-            inspector.physicsWritable=sample.writable;
-            inspector.physicsChanged=sample.changed;
-            inspector.physicsClass=sample.physicsClass.data();
-            inspector.physicsHandle=sample.handle;
-            inspector.physicsStorageRoute=sample.storageRoute;
-            inspector.physicsOriginMatches=sample.originMatches;
-            inspector.physicsDistanceFromHand=sample.distanceFromHand;
-            inspector.physicsCallbackAtMs=sample.callbackAtMs;
-            inspector.physicsCallbackGapMs=sample.callbackGapMs;
-            inspector.physicsOriginUnchangedMs=sample.originUnchangedMs;
-            inspector.physicsWakeNudges=sample.wakeNudges;
-            inspector.physicsRequestedDelta=sample.requestedDelta;
-            inspector.physicsReadbackDelta=sample.readbackDelta;
-            inspector.physicsRetainedDelta=sample.retainedDelta;
-            inspector.physicsRetentionKnown=sample.retentionKnown;
-            inspector.physicsRestKnown=sample.nativeRestKnown;
-            inspector.physicsNativeMotionCandidate=sample.nativeMotionCandidate;
-            inspector.physicsAtRest=sample.nativeAtRest;
-            inspector.physicsPinned=sample.pinned;
-            inspector.physicsPinnedTicks=sample.pinnedTicks;
-            inspector.physicsActivationStage=sample.activationStage;
-            inspector.physicsActivationStageAgeMs=sample.activationStageAgeMs;
-            inspector.physicsActivationNativeEvidence=sample.activationNativeEvidence;
-            inspector.physicsActivationFollowing=sample.activationFollowing;
-            const auto callbackNow=GetTickCount64();
-            inspector.physicsCallbackAgeMs=callbackNow>=sample.callbackAtMs
-                ?callbackNow-sample.callbackAtMs:0;
-            // Deliberately report a missed native callback even when the
-            // camera hook has stopped logging for the selected prop.
-            // A callback gap is NOT the same as a sleeping physics body.
-            static bool callbackWasStale{};
-            static unsigned long long lastCallbackReport{};
-            const bool stale=inspector.physicsCallbackAgeMs>600;
-            if(physicsHeld&&(stale!=callbackWasStale
-                ||callbackNow-lastCallbackReport>4000)){
-                callbackWasStale=stale;
-                lastCallbackReport=callbackNow;
-                log(std::string("[WORLD-GRAB-ACTIVE-WINDOW] method=")
-                    +std::to_string(physicsMode)
-                    +" handle="+std::to_string(sample.handle)
-                    +" callbackAgeMs="+std::to_string(inspector.physicsCallbackAgeMs)
-                    +" callbackGapMs="+std::to_string(sample.callbackGapMs)
-                    +" originUnchangedMs="+std::to_string(sample.originUnchangedMs)
-                    +" wakeNudges="+std::to_string(sample.wakeNudges)
-                    +" callbackState="+(stale?"STALE":"LIVE"));
-            }
-            for(int axis=0;axis<3;++axis)
-                inspector.physicsOrigin[axis]=sample.origin[axis];
-        }
-        // This is a real DOOM FocusTracker observation, sampled on its
-        // native game thread. It is NOT yet a rigid-body hit: never issue
-        // Acquire or turn the laser red solely from these opaque fields.
-        KharvoxCameraEnableWorldGrabNativeFocusObservation(
-            in.enabled&&in.gameplay&&in.controllersReady);
-        if(in.enabled&&in.gameplay){
-            KharvoxWorldGrabNativeFocus nativeFocus{};
-            if(KharvoxCameraReadWorldGrabNativeFocus(nativeFocus)){
-                inspector.nativeFocusSeen=true;
-                inspector.focusIndexA=nativeFocus.indexA;
-                inspector.focusIndexB=nativeFocus.indexB;
-                inspector.focusHasReference=nativeFocus.nativeReference!=0;
-                inspector.focusLastMs=GetTickCount64();
-                static unsigned long long lastFocusReportTick{};
-                static unsigned int lastIndexA{},lastIndexB{};
-                static bool lastRefPresent{};
-                static unsigned long long lastFocusLevel{};
-                const bool refPresent=nativeFocus.nativeReference!=0;
-                const unsigned long long now=GetTickCount64();
-                const bool changed=nativeFocus.indexA!=lastIndexA
-                    ||nativeFocus.indexB!=lastIndexB
-                    ||refPresent!=lastRefPresent
-                    ||nativeFocus.levelGeneration!=lastFocusLevel;
-                if((changed&&now-lastFocusReportTick>=1000)
-                    ||now-lastFocusReportTick>=6000){
-                    lastFocusReportTick=now;
-                    lastIndexA=nativeFocus.indexA;
-                    lastIndexB=nativeFocus.indexB;
-                    lastRefPresent=refPresent;
-                    lastFocusLevel=nativeFocus.levelGeneration;
-                    log("[WORLD-GRAB-NATIVE-FOCUS] engine FocusTracker"
-                        " rawIndexA="+std::to_string(nativeFocus.indexA)
-                        +" rawIndexB="+std::to_string(nativeFocus.indexB)
-                        +" opaqueReference="+(refPresent?std::string("present"):std::string("none"))
-                        +" level="+std::to_string(nativeFocus.levelGeneration)
-                        +" (not verified movable physics)");
-                }
-            }
-        }
-        // Observe DOOM's actual primary/secondary entity-resolution inputs.
-        // Unlike the original laser-only probe, this data comes from the
-        // native collision-result path, before interactable filtering. A
-        // handle alone is NOT proof of dynamic physics or grabbability.
-        if(in.enabled&&in.gameplay){
-            static std::array<unsigned int,2> lastNativeCandidate{};
-            static std::array<unsigned long long,2> lastCandidateReportTick{};
-            static std::array<unsigned long long,2> lastCandidateSequence{};
-            for(unsigned int path=0;path<2;++path){
-                KharvoxWorldGrabTraceCandidate candidate{};
-                if(!KharvoxCameraReadWorldGrabTraceCandidate(path,candidate)
-                    ||candidate.sampleSequence==lastCandidateSequence[path])
-                    continue;
-                lastCandidateSequence[path]=candidate.sampleSequence;
-                const auto now=GetTickCount64();
-                auto& clue=inspector.paths[path];
-                // Clear any class label from an older candidate BEFORE
-                // overwriting the saved handle. Never ascribe an old
-                // vtable/class to a newly targeted entity.
-                const bool differentEntity=clue.hasResolved
-                    &&clue.nativeHandle!=candidate.nativeHandle;
-                if(differentEntity){
-                    clue.hasResolved=false;
-                    clue.vtableRva=0;
-                    clue.nativeClassName.clear();
-                }
-                clue.hasCandidate=true;
-                clue.nativeHandle=candidate.nativeHandle;
-                clue.levelGeneration=candidate.levelGeneration;
-                clue.lastCandidateMs=now;
-                const bool changed=candidate.nativeHandle!=lastNativeCandidate[path];
-                if((changed&&now-lastCandidateReportTick[path]>=1000)
-                    ||now-lastCandidateReportTick[path]>=6000){
-                    lastNativeCandidate[path]=candidate.nativeHandle;
-                    lastCandidateReportTick[path]=now;
-                    log(std::string("[WORLD-GRAB-NATIVE-HIT] ")
-                        +(path==0?"PRIMARY":"SECONDARY")
-                        +" rawEntityHandle="+std::to_string(candidate.nativeHandle)
-                        +" level="+std::to_string(candidate.levelGeneration)
-                        +" (pre-interaction filter, NOT verified physics)");
-                }
-            }
-        }
-        // DOOM has also resolved valid entity pointers at the two native
-        // FocusTracker output sites. Log ONLY image-relative vtable
-        // fingerprints and native handles, not live pointers or body data.
-        // A positive resolver result is still NOT sufficient for red laser
-        // feedback, grabbing, or Vacuum-style physics.
-        if(in.enabled&&in.gameplay){
-            static std::array<unsigned long long,2> lastResolvedSequence{};
-            static std::array<unsigned long long,2> lastResolvedReportAt{};
-            static std::array<unsigned long long,2> lastResolvedVtableRva{};
-            static std::array<unsigned int,2> lastResolvedHandle{};
-            for(unsigned int path=0;path<2;++path){
-                KharvoxWorldGrabResolvedEntity resolved{};
-                if(!KharvoxCameraReadWorldGrabResolvedEntity(path,resolved)
-                    ||resolved.sampleSequence==lastResolvedSequence[path])
-                    continue;
-                lastResolvedSequence[path]=resolved.sampleSequence;
-                const auto now=GetTickCount64();
-                auto& clue=inspector.paths[path];
-                const bool changedEntity=!clue.hasResolved
-                    ||clue.nativeHandle!=resolved.nativeHandle
-                    ||clue.vtableRva!=resolved.vtableRva;
-                clue.hasResolved=true;
-                clue.hasCandidate=true;
-                clue.nativeHandle=resolved.nativeHandle;
-                clue.vtableRva=resolved.vtableRva;
-                clue.vtableInExecutable=resolved.vtableInExecutable;
-                clue.levelGeneration=resolved.levelGeneration;
-                clue.lastResolvedMs=now;
-                clue.lastCandidateMs=now;
-                clue.nativeClassName=resolved.nativeClassName.data();
-                if(changedEntity)inspector.lastEvent=
-                    "DOOM resolved entity (not a physics hit)";
-                const bool changed=resolved.vtableRva!=lastResolvedVtableRva[path]
-                    ||resolved.nativeHandle!=lastResolvedHandle[path];
-                if((changed&&now-lastResolvedReportAt[path]>=1000)
-                    ||now-lastResolvedReportAt[path]>=6000){
-                    lastResolvedReportAt[path]=now;
-                    lastResolvedVtableRva[path]=resolved.vtableRva;
-                    lastResolvedHandle[path]=resolved.nativeHandle;
-                    log(std::string("[WORLD-GRAB-RESOLVED] ")
-                        +(path==0?"PRIMARY":"SECONDARY")
-                        +" handle="+std::to_string(resolved.nativeHandle)
-                        +" entityVtableRva="+std::to_string(resolved.vtableRva)
-                        +" class="+(resolved.nativeClassName[0]
-                          ?std::string(resolved.nativeClassName.data())
-                          :std::string("unknown"))
-                        +" inDOOMImage="+(resolved.vtableInExecutable?"yes":"no")
-                        +" level="+std::to_string(resolved.levelGeneration)
-                        +" (DOOM entity, dynamic physics not verified)");
-                }
-            }
-        }
-        if(in.enabled)for(int hand=0;hand<2;++hand){
-            if(events.started[hand]){
-                inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
-                    +" Grip pressed - looking for native object";
-                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" free-hand Grip detected; physics method="
-                    +std::to_string(physicsMode)
-                    +" status="+std::to_string(inspector.physicsStatus));
-            }
-            if(events.pastReach[hand])
-                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" 0.90m advisory reach exceeded; NO movement restriction");
-            if(events.released[hand]){
-                inspector.lastEvent=std::string(hand?"RIGHT":"LEFT")
-                    +" Grip released - physics edit stopped";
-                log(std::string("[WORLD-GRAB-PROBE] ")+(hand?"RIGHT":"LEFT")
-                    +" Grip released; physics edit stopped");
-            }
-        }
-    }
     const bool manualMove=std::abs(s.leftStick.x)>.15f||std::abs(s.leftStick.y)>.15f;
     // Manual locomotion is body-relative by default. Native room-scale body
     // following remains a separate synthesized stick source.
@@ -5414,21 +5130,9 @@ void updateGameplayActions(XrTime displayTime){
     const bool worldInteractionFocus=kharvox::worldHandFocusContext(
         KharvoxCameraWorldActive(),cutscene,pauseMenu,fullscreenMenu,
         deathMenu,s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed);
-    // A gripped free hand becomes the native interaction-ray source ONLY
-    // inside the opted-in DEV experiment. The probe already excludes
-    // weapon bracing, shoulder/wheel ownership, menus and invalid tracking.
-    // Normal Hand Focus and USE are restored immediately on Grip release.
-    const bool worldGrabFreeHandFocus=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        &&kharvox::worldGrabBorrowNativeFocus(
-        s.vrHandMenu.experimentalWorldGrabProbeEnabled,gameplay,
-        worldInteractionFocus,
-        s.worldGrabProbe.held[s.weaponHandLeft?1u:0u],
-        syncAttackActive||s.chainsawKillLatched
-            ||KharvoxCameraLedgeTransitionActive()
-            ||KharvoxCameraBossSequenceActive());
     if((s.customMods.handFocusedRs&&worldInteractionFocus)
         ||(s.customMods.boxingGuard&&gameplay)
-        ||worldGrabFreeHandFocus){
+        ){
         // Boxing Guard's raised-hands stance still activates its own
         // time dilation. It does NOT switch the interaction aim to head:
         // only native Glory Kills, chainsaw kills, ledges and cinematics
@@ -5468,22 +5172,16 @@ void updateGameplayActions(XrTime displayTime){
             s.boxingHeadFocus=false;
             log("[FOCUS] guard pose released -> Boxing Guard slowdown ended");
         }
-        // Use the same FREE-HAND AIM controller as the DEV laser. GRIP pose
-        // provides physical hand position but is not the laser's origin/axis.
-        // Never reposition the equipped gun or borrow its firing direction.
-        const auto& controller=worldGrabFreeHandFocus
-            ?(s.weaponHandLeft?s.rightController:s.leftController)
-            :weaponController();
+        const auto& controller=weaponController();
         float bodyOrigin[3]{},bodyAxis[9]{};
         // Native actions own HEAD focus for the duration of their authored
         // executions. Otherwise always use the current physical weapon
         // controller (left or right), no persistent toggle/RS dependency.
-        if((worldGrabFreeHandFocus
-            ||kharvox::useWeaponHandFocus(
+        if(kharvox::useWeaponHandFocus(
                 s.customMods.handFocusedRs,worldInteractionFocus,
                 syncAttackActive,
                 s.chainsawKillLatched,KharvoxCameraLedgeTransitionActive(),
-                KharvoxCameraBossSequenceActive()))
+                KharvoxCameraBossSequenceActive())
             &&controller.valid&&s.headZeroValid
             &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis)){
             const auto relative=controllerRelativeToBodyTrackingOrigin(controller);
@@ -5506,53 +5204,16 @@ void updateGameplayActions(XrTime displayTime){
                     +bodyAxis[6+axis]*localDirection[2];
             }
             KharvoxCameraSetFocusHandPose(worldOrigin,worldDirection,true);
-            // The focus laser uses AIM, but an actual grab attaches to GRIP.
-            // Publish the complete physical GRIP pose, transformed through
-            // the same current native player-body matrix as the focus ray.
-            const auto& gripController=s.weaponHandLeft
-                ?s.rightGripController:s.leftGripController;
-            if(worldGrabFreeHandFocus&&gripController.valid
-                &&gripController.positionTracked){
-                const auto grip=controllerRelativeToBodyTrackingOrigin(
-                    gripController);
-                const float localGrip[3]{
-                    -grip.position.z*s.worldScale,
-                    -grip.position.x*s.worldScale,
-                    grip.position.y*s.worldScale};
-                float nativeGripOrigin[3]{},nativeGripAxis[9]{};
-                for(int j=0;j<3;++j)
-                    nativeGripOrigin[j]=bodyOrigin[j]
-                        +bodyAxis[j]*localGrip[0]
-                        +bodyAxis[3+j]*localGrip[1]
-                        +bodyAxis[6+j]*localGrip[2];
-                for(int col=0;col<3;++col){
-                    const XrVector3f trackingAxis=rotateVector(
-                        grip.orientation,col==0?XrVector3f{1,0,0}
-                            :col==1?XrVector3f{0,1,0}
-                                   :XrVector3f{0,0,1});
-                    const float localAxis[3]{
-                        -trackingAxis.z,-trackingAxis.x,trackingAxis.y};
-                    for(int j=0;j<3;++j)
-                        nativeGripAxis[col*3+j]=
-                            bodyAxis[j]*localAxis[0]
-                            +bodyAxis[3+j]*localAxis[1]
-                            +bodyAxis[6+j]*localAxis[2];
-                }
-                KharvoxCameraSetWorldGrabHandPose(
-                    nativeGripOrigin,nativeGripAxis,true);
-            }else{
-                KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
-            }
         }else{
             KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
-            KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
-        }
+        }        }else{
+            KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
+            }
     }else{
         s.boxingPoseStartedAt=0;
         s.headFocusHeldUntil=0;
         s.boxingHeadFocus=false;
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
-        KharvoxCameraSetWorldGrabHandPose(nullptr,nullptr,false);
     }
     // All three are independent mods. Boxing overrides fast kill timing only
     // while head-focus boxing mode is active. Otherwise checkbox-controlled
@@ -8820,17 +8481,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[0]
              ||s.vrLiveSettings.levelDisplayEnabled[1]
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
-    // Experimental World Grab inspector is painted on the existing
-    // transparent in-game menu/stats quad. Native release never requests
-    // this extra overlay and normal stats continue to coexist with it.
-    const bool grabInspectorView=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        &&s.worldGrabInspector.enabled&&deathCounterGameplay
-        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
-        &&!controllerReconnectBannerVisible()
-        &&!s.firstTimeSetupNotice.visible&&!s.gameplayWelcomeNotice.visible;
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
-            ||grabInspectorView
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed)
         &&vrHandMenuSurface.ready){
         XrSwapchainImageAcquireInfo acquire{XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
@@ -8941,22 +8593,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const kharvox::hands::HandGameplayState currentHandGameplay{
         nativeFrameValid?static_cast<KharvoxWeaponKind>(nativeFrame.pose.weaponKind):KharvoxWeaponCurrentKind(),
         nativeFrameValid?nativeFrame.pose.leftHanded:s.weaponHandLeft};
-    // Debugging uses the FREE controller's native OpenXR AIM, not GRIP.
-    const auto& freeAim=currentHandGameplay.leftHanded
-        ?(aerSourceQualified?aerCapturedInput.rightAim:sourceRightAimController)
-        :(aerSourceQualified?aerCapturedInput.leftAim:sourceLeftAimController);
-    const bool showGrabAim=KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        &&kharvox::worldGrabDebugLaserVisible({
-        s.vrHandMenu.experimentalWorldGrabProbeEnabled,
-        handGameplayActive,
-        freeAim.valid&&freeAim.positionTracked,
-        !controllerOnlyLocked.load(std::memory_order_acquire)
-            &&s.trackingHeadPositionValid,
-        s.behindHeadWheelActive||s.hudWeaponWheelPresented,
-        s.twoHandLatched||s.twoHandCalibrationMode,
-        s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed});
-    const auto sourceGrabAim=showGrabAim
-        ?handPose(freeAim):kharvox::hands::HandPose{};
     // AER completes a stereo pair over two native frames. Hold the same
     // controller sample for both eyes so scene integration cannot reintroduce
     // near-field stereo shimmer/double vision.
@@ -8965,7 +8601,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         s.integratedPairSourcePoseId=aerSourceQualified?aerSourceObservation.key.poseId:0;
         s.integratedPairLeftHand=sourceLeftHandPose;
         s.integratedPairRightHand=sourceRightHandPose;
-        s.integratedPairGrabDebugLaser=sourceGrabAim;
         s.integratedPairHandVisibility=handVisibility;
         s.integratedPairHandGameplay=currentHandGameplay;
         s.integratedPairHandsValid=true;
@@ -9003,9 +8638,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             kharvox::sfs::sourceLayout(s.device,src,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR),it->second.extent,it->second.format,
             s.stereoCacheRevision[currentRenderEye]+1);
     kharvox::hands::HandPose sceneLaser{};
-    // Stable source-paired cyan debug laser; never changes muzzle laser.
-    const auto grabDebugLaser=showGrabAim
-        ?s.integratedPairGrabDebugLaser:kharvox::hands::HandPose{};
     XrVector3f laserOrigin{},laserDirection{};
     if(s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
         &&(!aerSourceMode||aerSourceQualified)
@@ -9046,7 +8678,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             &&handSceneTarget.colorFormat==it->second.format;
         if(!available){
             static bool laserDepthMissingLogged=false;
-            if((sceneLaser.valid||grabDebugLaser.valid)&&!laserDepthMissingLogged){
+            if(sceneLaser.valid&&!laserDepthMissingLogged){
                 log("[LASER] scene depth unavailable; beam withheld (no overlay fallback)");
                 laserDepthMissingLogged=true;
             }
@@ -9087,7 +8719,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.commandBuffer,handSceneTarget,sourceHandView,
             integratedLeftHandPose,integratedRightHandPose,
             freshAerHands?kharvox::hands::HandVisibilityOutput{}:integratedHandVisibility,
-            integratedHandGameplay,sceneLaser,grabDebugLaser);
+            integratedHandGameplay,sceneLaser,kharvox::hands::HandPose{});
         static bool laserSceneLogged=false;
         if(integrated&&sceneLaser.valid&&!laserSceneLogged){
             log("[LASER] scene-depth beam recorded with completed weapon source; compositor ribbons removed");
