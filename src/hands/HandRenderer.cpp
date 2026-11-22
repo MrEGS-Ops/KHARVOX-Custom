@@ -120,6 +120,7 @@ struct HandRenderer::Impl {
     std::vector<SceneDepth> sceneDepthCopies;size_t sceneDepthCopiesUsed{};
     std::array<std::vector<VkImageView>,2> eyeViews{};std::array<std::vector<DepthTarget>,2> depthTargets{};std::array<std::vector<VkFramebuffer>,2> framebuffers{};std::array<VkExtent2D,2> extents{};
     Asset laserAsset{},grabDebugLaserAsset{};
+    std::array<Asset,3> objectDiscoveryRingAssets{};
     std::array<Asset,4> assets{};std::array<bool,4> mirrorX{};HandCalibration leftCalibration{},rightCalibration{};
     std::array<std::array<HandCalibration,2>,
         static_cast<size_t>(KharvoxWeaponKind::Count)> weaponCalibrations{}, defaultWeaponCalibrations{};
@@ -151,7 +152,9 @@ struct HandRenderer::Impl {
         VkExtent2D extent,const HandEyeView&view,const HandPose&leftGrip,
         const HandPose&rightGrip,const HandVisibilityOutput&visibility,
         const HandGameplayState&gameplay,const HandPose&laser = {},
-        const HandPose&grabDebugLaser = {});
+        const HandPose&grabDebugLaser = {},
+        const std::array<ObjectDiscoveryRing,32>& discoveryRings = {},
+        unsigned discoveryRingCount = 0);
     void destroyAsset(Asset&asset);
     HandCalibration& selectedCalibration();
     const HandCalibration& selectedCalibration()const;
@@ -430,10 +433,13 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     VkPipeline selectedPipeline,VkExtent2D extent,const HandEyeView&view,
     const HandPose&leftGrip,const HandPose&rightGrip,
     const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
-    const HandPose&laser,const HandPose&grabDebugLaser){
+    const HandPose&laser,const HandPose&grabDebugLaser,
+    const std::array<ObjectDiscoveryRing,32>& discoveryRings,
+    unsigned discoveryRingCount){
     const bool drawLeft=visibility.left!=HandModelKind::None&&leftGrip.valid;
     const bool drawRight=visibility.right!=HandModelKind::None&&rightGrip.valid;
-    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid)return;
+    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid
+        &&!discoveryRingCount)return;
     const int32_t rectX=std::clamp(view.imageRectX,0,int32_t(extent.width));
     const int32_t rectY=std::clamp(view.imageRectY,0,int32_t(extent.height));
     const uint32_t requestedWidth=view.imageRectWidth?view.imageRectWidth:extent.width;
@@ -496,6 +502,20 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
         };
         drawBeam(laserAsset,laser);
         drawBeam(grabDebugLaserAsset,grabDebugLaser);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        for(unsigned i=0;i<std::min<unsigned>(
+            discoveryRingCount,discoveryRings.size());++i){
+            const auto& marker=discoveryRings[i];
+            if(!marker.pose.valid)continue;
+            auto facing=marker.pose;
+            for(int j=0;j<4;++j)
+                facing.orientation[j]=view.pose.orientation[j];
+            drawBeam(objectDiscoveryRingAssets[
+                std::min<unsigned>(marker.state,2)],facing);
+        }
+#else
+        (void)discoveryRings;(void)discoveryRingCount;
+#endif
     }
 }
 
@@ -773,6 +793,43 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
             impl_->grabDebugLaserAsset.indexMemory);
     impl_->grabDebugLaserAsset.indexCount=
         static_cast<uint32_t>(grabBeamIndices.size());
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Independent depth-tested world markers; no changes to entity meshes.
+    const std::array<std::array<float,3>,3> palette{{
+        {{.52f,.60f,.69f}}, {{.98f,.62f,.10f}}, {{.10f,.92f,.48f}}
+    }};
+    for(unsigned color=0;color<palette.size();++color){
+        std::vector<Vertex> ringVertices;
+        std::vector<uint32_t> ringIndices;
+        for(unsigned edge=0;edge<2;++edge)
+            for(unsigned j=0;j<32;++j){
+                const float theta=6.28318530718f*float(j)/32.f;
+                const float radius=edge?.125f:.112f;
+                Vertex v{};
+                v.position[0]=radius*std::cos(theta);
+                v.position[1]=radius*std::sin(theta);
+                v.normal[2]=1.f;
+                v.baseColor[0]=palette[color][0];
+                v.baseColor[1]=palette[color][1];
+                v.baseColor[2]=palette[color][2];
+                v.material[0]=-1.f;
+                ringVertices.push_back(v);
+            }
+        for(uint32_t j=0;j<32;++j){
+            const uint32_t next=(j+1)%32;
+            for(uint32_t index:{j,next,j+32,next,next+32,j+32})
+                ringIndices.push_back(index);
+        }
+        auto& asset=impl_->objectDiscoveryRingAssets[color];
+        asset.ready=impl_->buffer(ringVertices.size()*sizeof(Vertex),
+            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,ringVertices.data(),
+            asset.vertices,asset.vertexMemory)
+            &&impl_->buffer(ringIndices.size()*sizeof(uint32_t),
+                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,ringIndices.data(),
+                asset.indices,asset.indexMemory);
+        asset.indexCount=static_cast<uint32_t>(ringIndices.size());
+    }
+#endif
     for (size_t eye = 0; eye < 2; eye++) {
       impl_->eyeViews[eye].resize(eyeImages[eye].size());
       impl_->depthTargets[eye].resize(eyeImages[eye].size());
@@ -836,6 +893,7 @@ void HandRenderer::shutdown() {
   }
   impl_->destroyAsset(impl_->laserAsset);
   impl_->destroyAsset(impl_->grabDebugLaserAsset);
+  for(auto& asset:impl_->objectDiscoveryRingAssets)impl_->destroyAsset(asset);
   for (auto &asset : impl_->assets)
     impl_->destroyAsset(asset);
   if (impl_->pipeline)
@@ -902,14 +960,17 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     const HandSceneTarget&target,const HandEyeView&view,
     const HandPose&leftGrip,const HandPose&rightGrip,
     const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
-    const HandPose&laser,const HandPose&grabDebugLaser){
+    const HandPose&laser,const HandPose&grabDebugLaser,
+    const std::array<ObjectDiscoveryRing,32>& discoveryRings,
+    unsigned discoveryRingCount){
     if(!impl_->initialized||!target.colorView||!target.depthView
         ||target.colorFormat==VK_FORMAT_UNDEFINED
         ||!handSceneDepthFormat(target.depthFormat)
         ||target.samples!=VK_SAMPLE_COUNT_1_BIT)return false;
     const bool drawLeft=visibility.left!=HandModelKind::None&&leftGrip.valid;
     const bool drawRight=visibility.right!=HandModelKind::None&&rightGrip.valid;
-    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid)return false;
+    if(!drawLeft&&!drawRight&&!laser.valid&&!grabDebugLaser.valid
+        &&!discoveryRingCount)return false;
     impl_->pollCalibration(gameplay);
     auto*scene=impl_->scenePipeline(target);if(!scene)return false;
     Impl::SceneDepth* privateDepth=nullptr;
@@ -951,7 +1012,8 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     begin.renderArea={{0,0},target.extent};
     impl_->vk.cmdBeginRenderPass(commandBuffer,&begin,VK_SUBPASS_CONTENTS_INLINE);
     impl_->drawGeometry(commandBuffer,scene->pipeline,target.extent,view,leftGrip,
-        rightGrip,visibility,gameplay,laser,grabDebugLaser);
+        rightGrip,visibility,gameplay,laser,grabDebugLaser,
+        discoveryRings,discoveryRingCount);
     impl_->vk.cmdEndRenderPass(commandBuffer);
     return true;
 }
