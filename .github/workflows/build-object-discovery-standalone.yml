@@ -1,0 +1,166 @@
+name: KHARVOX Mods Standalone (Experimental)
+
+on:
+  push:
+    branches: [feature/object-discovery-cleanup-20261122]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'CMakeLists.txt'
+      - '.github/workflows/build-custom.yml'
+      - '.github/workflows/build-object-discovery-standalone.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: kharvox-object-discovery-standalone-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standalone:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout experimental native source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout original standalone manager source at immutable commit
+        uses: actions/checkout@v4
+        with:
+          repository: MrEGS-Ops/KHARVOX-Custom
+          ref: 3f9371efebe568d18e86930901e9d7efcb1e9ed8
+          path: standalone-manager-source
+          persist-credentials: false
+
+      - name: Build the actual KHARVOX Mods Standalone application
+        shell: pwsh
+        run: |
+          ./standalone-manager-source/launcher/KharvoxMods/Generate-MrEGSIcon.ps1
+          if ($LASTEXITCODE -ne 0) { throw "Standalone icon generation failed" }
+          dotnet restore standalone-manager-source/launcher/KharvoxMods/KharvoxMods.csproj
+          if ($LASTEXITCODE -ne 0) { throw "Standalone manager restore failed" }
+          dotnet build standalone-manager-source/launcher/KharvoxMods/KharvoxMods.csproj --configuration Release --no-restore
+          if ($LASTEXITCODE -ne 0) { throw "Standalone manager build failed" }
+          $exe = "standalone-manager-source/launcher/KharvoxMods/bin/Release/net48/KharvoxVRModManager.exe"
+          if (!(Test-Path -LiteralPath $exe)) { throw "Standalone EXE is missing" }
+
+      - name: Select a matching successful experimental native build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $branch = "${{ github.ref_name }}"
+          if ($branch -ne "feature/object-discovery-cleanup-20261122") {
+            throw "Wrong native branch for standalone experimental build"
+          }
+          $paths = @("src", "tests", "CMakeLists.txt",
+            "config/user_calibration_defaults", "launcher/KharvoxLauncher",
+            "tools", "assets", ".github/workflows/build-custom.yml")
+          $selected = $null
+          for ($attempt=0; $attempt -lt 360 -and $null -eq $selected; $attempt++) {
+            $runs = gh run list --repo "${{ github.repository }}" --workflow build-custom.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,status,conclusion
+            if ($LASTEXITCODE -ne 0) { throw "Cannot list native builds" }
+            foreach ($run in @($runs | ConvertFrom-Json)) {
+              if ($run.headBranch -ne $branch -or $run.conclusion -ne "success") { continue }
+              git merge-base --is-ancestor $run.headSha "${{ github.sha }}"
+              if ($LASTEXITCODE -ne 0) { continue }
+              git diff --quiet $run.headSha "${{ github.sha }}" -- $paths
+              if ($LASTEXITCODE -eq 0) { $selected=$run; break }
+            }
+            if ($null -eq $selected) { Start-Sleep -Seconds 15 }
+          }
+          if ($null -eq $selected) { throw "No successful native build with identical runtime source" }
+          "NATIVE_RUN_ID=$($selected.databaseId)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "NATIVE_COMMIT=$($selected.headSha)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Assemble version-verified experimental standalone NativeBridge
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $meta = gh run view $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --json headBranch,headSha,conclusion | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $meta.conclusion -ne "success" -or
+              $meta.headSha -ne $env:NATIVE_COMMIT -or
+              $meta.headBranch -ne "${{ github.ref_name }}") {
+            throw "Native build provenance mismatch"
+          }
+          $out = Join-Path $PWD "dist/KHARVOX-Mods-Standalone-Experimental"
+          $bridge = Join-Path $out "NativeBridge"
+          $stage = Join-Path $env:RUNNER_TEMP "ObjectDiscoveryExperimentalLayer"
+          New-Item -ItemType Directory -Force -Path $out,$bridge,$stage | Out-Null
+          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name RIPSHIFT-Native-Full --dir $bridge
+          if ($LASTEXITCODE -ne 0) { throw "Native Full download failed" }
+          gh run download $env:NATIVE_RUN_ID --repo "${{ github.repository }}" --name RIPSHIFT-Experimental-World-Grab-Layer --dir $stage
+          if ($LASTEXITCODE -ne 0) { throw "Experimental native DLL download failed" }
+          foreach ($item in @("KharvoxLauncher.exe","KharvoxLayer.dll","KharvoxLayer.json","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
+            if (!(Test-Path (Join-Path $bridge $item))) { throw "Native bundle missing $item" }
+          }
+          $provenance = Get-Content (Join-Path $bridge "PATCH-MANIFEST.json") -Raw | ConvertFrom-Json
+          if ($provenance.branch -ne "${{ github.ref_name }}" -or $provenance.commit -ne $env:NATIVE_COMMIT -or $provenance.kind -ne "full") {
+            throw "Native bridge manifest failed"
+          }
+          $dll = Join-Path $stage "KharvoxLayer.dll"
+          $stamp = Join-Path $stage "EXPERIMENTAL-WORLD-GRAB-STAMP.txt"
+          $sfs = Join-Path $stage "native_sfs_build.txt"
+          foreach ($item in @($dll,$stamp,$sfs)) { if (!(Test-Path $item)) { throw "Experimental payload incomplete" } }
+          $expected = @(Get-Content $stamp)
+          $expHash = (Get-FileHash $dll -Algorithm SHA256).Hash.ToLowerInvariant()
+          $nativeHash = (Get-FileHash (Join-Path $bridge "KharvoxLayer.dll") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $sfsStamp = @(Get-Content $sfs)
+          if ($expected.Count -ne 4 -or
+              $expected[0] -ne "RIPSHIFT_EXPERIMENTAL_WORLD_GRAB_1" -or
+              $expected[1] -ne "commit=$env:NATIVE_COMMIT" -or
+              $expected[2] -ne "experimental_sha256=$expHash" -or
+              $expected[3] -ne "native_sha256=$nativeHash" -or
+              $expHash -eq $nativeHash -or
+              $sfsStamp.Count -ne 2 -or
+              $sfsStamp[0] -ne "KHARVOX_NATIVE_SFS_1" -or
+              $sfsStamp[1].ToLowerInvariant() -ne $expHash) {
+            throw "Experimental layer version/hash verification failed"
+          }
+          Copy-Item $dll (Join-Path $bridge "KharvoxLayer.dll") -Force
+          Copy-Item $sfs (Join-Path $bridge "native_sfs_build.txt") -Force
+          Copy-Item $stamp (Join-Path $bridge "EXPERIMENTAL-WORLD-GRAB-STAMP.txt") -Force
+          @(
+            "KHARVOX_MODS_BRIDGE_V1",
+            "baseNativeCommit=$env:NATIVE_COMMIT",
+            "bridgeLauncherCommit=${{ github.sha }}",
+            "managerBuild=${{ github.run_id }}",
+            "launcherUi=cactus-original-v1.1.1-unmodified-ui-v2"
+          ) | Set-Content -Encoding ascii (Join-Path $bridge "KharvoxModsBridge.v1")
+          $source = "standalone-manager-source/launcher/KharvoxMods/bin/Release/net48"
+          Copy-Item (Join-Path $source "KharvoxVRModManager.exe") $out -Force
+          if (Test-Path (Join-Path $source "KharvoxVRModManager.exe.config")) {
+            Copy-Item (Join-Path $source "KharvoxVRModManager.exe.config") $out -Force
+          }
+          if (Test-Path (Join-Path $bridge "UserData")) { throw "NativeBridge contained editable UserData" }
+          New-Item -ItemType Directory -Force -Path (Join-Path $out "UserData") | Out-Null
+          $verify = (Get-FileHash (Join-Path $bridge "KharvoxLayer.dll") -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($verify -ne $expHash) { throw "Wrong runtime DLL in standalone" }
+          @(
+            "KHARVOX Mods Standalone (Experimental) - Object Discovery",
+            "Standalone app source: 3f9371efebe568d18e86930901e9d7efcb1e9ed8",
+            "Experimental native source: $env:NATIVE_COMMIT",
+            "Experimental layer sha256: $expHash",
+            "Build: ${{ github.run_id }}",
+            "",
+            "This experimental build is isolated from the stable standalone updater.",
+            "Do not run a stable updater over the experimental runtime.",
+            "The DEV toggle, sliders and read-only candidate markers are experimental.",
+            "Automatic per-model identification, orange/green profiles and",
+            "grab-to-calibrate are NOT verified or complete.",
+            "Never treat stationary props as grabbable."
+          ) | Set-Content -Encoding utf8 (Join-Path $out "EXPERIMENTAL-README.txt")
+
+      - name: Upload actual KHARVOX Mods Standalone experimental ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: KHARVOX-Mods-Standalone-Experimental
+          path: dist/KHARVOX-Mods-Standalone-Experimental/
+          if-no-files-found: error
+          retention-days: 30
