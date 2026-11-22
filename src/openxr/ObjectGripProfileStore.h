@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <iomanip>
@@ -101,5 +102,46 @@ inline bool objectGripLoad(const std::string& file,ObjectGripProfiles& profiles)
         parsed.emplace(key,profile);
     }
     profiles=std::move(parsed);return true;
+}
+
+inline std::array<float,9> objectGripQuaternionToAxis(
+    const std::array<float,4>& q) {
+    const float x=q[0],y=q[1],z=q[2],w=q[3];
+    return {
+        1.f-2.f*(y*y+z*z),2.f*(x*y+z*w),2.f*(x*z-y*w),
+        2.f*(x*y-z*w),1.f-2.f*(x*x+z*z),2.f*(y*z+x*w),
+        2.f*(x*z+y*w),2.f*(y*z-x*w),1.f-2.f*(x*x+y*y)
+    };
+}
+inline std::array<float,4> objectGripAxisToQuaternion(
+    const float m[9]) {
+    // Native physics basis is column-major, with columns indexing by
+    // col*3 + world coordinate.
+    const float trace=m[0]+m[4]+m[8];
+    float x{},y{},z{},w{};
+    if(trace>0.f){
+        const float t=std::sqrt(std::max(0.f,trace+1.f))*2.f;
+        if(t<1e-5f)return {0.f,0.f,0.f,1.f};
+        w=t*.25f;x=(m[5]-m[7])/t;
+        y=(m[6]-m[2])/t;z=(m[1]-m[3])/t;
+    }else if(m[0]>m[4]&&m[0]>m[8]){
+        const float t=std::sqrt(std::max(0.f,1.f+m[0]-m[4]-m[8]))*2.f;
+        if(t<1e-5f)return {0.f,0.f,0.f,1.f};
+        w=(m[5]-m[7])/t;x=t*.25f;
+        y=(m[3]+m[1])/t;z=(m[6]+m[2])/t;
+    }else if(m[4]>m[8]){
+        const float t=std::sqrt(std::max(0.f,1.f+m[4]-m[0]-m[8]))*2.f;
+        if(t<1e-5f)return {0.f,0.f,0.f,1.f};
+        w=(m[6]-m[2])/t;x=(m[3]+m[1])/t;
+        y=t*.25f;z=(m[7]+m[5])/t;
+    }else{
+        const float t=std::sqrt(std::max(0.f,1.f+m[8]-m[0]-m[4]))*2.f;
+        if(t<1e-5f)return {0.f,0.f,0.f,1.f};
+        w=(m[1]-m[3])/t;x=(m[6]+m[2])/t;
+        y=(m[7]+m[5])/t;z=t*.25f;
+    }
+    const float len=std::sqrt(x*x+y*y+z*z+w*w);
+    if(len<1e-5f)return {0.f,0.f,0.f,1.f};
+    return {x/len,y/len,z/len,w/len};
 }
 } // namespace kharvox
