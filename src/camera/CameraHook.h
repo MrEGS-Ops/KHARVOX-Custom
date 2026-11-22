@@ -66,6 +66,22 @@ bool KharvoxCameraReadWorldGrabResolvedEntity(
     unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample);
 
 
+// Passive, read-only snapshots of native DOOM physics objects encountered
+// by FocusTracker. This is NOT yet a complete nearby-entity enumeration.
+// No native pointers cross the DOOM/OpenXR thread boundary.
+struct KharvoxObjectDiscoveryCandidate {
+    unsigned int handle{};
+    unsigned long long generation{},observedAtMs{};
+    float origin[3]{};
+    bool nativeMotionObserved{};
+};
+struct KharvoxObjectDiscoverySnapshot {
+    std::array<KharvoxObjectDiscoveryCandidate,32> candidates{};
+    unsigned int count{};
+    unsigned long long generation{};
+};
+bool KharvoxCameraReadObjectDiscovery(KharvoxObjectDiscoverySnapshot& sample);
+
 void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
     bool requested, bool active);
