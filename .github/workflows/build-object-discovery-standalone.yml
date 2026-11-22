@@ -22,7 +22,7 @@ concurrency:
 jobs:
   standalone:
     runs-on: windows-latest
-    timeout-minutes: 120
+    timeout-minutes: 50
     steps:
       - name: Checkout experimental native source
         uses: actions/checkout@v4
@@ -64,15 +64,27 @@ jobs:
             "config/user_calibration_defaults", "launcher/KharvoxLauncher",
             "tools", "assets", ".github/workflows/build-custom.yml")
           $selected = $null
-          for ($attempt=0; $attempt -lt 360 -and $null -eq $selected; $attempt++) {
+          # Fail promptly if the matching native compile fails; do not
+          # leave the standalone run sleeping for 90 minutes.
+          for ($attempt=0; $attempt -lt 120 -and $null -eq $selected; $attempt++) {
             $runs = gh run list --repo "${{ github.repository }}" --workflow build-custom.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,status,conclusion
             if ($LASTEXITCODE -ne 0) { throw "Cannot list native builds" }
             foreach ($run in @($runs | ConvertFrom-Json)) {
-              if ($run.headBranch -ne $branch -or $run.conclusion -ne "success") { continue }
+              if ($run.headBranch -ne $branch) { continue }
               git merge-base --is-ancestor $run.headSha "${{ github.sha }}"
               if ($LASTEXITCODE -ne 0) { continue }
               git diff --quiet $run.headSha "${{ github.sha }}" -- $paths
-              if ($LASTEXITCODE -eq 0) { $selected=$run; break }
+              if ($LASTEXITCODE -ne 0) { continue }
+              if ($run.conclusion -eq "success") { $selected=$run; break }
+              if ($run.conclusion -eq "failure") {
+                throw "Matching native build $($run.databaseId) FAILED. Refusing to wait for a DLL that will never be produced."
+              }
+              if ($run.conclusion -eq "cancelled") {
+                Write-Host "Matching native attempt $($run.databaseId) was cancelled; checking for a newer attempt."
+              } else {
+                Write-Host "Matching native build $($run.databaseId) is $($run.status); standalone package is waiting."
+              }
+              break
             }
             if ($null -eq $selected) { Start-Sleep -Seconds 15 }
           }
