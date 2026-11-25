@@ -20,3 +20,5 @@ inline constexpr bool objectGripNeutralResetChordEdge(
     return objectHeld&&objectMode&&supportGripDown
         &&offhandTriggerDown&&!wasDown;
 }
+
+} // namespace kharvox
