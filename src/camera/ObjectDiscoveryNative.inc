@@ -650,10 +650,16 @@ void objectDiscoveryGameTick() {
             float d=desired[i]-item->origin[i];len2+=d*d;
         }
         const float len=std::sqrt(len2);
-        if(!std::isfinite(len)||len>500.f){
+        // A 5m reach can exceed the former 500-unit emergency cutoff
+        // after we move its target front-centre, especially if the player
+        // moves quickly while holding it. Keep a generous finite safety
+        // bound, and increase the per-world-tick tracking cap from 28 to
+        // 40 native units without changing gravity or injecting velocity.
+        if(!std::isfinite(len)||len>1500.f){
             objectDiscoveryReleaseNative();return;
         }
-        const float factor=len>28.f?28.f/len:1.f;
+        constexpr float followPerTick=40.f;
+        const float factor=len>followPerTick?followPerTick/len:1.f;
         for(int i=0;i<3;++i)
             desired[i]=item->origin[i]
                 +(desired[i]-item->origin[i])*factor;
