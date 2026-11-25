@@ -10,7 +10,7 @@ headset testing confirms the new runtime.
 ## Player controls
 
 - Mods > DEV > Experimental Features > Object Discovery Mode is toggleable.
-- Scan radius: **1–15 metres** in 1 m increments, default **5 m**.
+- Scan radius: **1–50 metres** in 1 m increments, default **5 m**.
 - Grab reach: **1–5 metres** in 0.5 m increments, default **2 m**.
 - Scan and reach are separate and saved in `UserData/ObjectGrip/object_discovery.cfg`.
 - Grab Reach Laser: separate default-OFF toggle. A cyan free-hand pointer shows
@@ -18,11 +18,22 @@ headset testing confirms the new runtime.
   tracks the currently selected weapon hand's opposite free-hand AIM ray.
   It remains the configured length even if an object or wall lies before it;
   disabling the visual does not affect scanning or grabbing.
-- Grey world-space ring: candidate with no confirmed real native movement.
-- Amber ring: object physically moved in DOOM's own simulation; no saved grip.
-- Green ring: matching verified model profile or current-level profile exists.
-- Every frame reads current profile state, so saving immediately recolours
-  all rendered objects of the same verified model resource.
+- Each ring has two vertical semicircles: screen-left is the **physical LEFT**
+  hand profile, screen-right is the **physical RIGHT** hand profile.
+- Each half is GREY when native movement is unverified, AMBER for a
+  naturally moved but uncalibrated item, GREEN for a calibrated hand.
+- GREY and AMBER halves show across the full selected 1–50 m scan radius.
+  A GREEN half appears only when the object is within configured Grab Reach
+  (1–5 m); beyond it that half is suppressed independently. If both halves
+  are GREEN and distant, the entire ring is omitted.
+- Every frame reads both hand profiles, so saving recolours matching objects
+  immediately. One object uses one of the 32 visible marker slots even though
+  the GPU may draw two semicircle meshes.
+- Native discovery keeps up to 128 recent candidates; the renderer selects at
+  most 32 useful visible rings, prioritising objects inside Grab Reach, then
+  incomplete calibration, then nearest distance. Filtered distant green halves
+  never consume marker slots. Scan candidates are refreshed with a fixed
+  physics-read budget to avoid large per-frame 50 m spikes.
 - No hand-attached identification circle, old physics inspector or test menu.
 
 ## How an item is caught
@@ -67,6 +78,9 @@ headset testing confirms the new runtime.
 ## Scanner safety and limitations
 
 - Native FocusTracker read-only hooks accumulate valid physics candidates.
+  Up to 128 recent object records are cached; native entity pool sweeping
+  stays bounded at 32 pointers per 125 ms, and actual pose reads use a
+  rotating bounded budget, keeping held objects responsive.
 - The separate nearby scanner attempts to identify the native entity-pointer
   pool via the signature-verified manager pointer and an already resolved
   entity. It traverses bounded pointer entries read-only, rejects invalid
