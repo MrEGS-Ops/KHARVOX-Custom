@@ -98,6 +98,24 @@ headset testing confirms the new runtime.
 - These are disposable development configs: no migration, no flat-path fallback.
   Existing flat files are left untouched and ignored by the current build.
 
+## Held-object collision requirement (pending verified native hook)
+
+- While a movable object is attached to either VR free hand, it must NOT
+  collide with or push the DOOM player capsule. The held object must remain
+  attached if the hand passes through the player body while moving/turning.
+- Restore the original player-collision behaviour on deliberate release,
+  save/drop, cancel, level transition, tracking failure and game exit.
+- Preserve collisions with walls, floors and other world props where
+  technically supported. Never disable all clip contents or the player's
+  own physics as a shortcut.
+- Current limitation: the native rigid body's verified RTTI and its
+  GetOrigin/GetAxis accessors are NOT evidence of an independently verified
+  player-only collision mask/filter or a safe restoration API for DOOM 2016.
+  This requirement is therefore NOT yet implemented; it requires finding
+  and validating the exact DOOM player-vs-held-prop contact path first.
+  Do not mark this feature complete or distribute it as working without
+  successful native compilation and an in-headset player-contact test.
+
 ## Scanner safety and limitations
 
 - Native FocusTracker read-only hooks accumulate valid physics candidates.
