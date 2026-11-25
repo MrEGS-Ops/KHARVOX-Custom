@@ -57,15 +57,19 @@ headset testing confirms the new runtime.
    each step is 1 cm; HOLD the OFFHAND TRIGGER to make each step 5 cm.
    Releasing that trigger immediately restores 1 cm. The separate weapon-hand
    trigger always remains SAVE and never enables quick mode.
-6. HOLD the offhand GRIP for rotation calibration. Each new Grip press captures
-   stable, immutable hand/body orientation references; the right-stick
-   horizontal X smoothly spins the model around its own local upright axis
-   (up to 90 degrees/second), while physically tilting the offhand applies
-   pitch/roll, excluding hand yaw. The object's calibrated position remains
-   hand-anchored and its physics body is continuously updated; neither
-   per-frame physics feedback nor Grip press may snap/drop the item.
-   Releasing Grip retains the updated local rotation and returns to 1/5 cm
-   position adjustments.
+6. HOLD OFFHAND GRIP to freeze the object's complete world-space pose
+   (POSITION and ORIENTATION). The object floats in a fixed world position
+   while the player freely WALKS and TURNS around it. Moving and rotating
+   the free hand does not move the frozen object. On GRIP RELEASE, convert
+   the frozen world pose into the exact new hand-local six-degree-of-freedom
+   offset/orientation based on the released controller's current pose;
+   the object then follows that hand without jumping. The initial grab
+   Grip can engage WORLD FLOAT immediately after acquisition.
+   No right-stick spin or hand-tilt mode remains. Offhand trigger 5 cm
+   fine-tuning and ordinary 1 cm fine-tuning still work with Grip released.
+   The DOOM native thread publishes a pose-lock revision, which OpenXR
+   acknowledges before applying further stick nudges; this prevents
+   one-frame stale calibration feedback from undoing a new lock.
 7. While an object is held, offhand equipment/grenade input is owned by
    Object Grip regardless of whether calibration is open. The native grenade
    trigger and delayed throw/cycle pulses are suppressed before XInput
