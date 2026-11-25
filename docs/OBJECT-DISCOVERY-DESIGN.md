@@ -118,10 +118,24 @@ headset testing confirms the new runtime.
 
 ## Scanner safety and limitations
 
-- Native FocusTracker read-only hooks accumulate valid physics candidates.
-  Up to 128 recent object records are cached; native entity pool sweeping
-  stays bounded at 32 pointers per 125 ms, and actual pose reads use a
-  rotating bounded budget, keeping held objects responsive.
+- True proximity scanning first attempts to bootstrap an independently
+  enumerable, game-owned native entity registry without pointing the gun.
+  It requires DOOM 2016 exact code/data signatures, verified game vtable,
+  consistent bounded entity array, and several valid native RTTI records
+  including a movable prop. If validated, 64 entries are inspected every
+  75 ms independently of the FocusTracker ray and then player-radius filtered.
+  An older independent flat pointer-pool scan (32 entries per 125 ms)
+  remains as an alternative source. Up to 128 recent object records are
+  cached; actual body-pose reads use a rotating bounded budget.
+- The DEV experimental menu now shows SCANNER: PROXIMITY (WORLD REGISTRY)
+  or SCANNER: PROXIMITY (ENTITY POOL) when independently validated.
+  If both validations fail, it explicitly says
+  SCANNER: FOCUS FALLBACK ONLY. In the fallback, the selected 1–50 m radius
+  is only a FILTER on objects already found by the focus system. No
+  guarantee of 360-degree automatic enumeration is claimed until the
+  proximity source status is seen in the headset.
+- The game-thread scanner does not call itself recursively when a native
+  enumerated object is observed; the ordinary world tick handles discovery.
 - Active held-object ownership keeps the native scanner and hand input live
   even when the original interaction focus ray moves elsewhere. The native
   controller input retains the last validated pose for up to 300 ms during
@@ -136,9 +150,9 @@ headset testing confirms the new runtime.
   pool via the signature-verified manager pointer and an already resolved
   entity. It traverses bounded pointer entries read-only, rejects invalid
   memory/RTTI and never invokes unknown virtual functions to enumerate.
-- If pool layout cannot be validated, the system falls back to ray-discovered
-  props; therefore complete 360-degree radius enumeration is **not yet
-  confirmed**.
+- If neither independent entity source validates, the system falls back
+  to ray-discovered props. In-headset validation of full 360-degree radius
+  discovery is still required; a successful native build is insufficient.
 - The visual rings and optional cyan reach laser use a separate late Vulkan
   overlay pipeline with depth testing and writes disabled so they stay visible
   over props and world meshes.
