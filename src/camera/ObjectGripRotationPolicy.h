@@ -71,19 +71,28 @@ inline std::array<float,9> objectGripToHandLocalAxis(
                     hand[axis*3+component]*world[col*3+component];
     return local;
 }
-// EVERY new grab starts at a neutral authored-model orientation
-// (native world identity, local Z up), never at the angle where it landed.
-// No previous saved pose is auto-applied on pickup. Model meshes authored
-// with another intrinsic upright may still require manual rotation.
-inline std::array<float,9> objectGripNeutralLocalAxis(
-    const float handAxis[9]) noexcept {
-    constexpr float authoredUpright[9]{
-        1.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,1.f};
-    return objectGripToHandLocalAxis(handAxis,authoredUpright);
+// Neutral pickup is a single, invariant SIX-DEGREE-OF-FREEDOM pose in
+// the PHYSICAL FREE HAND'S local coordinate system. It must not be computed
+// from the barrel's old physics orientation or from the player's world-up
+// direction: otherwise the same grab gesture gives a different result as
+// the hand moves/turns. The authored model's local Z (usual barrel axis)
+// maps onto the controller's local Y (up while aiming like a gun).
+//
+// Native column-major basis: object X -> hand X, object Y -> -hand Z,
+// object Z -> hand Y. This is a fixed -90 degree rotation around hand X.
+// A mesh authored with a different intrinsic vertical still needs manual
+// calibration, but its starting relative orientation is deterministic.
+inline constexpr std::array<float,9> kObjectGripNeutralLocalAxis{
+    1.f,0.f,0.f,
+    0.f,0.f,-1.f,
+    0.f,1.f,0.f};
+inline constexpr std::array<float,9> objectGripNeutralLocalAxis() noexcept {
+    return kObjectGripNeutralLocalAxis;
 }
-// DOOM native units: physically modest palm-forward starting point. The
-// existing 28 native-unit/tick follow cap avoids giant one-frame teleports.
-// Calibration nudges remain independent and measured in metres.
+// Position in the SAME physical free-hand coordinate frame:
+// centred horizontally, 4 native units below grip and 20 ahead.
+// The native rigid-body follow cap bounds the PHYSICAL transition to
+// this attachment target without leaving the target at the old grab pose.
 inline constexpr std::array<float,3> kObjectGripNeutralOffsetUnits{
     0.f,-4.f,-20.f};
 
