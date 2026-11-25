@@ -478,7 +478,7 @@ struct State {
     unsigned long long objectGripLastFeedbackAtMs{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
     bool objectGripRecalibrateChordPrevious{},objectGripResetPoseThisFrame{};
-    bool objectGripAprevious{},objectGripHasProfile{};
+    bool objectGripHasProfile{};
     unsigned objectGripHandle{},objectGripPhysicalHand{};
     unsigned objectGripPoseLockAck{};
     unsigned long long objectGripNudgeAtMs{};
@@ -5238,27 +5238,42 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripName=kharvox::objectGripAutomaticName(s.objectGripKey);
             if(s.objectGripName.empty())
                 s.objectGripName="Unidentified Movable Object";
-            // Each pickup starts fresh at the native canonical upright
-            // and centred palm-forward pose, regardless of prior profiles.
-            // Existing saves remain for the left/right ring indicators.
-            s.objectGripHasProfile=false;
-            s.objectGripCalibrating=true;
-            for(int i=0;i<3;++i)
-                s.objectGripOffsetUnits[i]=
-                    (i==0?0.f:i==1?-4.f:-20.f);
-            std::copy(std::begin(objectFeedback.localAxis),
-                std::end(objectFeedback.localAxis),
-                s.objectGripRelativeAxis.begin());
+            // SAVED item: normal gameplay pickup, use the exact saved
+            // physical-hand offset + rotation. No calibration overlay.
+            // UNSAVED item: open calibration with a fresh neutral pose.
+            // The two hand profiles remain independent and never infer
+            // persistence from an RTTI class or transient pointer.
+            const auto* saved=kharvox::objectGripSavedPose(
+                s.objectGripProfiles,s.objectGripSessionProfiles,
+                s.objectGripKey,s.objectGripHandle,s.objectGripPhysicalHand);
+            s.objectGripHasProfile=saved!=nullptr;
+            s.objectGripCalibrating=!saved;
+            if(saved){
+                for(int i=0;i<3;++i)
+                    s.objectGripOffsetUnits[i]=saved->offsetMetres[i]
+                        *s.worldScale;
+                const auto rotation=kharvox::objectGripQuaternionToAxis(
+                    saved->localRotation);
+                std::copy(rotation.begin(),rotation.end(),
+                    s.objectGripRelativeAxis.begin());
+            }else{
+                for(int i=0;i<3;++i)
+                    s.objectGripOffsetUnits[i]=
+                        (i==0?0.f:i==1?-4.f:-20.f);
+                std::copy(std::begin(objectFeedback.localAxis),
+                    std::end(objectFeedback.localAxis),
+                    s.objectGripRelativeAxis.begin());
+            }
             s.objectGripNudgeAtMs=0;
             s.objectGripTriggerPrevious=
                 readFloatAction(s.weaponHandLeft
                     ?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
             s.objectGripBackPrevious=readBooleanAction(s.doomJump);
-            s.objectGripAprevious=readBooleanAction(s.doomCrouch);
             log("[OBJECT-GRIP] acquired handle="
                 +std::to_string(s.objectGripHandle)
                 +" model="+s.objectGripName
-                +" fresh neutral pickup");
+                +(saved?" saved profile / normal hold"
+                      :" unsaved / fresh neutral calibration"));
         }
         s.objectGripWasHeld=true;
     }else{
@@ -5284,7 +5299,6 @@ void updateGameplayActions(XrTime displayTime){
     const bool objectFineTuneQuick=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     const bool objectBack=readBooleanAction(s.doomJump);
-    const bool objectA=readBooleanAction(s.doomCrouch);
     // GRIP + OFFHAND TRIGGER re-starts calibration at the canonical
     // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
     const bool recalibrateChord=objectHeld&&objectMode
@@ -5303,11 +5317,6 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripNudgeAtMs=0;
             s.objectGripInputConsumed=true;
             log("[OBJECT-GRIP] offhand Grip+Trigger -> reset neutral pose / recalibrate");
-        }
-        if(!s.objectGripCalibrating&&objectA&&!s.objectGripAprevious){
-            s.objectGripInputConsumed=true;
-            s.objectGripCalibrating=true;
-            s.objectGripNudgeAtMs=0;
         }
         if(s.objectGripCalibrating){
             s.objectGripInputConsumed=true;
@@ -5410,7 +5419,6 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripInputConsumed=true;
     s.objectGripTriggerPrevious=objectTrigger;
     s.objectGripBackPrevious=objectBack;
-    s.objectGripAprevious=objectA;
     // The normal weapon/controller calibration remains completely separate.
     // Once we catch an item, calibration owns the support grip even when
     // DOOM's weapon-bracing capture zone passes near that hand. Rechecking
