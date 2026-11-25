@@ -795,16 +795,18 @@ void objectDiscoveryGameTick() {
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
         held.generation=generation;held.capturedAtMs=now;
+        // Capture an invariant 6DOF controller-relative target on GRAB,
+        // not the body's current position. Otherwise an object one metre
+        // away inherits its pickup offset for several frames, making
+        // neutral calibration appear to follow the old barrel location.
         for(int local=0;local<3;++local){
-            for(int world=0;world<3;++world)
-                held.initialOffset[local]+=input.axis[local*3+world]
-                    *(nearest->origin[world]-input.origin[world]);
+            held.initialOffset[local]=
+                kharvox::kObjectGripNeutralOffsetUnits[local];
             held.relativeOffset[local]=held.initialOffset[local];
         }
-        // Regardless of how the rigid body was lying, begin every pickup
-        // at the authored canonical upright (world identity) and the same
-        // centered palm-forward target. Do not inherit a rolled barrel.
-        const auto neutral=kharvox::objectGripNeutralLocalAxis(input.axis);
+        // Orientation is ALSO expressed in the hand frame, not WORLD
+        // identity. The model's local up maps to the gun-aim hand's up.
+        const auto neutral=kharvox::objectGripNeutralLocalAxis();
         if(!objectDiscoveryAxisOk(neutral.data())){
             held={};return;
         }
@@ -831,7 +833,7 @@ void objectDiscoveryGameTick() {
     // fresh pickup, regardless of the object's current physical attitude.
     // Preserve the native held rigid body; do not drop/regrab or Activate.
     if(input.resetToNeutral&&!held.neutralResetLatched){
-        const auto neutral=kharvox::objectGripNeutralLocalAxis(input.axis);
+        const auto neutral=kharvox::objectGripNeutralLocalAxis();
         if(objectDiscoveryAxisOk(neutral.data())){
             std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
             for(int i=0;i<3;++i){
@@ -898,14 +900,10 @@ void objectDiscoveryGameTick() {
                 std::memcpy(held.relativeAxis,input.wantedAxis,
                     sizeof(held.relativeAxis));
         }else if(!input.calibrating){
-            // Move the object from the catch offset to a palm-adjacent
-            // hold point without an instantaneous physics teleport.
-            const float t=std::clamp(
-                float(now-held.capturedAtMs)/300.f,0.f,1.f);
-            const float ease=t*t*(3.f-2.f*t);
-            for(int i=0;i<3;++i)
-                held.relativeOffset[i]=held.initialOffset[i]*(1.f-ease)
-                    +kharvox::kObjectGripNeutralOffsetUnits[i]*ease;
+            // Normal hold never eases back toward a pickup-time body pose.
+            // Keep the same hand-local position and orientation regardless
+            // of which direction the player moves or points.
+            // (If there is no profile yet, this is the neutral offset.)
         }
         float desired[3]{},desiredAxis[9]{};
         for(int world=0;world<3;++world){
