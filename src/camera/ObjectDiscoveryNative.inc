@@ -27,7 +27,7 @@ struct ObjectDiscoveryHeld {
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
-std::array<ObjectDiscoveryNativeRecord,32> objectDiscoveryNative{};
+std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
 std::mutex objectDiscoveryGripMutex;
 ObjectDiscoveryGripFrame objectDiscoveryGripInput{};
