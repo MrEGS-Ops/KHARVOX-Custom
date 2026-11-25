@@ -476,6 +476,7 @@ struct State {
     bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
     unsigned long long objectGripLastFeedbackAtMs{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
+    bool objectGripRecalibrateChordPrevious{},objectGripResetPoseThisFrame{};
     bool objectGripAprevious{},objectGripHasProfile{};
     unsigned objectGripHandle{},objectGripPhysicalHand{};
     unsigned long long objectGripNudgeAtMs{};
@@ -3894,6 +3895,15 @@ void updateGameplayActions(XrTime displayTime){
     // experimental calibration overlay owns them.
     const bool objectGripCalibrationOwnsInput=gameplay
         &&s.objectGripCalibrating&&s.vrHandMenu.objectDiscovery.enabled;
+    // Attachment has higher priority than the native equipment/grenade
+    // binding, including the same offhand trigger used for 5cm nudges.
+    // Query the DOOM-owned attachment mailbox now, BEFORE weapon/equipment
+    // routing in this XR frame, not only at the later calibration block.
+    KharvoxObjectGripFeedback equipmentGripAttachment{};
+    const bool objectGripOwnsOffhand=gameplay
+        &&s.vrHandMenu.objectDiscovery.enabled
+        &&(s.objectGripWasHeld
+            ||KharvoxCameraReadObjectGrip(equipmentGripAttachment));
     XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
     constexpr float rightStickVerticalDeadzone=.4f;
@@ -5019,8 +5029,20 @@ void updateGameplayActions(XrTime displayTime){
         displayTime>=s.usePulseUntil);
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
-    bool gameplayEquipmentDown=gameplay&&equipmentDown;
-    if(s.customMods.physicalGrenadeThrow){
+    bool gameplayEquipmentDown=gameplay&&equipmentDown
+        &&!objectGripOwnsOffhand;
+    if(objectGripOwnsOffhand){
+        // Kill any queued native grenade pulse before XInput sees it.
+        // A pre-armed chest gesture must not complete on release while
+        // a movable world object is in the free hand.
+        s.grenadeGesture={};
+        s.equipmentThrowPulseUntil=0;
+        s.grenadeCyclePulseUntil=0;
+        s.chestZoneEntered=false;
+        s.nextCookPulseAt=0;
+        s.equipmentButtonPressed=false;
+        gameplayEquipmentDown=false;
+    }else if(s.customMods.physicalGrenadeThrow){
         const auto& support=supportGripController();
         const bool tracked=gameplay&&s.trackingHeadPositionValid
             &&s.headZeroValid&&support.valid&&support.positionTracked;
@@ -5140,7 +5162,8 @@ void updateGameplayActions(XrTime displayTime){
                 leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
                 leftShoulderDown,rightShoulderDown,backDown,
                 gameplay&&switchWeaponModDown,yDown,pauseDown,
-                gameplay&&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
+                gameplay&&!objectGripOwnsOffhand
+                    &&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
@@ -5176,6 +5199,8 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripCalibrating=false;
         s.objectGripHasProfile=false;
         s.objectGripLastFeedbackAtMs=0;
+        s.objectGripRecalibrateChordPrevious=false;
+        s.objectGripResetPoseThisFrame=false;
         KharvoxCameraReleaseObjectGrip();
     }
     // Read feedback before publishing this frame's controller pose. The
@@ -5192,6 +5217,8 @@ void updateGameplayActions(XrTime displayTime){
             KharvoxCameraReleaseObjectGrip();
         s.objectGripCalibrating=false;
         s.objectGripWasHeld=false;s.objectGripHasProfile=false;
+        s.objectGripRecalibrateChordPrevious=false;
+        s.objectGripResetPoseThisFrame=false;
     }else if(objectHeld){
         if(!s.objectGripWasHeld ||s.objectGripHandle!=objectFeedback.handle){
             s.objectGripHandle=objectFeedback.handle;
@@ -5247,7 +5274,24 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     const bool objectBack=readBooleanAction(s.doomJump);
     const bool objectA=readBooleanAction(s.doomCrouch);
+    // GRIP + OFFHAND TRIGGER re-starts calibration at the canonical
+    // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
+    const bool recalibrateChord=objectHeld&&objectMode
+        &&supportGripDown&&objectFineTuneQuick;
+    s.objectGripResetPoseThisFrame=recalibrateChord
+        &&!s.objectGripRecalibrateChordPrevious;
+    s.objectGripRecalibrateChordPrevious=recalibrateChord;
     if(objectHeld&&objectMode){
+        if(s.objectGripResetPoseThisFrame){
+            s.objectGripCalibrating=true;
+            s.objectGripHasProfile=false;
+            for(int i=0;i<3;++i)
+                s.objectGripOffsetUnits[i]=
+                    (i==0?0.f:i==1?-4.f:-20.f);
+            s.objectGripNudgeAtMs=0;
+            s.objectGripInputConsumed=true;
+            log("[OBJECT-GRIP] offhand Grip+Trigger -> reset neutral pose / recalibrate");
+        }
         if(!s.objectGripCalibrating&&objectA&&!s.objectGripAprevious){
             s.objectGripInputConsumed=true;
             s.objectGripCalibrating=true;
@@ -5409,7 +5453,8 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripCalibrating,
             s.objectGripCalibrating&&supportGripDown,
             s.objectGripCalibrating&&supportGripDown
-                ?s.rightStick.x:0.f);
+                ?s.rightStick.x:0.f,
+            s.objectGripResetPoseThisFrame);
     }
 #endif
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
