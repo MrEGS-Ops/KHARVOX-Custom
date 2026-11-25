@@ -27,21 +27,17 @@ int main() {
     assert(sanitizedObjectDiscoverySettings({true,49.8f,3.5f})
         .scanRadiusMetres==50.f);
     // Independent physical LEFT and RIGHT halves, not current weapon hand.
-    const float threeMetresSquared=9.f;
-    assert(objectDiscoveryHalfRingState(true,true,16.f,
-        threeMetresSquared)==kObjectDiscoveryRingHidden);
-    assert(objectDiscoveryHalfRingState(true,true,9.f,
-        threeMetresSquared)==2);
-    assert(objectDiscoveryHalfRingState(false,true,16.f,
-        threeMetresSquared)==1);
-    assert(objectDiscoveryHalfRingState(false,false,16.f,
-        threeMetresSquared)==0);
-    assert(!objectDiscoveryRingHasVisibleHalf(
-        kObjectDiscoveryRingHidden,kObjectDiscoveryRingHidden));
-    assert(objectDiscoveryRingHasVisibleHalf(
-        kObjectDiscoveryRingHidden,1));
+    // Green persists across the whole scan radius; grab reach is irrelevant
+    // to the colour. One saved hand remains half green/half amber even
+    // beyond 1m, 2m, or any other selected grab reach.
+    assert(objectDiscoveryHalfRingState(true,true)==2);
+    assert(objectDiscoveryHalfRingState(true,false)==2);
+    assert(objectDiscoveryHalfRingState(false,true)==1);
+    assert(objectDiscoveryHalfRingState(false,false)==0);
+    assert(objectDiscoveryHalfRingState(true,true)==2
+        &&objectDiscoveryHalfRingState(false,true)==1);
     // Near grabs get the 32 visible slots before distant unknowns;
-    // incomplete calibration wins before green-only at equal range.
+    // incomplete calibration wins before fully calibrated at equal range.
     assert(objectDiscoveryRingPrefer(4.f,2,2,25.f,1,1,9.f));
     assert(objectDiscoveryRingPrefer(4.f,1,2,4.f,2,2,9.f));
     assert(!objectDiscoveryRingPrefer(25.f,1,1,4.f,2,2,9.f));
