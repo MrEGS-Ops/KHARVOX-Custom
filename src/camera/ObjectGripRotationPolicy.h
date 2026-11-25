@@ -71,6 +71,23 @@ inline std::array<float,9> objectGripToHandLocalAxis(
                     hand[axis*3+component]*world[col*3+component];
     return local;
 }
+// A newly grabbed, unconfigured rigid body should start from its authored
+// model orientation (native world identity, local Z up), not the random angle
+// it happened to land at. This uses no model heuristics or physics wakeups.
+// Model-authored meshes whose canonical upright is not local +Z still need
+// one deliberate user calibration; saved per-hand profiles remain authoritative.
+inline std::array<float,9> objectGripNeutralLocalAxis(
+    const float handAxis[9]) noexcept {
+    constexpr float authoredUpright[9]{
+        1.f,0.f,0.f,0.f,1.f,0.f,0.f,0.f,1.f};
+    return objectGripToHandLocalAxis(handAxis,authoredUpright);
+}
+// DOOM native units: physically modest palm-forward starting point. The
+// existing 28 native-unit/tick follow cap avoids giant one-frame teleports.
+// Calibration nudges remain independent and measured in metres.
+inline constexpr std::array<float,3> kObjectGripNeutralOffsetUnits{
+    0.f,-4.f,-20.f};
+
 inline float objectGripSpinAxis(float rightStickX) noexcept {
     if(!std::isfinite(rightStickX)||std::abs(rightStickX)<.28f)return 0.f;
     return std::clamp(rightStickX,-1.f,1.f);
