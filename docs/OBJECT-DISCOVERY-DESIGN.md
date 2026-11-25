@@ -48,15 +48,25 @@ headset testing confirms the new runtime.
    be caught. Gun bracing/holsters/weapon wheel retain their input priority.
 4. The item is held in controller-relative six-degree-of-freedom pose.
    An unconfigured item opens a small calibration overlay immediately.
-5. Without Grip: nudge object 1 cm per step using left stick X/Y for
-   horizontal/depth and right stick Y for vertical. Doom movement/turning is
-   suppressed while calibrating. With Grip: the object stays hand-anchored;
-   its world orientation remains fixed while the controller rotates, changing
-   the object's relative orientation without dropping or detaching it.
-6. RT saves; B cancels. The held object is released without an artificial
-   downward impulse. A while holding an already-profiled item reopens
-   calibration.
-7. DOOM's original native gravity resumes after a signature-verified
+5. Without offhand Grip: nudge the object's LOCAL position using left
+   stick X/Y for lateral/depth and right stick Y for vertical. By default
+   each step is 1 cm; HOLD the OFFHAND TRIGGER to make each step 5 cm.
+   Releasing that trigger immediately restores 1 cm. The separate weapon-hand
+   trigger always remains SAVE and never enables quick mode.
+6. HOLD the offhand GRIP for rotation calibration. Each new Grip press captures
+   stable, immutable hand/body orientation references; the right-stick
+   horizontal X smoothly spins the model around its own local upright axis
+   (up to 90 degrees/second), while physically tilting the offhand applies
+   pitch/roll, excluding hand yaw. The object's calibrated position remains
+   hand-anchored and its physics body is continuously updated; neither
+   per-frame physics feedback nor Grip press may snap/drop the item.
+   Releasing Grip retains the updated local rotation and returns to 1/5 cm
+   position adjustments.
+7. WEAPON-HAND TRIGGER saves; B cancels. The held item is released without
+   artificial downward impulse. A on a previously profiled item reopens
+   calibration. DOOM locomotion, turning, fire and equipment input are
+   suppressed during calibration, including offhand quick-tune trigger.
+8. DOOM's original native gravity resumes after a signature-verified
    momentum clear and Activate *only for an item that actually moved
    before the grab*. Nothing can be activated by scanning or Grip alone.
 
