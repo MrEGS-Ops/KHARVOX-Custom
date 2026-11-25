@@ -103,6 +103,11 @@ struct KharvoxObjectDiscoverySnapshot {
     unsigned long long generation{};
 };
 bool KharvoxCameraReadObjectDiscovery(KharvoxObjectDiscoverySnapshot& sample);
+// Diagnostic source for the current level, never falsely label a
+// focus-derived radius filter as independent proximity scanning.
+// 0 = focus/ray fallback, 1 = validated independent flat pool,
+// 2 = validated independent game entity registry.
+unsigned KharvoxCameraObjectDiscoverySourceMode();
 
 void KharvoxCameraSetImmersiveCinematicFov(
     float fovXDegrees, float fovYDegrees,
