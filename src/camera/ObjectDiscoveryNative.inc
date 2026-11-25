@@ -520,14 +520,12 @@ void objectDiscoveryGameTick() {
     }
     held.calibrating=input.calibrating;
     if(held.calibrating&&input.freeze){
-        // Rotation calibration: keep the object WORLD-FIXED while the
-        // controller turns, updating the local transform as needed.
+        // Grip-held rotation adjusts only LOCAL orientation. Keep the object
+        // attached at the existing calibrated hand offset; preserving its
+        // current world orientation while the controller turns changes the
+        // saved relative axis. Never freeze physics writes during calibration,
+        // or the barrel visually falls/gets left behind while Grip is down.
         for(int local=0;local<3;++local){
-            float off{};
-            for(int world=0;world<3;++world)
-                off+=input.axis[local*3+world]
-                    *(item->origin[world]-input.origin[world]);
-            held.relativeOffset[local]=off;
             for(int col=0;col<3;++col){
                 float basis{};
                 for(int world=0;world<3;++world)
@@ -536,7 +534,8 @@ void objectDiscoveryGameTick() {
                 held.relativeAxis[col*3+local]=basis;
             }
         }
-    }else{
+    }
+    {
         if(input.calibrating&&input.offsetValid){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
         }else if(!input.calibrating&&input.offsetValid){
