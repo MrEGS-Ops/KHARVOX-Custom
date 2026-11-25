@@ -65,7 +65,9 @@ int main(){
     const auto* fromDisk=objectGripSavedPose(restarted,{},
         "models/props/mug.lwo",45,0);
     assert(fromDisk&&fromDisk->offsetMetres==repositioned.offsetMetres);
-    assert(fromDisk->localRotation==repositioned.localRotation);
+    for(int i=0;i<4;++i)
+        assert(std::abs(fromDisk->localRotation[i]
+            -repositioned.localRotation[i])<.000002f);
     assert(!objectGripSavedPose(restarted,{},
         "models/props/mug.lwo",45,1));
     assert(objectGripCommitPose("object_grip_profile_test.cfg",

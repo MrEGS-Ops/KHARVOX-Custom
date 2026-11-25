@@ -46,7 +46,22 @@ jobs:
           for ($attempt = 1; $attempt -le 240 -and $null -eq $selected; $attempt++) {
             $raw = gh run list --repo $repo --workflow build-ripshift-native.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,conclusion,status
             if ($LASTEXITCODE -ne 0) { throw "Cannot query KHARVOX native builds." }
-            foreach ($candidate in @($raw | ConvertFrom-Json)) {
+            $nativeRuns = @($raw | ConvertFrom-Json)
+            # Don't leave packaging polling for an hour after the exact
+            # source SHA's native build is already known to have failed.
+            $sameSource = @($nativeRuns | Where-Object {
+              $_.headBranch -eq $branch -and
+              $_.headSha -eq "${{ github.sha }}"
+            })
+            $failed = @($sameSource | Where-Object {
+              $_.status -eq "completed" -and
+              $_.conclusion -in @("failure","timed_out","action_required")
+            })
+            if ($failed.Count -gt 0 -and
+                @($sameSource | Where-Object { $_.conclusion -eq "success" }).Count -eq 0) {
+              throw "Native build for current source failed (run $($failed[0].databaseId)); refusing stale package."
+            }
+            foreach ($candidate in $nativeRuns) {
               if ($candidate.headBranch -ne $branch -or $candidate.conclusion -ne "success") { continue }
               git merge-base --is-ancestor $candidate.headSha "${{ github.sha }}"
               if ($LASTEXITCODE -ne 0) { continue }
