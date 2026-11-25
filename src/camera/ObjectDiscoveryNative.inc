@@ -198,6 +198,25 @@ struct ObjectDiscoveryNativePool {
     unsigned cursor{},entries{};
 };
 ObjectDiscoveryNativePool objectDiscoveryNativePool{};
+// A second proven native lead: DOOM's game-owned 32-byte entity registry.
+// Used elsewhere in RIPSHIFT for safely reading pre-spawned map entities.
+// NEVER treat it as a proximity pool until its pointer/count, engine
+// version signatures, and the FocusTracker-known entity all match.
+struct ObjectDiscoveryManagedEntry {
+    std::uint32_t id{},check{};
+    std::uintptr_t entity{};
+    std::uint64_t remaining[2]{};
+};
+static_assert(sizeof(ObjectDiscoveryManagedEntry)==32);
+struct ObjectDiscoveryManagedPool {
+    const unsigned char* begin{};
+    std::uintptr_t game{},imageBase{},imageSize{};
+    unsigned long long generation{},lastAttemptMs{},lastSweepMs{};
+    unsigned cursor{},entries{};
+};
+ObjectDiscoveryManagedPool objectDiscoveryManagedPool{};
+std::atomic<unsigned> objectDiscoverySourceMode{}; // 0=focus only,1=flat pool,2=validated managed registry
+
 void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     std::uintptr_t size,unsigned handle,unsigned long long generation);
 void objectDiscoveryLocateNativePool(const void* knownEntity,
