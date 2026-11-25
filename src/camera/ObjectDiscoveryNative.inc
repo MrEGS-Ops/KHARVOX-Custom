@@ -20,6 +20,7 @@ struct ObjectDiscoveryGripFrame {
     unsigned physicalHand{};
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
+    bool resetToNeutral{}; // one edge, re-arm only when the chord releases
     float wantedOffset[3]{},wantedAxis[9]{};
 };
 struct ObjectDiscoveryHeld {
@@ -30,7 +31,7 @@ struct ObjectDiscoveryHeld {
     float spinDegrees{};
     unsigned long long lastRotationAtMs{},lastGripDownAtMs{};
     unsigned poseReadMisses{};
-    bool rotationActive{};
+    bool rotationActive{},neutralResetLatched{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
@@ -568,6 +569,24 @@ void objectDiscoveryGameTick() {
         objectDiscoveryReleaseNative();return;
     }
     held.calibrating=input.calibrating;
+    // The GRIP+offhand-trigger chord is an explicit re-calibration RESET:
+    // send both pose components to the same neutral starting point as a
+    // fresh pickup, regardless of the object's current physical attitude.
+    // Preserve the native held rigid body; do not drop/regrab or Activate.
+    if(input.resetToNeutral&&!held.neutralResetLatched){
+        const auto neutral=kharvox::objectGripNeutralLocalAxis(input.axis);
+        if(objectDiscoveryAxisOk(neutral.data())){
+            std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
+            for(int i=0;i<3;++i){
+                held.relativeOffset[i]=kharvox::kObjectGripNeutralOffsetUnits[i];
+                held.initialOffset[i]=held.relativeOffset[i];
+            }
+            held.capturedAtMs=now;
+            held.rotationActive=false;
+            held.spinDegrees=0.f;
+        }
+    }
+    held.neutralResetLatched=input.resetToNeutral;
     if(held.calibrating&&input.freeze){
         // A stable once-per-GRIP reference prevents physics feedback from
         // fighting the controller and flipping an item every other frame.
