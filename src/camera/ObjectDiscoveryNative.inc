@@ -16,6 +16,7 @@ struct ObjectDiscoveryGripFrame {
     float origin[3]{},axis[9]{},aim[3]{};
     float reachUnits{150.f};
     float scanUnits{400.f};
+    float spinStickX{}; // right-stick horizontal, only while calibrating with GRIP
     unsigned physicalHand{};
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
@@ -25,6 +26,10 @@ struct ObjectDiscoveryHeld {
     unsigned handle{},physicalHand{};
     unsigned long long generation{},capturedAtMs{};
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
+    float rotationHandStart[9]{},rotationBodyStart[9]{};
+    float spinDegrees{};
+    unsigned long long lastRotationAtMs{};
+    bool rotationActive{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
@@ -539,20 +544,40 @@ void objectDiscoveryGameTick() {
     }
     held.calibrating=input.calibrating;
     if(held.calibrating&&input.freeze){
-        // Grip-held rotation adjusts only LOCAL orientation. Keep the object
-        // attached at the existing calibrated hand offset; preserving its
-        // current world orientation while the controller turns changes the
-        // saved relative axis. Never freeze physics writes during calibration,
-        // or the barrel visually falls/gets left behind while Grip is down.
-        for(int local=0;local<3;++local){
-            for(int col=0;col<3;++col){
-                float basis{};
-                for(int world=0;world<3;++world)
-                    basis+=input.axis[local*3+world]
-                        *item->axis[col*3+world];
-                held.relativeAxis[col*3+local]=basis;
-            }
+        // A stable once-per-GRIP reference prevents physics feedback from
+        // fighting the controller and flipping an item every other frame.
+        // Hand pitch/roll tilts; horizontal right stick spins the object's
+        // own local upright axis. The object stays at the calibrated offset.
+        if(!held.rotationActive){
+            std::memcpy(held.rotationHandStart,input.axis,
+                sizeof(held.rotationHandStart));
+            std::memcpy(held.rotationBodyStart,item->axis,
+                sizeof(held.rotationBodyStart));
+            held.spinDegrees=0.f;
+            held.lastRotationAtMs=now;
+            held.rotationActive=true;
         }
+        const float seconds=std::min<unsigned long long>(
+            now>=held.lastRotationAtMs?now-held.lastRotationAtMs:0,40ULL)
+            *.001f;
+        held.lastRotationAtMs=now;
+        held.spinDegrees=std::remainder(
+            held.spinDegrees
+            +kharvox::objectGripSpinAxis(input.spinStickX)*90.f*seconds,
+            360.f);
+        const auto desiredWorld=kharvox::objectGripTiltAndSpinAxis(
+            input.axis,held.rotationHandStart,held.rotationBodyStart,
+            held.spinDegrees);
+        const auto desiredLocal=kharvox::objectGripToHandLocalAxis(
+            input.axis,desiredWorld.data());
+        if(objectDiscoveryAxisOk(desiredLocal.data()))
+            std::copy(desiredLocal.begin(),desiredLocal.end(),
+                held.relativeAxis);
+    }else{
+        // On GRIP release keep the final local rotation as-is; don't snap.
+        // The next GRIP press takes fresh stable references.
+        held.rotationActive=false;
+        held.lastRotationAtMs=now;
     }
     {
         if(input.calibrating&&input.offsetValid){
