@@ -888,10 +888,9 @@ void paintVrHandMenu() {
                 const unsigned discoverySource=
                     KharvoxCameraObjectDiscoverySourceMode();
                 write(538,620,!cfg.enabled?"SCANNER: OFF"
-                    :discoverySource==2?"SCANNER: PROXIMITY (WORLD REGISTRY)"
-                    :discoverySource==1?"SCANNER: PROXIMITY (ENTITY POOL)"
-                    :"SCANNER: FOCUS FALLBACK ONLY",
-                    discoverySource?RGB(128,255,177):RGB(255,196,112));
+                    :discoverySource==2?"SCANNER: PROXIMITY ACTIVE"
+                    :"SCANNER: PROXIMITY UNAVAILABLE",
+                    discoverySource==2?RGB(128,255,177):RGB(255,196,112));
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
