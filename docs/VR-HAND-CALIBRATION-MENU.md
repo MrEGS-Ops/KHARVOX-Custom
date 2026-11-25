@@ -1,10 +1,10 @@
 # KHARVOX in-headset weapon-hand calibration (initial version)
 
-This is an independent OpenXR compositor overlay in the **mod-enabled NativeBridge**, not a modification to the original DOOM or Cactus launcher's menus.
+This is an independent OpenXR compositor overlay in the **RIPSHIFT native runtime**, not a modification to the original DOOM or Cactus launcher's menus.
 
 ## In-game VR Mods browser
 
-The in-headset MODS window has a six-entry browse-first layout: **Weapon Grip Calibration**, **Gunslinger**, **KILLTIME**, **Physical Glory Kills**, **Physical Crouch**, **PAINSAW**. The two user-toggleable mods, Physical Crouch and PAINSAW, appear together at the end. The old read-only DEV category is hidden/removed; desktop developer toggles remain untouched.
+The in-headset MODS window has a six-entry browse-first layout: **Weapon Grip Calibration**, **Gunslinger**, **KILLTIME**, **Physical Glory Kills**, **Physical Crouch**, **PAINSAW**. The two user-toggleable mods, Physical Crouch and PAINSAW, appear together at the end. The DEV area includes isolated experiments such as Object Discovery; this is distinct from normal gameplay configuration.
 
 With the left stick on the mod list, highlighting a mod presents the right-hand **WHAT IT DOES / HOW TO USE IT** overview rather than configuration widgets. Press **A** or point at **CONFIGURE** and pull trigger to enter settings. **Weapon Grip** opens its dedicated weapon-selection page directly with this ONE action; the redundant intermediate "OPEN WEAPON CALIBRATION" option is gone. Other mods open their existing config controls. While configuring, use the left stick and A or the pointer/trigger as before; **B** returns to the overview. On the overview B closes the Mods window. Fixed-on mods use a disclosure arrow instead of "SET"; only Physical Crouch and PAINSAW show their ON/OFF status. Configurable mod overviews describe gameplay, not weapon-hand calibration instructions.
 

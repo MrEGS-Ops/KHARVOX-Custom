@@ -1,4 +1,4 @@
-# KHARVOX kill speed appearance slider — October 17 proposal
+# RIPSHIFT kill speed appearance slider — October 17 proposal
 
 Status: **experimental prototype now wired into native Hz control on isolated branch; NOT validated in Quest**. The stable
 Build #473 kill-speed and camera paths must remain untouched until there is a

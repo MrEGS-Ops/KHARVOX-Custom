@@ -77,7 +77,7 @@ headset testing confirms the new runtime.
 ## Acceptance gates
 
 1. Windows compiler and policy tests pass on the experimental branch.
-2. The actual KHARVOX Mods Standalone (Experimental) ZIP packages the
+2. The `RIPSHIFT-Experimental` ZIP packages the
    matching experimental native DLL and pinned standalone manager.
 3. In headset, ensure scanner detects candidates automatically as the
    player runs near them and doesn't wake stationary props.

@@ -2,6 +2,13 @@
 
 Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR installation. This changelog describes the current experimental work; successful builds and code tests do not substitute for headset verification.
 
+## 25 November 2026 — RIPSHIFT packaging and name cleanup
+
+- Consolidated the current experimental packaging into `.github/workflows/build-ripshift.yml` with the `RIPSHIFT-Experimental` artifact, preserving the current `_RIPSHIFT.exe` launcher and verified experimental native DLL.
+- Removed obsolete external Mod Manager/updater workflows, archived manager tracking metadata, and the retired GitHub watcher script.
+- Renamed ancillary RIPSHIFT resource-mod and immersion-probe developer tools and updated native CI. Original KHARVOX runtime names remain unchanged where needed for compatibility.
+- This is a packaging/source rename, not headset verification of Object Discovery grabbing.
+
 ## 23 November 2026 — Object Discovery (in development)
 
 - New user-toggleable Object Discovery with separate persisted scan radius (1–15 m, default 5 m) and grab reach (1–5 m, default 2 m).

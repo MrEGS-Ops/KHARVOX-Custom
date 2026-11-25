@@ -1,6 +1,6 @@
-# KHARVOX — ongoing headset & launcher regression tracker
+# RIPSHIFT — archived headset & launcher regression tracker
 
-**Canonical living checklist**. Update this document whenever a fix ships, a headset test passes, or a regression returns. Last updated **2026-10-14**. Last confirmed green baseline before latest targeted kill-speed changes: [Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841). For the newest build, check [Actions on the native fast-kill and wheel fix branch](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions?query=branch%3Awork%2Foct14-restore-native-fast-kills). CI results are **not headset validation**.
+**Archived October 2026 checklist.** Update this document whenever a fix ships, a headset test passes, or a regression returns. Last updated **2026-10-14**. Last confirmed green baseline before latest targeted kill-speed changes: [Windows CI #360](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions/runs/38386136841). For the newest build, check [Actions on the native fast-kill and wheel fix branch](https://github.com/MrEGS-Ops/KHARVOX-Custom/actions?query=branch%3Awork%2Foct14-restore-native-fast-kills). CI results are **not headset validation**.
 
 **Status legend:** `FAIL` = reported broken in headset; `PENDING` = needs user's test; `BLOCKED` = implementation incomplete; `CODE` = shipped in source/CI but unverified in Quest. Never mark PASS without an actual observed pass and a build ID. GitHub Markdown checkboxes can be ticked individually when verified.
 

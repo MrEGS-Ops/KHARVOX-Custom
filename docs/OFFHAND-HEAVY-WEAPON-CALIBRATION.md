@@ -1,5 +1,5 @@
-# KHARVOX heavy-weapon hand calibration — VR menu only
-Active branch: `work/manager-187-wheel-holsters`. Applies to the Mod Manager's NativeBridge, not the original Cactus installation.
+# RIPSHIFT heavy-weapon hand calibration — VR menu only
+Active source: `feature/object-discovery-full-grip-calibration-20261123`. This uses RIPSHIFT's in-headset Mods menu, not a separate external Mod Manager or a replacement for the original KHARVOX installation.
 
 ## In-headset controls
 1. During gameplay, **hold RIGHT thumbstick click for 1 second** to open the VR hand calibration panel. Short click still toggles Hand Focus.
@@ -15,6 +15,6 @@ Active branch: `work/manager-187-wheel-holsters`. Applies to the Mod Manager's N
 - RIGHT Grip + RIGHT thumbstick no longer starts right-glove live calibration; releasing Right Grip cannot save calibration.
 - The only hand calibration entry point is the VR menu. Single-click melee/pause behaviour outside the menu remains unchanged, except Hand Focus (when enabled) intentionally owns right-click. LEFT and RIGHT holster guns have independent primary glove calibrations, marked LEFT, RIGHT or BOTH.
 - Native Gauss/Chaingun gun anchors, mode detection, existing saved hand profiles and active PAINSAW audio remain unchanged.
-- Profiles are stored in `NativeBridge/offhand_right_hand_positions.cfg` and `NativeBridge/two_hand_weapon_profiles_saved.cfg`; per-weapon resets create adjacent `.before-vr-reset.bak` files.
+- Profiles belong in RIPSHIFT's portable UserData calibration storage. Old flat UserData remains readable for backward compatibility; a separate manager NativeBridge folder is not used.
 
 Actual cursor alignment, alternate handle pose, haptics and display legibility still require in-headset testing.
