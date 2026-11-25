@@ -1,20 +1,18 @@
-name: RIPSHIFT VR (Experimental)
+name: RIPSHIFT Experimental Build
 
 on:
   push:
-    branches: [feature/onehand-physical-recoil-calibration, feature/userdata-structured-migration-20261117]
+    branches: [feature/object-discovery-full-grip-calibration-20261123]
     paths:
       - 'src/**'
       - 'tests/**'
       - 'CMakeLists.txt'
       - 'config/user_calibration_defaults/**'
       - 'launcher/KharvoxLauncher/**'
-      - 'launcher/KharvoxMods/**'
-      - 'launcher/KharvoxModsUpdater/**'
       - 'tools/**'
       - 'assets/**'
       - '.github/workflows/build-custom.yml'
-      - '.github/workflows/build-kharvox-mods.yml'
+      - '.github/workflows/build-ripshift.yml'
   workflow_dispatch:
 
 permissions:
@@ -22,13 +20,13 @@ permissions:
   actions: read
 
 concurrency:
-  group: ripshift-retail-${{ github.ref }}
+  group: ripshift-experimental-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   retail-preview:
     runs-on: windows-latest
-    timeout-minutes: 115
+    timeout-minutes: 55
     steps:
       - name: Checkout source and full provenance history
         uses: actions/checkout@v4
@@ -41,7 +39,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $branch = "${{ github.ref_name }}"
-          if ($branch -ne "feature/onehand-physical-recoil-calibration" -and $branch -ne "feature/userdata-structured-migration-20261117") { throw "Unexpected retail preview source branch." }
+          if ($branch -ne "feature/object-discovery-full-grip-calibration-20261123") { throw "Unexpected experimental source branch." }
           $repo = "${{ github.repository }}"
           $nativePaths = @("src","tests","CMakeLists.txt","config/user_calibration_defaults","launcher/KharvoxLauncher","supervisor","tools","assets",".github/workflows/build-custom.yml")
           $selected = $null
@@ -136,7 +134,7 @@ jobs:
               if ((Get-FileHash -Algorithm SHA256 -LiteralPath $file.FullName).Hash -ne (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash) { throw "Factory file conflict: $($file.Name)" }
             } else { Copy-Item -LiteralPath $file.FullName -Destination $target }
           }
-          foreach ($obsolete in @("Get-KHARVOX-Custom-Watcher.ps1","KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","KharvoxModsBridge.v1","PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
+          foreach ($obsolete in @("PATCH-BUILD.txt","PATCH-MANIFEST.json")) {
             Remove-Item -LiteralPath (Join-Path $root $obsolete) -Force -ErrorAction SilentlyContinue
           }
           # Drop retired Supervisor helpers (Revenge Demon removed) and
@@ -273,7 +271,7 @@ jobs:
               throw "Obsolete retail folder still packaged: $old"
             }
           }
-          foreach ($forbidden in @("KharvoxVRModManager.exe","KharvoxVRModManagerUpdater.exe","Get-KHARVOX-Custom-Watcher.ps1")) {
+          foreach ($forbidden in @("*ModManager*.exe","*Watcher*.ps1")) {
             if (Get-ChildItem -LiteralPath $root -Filter $forbidden -File -Recurse) { throw "Forbidden updater/mod executable included: $forbidden" }
           }
           if (Test-Path -LiteralPath (Join-Path $root "sfs-profile")) {
@@ -346,10 +344,32 @@ jobs:
           "Retail ZIP root: $($files.Count) files, direct launcher + assets, no nested ZIP. Original Cactus KHARVOX installation still required." |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
-      - name: Upload experimental RIPSHIFT VR (single ZIP)
+      - name: Verify RIPSHIFT executable and reject retired manager
+        shell: pwsh
+        run: |
+          $root = Join-Path $PWD "dist/RIPSHIFT-VR"
+          if (!(Test-Path (Join-Path $root "_RIPSHIFT.exe"))) {
+            throw "Correct _RIPSHIFT launcher is missing"
+          }
+          if (!(Test-Path (Join-Path $root "KharvoxLayer.dll"))) {
+            throw "Experimental native runtime is missing"
+          }
+          if (Test-Path (Join-Path $root "NativeBridge")) {
+            throw "Wrong legacy standalone manager wrapper detected"
+          }
+          if (Get-ChildItem -LiteralPath $root -Recurse -File |
+              Where-Object { $_.Name -match 'ModManager|Updater' }) {
+            throw "Obsolete standalone manager binaries must never ship"
+          }
+          $product=(Get-Item (Join-Path $root "_RIPSHIFT.exe")).VersionInfo.ProductName
+          if ($product -ne "_RIPSHIFT") {
+            throw "Unexpected launcher product metadata: $product"
+          }
+
+      - name: Upload RIPSHIFT Experimental ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: RIPSHIFT-VR-Experimental
+          name: RIPSHIFT-Experimental
           path: dist/RIPSHIFT-VR/
           if-no-files-found: error
           retention-days: 30
