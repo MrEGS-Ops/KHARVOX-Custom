@@ -871,9 +871,16 @@ void paintVrHandMenu() {
                 };
                 slider(1,277,"SCAN RADIUS",cfg.scanRadiusMetres,1.f,15.f);
                 slider(2,368,"GRAB REACH",cfg.grabReachMetres,1.f,5.f);
-                write(538,480,"Read-only identification enabled.",muted);
-                write(538,518,"Stationary objects cannot be manipulated.",muted);
-                write(538,556,"World-space rings: candidate-only; profile states pending.",RGB(255,187,111));
+                const bool laserSelected=m.hovered==133
+                    ||(m.navigation.usingStick&&m.navigation.actionIndex==3);
+                fill(531,459,384,77,laserSelected
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,476,std::string("GRAB REACH LASER: ")
+                    +(cfg.grabReachLaserEnabled?"ON":"OFF"),
+                    cfg.grabReachLaserEnabled?RGB(128,255,177):white);
+                write(548,507,"A / TRIGGER: TOGGLE",muted);
+                write(538,562,"Cyan laser = exact grab reach (1-5m).",muted);
+                write(538,592,"Only naturally moving objects can be grabbed.",muted);
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
