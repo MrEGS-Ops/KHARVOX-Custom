@@ -841,20 +841,26 @@ void paintVrHandMenu() {
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt==D::GrappleAnchor){
                 const bool on=m.grappleAnchor.enabled;
-                fill(531,186,384,65,m.hovered==130
+                fill(531,186,384,66,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,202,"GRAPPLE ANCHOR",white);
                 write(843,202,on?"ON":"OFF",on?RGB(128,255,177):muted);
                 write(548,230,"A / TRIGGER: TOGGLE",muted);
-                write(538,289,"Aim laser at a movable prop, then Grip.",white);
-                write(538,335,"The selected ray point pulls to your hand.",white);
-                write(538,381,"The object then follows your wrist in 6DOF.",white);
-                write(538,442,"TEST LIMITATION:",RGB(255,196,112));
-                write(538,472,"Ray point uses a geometry proxy, not",muted);
-                write(538,500,"a verified native mesh collision hit.",muted);
-                write(538,564,"Overrides Smart Grip while ON.",muted);
+                const bool preview=m.grappleAnchor.barrelSurfacePreview;
+                fill(531,277,384,77,m.hovered==131
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,290,"TECH BARREL OUTLINE PREVIEW",white);
+                write(843,290,preview?"ON":"OFF",
+                    preview?RGB(128,255,177):muted);
+                write(548,322,"A / TRIGGER: TOGGLE",muted);
+                write(538,385,"Uses barrel's orientation for hit point.",white);
+                write(538,423,"Preserves 6DOF hand attachment.",white);
+                write(538,472,"NOT YET EXACT RENDER MESH",RGB(255,196,112));
+                write(538,505,"Outline dimensions are estimates;",muted);
+                write(538,533,"no collider or mesh vertices are used.",muted);
+                write(538,572,"Other objects keep original grapple.",muted);
                 write(538,612,m.objectDiscovery.enabled
-                    ?"Discovery active. Only moving props grab."
+                    ?"Discovery active. Moving props only."
                     :"ENABLE OBJECT DISCOVERY FIRST",m.objectDiscovery.enabled
                         ?RGB(128,255,177):RGB(255,196,112));
             }else if(opt==D::SmartGrip){

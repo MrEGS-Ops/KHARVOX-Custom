@@ -222,10 +222,11 @@ int main(){
     GrappleAnchorSettings grapple{};
     assert(!grapple.enabled);
     grapple.enabled=true;
+    grapple.barrelSurfacePreview=true;
     assert(grappleAnchorSave("grapple_anchor_test.cfg",grapple));
     GrappleAnchorSettings grappleLoaded{};
     assert(grappleAnchorLoad("grapple_anchor_test.cfg",grappleLoaded));
-    assert(grappleLoaded.enabled);
+    assert(grappleLoaded.enabled&&grappleLoaded.barrelSurfacePreview);
     const float rayOrigin[3]{0,0,0};
     const float rayForward[3]{0,0,1};
     const float boxOrigin[3]{0,0,100};
@@ -258,6 +259,44 @@ int main(){
             worldHit+=nativeAxis[col*3+i]*localHit[col];
         assert(std::abs(worldHit-rayOrigin[i])<.01f);
     }
+    // A named asset is useful as an identity, but does not supply geometry.
+    assert(grappleIdentifiedTechBarrel(
+        "models/props/UAC_Barrel_Tech_Red.md6mesh"));
+    assert(!grappleIdentifiedTechBarrel("models/props/other_barrel.mesh"));
+    const float barrelCentre[3]{0,0,0};
+    const float fromSide[3]{0,-100,0};
+    const float sideRay[3]{0,1,0};
+    GrappleRayAnchor visual{};
+    assert(grappleBarrelOutlineHit(fromSide,sideRay,barrelCentre,
+        unitAxis,200,visual));
+    assert(visual.source==GrappleContactSource::ApproximateBarrel);
+    assert(!visual.exactVisualMeshHit);
+    assert(std::abs(visual.worldPoint[1]+26.f)<.01f);
+    const float fromAbove[3]{12,0,100};
+    const float downRay[3]{0,0,-1};
+    assert(grappleBarrelOutlineHit(fromAbove,downRay,barrelCentre,
+        unitAxis,200,visual));
+    assert(std::abs(visual.worldPoint[2]-37.f)<.01f);
+    const float missedTop[3]{50,0,100};
+    assert(!grappleBarrelOutlineHit(missedTop,downRay,barrelCentre,
+        unitAxis,200,visual));
+    const float rotatedAxis[9]{0,0,-1,0,1,0,1,0,0};
+    const float fromRight[3]{100,0,0},leftRay[3]{-1,0,0};
+    assert(grappleBarrelOutlineHit(fromRight,leftRay,barrelCentre,
+        rotatedAxis,200,visual));
+    assert(std::abs(visual.worldPoint[0]-37.f)<.01f);
+    // Exact rendered triangles, when genuinely available, have an entirely
+    // separate source tag. Never mislabel the analytic cylinder as exact.
+    const float renderedTriangle[9]{
+        0,0,12, 20,0,12, 0,20,12};
+    const float aimAtFace[3]{2,2,0};
+    assert(grappleRenderTriangleHit(aimAtFace,rayForward,
+        renderedTriangle,1,200,visual));
+    assert(visual.exactVisualMeshHit
+        &&visual.source==GrappleContactSource::VerifiedRenderTriangles);
+    assert(std::abs(visual.worldPoint[2]-12.f)<.001f);
+    assert(!grappleRenderTriangleHit(aimAtFace,rayForward,
+        nullptr,0,200,visual));
     std::remove("grapple_anchor_test.cfg");
     std::remove("smart_grip_test.cfg");
     std::remove("object_grip_profile_test.cfg");

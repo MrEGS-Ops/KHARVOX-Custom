@@ -178,7 +178,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Pulls the targeted point toward your grip.",
             "Keeps original tilt; follows your wrist after.",
             "NO saved profiles; independent Smart Grip test.",
-            "Currently an ESTIMATED ray point, not mesh hit.",
+            "Optional tech-barrel outline contact preview.",
             "Object Discovery ON; moving props only."}}};
         case D::SmartGrip:return {{{
             "Independent, optional object grab experiments.",

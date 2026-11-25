@@ -21,6 +21,7 @@ struct ObjectDiscoveryGripFrame {
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
     bool smartGripEnabled{},meshInspectorEnabled{},grappleAnchorEnabled{};
+    bool grappleBarrelSurfacePreview{};
     unsigned smartGripModes{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
@@ -301,6 +302,49 @@ void objectDiscoveryInspectMesh(const ObjectDiscoveryNativeRecord& item){
     }
     log("[MESH-INSPECT] candidate_bounds="+std::to_string(hits)
         +" (mesh center/size/shape NOT yet verified)");
+}
+
+// Passive read-only lead gathering for the genuine visible/rendered mesh.
+// A model path or idRenderModel RTTI by itself does NOT validate the
+// renderer's triangle layout. Never dereference a guessed triangle array,
+// or use candidate bounds as an exact attachment point.
+void objectDiscoveryInspectRenderMesh(const ObjectDiscoveryNativeRecord& item){
+    log("[RENDER-MESH] handle="+std::to_string(item.handle)
+        +" verified_asset_key="+std::string(item.modelKey[0]
+            ?item.modelKey.data():"UNRESOLVED")
+        +" probing entity/physics RTTI for render-model ownership");
+    unsigned seen{};
+    for(int owner=0;owner<2;++owner){
+        const auto* bytes=static_cast<const unsigned char*>(
+            owner?item.body:item.entity);
+        const std::size_t limit=owner?0x800:0x3000;
+        for(std::size_t off=0;bytes&&off<limit;off+=sizeof(void*)){
+            if(!objectDiscoveryReadable(bytes+off,sizeof(void*)))break;
+            const void* ptr{};
+            std::memcpy(&ptr,bytes+off,sizeof(ptr));
+            if(!objectDiscoveryReadable(ptr,sizeof(std::uintptr_t)))continue;
+            std::uintptr_t vt{};
+            std::memcpy(&vt,ptr,sizeof(vt));
+            if(vt<item.imageBase||vt-item.imageBase>=item.imageSize)continue;
+            std::array<char,80> type{};
+            if(!readNativeWorldGrabClassLabel(vt,item.imageBase,
+                    item.imageSize,type))continue;
+            if(std::strstr(type.data(),"RenderModel")==nullptr
+                &&std::strstr(type.data(),"ModelStatic")==nullptr
+                &&std::strstr(type.data(),"ModelDynamic")==nullptr)continue;
+            if(seen<8)log("[RENDER-MESH] RTTI-verified "
+                +std::string(owner?"physics":"entity")
+                +" model pointer at offset="+std::to_string(off)
+                +" class="+std::string(type.data())
+                +" (triangle source UNVERIFIED)");
+            ++seen;
+        }
+    }
+    log("[RENDER-MESH] verified_rtti_candidates="
+        +std::to_string(seen)
+        +" actual_render_triangles=NOT_AVAILABLE"
+        +" visual_surface_hit=NOT_IMPLEMENTED"
+        +" no collision mesh substituted");
 }
 
 ObjectDiscoveryNativeRecord* objectDiscoveryNativeByHandle(unsigned handle) {
@@ -786,6 +830,8 @@ void objectDiscoveryGameTick() {
         ObjectDiscoveryNativeRecord* nearest{};
         float best2=input.grappleAnchorEnabled
             ?55.f*55.f:input.reachUnits*input.reachUnits;
+        float nearestBarrelHit=input.reachUnits+1.f;
+        bool selectedBarrelSurface{};
         for(auto& item:objectDiscoveryNative){
             if(!item.entity||!item.poseValid||!item.nativeMotionObserved
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
@@ -798,12 +844,29 @@ void objectDiscoveryGameTick() {
                 forward+=delta*input.aim[axis];
             }
             if(input.grappleAnchorEnabled){
+                const bool barrelApprox=input.grappleBarrelSurfacePreview
+                    &&kharvox::grappleIdentifiedTechBarrel(
+                        item.modelKey.data());
                 kharvox::GrappleRayAnchor ray{};
-                if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
-                        item.origin,input.reachUnits,55.f,ray))continue;
-                const float lateral2=ray.missDistance*ray.missDistance;
-                if(lateral2>=best2)continue;
-                best2=lateral2;nearest=&item;
+                if(barrelApprox){
+                    // Intersect only the named barrel's oriented provisional
+                    // silhouette, not a bloated native collision hull.
+                    if(!kharvox::grappleBarrelOutlineHit(
+                            input.rayOrigin,input.aim,
+                            item.origin,item.axis,input.reachUnits,ray))
+                        continue;
+                    if(!selectedBarrelSurface
+                        ||ray.rayDistance<nearestBarrelHit){
+                        selectedBarrelSurface=true;
+                        nearestBarrelHit=ray.rayDistance;nearest=&item;
+                    }
+                }else if(!selectedBarrelSurface){
+                    if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
+                            item.origin,input.reachUnits,55.f,ray))continue;
+                    const float lateral2=ray.missDistance*ray.missDistance;
+                    if(lateral2>=best2)continue;
+                    best2=lateral2;nearest=&item;
+                }
             }else{
                 if(squared>=best2||forward<=0.f
                     ||forward*forward<.64f*squared)continue;
@@ -846,18 +909,31 @@ void objectDiscoveryGameTick() {
             std::array<float,3> offset{};
             std::array<float,9> axis{};
             kharvox::GrappleRayAnchor ray{};
-            if(!kharvox::grapplePickupPose(input.origin,input.axis,
+            const bool barrelApprox=input.grappleBarrelSurfacePreview
+                &&kharvox::grappleIdentifiedTechBarrel(
+                    nearest->modelKey.data());
+            const bool found=barrelApprox
+                ?(kharvox::grappleBarrelOutlineHit(input.rayOrigin,
+                    input.aim,nearest->origin,nearest->axis,
+                    input.reachUnits,ray)
+                  &&kharvox::grapplePickupPoseFromHit(input.origin,
+                    input.axis,nearest->origin,nearest->axis,
+                    ray,offset,axis))
+                :kharvox::grapplePickupPose(input.origin,input.axis,
                     input.rayOrigin,input.aim,nearest->origin,nearest->axis,
-                    input.reachUnits,offset,axis,ray)
-                ||!objectDiscoveryAxisOk(axis.data())){
+                    input.reachUnits,offset,axis,ray);
+            if(!found||!objectDiscoveryAxisOk(axis.data())){
                 held={};return;
             }
+            if(barrelApprox)objectDiscoveryInspectRenderMesh(*nearest);
             std::copy(offset.begin(),offset.end(),held.relativeOffset);
             std::copy(axis.begin(),axis.end(),held.relativeAxis);
             held.grappleAnchor=true;
             log("[GRAPPLE-ANCHOR] grabbed handle="
                 +std::to_string(held.handle)
-                +" contact=ESTIMATED_RAY_PROXY (NOT_MESH_HIT)"
+                +(ray.source==kharvox::GrappleContactSource::ApproximateBarrel
+                    ?" contact=VISUAL_BARREL_OUTLINE_APPROX (NOT_RENDER_MESH)"
+                    :" contact=ESTIMATED_RAY_PROXY (NOT_MESH_HIT)")
                 +" ray_depth="+std::to_string(ray.rayDistance)
                 +" miss="+std::to_string(ray.missDistance)
                 +" world_point="+std::to_string(ray.worldPoint[0])

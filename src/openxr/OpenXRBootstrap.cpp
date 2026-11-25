@@ -5552,7 +5552,8 @@ void updateGameplayActions(XrTime displayTime){
         kharvox::smartGripFlags(s.vrHandMenu.smartGrip),
         s.vrHandMenu.smartGrip.inspectMesh,
         s.vrHandMenu.grappleAnchor.enabled,
-        gripPoseValid?nativeRayOrigin:nullptr);
+        gripPoseValid?nativeRayOrigin:nullptr,
+        s.vrHandMenu.grappleAnchor.barrelSurfacePreview);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile

@@ -106,6 +106,42 @@ headset testing confirms the new runtime.
 - These are disposable development configs: no migration, no flat-path fallback.
   Existing flat files are left untouched and ignored by the current build.
 
+## 25 Nov 2026 visual-barrel identification and Grapple Anchor evidence
+
+- Log `KHARVOX-KHARVOX(20261125-094108).log`: **17** separate
+  acquisitions of handle **745324524** reported the automatic model name
+  **`Uac Barrel Tech Red`**. This is a distinct step forward from the
+  earlier log `KHARVOX-KHARVOX(20261125-080821).log`, where **13**
+  acquisitions of handle **3462377753** were labelled
+  **`Unidentified Movable Object`**. Handles are session-local; matching
+  model names does not prove these handles represent the same instance.
+- User recalled an earlier generic label sounding like "Icon 2". Neither
+  supplied log contains that string. `idProp2` is a plausible native DOOM
+  class label mentioned in code, **not a confirmed historical log label**.
+- The new human-readable `Uac Barrel Tech Red` comes from the normalized
+  verified model-path candidate found on the native movable entity, not from
+  collision mesh measurement or actual render triangles. Log the underlying
+  complete model asset key when capturing further mesh evidence.
+- 17 Grapple Anchor hits in the newer log all used
+  `ESTIMATED_RAY_PROXY (NOT_MESH_HIT)`; zero
+  `[MESH-INSPECT]` entries existed. This explains why a successful hand lock
+  can attach far from the visible barrel. No collision-filtering or exact
+  visual-mesh contact has been verified by this evidence.
+- Separate **Tech Barrel Outline Preview** switch is OFF by default. It
+  performs a finite oriented-cylinder intersection on the identified red
+  barrel instead of choosing a point 20 units in front of its physics origin.
+  Its 26-native-unit radius and 37-unit half-height are *experimental
+  estimates*, not measured model extents. Other items retain the existing
+  ray-grapple estimation. Do not conflate this with genuine render mesh.
+- The CPU render-triangle intersection kernel is implemented and unit-tested,
+  but DOOM's actual static-render vertex/triangle access remains unverified.
+  The read-only render-model ownership probe records possible RTTI types
+  when the outline preview is used, without making unsafe vtable calls or
+  misreporting an approximate hit as an exact one.
+- The next proof needed for the real requested feature is a validated native
+  render-mesh triangle/asset provider, or a verified scene-depth-based hit
+  mapping. No collision mesh fallback may be silently substituted.
+
 ## Held-object collision requirement (pending verified native hook)
 
 - While a movable object is attached to either VR free hand, it must NOT

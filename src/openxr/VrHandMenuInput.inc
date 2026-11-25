@@ -517,7 +517,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=smartInline?6:
-                list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?1:expInline?4:5;
+                list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?2:expInline?4:5;
             const int optionStep=smartInline?66:expInline?91:68;
             const int optionHeight=smartInline?58:expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -859,7 +859,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
                         ?4:entry.developer==kharvox::VrMenuDevOption::SmartGrip
-                            ?6:1; // Smart Grip and Grapple each own their settings
+                            ?6:entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?2:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1058,7 +1058,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
                 }else if(kind==D::GrappleAnchor){
                     const auto previous=m.grappleAnchor;
-                    m.grappleAnchor.enabled=!m.grappleAnchor.enabled;
+                    const int option=chosen-130;
+                    if(option==0)m.grappleAnchor.enabled=!m.grappleAnchor.enabled;
+                    if(option==1)m.grappleAnchor.barrelSurfacePreview
+                        =!m.grappleAnchor.barrelSurfacePreview;
                     if(!kharvox::grappleAnchorSave(kharvox::runtimePathA(
                         "grapple_anchor.cfg"),m.grappleAnchor)){
                         m.grappleAnchor=previous;
@@ -1066,7 +1069,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     }else{
                         m.message=std::string("Grapple Anchor ")
                             +(m.grappleAnchor.enabled?"ON":"OFF")
-                            +" (laser-point estimate; native mesh contact UNVERIFIED)";
+                            +" barrel-outline-proxy="
+                            +(m.grappleAnchor.barrelSurfacePreview?"ON":"OFF")
+                            +" (static render triangles NOT yet accessible)";
                         log("[GRAPPLE-ANCHOR] "+m.message);
                     }
                 }else if(kind==D::SmartGrip){

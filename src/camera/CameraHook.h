@@ -62,7 +62,8 @@ void KharvoxCameraSetObjectGripInput(
     bool pressed,unsigned physicalHand,float reachUnits,
     float scanRadiusUnits,bool enabled,
     bool smartGripEnabled,unsigned smartGripModes,bool inspectMesh,
-    bool grappleAnchorEnabled,const float rayOrigin[3]);
+    bool grappleAnchorEnabled,const float rayOrigin[3],
+    bool grappleBarrelSurfacePreview);
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
     bool calibrating,bool freezeObject,bool resetToNeutral,
