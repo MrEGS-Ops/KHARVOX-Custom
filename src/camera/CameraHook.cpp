@@ -3095,7 +3095,8 @@ void KharvoxCameraSetObjectGripInput(
 }
 void KharvoxCameraSetObjectGripCalibration(
     const float offset[3],const float axis[9],
-    bool calibrating,bool freezeObject,bool resetToNeutral) {
+    bool calibrating,bool freezeObject,bool resetToNeutral,
+    unsigned poseLockAcknowledged) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& f=objectDiscoveryGripInput;
