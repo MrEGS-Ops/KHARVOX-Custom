@@ -187,18 +187,10 @@ ObjectDiscoveryNativeRecord* objectDiscoveryNativeByHandle(unsigned handle) {
         if(item.handle==handle&&item.entity)return &item;
     return nullptr;
 }
-// Read-only, fail-closed discovery of a native entity-pointer pool.
-// The manager slot is proven by both exact FocusTracker instruction
-// signatures at install time. No speculative calls into DOOM are made.
-// If the manager does not expose a pointer pool, ordinary ray-candidates
-// remain available and this scanner stays disabled.
-struct ObjectDiscoveryNativePool {
-    const unsigned char* begin{};
-    std::uintptr_t imageBase{},imageSize{};
-    unsigned long long generation{},lastAttemptMs{},lastSweepMs{};
-    unsigned cursor{},entries{};
-};
-ObjectDiscoveryNativePool objectDiscoveryNativePool{};
+// Single, verified source of Object Discovery candidates: DOOM's
+// game-owned entity registry. Legacy focus-based and flat pointer-pool
+// enumerators are retired. Hand aim still selects WHICH nearby object
+// to catch, but never creates scanner candidates.
 // A second proven native lead: DOOM's game-owned 32-byte entity registry.
 // Used elsewhere in RIPSHIFT for safely reading pre-spawned map entities.
 // NEVER treat it as a proximity pool until its pointer/count, engine
@@ -216,7 +208,7 @@ struct ObjectDiscoveryManagedPool {
     unsigned cursor{},entries{};
 };
 ObjectDiscoveryManagedPool objectDiscoveryManagedPool{};
-std::atomic<unsigned> objectDiscoverySourceMode{}; // 0=focus only,1=flat pool,2=validated managed registry
+std::atomic<unsigned> objectDiscoverySourceMode{}; // 0=offline/unavailable, 2=validated world registry
 
 void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     std::uintptr_t size,unsigned handle,unsigned long long generation);
@@ -225,7 +217,7 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
 // validated for this retail executable by the cinematic manager. Without a
 // FocusTracker seed, require several valid idEntity RTTI records including
 // at least one genuine moveable prop before trusting it for enumeration.
-void objectDiscoveryTryManagedPool(const void* knownEntity,
+void objectDiscoveryTryManagedPool(
     std::uintptr_t imageBase,std::uintptr_t imageSize,
     unsigned long long generation) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
@@ -277,11 +269,8 @@ void objectDiscoveryTryManagedPool(const void* knownEntity,
         ||!objectDiscoveryReadable(reinterpret_cast<const void*>(entries),
             static_cast<std::size_t>(count)*sizeof(ObjectDiscoveryManagedEntry)))
         return;
-    // Initial bootstrap must not depend on which way the gun points.
-    // Check a bounded, evenly distributed set of entries for multiple
-    // valid native idEntity-derived vtables and at least one movable.
-    // A focus-seeded object can also prove the same table identity.
-    bool knownFound{};
+    // Validate the registry on its own. No FocusTracker sample, hand
+    // ray or secondary entity pool is needed to bootstrap.
     unsigned classValid{},movableFound{};
     const auto stride=std::max(1,count/512);
     for(int index=0;index<count;index+=stride){
@@ -291,9 +280,6 @@ void objectDiscoveryTryManagedPool(const void* knownEntity,
             sizeof(entry));
         if(!entry.entity||entry.id!=entry.check
             ||entry.id==0x1fffffe)continue;
-        if(knownEntity&&entry.entity==
-            reinterpret_cast<std::uintptr_t>(knownEntity))
-            knownFound=true;
         const auto* entity=reinterpret_cast<const void*>(entry.entity);
         if(!objectDiscoveryReadable(entity,sizeof(std::uintptr_t)))
             continue;
@@ -311,23 +297,9 @@ void objectDiscoveryTryManagedPool(const void* knownEntity,
             ++movableFound;
         if(classValid>=3&&movableFound>=1)break;
     }
-    // The known FocusTracker object may lie outside the sample; verify it
-    // independently by exact pointer match before accepting this list.
-    if(knownEntity&&!knownFound){
-        for(int index=0;index<count;++index){
-            ObjectDiscoveryManagedEntry entry{};
-            std::memcpy(&entry,reinterpret_cast<const void*>(
-                entries+static_cast<std::size_t>(index)*sizeof(entry)),
-                sizeof(entry));
-            if(entry.entity==reinterpret_cast<std::uintptr_t>(knownEntity)
-                &&entry.id==entry.check&&entry.id!=0x1fffffe){
-                knownFound=true;break;
-            }
-        }
-    }
     std::memcpy(&again,reinterpret_cast<const void*>(game+0xa54d8),8);
     std::memcpy(&againCount,reinterpret_cast<const void*>(game+0xa54e0),4);
-    if((!knownFound&&(classValid<3||movableFound<1))
+    if(classValid<3||movableFound<1
         ||again!=entries||againCount!=count)return;
     pool.begin=reinterpret_cast<const unsigned char*>(entries);
     pool.game=game;pool.imageBase=imageBase;pool.imageSize=imageSize;
@@ -337,82 +309,7 @@ void objectDiscoveryTryManagedPool(const void* knownEntity,
     log("[OBJECT-DISCOVERY] validated independent nearby entity registry; "
         "source=PROXIMITY entries="+std::to_string(count));
 #else
-    (void)knownEntity;(void)imageBase;(void)imageSize;(void)generation;
-#endif
-}
-void objectDiscoveryLocateNativePool(const void* knownEntity,
-    std::uintptr_t imageBase,std::uintptr_t imageSize,
-    unsigned long long generation){
-#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    if(!knownEntity)return;
-    // The managed registry is independently enumerable once validated,
-    // unlike a focus-derived list. Try it even if the legacy pool fails.
-    objectDiscoveryTryManagedPool(knownEntity,imageBase,imageSize,generation);
-    auto& pool=objectDiscoveryNativePool;
-    if(pool.generation!=generation)pool={};
-    const auto now=GetTickCount64();
-    if(pool.begin||now-pool.lastAttemptMs<5000)return;
-    pool.lastAttemptMs=now;pool.generation=generation;
-    // RIP-displacement was verified at FocusTracker's two native
-    // entity-manager callsites. Do not invoke the manager or dereference
-    // it if any page/vtable fails validation.
-    const std::uintptr_t slot=imageBase+0xD48B60+7+0x04DC6B69;
-    if(!objectDiscoveryReadable(reinterpret_cast<const void*>(slot),
-        sizeof(std::uintptr_t)))return;
-    std::uintptr_t manager{};
-    std::memcpy(&manager,reinterpret_cast<const void*>(slot),
-        sizeof(manager));
-    if(!objectDiscoveryReadable(reinterpret_cast<const void*>(manager),
-        0x400))return;
-    std::uintptr_t managerVtable{};
-    std::memcpy(&managerVtable,reinterpret_cast<const void*>(manager),
-        sizeof(managerVtable));
-    if(managerVtable<imageBase
-        ||managerVtable-imageBase>=imageSize)return;
-    constexpr std::size_t testBytes=0x4000;
-    for(std::size_t off=0;off<0x400;off+=sizeof(void*)){
-        const auto field=reinterpret_cast<const unsigned char*>(manager)+off;
-        std::uintptr_t candidate{};
-        std::memcpy(&candidate,field,sizeof(candidate));
-        if(candidate<0x10000||candidate>=imageBase
-            &&candidate-imageBase<imageSize
-            ||!objectDiscoveryReadable(
-                reinterpret_cast<const void*>(candidate),testBytes))
-            continue;
-        auto* table=reinterpret_cast<const unsigned char*>(candidate);
-        bool knownFound{};
-        unsigned entityPointers{};
-        // A real pointer pool must contain the DOOM-resolved entity AND
-        // at least three distinct MSVC idEntity-derived objects.
-        for(unsigned entry=0;entry<testBytes/sizeof(void*);++entry){
-            const void* p{};
-            std::memcpy(&p,table+entry*sizeof(void*),sizeof(p));
-            if(p==knownEntity)knownFound=true;
-            if(!objectDiscoveryReadable(p,sizeof(std::uintptr_t)))continue;
-            std::uintptr_t vt{};
-            std::memcpy(&vt,p,sizeof(vt));
-            if(vt<imageBase||vt-imageBase>=imageSize)continue;
-            std::array<char,80> label{};
-            if(readNativeWorldGrabClassLabel(vt,imageBase,imageSize,label)
-                &&std::strncmp(label.data(),"id",2)==0){
-                ++entityPointers;
-                if(knownFound&&entityPointers>=3)break;
-            }
-        }
-        if(!knownFound||entityPointers<3)continue;
-        pool.begin=table;pool.imageBase=imageBase;
-        pool.imageSize=imageSize;
-        pool.entries=static_cast<unsigned>(testBytes/sizeof(void*));
-        pool.cursor=0;
-        if(!objectDiscoveryManagedPool.begin)
-            objectDiscoverySourceMode.store(1,std::memory_order_release);
-        log("[OBJECT-DISCOVERY] independent flat entity pool validated; "
-            "source=PROXIMITY entries="+std::to_string(pool.entries));
-        break;
-    }
-#else
-    (void)knownEntity;(void)imageBase;
-    (void)imageSize;(void)generation;
+    (void)imageBase;(void)imageSize;(void)generation;
 #endif
 }
 void objectDiscoverySweepNativePool(unsigned long long now,
@@ -491,49 +388,7 @@ void objectDiscoverySweepNativePool(unsigned long long now,
             }
         }
         if(!registry.begin)
-            objectDiscoverySourceMode.store(
-                objectDiscoveryNativePool.begin?1u:0u,
-                std::memory_order_release);
-    }
-    // If the validated world registry is available, don't redundantly
-    // sweep the old flat pointer pool. Both feed the same candidate cache.
-    if(registry.begin&&registry.generation==generation)return;
-    auto& pool=objectDiscoveryNativePool;
-    if(!pool.begin||pool.generation!=generation)return;
-    if(now<pool.lastSweepMs||now-pool.lastSweepMs<250)return;
-    pool.lastSweepMs=now;
-    if(!objectDiscoveryReadable(pool.begin,0x4000)){
-        pool={};return;
-    }
-    // Legacy fallback only: 16 entries per 250ms instead of 32/125ms.
-    for(unsigned count=0;count<16&&pool.entries;++count){
-        const unsigned index=pool.cursor++%pool.entries;
-        const void* entity{};
-        std::memcpy(&entity,pool.begin+index*sizeof(void*),
-            sizeof(entity));
-        if(!objectDiscoveryReadable(entity,sizeof(std::uintptr_t)))
-            continue;
-        std::uintptr_t vt{};
-        std::memcpy(&vt,entity,sizeof(vt));
-        if(vt<pool.imageBase||vt-pool.imageBase>=pool.imageSize)
-            continue;
-        std::array<char,80> label{};
-        if(!readNativeWorldGrabClassLabel(
-                vt,pool.imageBase,pool.imageSize,label))continue;
-        if(std::strcmp(label.data(),"idProp2")!=0
-            &&std::strcmp(label.data(),"idProp_Moveable")!=0)continue;
-        unsigned handle=0;
-        for(const auto& seen:objectDiscoveryNative)
-            if(seen.entity==entity&&seen.generation==generation){
-                handle=seen.handle;break;
-            }
-        if(!handle){
-            const auto ptr=reinterpret_cast<std::uintptr_t>(entity);
-            handle=static_cast<unsigned>((ptr>>4)^(ptr>>36));
-            if(!handle)handle=1u;
-        }
-        objectDiscoverySeenEntity(entity,pool.imageBase,pool.imageSize,
-            handle,generation);
+            objectDiscoverySourceMode.store(0,std::memory_order_release);
     }
 #else
     (void)now;(void)generation;
@@ -693,8 +548,6 @@ void objectDiscoveryGameTick() {
     }
     if(objectDiscoveryManagedPool.generation!=generation)
         objectDiscoveryManagedPool={};
-    if(objectDiscoveryNativePool.generation!=generation)
-        objectDiscoveryNativePool={};
     // Independently bootstrap the world-owned entity registry on the DOOM
     // thread. The gun-hand ray is NOT required to start scanning. Native
     // pointer reads remain fail-closed against this executable's PE headers
@@ -712,18 +565,16 @@ void objectDiscoveryGameTick() {
                     image+dos->e_lfanew);
                 if(pe->Signature==IMAGE_NT_SIGNATURE
                     &&pe->OptionalHeader.Magic==IMAGE_NT_OPTIONAL_HDR64_MAGIC){
-                    objectDiscoveryTryManagedPool(nullptr,
+                    objectDiscoveryTryManagedPool(
                         reinterpret_cast<std::uintptr_t>(image),
                         pe->OptionalHeader.SizeOfImage,generation);
                 }
             }
         }
     }
-    if(objectDiscoveryManagedPool.begin)
-        objectDiscoverySourceMode.store(2,std::memory_order_release);
-    else if(objectDiscoveryNativePool.begin)
-        objectDiscoverySourceMode.store(1,std::memory_order_release);
-    else objectDiscoverySourceMode.store(0,std::memory_order_release);
+    objectDiscoverySourceMode.store(
+        objectDiscoveryManagedPool.begin?2u:0u,
+        std::memory_order_release);
     objectDiscoverySweepNativePool(now,generation);
     // Conservative *background* physics budget. Held objects bypass ALL
     // of these throttles: keep the proven 12ms tick / hand follow intact.
@@ -1000,9 +851,6 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
         item->imageBase=base;item->imageSize=imageSize;
     }
     item->observedAtMs=now;
-    // Locate the manager's native entity-pointer pool using this
-    // DOOM-resolved pointer. Falls back to ray-only if not validated.
-    objectDiscoveryLocateNativePool(entity,base,imageSize,generation);
     if(!item->body&&now>=item->lastProbeAtMs
         &&now-item->lastProbeAtMs>=800){
         item->lastProbeAtMs=now;
