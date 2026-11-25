@@ -5244,8 +5244,12 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripCalibrating=false;
         s.objectGripHasProfile=false;
     }
+    // Physical support-hand trigger selects 5cm quick fine-tune ONLY.
+    // Primary weapon-hand trigger remains the exclusive RT-save button.
     const bool objectTrigger=readFloatAction(
         s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
+    const bool objectFineTuneQuick=readFloatAction(
+        s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     const bool objectBack=readBooleanAction(s.doomJump);
     const bool objectA=readBooleanAction(s.doomCrouch);
     if(objectHeld&&objectMode){
@@ -5257,8 +5261,9 @@ void updateGameplayActions(XrTime displayTime){
         if(s.objectGripCalibrating){
             s.objectGripInputConsumed=true;
             if(supportGripDown){
-                // Grip-held rotation keeps the object stationary while the
-                // user rotates the controller; sample native relative pose.
+                // Native GRIP mode owns hand tilt and right-stick X spin
+                // using a stable reference. Sample its verified relative
+                // orientation for saving, never rederive it from a pose on XR.
                 std::copy(std::begin(objectFeedback.localOffsetUnits),
                     std::end(objectFeedback.localOffsetUnits),
                     s.objectGripOffsetUnits.begin());
@@ -5277,10 +5282,18 @@ void updateGameplayActions(XrTime displayTime){
                     if(dx||dy||dz){
                         // Native X/Y/Z are local GRIP axes and are saved
                         // in metres, independent of DOOM's world scale.
-                        const float step=.01f*s.worldScale;
-                        s.objectGripOffsetUnits[0]+=dx*step;
-                        s.objectGripOffsetUnits[1]+=dy*step;
-                        s.objectGripOffsetUnits[2]+=dz*step;
+                        const float step=(objectFineTuneQuick?.05f:.01f)
+                            *s.worldScale;
+                        // Save validation permits at most +/-2m local
+                        // offsets; stay in range even at fast 5cm steps.
+                        for(int axis=0;axis<3;++axis){
+                            const float direction=axis==0?dx
+                                :axis==1?dy:dz;
+                            s.objectGripOffsetUnits[axis]=std::clamp(
+                                s.objectGripOffsetUnits[axis]
+                                    +direction*step,
+                                -2.f*s.worldScale,2.f*s.worldScale);
+                        }
                         s.objectGripNudgeAtMs=now;
                     }
                 }
@@ -5398,7 +5411,9 @@ void updateGameplayActions(XrTime displayTime){
             !s.objectGripCalibrating&&s.objectGripHasProfile
                 ?s.objectGripRelativeAxis.data():nullptr,
             s.objectGripCalibrating,
-            s.objectGripCalibrating&&supportGripDown);
+            s.objectGripCalibrating&&supportGripDown,
+            s.objectGripCalibrating&&supportGripDown
+                ?s.rightStick.x:0.f);
     }
 #endif
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
