@@ -5487,8 +5487,6 @@ void updateGameplayActions(XrTime displayTime){
                 ?s.objectGripRelativeAxis.data():nullptr,
             s.objectGripCalibrating,
             s.objectGripCalibrating&&supportGripDown,
-            s.objectGripCalibrating&&supportGripDown
-                ?s.rightStick.x:0.f,
             s.objectGripResetPoseThisFrame,
             s.objectGripPoseLockAck);
     }
