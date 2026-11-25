@@ -6,11 +6,11 @@
 
 namespace kharvox {
 // All DOOM native axes are column-major (axis*3 + world coordinate).
-// Rotation calibration is a two-input tool:
-//   - physical GRIP: relative hand pitch/roll only, no yaw/twist;
-//   - right-stick X: explicit smooth spin about the model's local upright Z.
-// Take immutable references when GRIP is first pressed. Never read the
-// current physics body back into the orientation target every frame.
+// Held props must use a fixed hand-local orientation while the player
+// moves/tilts/turns. Grip-held editing changes ONLY the additional local
+// spin about the model's Z, controlled by right-stick X. Relative pitch,
+// roll AND yaw remain fixed to the tracked physical controller, rather than
+// recalculating world-up against the physics body's previous orientation.
 inline std::array<float,4> objectGripQuatMultiply(
     const std::array<float,4>& a,const std::array<float,4>& b) noexcept {
     return {
@@ -19,10 +19,6 @@ inline std::array<float,4> objectGripQuatMultiply(
         a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
         a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]
     };
-}
-inline std::array<float,4> objectGripQuatConjugate(
-    const std::array<float,4>& a) noexcept {
-    return {-a[0],-a[1],-a[2],a[3]};
 }
 inline std::array<float,4> objectGripQuatNormalize(
     std::array<float,4> q) noexcept {
@@ -34,32 +30,24 @@ inline std::array<float,4> objectGripQuatNormalize(
     for(float& value:q)value*=inverse;
     return q;
 }
-inline std::array<float,4> objectGripTiltOnly(
-    const float currentHand[9],const float initialHand[9]) noexcept {
-    const auto current=objectGripAxisToQuaternion(currentHand);
-    const auto initial=objectGripAxisToQuaternion(initialHand);
-    const auto delta=objectGripQuatNormalize(objectGripQuatMultiply(
-        current,objectGripQuatConjugate(initial)));
-    // Decompose change into swing (pitch/roll) and world-up twist (yaw).
-    // Remove twist; rotating a physical controller horizontally must not
-    // make a bottle tumble or fight the explicit stick spin.
-    const auto yaw=objectGripQuatNormalize(
-        {0.f,0.f,delta[2],delta[3]});
-    return objectGripQuatNormalize(objectGripQuatMultiply(
-        delta,objectGripQuatConjugate(yaw)));
-}
-inline std::array<float,9> objectGripTiltAndSpinAxis(
-    const float currentHand[9],const float initialHand[9],
-    const float initialObject[9],float spinDegrees) noexcept {
+// Compute the final LOCAL orientation from an immutable baseline captured
+// on grip press and a continuous joystick spin. The object world transform
+// is always nativeHandBasis * this local transform; tracking the hand never
+// adds a second relative rotation or feeds the DOOM physics pose back in.
+inline std::array<float,9> objectGripSpinLocalAxis(
+    const float baseLocalAxis[9],float spinDegrees) noexcept {
+    if(!std::isfinite(spinDegrees))
+        return {baseLocalAxis[0],baseLocalAxis[1],baseLocalAxis[2],
+            baseLocalAxis[3],baseLocalAxis[4],baseLocalAxis[5],
+            baseLocalAxis[6],baseLocalAxis[7],baseLocalAxis[8]};
     constexpr float radiansPerDegree=.017453292519943295769f;
     const float halfAngle=.5f*spinDegrees*radiansPerDegree;
     const std::array<float,4> localSpin{
         0.f,0.f,std::sin(halfAngle),std::cos(halfAngle)};
-    const auto base=objectGripAxisToQuaternion(initialObject);
-    const auto swing=objectGripTiltOnly(currentHand,initialHand);
-    const auto desired=objectGripQuatNormalize(objectGripQuatMultiply(
-        objectGripQuatMultiply(swing,base),localSpin));
-    return objectGripQuaternionToAxis(desired);
+    const auto base=objectGripAxisToQuaternion(baseLocalAxis);
+    const auto rotated=objectGripQuatNormalize(
+        objectGripQuatMultiply(base,localSpin));
+    return objectGripQuaternionToAxis(rotated);
 }
 inline std::array<float,9> objectGripToHandLocalAxis(
     const float hand[9],const float world[9]) noexcept {
