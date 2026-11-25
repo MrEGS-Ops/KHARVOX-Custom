@@ -3103,6 +3103,7 @@ void KharvoxCameraSetObjectGripCalibration(
     f.calibrating=calibrating;
     f.freeze=calibrating&&freezeObject;
     f.resetToNeutral=resetToNeutral&&calibrating;
+    f.poseLockAcknowledged=poseLockAcknowledged;
     f.offsetValid=offset!=nullptr;
     f.axisValid=axis!=nullptr;
     if(offset)std::memcpy(f.wantedOffset,offset,sizeof(f.wantedOffset));
@@ -3111,7 +3112,7 @@ void KharvoxCameraSetObjectGripCalibration(
     else f.axisValid=false;
 #else
     (void)offset;(void)axis;(void)calibrating;(void)freezeObject;
-    (void)resetToNeutral;
+    (void)resetToNeutral;(void)poseLockAcknowledged;
 #endif
 }
 void KharvoxCameraReleaseObjectGrip() {
