@@ -8942,8 +8942,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         sceneLaser={{laserOrigin.x,laserOrigin.y,laserOrigin.z},
             {rotation.x,rotation.y,rotation.z,rotation.w},true};
     }
-    // Experimental object markers are drawn over the scene with DOOM's
-    // depth attachment; object materials and physics are never modified.
+    // Experimental object markers use a last-pass depth-independent overlay;
+    // object materials, physics and the scene depth buffer are not modified.
     std::array<kharvox::hands::ObjectDiscoveryRing,32> discoveryRings{};
     unsigned discoveryRingCount{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
