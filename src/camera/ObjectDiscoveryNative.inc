@@ -540,7 +540,7 @@ void objectDiscoveryGameTick() {
     }
     if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
-    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)){
+    if(!objectDiscoveryEnabled.load(std::memory_order_acquire)){
         objectDiscoveryNative={};
         objectDiscoveryReleaseNative();
         objectDiscoverySourceMode.store(0,std::memory_order_release);
