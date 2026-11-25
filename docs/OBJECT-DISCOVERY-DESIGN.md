@@ -22,36 +22,38 @@ headset testing confirms the new runtime.
   hand profile, screen-right is the **physical RIGHT** hand profile.
 - Each half is GREY when native movement is unverified, AMBER for a
   naturally moved but uncalibrated item, GREEN for a calibrated hand.
-- GREY and AMBER halves show across the full selected 1–50 m scan radius.
-  A GREEN half appears only when the object is within configured Grab Reach
-  (1–5 m); beyond it that half is suppressed independently. If both halves
-  are GREEN and distant, the entire ring is omitted.
+- GREY, AMBER and GREEN halves all remain visible throughout the selected
+  1–50 m SCAN RADIUS. Saved hand profiles stay GREEN even when the player
+  steps beyond Grab Reach. Grab Reach changes only whether a catch is allowed.
 - Every frame reads both hand profiles, so saving recolours matching objects
   immediately. One object uses one of the 32 visible marker slots even though
   the GPU may draw two semicircle meshes.
 - Native discovery keeps up to 128 recent candidates; the renderer selects at
   most 32 useful visible rings, prioritising objects inside Grab Reach, then
-  incomplete calibration, then nearest distance. Filtered distant green halves
-  never consume marker slots. Scan candidates are refreshed with a fixed
+  incomplete calibration, then nearest distance. Scan candidates are
+  refreshed with a fixed
   physics-read budget to avoid large per-frame 50 m spikes.
 - No hand-attached identification circle, old physics inspector or test menu.
 
 ## How an item is caught
 
-1. DOOM resolves a native world item or the read-only nearby pool scanner
-   finds it. A strict native RTTI check requires an idPhysics_RigidBody.
+1. Only the signature-validated, game-owned world entity registry discovers
+   movable items. FocusTracker hand and gun rays DO NOT add discovery hits;
+   the free-hand AIM ray is used solely to select a nearby item to catch.
+   A strict native RTTI check requires an idPhysics_RigidBody.
 2. The game thread samples its native GetOrigin/GetAxis. Native movement is
    proven by observed world-origin displacement, not a forced wake or
    at-rest flag alone. A stale movement observation cannot authorize a grab.
 3. With a valid, unobstructed physical free-hand GRIP, only an individually
    moving item within selected reach and aligned with free-hand AIM can
    be caught. Gun bracing/holsters/weapon wheel retain their input priority.
-4. EVERY pickup starts a fresh calibration at a neutral authored-model
-   upright pose, front and centre at the support-hand grip. The orientation
-   is independent of the object's current tipped/rolled physics pose, and
-   stored profiles do not override the pickup's default pose. The native
-   follow writes remain bounded to avoid a violent teleport when the item
-   is initially metres away. The calibration overlay opens immediately.
+4. An UNSAVED item starts calibration from the neutral hand-local upright
+   pose, regardless of its tipped/rolled physics orientation. A SAVED item
+   instead loads its existing hand-specific position AND rotation, remains in
+   normal gameplay controls, and does NOT open a calibration overlay. Only
+   OFFHAND GRIP + OFFHAND TRIGGER deliberately reopens saved calibration
+   and resets to neutral. The native follow writes remain bounded to avoid
+   a violent teleport when the item is initially metres away.
 5. Without offhand Grip: nudge the object's LOCAL position using left
    stick X/Y for lateral/depth and right stick Y for vertical. By default
    each step is 1 cm; HOLD the OFFHAND TRIGGER to make each step 5 cm.
@@ -81,8 +83,10 @@ headset testing confirms the new runtime.
    previously. One trigger press produces one reset. Neither operation
    replaces the weapon-hand trigger's SAVE mapping.
 8. WEAPON-HAND TRIGGER saves; B cancels. The held item is released without
-   artificial downward impulse. DOOM locomotion, turning, fire and equipment
-   input are suppressed during calibration.
+   artificial downward impulse. While WORLD FLOAT is held, DOOM locomotion
+   and turning remain active so the player can walk around the object.
+   With Grip released, calibration fine-tune owns the movement sticks.
+   The weapon-hand trigger remains the exclusive save control.
 9. DOOM's original native gravity resumes after a signature-verified
    momentum clear and Activate *only for an item that actually moved
    before the grab*. Nothing can be activated by scanning or Grip alone.
@@ -127,20 +131,19 @@ headset testing confirms the new runtime.
   It requires DOOM 2016 exact code/data signatures, verified game vtable,
   consistent bounded entity array, and several valid native RTTI records
   including a movable prop. The performance-tuned scan checks 48 entries
-  every 175 ms, independently of the FocusTracker ray. The older pointer-pool
-  fallback checks 16 entries every 250 ms, and does not run when the validated
-  world registry is active. The 128-entry cache is retained; up to 12 idle
+  every 175 ms independently of the FocusTracker ray. The old flat
+  pointer-pool and both FocusTracker entity detection hooks were deleted
+  rather than disabled, avoiding duplicate native entity probes and hook
+  trampolines. The 128-entry cache is retained; up to 12 idle
   physics objects are read per world tick (minimum 80 ms between near-object
   reads, 250 ms for distant objects). Failed body probes retry every 800 ms.
   Actively held objects are exempt from every background slowdown and retain
   the full-speed hand-follow update on DOOM's world thread.
-- The DEV experimental menu now shows SCANNER: PROXIMITY (WORLD REGISTRY)
-  or SCANNER: PROXIMITY (ENTITY POOL) when independently validated.
-  If both validations fail, it explicitly says
-  SCANNER: FOCUS FALLBACK ONLY. In the fallback, the selected 1–50 m radius
-  is only a FILTER on objects already found by the focus system. No
-  guarantee of 360-degree automatic enumeration is claimed until the
-  proximity source status is seen in the headset.
+- The DEV experimental menu says SCANNER: PROXIMITY ACTIVE when the world
+  registry validates, or SCANNER: PROXIMITY UNAVAILABLE when it does not.
+  No ray-derived or flat pointer-pool fallback runs. Without a validated
+  registry, no discovery markers/grabbing are claimed. Normal VR hand/head
+  interaction focus is unaffected by this cleanup.
 - The game-thread scanner does not call itself recursively when a native
   enumerated object is observed; the ordinary world tick handles discovery.
 - Active held-object ownership keeps the native scanner and hand input live
@@ -153,13 +156,11 @@ headset testing confirms the new runtime.
 - A slightly stronger, bounded follow (40 native units/tick) keeps up with
   normal hand movement and a 5 m reach; native body velocity is never
   artificially injected. A much larger unsafe offset still fails closed.
-- The separate nearby scanner attempts to identify the native entity-pointer
-  pool via the signature-verified manager pointer and an already resolved
-  entity. It traverses bounded pointer entries read-only, rejects invalid
-  memory/RTTI and never invokes unknown virtual functions to enumerate.
-- If neither independent entity source validates, the system falls back
-  to ray-discovered props. In-headset validation of full 360-degree radius
-  discovery is still required; a successful native build is insufficient.
+- The world-registry scanner traverses bounded native slots read-only,
+  rejects invalid memory/RTTI and never invokes unknown virtual functions
+  to enumerate. If the verified registry is absent or becomes invalid,
+  discovery fails closed; there is no legacy fallback. In-headset validation
+  of full 360-degree discovery remains necessary after this cleanup.
 - The visual rings and optional cyan reach laser use a separate late Vulkan
   overlay pipeline with depth testing and writes disabled so they stay visible
   over props and world meshes.
