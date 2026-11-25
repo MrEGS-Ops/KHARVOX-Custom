@@ -24,15 +24,65 @@ int main(){
     // Stable rotation references: no physics-feedback tumble.
     constexpr float eps=.0005f;
     const float identity[9]{1,0,0,0,1,0,0,0,1};
-    // A hand yaw by itself MUST NOT twist the held item.
-    // Every new pickup starts from world identity (authored upright),
-    // irrespective of how the physics body was originally lying.
-    const auto defaultUpright=objectGripNeutralLocalAxis(identity);
+    // The initial six-DOF pose is defined ONLY in the free-hand frame.
+    // An object lying at 45 degrees, sideways, or upside-down MUST get
+    // the same relative position and orientation on every new pickup.
+    const auto neutral=objectGripNeutralLocalAxis();
+    const float expectedNeutral[9]{
+        1.f,0.f,0.f,0.f,0.f,-1.f,0.f,1.f,0.f};
     for(int i=0;i<9;++i)
-        assert(std::abs(defaultUpright[i]-identity[i])<eps);
+        assert(std::abs(neutral[i]-expectedNeutral[i])<eps);
     assert(kObjectGripNeutralOffsetUnits[0]==0.f);
     assert(kObjectGripNeutralOffsetUnits[1]==-4.f);
     assert(kObjectGripNeutralOffsetUnits[2]==-20.f);
+    // With the free hand held out like a gun, its local Y points UP
+    // in DOOM world. The barrel's neutral model +Z must point UP too.
+    const float gunAimedHand[9]{
+        0.f,-1.f,0.f, 0.f,0.f,1.f, -1.f,0.f,0.f};
+    const auto handWorldAxis=[&](const float hand[9]){
+        std::array<float,9> world{};
+        for(int col=0;col<3;++col)
+            for(int axis=0;axis<3;++axis)
+                for(int local=0;local<3;++local)
+                    world[col*3+axis]+=
+                        hand[local*3+axis]*neutral[col*3+local];
+        return world;
+    };
+    const auto gunPoseWorld=handWorldAxis(gunAimedHand);
+    assert(std::abs(gunPoseWorld[6])<eps);
+    assert(std::abs(gunPoseWorld[7])<eps);
+    assert(std::abs(gunPoseWorld[8]-1.f)<eps);
+    // Turning/tilting the controller moves the world pose, but NOT the
+    // rotation saved relative to the hand. No world-up recalc per tick.
+    const auto relativeGun=objectGripToHandLocalAxis(
+        gunAimedHand,gunPoseWorld.data());
+    const auto handTurned=objectGripQuaternionToAxis({
+        .2500f,.4330127f,.2500f,.8291562f});
+    const auto turnedWorld=handWorldAxis(handTurned.data());
+    const auto relativeTurned=objectGripToHandLocalAxis(
+        handTurned.data(),turnedWorld.data());
+    for(int i=0;i<9;++i){
+        assert(std::abs(relativeGun[i]-neutral[i])<eps);
+        assert(std::abs(relativeTurned[i]-neutral[i])<eps);
+    }
+    // The offset is also applied in the same rotated hand frame.
+    const auto handWorldPosition=[&](const float hand[9]){
+        std::array<float,3> world{};
+        for(int axis=0;axis<3;++axis)
+            for(int local=0;local<3;++local)
+                world[axis]+=hand[local*3+axis]
+                    *kObjectGripNeutralOffsetUnits[local];
+        return world;
+    };
+    const auto firstPos=handWorldPosition(gunAimedHand);
+    const auto turnedPos=handWorldPosition(handTurned.data());
+    float separationSquared{};
+    for(int axis=0;axis<3;++axis)
+        separationSquared+=(firstPos[axis]-turnedPos[axis])
+            *(firstPos[axis]-turnedPos[axis]);
+    assert(separationSquared>1.f);
+    // A hand yaw by itself MUST NOT twist the held item in the separate
+    // calibration-mode swing/twist editing policy.
     const auto yawHand=objectGripQuaternionToAxis({
         0.f,0.f,.70710678f,.70710678f});
     const auto noTwist=objectGripTiltAndSpinAxis(
