@@ -381,6 +381,79 @@ void objectDiscoveryLocateNativePool(const void* knownEntity,
 void objectDiscoverySweepNativePool(unsigned long long now,
     unsigned long long generation){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // TRUE proximity enumerator: advance through DOOM's validated
+    // game-owned entity registry independent of the gun-hand focus ray.
+    // The focus ray is used only once to PROVE the table's identity.
+    auto& registry=objectDiscoveryManagedPool;
+    if(registry.begin&&registry.generation==generation
+        &&now>=registry.lastSweepMs
+        &&now-registry.lastSweepMs>=75){
+        registry.lastSweepMs=now;
+        std::uintptr_t entriesNow{};
+        std::int32_t countNow{};
+        if(!objectDiscoveryReadable(
+                reinterpret_cast<const void*>(registry.game+0xa54d8),16)){
+            registry={};
+        }else{
+            std::memcpy(&entriesNow,reinterpret_cast<const void*>(
+                registry.game+0xa54d8),8);
+            std::memcpy(&countNow,reinterpret_cast<const void*>(
+                registry.game+0xa54e0),4);
+            if(entriesNow!=reinterpret_cast<std::uintptr_t>(registry.begin)
+                ||countNow<1||countNow>32768
+                ||!objectDiscoveryReadable(registry.begin,
+                    static_cast<std::size_t>(countNow)*
+                        sizeof(ObjectDiscoveryManagedEntry))){
+                registry={};
+            }else{
+                registry.entries=static_cast<unsigned>(countNow);
+                constexpr unsigned managedReadsPerSweep=64;
+                for(unsigned scanned=0;scanned<managedReadsPerSweep;++scanned){
+                    const auto index=registry.cursor++%registry.entries;
+                    ObjectDiscoveryManagedEntry slot{};
+                    std::memcpy(&slot,registry.begin
+                        +static_cast<std::size_t>(index)*sizeof(slot),
+                        sizeof(slot));
+                    if(!slot.entity||slot.id!=slot.check
+                        ||slot.id==0x1fffffe)continue;
+                    const auto* entity=reinterpret_cast<const void*>(
+                        slot.entity);
+                    if(!objectDiscoveryReadable(entity,
+                        sizeof(std::uintptr_t)))continue;
+                    std::uintptr_t vtable{};
+                    std::memcpy(&vtable,entity,sizeof(vtable));
+                    if(vtable<registry.imageBase
+                        ||vtable-registry.imageBase>=registry.imageSize)
+                        continue;
+                    std::array<char,80> label{};
+                    if(!readNativeWorldGrabClassLabel(vtable,
+                        registry.imageBase,registry.imageSize,label))
+                        continue;
+                    if(std::strcmp(label.data(),"idProp2")!=0
+                        &&std::strcmp(label.data(),"idProp_Moveable")!=0)
+                        continue;
+                    unsigned handle{};
+                    for(const auto& seen:objectDiscoveryNative)
+                        if(seen.entity==entity
+                            &&seen.generation==generation){
+                            handle=seen.handle;break;
+                        }
+                    if(!handle){
+                        const auto address=slot.entity;
+                        handle=static_cast<unsigned>(
+                            (address>>4)^(address>>36));
+                        if(!handle)handle=1u;
+                    }
+                    objectDiscoverySeenEntity(entity,registry.imageBase,
+                        registry.imageSize,handle,generation);
+                }
+            }
+        }
+        if(!registry.begin)
+            objectDiscoverySourceMode.store(
+                objectDiscoveryNativePool.begin?1u:0u,
+                std::memory_order_release);
+    }
     auto& pool=objectDiscoveryNativePool;
     if(!pool.begin||pool.generation!=generation)return;
     if(now<pool.lastSweepMs||now-pool.lastSweepMs<125)return;
