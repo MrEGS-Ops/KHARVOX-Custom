@@ -80,7 +80,8 @@ struct KharvoxObjectDiscoveryCandidate {
 };
 struct KharvoxObjectGripFeedback {
     unsigned int handle{},physicalHand{};
-    bool held{},nativeMotionVerified{};
+    bool held{},nativeMotionVerified{},rotationEditActive{};
+    unsigned poseLockRevision{}; // increments after Grip-release lock
     float localOffsetUnits[3]{};
     float localAxis[9]{};
     std::array<char,160> modelKey{};
@@ -93,8 +94,7 @@ void KharvoxCameraSetObjectGripInput(
     float scanRadiusUnits,bool enabled);
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
-    bool calibrating,bool freezeObject,float rotationStickX,
-    bool resetToNeutral);
+    bool calibrating,bool freezeObject,bool resetToNeutral);
 void KharvoxCameraReleaseObjectGrip();
 bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {
