@@ -25,15 +25,15 @@ struct ObjectDiscoveryGripFrame {
 };
 struct ObjectDiscoveryHeld {
     unsigned handle{},physicalHand{};
-    unsigned long long generation{},capturedAtMs{};
-    float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
+    unsigned long long generation{};
+    float relativeOffset[3]{},relativeAxis[9]{};
     float frozenWorldOrigin[3]{},frozenWorldAxis[9]{};
     unsigned long long lastGripDownAtMs{};
     unsigned poseReadMisses{},poseLockRevision{};
     // The initial pickup Grip may immediately freeze the neutral object
     // once calibration is active; no extra release/re-press required.
     bool rotationActive{},neutralResetLatched{};
-    bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
+    bool active{},calibrating{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
@@ -654,15 +654,14 @@ void objectDiscoveryGameTick() {
         auto& held=objectDiscoveryHeld;
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
-        held.generation=generation;held.capturedAtMs=now;
+        held.generation=generation;
         // Capture an invariant 6DOF controller-relative target on GRAB,
         // not the body's current position. Otherwise an object one metre
         // away inherits its pickup offset for several frames, making
         // neutral calibration appear to follow the old barrel location.
         for(int local=0;local<3;++local){
-            held.initialOffset[local]=
+            held.relativeOffset[local]=
                 kharvox::kObjectGripNeutralOffsetUnits[local];
-            held.relativeOffset[local]=held.initialOffset[local];
         }
         // Orientation is ALSO expressed in the hand frame, not WORLD
         // identity. The model's local up maps to the gun-aim hand's up.
@@ -698,9 +697,7 @@ void objectDiscoveryGameTick() {
             std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
             for(int i=0;i<3;++i){
                 held.relativeOffset[i]=kharvox::kObjectGripNeutralOffsetUnits[i];
-                held.initialOffset[i]=held.relativeOffset[i];
             }
-            held.capturedAtMs=now;
             // A neutral reset must not continue editing a stale
             // world-space freeze target from before the reset.
             held.rotationActive=false;
