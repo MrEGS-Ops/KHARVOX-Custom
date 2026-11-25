@@ -13,6 +13,11 @@ headset testing confirms the new runtime.
 - Scan radius: **1–15 metres** in 1 m increments, default **5 m**.
 - Grab reach: **1–5 metres** in 0.5 m increments, default **2 m**.
 - Scan and reach are separate and saved in `UserData/ObjectGrip/object_discovery.cfg`.
+- Grab Reach Laser: separate default-OFF toggle. A cyan free-hand pointer shows
+  precisely the configured 1–5 m reach (not the larger scan radius), and
+  tracks the currently selected weapon hand's opposite free-hand AIM ray.
+  It remains the configured length even if an object or wall lies before it;
+  disabling the visual does not affect scanning or grabbing.
 - Grey world-space ring: candidate with no confirmed real native movement.
 - Amber ring: object physically moved in DOOM's own simulation; no saved grip.
 - Green ring: matching verified model profile or current-level profile exists.
@@ -69,8 +74,9 @@ headset testing confirms the new runtime.
 - If pool layout cannot be validated, the system falls back to ray-discovered
   props; therefore complete 360-degree radius enumeration is **not yet
   confirmed**.
-- The visual rings use a separate late Vulkan overlay pipeline with depth
-  testing and writes disabled so they stay visible over props and world meshes.
+- The visual rings and optional cyan reach laser use a separate late Vulkan
+  overlay pipeline with depth testing and writes disabled so they stay visible
+  over props and world meshes.
   DOOM's native materials, object meshes and depth buffer are not modified.
 - Native body pointers never cross into the XR thread; immutable snapshots,
   owner checks, generation, vtables and input age gates protect handoffs.
