@@ -8,6 +8,7 @@ int main() {
     using namespace kharvox;
     const auto defaults = sanitizedObjectDiscoverySettings({});
     assert(!defaults.enabled);
+    assert(!defaults.grabReachLaserEnabled);
     assert(defaults.scanRadiusMetres == 5.0f);
     assert(defaults.grabReachMetres == 2.0f);
 
@@ -30,10 +31,29 @@ int main() {
     assert(invalid.scanRadiusMetres == 5.0f);
     assert(invalid.grabReachMetres == 2.0f);
     const std::string path="object_discovery_policy_test.cfg";
-    assert(objectDiscoverySave(path,{true,12.f,4.5f}));
+    assert(objectDiscoverySave(path,{true,12.f,4.5f,true}));
     ObjectDiscoverySettings loaded{};
     assert(objectDiscoveryLoad(path,loaded));
     assert(loaded.enabled && loaded.scanRadiusMetres==12.f
-           && loaded.grabReachMetres==4.5f);
+           && loaded.grabReachMetres==4.5f && loaded.grabReachLaserEnabled);
+    // Older settings under ObjectGrip remain readable; their new laser is OFF.
+    {
+        std::ofstream previous(path,std::ios::trunc);
+        previous<<"object_discovery_v1\n"
+                <<"enabled=1\nscan_radius_m=8.0\ngrab_reach_m=3.5\n";
+    }
+    loaded={};
+    assert(objectDiscoveryLoad(path,loaded));
+    assert(loaded.enabled && loaded.grabReachMetres==3.5f
+           && !loaded.grabReachLaserEnabled);
+    // Malformed toggle must not mutate active settings.
+    {
+        std::ofstream invalid(path,std::ios::trunc);
+        invalid<<"object_discovery_v2\n"
+               <<"enabled=1\nscan_radius_m=8.0\ngrab_reach_m=3.5\n"
+               <<"grab_reach_laser=bogus\n";
+    }
+    assert(!objectDiscoveryLoad(path,loaded));
+    assert(!loaded.grabReachLaserEnabled);
     std::remove(path.c_str());
 }
