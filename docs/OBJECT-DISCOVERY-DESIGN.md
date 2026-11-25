@@ -66,10 +66,20 @@ headset testing confirms the new runtime.
    per-frame physics feedback nor Grip press may snap/drop the item.
    Releasing Grip retains the updated local rotation and returns to 1/5 cm
    position adjustments.
-7. WEAPON-HAND TRIGGER saves; B cancels. The held item is released without
+7. While an object is held, offhand equipment/grenade input is owned by
+   Object Grip regardless of whether calibration is open. The native grenade
+   trigger and delayed throw/cycle pulses are suppressed before XInput
+   dispatch; an already armed chest grenade gesture is cleared, so pulling
+   the offhand trigger CANNOT spawn a grenade inside the held object.
+   With GRIP RELEASED, the offhand trigger is a 5 cm fine-tune modifier.
+   Press OFFHAND GRIP + OFFHAND TRIGGER to re-centre and restart the held
+   item's calibration from neutral upright/forward, even when it was saved
+   previously. One trigger press produces one reset. Neither operation
+   replaces the weapon-hand trigger's SAVE mapping.
+8. WEAPON-HAND TRIGGER saves; B cancels. The held item is released without
    artificial downward impulse. DOOM locomotion, turning, fire and equipment
-   input are suppressed during calibration, including offhand quick-tune trigger.
-8. DOOM's original native gravity resumes after a signature-verified
+   input are suppressed during calibration.
+9. DOOM's original native gravity resumes after a signature-verified
    momentum clear and Activate *only for an item that actually moved
    before the grab*. Nothing can be activated by scanning or Grip alone.
 
