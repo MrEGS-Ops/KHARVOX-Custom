@@ -126,11 +126,14 @@ headset testing confirms the new runtime.
   enumerable, game-owned native entity registry without pointing the gun.
   It requires DOOM 2016 exact code/data signatures, verified game vtable,
   consistent bounded entity array, and several valid native RTTI records
-  including a movable prop. If validated, 64 entries are inspected every
-  75 ms independently of the FocusTracker ray and then player-radius filtered.
-  An older independent flat pointer-pool scan (32 entries per 125 ms)
-  remains as an alternative source. Up to 128 recent object records are
-  cached; actual body-pose reads use a rotating bounded budget.
+  including a movable prop. The performance-tuned scan checks 48 entries
+  every 175 ms, independently of the FocusTracker ray. The older pointer-pool
+  fallback checks 16 entries every 250 ms, and does not run when the validated
+  world registry is active. The 128-entry cache is retained; up to 12 idle
+  physics objects are read per world tick (minimum 80 ms between near-object
+  reads, 250 ms for distant objects). Failed body probes retry every 800 ms.
+  Actively held objects are exempt from every background slowdown and retain
+  the full-speed hand-follow update on DOOM's world thread.
 - The DEV experimental menu now shows SCANNER: PROXIMITY (WORLD REGISTRY)
   or SCANNER: PROXIMITY (ENTITY POOL) when independently validated.
   If both validations fail, it explicitly says
