@@ -136,6 +136,9 @@ inline const wchar_t* userConfigFolder(const wchar_t* name) noexcept {
     struct Entry { const wchar_t* file; const wchar_t* folder; };
     static constexpr Entry entries[]{
         {L"vr_live_mods_saved.cfg",L"Settings"},
+    // Experimental files share one private directory; flat test files are ignored.
+    {L"object_discovery.cfg",L"ObjectGrip"},
+    {L"object_grip_profiles.cfg",L"ObjectGrip"},
         {L"hud_headlock.cfg",L"Settings"},
         {L"offhand_hud.cfg",L"Calibrations"},
         {L"offhand_right_hand_positions.cfg",L"Calibrations"},
@@ -167,6 +170,11 @@ inline std::wstring runtimePath(const wchar_t* name) {
         if(const wchar_t* category=userConfigFolder(name)){
             const auto folder=user+L"\\"+category;
             const auto preferred=folder+L"\\"+file;
+            // Object Grip is experimental: never import or read flat test files.
+            if(_wcsicmp(category,L"ObjectGrip")==0){
+                CreateDirectoryW(folder.c_str(),nullptr);
+                return preferred;
+            }
             // Preserve old flat-file behaviour if migration has not yet
             // completed or a user launches the native runtime directly.
             if(GetFileAttributesW(preferred.c_str())!=INVALID_FILE_ATTRIBUTES)
