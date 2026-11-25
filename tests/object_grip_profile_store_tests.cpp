@@ -1,5 +1,6 @@
 #include "../src/openxr/ObjectGripProfileStore.h"
 #include "../src/camera/ObjectGripRotationPolicy.h"
+#include "../src/openxr/ObjectGripInputOwnershipPolicy.h"
 #include <cassert>
 #include <cstdio>
 #include <cmath>
@@ -62,5 +63,20 @@ int main(){
     assert(objectGripSpinAxis(.15f)==0.f);
     assert(objectGripSpinAxis(.8f)==.8f);
     assert(objectGripSpinAxis(-1.5f)==-1.f);
+    // The object, not a global gameplay grenade option, owns the support
+    // trigger. Test BOTH native and XR mailbox ownership to close the
+    // one-frame gap between the DOOM and OpenXR updates.
+    assert(objectGripBlocksOffhandEquipment(true,true,false,true));
+    assert(objectGripBlocksOffhandEquipment(true,true,true,false));
+    assert(!objectGripBlocksOffhandEquipment(true,true,false,false));
+    assert(!objectGripBlocksOffhandEquipment(true,false,true,true));
+    assert(!objectGripBlocksOffhandEquipment(false,true,true,true));
+    // Hold GRIP + support trigger: only the rising edge re-centers;
+    // trigger without Grip remains the 5cm fine-tune modifier.
+    assert(objectGripNeutralResetChordEdge(true,true,true,true,false));
+    assert(!objectGripNeutralResetChordEdge(true,true,true,true,true));
+    assert(!objectGripNeutralResetChordEdge(true,true,false,true,false));
+    assert(!objectGripNeutralResetChordEdge(true,true,true,false,false));
+    assert(!objectGripNeutralResetChordEdge(false,true,true,true,false));
     std::remove("object_grip_profile_test.cfg");
 }
