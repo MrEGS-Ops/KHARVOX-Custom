@@ -675,8 +675,42 @@ void objectDiscoveryGameTick() {
     if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)){
         objectDiscoveryNative={};
         objectDiscoveryReleaseNative();
+        objectDiscoverySourceMode.store(0,std::memory_order_release);
         return;
     }
+    if(objectDiscoveryManagedPool.generation!=generation)
+        objectDiscoveryManagedPool={};
+    if(objectDiscoveryNativePool.generation!=generation)
+        objectDiscoveryNativePool={};
+    // Independently bootstrap the world-owned entity registry on the DOOM
+    // thread. The gun-hand ray is NOT required to start scanning. Native
+    // pointer reads remain fail-closed against this executable's PE headers
+    // and the validated registry signatures.
+    if(!objectDiscoveryManagedPool.begin){
+        const auto* image=reinterpret_cast<const unsigned char*>(
+            GetModuleHandleW(nullptr));
+        if(image&&objectDiscoveryReadable(image,sizeof(IMAGE_DOS_HEADER))){
+            const auto* dos=reinterpret_cast<const IMAGE_DOS_HEADER*>(image);
+            if(dos->e_magic==IMAGE_DOS_SIGNATURE
+                &&dos->e_lfanew>0&&dos->e_lfanew<0x4000
+                &&objectDiscoveryReadable(image+dos->e_lfanew,
+                    sizeof(IMAGE_NT_HEADERS64))){
+                const auto* pe=reinterpret_cast<const IMAGE_NT_HEADERS64*>(
+                    image+dos->e_lfanew);
+                if(pe->Signature==IMAGE_NT_SIGNATURE
+                    &&pe->OptionalHeader.Magic==IMAGE_NT_OPTIONAL_HDR64_MAGIC){
+                    objectDiscoveryTryManagedPool(nullptr,
+                        reinterpret_cast<std::uintptr_t>(image),
+                        pe->OptionalHeader.SizeOfImage,generation);
+                }
+            }
+        }
+    }
+    if(objectDiscoveryManagedPool.begin)
+        objectDiscoverySourceMode.store(2,std::memory_order_release);
+    else if(objectDiscoveryNativePool.begin)
+        objectDiscoverySourceMode.store(1,std::memory_order_release);
+    else objectDiscoverySourceMode.store(0,std::memory_order_release);
     objectDiscoverySweepNativePool(now,generation);
     // Larger 50m discovery cache, but a fixed per-tick physics read budget.
     // Round-robin fairness avoids continuously rereading the first objects;
@@ -1011,7 +1045,9 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
             }
         }
     }
-    if(item->body)objectDiscoveryGameTick();
+    // The normal DOOM world callback ticks discovery every 12ms. Avoid
+    // re-entering that tick recursively from within the 64-entry proximity
+    // sweep; it can otherwise lose the held object or overflow the stack.
 #else
     (void)entity;(void)base;(void)imageSize;(void)handle;(void)generation;
 #endif
