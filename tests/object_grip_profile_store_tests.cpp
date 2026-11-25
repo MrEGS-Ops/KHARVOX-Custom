@@ -81,35 +81,35 @@ int main(){
         separationSquared+=(firstPos[axis]-turnedPos[axis])
             *(firstPos[axis]-turnedPos[axis]);
     assert(separationSquared>1.f);
-    // A hand yaw by itself MUST NOT twist the held item in the separate
-    // calibration-mode swing/twist editing policy.
-    const auto yawHand=objectGripQuaternionToAxis({
-        0.f,0.f,.70710678f,.70710678f});
-    const auto noTwist=objectGripTiltAndSpinAxis(
-        yawHand.data(),identity,identity,0.f);
+    // In normal hold AND grip-held rotation, the hand alone controls
+    // world pitch, yaw and roll. No stick input means exactly the same
+    // local orientation, not a world-up rotation that fights the hand.
+    const auto noSpin=objectGripSpinLocalAxis(neutral.data(),0.f);
     for(int i=0;i<9;++i)
-        assert(std::abs(noTwist[i]-identity[i])<eps);
-    // Stick spin is about the model's local vertical Z, no translation.
-    const auto spin=objectGripTiltAndSpinAxis(
-        identity,identity,identity,90.f);
+        assert(std::abs(noSpin[i]-neutral[i])<eps);
+    // Stick rotation acts around model-local Z without shifting the
+    // barrel's upright Z axis relative to the hand.
+    const auto spin=objectGripSpinLocalAxis(identity,90.f);
     assert(std::abs(spin[0])<eps && std::abs(spin[1]-1.f)<eps);
     assert(std::abs(spin[3]+1.f)<eps && std::abs(spin[4])<eps);
     assert(std::abs(spin[8]-1.f)<eps);
-    // Physical pitch controls tilt; spin preserves the same tilt axis.
-    constexpr float sn=.258819045f,cs=.965925826f; // 30 degrees X
-    const auto handTilt=objectGripQuaternionToAxis({sn,0.f,0.f,cs});
-    const auto pitched=objectGripTiltAndSpinAxis(
-        handTilt.data(),identity,identity,0.f);
-    const auto pitchedAndSpun=objectGripTiltAndSpinAxis(
-        handTilt.data(),identity,identity,90.f);
+    const auto spunNeutral=objectGripSpinLocalAxis(neutral.data(),90.f);
     for(int i=6;i<9;++i)
-        assert(std::abs(pitched[i]-pitchedAndSpun[i])<eps);
-    const auto local=objectGripToHandLocalAxis(
-        handTilt.data(),pitchedAndSpun.data());
-    const auto localQuat=objectGripAxisToQuaternion(local.data());
+        assert(std::abs(spunNeutral[i]-neutral[i])<eps);
+    const auto spunQuat=objectGripAxisToQuaternion(spunNeutral.data());
     float length=0.f;
-    for(float v:localQuat)length+=v*v;
+    for(float v:spunQuat)length+=v*v;
     assert(std::abs(length-1.f)<eps);
+    // No roll-over or drift while the hand rotates and the stick is idle.
+    const auto stillNeutral=objectGripSpinLocalAxis(neutral.data(),360.f);
+    for(int i=0;i<9;++i)
+        assert(std::abs(stillNeutral[i]-neutral[i])<eps);
+    const auto local=objectGripToHandLocalAxis(
+        gunAimedHand,gunPoseWorld.data());
+    const auto localQuat=objectGripAxisToQuaternion(local.data());
+    float relativeLength=0.f;
+    for(float v:localQuat)relativeLength+=v*v;
+    assert(std::abs(relativeLength-1.f)<eps);
     assert(objectGripSpinAxis(.15f)==0.f);
     assert(objectGripSpinAxis(.8f)==.8f);
     assert(objectGripSpinAxis(-1.5f)==-1.f);
