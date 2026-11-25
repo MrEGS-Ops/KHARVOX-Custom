@@ -520,11 +520,11 @@ void objectDiscoveryReleaseNative() {
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
-// Read-only experimental diagnostics: neither mode issues a native attack.
-// The ray is an origin proxy, not a collision or LOS query. Only a proven
-// native melee trace/impact ABI can turn these diagnostics into activation.
+// A/B are read-only diagnostics; C requests ordinary JOY8 once.
+// The ray is an origin proxy, not a collision or LOS query. Native melee
+// direction and actual contact remain controlled by DOOM.
 struct ObjectMeleeProbe {
-    bool gripWasDown{},manualWasDown{},motionLogged{};
+    bool gripWasDown{},manualWasDown{},motionLogged{},sawInput{},readyToGrab{};
     unsigned mode{},handle{};
     unsigned long long generation{},started{},lastSample{},lastMoved{};
     const void* entity{};
@@ -532,12 +532,18 @@ struct ObjectMeleeProbe {
     float baseline[3]{};
 };
 ObjectMeleeProbe objectMeleeProbe{};
+// Mailbox protected by objectDiscoveryGripMutex; no pointers are published.
+unsigned long long objectMeleeRequestAtMs{},objectMeleeRequestGeneration{};
+bool objectMeleeCNeedsRelease{};
 void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
     bool valid,unsigned long long now,unsigned long long generation) {
     auto& p=objectMeleeProbe;
     const bool down=valid&&in.meleeProbeMode&&in.physicalHand==0&&in.pressed
         &&!in.calibrating;
+    if(valid&&!in.pressed)objectMeleeCNeedsRelease=false;
     if(!down||p.generation!=generation||p.mode!=in.meleeProbeMode){
+        {std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
+         objectMeleeRequestAtMs=0;}
         if(p.gripWasDown)log("[MELEE-PROBE] end handle="+std::to_string(p.handle)
             +" elapsed_ms="+std::to_string(now-p.started)
             +" reason=release_or_context_change");
@@ -549,6 +555,10 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
     if(!p.gripWasDown){
         p.gripWasDown=true;p.mode=in.meleeProbeMode;p.generation=generation;
         p.started=now;
+        if(p.mode==3){
+            if(objectMeleeCNeedsRelease){log("[MELEE-C] release Grip to rearm");return;}
+            objectMeleeCNeedsRelease=true;
+        }
         if(objectDiscoveryHeld.active){
             log("[MELEE-PROBE] skipped: already holding object");return;
         }
@@ -571,7 +581,8 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
             +" gen="+std::to_string(generation)+" origin="+vec(in.rayOrigin)
             +" aim="+vec(in.aim)+" reach_units="+std::to_string(in.reachUnits)
             +" proxy_candidates="+std::to_string(candidates)
-            +" contact=UNVERIFIED LOS=UNVERIFIED dispatch=MANUAL_ONLY");
+            +" contact=UNVERIFIED LOS=UNVERIFIED dispatch="
+            +(p.mode==3?"NATIVE_JOY8":"MANUAL_ONLY"));
         if(!best){log("[MELEE-PROBE] no fresh rigid-body proxy in reach");return;}
         p.handle=best->handle;p.entity=best->entity;p.body=best->body;
         p.lastMoved=best->nativeMovedAtMs;
@@ -588,7 +599,7 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
                     +" hand_head_dot="+std::to_string(axis[0]*in.aim[0]+
                         axis[1]*in.aim[1]+axis[2]*in.aim[2]));
             log("[MELEE-A] native attack trace hook unresolved; USE ray is not melee");
-        }else{
+        }else if(p.mode==2){
             std::array<char,80> klass{};
             readNativeWorldGrabClassLabel(best->entityVtable,best->imageBase,
                 best->imageSize,klass);
@@ -596,14 +607,31 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
                 +" entity_vtable_rva="+std::to_string(best->entityVtable-best->imageBase)
                 +" body_vtable_rva="+std::to_string(best->bodyVtable-best->imageBase)
                 +" impact_abi=UNVERIFIED");
+        }else{
+            if(best->nativeMotionObserved&&best->nativeMovedAtMs
+                &&now>=best->nativeMovedAtMs&&now-best->nativeMovedAtMs<=3000){
+                p.readyToGrab=true;
+                log("[MELEE-C] target already moving; no activation pulse needed");
+            }else{
+                std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
+                objectMeleeRequestAtMs=now;
+                objectMeleeRequestGeneration=generation;
+                log("[MELEE-C] queued ordinary native melee for proxy handle="
+                    +std::to_string(p.handle)+" (native hit direction unverified)");
+            }
         }
     }
+    if(in.manualMeleeRequested)p.sawInput=true;
     if(in.manualMeleeRequested&&!p.manualWasDown)
         log("[MELEE-PROBE] native melee INPUT requested elapsed_ms="
             +std::to_string(now-p.started)+" handle="+std::to_string(p.handle)
             +" (not contact proof)");
     p.manualWasDown=in.manualMeleeRequested;
     if(!p.handle||p.motionLogged)return;
+    if(p.mode==3&&!p.readyToGrab&&now-p.started>2000){
+        log("[MELEE-C] timeout: no confirmed activation of selected target");
+        p.motionLogged=true;return;
+    }
     for(const auto& item:objectDiscoveryNative){
         if(item.handle!=p.handle||item.entity!=p.entity||item.body!=p.body
             ||item.generation!=p.generation||!item.poseValid)continue;
@@ -612,6 +640,7 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
             p.motionLogged=true;return;
         }
         if(item.nativeMovedAtMs>p.lastMoved&&item.nativeMovedAtMs>=p.started){
+            if(p.mode==3&&p.sawInput)p.readyToGrab=true;
             log("[MELEE-PROBE] SAME TARGET native movement observed elapsed_ms="
                 +std::to_string(now-p.started)+" handle="+std::to_string(p.handle)
                 +" before="+vec(p.baseline)+" after="+vec(item.origin)
@@ -781,6 +810,9 @@ void objectDiscoveryGameTick() {
         float best2=input.grappleAnchorEnabled
             ?55.f*55.f:input.reachUnits*input.reachUnits;
         for(auto& item:objectDiscoveryNative){
+            if(input.meleeProbeMode==3&&input.physicalHand==0
+                &&(!objectMeleeProbe.readyToGrab||item.handle!=objectMeleeProbe.handle
+                    ||item.entity!=objectMeleeProbe.entity||item.body!=objectMeleeProbe.body))continue;
             if(!item.entity||!item.poseValid||!item.nativeMotionObserved
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
                 ||now-item.lastPositionAtMs>250||item.generation!=generation)
@@ -984,6 +1016,9 @@ void objectDiscoveryGameTick() {
                 +(desired[i]-item->origin[i])*factor;
         if(objectDiscoveryAxisOk(desiredAxis)
             &&objectDiscoveryWriteBody(*item,desired,desiredAxis)){
+            if(!held.nativeFollowConfirmed&&input.meleeProbeMode==3
+                &&held.handle==objectMeleeProbe.handle)
+                log("[MELEE-C] native hold confirmed handle="+std::to_string(held.handle));
             held.nativeFollowConfirmed=true;
             std::memcpy(item->origin,desired,sizeof(desired));
             std::memcpy(item->axis,desiredAxis,sizeof(desiredAxis));

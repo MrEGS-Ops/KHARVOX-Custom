@@ -1061,9 +1061,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;
                     if(option==4){
-                        m.objectMeleeProbeMode=(m.objectMeleeProbeMode+1)%3;
+                        m.objectMeleeProbeMode=(m.objectMeleeProbeMode+1)%4;
                         m.message=m.objectMeleeProbeMode==1?"Melee A: trace diagnostic (manual melee).":
                             m.objectMeleeProbeMode==2?"Melee B: target diagnostic (manual melee).":
+                            m.objectMeleeProbeMode==3?"Melee C: native melee before grab.":
                             "Melee diagnostics OFF.";
                         log("[MELEE-PROBE] "+m.message);
                     }else if(option==0){

@@ -67,6 +67,8 @@ void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
     bool calibrating,bool freezeObject,bool resetToNeutral,
     unsigned poseLockAcknowledged);
+// One-shot world-thread request; no native pointers cross threads.
+bool KharvoxCameraTakeObjectMeleeRequest();
 void KharvoxCameraReleaseObjectGrip();
 bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {

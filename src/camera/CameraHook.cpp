@@ -2740,7 +2740,7 @@ void KharvoxCameraSetObjectGripInput(
         &&reachUnits>=50.f&&reachUnits<=5000.f
         &&objectDiscoveryAxisOk(axis);
     frame.pressed=pressed;frame.physicalHand=hand;
-    frame.meleeProbeMode=meleeProbeMode<=2?meleeProbeMode:0;
+    frame.meleeProbeMode=meleeProbeMode<=3?meleeProbeMode:0;
     frame.manualMeleeRequested=manualMeleeRequested;
     frame.grappleAnchorEnabled=grappleAnchorEnabled;
     frame.reachUnits=std::clamp(reachUnits,50.f,5000.f);
@@ -2786,10 +2786,27 @@ void KharvoxCameraSetObjectGripCalibration(
     (void)resetToNeutral;(void)poseLockAcknowledged;
 #endif
 }
+bool KharvoxCameraTakeObjectMeleeRequest() {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
+    const auto request=objectMeleeRequestAtMs;
+    objectMeleeRequestAtMs=0;
+    const auto now=GetTickCount64();
+    const auto& f=objectDiscoveryGripInput;
+    return request&&now>=request&&now-request<=150
+        &&f.enabled&&f.pressed&&!f.calibrating&&f.physicalHand==0
+        &&f.meleeProbeMode==3&&f.frameAtMs&&now>=f.frameAtMs
+        &&now-f.frameAtMs<180
+        &&objectMeleeRequestGeneration==levelTransitionGeneration.load(std::memory_order_acquire);
+#else
+    return false;
+#endif
+}
 void KharvoxCameraReleaseObjectGrip() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     ++objectDiscoveryGripInput.releaseSerial;
+    objectMeleeRequestAtMs=0;
     objectDiscoveryGripInput.pressed=false;
     objectDiscoveryGripInput.calibrating=false;
     objectDiscoveryGripInput.freeze=false;

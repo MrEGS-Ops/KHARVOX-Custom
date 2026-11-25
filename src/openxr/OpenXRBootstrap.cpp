@@ -5034,11 +5034,45 @@ void updateGameplayActions(XrTime displayTime){
     // above provides world interaction; D-pad Right is NOT the Use button.
     const bool nativeUseDown=kharvox::physicalgk::routeNativeUse(
         s.physicalGlorykillEnabled,gameplay,displayTime<s.usePulseUntil);
-    const bool nativeMeleeDown=kharvox::physicalgk::routeNativeMelee(
+    const bool ordinaryNativeMeleeDown=kharvox::physicalgk::routeNativeMelee(
         s.physicalGlorykillEnabled,gameplay,meleeDown,
         displayTime<s.meleePulseUntil,
         displayTime<s.physicalPunchPulseUntil,
         displayTime>=s.usePulseUntil);
+    bool testNativeMeleeDown=false;
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    static XrTime objectMeleePulseUntil{};
+    static unsigned long long objectMeleePulseGeneration{};
+    const auto meleeGeneration=KharvoxCameraLevelTransitionGeneration();
+    const bool nativeMeleeTestAllowed=gameplay&&xinputHookReady
+        &&s.vrHandMenu.objectMeleeProbeMode==3
+        &&s.vrHandMenu.objectDiscovery.enabled
+        &&supportGripDown&&!s.weaponHandLeft
+        &&!s.twoHandLatched&&!s.twoHandCalibrationMode
+        &&!supportGripInCaptureRange()&&!s.behindHeadWheelActive
+        &&!weaponWheelActive&&!quickHolsterGripConsumed
+        &&!objectGripCalibrationOwnsInput&&!s.objectGripInputConsumed
+        &&!s.objectGripWasHeld&&s.leftGripController.valid
+        &&s.leftGripController.positionTracked&&s.leftController.valid
+        &&s.leftController.positionTracked&&s.headZeroValid
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!syncAttackActive&&!KharvoxCameraCutsceneActive()
+        &&!KharvoxCameraBossSequenceActive()
+        &&!KharvoxCameraLedgeTransitionActive();
+    if(!nativeMeleeTestAllowed||objectMeleePulseGeneration!=meleeGeneration)
+        objectMeleePulseUntil=0;
+    const bool testRequested=KharvoxCameraTakeObjectMeleeRequest();
+    if(testRequested){
+        if(nativeMeleeTestAllowed&&!ordinaryNativeMeleeDown&&!nativeUseDown
+            &&displayTime>=objectMeleePulseUntil){
+            objectMeleePulseUntil=displayTime+200000000LL;
+            objectMeleePulseGeneration=meleeGeneration;
+            log("[MELEE-C] native JOY8 pulse requested (200ms); native direction/range unchanged");
+        }else log("[MELEE-C] request discarded: input busy or gameplay gate failed");
+    }
+    testNativeMeleeDown=nativeMeleeTestAllowed&&displayTime<objectMeleePulseUntil;
+#endif
+    const bool nativeMeleeDown=ordinaryNativeMeleeDown||testNativeMeleeDown;
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown
@@ -5548,7 +5582,8 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid,
         s.vrHandMenu.grappleAnchor.enabled,
         gripPoseValid?nativeRayOrigin:nullptr,
-        s.vrHandMenu.objectMeleeProbeMode,nativeMeleeDown);
+        s.vrHandMenu.objectMeleeProbeMode,
+        s.vrHandMenu.objectMeleeProbeMode==3?testNativeMeleeDown:ordinaryNativeMeleeDown);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile

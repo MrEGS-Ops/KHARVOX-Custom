@@ -574,7 +574,7 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     ObjectDiscoverySettings objectDiscovery{};
-    unsigned objectMeleeProbeMode{}; // session only: OFF, trace A, target B
+    unsigned objectMeleeProbeMode{}; // session only: OFF, trace A, target B, native C
     GrappleAnchorSettings grappleAnchor{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press

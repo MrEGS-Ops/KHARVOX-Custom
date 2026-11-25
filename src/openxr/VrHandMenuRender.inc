@@ -909,8 +909,11 @@ void paintVrHandMenu() {
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,558,m.objectMeleeProbeMode==1?"MELEE A: TRACE PROBE":
                     m.objectMeleeProbeMode==2?"MELEE B: TARGET PROBE":
+                    m.objectMeleeProbeMode==3?"MELEE C: NATIVE MELEE":
                     "MELEE PROBES: OFF",white);
-                write(548,580,"GRIP + MANUAL MELEE; LOG ONLY",muted);
+                write(548,580,m.objectMeleeProbeMode==3?
+                    "GRIP: ONE NATIVE MELEE, THEN GRAB":
+                    "GRIP + MANUAL MELEE; LOG ONLY",muted);
                 const unsigned discoverySource=KharvoxCameraObjectDiscoverySourceMode();
                 write(548,605,!cfg.enabled?"SCANNER: OFF":
                     discoverySource==2?"SCANNER: ACTIVE":"SCANNER: UNAVAILABLE",
