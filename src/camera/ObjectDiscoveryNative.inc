@@ -28,7 +28,7 @@ struct ObjectDiscoveryHeld {
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
     float frozenWorldOrigin[3]{},frozenWorldAxis[9]{};
     unsigned long long lastGripDownAtMs{};
-    unsigned poseReadMisses{};
+    unsigned poseReadMisses{},poseLockRevision{};
     // A fresh grab begins with Grip pressed; require a release before
     // re-pressing Grip can enter freeze/reposition/lock calibration.
     bool rotationReady{},rotationActive{},neutralResetLatched{};
@@ -850,6 +850,7 @@ void objectDiscoveryGameTick() {
     // Initial GRIP is only the act of picking the prop up. The
     // rotation editor becomes armed once the user first releases Grip.
     if(!input.freeze)held.rotationReady=true;
+    bool releasedFrozenPoseThisTick=false;
     if(held.calibrating&&input.freeze&&held.rotationReady){
         if(!held.rotationActive){
             // Freeze the complete CURRENT TARGET pose in world space,
@@ -887,9 +888,15 @@ void objectDiscoveryGameTick() {
                 held.relativeAxis);
         }
         held.rotationActive=false;
+        ++held.poseLockRevision;
+        releasedFrozenPoseThisTick=true;
     }
     {
-        if(input.calibrating&&input.offsetValid){
+        // XR feedback is one world tick behind. Never overwrite the
+        // world-locked pose with the previous frame's offset while Grip
+        // is pressed or on the exact frame it is released.
+        if(input.calibrating&&input.offsetValid
+            &&!held.rotationActive&&!releasedFrozenPoseThisTick){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
         }else if(!input.calibrating&&input.offsetValid){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
@@ -941,6 +948,8 @@ void objectDiscoveryGameTick() {
         auto& f=objectDiscoveryGripFeedback;
         f={};f.held=true;f.handle=item->handle;
         f.physicalHand=held.physicalHand;f.nativeMotionVerified=true;
+        f.rotationEditActive=held.rotationActive;
+        f.poseLockRevision=held.poseLockRevision;
         f.modelKey=item->modelKey;
         for(int i=0;i<3;++i)f.localOffsetUnits[i]=held.relativeOffset[i];
         std::memcpy(f.localAxis,held.relativeAxis,sizeof(f.localAxis));
