@@ -20,9 +20,7 @@ struct ObjectDiscoveryGripFrame {
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
-    bool smartGripEnabled{},meshInspectorEnabled{},grappleAnchorEnabled{};
-    bool grappleBarrelSurfacePreview{};
-    unsigned smartGripModes{};
+    bool grappleAnchorEnabled{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -185,168 +183,6 @@ void objectDiscoveryNativeModel(ObjectDiscoveryNativeRecord& item) {
     }
     if(!multiple)item.modelKey=found;
 }
-// Read-only targeted mesh/collision information gathering on actual grabs.
-// No unverified dimension ever modifies attachment or permanent identity.
-void objectDiscoveryInspectMesh(const ObjectDiscoveryNativeRecord& item){
-    std::array<char,80> klass{};
-    const bool classKnown=readNativeWorldGrabClassLabel(
-        item.entityVtable,item.imageBase,item.imageSize,klass);
-    log("[MESH-INSPECT] handle="+std::to_string(item.handle)
-        +" class="+(classKnown?std::string(klass.data()):"UNKNOWN")
-        +" model="+std::string(item.modelKey[0]
-            ?item.modelKey.data():"UNRESOLVED")
-        +" entity_vtable_rva="+std::to_string(
-            item.entityVtable-item.imageBase)
-        +" physics_vtable_rva="+std::to_string(
-            item.bodyVtable-item.imageBase)
-        +" collision_bounds=UNVERIFIED shape=UNVERIFIED mass=UNVERIFIED");
-    // Scan only readable direct string pointers and do not use a
-    // candidate as an object type or calibration key without validation.
-    unsigned pathCandidates{};
-    for(unsigned owner=0;owner<2;++owner){
-        const auto* src=static_cast<const unsigned char*>(
-            owner?item.body:item.entity);
-        const std::size_t limit=owner?0x800:0x2000;
-        if(!src)continue;
-        for(std::size_t off=0;off<limit;off+=sizeof(void*)){
-            if(!objectDiscoveryReadable(src+off,sizeof(void*)))break;
-            const char* ptr{};
-            std::memcpy(&ptr,src+off,sizeof(ptr));
-            if(!objectDiscoveryReadable(ptr,96))continue;
-            if(std::memcmp(ptr,"models/",7)!=0
-                &&std::memcmp(ptr,"model/",6)!=0)continue;
-            std::array<char,160> name{};
-            std::size_t n{};
-            for(;n<name.size()-1&&objectDiscoveryReadable(ptr+n,1);++n){
-                const char c=ptr[n];
-                if(!c)break;
-                if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')
-                    ||(c>='0'&&c<='9')||c=='/'||c=='_'||c=='-'
-                    ||c=='.'))break;
-                name[n]=c;
-            }
-            if(n<12||n>=name.size()-1||ptr[n])continue;
-            if(pathCandidates<8)
-                log("[MESH-INSPECT] UNVERIFIED model string owner="
-                    +std::string(owner?"physics":"entity")
-                    +" field_offset="+std::to_string(off)
-                    +" candidate="+std::string(name.data()));
-            ++pathCandidates;
-        }
-    }
-    log("[MESH-INSPECT] candidate_model_strings="
-        +std::to_string(pathCandidates));
-    // Look for actual RTTI-validated clip/render-model objects reachable
-    // directly from the physics record, preserving their offsets for
-    // a subsequent verified bounds accessor investigation.
-    unsigned knownComponents{};
-    const auto* physics=static_cast<const unsigned char*>(item.body);
-    for(std::size_t off=0;physics&&off<0x600;off+=sizeof(void*)){
-        if(!objectDiscoveryReadable(physics+off,sizeof(void*)))break;
-        const void* candidate{};
-        std::memcpy(&candidate,physics+off,sizeof(candidate));
-        if(!objectDiscoveryReadable(candidate,sizeof(std::uintptr_t)))continue;
-        std::uintptr_t vt{};
-        std::memcpy(&vt,candidate,sizeof(vt));
-        if(vt<item.imageBase||vt-item.imageBase>=item.imageSize)continue;
-        std::array<char,80> klass{};
-        if(!readNativeWorldGrabClassLabel(vt,item.imageBase,
-                item.imageSize,klass))continue;
-        const std::string type(klass.data());
-        if(type.find("ClipModel")==std::string::npos
-            &&type.find("RenderModel")==std::string::npos
-            &&type.find("CollisionModel")==std::string::npos)
-            continue;
-        if(knownComponents<8)
-            log("[MESH-INSPECT] RTTI-VERIFIED component class="+type
-                +" physics_ptr_offset="+std::to_string(off)
-                +" vtable_rva="+std::to_string(vt-item.imageBase)
-                +" component_bounds=NOT_YET_RESOLVED");
-        ++knownComponents;
-    }
-    log("[MESH-INSPECT] verified_component_candidates="
-        +std::to_string(knownComponents));
-    // An idBounds field is conventionally two vec3 min/max values.
-    // These are *heuristic samples*, not verified mesh dimensions.
-    // Inspect up to 0x600 bytes of a validated rigid body read-only.
-    unsigned hits{};
-    const auto* bytes=static_cast<const unsigned char*>(item.body);
-    for(std::size_t off=0;bytes&&off<0x600;off+=sizeof(float)){
-        if(!objectDiscoveryReadable(bytes+off,6*sizeof(float)))break;
-        float v[6]{};
-        std::memcpy(v,bytes+off,sizeof(v));
-        bool plausible=true;
-        float dims[3]{};
-        for(int axis=0;axis<3;++axis){
-            dims[axis]=v[axis+3]-v[axis];
-            if(!std::isfinite(v[axis])
-                ||!std::isfinite(v[axis+3])
-                ||v[axis]>=v[axis+3]
-                ||v[axis]>0.f||v[axis+3]<0.f
-                ||dims[axis]<1.f||dims[axis]>1000.f)
-                plausible=false;
-        }
-        if(!plausible)continue;
-        if(hits<4){
-            const float shortest=std::min({dims[0],dims[1],dims[2]});
-            const float longest=std::max({dims[0],dims[1],dims[2]});
-            log("[MESH-INSPECT] UNVERIFIED bounds candidate offset="
-                +std::to_string(off)
-                +" dims_xyz_native="+std::to_string(dims[0])
-                +","+std::to_string(dims[1])
-                +","+std::to_string(dims[2])
-                +" aspect="+std::to_string(longest/shortest)
-                +" NOT_USED_FOR_GRIP");
-        }
-        ++hits;
-    }
-    log("[MESH-INSPECT] candidate_bounds="+std::to_string(hits)
-        +" (mesh center/size/shape NOT yet verified)");
-}
-
-// Passive read-only lead gathering for the genuine visible/rendered mesh.
-// A model path or idRenderModel RTTI by itself does NOT validate the
-// renderer's triangle layout. Never dereference a guessed triangle array,
-// or use candidate bounds as an exact attachment point.
-void objectDiscoveryInspectRenderMesh(const ObjectDiscoveryNativeRecord& item){
-    log("[RENDER-MESH] handle="+std::to_string(item.handle)
-        +" verified_asset_key="+std::string(item.modelKey[0]
-            ?item.modelKey.data():"UNRESOLVED")
-        +" probing entity/physics RTTI for render-model ownership");
-    unsigned seen{};
-    for(int owner=0;owner<2;++owner){
-        const auto* bytes=static_cast<const unsigned char*>(
-            owner?item.body:item.entity);
-        const std::size_t limit=owner?0x800:0x3000;
-        for(std::size_t off=0;bytes&&off<limit;off+=sizeof(void*)){
-            if(!objectDiscoveryReadable(bytes+off,sizeof(void*)))break;
-            const void* ptr{};
-            std::memcpy(&ptr,bytes+off,sizeof(ptr));
-            if(!objectDiscoveryReadable(ptr,sizeof(std::uintptr_t)))continue;
-            std::uintptr_t vt{};
-            std::memcpy(&vt,ptr,sizeof(vt));
-            if(vt<item.imageBase||vt-item.imageBase>=item.imageSize)continue;
-            std::array<char,80> type{};
-            if(!readNativeWorldGrabClassLabel(vt,item.imageBase,
-                    item.imageSize,type))continue;
-            if(std::strstr(type.data(),"RenderModel")==nullptr
-                &&std::strstr(type.data(),"ModelStatic")==nullptr
-                &&std::strstr(type.data(),"ModelDynamic")==nullptr)continue;
-            if(seen<8)log("[RENDER-MESH] RTTI-verified "
-                +std::string(owner?"physics":"entity")
-                +" model pointer at offset="+std::to_string(off)
-                +" class="+std::string(type.data())
-                +" (triangle source UNVERIFIED)");
-            ++seen;
-        }
-    }
-    log("[RENDER-MESH] verified_rtti_candidates="
-        +std::to_string(seen)
-        +" actual_render_triangles=NOT_AVAILABLE"
-        +" visual_surface_hit=NOT_IMPLEMENTED"
-        +" no collision mesh substituted");
-}
-
 ObjectDiscoveryNativeRecord* objectDiscoveryNativeByHandle(unsigned handle) {
     for(auto& item:objectDiscoveryNative)
         if(item.handle==handle&&item.entity)return &item;
@@ -830,8 +666,6 @@ void objectDiscoveryGameTick() {
         ObjectDiscoveryNativeRecord* nearest{};
         float best2=input.grappleAnchorEnabled
             ?55.f*55.f:input.reachUnits*input.reachUnits;
-        float nearestBarrelHit=input.reachUnits+1.f;
-        bool selectedBarrelSurface{};
         for(auto& item:objectDiscoveryNative){
             if(!item.entity||!item.poseValid||!item.nativeMotionObserved
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
@@ -844,29 +678,14 @@ void objectDiscoveryGameTick() {
                 forward+=delta*input.aim[axis];
             }
             if(input.grappleAnchorEnabled){
-                const bool barrelApprox=input.grappleBarrelSurfacePreview
-                    &&kharvox::grappleIdentifiedTechBarrel(
-                        item.modelKey.data());
                 kharvox::GrappleRayAnchor ray{};
-                if(barrelApprox){
-                    // Intersect only the named barrel's oriented provisional
-                    // silhouette, not a bloated native collision hull.
-                    if(!kharvox::grappleBarrelOutlineHit(
-                            input.rayOrigin,input.aim,
-                            item.origin,item.axis,input.reachUnits,ray))
-                        continue;
-                    if(!selectedBarrelSurface
-                        ||ray.rayDistance<nearestBarrelHit){
-                        selectedBarrelSurface=true;
-                        nearestBarrelHit=ray.rayDistance;nearest=&item;
-                    }
-                }else if(!selectedBarrelSurface){
-                    if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
-                            item.origin,input.reachUnits,55.f,ray))continue;
-                    const float lateral2=ray.missDistance*ray.missDistance;
-                    if(lateral2>=best2)continue;
-                    best2=lateral2;nearest=&item;
-                }
+                // The current broad-phase uses DOOM body origins only.
+                // No shape-specific collision mesh/radius is inferred.
+                if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
+                        item.origin,input.reachUnits,55.f,ray))continue;
+                const float lateral2=ray.missDistance*ray.missDistance;
+                if(lateral2>=best2)continue;
+                best2=lateral2;nearest=&item;
             }else{
                 if(squared>=best2||forward<=0.f
                     ||forward*forward<.64f*squared)continue;
@@ -909,31 +728,18 @@ void objectDiscoveryGameTick() {
             std::array<float,3> offset{};
             std::array<float,9> axis{};
             kharvox::GrappleRayAnchor ray{};
-            const bool barrelApprox=input.grappleBarrelSurfacePreview
-                &&kharvox::grappleIdentifiedTechBarrel(
-                    nearest->modelKey.data());
-            const bool found=barrelApprox
-                ?(kharvox::grappleBarrelOutlineHit(input.rayOrigin,
-                    input.aim,nearest->origin,nearest->axis,
-                    input.reachUnits,ray)
-                  &&kharvox::grapplePickupPoseFromHit(input.origin,
-                    input.axis,nearest->origin,nearest->axis,
-                    ray,offset,axis))
-                :kharvox::grapplePickupPose(input.origin,input.axis,
+            if(!kharvox::grapplePickupPose(input.origin,input.axis,
                     input.rayOrigin,input.aim,nearest->origin,nearest->axis,
-                    input.reachUnits,offset,axis,ray);
-            if(!found||!objectDiscoveryAxisOk(axis.data())){
+                    input.reachUnits,offset,axis,ray)
+                ||!objectDiscoveryAxisOk(axis.data())){
                 held={};return;
             }
-            if(barrelApprox)objectDiscoveryInspectRenderMesh(*nearest);
             std::copy(offset.begin(),offset.end(),held.relativeOffset);
             std::copy(axis.begin(),axis.end(),held.relativeAxis);
             held.grappleAnchor=true;
             log("[GRAPPLE-ANCHOR] grabbed handle="
                 +std::to_string(held.handle)
-                +(ray.source==kharvox::GrappleContactSource::ApproximateBarrel
-                    ?" contact=VISUAL_BARREL_OUTLINE_APPROX (NOT_RENDER_MESH)"
-                    :" contact=ESTIMATED_RAY_PROXY (NOT_MESH_HIT)")
+                +" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)"
                 +" ray_depth="+std::to_string(ray.rayDistance)
                 +" miss="+std::to_string(ray.missDistance)
                 +" world_point="+std::to_string(ray.worldPoint[0])
@@ -943,24 +749,7 @@ void objectDiscoveryGameTick() {
                 +std::to_string(offset[0])+","
                 +std::to_string(offset[1])+","
                 +std::to_string(offset[2]));
-        }else if(input.smartGripEnabled){
-            std::array<float,3> offset{};
-            std::array<float,9> axis{};
-            if(kharvox::smartGripPickupPose(input.smartGripModes,
-                    input.origin,input.axis,nearest->origin,nearest->axis,
-                    offset,axis)&&objectDiscoveryAxisOk(axis.data())){
-                std::copy(offset.begin(),offset.end(),held.relativeOffset);
-                std::copy(axis.begin(),axis.end(),held.relativeAxis);
-            }
-            log("[SMART-GRIP] acquired handle="
-                +std::to_string(held.handle)
-                +" variants="+std::to_string(input.smartGripModes)
-                +" offset_native="+std::to_string(held.relativeOffset[0])
-                +","+std::to_string(held.relativeOffset[1])
-                +","+std::to_string(held.relativeOffset[2]));
         }
-        if(input.meshInspectorEnabled)
-            objectDiscoveryInspectMesh(*nearest);
         held.lastGripDownAtMs=now;
     }
     auto& held=objectDiscoveryHeld;

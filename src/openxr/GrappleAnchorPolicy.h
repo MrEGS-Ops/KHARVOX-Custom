@@ -1,19 +1,19 @@
 #pragma once
-// RIPSHIFT experimental laser grappling. This version uses the controller ray
-// and the target rigid body's origin to estimate a virtual hit point. It DOES
-// NOT claim DOOM's true collision/mesh impact location.
+// RIPSHIFT universal grapple contact policy. Any verified render triangles
+// use exact first-hit intersection. Until DOOM render triangles are exposed,
+// preserve the proven but imprecise ray-origin proxy; never use per-model
+// dimensions or the native collision shape as a visual surface substitute.
 #include "../camera/ObjectGripRotationPolicy.h"
 #include <array>
 #include <cmath>
 #include <fstream>
 #include <string>
 namespace kharvox {
-struct GrappleAnchorSettings { bool enabled{},barrelSurfacePreview{}; };
+struct GrappleAnchorSettings { bool enabled{}; };
 inline bool grappleAnchorSave(const std::string& path,GrappleAnchorSettings s) {
     std::ofstream f(path,std::ios::trunc);
     if(!f)return false;
-    f<<"grapple_anchor_v2\n"<<"enabled="<<s.enabled<<"\n"
-     <<"barrel_surface_preview="<<s.barrelSurfacePreview<<"\n";
+    f<<"grapple_anchor_v1\n"<<"enabled="<<s.enabled<<"\n";
     f.flush();return f.good();
 }
 inline bool grappleAnchorLoad(const std::string& path,GrappleAnchorSettings& s){
@@ -25,16 +25,16 @@ inline bool grappleAnchorLoad(const std::string& path,GrappleAnchorSettings& s){
     if(line=="enabled=0")s.enabled=false;
     else if(line=="enabled=1")s.enabled=true;
     else return false;
-    s.barrelSurfacePreview=false;
+    // Backward compatibility: ignore the retired, barrel-only preview flag
+    // from existing v2 user configs. Never activate legacy shape assumptions.
     if(version=="grapple_anchor_v2"){
-        if(!std::getline(f,line))return false;
-        if(line=="barrel_surface_preview=0")s.barrelSurfacePreview=false;
-        else if(line=="barrel_surface_preview=1")s.barrelSurfacePreview=true;
-        else return false;
+        if(!std::getline(f,line)
+            ||(line!="barrel_surface_preview=0"
+                &&line!="barrel_surface_preview=1"))return false;
     }
     return !std::getline(f,extra);
 }
-enum class GrappleContactSource { RayOriginProxy, ApproximateBarrel, VerifiedRenderTriangles };
+enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles };
 struct GrappleRayAnchor {
     std::array<float,3> worldPoint{};
     float rayDistance{},missDistance{};
@@ -44,84 +44,6 @@ struct GrappleRayAnchor {
     bool exactCollisionHit{};
     bool exactVisualMeshHit{};
 };
-inline bool grappleIdentifiedTechBarrel(const char* modelKey) noexcept {
-    if(!modelKey)return false;
-    std::string text(modelKey);
-    if(text.size()>192)return false;
-    const auto slash=text.find_last_of("/\\");
-    text=text.substr(slash==std::string::npos?0:slash+1);
-    const auto dot=text.find_last_of('.');
-    if(dot!=std::string::npos)text.resize(dot);
-    for(char& c:text){
-        if(c>='A'&&c<='Z')c=static_cast<char>(c-'A'+'a');
-        if(c=='-'||c==' ')c='_';
-    }
-    return text=="uac_barrel_tech_red";
-}
-// Model-specific visual SILHOUETTE approximation, not mesh data:
-// radius/half-height are experimental and are NEVER described as measured.
-// This is isolated behind a separate OFF-by-default toggle.
-inline bool grappleBarrelOutlineHit(
-    const float rayOrigin[3],const float rayDirection[3],
-    const float bodyOrigin[3],const float bodyAxis[9],
-    float reachUnits,GrappleRayAnchor& out) noexcept {
-    out={};
-    if(!rayOrigin||!rayDirection||!bodyOrigin||!bodyAxis
-        ||!std::isfinite(reachUnits)||reachUnits<1.f)return false;
-    float norm2{};
-    for(int i=0;i<3;++i){
-        if(!std::isfinite(rayOrigin[i])||!std::isfinite(rayDirection[i])
-            ||!std::isfinite(bodyOrigin[i]))return false;
-        norm2+=rayDirection[i]*rayDirection[i];
-    }
-    for(int i=0;i<9;++i)if(!std::isfinite(bodyAxis[i]))return false;
-    if(!std::isfinite(norm2)||norm2<.25f||norm2>4.f)return false;
-    float origin[3]{},dir[3]{};
-    const float inv=1.f/std::sqrt(norm2);
-    for(int local=0;local<3;++local){
-        for(int world=0;world<3;++world){
-            origin[local]+=bodyAxis[local*3+world]
-                *(rayOrigin[world]-bodyOrigin[world]);
-            dir[local]+=bodyAxis[local*3+world]*rayDirection[world]*inv;
-        }
-    }
-    // Never silently substitute the physics collision radius. These are
-    // provisional visible-barrel dimensions in native units, NOT a mesh.
-    constexpr float radius=26.f,halfHeight=37.f;
-    float t=reachUnits+1.f;
-    const auto consider=[&](float proposed,float localZ,float radial2){
-        if(std::isfinite(proposed)&&proposed>.01f&&proposed<t
-            &&proposed<=reachUnits&&std::abs(localZ)<=halfHeight+.01f
-            &&radial2<=radius*radius+.05f)t=proposed;
-    };
-    const float a=dir[0]*dir[0]+dir[1]*dir[1];
-    if(a>1e-8f){
-        const float bb=2.f*(origin[0]*dir[0]+origin[1]*dir[1]);
-        const float c=origin[0]*origin[0]+origin[1]*origin[1]
-            -radius*radius;
-        const float disc=bb*bb-4.f*a*c;
-        if(disc>=0.f&&std::isfinite(disc)){
-            const float root=std::sqrt(disc);
-            for(float v:{(-bb-root)/(2.f*a),(-bb+root)/(2.f*a)})
-                consider(v,origin[2]+v*dir[2],
-                    radius*radius);
-        }
-    }
-    if(std::abs(dir[2])>1e-6f){
-        for(float height:{-halfHeight,halfHeight}){
-            const float v=(height-origin[2])/dir[2];
-            const float x=origin[0]+v*dir[0];
-            const float y=origin[1]+v*dir[1];
-            consider(v,height,x*x+y*y);
-        }
-    }
-    if(t>reachUnits)return false;
-    for(int i=0;i<3;++i)
-        out.worldPoint[i]=rayOrigin[i]+rayDirection[i]*inv*t;
-    out.rayDistance=t;
-    out.source=GrappleContactSource::ApproximateBarrel;
-    return true;
-}
 // Moller-Trumbore against real static-render triangles (not physics).
 // A verified renderer vertex provider can supply this without changing
 // grip pose mathematics. This helper does not pretend that the provider

@@ -1,6 +1,5 @@
 #include "../src/openxr/ObjectGripProfileStore.h"
 #include "../src/camera/ObjectGripRotationPolicy.h"
-#include "../src/openxr/SmartGripVariantsPolicy.h"
 #include "../src/openxr/GrappleAnchorPolicy.h"
 #include "../src/openxr/ObjectGripInputOwnershipPolicy.h"
 #include <cassert>
@@ -192,41 +191,14 @@ int main(){
     assert(!objectGripNeutralResetChordEdge(true,true,false,true,false));
     assert(!objectGripNeutralResetChordEdge(true,true,true,false,false));
     assert(!objectGripNeutralResetChordEdge(false,true,true,true,false));
-    SmartGripSettings cfg{};
-    assert(!cfg.enabled);
-    cfg.enabled=true;cfg.palmAnchor=true;cfg.worldUpright=true;
-    cfg.inspectMesh=true;
-    assert(smartGripSave("smart_grip_test.cfg",cfg));
-    SmartGripSettings loadedCfg{};
-    assert(smartGripLoad("smart_grip_test.cfg",loadedCfg));
-    assert(loadedCfg.enabled&&loadedCfg.palmAnchor
-        &&loadedCfg.worldUpright&&loadedCfg.inspectMesh);
-    assert(!loadedCfg.keepTilt&&!loadedCfg.pickupOffset);
     const float unitAxis[9]{1,0,0,0,1,0,0,0,1};
-    const float handPoint[3]{0,0,0},objectPoint[3]{30,0,0};
-    std::array<float,3> nextOffset{};
-    std::array<float,9> nextAxis{};
-    assert(smartGripPickupPose(smartGripFlags(loadedCfg),
-        handPoint,unitAxis,objectPoint,unitAxis,nextOffset,nextAxis));
-    assert(nextOffset[0]==0.f&&nextOffset[1]==-2.f
-        &&nextOffset[2]==-12.f);
-    assert(nextAxis[0]==1.f&&nextAxis[4]==1.f&&nextAxis[8]==1.f);
-    loadedCfg.pickupOffset=true;
-    assert(smartGripPickupPose(smartGripFlags(loadedCfg),
-        handPoint,unitAxis,objectPoint,unitAxis,nextOffset,nextAxis));
-    assert(nextOffset[0]==30.f); // overrides Palm Anchor
-    assert(smartGripPickupPose(0,handPoint,unitAxis,
-        objectPoint,unitAxis,nextOffset,nextAxis));
-    assert(nextOffset==kObjectGripNeutralOffsetUnits);
-    assert(nextAxis==kObjectGripNeutralLocalAxis);
     GrappleAnchorSettings grapple{};
     assert(!grapple.enabled);
     grapple.enabled=true;
-    grapple.barrelSurfacePreview=true;
     assert(grappleAnchorSave("grapple_anchor_test.cfg",grapple));
     GrappleAnchorSettings grappleLoaded{};
     assert(grappleAnchorLoad("grapple_anchor_test.cfg",grappleLoaded));
-    assert(grappleLoaded.enabled&&grappleLoaded.barrelSurfacePreview);
+    assert(grappleLoaded.enabled);
     const float rayOrigin[3]{0,0,0};
     const float rayForward[3]{0,0,1};
     const float boxOrigin[3]{0,0,100};
@@ -259,32 +231,7 @@ int main(){
             worldHit+=nativeAxis[col*3+i]*localHit[col];
         assert(std::abs(worldHit-rayOrigin[i])<.01f);
     }
-    // A named asset is useful as an identity, but does not supply geometry.
-    assert(grappleIdentifiedTechBarrel(
-        "models/props/UAC_Barrel_Tech_Red.md6mesh"));
-    assert(!grappleIdentifiedTechBarrel("models/props/other_barrel.mesh"));
-    const float barrelCentre[3]{0,0,0};
-    const float fromSide[3]{0,-100,0};
-    const float sideRay[3]{0,1,0};
     GrappleRayAnchor visual{};
-    assert(grappleBarrelOutlineHit(fromSide,sideRay,barrelCentre,
-        unitAxis,200,visual));
-    assert(visual.source==GrappleContactSource::ApproximateBarrel);
-    assert(!visual.exactVisualMeshHit);
-    assert(std::abs(visual.worldPoint[1]+26.f)<.01f);
-    const float fromAbove[3]{12,0,100};
-    const float downRay[3]{0,0,-1};
-    assert(grappleBarrelOutlineHit(fromAbove,downRay,barrelCentre,
-        unitAxis,200,visual));
-    assert(std::abs(visual.worldPoint[2]-37.f)<.01f);
-    const float missedTop[3]{50,0,100};
-    assert(!grappleBarrelOutlineHit(missedTop,downRay,barrelCentre,
-        unitAxis,200,visual));
-    const float rotatedAxis[9]{0,0,-1,0,1,0,1,0,0};
-    const float fromRight[3]{100,0,0},leftRay[3]{-1,0,0};
-    assert(grappleBarrelOutlineHit(fromRight,leftRay,barrelCentre,
-        rotatedAxis,200,visual));
-    assert(std::abs(visual.worldPoint[0]-37.f)<.01f);
     // Exact rendered triangles, when genuinely available, have an entirely
     // separate source tag. Never mislabel the analytic cylinder as exact.
     const float renderedTriangle[9]{
@@ -298,6 +245,5 @@ int main(){
     assert(!grappleRenderTriangleHit(aimAtFace,rayForward,
         nullptr,0,200,visual));
     std::remove("grapple_anchor_test.cfg");
-    std::remove("smart_grip_test.cfg");
     std::remove("object_grip_profile_test.cfg");
 }

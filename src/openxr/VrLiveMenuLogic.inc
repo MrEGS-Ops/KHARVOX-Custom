@@ -29,9 +29,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
-        rows.push_back({"Smart Grip Experiments",VrLiveMod::Other,
-            s.vrHandMenu.smartGrip.enabled,D::SmartGrip});
-        rows.push_back({"Grapple Anchor (Test)",VrLiveMod::Other,
+        rows.push_back({"Grapple Grab",VrLiveMod::Other,
             s.vrHandMenu.grappleAnchor.enabled,D::GrappleAnchor});
 #endif
         return rows;
@@ -177,16 +175,9 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Laser point becomes a temporary hand anchor.",
             "Pulls the targeted point toward your grip.",
             "Keeps original tilt; follows your wrist after.",
-            "NO saved profiles; independent Smart Grip test.",
-            "Optional tech-barrel outline contact preview.",
+            "No named-shape presets or collision hulls.",
+            "Render-mesh hit access is not yet verified.",
             "Object Discovery ON; moving props only."}}};
-        case D::SmartGrip:return {{{
-            "Independent, optional object grab experiments.",
-            "Master and individual variations start OFF.",
-            "Uses DOOM physics origin and world rotation.",
-            "Mesh inspector logs size/shape candidates.",
-            "Requires Object Discovery to grab props.",
-            "Grip+LT retains manual recalibration."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
             "Scan radius: 1-15 m (default 5 m).",

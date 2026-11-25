@@ -792,7 +792,6 @@ void paintVrHandMenu() {
         // visible and pointer-clickable as soon as the row is highlighted.
         const bool expInline=devPage&&count>0
             &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
-                ||entries[selected].developer==kharvox::VrMenuDevOption::SmartGrip
                 ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor);
         if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
@@ -836,56 +835,25 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
                 ?"OBJECT DISCOVERY MODE"
-                :opt==D::SmartGrip?"SMART GRIP PICKUP EXPERIMENTS"
-                :opt==D::GrappleAnchor?"GRAPPLE ANCHOR - SEPARATE TEST"
+                :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt==D::GrappleAnchor){
                 const bool on=m.grappleAnchor.enabled;
-                fill(531,186,384,66,m.hovered==130
+                fill(531,186,384,77,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
-                write(548,202,"GRAPPLE ANCHOR",white);
-                write(843,202,on?"ON":"OFF",on?RGB(128,255,177):muted);
-                write(548,230,"A / TRIGGER: TOGGLE",muted);
-                const bool preview=m.grappleAnchor.barrelSurfacePreview;
-                fill(531,277,384,77,m.hovered==131
-                    ?RGB(52,83,99):RGB(39,49,63));
-                write(548,290,"TECH BARREL OUTLINE PREVIEW",white);
-                write(843,290,preview?"ON":"OFF",
-                    preview?RGB(128,255,177):muted);
-                write(548,322,"A / TRIGGER: TOGGLE",muted);
-                write(538,385,"Uses barrel's orientation for hit point.",white);
-                write(538,423,"Preserves 6DOF hand attachment.",white);
-                write(538,472,"NOT YET EXACT RENDER MESH",RGB(255,196,112));
-                write(538,505,"Outline dimensions are estimates;",muted);
-                write(538,533,"no collider or mesh vertices are used.",muted);
-                write(538,572,"Other objects keep original grapple.",muted);
+                write(548,204,"GRAPPLE GRAB",white);
+                write(843,204,on?"ON":"OFF",
+                    on?RGB(128,255,177):muted);
+                write(548,235,"A / TRIGGER: TOGGLE",muted);
+                write(538,309,"Aim laser at a movable prop, Grip.",white);
+                write(538,358,"Keep tilt; follow your wrist in 6DOF.",white);
+                write(538,442,"CURRENT LIMITATION",RGB(255,196,112));
+                write(538,478,"Native render-mesh hit not verified.",muted);
+                write(538,508,"Existing ray point used until available.",muted);
+                write(538,563,"No barrel-specific shape presets.",muted);
                 write(538,612,m.objectDiscovery.enabled
-                    ?"Discovery active. Moving props only."
+                    ?"Scanner active. Moving props only."
                     :"ENABLE OBJECT DISCOVERY FIRST",m.objectDiscovery.enabled
-                        ?RGB(128,255,177):RGB(255,196,112));
-            }else if(opt==D::SmartGrip){
-                const auto& cfg=m.smartGrip;
-                const std::array<const char*,6> labels{
-                    "SMART GRIP - MASTER","PALM ANCHOR (12 UNITS)",
-                    "KEEP PICKUP TILT","WORLD UPRIGHT AT PICKUP",
-                    "KEEP PICKUP OFFSET","MESH / SHAPE INSPECTOR"};
-                const std::array<bool,6> values{
-                    cfg.enabled,cfg.palmAnchor,cfg.keepTilt,
-                    cfg.worldUpright,cfg.pickupOffset,cfg.inspectMesh};
-                for(int i=0;i<6;++i){
-                    const int top=186+i*66;
-                    const bool hover=m.hovered==130+i
-                        ||(m.navigation.usingStick
-                            &&m.navigation.actionIndex==i);
-                    fill(531,top,384,58,hover?RGB(52,83,99):RGB(39,49,63));
-                    write(548,top+12,labels[i],white);
-                    write(847,top+12,values[i]?"ON":"OFF",
-                        values[i]?RGB(128,255,177):muted);
-                }
-                write(538,593,"OFFSET > PALM | UPRIGHT > TILT",muted);
-                write(538,617,m.objectDiscovery.enabled
-                    ?"Discovery active. Grip+LT = recalibrate."
-                    :"ENABLE OBJECT DISCOVERY TO GRAB",m.objectDiscovery.enabled
                         ?RGB(128,255,177):RGB(255,196,112));
             }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
                 fill(531,186,384,58,m.hovered==130
@@ -947,8 +915,7 @@ void paintVrHandMenu() {
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::SmartGrip
-                &&opt!=D::GrappleAnchor){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }

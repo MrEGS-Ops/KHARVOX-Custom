@@ -219,3 +219,26 @@ headset testing confirms the new runtime.
    load/save, instant amber-to-green and natural gravity release.
 5. Inspect native logs and recorded headset footage for unexpected
    movement, loss-of-tracking issues, false greens or render depth errors.
+
+## 25 Nov 2026 cleanup — object grab single path
+
+- Retired the six-switch Smart Grip experiment and its corresponding code,
+  settings loader, preview controls, and superseded tests. The existing
+  `smart_grip_experiments.cfg` file is left untouched on disk for rollback;
+  current builds no longer load it.
+- Retired the UAC barrel-only outline preview and its hard-coded cylinder.
+  Old `grapple_anchor_v2` settings are read, but the obsolete barrel flag is
+  deliberately ignored; future writes use `grapple_anchor_v1` (one enabled bit).
+- Removed duplicate speculative `MESH-INSPECT` and `RENDER-MESH` memory
+  scanning routines from the active native game-tick path. Retain bounded
+  model naming, acquisition evidence and native release diagnostics.
+- Object Discovery remains the ONE proximity/eligibility scanner and the
+  manual six-DOF profile-calibration path is preserved. Grapple Grab remains
+  the ONE alternative 6DOF laser attachment path. Both use the same DOOM
+  rigid-body follow and release routines. There is no per-object shape lookup.
+- The universal ray-triangle render-mesh intersection kernel remains for
+  eventual integration with a **verified** DOOM render triangle provider.
+  No engine triangle provider has been verified; existing runtime grapple
+  still uses the origin-ray proxy instead of falsely claiming visual contact.
+- Last green rollback before cleanup: RIPSHIFT Experimental Build #110,
+  commit `8ce38ac54b2631e592d4f71c95549e4459572364`.

@@ -2,7 +2,6 @@
 #include "RightHandGripConfig.h"
 #include "VrLiveModsConfig.h"
 #include "ObjectDiscoverySettingsPolicy.h"
-#include "SmartGripVariantsPolicy.h"
 #include "GrappleAnchorPolicy.h"
 #include <array>
 #include <string>
@@ -109,7 +108,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    ControllerMonitor,Experimental,SmartGrip,GrappleAnchor,StatsReset,LevelRecordsReset
+    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -575,7 +574,6 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     ObjectDiscoverySettings objectDiscovery{};
-    SmartGripSettings smartGrip{};
     GrappleAnchorSettings grappleAnchor{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
