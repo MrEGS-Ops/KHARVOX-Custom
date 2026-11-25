@@ -303,3 +303,55 @@ headset testing confirms the new runtime.
   origin/axis parameters, per-hit damage application and physics impulse
   handling. Add a fail-closed toggle ONLY after successful hook validation;
   constrain to this offhand shot without changing ordinary gunfire.
+
+## Next experiment: left-Grip native offhand melee before acquisition (26 Nov 2026)
+
+**User proposal / current preferred first experiment:** Rather than adding an
+artificial Heavy Assault Rifle shot, make pressing the physical left Grip
+perform ONE normal native DOOM melee impact aimed with the offhand, only after
+checking that the target is an eligible world-movable prop inside the
+configured grab reach. Then complete the original grab automatically when the
+hit activates physics, without asking for a second Grip press. Leave the
+melee animation, sounds, effects and original damage intact for the FIRST
+proof; investigate invisible animation and damage changes only AFTER that
+sequence actually works. The offhand rifle idea remains a fallback, not the
+first implementation target.
+
+**Important code-grounded distinction:** Existing Hand Focus modifies the
+FocusTracker **world USE/interact ray** and deliberately disables native
+thumbstick melee. Normal melee is submitted through the separate JOY8 / native
+melee input path. Thus toggling Hand Focus and pressing melee is NOT verified
+as a hand-ray-directed hit. A source-qualified native melee attack origin,
+direction and contact trace must be found, or the selected object may not be
+hit. Existing player melee's native effective range may be shorter than the
+1–5 m Grab Reach slider, even if the selector covers that range.
+
+**Required design and validation sequence:**
+
+1. On the physical left Grip rising edge, only in normal gameplay, check
+   fresh DOOM-native world entity eligibility for an independently verified
+   movable prop (including stationary pre-activation), first-ray hit and line
+   of sight against obstructions, and the configured grab-reach limit. If any
+   fail, do not emit the melee; retain normal left Grip behaviour. Do not
+   punch enemies, walls, scenery or empty space. Do not equate an origin-based
+   55-unit tolerance with a confirmed contact or unobstructed line of sight.
+2. Trigger one normal native melee attempt with a **verified offhand AIM
+   contact**; no global melee changes, no rapid repeating while Grip is held,
+   no normal gunfire interference, no toggle affecting regular melee.
+3. While Grip remains held, wait across DOOM game/physics ticks for real
+   motion/activation evidence from the SAME stable native entity and then use
+   the existing object hold/release path. Avoid grabbing before native physics
+   activation; avoid delaying or double-grabbing an already active body.
+4. Cancel the pending melee-to-grab transition on Grip release, menu,
+   cutscene, invalid tracking, generation change or target disappearance.
+   Leave original manual calibration and other object-grab methods intact
+   until a complete replacement is demonstrated.
+5. First test: fresh stationary eligible object, one Grip press -> visible
+   melee impact -> physics activation -> existing 6DOF grab; then verify
+   out-of-range, blocked, wrong-class and rapid-press fail-closed behaviour.
+
+**Status:** Proposed and documented, **NOT IMPLEMENTED**. Current source
+already has left Grip sampling and a native melee-input pulse, but does not
+have a verified independent hand-ray melee trace or a guaranteed native impact
+at the offhand ray contact. Do not ship a misleading "working" switch without
+this engine hook and a successful native gameplay test.
