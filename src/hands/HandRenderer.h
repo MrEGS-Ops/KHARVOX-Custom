@@ -90,6 +90,7 @@ public:
         const HandVisibilityOutput& visibility,
         const HandGameplayState& gameplay, const HandPose& laser = {},
         const HandPose& grabDebugLaser = {},
+        float grabLaserLengthMetres = 0.f,
         const std::array<ObjectDiscoveryRing,32>& discoveryRings = {},
         unsigned discoveryRingCount = 0);
     void finishSceneIntegratedFrame();
