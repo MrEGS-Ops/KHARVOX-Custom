@@ -8942,6 +8942,47 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         sceneLaser={{laserOrigin.x,laserOrigin.y,laserOrigin.z},
             {rotation.x,rotation.y,rotation.z,rotation.w},true};
     }
+    // Grab Reach Laser shares the world-space tracking origin and AIM
+    // direction of the free-hand native grab. Its origin is the source-time
+    // physical GRIP, so asynchronous stereo pairs keep both eyes coherent.
+    // The visible laser ends exactly at the configured 1-5 metre grab limit.
+    kharvox::hands::HandPose grabReachLaser{};
+    float grabReachLaserMetres{};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    const auto& discoveryConfig=s.vrHandMenu.objectDiscovery;
+    if(discoveryConfig.enabled&&discoveryConfig.grabReachLaserEnabled
+        &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&!controllerOnlyLocked.load(std::memory_order_acquire)
+        &&(!aerSourceMode||aerSourceQualified)){
+        const bool freeHandRight=s.weaponHandLeft;
+        const auto& sourceGrip=freeHandRight
+            ?integratedRightHandPose:integratedLeftHandPose;
+        const auto& liveGrip=freeHandRight
+            ?s.rightGripController:s.leftGripController;
+        const auto& liveAim=freeHandRight
+            ?s.rightController:s.leftController;
+        if(sourceGrip.valid&&liveGrip.valid&&liveAim.valid
+           &&liveGrip.positionTracked&&liveAim.positionTracked){
+            const XrQuaternionf sourceGripRotation{
+                sourceGrip.orientation[0],sourceGrip.orientation[1],
+                sourceGrip.orientation[2],sourceGrip.orientation[3]};
+            const auto sourceAim=normalizeQuaternion(multiply(
+                sourceGripRotation,multiply(
+                    conjugate(liveGrip.orientation),liveAim.orientation)));
+            const auto forward=normalizeVector(rotateVector(
+                sourceAim,{0.f,0.f,-1.f}));
+            const auto up=std::fabs(forward.y)>.9f
+                ?XrVector3f{1.f,0.f,0.f}:XrVector3f{0.f,1.f,0.f};
+            const auto directionRotation=quaternionFromForwardUp(forward,up);
+            grabReachLaser=sourceGrip;
+            grabReachLaser.orientation[0]=directionRotation.x;
+            grabReachLaser.orientation[1]=directionRotation.y;
+            grabReachLaser.orientation[2]=directionRotation.z;
+            grabReachLaser.orientation[3]=directionRotation.w;
+            grabReachLaserMetres=discoveryConfig.grabReachMetres;
+        }
+    }
+#endif
     // Experimental object markers use a last-pass depth-independent overlay;
     // object materials, physics and the scene depth buffer are not modified.
     std::array<kharvox::hands::ObjectDiscoveryRing,32> discoveryRings{};
@@ -9074,8 +9115,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.commandBuffer,handSceneTarget,sourceHandView,
             integratedLeftHandPose,integratedRightHandPose,
             freshAerHands?kharvox::hands::HandVisibilityOutput{}:integratedHandVisibility,
-            integratedHandGameplay,sceneLaser,kharvox::hands::HandPose{},
-            discoveryRings,discoveryRingCount);
+            integratedHandGameplay,sceneLaser,grabReachLaser,
+            grabReachLaserMetres,discoveryRings,discoveryRingCount);
         static bool laserSceneLogged=false;
         if(integrated&&sceneLaser.valid&&!laserSceneLogged){
             log("[LASER] scene-depth beam recorded with completed weapon source; compositor ribbons removed");
@@ -9092,7 +9133,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,VK_ACCESS_TRANSFER_READ_BIT,VK_IMAGE_ASPECT_COLOR_BIT,sourceLayer);
         return integrated&&!freshAerHands;
     };
-    const bool sceneIntegrationEligible=(!freshAerHands||sceneLaser.valid||discoveryRingCount)&&handGameplayActive&&stereoNow
+    const bool sceneIntegrationEligible=(!freshAerHands||sceneLaser.valid
+        ||grabReachLaser.valid||discoveryRingCount)&&handGameplayActive&&stereoNow
         &&!nativePackedStereo&&!skipAlternatingCapture
         &&captureViewValid;
     if(sceneIntegrationEligible){
@@ -9126,7 +9168,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                 if(!s.quadMode)rawEyeCaptureRecorded[e]=recordEyeSource(e,eyeSource,
                     e==0?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:nativeFrame.eyes[e].layout,
                     eyeSourceExtent,nativeFrame.eyes[e].format,s.stereoCacheRevision[e]+1,sfsBackend?uint32_t(e):0);
-                if(handGameplayActive&&(s.showHands||sceneLaser.valid||discoveryRingCount)){
+                if(handGameplayActive&&(s.showHands||sceneLaser.valid
+                    ||grabReachLaser.valid||discoveryRingCount)){
                     integratedNativeHands[e]=integrateSceneHands(eyeSource,
                         e==0?VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:nativeFrame.eyes[e].layout,
                         nativeFrame.eyes[e].pose,nativeFrame.eyes[e].fov,sfsBackend?uint32_t(e):0);
