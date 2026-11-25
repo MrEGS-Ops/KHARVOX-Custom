@@ -71,11 +71,10 @@ inline std::array<float,9> objectGripToHandLocalAxis(
                     hand[axis*3+component]*world[col*3+component];
     return local;
 }
-// A newly grabbed, unconfigured rigid body should start from its authored
-// model orientation (native world identity, local Z up), not the random angle
-// it happened to land at. This uses no model heuristics or physics wakeups.
-// Model-authored meshes whose canonical upright is not local +Z still need
-// one deliberate user calibration; saved per-hand profiles remain authoritative.
+// EVERY new grab starts at a neutral authored-model orientation
+// (native world identity, local Z up), never at the angle where it landed.
+// No previous saved pose is auto-applied on pickup. Model meshes authored
+// with another intrinsic upright may still require manual rotation.
 inline std::array<float,9> objectGripNeutralLocalAxis(
     const float handAxis[9]) noexcept {
     constexpr float authoredUpright[9]{
