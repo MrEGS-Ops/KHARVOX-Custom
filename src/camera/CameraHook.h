@@ -97,7 +97,7 @@ void KharvoxCameraSetObjectGripCalibration(
 void KharvoxCameraReleaseObjectGrip();
 bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {
-    std::array<KharvoxObjectDiscoveryCandidate,32> candidates{};
+    std::array<KharvoxObjectDiscoveryCandidate,128> candidates{};
     unsigned int count{};
     unsigned long long generation{};
 };
