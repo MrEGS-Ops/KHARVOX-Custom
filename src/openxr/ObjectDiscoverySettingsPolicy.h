@@ -25,6 +25,44 @@ struct ObjectDiscoverySettings {
     bool grabReachLaserEnabled{false}; // Visual aid only; OFF by default.
 };
 
+// One marker per object, with independent screen-left and screen-right halves.
+// 0 = unverified, 1 = movable/unprofiled, 2 = calibrated, 3 = hidden.
+// Beyond grab reach only calibrated (green) halves disappear; unprofiled
+// halves remain within the full scan radius.
+inline constexpr unsigned char kObjectDiscoveryRingHidden = 3;
+inline unsigned char objectDiscoveryHalfRingState(bool savedForHand,
+    bool nativeMotionObserved,float squaredDistance,
+    float squaredGrabReach) noexcept {
+    if(savedForHand)
+        return std::isfinite(squaredDistance)
+            &&std::isfinite(squaredGrabReach)
+            &&squaredDistance<=squaredGrabReach
+            ?2:kObjectDiscoveryRingHidden;
+    return nativeMotionObserved?1:0;
+}
+inline constexpr bool objectDiscoveryRingHasVisibleHalf(
+    unsigned char left,unsigned char right) noexcept {
+    return left!=kObjectDiscoveryRingHidden
+        ||right!=kObjectDiscoveryRingHidden;
+}
+// When the display capacity fills, nearest objects in grabbing distance win
+// first. Within equal range groups, incomplete calibrations win before
+// objects already calibrated with both hands.
+inline bool objectDiscoveryRingPrefer(float aDistanceSquared,
+    unsigned char aLeft,unsigned char aRight,
+    float bDistanceSquared,unsigned char bLeft,unsigned char bRight,
+    float grabReachSquared) noexcept {
+    const bool aNear=aDistanceSquared<=grabReachSquared;
+    const bool bNear=bDistanceSquared<=grabReachSquared;
+    if(aNear!=bNear)return aNear;
+    const bool aIncomplete=aLeft!=2&&aLeft!=kObjectDiscoveryRingHidden
+        ||aRight!=2&&aRight!=kObjectDiscoveryRingHidden;
+    const bool bIncomplete=bLeft!=2&&bLeft!=kObjectDiscoveryRingHidden
+        ||bRight!=2&&bRight!=kObjectDiscoveryRingHidden;
+    if(aIncomplete!=bIncomplete)return aIncomplete;
+    return aDistanceSquared<bDistanceSquared;
+}
+
 inline float objectDiscoverySnap(float value, float minValue, float maxValue,
                                  float step, float fallback) noexcept {
     if (!std::isfinite(value)) return fallback;
