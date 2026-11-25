@@ -474,7 +474,7 @@ struct State {
     std::map<unsigned,kharvox::ObjectGripProfile> objectGripSessionProfiles{};
     unsigned long long objectGripSessionGeneration{};
     bool objectGripInputConsumed{},objectGripConsumeTriggerUntilRelease{};
-    bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
+    bool objectGripCalibrating{},objectGripWasHeld{};
     unsigned long long objectGripLastFeedbackAtMs{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
     bool objectGripRecalibrateChordPrevious{},objectGripResetPoseThisFrame{};
