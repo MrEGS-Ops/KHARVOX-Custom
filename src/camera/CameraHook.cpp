@@ -13,6 +13,7 @@
 #include "../common/PoseTrace.h"
 #include "../native/NativeStereo.h"
 #include "CameraHook.h"
+#include "ObjectGripRotationPolicy.h"
 #include "CameraBasisPolicy.h"
 #include "PlayerControlPolicy.h"
 #include "StoryCameraFocusPolicy.h"
