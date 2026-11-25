@@ -120,7 +120,7 @@ struct HandRenderer::Impl {
     std::vector<SceneDepth> sceneDepthCopies;size_t sceneDepthCopiesUsed{};
     std::array<std::vector<VkImageView>,2> eyeViews{};std::array<std::vector<DepthTarget>,2> depthTargets{};std::array<std::vector<VkFramebuffer>,2> framebuffers{};std::array<VkExtent2D,2> extents{};
     Asset laserAsset{},grabDebugLaserAsset{};
-    std::array<Asset,3> objectDiscoveryRingAssets{};
+    std::array<Asset,6> objectDiscoveryRingAssets{}; // 3 statuses x 2 vertical halves
     std::array<Asset,4> assets{};std::array<bool,4> mirrorX{};HandCalibration leftCalibration{},rightCalibration{};
     std::array<std::array<HandCalibration,2>,
         static_cast<size_t>(KharvoxWeaponKind::Count)> weaponCalibrations{}, defaultWeaponCalibrations{};
@@ -536,8 +536,11 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
             auto facing=marker.pose;
             for(int j=0;j<4;++j)
                 facing.orientation[j]=view.pose.orientation[j];
-            drawBeam(objectDiscoveryRingAssets[
-                std::min<unsigned>(marker.state,2)],facing);
+            for(unsigned half=0;half<marker.halfState.size();++half){
+                const auto state=marker.halfState[half];
+                if(state>=3)continue; // green halves beyond grab reach
+                drawBeam(objectDiscoveryRingAssets[half*3+state],facing);
+            }
         }
 #else
         (void)discoveryRings;(void)discoveryRingCount;
@@ -824,37 +827,44 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
     const std::array<std::array<float,3>,3> palette{{
         {{.52f,.60f,.69f}}, {{.98f,.62f,.10f}}, {{.10f,.92f,.48f}}
     }};
-    for(unsigned color=0;color<palette.size();++color){
-        std::vector<Vertex> ringVertices;
-        std::vector<uint32_t> ringIndices;
-        for(unsigned edge=0;edge<2;++edge)
-            for(unsigned j=0;j<32;++j){
-                const float theta=6.28318530718f*float(j)/32.f;
-                const float radius=edge?.125f:.112f;
-                Vertex v{};
-                v.position[0]=radius*std::cos(theta);
-                v.position[1]=radius*std::sin(theta);
-                v.normal[2]=1.f;
-                v.baseColor[0]=palette[color][0];
-                v.baseColor[1]=palette[color][1];
-                v.baseColor[2]=palette[color][2];
-                v.material[0]=-1.f;
-                ringVertices.push_back(v);
+    // Generate screen-left (controller LEFT) and screen-right (controller
+    // RIGHT) semicircles separately. A camera-facing rotation makes each
+    // side consistent regardless of object orientation or which eye renders.
+    for(unsigned side=0;side<2;++side)
+        for(unsigned color=0;color<palette.size();++color){
+            std::vector<Vertex> ringVertices;
+            std::vector<uint32_t> ringIndices;
+            constexpr unsigned steps=16;
+            for(unsigned edge=0;edge<2;++edge)
+                for(unsigned j=0;j<=steps;++j){
+                    const float theta=(side==0?1.57079632679f:-1.57079632679f)
+                        +3.14159265359f*float(j)/float(steps);
+                    const float radius=edge?.125f:.112f;
+                    Vertex v{};
+                    v.position[0]=radius*std::cos(theta);
+                    v.position[1]=radius*std::sin(theta);
+                    v.normal[2]=1.f;
+                    v.baseColor[0]=palette[color][0];
+                    v.baseColor[1]=palette[color][1];
+                    v.baseColor[2]=palette[color][2];
+                    v.material[0]=-1.f;
+                    ringVertices.push_back(v);
+                }
+            for(uint32_t j=0;j<steps;++j){
+                const uint32_t next=j+1;
+                for(uint32_t index:{j,next,j+steps+1,
+                    next,next+steps+1,j+steps+1})
+                    ringIndices.push_back(index);
             }
-        for(uint32_t j=0;j<32;++j){
-            const uint32_t next=(j+1)%32;
-            for(uint32_t index:{j,next,j+32,next,next+32,j+32})
-                ringIndices.push_back(index);
+            auto& asset=impl_->objectDiscoveryRingAssets[side*3+color];
+            asset.ready=impl_->buffer(ringVertices.size()*sizeof(Vertex),
+                VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,ringVertices.data(),
+                asset.vertices,asset.vertexMemory)
+                &&impl_->buffer(ringIndices.size()*sizeof(uint32_t),
+                    VK_BUFFER_USAGE_INDEX_BUFFER_BIT,ringIndices.data(),
+                    asset.indices,asset.indexMemory);
+            asset.indexCount=static_cast<uint32_t>(ringIndices.size());
         }
-        auto& asset=impl_->objectDiscoveryRingAssets[color];
-        asset.ready=impl_->buffer(ringVertices.size()*sizeof(Vertex),
-            VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,ringVertices.data(),
-            asset.vertices,asset.vertexMemory)
-            &&impl_->buffer(ringIndices.size()*sizeof(uint32_t),
-                VK_BUFFER_USAGE_INDEX_BUFFER_BIT,ringIndices.data(),
-                asset.indices,asset.indexMemory);
-        asset.indexCount=static_cast<uint32_t>(ringIndices.size());
-    }
 #endif
     for (size_t eye = 0; eye < 2; eye++) {
       impl_->eyeViews[eye].resize(eyeImages[eye].size());
