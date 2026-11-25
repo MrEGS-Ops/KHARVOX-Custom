@@ -810,7 +810,7 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
     impl_->grabDebugLaserAsset.indexCount=
         static_cast<uint32_t>(grabBeamIndices.size());
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    // Independent depth-tested world markers; no changes to entity meshes.
+    // Independent always-visible overlay markers; no changes to entity meshes.
     const std::array<std::array<float,3>,3> palette{{
         {{.52f,.60f,.69f}}, {{.98f,.62f,.10f}}, {{.10f,.92f,.48f}}
     }};
