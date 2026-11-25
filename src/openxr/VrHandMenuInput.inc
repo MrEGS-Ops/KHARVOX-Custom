@@ -512,7 +512,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?3:5;
+            const int optionCount=expInline?4:5;
             const int optionStep=expInline?91:68;
             const int optionHeight=expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -853,7 +853,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?3:1; // toggle, scan radius, grab reach
+                        ?4:1; // discovery toggle, scan radius, grab reach, laser toggle
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1018,7 +1018,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=132&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=133&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
                 using D=kharvox::VrMenuDevOption;
@@ -1039,6 +1039,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     const int option=chosen-130;
                     if(option==0){
                         m.objectDiscovery.enabled=!m.objectDiscovery.enabled;
+                    }else if(option==3){
+                        m.objectDiscovery.grabReachLaserEnabled=
+                            !m.objectDiscovery.grabReachLaserEnabled;
                     }else{
                         const bool pointerSet=pointed==chosen
                             &&std::isfinite(m.cursorX);
@@ -1072,7 +1075,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             +" scan="+std::to_string(static_cast<int>(
                                 m.objectDiscovery.scanRadiusMetres))
                             +"m reach="+std::to_string(
-                                m.objectDiscovery.grabReachMetres)+"m";
+                                m.objectDiscovery.grabReachMetres)+"m laser="
+                            +(m.objectDiscovery.grabReachLaserEnabled?"ON":"OFF");
                     }
                 }
             }else if(!devPage&&m.navigation.settingsColumn
