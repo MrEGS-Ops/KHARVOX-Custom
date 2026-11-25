@@ -1,14 +1,20 @@
 # RIPSHIFT VR — safe UserData layout
 
-The five portable folders are:
+The portable folders include:
 
 - `UserData/Calibrations/`: per-hand, per-weapon, HUD and recoil calibration.
 - `UserData/Settings/`: launcher, live VR mod/HUD preferences, original KHARVOX location.
 - `UserData/Statistics/`: persistent campaign deaths and accumulated gameplay time.
 - `UserData/Records/`: ranked level records and personal bests.
 - `UserData/Profiles/`: known configuration marks.
+- `UserData/ObjectGrip/`: experimental Object Discovery settings and per-model, per-hand calibration profiles.
 
 ## Migration and rollback contract
+
+**Object Grip exception:** The experimental `object_discovery.cfg` and
+`object_grip_profiles.cfg` are always read/written exclusively in
+`UserData/ObjectGrip/`. Old flat test files are neither migrated nor read nor
+deleted. Other previously categorized files retain their existing behaviour.
 
 1. On start, RIPSHIFT copies only known personal files from the old flat
    `UserData/` layout to the matching category. Existing categorized files win.
