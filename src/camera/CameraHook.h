@@ -94,7 +94,8 @@ void KharvoxCameraSetObjectGripInput(
     float scanRadiusUnits,bool enabled);
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
-    bool calibrating,bool freezeObject,bool resetToNeutral);
+    bool calibrating,bool freezeObject,bool resetToNeutral,
+    unsigned poseLockAcknowledged);
 void KharvoxCameraReleaseObjectGrip();
 bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {
