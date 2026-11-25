@@ -219,11 +219,98 @@ std::atomic<unsigned> objectDiscoverySourceMode{}; // 0=focus only,1=flat pool,2
 
 void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     std::uintptr_t size,unsigned handle,unsigned long long generation);
+// Attempt DOOM's already-known game entity registry in addition to the
+// FocusTracker-adjacent flat pool. Its static code signature and exact game
+// vtable were independently validated for the supported retail executable
+// by the cinematic manager; a matching known movable entity is required
+// here before trusting it for proximity discovery.
+void objectDiscoveryTryManagedPool(const void* knownEntity,
+    std::uintptr_t imageBase,std::uintptr_t imageSize,
+    unsigned long long generation) {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    auto& pool=objectDiscoveryManagedPool;
+    if(pool.generation!=generation)pool={};
+    const auto now=GetTickCount64();
+    if(pool.begin||now<pool.lastAttemptMs
+        ||now-pool.lastAttemptMs<5000)return;
+    pool.lastAttemptMs=now;pool.generation=generation;
+    constexpr unsigned char expectedCode[]{
+        0x48,0x8b,0x05,0x2c,0x50,0x7b,0x05};
+    unsigned char code[sizeof(expectedCode)]{};
+    std::uint64_t signature{};
+    // Exact code/data fingerprints from existing read-only game manager
+    // inspection. Never enumerate unknown versions on a guessed offset.
+    if(!objectDiscoveryReadable(
+            reinterpret_cast<const void*>(imageBase+0x3035ad8),8)
+       ||!objectDiscoveryReadable(
+            reinterpret_cast<const void*>(imageBase+0x300f600),8)
+       ||!objectDiscoveryReadable(
+            reinterpret_cast<const void*>(imageBase+0x35a69d),sizeof(code)))
+        return;
+    std::memcpy(&signature,reinterpret_cast<const void*>(
+        imageBase+0x3035ad8),8);
+    if(signature!=0x20000a54d0ULL)return;
+    std::memcpy(&signature,reinterpret_cast<const void*>(
+        imageBase+0x300f600),8);
+    if(signature!=0x100004e98ULL)return;
+    std::memcpy(code,reinterpret_cast<const void*>(
+        imageBase+0x35a69d),sizeof(code));
+    if(std::memcmp(code,expectedCode,sizeof(code)))return;
+    std::uintptr_t game{},gameVtable{},entries{},again{};
+    std::int32_t count{},againCount{};
+    if(!objectDiscoveryReadable(
+            reinterpret_cast<const void*>(imageBase+0x5b0f6d0),8))
+        return;
+    std::memcpy(&game,reinterpret_cast<const void*>(
+        imageBase+0x5b0f6d0),8);
+    if(!objectDiscoveryReadable(reinterpret_cast<const void*>(game),8))
+        return;
+    std::memcpy(&gameVtable,reinterpret_cast<const void*>(game),8);
+    if(gameVtable!=imageBase+0x201e3d8
+        ||!objectDiscoveryReadable(
+            reinterpret_cast<const void*>(game+0xa54d8),16))
+        return;
+    std::memcpy(&entries,reinterpret_cast<const void*>(game+0xa54d8),8);
+    std::memcpy(&count,reinterpret_cast<const void*>(game+0xa54e0),4);
+    if(!entries||count<1||count>32768
+        ||!objectDiscoveryReadable(reinterpret_cast<const void*>(entries),
+            static_cast<std::size_t>(count)*sizeof(ObjectDiscoveryManagedEntry)))
+        return;
+    // A registry is usable for proximity scanning only when the precise
+    // already-resolved FocusTracker movable entity is in the registry.
+    // This is a validation check, NOT the mechanism for finding new objects.
+    bool knownFound{};
+    for(int i=0;i<count;++i){
+        ObjectDiscoveryManagedEntry entry{};
+        std::memcpy(&entry,reinterpret_cast<const void*>(
+            entries+static_cast<std::size_t>(i)*sizeof(entry)),sizeof(entry));
+        if(entry.entity==reinterpret_cast<std::uintptr_t>(knownEntity)
+            &&entry.id==entry.check&&entry.id!=0x1fffffe){
+            knownFound=true;break;
+        }
+    }
+    std::memcpy(&again,reinterpret_cast<const void*>(game+0xa54d8),8);
+    std::memcpy(&againCount,reinterpret_cast<const void*>(game+0xa54e0),4);
+    if(!knownFound||again!=entries||againCount!=count)return;
+    pool.begin=reinterpret_cast<const unsigned char*>(entries);
+    pool.game=game;pool.imageBase=imageBase;pool.imageSize=imageSize;
+    pool.entries=static_cast<unsigned>(count);
+    pool.cursor=0;pool.lastSweepMs=0;
+    objectDiscoverySourceMode.store(2,std::memory_order_release);
+    log("[OBJECT-DISCOVERY] validated independent nearby entity registry; "
+        "source=PROXIMITY entries="+std::to_string(count));
+#else
+    (void)knownEntity;(void)imageBase;(void)imageSize;(void)generation;
+#endif
+}
 void objectDiscoveryLocateNativePool(const void* knownEntity,
     std::uintptr_t imageBase,std::uintptr_t imageSize,
     unsigned long long generation){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     if(!knownEntity)return;
+    // The managed registry is independently enumerable once validated,
+    // unlike a focus-derived list. Try it even if the legacy pool fails.
+    objectDiscoveryTryManagedPool(knownEntity,imageBase,imageSize,generation);
     auto& pool=objectDiscoveryNativePool;
     if(pool.generation!=generation)pool={};
     const auto now=GetTickCount64();
@@ -280,6 +367,10 @@ void objectDiscoveryLocateNativePool(const void* knownEntity,
         pool.imageSize=imageSize;
         pool.entries=static_cast<unsigned>(testBytes/sizeof(void*));
         pool.cursor=0;
+        if(!objectDiscoveryManagedPool.begin)
+            objectDiscoverySourceMode.store(1,std::memory_order_release);
+        log("[OBJECT-DISCOVERY] independent flat entity pool validated; "
+            "source=PROXIMITY entries="+std::to_string(pool.entries));
         break;
     }
 #else
