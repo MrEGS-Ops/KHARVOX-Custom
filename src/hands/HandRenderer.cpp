@@ -155,6 +155,7 @@ struct HandRenderer::Impl {
         const HandPose&rightGrip,const HandVisibilityOutput&visibility,
         const HandGameplayState&gameplay,const HandPose&laser = {},
         const HandPose&grabDebugLaser = {},
+        float grabLaserLengthMetres = 0.f,
         const std::array<ObjectDiscoveryRing,32>& discoveryRings = {},
         unsigned discoveryRingCount = 0);
     void destroyAsset(Asset&asset);
@@ -447,6 +448,7 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     const HandPose&leftGrip,const HandPose&rightGrip,
     const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
     const HandPose&laser,const HandPose&grabDebugLaser,
+    float grabLaserLengthMetres,
     const std::array<ObjectDiscoveryRing,32>& discoveryRings,
     unsigned discoveryRingCount){
     const bool drawLeft=visibility.left!=HandModelKind::None&&leftGrip.valid;
@@ -500,10 +502,12 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
     const auto descriptor=std::find_if(assets.begin(),assets.end(),
         [](const Asset& a){return a.ready;});
     if(descriptor!=assets.end()){
-        auto drawBeam=[&](const Asset& beam,const HandPose& pose){
+        auto drawBeam=[&](const Asset& beam,const HandPose& pose,
+                          float lengthMetres=1.f){
             if(!pose.valid||!beam.ready)return;
             struct Push{Mat4 model;Mat4 viewProjection;}
-                push{poseMatrix(pose),viewProjection};
+                push{multiply(poseMatrix(pose),
+                    scaleAxes(1.f,1.f,lengthMetres)),viewProjection};
             vk.cmdPushConstants(commandBuffer,pipelineLayout,
                 VK_SHADER_STAGE_VERTEX_BIT,0,sizeof(push),&push);
             vk.cmdBindDescriptorSets(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -514,11 +518,17 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
             vk.cmdDrawIndexed(commandBuffer,beam.indexCount,1,0,0,0);
         };
         drawBeam(laserAsset,laser);
-        drawBeam(grabDebugLaserAsset,grabDebugLaser);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        if(overlayPipeline&&discoveryRingCount)
+        // Same last-pass, depth-independent visibility as discovery rings.
+        // One-metre local beam scaled to actual configured grab reach.
+        if(overlayPipeline&&(grabDebugLaser.valid||discoveryRingCount)){
             vk.cmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 overlayPipeline);
+            if(grabDebugLaser.valid&&std::isfinite(grabLaserLengthMetres)
+                &&grabLaserLengthMetres>=1.f&&grabLaserLengthMetres<=5.f)
+                drawBeam(grabDebugLaserAsset,grabDebugLaser,
+                    grabLaserLengthMetres);
+        }
         for(unsigned i=0;overlayPipeline&&i<std::min<unsigned>(
             discoveryRingCount,discoveryRings.size());++i){
             const auto& marker=discoveryRings[i];
@@ -781,7 +791,7 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
         &&impl_->buffer(beamIndices.size()*sizeof(uint32_t),VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
         beamIndices.data(),impl_->laserAsset.indices,impl_->laserAsset.indexMemory);
     impl_->laserAsset.indexCount=static_cast<uint32_t>(beamIndices.size());
-    // Cyan ~0.90m grab debug pointer: same depth pipeline, distinct mesh.
+    // One-metre cyan grab-reach guide; runtime scales it to selected reach.
     std::vector<Vertex> grabBeamVertices;
     std::vector<uint32_t> grabBeamIndices;
     for(unsigned ring=0;ring<2;++ring)for(unsigned i=0;i<8;++i){
@@ -789,7 +799,7 @@ bool HandRenderer::initialize(VkPhysicalDevice physicalDevice,VkDevice device,
         Vertex v{};
         v.position[0]=.003f*std::cos(angle);
         v.position[1]=.003f*std::sin(angle);
-        v.position[2]=ring?-.90f:0.f;
+        v.position[2]=ring?-1.f:0.f;
         v.normal[0]=std::cos(angle);v.normal[1]=std::sin(angle);
         v.baseColor[0]=.015f;v.baseColor[1]=.85f;v.baseColor[2]=1.f;
         v.material[0]=-1.f;
@@ -978,6 +988,7 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     const HandPose&leftGrip,const HandPose&rightGrip,
     const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
     const HandPose&laser,const HandPose&grabDebugLaser,
+    float grabLaserLengthMetres,
     const std::array<ObjectDiscoveryRing,32>& discoveryRings,
     unsigned discoveryRingCount){
     if(!impl_->initialized||!target.colorView||!target.depthView
@@ -1030,7 +1041,7 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     impl_->vk.cmdBeginRenderPass(commandBuffer,&begin,VK_SUBPASS_CONTENTS_INLINE);
     impl_->drawGeometry(commandBuffer,scene->pipeline,scene->overlayPipeline,target.extent,view,leftGrip,
         rightGrip,visibility,gameplay,laser,grabDebugLaser,
-        discoveryRings,discoveryRingCount);
+        grabLaserLengthMetres,discoveryRings,discoveryRingCount);
     impl_->vk.cmdEndRenderPass(commandBuffer);
     return true;
 }
