@@ -20,6 +20,7 @@ struct ObjectDiscoveryGripFrame {
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
+    unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
 struct ObjectDiscoveryHeld {
@@ -29,9 +30,9 @@ struct ObjectDiscoveryHeld {
     float frozenWorldOrigin[3]{},frozenWorldAxis[9]{};
     unsigned long long lastGripDownAtMs{};
     unsigned poseReadMisses{},poseLockRevision{};
-    // A fresh grab begins with Grip pressed; require a release before
-    // re-pressing Grip can enter freeze/reposition/lock calibration.
-    bool rotationReady{},rotationActive{},neutralResetLatched{};
+    // The initial pickup Grip may immediately freeze the neutral object
+    // once calibration is active; no extra release/re-press required.
+    bool rotationActive{},neutralResetLatched{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
@@ -847,11 +848,10 @@ void objectDiscoveryGameTick() {
         }
     }
     held.neutralResetLatched=input.resetToNeutral;
-    // Initial GRIP is only the act of picking the prop up. The
-    // rotation editor becomes armed once the user first releases Grip.
-    if(!input.freeze)held.rotationReady=true;
+    // Even the FIRST acquisition Grip can leave the freshly neutralized
+    // prop floating while the player walks freely around it.
     bool releasedFrozenPoseThisTick=false;
-    if(held.calibrating&&input.freeze&&held.rotationReady){
+    if(held.calibrating&&input.freeze){
         if(!held.rotationActive){
             // Freeze the complete CURRENT TARGET pose in world space,
             // NOT the lagging DOOM physics pose. The object keeps its
@@ -896,7 +896,8 @@ void objectDiscoveryGameTick() {
         // world-locked pose with the previous frame's offset while Grip
         // is pressed or on the exact frame it is released.
         if(input.calibrating&&input.offsetValid
-            &&!held.rotationActive&&!releasedFrozenPoseThisTick){
+            &&!held.rotationActive&&!releasedFrozenPoseThisTick
+            &&input.poseLockAcknowledged==held.poseLockRevision){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
         }else if(!input.calibrating&&input.offsetValid){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
