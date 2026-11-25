@@ -5,49 +5,51 @@
 #include <cmath>
 
 namespace kharvox {
-// All DOOM native axes are column-major (axis*3 + world coordinate).
-// Held props must use a fixed hand-local orientation while the player
-// moves/tilts/turns. Grip-held editing changes ONLY the additional local
-// spin about the model's Z, controlled by right-stick X. Relative pitch,
-// roll AND yaw remain fixed to the tracked physical controller, rather than
-// recalculating world-up against the physics body's previous orientation.
-inline std::array<float,4> objectGripQuatMultiply(
-    const std::array<float,4>& a,const std::array<float,4>& b) noexcept {
-    return {
-        a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],
-        a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
-        a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],
-        a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]
-    };
+// DOOM native rigid body and OpenXR hand axes use column-major 3x3
+// matrices (column*3 + world coordinate). This is the only frame transform
+// used both for neutral pickup and for grip-locked editing.
+//
+// NORMAL HOLD: world pose = hand pose * stored local pose.
+// ROTATION EDIT: a press of offhand GRIP temporarily fixes the object's
+// entire world pose; each XR hand update recomputes only its LOCAL pose,
+// including its local offset. Release GRIP commits that new LOCAL pose
+// without moving the object. Never read the physics body pose as the lock
+// reference, because it can be a frame behind the visual target.
+inline void objectGripToWorldPose(
+    const float handOrigin[3],const float handAxis[9],
+    const float localOffset[3],const float localAxis[9],
+    float outOrigin[3],float outAxis[9]) noexcept {
+    for(int world=0;world<3;++world){
+        outOrigin[world]=handOrigin[world];
+        for(int local=0;local<3;++local)
+            outOrigin[world]+=handAxis[local*3+world]
+                *localOffset[local];
+        for(int column=0;column<3;++column){
+            float value{};
+            for(int local=0;local<3;++local)
+                value+=handAxis[local*3+world]
+                    *localAxis[column*3+local];
+            outAxis[column*3+world]=value;
+        }
+    }
 }
-inline std::array<float,4> objectGripQuatNormalize(
-    std::array<float,4> q) noexcept {
-    float lengthSquared{};
-    for(float value:q)lengthSquared+=value*value;
-    if(!std::isfinite(lengthSquared)||lengthSquared<1e-9f)
-        return {0.f,0.f,0.f,1.f};
-    const float inverse=1.f/std::sqrt(lengthSquared);
-    for(float& value:q)value*=inverse;
-    return q;
-}
-// Compute the final LOCAL orientation from an immutable baseline captured
-// on grip press and a continuous joystick spin. The object world transform
-// is always nativeHandBasis * this local transform; tracking the hand never
-// adds a second relative rotation or feeds the DOOM physics pose back in.
-inline std::array<float,9> objectGripSpinLocalAxis(
-    const float baseLocalAxis[9],float spinDegrees) noexcept {
-    if(!std::isfinite(spinDegrees))
-        return {baseLocalAxis[0],baseLocalAxis[1],baseLocalAxis[2],
-            baseLocalAxis[3],baseLocalAxis[4],baseLocalAxis[5],
-            baseLocalAxis[6],baseLocalAxis[7],baseLocalAxis[8]};
-    constexpr float radiansPerDegree=.017453292519943295769f;
-    const float halfAngle=.5f*spinDegrees*radiansPerDegree;
-    const std::array<float,4> localSpin{
-        0.f,0.f,std::sin(halfAngle),std::cos(halfAngle)};
-    const auto base=objectGripAxisToQuaternion(baseLocalAxis);
-    const auto rotated=objectGripQuatNormalize(
-        objectGripQuatMultiply(base,localSpin));
-    return objectGripQuaternionToAxis(rotated);
+inline void objectGripToHandLocalPose(
+    const float handOrigin[3],const float handAxis[9],
+    const float worldOrigin[3],const float worldAxis[9],
+    float outOffset[3],float outAxis[9]) noexcept {
+    for(int local=0;local<3;++local){
+        outOffset[local]=0.f;
+        for(int world=0;world<3;++world)
+            outOffset[local]+=handAxis[local*3+world]
+                *(worldOrigin[world]-handOrigin[world]);
+        for(int column=0;column<3;++column){
+            float value{};
+            for(int world=0;world<3;++world)
+                value+=handAxis[local*3+world]
+                    *worldAxis[column*3+world];
+            outAxis[column*3+local]=value;
+        }
+    }
 }
 inline std::array<float,9> objectGripToHandLocalAxis(
     const float hand[9],const float world[9]) noexcept {
@@ -84,8 +86,4 @@ inline constexpr std::array<float,9> objectGripNeutralLocalAxis() noexcept {
 inline constexpr std::array<float,3> kObjectGripNeutralOffsetUnits{
     0.f,-4.f,-20.f};
 
-inline float objectGripSpinAxis(float rightStickX) noexcept {
-    if(!std::isfinite(rightStickX)||std::abs(rightStickX)<.28f)return 0.f;
-    return std::clamp(rightStickX,-1.f,1.f);
-}
 } // namespace kharvox
