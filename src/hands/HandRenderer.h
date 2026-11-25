@@ -21,7 +21,9 @@ struct HandPose {
 
 struct ObjectDiscoveryRing {
     HandPose pose{};
-    unsigned char state{}; // 0=unverified,1=no profile,2=calibrated
+    // Screen-left = physical left hand, screen-right = physical right hand.
+    // 0=grey, 1=amber, 2=green, 3=hidden (distant calibrated half).
+    std::array<unsigned char,2> halfState{};
 };
 struct HandEyeView {
     HandPose pose{};
