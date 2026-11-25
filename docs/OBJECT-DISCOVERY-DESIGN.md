@@ -265,6 +265,26 @@ headset testing confirms the new runtime.
   If setting damage to zero suppresses native impact activation, intercept the
   health-damage application separately from physical-impact handling; verify
   this behavior experimentally, never assume it.
+- **Strict eligibility and distance gate (user clarification):** The virtual
+  offhand shot MUST ONLY fire when the offhand AIM ray first hits an
+  **independently validated eligible movable-world prop** (same intended
+  eligibility category as Object Discovery), with the contact point INSIDE
+  the user's configured **Grab Reach (1–5 m)**, measured from the offhand
+  ray origin. It must NOT fire at enemies, walls, scenery, collectibles,
+  unverified objects, empty space, or eligible props beyond grab reach.
+  Never send a native shot then merely discard its result: validate the
+  intended object, surface intercept, line of sight/first obstruction and
+  reach BEFORE issuing a native fire event. If any check is unresolved,
+  suppress firing entirely; no stray bullet, side-effect or ammunition cost.
+- **Stationary eligibility requirement:** This feature exists to wake props
+  *before* the first native kick/movement. Current Object Discovery grab
+  qualification uses a `nativeMotionObserved` gate, so blindly reusing
+  that gate would prevent firing at stationary targets. Separate conservative
+  read-only determination that the object is a valid physically movable
+  target from its current activation/motion state, without generalizing
+  eligibility to arbitrary nearby entities or force-activating objects
+  during scanning. Treat this as an explicit implementation blocker until
+  the native validation and proper hit test are verified.
 - **Single shot** on one offhand trigger press, rather than automatic fire.
   No normal weapon input interception, accidental normal weapon discharge,
   or alteration to weapon-hand shots. Ideally no normal ammo spent (this was
