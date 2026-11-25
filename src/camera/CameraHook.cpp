@@ -3095,14 +3095,12 @@ void KharvoxCameraSetObjectGripInput(
 }
 void KharvoxCameraSetObjectGripCalibration(
     const float offset[3],const float axis[9],
-    bool calibrating,bool freezeObject,float rotationStickX,
-    bool resetToNeutral) {
+    bool calibrating,bool freezeObject,bool resetToNeutral) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& f=objectDiscoveryGripInput;
     f.calibrating=calibrating;
     f.freeze=calibrating&&freezeObject;
-    f.spinStickX=f.freeze?kharvox::objectGripSpinAxis(rotationStickX):0.f;
     f.resetToNeutral=resetToNeutral&&calibrating;
     f.offsetValid=offset!=nullptr;
     f.axisValid=axis!=nullptr;
@@ -3112,7 +3110,7 @@ void KharvoxCameraSetObjectGripCalibration(
     else f.axisValid=false;
 #else
     (void)offset;(void)axis;(void)calibrating;(void)freezeObject;
-    (void)rotationStickX;(void)resetToNeutral;
+    (void)resetToNeutral;
 #endif
 }
 void KharvoxCameraReleaseObjectGrip() {
