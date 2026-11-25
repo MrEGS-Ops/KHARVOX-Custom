@@ -20,9 +20,9 @@ inline constexpr float kObjectDiscoveryGrabReachStepM = 0.5f;
 
 struct ObjectDiscoverySettings {
     bool enabled{false}; // Opt-in.
-    bool grabReachLaserEnabled{false}; // Visual aid only; OFF by default.
     float scanRadiusMetres{kObjectDiscoveryDefaultScanRadiusM};
     float grabReachMetres{kObjectDiscoveryDefaultGrabReachM};
+    bool grabReachLaserEnabled{false}; // Visual aid only; OFF by default.
 };
 
 inline float objectDiscoverySnap(float value, float minValue, float maxValue,
