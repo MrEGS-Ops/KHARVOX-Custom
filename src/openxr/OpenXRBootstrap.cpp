@@ -5470,7 +5470,7 @@ void updateGameplayActions(XrTime displayTime){
     // user opted into DEV discovery during gameplay; aiming or bracing
     // must not switch off nearby enumeration. Grip acquisition still
     // has its separate hand/focus/validity safety gates below.
-    KharvoxCameraEnableWorldGrabNativeFocusObservation(objectMode);
+    KharvoxCameraEnableObjectDiscovery(objectMode);
     KharvoxCameraSetObjectGripInput(
         gripPoseValid?nativeOrigin:nullptr,
         gripPoseValid?nativeAxis:nullptr,
