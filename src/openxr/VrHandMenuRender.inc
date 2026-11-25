@@ -287,7 +287,7 @@ void paintVrHandMenu() {
         write(57,443,rotating
             ?"RELEASE GRIP: LOCK TO HAND POSITION + ANGLE"
             :"Hold OFFHAND TRIGGER: 5 cm quick step (default 1 cm)",muted);
-        write(57,473,"WEAPON-HAND TRIGGER: SAVE PROFILE",RGB(108,235,161));
+        write(57,473,"RIGHT TRIGGER: SAVE PROFILE",RGB(108,235,161));
         write(57,509,"B: CANCEL / DROP OBJECT",white);
         write(57,541,"GRIP + OFFHAND TRIGGER: RESET UPRIGHT",RGB(84,233,214));
         write(57,585,s.objectGripKey.empty()

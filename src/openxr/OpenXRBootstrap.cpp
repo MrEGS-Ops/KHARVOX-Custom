@@ -5271,9 +5271,10 @@ void updateGameplayActions(XrTime displayTime){
                     s.objectGripRelativeAxis.begin());
             }
             s.objectGripNudgeAtMs=0;
+            // SAVE is always the physical RIGHT trigger, independent
+            // of which hand is currently holding the weapon.
             s.objectGripTriggerPrevious=
-                readFloatAction(s.weaponHandLeft
-                    ?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
+                readFloatAction(s.rightWeaponTrigger)>.55f;
             s.objectGripBackPrevious=readBooleanAction(s.doomJump);
             log("[OBJECT-GRIP] acquired handle="
                 +std::to_string(s.objectGripHandle)
@@ -5301,10 +5302,11 @@ void updateGameplayActions(XrTime displayTime){
     }
     // Physical support-hand trigger selects 5cm quick fine-tune ONLY.
     // Primary weapon-hand trigger remains the exclusive RT-save button.
-    const bool objectTrigger=readFloatAction(
-        s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger)>.55f;
-    const bool objectFineTuneQuick=readFloatAction(
-        s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
+    // Physical RT is always SAVE, LT always the quick fine-tune
+    // modifier. Switching primary weapon hands must not swap these.
+    const bool objectTrigger=readFloatAction(s.rightWeaponTrigger)>.55f;
+    const bool objectFineTuneQuick=
+        readFloatAction(s.leftWeaponTrigger)>.55f;
     const bool objectBack=readBooleanAction(s.doomJump);
     // GRIP + OFFHAND TRIGGER re-starts calibration at the canonical
     // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
