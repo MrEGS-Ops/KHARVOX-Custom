@@ -25,25 +25,13 @@ struct ObjectDiscoverySettings {
     bool grabReachLaserEnabled{false}; // Visual aid only; OFF by default.
 };
 
-// One marker per object, with independent screen-left and screen-right halves.
-// 0 = unverified, 1 = movable/unprofiled, 2 = calibrated, 3 = hidden.
-// Beyond grab reach only calibrated (green) halves disappear; unprofiled
-// halves remain within the full scan radius.
-inline constexpr unsigned char kObjectDiscoveryRingHidden = 3;
-inline unsigned char objectDiscoveryHalfRingState(bool savedForHand,
-    bool nativeMotionObserved,float squaredDistance,
-    float squaredGrabReach) noexcept {
-    if(savedForHand)
-        return std::isfinite(squaredDistance)
-            &&std::isfinite(squaredGrabReach)
-            &&squaredDistance<=squaredGrabReach
-            ?2:kObjectDiscoveryRingHidden;
-    return nativeMotionObserved?1:0;
-}
-inline constexpr bool objectDiscoveryRingHasVisibleHalf(
-    unsigned char left,unsigned char right) noexcept {
-    return left!=kObjectDiscoveryRingHidden
-        ||right!=kObjectDiscoveryRingHidden;
+// One marker per object, with independent physical LEFT/RIGHT halves.
+// 0 = unverified, 1 = movable/unprofiled, 2 = saved calibration.
+// A SAVED profile stays GREEN at every distance within SCAN RADIUS.
+// Grab Reach never changes profile colour; it only gates grabbing.
+inline constexpr unsigned char objectDiscoveryHalfRingState(
+    bool savedForHand,bool nativeMotionObserved) noexcept {
+    return savedForHand?2:(nativeMotionObserved?1:0);
 }
 // When the display capacity fills, nearest objects in grabbing distance win
 // first. Within equal range groups, incomplete calibrations win before
@@ -55,10 +43,8 @@ inline bool objectDiscoveryRingPrefer(float aDistanceSquared,
     const bool aNear=aDistanceSquared<=grabReachSquared;
     const bool bNear=bDistanceSquared<=grabReachSquared;
     if(aNear!=bNear)return aNear;
-    const bool aIncomplete=aLeft!=2&&aLeft!=kObjectDiscoveryRingHidden
-        ||aRight!=2&&aRight!=kObjectDiscoveryRingHidden;
-    const bool bIncomplete=bLeft!=2&&bLeft!=kObjectDiscoveryRingHidden
-        ||bRight!=2&&bRight!=kObjectDiscoveryRingHidden;
+    const bool aIncomplete=aLeft!=2||aRight!=2;
+    const bool bIncomplete=bLeft!=2||bRight!=2;
     if(aIncomplete!=bIncomplete)return aIncomplete;
     return aDistanceSquared<bDistanceSquared;
 }
