@@ -278,14 +278,14 @@ void paintVrHandMenu() {
             ?"LEFT HAND PROFILE":"RIGHT HAND PROFILE",RGB(84,233,214));
         const bool rotating=s.supportGripPressed;
         fill(54,308,620,106,rotating?RGB(22,62,61):RGB(31,43,59));
-        write(68,321,rotating?"ROTATE MODE  -  GRIP HELD"
+        write(68,321,rotating?"WORLD FLOAT  -  GRIP HELD"
             :"FINE-TUNE MODE  -  GRIP RELEASED",RGB(84,233,214));
-        write(68,357,rotating?"RIGHT STICK X: spin bottle around its axis."
+        write(68,357,rotating?"OBJECT FROZEN: WALK + TURN FREELY"
             :"LEFT STICK: horizontal / forward / back",white);
-        write(68,384,rotating?"Tilt offhand physically; release Grip to finish."
+        write(68,384,rotating?"Move hand to desired position + angle."
             :"RIGHT STICK Y: vertical (1cm / 5cm quick)",muted);
         write(57,443,rotating
-            ?"Rotate: Grip + stick spin / physical hand tilt"
+            ?"RELEASE GRIP: LOCK TO HAND POSITION + ANGLE"
             :"Hold OFFHAND TRIGGER: 5 cm quick step (default 1 cm)",muted);
         write(57,473,"WEAPON-HAND TRIGGER: SAVE PROFILE",RGB(108,235,161));
         write(57,509,"B: CANCEL / DROP OBJECT",white);
