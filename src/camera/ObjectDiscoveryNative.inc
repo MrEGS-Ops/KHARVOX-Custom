@@ -21,6 +21,8 @@ struct ObjectDiscoveryGripFrame {
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
     bool grappleAnchorEnabled{};
+    unsigned meleeProbeMode{};
+    bool manualMeleeRequested{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -518,6 +520,114 @@ void objectDiscoveryReleaseNative() {
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
+// Read-only experimental diagnostics: neither mode issues a native attack.
+// The ray is an origin proxy, not a collision or LOS query. Only a proven
+// native melee trace/impact ABI can turn these diagnostics into activation.
+struct ObjectMeleeProbe {
+    bool gripWasDown{},manualWasDown{},motionLogged{};
+    unsigned mode{},handle{};
+    unsigned long long generation{},started{},lastSample{},lastMoved{};
+    const void* entity{};
+    const void* body{};
+    float baseline[3]{};
+};
+ObjectMeleeProbe objectMeleeProbe{};
+void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
+    bool valid,unsigned long long now,unsigned long long generation) {
+    auto& p=objectMeleeProbe;
+    const bool down=valid&&in.meleeProbeMode&&in.physicalHand==0&&in.pressed
+        &&!in.calibrating;
+    if(!down||p.generation!=generation||p.mode!=in.meleeProbeMode){
+        if(p.gripWasDown)log("[MELEE-PROBE] end handle="+std::to_string(p.handle)
+            +" elapsed_ms="+std::to_string(now-p.started)
+            +" reason=release_or_context_change");
+        p={};
+        if(!down)return;
+    }
+    const auto vec=[](const float* v){return std::to_string(v[0])+","+
+        std::to_string(v[1])+","+std::to_string(v[2]);};
+    if(!p.gripWasDown){
+        p.gripWasDown=true;p.mode=in.meleeProbeMode;p.generation=generation;
+        p.started=now;
+        if(objectDiscoveryHeld.active){
+            log("[MELEE-PROBE] skipped: already holding object");return;
+        }
+        ObjectDiscoveryNativeRecord* best=nullptr;
+        float bestMiss=55.f,bestDepth=in.reachUnits;
+        unsigned candidates=0;
+        for(auto& item:objectDiscoveryNative){
+            if(!item.entity||!item.body||!item.poseValid||item.generation!=generation
+                ||now<item.lastPositionAtMs||now-item.lastPositionAtMs>250)continue;
+            kharvox::GrappleRayAnchor ray{};
+            if(!kharvox::grappleRayEstimate(in.rayOrigin,in.aim,item.origin,
+                    in.reachUnits,55.f,ray))continue;
+            ++candidates;
+            if(!best||ray.missDistance<bestMiss
+                ||(ray.missDistance==bestMiss&&ray.rayDistance<bestDepth)){
+                best=&item;bestMiss=ray.missDistance;bestDepth=ray.rayDistance;
+            }
+        }
+        log("[MELEE-PROBE] begin mode="+std::to_string(p.mode)
+            +" gen="+std::to_string(generation)+" origin="+vec(in.rayOrigin)
+            +" aim="+vec(in.aim)+" reach_units="+std::to_string(in.reachUnits)
+            +" proxy_candidates="+std::to_string(candidates)
+            +" contact=UNVERIFIED LOS=UNVERIFIED dispatch=MANUAL_ONLY");
+        if(!best){log("[MELEE-PROBE] no fresh rigid-body proxy in reach");return;}
+        p.handle=best->handle;p.entity=best->entity;p.body=best->body;
+        p.lastMoved=best->nativeMovedAtMs;
+        std::memcpy(p.baseline,best->origin,sizeof(p.baseline));
+        log("[MELEE-PROBE] selected handle="+std::to_string(p.handle)
+            +" model="+std::string(best->modelKey.data())
+            +" pos="+vec(best->origin)+" ray_depth="+std::to_string(bestDepth)
+            +" miss="+std::to_string(bestMiss)
+            +" prior_motion="+std::to_string(best->nativeMotionObserved));
+        if(p.mode==1){
+            float head[3]{},axis[9]{};
+            if(KharvoxCameraGetHeadRenderPose(head,axis))
+                log("[MELEE-A] head_origin="+vec(head)+" head_forward="+vec(axis)
+                    +" hand_head_dot="+std::to_string(axis[0]*in.aim[0]+
+                        axis[1]*in.aim[1]+axis[2]*in.aim[2]));
+            log("[MELEE-A] native attack trace hook unresolved; USE ray is not melee");
+        }else{
+            std::array<char,80> klass{};
+            readNativeWorldGrabClassLabel(best->entityVtable,best->imageBase,
+                best->imageSize,klass);
+            log("[MELEE-B] entity_class="+std::string(klass.data())
+                +" entity_vtable_rva="+std::to_string(best->entityVtable-best->imageBase)
+                +" body_vtable_rva="+std::to_string(best->bodyVtable-best->imageBase)
+                +" impact_abi=UNVERIFIED");
+        }
+    }
+    if(in.manualMeleeRequested&&!p.manualWasDown)
+        log("[MELEE-PROBE] native melee INPUT requested elapsed_ms="
+            +std::to_string(now-p.started)+" handle="+std::to_string(p.handle)
+            +" (not contact proof)");
+    p.manualWasDown=in.manualMeleeRequested;
+    if(!p.handle||p.motionLogged)return;
+    for(const auto& item:objectDiscoveryNative){
+        if(item.handle!=p.handle||item.entity!=p.entity||item.body!=p.body
+            ||item.generation!=p.generation||!item.poseValid)continue;
+        if(objectDiscoveryHeld.active&&objectDiscoveryHeld.handle==p.handle){
+            log("[MELEE-PROBE] tracking ends: existing grab acquired target");
+            p.motionLogged=true;return;
+        }
+        if(item.nativeMovedAtMs>p.lastMoved&&item.nativeMovedAtMs>=p.started){
+            log("[MELEE-PROBE] SAME TARGET native movement observed elapsed_ms="
+                +std::to_string(now-p.started)+" handle="+std::to_string(p.handle)
+                +" before="+vec(p.baseline)+" after="+vec(item.origin)
+                +" (causality unverified)");
+            p.motionLogged=true;
+        }else if(now>=p.lastSample+500){
+            p.lastSample=now;
+            log("[MELEE-PROBE] waiting handle="+std::to_string(p.handle)
+                +" pos="+vec(item.origin)+" pose_age_ms="
+                +std::to_string(now-item.lastPositionAtMs));
+        }
+        return;
+    }
+    log("[MELEE-PROBE] target identity lost; no retarget");
+    p.motionLogged=true;
+}
 void objectDiscoveryGameTick() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     const auto now=GetTickCount64();
@@ -557,11 +667,14 @@ void objectDiscoveryGameTick() {
         // Scan independently of controller pointing/hand availability.
         // Invalid free-hand aim must prevent a GRAB, never a 360-degree
         // radius scan; the latter only needs game-world/body coordinates.
-        if(worldBlocked||explicitRelease)return;
+        if(worldBlocked||explicitRelease){
+            objectMeleeProbeTick(input,false,now,0);return;
+        }
     }
     if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
     if(!objectDiscoveryEnabled.load(std::memory_order_acquire)){
+        objectMeleeProbeTick(input,false,now,generation);
         objectDiscoveryNative={};
         objectDiscoveryReleaseNative();
         objectDiscoverySourceMode.store(0,std::memory_order_release);
@@ -660,6 +773,7 @@ void objectDiscoveryGameTick() {
         objectDiscoveryPublish(item,now);
     }
     readCursor=(readCursor+readsPerTick)%cacheCount;
+    objectMeleeProbeTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     if(!inputValid)return;
     if(!objectDiscoveryHeld.active){
         if(!input.pressed||objectDiscoveryNeedsGripRelease)return;

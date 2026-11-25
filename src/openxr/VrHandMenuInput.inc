@@ -514,7 +514,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GrappleAnchor?1:expInline?4:5;
+                ==kharvox::VrMenuDevOption::GrappleAnchor?1:expInline?5:5;
             const int optionStep=expInline?91:68;
             const int optionHeight=expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -855,7 +855,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?4:1;
+                        ?5:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1060,7 +1060,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::Experimental){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;
-                    if(option==0){
+                    if(option==4){
+                        m.objectMeleeProbeMode=(m.objectMeleeProbeMode+1)%3;
+                        m.message=m.objectMeleeProbeMode==1?"Melee A: trace diagnostic (manual melee).":
+                            m.objectMeleeProbeMode==2?"Melee B: target diagnostic (manual melee).":
+                            "Melee diagnostics OFF.";
+                        log("[MELEE-PROBE] "+m.message);
+                    }else if(option==0){
                         m.objectDiscovery.enabled=!m.objectDiscovery.enabled;
                     }else if(option==3){
                         m.objectDiscovery.grabReachLaserEnabled=
@@ -1086,6 +1092,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                                 1.f:next;
                         }
                     }
+                    if(option!=4){
                     m.objectDiscovery=kharvox::sanitizedObjectDiscoverySettings(
                         m.objectDiscovery);
                     if(!kharvox::objectDiscoverySave(kharvox::runtimePathA(
@@ -1100,6 +1107,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             +"m reach="+std::to_string(
                                 m.objectDiscovery.grabReachMetres)+"m laser="
                             +(m.objectDiscovery.grabReachLaserEnabled?"ON":"OFF");
+                    }
                     }
                 }
             }else if(!devPage&&m.navigation.settingsColumn

@@ -5547,7 +5547,8 @@ void updateGameplayActions(XrTime displayTime){
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid,
         s.vrHandMenu.grappleAnchor.enabled,
-        gripPoseValid?nativeRayOrigin:nullptr);
+        gripPoseValid?nativeRayOrigin:nullptr,
+        s.vrHandMenu.objectMeleeProbeMode,nativeMeleeDown);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile

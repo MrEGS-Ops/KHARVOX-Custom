@@ -903,13 +903,17 @@ void paintVrHandMenu() {
                     +(cfg.grabReachLaserEnabled?"ON":"OFF"),
                     cfg.grabReachLaserEnabled?RGB(128,255,177):white);
                 write(548,507,"A / TRIGGER: TOGGLE",muted);
-                write(538,562,"Cyan laser = exact grab reach (1-5m).",muted);
-                write(538,592,"Only naturally moving objects can be grabbed.",muted);
-                const unsigned discoverySource=
-                    KharvoxCameraObjectDiscoverySourceMode();
-                write(538,620,!cfg.enabled?"SCANNER: OFF"
-                    :discoverySource==2?"SCANNER: PROXIMITY ACTIVE"
-                    :"SCANNER: PROXIMITY UNAVAILABLE",
+                const bool meleeSelected=m.hovered==134
+                    ||(m.navigation.usingStick&&m.navigation.actionIndex==4);
+                fill(531,550,384,77,meleeSelected
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,558,m.objectMeleeProbeMode==1?"MELEE A: TRACE PROBE":
+                    m.objectMeleeProbeMode==2?"MELEE B: TARGET PROBE":
+                    "MELEE PROBES: OFF",white);
+                write(548,580,"GRIP + MANUAL MELEE; LOG ONLY",muted);
+                const unsigned discoverySource=KharvoxCameraObjectDiscoverySourceMode();
+                write(548,605,!cfg.enabled?"SCANNER: OFF":
+                    discoverySource==2?"SCANNER: ACTIVE":"SCANNER: UNAVAILABLE",
                     discoverySource==2?RGB(128,255,177):RGB(255,196,112));
             }
             if(opt==D::StatsReset){
