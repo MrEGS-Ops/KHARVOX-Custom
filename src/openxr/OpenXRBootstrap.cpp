@@ -3888,13 +3888,19 @@ void updateGameplayActions(XrTime displayTime){
     // label-matched A=confirm and B=back.
     const bool faceButtonGameplayContext=gameplayWorld&&!pauseMenu
         &&!fullscreenMenu&&!deathMenu;
+    // Physical sticks still feed object fine-tune; DOOM must not receive
+    // locomotion, turning, weapon-wheel, or face-button input while this
+    // experimental calibration overlay owns them.
+    const bool objectGripCalibrationOwnsInput=gameplay
+        &&s.objectGripCalibrating&&s.vrHandMenu.objectDiscovery.enabled;
     XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
     constexpr float rightStickVerticalDeadzone=.4f;
     const float rightStickY=std::isfinite(s.rightStick.y)
         ?std::copysign(std::clamp((std::abs(s.rightStick.y)-rightStickVerticalDeadzone)
             /(1.f-rightStickVerticalDeadzone),0.f,1.f),s.rightStick.y):0.f;
-    if(gameplay&&std::abs(s.rightStick.x)>=s.turnDeadzone
+    if(gameplay&&!objectGripCalibrationOwnsInput
+        &&std::abs(s.rightStick.x)>=s.turnDeadzone
         &&kharvox::cancelPostCinematicYawGuard(s.postCinematicYawGuard)){
         log("[BODY-YAW] post-cinematic native yaw guard released reason=manual-turn absorbed="
             +std::to_string(s.postCinematicYawGuard.absorbedDegrees)+"deg");
@@ -3903,6 +3909,7 @@ void updateGameplayActions(XrTime displayTime){
     // Retain the right-stick DOWN gesture as a legacy weapon-wheel fallback
     // only when Gunslinger does not own selection; it never crouches.
     const bool rightStickDownGesture=turnActive
+        &&!objectGripCalibrationOwnsInput
         &&kharvox::vrRightStickDownGesture(s.rightStick.x,rightStickY);
 
     const bool rightWheelEnabled=s.customMods.behindHeadWeaponWheel;
@@ -4043,7 +4050,8 @@ void updateGameplayActions(XrTime displayTime){
     if(!secondaryFireGripDown)s.wheelWeaponGripSuppressedUntilRelease=false;
     if(!supportGripDown)s.wheelSupportGripSuppressedUntilRelease=false;
     const bool cycleEquipment=s.equipmentGrip.update(supportGripDown,
-        gameplay&&!s.customMods.physicalGrenadeThrow&&!s.behindHeadWheelActive
+        gameplay&&!objectGripCalibrationOwnsInput
+            &&!s.customMods.physicalGrenadeThrow&&!s.behindHeadWheelActive
             &&!s.wheelSupportGripSuppressedUntilRelease,
         supportGripController().valid&&weaponController().valid,
         s.twoHandLatched||s.twoHandCalibrationMode||supportGripInCaptureRange(),displayTime);
@@ -4053,6 +4061,9 @@ void updateGameplayActions(XrTime displayTime){
             GetTickCount64(),70,.62f,195.f);
     const bool rawSupportGripPress=supportGripDown&&!s.supportGripPressed;
     if(supportGripDown!=s.supportGripPressed){
+        if(objectGripCalibrationOwnsInput)
+            log(std::string("[OBJECT-GRIP] calibration ")
+                +(supportGripDown?"rotation grip pressed":"fine-tune grip released"));
         log(std::string("[TWO-HAND] ")+supportGripName()+" support input "
             +(supportGripDown?"pressed":"released"));
         s.supportGripPressed=supportGripDown;
@@ -4405,13 +4416,15 @@ void updateGameplayActions(XrTime displayTime){
     const XrVector2f requestedMovement=nativeUiMenu?nativeUiLeftStick
         :manualMove?movementDirectionRelativeStick(s.leftStick,gameplay)
         :(gameplay?s.roomscaleStick:s.leftStick);
-    XrVector2f movementStick=weaponWheelActive?XrVector2f{}:requestedMovement;
+    XrVector2f movementStick=(weaponWheelActive||objectGripCalibrationOwnsInput)
+        ?XrVector2f{}:requestedMovement;
     if(gaussSlowChargeActive){
         constexpr float gaussChargeMovementScale=.45f;
         movementStick.x*=gaussChargeMovementScale;
         movementStick.y*=gaussChargeMovementScale;
     }
-    const bool movementActive=!weaponWheelActive&&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
+    const bool movementActive=!weaponWheelActive&&!objectGripCalibrationOwnsInput
+        &&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
     // Hand Focus owns whichever physical stick is in the current weapon
@@ -4662,9 +4675,12 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
     }
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
-    const float manualTurnX=nativeManualTurnX(displayTime,turnActive&&gameplay&&!weaponSelectDown&&!weaponWheelActive);
+    const float manualTurnX=objectGripCalibrationOwnsInput?0.f:
+        nativeManualTurnX(displayTime,turnActive&&gameplay
+            &&!weaponSelectDown&&!weaponWheelActive);
     const bool manualTurnActive=manualTurnX!=0.f;
-    const float physicalBodyTurnX=nativePhysicalBodyTurnX(gameplay&&!weaponWheelActive,manualTurnActive);
+    const float physicalBodyTurnX=objectGripCalibrationOwnsInput?0.f:
+        nativePhysicalBodyTurnX(gameplay&&!weaponWheelActive,manualTurnActive);
     const float gameplayTurnX=manualTurnActive?manualTurnX:physicalBodyTurnX;
     holdNativeTurnCvars(physicalBodyTurnX!=0.f?bodyFollowYawSpeed:manualTurnCarrierSpeed());
     auto nativeUiRightStick=centeredNativeUiStick(s.rightStick);
@@ -4729,16 +4745,19 @@ void updateGameplayActions(XrTime displayTime){
             &&(stickOwnsSelection?stickClick:wheelOutput.triggerHapticPulse))
             kharvox::queueControllerClick(s.wheelClicks[hapticHand],GetTickCount64());
     }
-    const XrVector2f nativeRightStick=nativeUiMenu?nativeUiRightStick
+    const XrVector2f nativeRightStick=objectGripCalibrationOwnsInput
+        ?XrVector2f{}:nativeUiMenu?nativeUiRightStick
         :s.wheelCancelDrain.active()
             ?XrVector2f{s.wheelCancelDrain.originalSector.x,
                          s.wheelCancelDrain.originalSector.y}
         :weaponWheelActive?wheelSelectionStick:XrVector2f{gameplayTurnX,0.f};
-    const bool nativeRightStickActive=nativeUiMenu?turnActive
-        :(s.wheelCancelDrain.active()||weaponWheelActive||gameplayTurnX!=0.f);
+    const bool nativeRightStickActive=!objectGripCalibrationOwnsInput
+        &&(nativeUiMenu?turnActive
+        :(s.wheelCancelDrain.active()||weaponWheelActive||gameplayTurnX!=0.f));
     if(xinputHookReady)updateVirtualRightStick(nativeRightStick,nativeRightStickActive);
     s.previousManualTurnActive=manualTurnActive;
-    const bool chainsawUp=gameplay&&turnActive&&!meleeDown&&rightStickY>.75f;
+    const bool chainsawUp=gameplay&&turnActive&&!objectGripCalibrationOwnsInput
+        &&!meleeDown&&rightStickY>.75f;
     if(!meleeDown&&rightStickY<.55f)s.chainsawArmed=true;
     if(chainsawUp&&s.chainsawArmed){s.chainsawArmed=false;s.chainsawPulseUntil=displayTime+100000000;log(std::string("[INPUT] doom_chainsaw edge from ")+turnStickName()+" up");}
     const bool backWeaponPulseActive=gameplay&&displayTime<s.backWeaponPulseUntil;
@@ -5112,7 +5131,7 @@ void updateGameplayActions(XrTime displayTime){
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.
         if(suppressSetupButtons||suppressWelcomeButtons
-            ||s.objectGripInputConsumed)
+            ||objectGripCalibrationOwnsInput||s.objectGripInputConsumed)
             updateVirtualButtons(false,false,false,false,false,false,false,
                 false,false,false,false,false,false);
         else
@@ -5308,13 +5327,19 @@ void updateGameplayActions(XrTime displayTime){
     s.objectGripBackPrevious=objectBack;
     s.objectGripAprevious=objectA;
     // The normal weapon/controller calibration remains completely separate.
-    // No object-grab operation is permitted in a menu, during a cinematic
-    // or when two-hand weapon bracing owns the support Grip.
-    const bool freeHandClear=objectMode&&!s.twoHandLatched
-        &&!s.twoHandCalibrationMode&&!supportGripInCaptureRange()
-        &&!s.behindHeadWheelActive&&!weaponWheelActive
-        &&!quickHolsterGripConsumed&&s.headZeroValid
-        &&s.worldScale>1.f
+    // Once we catch an item, calibration owns the support grip even when
+    // DOOM's weapon-bracing capture zone passes near that hand. Rechecking
+    // the acquisition-only two-hand conditions here made Grip press drop the
+    // barrel by invalidating our native pose during calibration.
+    const bool calibrationOwnsGrab=s.objectGripCalibrating
+        &&s.objectGripWasHeld;
+    const bool freeHandClear=objectMode
+        &&(calibrationOwnsGrab
+            ||(!s.twoHandLatched&&!s.twoHandCalibrationMode
+                &&!supportGripInCaptureRange()
+                &&!s.behindHeadWheelActive&&!weaponWheelActive
+                &&!quickHolsterGripConsumed))
+        &&s.headZeroValid&&s.worldScale>1.f
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
     const auto& gripController=s.weaponHandLeft
         ?s.rightGripController:s.leftGripController;
