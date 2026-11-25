@@ -21,6 +21,27 @@ int main(){
     ObjectGripProfiles loaded;
     assert(objectGripLoad("object_grip_profile_test.cfg",loaded));
     assert(objectGripConfigured(loaded,"envhazard/barrels/red",0));
+    // Once saved, a pickup of THAT model and physical hand must bypass
+    // the automatic calibration overlay and use the prior six-DOF pose.
+    // Opposite hand or another model stays unsaved. Unnamed props may
+    // reuse their session instance only, never across map generations.
+    const std::map<unsigned,ObjectGripProfile> emptySessions{};
+    const auto* savedLeft=objectGripSavedPose(loaded,emptySessions,
+        "envhazard/barrels/red",17,0);
+    assert(savedLeft&&savedLeft->configured);
+    assert(std::abs(savedLeft->offsetMetres[0]-.1f)<.00001f);
+    assert(!objectGripSavedPose(loaded,emptySessions,
+        "envhazard/barrels/red",17,1));
+    assert(!objectGripSavedPose(loaded,emptySessions,
+        "envhazard/barrels/blue",17,0));
+    assert(!objectGripSavedPose(loaded,emptySessions,
+        "envhazard/barrels/red",17,2));
+    std::map<unsigned,ObjectGripProfile> sessions{};
+    sessions[94].hands[1].configured=true;
+    sessions[94].hands[1].offsetMetres={0.f,.2f,-.1f};
+    assert(objectGripSavedPose(loaded,sessions,"",94,1));
+    assert(!objectGripSavedPose(loaded,sessions,"",95,1));
+    assert(!objectGripSavedPose(loaded,sessions,"",94,0));
     // Stable rotation references: no physics-feedback tumble.
     constexpr float eps=.0005f;
     const float identity[9]{1,0,0,0,1,0,0,0,1};
