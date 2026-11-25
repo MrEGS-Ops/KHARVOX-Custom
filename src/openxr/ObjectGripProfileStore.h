@@ -42,7 +42,7 @@ using ObjectGripProfiles=std::map<std::string,ObjectGripProfile>;
 inline bool objectGripPoseValid(const ObjectGripPose& pose) noexcept {
     if(!pose.configured)return true;
     for(float value:pose.offsetMetres)
-        if(!std::isfinite(value)||std::abs(value)>2.f)return false;
+        if(!std::isfinite(value)||std::abs(value)>50.f)return false;
     float sum{};
     for(float value:pose.localRotation){
         if(!std::isfinite(value))return false;
