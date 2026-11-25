@@ -2,7 +2,7 @@
 """Read-only inventory of original DOOM (2016) pickup/glow resources.
 
 This identifies candidate materials and FX for independently developed
-KHARVOX Immersion Controls. No game files or ZIPs are written.
+RIPSHIFT Immersion Controls. No game files or ZIPs are written.
 """
 import argparse
 from pathlib import Path

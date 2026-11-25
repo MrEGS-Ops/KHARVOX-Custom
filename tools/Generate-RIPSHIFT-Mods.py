@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate original KHARVOX resource mods from the user's exported DOOM (2016) declarations.
+"""Generate RIPSHIFT resource mods from the user's exported DOOM (2016) declarations.
 
 No Bethesda/id Software game data or third-party mod assets are distributed here.
 Generated ZIPs are not selected or installed automatically.
@@ -19,8 +19,8 @@ import zlib
 AI = "generated/decls/aiglobalsettings/default.decl"
 GIB = "generated/decls/gorebehavior/gorebehavior/firearm/8_gauge.decl"
 MODS = {
-    "aggressive": (AI, "KHARVOX-Aggressive-Demons.zip"),
-    "gibs": (GIB, "KHARVOX-Enhanced-Gibs.zip"),
+    "aggressive": (AI, "RIPSHIFT-Aggressive-Demons.zip"),
+    "gibs": (GIB, "RIPSHIFT-Enhanced-Gibs.zip"),
 }
 # DOOM v5 stores the type and short name separately from the filename.
 RECORD_IDENTITIES = {
@@ -183,7 +183,7 @@ def load_from_game(game: Path, relative: str) -> tuple[bytes, str]:
 def make_archive(path: Path, resource: str, data: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, temporary = tempfile.mkstemp(
-        prefix=".kharvox-mod-", suffix=".zip", dir=path.parent)
+        prefix=".ripshift-mod-", suffix=".zip", dir=path.parent)
     os.close(fd)
     try:
         with zipfile.ZipFile(temporary, "w", zipfile.ZIP_DEFLATED) as zipfile_out:
@@ -222,7 +222,7 @@ def build(root: Path | None, out: Path, mods: tuple[str, ...],
     for destination, resource, contents in pending:
         make_archive(destination, resource, contents)
         print("Created " + str(destination))
-    print("Unselected by default. Use KHARVOX Custom Mods to enable after testing.")
+    print("Unselected by default. Use RIPSHIFT Mods to enable after testing.")
 
 
 def self_test() -> None:
@@ -300,7 +300,7 @@ def self_test() -> None:
                 pass
             else:
                 raise AssertionError("Unknown baseline must be rejected")
-    print("KHARVOX packaged mod generator self-test passed")
+    print("RIPSHIFT packaged mod generator self-test passed")
 
 
 def main() -> int:

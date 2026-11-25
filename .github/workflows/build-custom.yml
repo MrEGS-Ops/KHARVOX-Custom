@@ -2,7 +2,7 @@ name: RIPSHIFT Native Build
 
 on:
   push:
-    # Manager packaging changes do not need to rebuild the native runtime.
+    # Packaging-only changes do not need to rebuild the native runtime.
     # Full native builds still run for source/tooling or launcher changes.
     paths:
       - 'src/**'
@@ -23,7 +23,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: kharvox-build-${{ github.ref }}
+  group: ripshift-native-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,9 +43,7 @@ jobs:
           foreach ($script in @(
               "tools/verify_sfs_payload.ps1",
               "tools/Restore-Cactus-SFS-Profile.ps1",
-              "tools/Get-KHARVOX-Custom-Watcher.ps1",
-              "tools/Inspect-DoomWorldPhysics.ps1",
-              "tools/Generate-KHARVOX-Mods.py"
+              "tools/Inspect-DoomWorldPhysics.ps1"
           )) {
             if ($script.EndsWith(".py")) { continue }
             $tokens = $null
@@ -80,12 +78,12 @@ jobs:
           & ./tools/Inspect-DoomWorldPhysics.ps1 -ValidateOnly
           if (-not $?) { throw "Physics inspector compile check failed" }
 
-      - name: Test independent KHARVOX resource mod generator
+      - name: Test RIPSHIFT resource mod generator and immersion inventory
         shell: powershell
         run: |
-          python tools/Generate-KHARVOX-Mods.py --self-test
+          python tools/Generate-RIPSHIFT-Mods.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "Original resource mod generator self-test failed" }
-          python tools/Probe-KHARVOX-Immersion.py --self-test
+          python tools/Probe-RIPSHIFT-Immersion.py --self-test
           if ($LASTEXITCODE -ne 0) { throw "Original immersion resource inventory test failed" }
 
       - name: Regenerate controller mapping
@@ -300,18 +298,12 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-mod-fingerprints" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Mod fingerprint test failed: $($test.ExitCode)" }
 
-      - name: Test updater preservation and rollback
-        shell: powershell
-        run: |
-          .\tools\Get-KHARVOX-Custom-Watcher.ps1 -SelfTest
-          if ($LASTEXITCODE -ne 0) { throw "Watcher safety self-test failed: $LASTEXITCODE" }
-
       - name: Assemble full install and patch
         shell: powershell
         run: |
           $native = Join-Path $PWD "build\native\Release"
           $launcher = Join-Path $PWD "launcher\KharvoxLauncher\bin\Release\net48"
-          $out = Join-Path $PWD "out\watcher"
+          $out = Join-Path $PWD "out\ripshift"
           $full = Join-Path $out "full"
           $patch = Join-Path $out "patch"
           Remove-Item -Recurse -Force $out -ErrorAction SilentlyContinue
@@ -321,9 +313,8 @@ jobs:
           Copy-Item -LiteralPath (Join-Path $launcher "KharvoxLauncher.exe.config") -Destination $full -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "assets\branding") | Out-Null
           Copy-Item -LiteralPath "assets\branding\quest-controller-mapping.png" -Destination (Join-Path $full "assets\branding\quest-controller-mapping.png") -Force
-          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $full "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $full "tools") | Out-Null
-          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $full "tools\Generate-KHARVOX-Mods.py") -Force
+          Copy-Item -LiteralPath "tools\Generate-RIPSHIFT-Mods.py" -Destination (Join-Path $full "tools\Generate-RIPSHIFT-Mods.py") -Force
           foreach ($name in @("KharvoxLayer.dll","KharvoxLayer.json","native_sfs_build.txt","offhand_hud_default.cfg")) {
             $source = Join-Path $native $name
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
@@ -334,9 +325,8 @@ jobs:
             if (!(Test-Path $source)) { throw "Patch source missing: $name" }
             Copy-Item -LiteralPath $source -Destination $patch -Force
           }
-          Copy-Item -LiteralPath "tools\Get-KHARVOX-Custom-Watcher.ps1" -Destination (Join-Path $patch "Get-KHARVOX-Custom-Watcher.ps1") -Force
           New-Item -ItemType Directory -Force -Path (Join-Path $patch "tools") | Out-Null
-          Copy-Item -LiteralPath "tools\Generate-KHARVOX-Mods.py" -Destination (Join-Path $patch "tools\Generate-KHARVOX-Mods.py") -Force
+          Copy-Item -LiteralPath "tools\Generate-RIPSHIFT-Mods.py" -Destination (Join-Path $patch "tools\Generate-RIPSHIFT-Mods.py") -Force
 
           # Supervisor is only used by a paused mod; Freedoom face art is not consumed by gameplay.
           # Neither belongs in the native artifacts or the lightweight retail distribution.
@@ -396,7 +386,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RIPSHIFT-Native-Full
-          path: out/watcher/full
+          path: out/ripshift/full
           if-no-files-found: error
           compression-level: 6
           retention-days: 30
@@ -405,7 +395,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RIPSHIFT-Native-Patch
-          path: out/watcher/patch
+          path: out/ripshift/patch
           if-no-files-found: error
           compression-level: 1
           retention-days: 30
