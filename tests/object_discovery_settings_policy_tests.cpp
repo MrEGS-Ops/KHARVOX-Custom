@@ -18,12 +18,33 @@ int main() {
     assert(low.grabReachMetres == 1.0f);
 
     auto high = sanitizedObjectDiscoverySettings({true, 150.0f, 100.0f});
-    assert(high.scanRadiusMetres == 15.0f);
+    assert(high.scanRadiusMetres == 50.0f);
     assert(high.grabReachMetres == 5.0f);
 
     auto stepped = sanitizedObjectDiscoverySettings({true, 6.6f, 3.3f});
     assert(stepped.scanRadiusMetres == 7.0f);
     assert(stepped.grabReachMetres == 3.5f);
+    assert(sanitizedObjectDiscoverySettings({true,49.8f,3.5f})
+        .scanRadiusMetres==50.f);
+    // Independent physical LEFT and RIGHT halves, not current weapon hand.
+    const float threeMetresSquared=9.f;
+    assert(objectDiscoveryHalfRingState(true,true,16.f,
+        threeMetresSquared)==kObjectDiscoveryRingHidden);
+    assert(objectDiscoveryHalfRingState(true,true,9.f,
+        threeMetresSquared)==2);
+    assert(objectDiscoveryHalfRingState(false,true,16.f,
+        threeMetresSquared)==1);
+    assert(objectDiscoveryHalfRingState(false,false,16.f,
+        threeMetresSquared)==0);
+    assert(!objectDiscoveryRingHasVisibleHalf(
+        kObjectDiscoveryRingHidden,kObjectDiscoveryRingHidden));
+    assert(objectDiscoveryRingHasVisibleHalf(
+        kObjectDiscoveryRingHidden,1));
+    // Near grabs get the 32 visible slots before distant unknowns;
+    // incomplete calibration wins before green-only at equal range.
+    assert(objectDiscoveryRingPrefer(4.f,2,2,25.f,1,1,9.f));
+    assert(objectDiscoveryRingPrefer(4.f,1,2,4.f,2,2,9.f));
+    assert(!objectDiscoveryRingPrefer(25.f,1,1,4.f,2,2,9.f));
 
     auto invalid = sanitizedObjectDiscoverySettings({true,
         std::numeric_limits<float>::quiet_NaN(),
