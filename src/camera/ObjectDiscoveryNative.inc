@@ -28,7 +28,8 @@ struct ObjectDiscoveryHeld {
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
     float rotationHandStart[9]{},rotationBodyStart[9]{};
     float spinDegrees{};
-    unsigned long long lastRotationAtMs{};
+    unsigned long long lastRotationAtMs{},lastGripDownAtMs{};
+    unsigned poseReadMisses{};
     bool rotationActive{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
@@ -36,6 +37,7 @@ std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
 std::mutex objectDiscoveryGripMutex;
 ObjectDiscoveryGripFrame objectDiscoveryGripInput{};
+ObjectDiscoveryGripFrame objectDiscoveryLastGoodInput{};
 KharvoxObjectGripFeedback objectDiscoveryGripFeedback{};
 unsigned long long objectDiscoveryReleaseSerial{},objectDiscoveryLastTickMs{};
 bool objectDiscoveryNeedsGripRelease{};
@@ -407,6 +409,7 @@ void objectDiscoveryReleaseNative() {
                 objectDiscoveryReleaseToGravity(*item);
     }
     objectDiscoveryHeld={};
+    objectDiscoveryLastGoodInput={};
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
@@ -421,16 +424,31 @@ void objectDiscoveryGameTick() {
         std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
         input=objectDiscoveryGripInput;
     }
-    const bool inputValid=input.enabled&&input.frameAtMs
+    bool inputValid=input.enabled&&input.frameAtMs
         &&now>=input.frameAtMs&&now-input.frameAtMs<180
         &&objectDiscoveryAxisOk(input.axis);
-    if(!inputValid||input.releaseSerial!=objectDiscoveryReleaseSerial
-        ||!KharvoxCameraWorldActive()||KharvoxCameraCutsceneActive()
-        ||KharvoxCameraBossSequenceActive()){
-        if(input.releaseSerial!=objectDiscoveryReleaseSerial)
-            objectDiscoveryNeedsGripRelease=true;
+    const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
+    const bool worldBlocked=!KharvoxCameraWorldActive()
+        ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();
+    // A single lost tracking sample / late XR submit must not drop an
+    // already-attached rigid body. Retain its last validated hand pose for
+    // at most 300ms; NEVER bridge an explicit release or blocked world.
+    if(inputValid){
+        objectDiscoveryLastGoodInput=input;
+    }else if(objectDiscoveryHeld.active&&!explicitRelease&&!worldBlocked
+        &&objectDiscoveryLastGoodInput.frameAtMs
+        &&now>=objectDiscoveryLastGoodInput.frameAtMs
+        &&now-objectDiscoveryLastGoodInput.frameAtMs<=300){
+        const auto releaseSerial=input.releaseSerial;
+        input=objectDiscoveryLastGoodInput;
+        input.releaseSerial=releaseSerial;
+        inputValid=true;
+    }
+    if(!inputValid||explicitRelease||worldBlocked){
+        if(explicitRelease)objectDiscoveryNeedsGripRelease=true;
         objectDiscoveryReleaseSerial=input.releaseSerial;
         objectDiscoveryReleaseNative();
+        if(!inputValid||worldBlocked||explicitRelease)return;
     }
     if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
@@ -469,11 +487,12 @@ void objectDiscoveryGameTick() {
         if(!heldHere)++reads;
         float xyz[3]{},axis[9]{};
         if(!objectDiscoveryReadBodyPose(item,xyz,axis)){
-            if(objectDiscoveryHeld.active
-                &&objectDiscoveryHeld.handle==item.handle)
-                objectDiscoveryReleaseNative();
+            if(heldHere&&++objectDiscoveryHeld.poseReadMisses<=3)
+                continue; // never write with unverified pose; retry briefly
+            if(heldHere)objectDiscoveryReleaseNative();
             item={};continue;
         }
+        if(heldHere)objectDiscoveryHeld.poseReadMisses=0;
         if(item.poseValid
             &&(!objectDiscoveryHeld.active
                 ||objectDiscoveryHeld.handle!=item.handle)){
@@ -520,26 +539,32 @@ void objectDiscoveryGameTick() {
         held.generation=generation;held.capturedAtMs=now;
         for(int local=0;local<3;++local){
             for(int world=0;world<3;++world)
-                held.relativeOffset[local]+=input.axis[local*3+world]
+                held.initialOffset[local]+=input.axis[local*3+world]
                     *(nearest->origin[world]-input.origin[world]);
-            held.initialOffset[local]=held.relativeOffset[local];
-            for(int col=0;col<3;++col){
-                float component{};
-                for(int world=0;world<3;++world)
-                    component+=input.axis[local*3+world]
-                        *nearest->axis[col*3+world];
-                held.relativeAxis[col*3+local]=component;
-            }
+            held.relativeOffset[local]=held.initialOffset[local];
         }
-        if(!objectDiscoveryAxisOk(held.relativeAxis)){
+        // Regardless of how the rigid body was lying, begin every pickup
+        // at the authored canonical upright (world identity) and the same
+        // centered palm-forward target. Do not inherit a rolled barrel.
+        const auto neutral=kharvox::objectGripNeutralLocalAxis(input.axis);
+        if(!objectDiscoveryAxisOk(neutral.data())){
             held={};return;
         }
+        std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
+        held.lastGripDownAtMs=now;
     }
     auto& held=objectDiscoveryHeld;
     auto* item=objectDiscoveryNativeByHandle(held.handle);
     if(!item||held.generation!=generation
-        ||held.physicalHand!=input.physicalHand
-        ||(!input.pressed&&!input.calibrating)){
+        ||held.physicalHand!=input.physicalHand){
+        objectDiscoveryReleaseNative();return;
+    }
+    if(input.pressed)held.lastGripDownAtMs=now;
+    // Debounce a momentary false release from a noisy controller trigger.
+    // A deliberate release outside calibration still drops after 150ms.
+    if(!input.pressed&&!input.calibrating
+        &&(now<held.lastGripDownAtMs
+           ||now-held.lastGripDownAtMs>150)){
         objectDiscoveryReleaseNative();return;
     }
     held.calibrating=input.calibrating;
@@ -551,8 +576,17 @@ void objectDiscoveryGameTick() {
         if(!held.rotationActive){
             std::memcpy(held.rotationHandStart,input.axis,
                 sizeof(held.rotationHandStart));
-            std::memcpy(held.rotationBodyStart,item->axis,
-                sizeof(held.rotationBodyStart));
+            // Use our own held target, NOT the live physics body's pose:
+            // the latter can still be lying on its side while the first
+            // bounded steps bring it upright.
+            for(int col=0;col<3;++col)
+                for(int world=0;world<3;++world){
+                    float value{};
+                    for(int local=0;local<3;++local)
+                        value+=input.axis[local*3+world]
+                            *held.relativeAxis[col*3+local];
+                    held.rotationBodyStart[col*3+world]=value;
+                }
             held.spinDegrees=0.f;
             held.lastRotationAtMs=now;
             held.rotationActive=true;
@@ -593,10 +627,9 @@ void objectDiscoveryGameTick() {
             const float t=std::clamp(
                 float(now-held.capturedAtMs)/300.f,0.f,1.f);
             const float ease=t*t*(3.f-2.f*t);
-            constexpr float palm[3]{0.f,-4.f,-20.f};
             for(int i=0;i<3;++i)
                 held.relativeOffset[i]=held.initialOffset[i]*(1.f-ease)
-                    +palm[i]*ease;
+                    +kharvox::kObjectGripNeutralOffsetUnits[i]*ease;
         }
         float desired[3]{},desiredAxis[9]{};
         for(int world=0;world<3;++world){
