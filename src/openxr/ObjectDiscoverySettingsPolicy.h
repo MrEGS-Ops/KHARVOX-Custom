@@ -9,7 +9,7 @@ namespace kharvox {
 // Pure settings policy. This does not enumerate or modify DOOM entities.
 // The actual scanner/calibration runtime will consume these values later.
 inline constexpr float kObjectDiscoveryMinScanRadiusM = 1.0f;
-inline constexpr float kObjectDiscoveryMaxScanRadiusM = 15.0f;
+inline constexpr float kObjectDiscoveryMaxScanRadiusM = 50.0f;
 inline constexpr float kObjectDiscoveryDefaultScanRadiusM = 5.0f;
 inline constexpr float kObjectDiscoveryScanRadiusStepM = 1.0f;
 
