@@ -46,8 +46,12 @@ headset testing confirms the new runtime.
 3. With a valid, unobstructed physical free-hand GRIP, only an individually
    moving item within selected reach and aligned with free-hand AIM can
    be caught. Gun bracing/holsters/weapon wheel retain their input priority.
-4. The item is held in controller-relative six-degree-of-freedom pose.
-   An unconfigured item opens a small calibration overlay immediately.
+4. EVERY pickup starts a fresh calibration at a neutral authored-model
+   upright pose, front and centre at the support-hand grip. The orientation
+   is independent of the object's current tipped/rolled physics pose, and
+   stored profiles do not override the pickup's default pose. The native
+   follow writes remain bounded to avoid a violent teleport when the item
+   is initially metres away. The calibration overlay opens immediately.
 5. Without offhand Grip: nudge the object's LOCAL position using left
    stick X/Y for lateral/depth and right stick Y for vertical. By default
    each step is 1 cm; HOLD the OFFHAND TRIGGER to make each step 5 cm.
@@ -63,9 +67,8 @@ headset testing confirms the new runtime.
    Releasing Grip retains the updated local rotation and returns to 1/5 cm
    position adjustments.
 7. WEAPON-HAND TRIGGER saves; B cancels. The held item is released without
-   artificial downward impulse. A on a previously profiled item reopens
-   calibration. DOOM locomotion, turning, fire and equipment input are
-   suppressed during calibration, including offhand quick-tune trigger.
+   artificial downward impulse. DOOM locomotion, turning, fire and equipment
+   input are suppressed during calibration, including offhand quick-tune trigger.
 8. DOOM's original native gravity resumes after a signature-verified
    momentum clear and Activate *only for an item that actually moved
    before the grab*. Nothing can be activated by scanning or Grip alone.
@@ -91,6 +94,16 @@ headset testing confirms the new runtime.
   Up to 128 recent object records are cached; native entity pool sweeping
   stays bounded at 32 pointers per 125 ms, and actual pose reads use a
   rotating bounded budget, keeping held objects responsive.
+- Active held-object ownership keeps the native scanner and hand input live
+  even when the original interaction focus ray moves elsewhere. The native
+  controller input retains the last validated pose for up to 300 ms during
+  a transient XR tracking gap, and grip-off uses a short 150 ms debounce
+  outside calibration. Explicit release, level transition, lost gameplay,
+  or cutscene still release promptly. Up to three failed native pose reads
+  are retried without writing unverified body positions.
+- A slightly stronger, bounded follow (40 native units/tick) keeps up with
+  normal hand movement and a 5 m reach; native body velocity is never
+  artificially injected. A much larger unsafe offset still fails closed.
 - The separate nearby scanner attempts to identify the native entity-pointer
   pool via the signature-verified manager pointer and an already resolved
   entity. It traverses bounded pointer entries read-only, rejects invalid
