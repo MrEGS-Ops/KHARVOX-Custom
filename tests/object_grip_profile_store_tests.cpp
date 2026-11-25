@@ -24,6 +24,14 @@ int main(){
     constexpr float eps=.0005f;
     const float identity[9]{1,0,0,0,1,0,0,0,1};
     // A hand yaw by itself MUST NOT twist the held item.
+    // Every new pickup starts from world identity (authored upright),
+    // irrespective of how the physics body was originally lying.
+    const auto defaultUpright=objectGripNeutralLocalAxis(identity);
+    for(int i=0;i<9;++i)
+        assert(std::abs(defaultUpright[i]-identity[i])<eps);
+    assert(kObjectGripNeutralOffsetUnits[0]==0.f);
+    assert(kObjectGripNeutralOffsetUnits[1]==-4.f);
+    assert(kObjectGripNeutralOffsetUnits[2]==-20.f);
     const auto yawHand=objectGripQuaternionToAxis({
         0.f,0.f,.70710678f,.70710678f});
     const auto noTwist=objectGripTiltAndSpinAxis(
