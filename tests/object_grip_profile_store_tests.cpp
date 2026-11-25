@@ -239,7 +239,7 @@ int main(){
     const float cornerDirection[3]{0.2f,0.f,0.9797959f};
     std::array<float,3> grOffset{};
     std::array<float,9> grAxis{};
-    assert(grapplePickupPose(rayOrigin,unitAxis,cornerDirection,
+    assert(grapplePickupPose(rayOrigin,unitAxis,rayOrigin,cornerDirection,
         boxOrigin,unitAxis,200,grOffset,grAxis,anchor));
     assert(anchor.worldPoint[0]>10.f);
     assert(grAxis[0]==1.f&&grAxis[4]==1.f&&grAxis[8]==1.f);

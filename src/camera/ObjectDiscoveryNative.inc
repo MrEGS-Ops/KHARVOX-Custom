@@ -13,7 +13,7 @@ struct ObjectDiscoveryNativeRecord {
     std::array<char,160> modelKey{};
 };
 struct ObjectDiscoveryGripFrame {
-    float origin[3]{},axis[9]{},aim[3]{};
+    float origin[3]{},axis[9]{},aim[3]{},rayOrigin[3]{};
     float reachUnits{150.f};
     float scanUnits{400.f};
     unsigned physicalHand{};
@@ -799,7 +799,7 @@ void objectDiscoveryGameTick() {
             }
             if(input.grappleAnchorEnabled){
                 kharvox::GrappleRayAnchor ray{};
-                if(!kharvox::grappleRayEstimate(input.origin,input.aim,
+                if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
                         item.origin,input.reachUnits,55.f,ray))continue;
                 const float lateral2=ray.missDistance*ray.missDistance;
                 if(lateral2>=best2)continue;
@@ -847,7 +847,7 @@ void objectDiscoveryGameTick() {
             std::array<float,9> axis{};
             kharvox::GrappleRayAnchor ray{};
             if(!kharvox::grapplePickupPose(input.origin,input.axis,
-                    input.aim,nearest->origin,nearest->axis,
+                    input.rayOrigin,input.aim,nearest->origin,nearest->axis,
                     input.reachUnits,offset,axis,ray)
                 ||!objectDiscoveryAxisOk(axis.data())){
                 held={};return;

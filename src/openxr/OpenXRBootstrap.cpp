@@ -5488,11 +5488,13 @@ void updateGameplayActions(XrTime displayTime){
         ?s.rightGripController:s.leftGripController;
     const auto& aimController=s.weaponHandLeft
         ?s.rightController:s.leftController;
-    float nativeOrigin[3]{},nativeAxis[9]{},nativeAim[3]{};
+    float nativeOrigin[3]{},nativeRayOrigin[3]{},nativeAxis[9]{},nativeAim[3]{};
     float bodyOrigin[3]{},bodyAxis[9]{};
     bool gripPoseValid=freeHandClear&&gripController.valid
         &&gripController.positionTracked
-        &&aimController.valid&&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis);
+        &&aimController.valid
+        &&(!s.vrHandMenu.grappleAnchor.enabled||aimController.positionTracked)
+        &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis);
     if(gripPoseValid){
         const auto grip=controllerRelativeToBodyTrackingOrigin(gripController);
         const auto aim=controllerRelativeToBodyTrackingOrigin(aimController);
@@ -5500,6 +5502,10 @@ void updateGameplayActions(XrTime displayTime){
             -grip.position.z*s.worldScale,
             -grip.position.x*s.worldScale,
             grip.position.y*s.worldScale};
+        const float localRayPos[3]{
+            -aim.position.z*s.worldScale,
+            -aim.position.x*s.worldScale,
+            aim.position.y*s.worldScale};
         const auto forward=normalizeVector(rotateVector(
             aim.orientation,{0.f,0.f,-1.f}));
         const float localForward[3]{-forward.z,-forward.x,forward.y};
@@ -5508,6 +5514,10 @@ void updateGameplayActions(XrTime displayTime){
                 +bodyAxis[j]*localPos[0]
                 +bodyAxis[3+j]*localPos[1]
                 +bodyAxis[6+j]*localPos[2];
+            nativeRayOrigin[j]=bodyOrigin[j]
+                +bodyAxis[j]*localRayPos[0]
+                +bodyAxis[3+j]*localRayPos[1]
+                +bodyAxis[6+j]*localRayPos[2];
             nativeAim[j]=bodyAxis[j]*localForward[0]
                 +bodyAxis[3+j]*localForward[1]
                 +bodyAxis[6+j]*localForward[2];
@@ -5541,7 +5551,8 @@ void updateGameplayActions(XrTime displayTime){
         s.vrHandMenu.smartGrip.enabled,
         kharvox::smartGripFlags(s.vrHandMenu.smartGrip),
         s.vrHandMenu.smartGrip.inspectMesh,
-        s.vrHandMenu.grappleAnchor.enabled);
+        s.vrHandMenu.grappleAnchor.enabled,
+        gripPoseValid?nativeRayOrigin:nullptr);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile

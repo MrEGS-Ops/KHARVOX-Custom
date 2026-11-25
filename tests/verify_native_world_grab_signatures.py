@@ -25,11 +25,12 @@ for marker in (
     "objectDiscoveryReadBodyPose(",
     "objectDiscoveryWriteBody(",
     "if(!item.nativeMotionObserved||!objectDiscoveryAxisOk(axis))return false;",
-    "if(!nearest)return;",
     "if(!held.nativeFollowConfirmed)return;",
     "objectDiscoverySourceMode.store(",
 ):
     assert marker in native, f"Missing validated native discovery contract: {marker}"
+assert "if(!nearest)return;" in native or "if(!nearest){" in native, "No-candidate grab must exit before physics writes"
+assert "grapplePickupPose(" in native and "input.rayOrigin" in native, "Grapple ray acquisition wiring missing"
 assert "objectDiscoveryGameTick();" in camera
 assert "KharvoxCameraReadObjectGrip(objectFeedback)" in xr
 assert "installNativeWorldGrabTraceCandidateHooks(" not in camera

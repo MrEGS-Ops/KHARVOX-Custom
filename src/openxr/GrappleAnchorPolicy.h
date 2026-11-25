@@ -73,12 +73,12 @@ inline bool grappleRayEstimate(
 }
 inline bool grapplePickupPose(
     const float handOrigin[3],const float handAxis[9],
-    const float aim[3],const float bodyOrigin[3],
+    const float rayOrigin[3],const float aim[3],const float bodyOrigin[3],
     const float bodyAxis[9],float reachUnits,
     std::array<float,3>& localOffset,
     std::array<float,9>& localAxis,GrappleRayAnchor& anchor) noexcept {
     if(!handOrigin||!handAxis||!bodyAxis
-        ||!grappleRayEstimate(handOrigin,aim,bodyOrigin,reachUnits,
+        ||!grappleRayEstimate(rayOrigin,aim,bodyOrigin,reachUnits,
              55.f,anchor))return false;
     // Preserve the object's initial rotation, and move the laser's anchor
     // towards the hand. Store the resulting six-DOF pose in hand space.
