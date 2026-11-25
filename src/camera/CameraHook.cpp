@@ -105,7 +105,7 @@ std::array<std::atomic<float>,3> focusHandOrigin{};
 std::array<std::atomic<float>,3> focusHandDirection{};
 std::atomic<bool> focusHandValid{};
 // Independent proximity registry state: no focus-ray discovery fallback.
-std::atomic<bool> nativeGrabFocusObservationEnabled{};
+std::atomic<bool> objectDiscoveryEnabled{};
 std::mutex objectDiscoveryMutex;
 KharvoxObjectDiscoverySnapshot objectDiscoverySnapshot{};
 void objectDiscoveryGameTick();
@@ -2704,7 +2704,7 @@ void KharvoxCameraSetCrouchState(bool active) {
 
 unsigned KharvoxCameraObjectDiscoverySourceMode() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    return nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+    return objectDiscoveryEnabled.load(std::memory_order_acquire)
         ?objectDiscoverySourceMode.load(std::memory_order_acquire):0;
 #else
     return 0;
@@ -2714,7 +2714,7 @@ bool KharvoxCameraReadObjectDiscovery(
     KharvoxObjectDiscoverySnapshot& out) {
     out={};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    if(!nativeGrabFocusObservationEnabled.load(std::memory_order_acquire))
+    if(!objectDiscoveryEnabled.load(std::memory_order_acquire))
         return false;
     std::lock_guard<std::mutex> lock(objectDiscoveryMutex);
     if(objectDiscoverySnapshot.generation
@@ -2796,8 +2796,8 @@ bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback) {
     return false;
 #endif
 }
-void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
-    const bool previous=nativeGrabFocusObservationEnabled.exchange(
+void KharvoxCameraEnableObjectDiscovery(bool enabled) {
+    const bool previous=objectDiscoveryEnabled.exchange(
         enabled,std::memory_order_acq_rel);
     if(previous==enabled)return;
     // Never touch the DOOM-thread native entity/body cache from this
