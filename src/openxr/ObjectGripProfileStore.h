@@ -57,6 +57,29 @@ inline bool objectGripConfigured(const ObjectGripProfiles& profiles,
     return found!=profiles.end()&&found->second.hands[hand].configured
         &&objectGripPoseValid(found->second.hands[hand]);
 }
+// Loading an already-calibrated object is a normal gameplay pickup,
+// NOT a request to open the editing overlay. Resolve the physical hand's
+// saved pose from the verified model first; only a transient handle can
+// select a session-only profile for an unnamed object.
+inline const ObjectGripPose* objectGripSavedPose(
+    const ObjectGripProfiles& byModel,
+    const std::map<unsigned,ObjectGripProfile>& byInstance,
+    const std::string& verifiedKey,unsigned handle,
+    unsigned physicalHand) noexcept {
+    if(physicalHand>1)return nullptr;
+    if(objectGripKeyValid(verifiedKey)){
+        const auto model=byModel.find(verifiedKey);
+        if(model!=byModel.end()){
+            const auto& pose=model->second.hands[physicalHand];
+            if(pose.configured&&objectGripPoseValid(pose))return &pose;
+        }
+    }
+    const auto session=byInstance.find(handle);
+    if(session==byInstance.end())return nullptr;
+    const auto& pose=session->second.hands[physicalHand];
+    return pose.configured&&objectGripPoseValid(pose)?&pose:nullptr;
+}
+
 inline bool objectGripSave(const std::string& file,
     const ObjectGripProfiles& profiles){
     std::ostringstream output;
