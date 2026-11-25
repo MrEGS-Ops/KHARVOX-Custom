@@ -1051,9 +1051,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             (m.cursorX-556.f)/338.f,0.f,1.f):-1.f;
                         if(option==1){
                             const float next=pointerSet?
-                                1.f+14.f*fraction:
+                                1.f+49.f*fraction:
                                 m.objectDiscovery.scanRadiusMetres+1.f;
-                            m.objectDiscovery.scanRadiusMetres=next>15.f?
+                            m.objectDiscovery.scanRadiusMetres=next>50.f?
                                 1.f:next;
                         }else{
                             const float next=pointerSet?
