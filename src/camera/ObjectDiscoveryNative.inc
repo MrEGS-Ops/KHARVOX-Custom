@@ -27,7 +27,7 @@ struct ObjectDiscoveryHeld {
     unsigned handle{},physicalHand{};
     unsigned long long generation{},capturedAtMs{};
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
-    float rotationHandStart[9]{},rotationBodyStart[9]{};
+    float rotationLocalStart[9]{};
     float spinDegrees{};
     unsigned long long lastRotationAtMs{},lastGripDownAtMs{};
     unsigned poseReadMisses{};
@@ -847,24 +847,13 @@ void objectDiscoveryGameTick() {
     }
     held.neutralResetLatched=input.resetToNeutral;
     if(held.calibrating&&input.freeze){
-        // A stable once-per-GRIP reference prevents physics feedback from
-        // fighting the controller and flipping an item every other frame.
-        // Hand pitch/roll tilts; horizontal right stick spins the object's
-        // own local upright axis. The object stays at the calibrated offset.
+        // Grip-held rotation is STILL hand-local. Physically tilting or
+        // turning the controller carries the bottle's full orientation
+        // with it. Only stick X adds a local spin around the bottle's
+        // intrinsic Z. Never compute new offsets from DOOM body feedback.
         if(!held.rotationActive){
-            std::memcpy(held.rotationHandStart,input.axis,
-                sizeof(held.rotationHandStart));
-            // Use our own held target, NOT the live physics body's pose:
-            // the latter can still be lying on its side while the first
-            // bounded steps bring it upright.
-            for(int col=0;col<3;++col)
-                for(int world=0;world<3;++world){
-                    float value{};
-                    for(int local=0;local<3;++local)
-                        value+=input.axis[local*3+world]
-                            *held.relativeAxis[col*3+local];
-                    held.rotationBodyStart[col*3+world]=value;
-                }
+            std::memcpy(held.rotationLocalStart,held.relativeAxis,
+                sizeof(held.rotationLocalStart));
             held.spinDegrees=0.f;
             held.lastRotationAtMs=now;
             held.rotationActive=true;
@@ -877,11 +866,8 @@ void objectDiscoveryGameTick() {
             held.spinDegrees
             +kharvox::objectGripSpinAxis(input.spinStickX)*90.f*seconds,
             360.f);
-        const auto desiredWorld=kharvox::objectGripTiltAndSpinAxis(
-            input.axis,held.rotationHandStart,held.rotationBodyStart,
-            held.spinDegrees);
-        const auto desiredLocal=kharvox::objectGripToHandLocalAxis(
-            input.axis,desiredWorld.data());
+        const auto desiredLocal=kharvox::objectGripSpinLocalAxis(
+            held.rotationLocalStart,held.spinDegrees);
         if(objectDiscoveryAxisOk(desiredLocal.data()))
             std::copy(desiredLocal.begin(),desiredLocal.end(),
                 held.relativeAxis);
