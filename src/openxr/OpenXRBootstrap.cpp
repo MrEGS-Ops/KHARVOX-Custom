@@ -475,6 +475,9 @@ struct State {
     unsigned long long objectGripSessionGeneration{};
     bool objectGripInputConsumed{},objectGripConsumeTriggerUntilRelease{};
     bool objectGripCalibrating{},objectGripWasHeld{};
+    // RT may be pressed before world-float Grip release is authoritative.
+    bool objectGripSaveQueued{};
+    unsigned objectGripSaveWaitRevision{};
     unsigned long long objectGripLastFeedbackAtMs{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
     bool objectGripRecalibrateChordPrevious{},objectGripResetPoseThisFrame{};
@@ -5211,6 +5214,7 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripPoseLockAck=0;
         s.objectGripRecalibrateChordPrevious=false;
         s.objectGripResetPoseThisFrame=false;
+        s.objectGripSaveQueued=false;
         KharvoxCameraReleaseObjectGrip();
     }
     // Read feedback before publishing this frame's controller pose. The
@@ -5229,11 +5233,13 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripWasHeld=false;s.objectGripHasProfile=false;
         s.objectGripRecalibrateChordPrevious=false;
         s.objectGripResetPoseThisFrame=false;
+        s.objectGripSaveQueued=false;
     }else if(objectHeld){
         if(!s.objectGripWasHeld ||s.objectGripHandle!=objectFeedback.handle){
             s.objectGripHandle=objectFeedback.handle;
             s.objectGripPhysicalHand=objectFeedback.physicalHand;
             s.objectGripPoseLockAck=objectFeedback.poseLockRevision;
+            s.objectGripSaveQueued=false;
             s.objectGripKey=objectFeedback.modelKey.data();
             s.objectGripName=kharvox::objectGripAutomaticName(s.objectGripKey);
             if(s.objectGripName.empty())
@@ -5290,6 +5296,7 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripWasHeld=false;
             s.objectGripCalibrating=false;
             s.objectGripHasProfile=false;
+            s.objectGripSaveQueued=false;
         }
     }
     // Physical support-hand trigger selects 5cm quick fine-tune ONLY.
@@ -5311,6 +5318,7 @@ void updateGameplayActions(XrTime displayTime){
         if(s.objectGripResetPoseThisFrame){
             s.objectGripCalibrating=true;
             s.objectGripHasProfile=false;
+            s.objectGripSaveQueued=false;
             for(int i=0;i<3;++i)
                 s.objectGripOffsetUnits[i]=
                     (i==0?0.f:i==1?-4.f:-20.f);
@@ -5379,38 +5387,72 @@ void updateGameplayActions(XrTime displayTime){
                     }
                 }
             }
+            const bool rtEdge=objectTrigger&&!s.objectGripTriggerPrevious;
             if(objectBack&&!s.objectGripBackPrevious){
+                s.objectGripSaveQueued=false;
                 s.objectGripCalibrating=false;
+                log("[OBJECT-GRIP] calibration cancelled; no save");
                 KharvoxCameraReleaseObjectGrip();
-            }else if(objectTrigger&&!s.objectGripTriggerPrevious){
-                kharvox::ObjectGripPose pose{};
-                pose.configured=true;
-                for(int i=0;i<3;++i)
-                    pose.offsetMetres[i]=s.objectGripOffsetUnits[i]
-                        /s.worldScale;
-                pose.localRotation=kharvox::objectGripAxisToQuaternion(
-                    s.objectGripRelativeAxis.data());
-                if(kharvox::objectGripPoseValid(pose)){
-                    const auto hand=s.objectGripPhysicalHand;
-                    if(kharvox::objectGripKeyValid(s.objectGripKey)){
-                        const auto old=s.objectGripProfiles;
-                        s.objectGripProfiles[s.objectGripKey].hands[hand]=pose;
-                        if(!kharvox::objectGripSave(kharvox::runtimePathA(
-                            "object_grip_profiles.cfg"),s.objectGripProfiles)){
-                            s.objectGripProfiles=old;
-                            log("[OBJECT-GRIP] profile save failed");
-                        }else s.objectGripHasProfile=true;
+            }else{
+                if(rtEdge&&(supportGripDown
+                    ||objectFeedback.rotationEditActive)){
+                    s.objectGripSaveQueued=true;
+                    s.objectGripSaveWaitRevision=objectFeedback.poseLockRevision;
+                    log("[OBJECT-GRIP] RT pressed during world float: queued until Grip release");
+                }
+                // Grip release reprojects the world-frozen object to a
+                // hand-relative pose on the DOOM thread. Wait for its
+                // revision; never commit the previous neutral pose.
+                const bool pendingLock=s.objectGripSaveQueued
+                    &&!supportGripDown
+                    &&!objectFeedback.rotationEditActive
+                    &&objectFeedback.poseLockRevision
+                        !=s.objectGripSaveWaitRevision
+                    &&objectFeedback.poseLockRevision==s.objectGripPoseLockAck;
+                const bool saveNow=rtEdge&&!supportGripDown
+                    &&!objectFeedback.rotationEditActive;
+                if(saveNow||pendingLock){
+                    kharvox::ObjectGripPose pose{};
+                    pose.configured=true;
+                    for(int i=0;i<3;++i)
+                        pose.offsetMetres[i]=s.objectGripOffsetUnits[i]
+                            /s.worldScale;
+                    pose.localRotation=kharvox::objectGripAxisToQuaternion(
+                        s.objectGripRelativeAxis.data());
+                    const auto outcome=kharvox::objectGripCommitPose(
+                        kharvox::runtimePathA("object_grip_profiles.cfg"),
+                        s.objectGripProfiles,s.objectGripSessionProfiles,
+                        s.objectGripKey,s.objectGripHandle,
+                        s.objectGripPhysicalHand,pose);
+                    s.objectGripSaveQueued=false;
+                    const bool saved=outcome==kharvox::ObjectGripSaveResult::Persistent
+                        ||outcome==kharvox::ObjectGripSaveResult::SessionOnly;
+                    log(std::string("[OBJECT-GRIP] RT save ")
+                        +(outcome==kharvox::ObjectGripSaveResult::Persistent
+                            ?"SUCCESS persistent"
+                          :outcome==kharvox::ObjectGripSaveResult::SessionOnly
+                            ?"SUCCESS session-only (model unidentified)"
+                          :outcome==kharvox::ObjectGripSaveResult::DiskFailure
+                            ?"FAILED disk write":"FAILED invalid pose")
+                        +" handle="+std::to_string(s.objectGripHandle)
+                        +" hand="+std::to_string(s.objectGripPhysicalHand)
+                        +" lockRevision="+std::to_string(s.objectGripPoseLockAck)
+                        +" offsetMetres="+std::to_string(pose.offsetMetres[0])
+                        +","+std::to_string(pose.offsetMetres[1])
+                        +","+std::to_string(pose.offsetMetres[2]));
+                    if(saved){
+                        const auto* verified=kharvox::objectGripSavedPose(
+                            s.objectGripProfiles,s.objectGripSessionProfiles,
+                            s.objectGripKey,s.objectGripHandle,
+                            s.objectGripPhysicalHand);
+                        s.objectGripHasProfile=verified!=nullptr;
+                        s.objectGripCalibrating=false;
+                        s.objectGripConsumeTriggerUntilRelease=true;
+                        KharvoxCameraReleaseObjectGrip();
                     }else{
-                        // No verified model name: scope this to the live
-                        // native instance, never persist a transient handle.
-                        s.objectGripSessionProfiles[s.objectGripHandle]
-                            .hands[hand]=pose;
-                        s.objectGripHasProfile=true;
+                        s.vrHandMenu.message="Object Grip save failed; retry RT.";
                     }
                 }
-                s.objectGripCalibrating=false;
-                s.objectGripConsumeTriggerUntilRelease=true;
-                KharvoxCameraReleaseObjectGrip();
             }
         }
     }
@@ -6573,9 +6615,14 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     if(!kharvox::objectDiscoveryLoad(kharvox::runtimePathA(
         "object_discovery.cfg"),s.vrHandMenu.objectDiscovery))
         s.vrHandMenu.objectDiscovery={};
-    if(!kharvox::objectGripLoad(kharvox::runtimePathA(
-        "object_grip_profiles.cfg"),s.objectGripProfiles))
+    const auto objectGripPath=kharvox::runtimePathA(
+        "object_grip_profiles.cfg");
+    if(!kharvox::objectGripLoad(objectGripPath,s.objectGripProfiles))
         s.objectGripProfiles={};
+    log("[OBJECT-GRIP] persistent profile count="
+        +std::to_string(s.objectGripProfiles.size())
+        +" path="+objectGripPath
+        +" (unidentified props remain session-only)");
 
     if(!kharvox::loadWeaponRecoilSettings(
         kharvox::runtimePathA("weapon_recoil_saved.cfg"),s.recoilSettings)){

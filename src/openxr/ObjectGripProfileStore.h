@@ -127,6 +127,30 @@ inline bool objectGripLoad(const std::string& file,ObjectGripProfiles& profiles)
     profiles=std::move(parsed);return true;
 }
 
+// Only verified model keys can identify a persistent calibration. The
+// temporary native entity handle remains session-scoped and hand-specific.
+enum class ObjectGripSaveResult {Invalid, Persistent, SessionOnly, DiskFailure};
+inline ObjectGripSaveResult objectGripCommitPose(
+    const std::string& filename,ObjectGripProfiles& byModel,
+    std::map<unsigned,ObjectGripProfile>& byInstance,
+    const std::string& model,unsigned handle,unsigned hand,
+    const ObjectGripPose& pose){
+    if(!handle||hand>1||!pose.configured||!objectGripPoseValid(pose))
+        return ObjectGripSaveResult::Invalid;
+    if(objectGripKeyValid(model)){
+        auto pending=byModel;
+        pending[model].hands[hand]=pose;
+        if(!objectGripSave(filename,pending))
+            return ObjectGripSaveResult::DiskFailure;
+        byModel=std::move(pending);
+        // Also resolve the just-saved native instance on the next pickup.
+        byInstance[handle].hands[hand]=pose;
+        return ObjectGripSaveResult::Persistent;
+    }
+    byInstance[handle].hands[hand]=pose;
+    return ObjectGripSaveResult::SessionOnly;
+}
+
 inline std::array<float,9> objectGripQuaternionToAxis(
     const std::array<float,4>& q) {
     const float x=q[0],y=q[1],z=q[2],w=q[3];

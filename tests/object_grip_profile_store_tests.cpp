@@ -42,6 +42,35 @@ int main(){
     assert(objectGripSavedPose(loaded,sessions,"",94,1));
     assert(!objectGripSavedPose(loaded,sessions,"",95,1));
     assert(!objectGripSavedPose(loaded,sessions,"",94,0));
+    // Actual right-trigger save path: unnamed instances re-grab using
+    // the same hand and offset; a different hand/handle is independent.
+    ObjectGripPose repositioned{};
+    repositioned.configured=true;
+    repositioned.offsetMetres={.25f,-.11f,-.75f};
+    repositioned.localRotation={0.f,0.f,.70710678f,.70710678f};
+    assert(objectGripCommitPose("object_grip_profile_test.cfg",
+        loaded,sessions,"",94,1,repositioned)
+        ==ObjectGripSaveResult::SessionOnly);
+    const auto* resaved=objectGripSavedPose(loaded,sessions,"",94,1);
+    assert(resaved&&resaved->offsetMetres==repositioned.offsetMetres);
+    assert(resaved->localRotation==repositioned.localRotation);
+    assert(!objectGripSavedPose(loaded,sessions,"",94,0));
+    assert(!objectGripSavedPose(loaded,sessions,"",95,1));
+    // Named items survive a fresh launch and use exactly the saved pose.
+    assert(objectGripCommitPose("object_grip_profile_test.cfg",
+        loaded,sessions,"models/props/mug.lwo",23,0,repositioned)
+        ==ObjectGripSaveResult::Persistent);
+    ObjectGripProfiles restarted;
+    assert(objectGripLoad("object_grip_profile_test.cfg",restarted));
+    const auto* fromDisk=objectGripSavedPose(restarted,{},
+        "models/props/mug.lwo",45,0);
+    assert(fromDisk&&fromDisk->offsetMetres==repositioned.offsetMetres);
+    assert(fromDisk->localRotation==repositioned.localRotation);
+    assert(!objectGripSavedPose(restarted,{},
+        "models/props/mug.lwo",45,1));
+    assert(objectGripCommitPose("object_grip_profile_test.cfg",
+        loaded,sessions,"",94,3,repositioned)
+        ==ObjectGripSaveResult::Invalid);
     // Stable rotation references: no physics-feedback tumble.
     constexpr float eps=.0005f;
     const float identity[9]{1,0,0,0,1,0,0,0,1};
