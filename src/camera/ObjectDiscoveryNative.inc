@@ -667,8 +667,12 @@ void objectDiscoveryGameTick() {
     if(!inputValid||explicitRelease||worldBlocked){
         if(explicitRelease)objectDiscoveryNeedsGripRelease=true;
         objectDiscoveryReleaseSerial=input.releaseSerial;
-        objectDiscoveryReleaseNative();
-        if(!inputValid||worldBlocked||explicitRelease)return;
+        if(objectDiscoveryHeld.active)
+            objectDiscoveryReleaseNative();
+        // Scan independently of controller pointing/hand availability.
+        // Invalid free-hand aim must prevent a GRAB, never a 360-degree
+        // radius scan; the latter only needs game-world/body coordinates.
+        if(worldBlocked||explicitRelease)return;
     }
     if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
