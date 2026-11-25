@@ -113,6 +113,39 @@ int main(){
     assert(objectGripSpinAxis(.15f)==0.f);
     assert(objectGripSpinAxis(.8f)==.8f);
     assert(objectGripSpinAxis(-1.5f)==-1.f);
+    // Floating prop stays fixed in world space even when player walks
+    // several metres and rotates the hand. Grip release computes a new
+    // hand-relative 6DOF pose, reconstructing the same world transform.
+    const float handA[3]{0.f,0.f,0.f};
+    const float handB[3]{250.f,-100.f,30.f};
+    const auto handBOrientation=objectGripQuaternionToAxis(
+        {0.f,0.f,.70710678f,.70710678f});
+    float frozenWorldPosition[3]{},frozenWorldBasis[9]{};
+    objectGripToWorldPose(handA,identity,
+        kObjectGripNeutralOffsetUnits.data(),neutral.data(),
+        frozenWorldPosition,frozenWorldBasis);
+    float localAfterWalking[3]{},axisAfterWalking[9]{};
+    objectGripToHandLocalPose(handB,handBOrientation.data(),
+        frozenWorldPosition,frozenWorldBasis,
+        localAfterWalking,axisAfterWalking);
+    float lockedPosition[3]{},lockedBasis[9]{};
+    objectGripToWorldPose(handB,handBOrientation.data(),
+        localAfterWalking,axisAfterWalking,lockedPosition,lockedBasis);
+    for(int i=0;i<3;++i)
+        assert(std::abs(lockedPosition[i]-frozenWorldPosition[i])<eps);
+    for(int i=0;i<9;++i)
+        assert(std::abs(lockedBasis[i]-frozenWorldBasis[i])<eps);
+    assert(std::abs(localAfterWalking[0])
+        +std::abs(localAfterWalking[1])>200.f);
+    ObjectGripPose walkAroundSaved{};
+    walkAroundSaved.configured=true;
+    for(int i=0;i<3;++i)
+        walkAroundSaved.offsetMetres[i]=localAfterWalking[i]/100.f;
+    walkAroundSaved.localRotation=objectGripAxisToQuaternion(
+        axisAfterWalking);
+    assert(objectGripPoseValid(walkAroundSaved));
+    walkAroundSaved.offsetMetres[0]=50.1f;
+    assert(!objectGripPoseValid(walkAroundSaved));
     // The object, not a global gameplay grenade option, owns the support
     // trigger. Test BOTH native and XR mailbox ownership to close the
     // one-frame gap between the DOOM and OpenXR updates.
