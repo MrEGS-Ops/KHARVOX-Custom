@@ -289,7 +289,8 @@ void paintVrHandMenu() {
             :"Hold OFFHAND TRIGGER: 5 cm quick step (default 1 cm)",muted);
         write(57,473,"WEAPON-HAND TRIGGER: SAVE PROFILE",RGB(108,235,161));
         write(57,509,"B: CANCEL / DROP OBJECT",white);
-        write(57,559,s.objectGripKey.empty()
+        write(57,541,"GRIP + OFFHAND TRIGGER: RESET UPRIGHT",RGB(84,233,214));
+        write(57,585,s.objectGripKey.empty()
             ?"Model name unverified: item profile is session-only."
             :"Profile auto-named from verified model resource.",
             s.objectGripKey.empty()?RGB(255,196,112):muted);
