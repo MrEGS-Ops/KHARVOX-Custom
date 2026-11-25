@@ -30,44 +30,13 @@ kharvox::AerSourceObservation KharvoxCameraTakeAerWorldSource();
 void KharvoxCameraSetCrouchState(bool active);
 // Optional controller-driven interaction focus ray in DOOM world coordinates.
 void KharvoxCameraSetFocusHandPose(const float origin[3], const float direction[3], bool valid);
-// Read-only observation of DOOM's existing FocusTracker selection state.
-// These are *opaque* native fields, NOT a validated physics entity hit.
-// Does not enable dev CVars, issue extra traces, or write entity memory.
-struct KharvoxWorldGrabNativeFocus {
-    unsigned int indexA{},indexB{};
-    unsigned long long nativeReference{},levelGeneration{},sampleSequence{};
-};
-void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled);
-bool KharvoxCameraReadWorldGrabNativeFocus(KharvoxWorldGrabNativeFocus& sample);
-// Candidate handles intercepted immediately before DOOM resolves two native
-// trace hits into entities. May include static/invalid/non-interactable hits.
-// Deliberately NOT a movable physics result or a physics object pointer.
-struct KharvoxWorldGrabTraceCandidate {
-    unsigned int nativeHandle{};
-    unsigned int sourcePath{}; // 0 = primary, 1 = secondary FocusTracker trace
-    unsigned long long levelGeneration{},sampleSequence{};
-};
-bool KharvoxCameraReadWorldGrabTraceCandidate(
-    unsigned int sourcePath,KharvoxWorldGrabTraceCandidate& sample);
-// Observation at the next native FocusTracker boundary: DOOM's own entity
-// manager has resolved a non-null candidate, before interactable filtering.
-// No entity pointer leaves the game thread. The vtable RVA is an opaque
-// fingerprint, NOT evidence of a movable physics body.
-struct KharvoxWorldGrabResolvedEntity {
-    unsigned int sourcePath{},nativeHandle{};
-    std::uint64_t vtableRva{},levelGeneration{},sampleSequence{};
-    bool vtableInExecutable{};
-    // Best-effort MSVC RTTI type, only when a complete-object locator and
-    // TypeDescriptor are validated inside the DOOM image. Empty otherwise.
-    // Class name != map asset name or proof of dynamic/physics eligibility.
-    std::array<char,80> nativeClassName{};
-};
-bool KharvoxCameraReadWorldGrabResolvedEntity(
-    unsigned int sourcePath,KharvoxWorldGrabResolvedEntity& sample);
+// Opt-in native player-radius proximity discovery; does NOT install or
+// consult FocusTracker object-detection hooks. Normal VR hand/head focus
+// interaction remains independent.
+void KharvoxCameraEnableObjectDiscovery(bool enabled);
 
-
-// Passive, read-only snapshots of native DOOM physics objects encountered
-// by FocusTracker. This is NOT yet a complete nearby-entity enumeration.
+// Passive, read-only snapshots of native DOOM movable entities discovered
+// by the independently validated world registry.
 // No native pointers cross the DOOM/OpenXR thread boundary.
 struct KharvoxObjectDiscoveryCandidate {
     unsigned int handle{};
@@ -106,8 +75,8 @@ struct KharvoxObjectDiscoverySnapshot {
 bool KharvoxCameraReadObjectDiscovery(KharvoxObjectDiscoverySnapshot& sample);
 // Diagnostic source for the current level, never falsely label a
 // focus-derived radius filter as independent proximity scanning.
-// 0 = focus/ray fallback, 1 = validated independent flat pool,
-// 2 = validated independent game entity registry.
+// 0 = proximity unavailable / disabled; 2 = validated world registry.
+// There is no gun-hand / FocusTracker discovery fallback.
 unsigned KharvoxCameraObjectDiscoverySourceMode();
 
 void KharvoxCameraSetImmersiveCinematicFov(
