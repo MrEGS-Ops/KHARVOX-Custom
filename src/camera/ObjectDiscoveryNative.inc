@@ -424,7 +424,7 @@ void objectDiscoverySweepNativePool(unsigned long long now,
     auto& registry=objectDiscoveryManagedPool;
     if(registry.begin&&registry.generation==generation
         &&now>=registry.lastSweepMs
-        &&now-registry.lastSweepMs>=75){
+        &&now-registry.lastSweepMs>=175){
         registry.lastSweepMs=now;
         std::uintptr_t entriesNow{};
         std::int32_t countNow{};
@@ -444,7 +444,11 @@ void objectDiscoverySweepNativePool(unsigned long long now,
                 registry={};
             }else{
                 registry.entries=static_cast<unsigned>(countNow);
-                constexpr unsigned managedReadsPerSweep=64;
+                // Low-cost scan: 48 entries every 175ms instead of
+                // 64 every 75ms (~68% fewer registry entry checks).
+                // The FULL player-radius discovery remains enabled;
+                // only its refresh cadence is reduced.
+                constexpr unsigned managedReadsPerSweep=48;
                 for(unsigned scanned=0;scanned<managedReadsPerSweep;++scanned){
                     const auto index=registry.cursor++%registry.entries;
                     ObjectDiscoveryManagedEntry slot{};
@@ -491,14 +495,18 @@ void objectDiscoverySweepNativePool(unsigned long long now,
                 objectDiscoveryNativePool.begin?1u:0u,
                 std::memory_order_release);
     }
+    // If the validated world registry is available, don't redundantly
+    // sweep the old flat pointer pool. Both feed the same candidate cache.
+    if(registry.begin&&registry.generation==generation)return;
     auto& pool=objectDiscoveryNativePool;
     if(!pool.begin||pool.generation!=generation)return;
-    if(now<pool.lastSweepMs||now-pool.lastSweepMs<125)return;
+    if(now<pool.lastSweepMs||now-pool.lastSweepMs<250)return;
     pool.lastSweepMs=now;
     if(!objectDiscoveryReadable(pool.begin,0x4000)){
         pool={};return;
     }
-    for(unsigned count=0;count<32&&pool.entries;++count){
+    // Legacy fallback only: 16 entries per 250ms instead of 32/125ms.
+    for(unsigned count=0;count<16&&pool.entries;++count){
         const unsigned index=pool.cursor++%pool.entries;
         const void* entity{};
         std::memcpy(&entity,pool.begin+index*sizeof(void*),
@@ -717,11 +725,11 @@ void objectDiscoveryGameTick() {
         objectDiscoverySourceMode.store(1,std::memory_order_release);
     else objectDiscoverySourceMode.store(0,std::memory_order_release);
     objectDiscoverySweepNativePool(now,generation);
-    // Larger 50m discovery cache, but a fixed per-tick physics read budget.
-    // Round-robin fairness avoids continuously rereading the first objects;
-    // a held object is exempt so its controller attachment stays responsive.
+    // Conservative *background* physics budget. Held objects bypass ALL
+    // of these throttles: keep the proven 12ms tick / hand follow intact.
+    // Round-robin cursor prevents distant candidates starving near ones.
     static unsigned readCursor{};
-    constexpr unsigned readsPerTick=24;
+    constexpr unsigned readsPerTick=12;
     unsigned reads{};
     const unsigned cacheCount=static_cast<unsigned>(objectDiscoveryNative.size());
     for(unsigned checked=0;checked<cacheCount;++checked){
@@ -730,7 +738,7 @@ void objectDiscoveryGameTick() {
         if(item.generation!=generation){item={};continue;}
         const bool heldHere=objectDiscoveryHeld.active
             &&objectDiscoveryHeld.handle==item.handle;
-        unsigned long long readIntervalMs=40;
+        unsigned long long readIntervalMs=80;
         if(!heldHere&&item.poseValid&&inputValid){
             float d2{};
             for(int axis=0;axis<3;++axis){
@@ -738,7 +746,7 @@ void objectDiscoveryGameTick() {
                 d2+=d*d;
             }
             if(d2>input.reachUnits*input.reachUnits*4.f)
-                readIntervalMs=140;
+                readIntervalMs=250;
         }
         if(!heldHere&&now>=item.lastPositionAtMs
             &&now-item.lastPositionAtMs<readIntervalMs)continue;
@@ -996,7 +1004,7 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     // DOOM-resolved pointer. Falls back to ray-only if not validated.
     objectDiscoveryLocateNativePool(entity,base,imageSize,generation);
     if(!item->body&&now>=item->lastProbeAtMs
-        &&now-item->lastProbeAtMs>=400){
+        &&now-item->lastProbeAtMs>=800){
         item->lastProbeAtMs=now;
         for(std::size_t off=0;off<0x4000;off+=sizeof(void*)){
             const auto* slot=static_cast<const unsigned char*>(entity)+off;
