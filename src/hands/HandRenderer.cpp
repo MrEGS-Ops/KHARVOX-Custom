@@ -113,7 +113,7 @@ struct HandRenderer::Impl {
     struct DepthTarget {VkImage image{};VkDeviceMemory memory{};VkImageView view{};};
     struct Asset {VkBuffer vertices{};VkDeviceMemory vertexMemory{};VkBuffer indices{};VkDeviceMemory indexMemory{};std::uint32_t indexCount{};std::array<Texture,3> textures{};VkDescriptorSet descriptor{};bool ready{};std::string filename;};
     VkPhysicalDevice physical{};VkDevice device{};VkQueue queue{};std::uint32_t queueFamily{};KharvoxVulkanDispatch vk{};VkFormat format{};HandLog log;
-    struct ScenePipeline {VkFormat colorFormat{VK_FORMAT_UNDEFINED};VkFormat depthFormat{VK_FORMAT_UNDEFINED};bool reverseDepth{};VkRenderPass renderPass{};VkPipeline pipeline{};};
+    struct ScenePipeline {VkFormat colorFormat{VK_FORMAT_UNDEFINED};VkFormat depthFormat{VK_FORMAT_UNDEFINED};bool reverseDepth{};VkRenderPass renderPass{};VkPipeline pipeline{},overlayPipeline{};};
     VkCommandPool uploadPool{};VkCommandBuffer uploadCommand{};VkSampler sampler{};VkDescriptorSetLayout descriptorLayout{};VkDescriptorPool descriptorPool{};VkPipelineLayout pipelineLayout{};VkPipeline pipeline{};VkRenderPass renderPass{};VkShaderModule vertexShader{},fragmentShader{};
     std::vector<ScenePipeline> scenePipelines;std::vector<VkFramebuffer> sceneFramebuffers;
     struct SceneDepth {DepthTarget target;VkExtent2D extent{};VkFormat format{};bool initialized{};};
@@ -146,9 +146,11 @@ struct HandRenderer::Impl {
     bool loadAsset(const std::filesystem::path&path,Asset&asset);
     bool createCommonResources();
     bool createGraphicsPipeline(VkRenderPass compatibleRenderPass,
-        VkCompareOp depthCompare,bool encodeSrgb,VkPipeline&out);
+        VkCompareOp depthCompare,bool encodeSrgb,VkPipeline&out,
+        bool depthIndependentOverlay=false);
     ScenePipeline* scenePipeline(const HandSceneTarget&target);
     void drawGeometry(VkCommandBuffer commandBuffer,VkPipeline selectedPipeline,
+        VkPipeline overlayPipeline,
         VkExtent2D extent,const HandEyeView&view,const HandPose&leftGrip,
         const HandPose&rightGrip,const HandVisibilityOutput&visibility,
         const HandGameplayState&gameplay,const HandPose&laser = {},
@@ -280,7 +282,7 @@ bool HandRenderer::Impl::loadAsset(const std::filesystem::path&path,Asset&asset)
 
 bool HandRenderer::Impl::createGraphicsPipeline(
     VkRenderPass compatibleRenderPass,VkCompareOp depthCompare,bool encodeSrgb,
-    VkPipeline&out){
+    VkPipeline&out,bool depthIndependentOverlay){
     if(!vertexShader||!fragmentShader||!pipelineLayout||!compatibleRenderPass)
         return false;
     std::array<VkPipelineShaderStageCreateInfo,2>stages{};
@@ -309,7 +311,7 @@ bool HandRenderer::Impl::createGraphicsPipeline(
     VkPipelineViewportStateCreateInfo viewport{VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO};viewport.viewportCount=1;viewport.scissorCount=1;
     VkPipelineRasterizationStateCreateInfo raster{VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};raster.polygonMode=VK_POLYGON_MODE_FILL;raster.cullMode=VK_CULL_MODE_NONE;raster.frontFace=VK_FRONT_FACE_COUNTER_CLOCKWISE;raster.lineWidth=1.f;
     VkPipelineMultisampleStateCreateInfo multisample{VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};multisample.rasterizationSamples=VK_SAMPLE_COUNT_1_BIT;
-    VkPipelineDepthStencilStateCreateInfo depthState{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depthState.depthTestEnable=VK_TRUE;depthState.depthWriteEnable=VK_TRUE;depthState.depthCompareOp=depthCompare;
+    VkPipelineDepthStencilStateCreateInfo depthState{VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};depthState.depthTestEnable=depthIndependentOverlay?VK_FALSE:VK_TRUE;depthState.depthWriteEnable=depthIndependentOverlay?VK_FALSE:VK_TRUE;depthState.depthCompareOp=depthIndependentOverlay?VK_COMPARE_OP_ALWAYS:depthCompare;
     VkPipelineColorBlendAttachmentState blend{};blend.blendEnable=VK_FALSE;blend.colorWriteMask=VK_COLOR_COMPONENT_R_BIT|VK_COLOR_COMPONENT_G_BIT|VK_COLOR_COMPONENT_B_BIT|VK_COLOR_COMPONENT_A_BIT;
     VkPipelineColorBlendStateCreateInfo blendState{VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};blendState.attachmentCount=1;blendState.pAttachments=&blend;
     std::array<VkDynamicState,2>dynamicStates{{VK_DYNAMIC_STATE_VIEWPORT,VK_DYNAMIC_STATE_SCISSOR}};
@@ -421,6 +423,17 @@ HandRenderer::Impl::ScenePipeline* HandRenderer::Impl::scenePipeline(
             candidate.pipeline)){
         vk.destroyRenderPass(device,candidate.renderPass,nullptr);return nullptr;
     }
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Marker pipeline ignores scene depth and never writes it. Its geometry is
+    // drawn LAST, on the scene color target, above props and visible hands.
+    if(!createGraphicsPipeline(candidate.renderPass,compare,encodeSrgb,
+            candidate.overlayPipeline,true)){
+        vk.destroyPipeline(device,candidate.pipeline,nullptr);
+        vk.destroyRenderPass(device,candidate.renderPass,nullptr);
+        say("object discovery overlay pipeline creation failed");
+        return nullptr;
+    }
+#endif
     scenePipelines.push_back(candidate);
     say(std::string("DOOM scene-depth integration ready colorFormat=")
         +std::to_string(target.colorFormat)+" depthFormat="
@@ -430,7 +443,7 @@ HandRenderer::Impl::ScenePipeline* HandRenderer::Impl::scenePipeline(
 }
 
 void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
-    VkPipeline selectedPipeline,VkExtent2D extent,const HandEyeView&view,
+    VkPipeline selectedPipeline,VkPipeline overlayPipeline,VkExtent2D extent,const HandEyeView&view,
     const HandPose&leftGrip,const HandPose&rightGrip,
     const HandVisibilityOutput&visibility,const HandGameplayState&gameplay,
     const HandPose&laser,const HandPose&grabDebugLaser,
@@ -503,7 +516,10 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
         drawBeam(laserAsset,laser);
         drawBeam(grabDebugLaserAsset,grabDebugLaser);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-        for(unsigned i=0;i<std::min<unsigned>(
+        if(overlayPipeline&&discoveryRingCount)
+            vk.cmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
+                overlayPipeline);
+        for(unsigned i=0;overlayPipeline&&i<std::min<unsigned>(
             discoveryRingCount,discoveryRings.size());++i){
             const auto& marker=discoveryRings[i];
             if(!marker.pose.valid)continue;
@@ -875,6 +891,7 @@ void HandRenderer::shutdown() {
     if(framebuffer)impl_->vk.destroyFramebuffer(impl_->device,framebuffer,nullptr);
   for(auto& copy:impl_->sceneDepthCopies)impl_->destroyDepth(copy.target);
   for(auto&scene:impl_->scenePipelines){
+    if(scene.overlayPipeline)impl_->vk.destroyPipeline(impl_->device,scene.overlayPipeline,nullptr);
     if(scene.pipeline)impl_->vk.destroyPipeline(impl_->device,scene.pipeline,nullptr);
     if(scene.renderPass)impl_->vk.destroyRenderPass(impl_->device,scene.renderPass,nullptr);
   }
@@ -951,7 +968,7 @@ void HandRenderer::record(VkCommandBuffer commandBuffer,std::uint32_t eye,
     begin.pClearValues=clearValues.data();
     impl_->vk.cmdBeginRenderPass(commandBuffer, &begin,
                                  VK_SUBPASS_CONTENTS_INLINE);
-    impl_->drawGeometry(commandBuffer,impl_->pipeline,extent,view,leftGrip,
+    impl_->drawGeometry(commandBuffer,impl_->pipeline,VK_NULL_HANDLE,extent,view,leftGrip,
         rightGrip,visibility,gameplay);
     impl_->vk.cmdEndRenderPass(commandBuffer);
 }
@@ -1011,7 +1028,7 @@ bool HandRenderer::recordSceneIntegrated(VkCommandBuffer commandBuffer,
     begin.renderPass=scene->renderPass;begin.framebuffer=framebuffer;
     begin.renderArea={{0,0},target.extent};
     impl_->vk.cmdBeginRenderPass(commandBuffer,&begin,VK_SUBPASS_CONTENTS_INLINE);
-    impl_->drawGeometry(commandBuffer,scene->pipeline,target.extent,view,leftGrip,
+    impl_->drawGeometry(commandBuffer,scene->pipeline,scene->overlayPipeline,target.extent,view,leftGrip,
         rightGrip,visibility,gameplay,laser,grabDebugLaser,
         discoveryRings,discoveryRingCount);
     impl_->vk.cmdEndRenderPass(commandBuffer);
