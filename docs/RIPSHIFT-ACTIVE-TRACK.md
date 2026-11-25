@@ -4,7 +4,7 @@ This is the current gameplay add-on, not a separate Mod Manager application.
 
 - Active branch: `feature/object-discovery-full-grip-calibration-20261123`
 - Distribution workflow: `.github/workflows/build-ripshift.yml`
-- Native build workflow: `.github/workflows/build-custom.yml`
+- Native build workflow: `.github/workflows/build-ripshift-native.yml`
 - Experimental artifact: `RIPSHIFT-Experimental`
 - Application: `_RIPSHIFT.exe`
 - Runtime DLL: `KharvoxLayer.dll`, source-matched and verified

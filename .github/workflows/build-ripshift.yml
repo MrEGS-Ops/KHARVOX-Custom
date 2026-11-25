@@ -11,7 +11,7 @@ on:
       - 'launcher/KharvoxLauncher/**'
       - 'tools/**'
       - 'assets/**'
-      - '.github/workflows/build-custom.yml'
+      - '.github/workflows/build-ripshift-native.yml'
       - '.github/workflows/build-ripshift.yml'
   workflow_dispatch:
 
@@ -41,10 +41,10 @@ jobs:
           $branch = "${{ github.ref_name }}"
           if ($branch -ne "feature/object-discovery-full-grip-calibration-20261123") { throw "Unexpected experimental source branch." }
           $repo = "${{ github.repository }}"
-          $nativePaths = @("src","tests","CMakeLists.txt","config/user_calibration_defaults","launcher/KharvoxLauncher","supervisor","tools","assets",".github/workflows/build-custom.yml")
+          $nativePaths = @("src","tests","CMakeLists.txt","config/user_calibration_defaults","launcher/KharvoxLauncher","supervisor","tools","assets",".github/workflows/build-ripshift-native.yml")
           $selected = $null
           for ($attempt = 1; $attempt -le 240 -and $null -eq $selected; $attempt++) {
-            $raw = gh run list --repo $repo --workflow build-custom.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,conclusion,status
+            $raw = gh run list --repo $repo --workflow build-ripshift-native.yml --branch $branch --limit 100 --json databaseId,headSha,headBranch,conclusion,status
             if ($LASTEXITCODE -ne 0) { throw "Cannot query KHARVOX native builds." }
             foreach ($candidate in @($raw | ConvertFrom-Json)) {
               if ($candidate.headBranch -ne $branch -or $candidate.conclusion -ne "success") { continue }
