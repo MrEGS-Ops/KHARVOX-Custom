@@ -869,7 +869,7 @@ void paintVrHandMenu() {
                     fill(markerX-5,top+31,10,22,RGB(55,209,214));
                     write(548,top+59,"A: NEXT STEP  POINTER: SELECT",muted);
                 };
-                slider(1,277,"SCAN RADIUS",cfg.scanRadiusMetres,1.f,15.f);
+                slider(1,277,"SCAN RADIUS",cfg.scanRadiusMetres,1.f,50.f);
                 slider(2,368,"GRAB REACH",cfg.grabReachMetres,1.f,5.f);
                 const bool laserSelected=m.hovered==133
                     ||(m.navigation.usingStick&&m.navigation.actionIndex==3);
