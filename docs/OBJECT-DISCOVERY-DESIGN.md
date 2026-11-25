@@ -242,3 +242,10 @@ headset testing confirms the new runtime.
   still uses the origin-ray proxy instead of falsely claiming visual contact.
 - Last green rollback before cleanup: RIPSHIFT Experimental Build #110,
   commit `8ce38ac54b2631e592d4f71c95549e4459572364`.
+
+## Deferred cleanup: retire manual object-grip calibration after universal surface grabbing is proven
+
+- **User decision (25 Nov 2026):** If universal visual/render-mesh grabbing works reliably for *all eligible movable objects*, manual object-grip calibration is no longer wanted and should be removed in the **next cleanup**, rather than retained alongside it.
+- This is **conditional**, not a request to remove calibration from the current build. Do **not** retire existing right-trigger save, per-object hand profiles, free-floating grip calibration, or associated settings until universal visual-surface pickup actually works on varied shapes/sizes and passes normal pickup, hand-relative rotation, release and regression checks.
+- Once the replacement is demonstrated, remove the redundant calibration UI, code paths, profile-management logic, obsolete tests and dead configuration readers together, while preserving a safe rollback/migration policy for existing UserData. Keep coloured discovery rings, scan-radius and grab-distance controls, cyan reach laser, object identification, and normal grab/release mechanics.
+- Surface-contact targeting is distinct from user-authored pose presets. If the user later requests fixed poses (e.g. a mug automatically oriented to drink), treat that as a separate feature decision rather than silently preserving the entire manual calibration subsystem.
