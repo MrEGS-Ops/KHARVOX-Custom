@@ -16,7 +16,6 @@ struct ObjectDiscoveryGripFrame {
     float origin[3]{},axis[9]{},aim[3]{};
     float reachUnits{150.f};
     float scanUnits{400.f};
-    float spinStickX{}; // right-stick horizontal, only while calibrating with GRIP
     unsigned physicalHand{};
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
@@ -27,11 +26,12 @@ struct ObjectDiscoveryHeld {
     unsigned handle{},physicalHand{};
     unsigned long long generation{},capturedAtMs{};
     float relativeOffset[3]{},initialOffset[3]{},relativeAxis[9]{};
-    float rotationLocalStart[9]{};
-    float spinDegrees{};
-    unsigned long long lastRotationAtMs{},lastGripDownAtMs{};
+    float frozenWorldOrigin[3]{},frozenWorldAxis[9]{};
+    unsigned long long lastGripDownAtMs{};
     unsigned poseReadMisses{};
-    bool rotationActive{},neutralResetLatched{};
+    // A fresh grab begins with Grip pressed; require a release before
+    // re-pressing Grip can enter freeze/reposition/lock calibration.
+    bool rotationReady{},rotationActive{},neutralResetLatched{};
     bool active{},calibrating{},palmSettled{},nativeFollowConfirmed{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
@@ -841,41 +841,52 @@ void objectDiscoveryGameTick() {
                 held.initialOffset[i]=held.relativeOffset[i];
             }
             held.capturedAtMs=now;
+            // A neutral reset must not continue editing a stale
+            // world-space freeze target from before the reset.
             held.rotationActive=false;
-            held.spinDegrees=0.f;
         }
     }
     held.neutralResetLatched=input.resetToNeutral;
-    if(held.calibrating&&input.freeze){
-        // Grip-held rotation is STILL hand-local. Physically tilting or
-        // turning the controller carries the bottle's full orientation
-        // with it. Only stick X adds a local spin around the bottle's
-        // intrinsic Z. Never compute new offsets from DOOM body feedback.
+    // Initial GRIP is only the act of picking the prop up. The
+    // rotation editor becomes armed once the user first releases Grip.
+    if(!input.freeze)held.rotationReady=true;
+    if(held.calibrating&&input.freeze&&held.rotationReady){
         if(!held.rotationActive){
-            std::memcpy(held.rotationLocalStart,held.relativeAxis,
-                sizeof(held.rotationLocalStart));
-            held.spinDegrees=0.f;
-            held.lastRotationAtMs=now;
+            // Freeze the complete CURRENT TARGET pose in world space,
+            // NOT the lagging DOOM physics pose. The object keeps its
+            // position and orientation while the user's hand moves.
+            kharvox::objectGripToWorldPose(input.origin,input.axis,
+                held.relativeOffset,held.relativeAxis,
+                held.frozenWorldOrigin,held.frozenWorldAxis);
             held.rotationActive=true;
         }
-        const float seconds=std::min<unsigned long long>(
-            now>=held.lastRotationAtMs?now-held.lastRotationAtMs:0,40ULL)
-            *.001f;
-        held.lastRotationAtMs=now;
-        held.spinDegrees=std::remainder(
-            held.spinDegrees
-            +kharvox::objectGripSpinAxis(input.spinStickX)*90.f*seconds,
-            360.f);
-        const auto desiredLocal=kharvox::objectGripSpinLocalAxis(
-            held.rotationLocalStart,held.spinDegrees);
-        if(objectDiscoveryAxisOk(desiredLocal.data()))
-            std::copy(desiredLocal.begin(),desiredLocal.end(),
+        // Every tick: worldFrozen = handNow * localNow. The local pose is
+        // what changes while the player rotates their controller.
+        float nextOffset[3]{},nextAxis[9]{};
+        kharvox::objectGripToHandLocalPose(input.origin,input.axis,
+            held.frozenWorldOrigin,held.frozenWorldAxis,
+            nextOffset,nextAxis);
+        if(objectDiscoveryAxisOk(nextAxis)){
+            std::copy(std::begin(nextOffset),std::end(nextOffset),
+                held.relativeOffset);
+            std::copy(std::begin(nextAxis),std::end(nextAxis),
                 held.relativeAxis);
-    }else{
-        // On GRIP release keep the final local rotation as-is; don't snap.
-        // The next GRIP press takes fresh stable references.
+        }
+    }else if(held.rotationActive){
+        // Grip just released. Re-project once using the RELEASE frame's
+        // controller pose so the object does not jump as it switches
+        // from world-space freeze back to normal hand-local attachment.
+        float nextOffset[3]{},nextAxis[9]{};
+        kharvox::objectGripToHandLocalPose(input.origin,input.axis,
+            held.frozenWorldOrigin,held.frozenWorldAxis,
+            nextOffset,nextAxis);
+        if(objectDiscoveryAxisOk(nextAxis)){
+            std::copy(std::begin(nextOffset),std::end(nextOffset),
+                held.relativeOffset);
+            std::copy(std::begin(nextAxis),std::end(nextAxis),
+                held.relativeAxis);
+        }
         held.rotationActive=false;
-        held.lastRotationAtMs=now;
     }
     {
         if(input.calibrating&&input.offsetValid){
@@ -892,19 +903,9 @@ void objectDiscoveryGameTick() {
             // (If there is no profile yet, this is the neutral offset.)
         }
         float desired[3]{},desiredAxis[9]{};
-        for(int world=0;world<3;++world){
-            desired[world]=input.origin[world];
-            for(int local=0;local<3;++local)
-                desired[world]+=input.axis[local*3+world]
-                    *held.relativeOffset[local];
-            for(int col=0;col<3;++col){
-                float basis{};
-                for(int local=0;local<3;++local)
-                    basis+=input.axis[local*3+world]
-                        *held.relativeAxis[col*3+local];
-                desiredAxis[col*3+world]=basis;
-            }
-        }
+        kharvox::objectGripToWorldPose(input.origin,input.axis,
+            held.relativeOffset,held.relativeAxis,
+            desired,desiredAxis);
         float len2{};
         for(int i=0;i<3;++i){
             float d=desired[i]-item->origin[i];len2+=d*d;
