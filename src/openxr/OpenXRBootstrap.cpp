@@ -480,6 +480,7 @@ struct State {
     bool objectGripRecalibrateChordPrevious{},objectGripResetPoseThisFrame{};
     bool objectGripAprevious{},objectGripHasProfile{};
     unsigned objectGripHandle{},objectGripPhysicalHand{};
+    unsigned objectGripPoseLockAck{};
     unsigned long long objectGripNudgeAtMs{};
     std::string objectGripKey{},objectGripName{};
     std::array<float,3> objectGripOffsetUnits{};
@@ -5207,6 +5208,7 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripCalibrating=false;
         s.objectGripHasProfile=false;
         s.objectGripLastFeedbackAtMs=0;
+        s.objectGripPoseLockAck=0;
         s.objectGripRecalibrateChordPrevious=false;
         s.objectGripResetPoseThisFrame=false;
         KharvoxCameraReleaseObjectGrip();
@@ -5231,6 +5233,7 @@ void updateGameplayActions(XrTime displayTime){
         if(!s.objectGripWasHeld ||s.objectGripHandle!=objectFeedback.handle){
             s.objectGripHandle=objectFeedback.handle;
             s.objectGripPhysicalHand=objectFeedback.physicalHand;
+            s.objectGripPoseLockAck=objectFeedback.poseLockRevision;
             s.objectGripKey=objectFeedback.modelKey.data();
             s.objectGripName=kharvox::objectGripAutomaticName(s.objectGripKey);
             if(s.objectGripName.empty())
@@ -5308,6 +5311,23 @@ void updateGameplayActions(XrTime displayTime){
         }
         if(s.objectGripCalibrating){
             s.objectGripInputConsumed=true;
+            // The DOOM thread resolves the frozen WORLD pose into a NEW
+            // hand-relative offset/rotation exactly on Grip release.
+            // A revision change is the authority to replace the old XR
+            // offset, before accepting any 1/5cm fine-tune input. Do
+            // not overwrite that new pose with stale per-frame XR data.
+            if(objectFeedback.poseLockRevision!=s.objectGripPoseLockAck){
+                s.objectGripPoseLockAck=objectFeedback.poseLockRevision;
+                std::copy(std::begin(objectFeedback.localOffsetUnits),
+                    std::end(objectFeedback.localOffsetUnits),
+                    s.objectGripOffsetUnits.begin());
+                std::copy(std::begin(objectFeedback.localAxis),
+                    std::end(objectFeedback.localAxis),
+                    s.objectGripRelativeAxis.begin());
+                s.objectGripNudgeAtMs=GetTickCount64();
+                log("[OBJECT-GRIP] world-float pose locked to free hand revision="
+                    +std::to_string(s.objectGripPoseLockAck));
+            }
             if(supportGripDown){
                 // Native GRIP mode owns tilt/spin. On a fresh reset pulse
                 // the XR feedback still describes the OLD pose from the
@@ -5335,15 +5355,16 @@ void updateGameplayActions(XrTime displayTime){
                         // in metres, independent of DOOM's world scale.
                         const float step=(objectFineTuneQuick?.05f:.01f)
                             *s.worldScale;
-                        // Save validation permits at most +/-2m local
-                        // offsets; stay in range even at fast 5cm steps.
+                        // A walk-around frozen item may be far from the hand.
+                        // Match the saved profile's broad 50m bound, not
+                        // the original +/-2m quick-tune-only range.
                         for(int axis=0;axis<3;++axis){
                             const float direction=axis==0?dx
                                 :axis==1?dy:dz;
                             s.objectGripOffsetUnits[axis]=std::clamp(
                                 s.objectGripOffsetUnits[axis]
                                     +direction*step,
-                                -2.f*s.worldScale,2.f*s.worldScale);
+                                -50.f*s.worldScale,50.f*s.worldScale);
                         }
                         s.objectGripNudgeAtMs=now;
                     }
@@ -5468,7 +5489,8 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripCalibrating&&supportGripDown,
             s.objectGripCalibrating&&supportGripDown
                 ?s.rightStick.x:0.f,
-            s.objectGripResetPoseThisFrame);
+            s.objectGripResetPoseThisFrame,
+            s.objectGripPoseLockAck);
     }
 #endif
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
