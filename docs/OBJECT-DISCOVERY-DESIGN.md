@@ -12,7 +12,7 @@ headset testing confirms the new runtime.
 - Mods > DEV > Experimental Features > Object Discovery Mode is toggleable.
 - Scan radius: **1–15 metres** in 1 m increments, default **5 m**.
 - Grab reach: **1–5 metres** in 0.5 m increments, default **2 m**.
-- Scan and reach are separate and saved in UserData/object_discovery.cfg.
+- Scan and reach are separate and saved in `UserData/ObjectGrip/object_discovery.cfg`.
 - Grey world-space ring: candidate with no confirmed real native movement.
 - Amber ring: object physically moved in DOOM's own simulation; no saved grip.
 - Green ring: matching verified model profile or current-level profile exists.
@@ -33,8 +33,10 @@ headset testing confirms the new runtime.
 4. The item is held in controller-relative six-degree-of-freedom pose.
    An unconfigured item opens a small calibration overlay immediately.
 5. Without Grip: nudge object 1 cm per step using left stick X/Y for
-   horizontal/depth and right stick Y for vertical. With Grip: object stays
-   world-stationary while controller rotates to adjust the relative pose.
+   horizontal/depth and right stick Y for vertical. Doom movement/turning is
+   suppressed while calibrating. With Grip: the object stays hand-anchored;
+   its world orientation remains fixed while the controller rotates, changing
+   the object's relative orientation without dropping or detaching it.
 6. RT saves; B cancels. The held object is released without an artificial
    downward impulse. A while holding an already-profiled item reopens
    calibration.
@@ -49,11 +51,13 @@ headset testing confirms the new runtime.
   class, entity handle or raw pointer is not accepted as a persistent key.
 - Automatically generated names derive from the model's filename.
 - A distinct LEFT and RIGHT controller profile saves offset and local
-  quaternion in UserData/object_grip_profiles.cfg.
+  quaternion in `UserData/ObjectGrip/object_grip_profiles.cfg`.
 - When native model identity cannot be proven, the item can still be
   calibrated for this level, but the exact instance-only profile is
   intentionally **not persisted across restarts**. The UI explains this.
 - An unknown model that has moved is amber, not falsely green.
+- These are disposable development configs: no migration, no flat-path fallback.
+  Existing flat files are left untouched and ignored by the current build.
 
 ## Scanner safety and limitations
 
@@ -65,8 +69,9 @@ headset testing confirms the new runtime.
 - If pool layout cannot be validated, the system falls back to ray-discovered
   props; therefore complete 360-degree radius enumeration is **not yet
   confirmed**.
-- The visual ring system uses existing scene-depth rendering and never
-  edits DOOM's native materials or static world meshes.
+- The visual rings use a separate late Vulkan overlay pipeline with depth
+  testing and writes disabled so they stay visible over props and world meshes.
+  DOOM's native materials, object meshes and depth buffer are not modified.
 - Native body pointers never cross into the XR thread; immutable snapshots,
   owner checks, generation, vtables and input age gates protect handoffs.
 - Pausing, losing tracking, switching the mode off or entering cutscenes
