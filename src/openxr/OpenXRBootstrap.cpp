@@ -74,6 +74,7 @@
 #include "RightHandGripConfig.h"
 #include "VrHandMenuPolicy.h"
 #include "ObjectGripProfileStore.h"
+#include "ObjectGripInputOwnershipPolicy.h"
 #include "WeaponRecoilPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
 #include "PhysicalGrenadeGesturePolicy.h"
@@ -3900,10 +3901,11 @@ void updateGameplayActions(XrTime displayTime){
     // Query the DOOM-owned attachment mailbox now, BEFORE weapon/equipment
     // routing in this XR frame, not only at the later calibration block.
     KharvoxObjectGripFeedback equipmentGripAttachment{};
-    const bool objectGripOwnsOffhand=gameplay
-        &&s.vrHandMenu.objectDiscovery.enabled
-        &&(s.objectGripWasHeld
-            ||KharvoxCameraReadObjectGrip(equipmentGripAttachment));
+    const bool nativeObjectAttached=
+        KharvoxCameraReadObjectGrip(equipmentGripAttachment);
+    const bool objectGripOwnsOffhand=kharvox::objectGripBlocksOffhandEquipment(
+        gameplay,s.vrHandMenu.objectDiscovery.enabled,
+        s.objectGripWasHeld,nativeObjectAttached);
     XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
     constexpr float rightStickVerticalDeadzone=.4f;
@@ -5278,8 +5280,9 @@ void updateGameplayActions(XrTime displayTime){
     // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
     const bool recalibrateChord=objectHeld&&objectMode
         &&supportGripDown&&objectFineTuneQuick;
-    s.objectGripResetPoseThisFrame=recalibrateChord
-        &&!s.objectGripRecalibrateChordPrevious;
+    s.objectGripResetPoseThisFrame=kharvox::objectGripNeutralResetChordEdge(
+        objectHeld,objectMode,supportGripDown,objectFineTuneQuick,
+        s.objectGripRecalibrateChordPrevious);
     s.objectGripRecalibrateChordPrevious=recalibrateChord;
     if(objectHeld&&objectMode){
         if(s.objectGripResetPoseThisFrame){
