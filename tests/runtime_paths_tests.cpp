@@ -25,6 +25,8 @@ int main() {
     struct CategoryTest { const wchar_t* file; const wchar_t* folder; };
     constexpr CategoryTest grouped[]{
         {L"vr_live_mods_saved.cfg",L"Settings"},
+        {L"object_discovery.cfg",L"ObjectGrip"},
+        {L"object_grip_profiles.cfg",L"ObjectGrip"},
         {L"offhand_right_hand_positions.cfg",L"Calibrations"},
         {L"hud_role_calibration_saved.cfg",L"Calibrations"},
         {L"weapon_recoil_saved.cfg",L"Calibrations"},
@@ -37,6 +39,8 @@ int main() {
         if(!category||_wcsicmp(category,entry.folder)!=0)return 11;
         if(!kharvox::isUserConfigName(entry.file))return 12;
     }
+    // Object Grip development files use their folder even when old flat
+    // disposable test data remains in UserData (no migration or fallback).
     for(const auto* name:{
         L"weapon_scale.cfg",L"render_scale.cfg",L"back_weapon.cfg",
         L"two_hand_alignment.cfg",L"hand_models.cfg",
