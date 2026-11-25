@@ -474,6 +474,7 @@ struct State {
     unsigned long long objectGripSessionGeneration{};
     bool objectGripInputConsumed{},objectGripConsumeTriggerUntilRelease{};
     bool objectGripCalibrating{},objectGripWasHeld{},objectGripSaved{};
+    unsigned long long objectGripLastFeedbackAtMs{};
     bool objectGripTriggerPrevious{},objectGripBackPrevious{};
     bool objectGripAprevious{},objectGripHasProfile{};
     unsigned objectGripHandle{},objectGripPhysicalHand{};
@@ -5174,12 +5175,14 @@ void updateGameplayActions(XrTime displayTime){
         s.objectGripWasHeld=false;
         s.objectGripCalibrating=false;
         s.objectGripHasProfile=false;
+        s.objectGripLastFeedbackAtMs=0;
         KharvoxCameraReleaseObjectGrip();
     }
     // Read feedback before publishing this frame's controller pose. The
     // native world-thread retains only an exact validated moving body.
     KharvoxObjectGripFeedback objectFeedback{};
     const bool objectHeld=KharvoxCameraReadObjectGrip(objectFeedback);
+    if(objectHeld)s.objectGripLastFeedbackAtMs=GetTickCount64();
     const bool objectMode=s.vrHandMenu.objectDiscovery.enabled
         &&gameplay&&s.trackingHeadPositionValid
         &&!controllerOnlyLocked.load(std::memory_order_acquire);
@@ -5197,36 +5200,17 @@ void updateGameplayActions(XrTime displayTime){
             s.objectGripName=kharvox::objectGripAutomaticName(s.objectGripKey);
             if(s.objectGripName.empty())
                 s.objectGripName="Unidentified Movable Object";
-            const unsigned hand=objectFeedback.physicalHand;
-            const auto model=s.objectGripProfiles.find(s.objectGripKey);
-            const auto local=s.objectGripKey.empty()
-                ?s.objectGripSessionProfiles.find(objectFeedback.handle)
-                :s.objectGripSessionProfiles.end();
-            const kharvox::ObjectGripPose* saved=nullptr;
-            if(model!=s.objectGripProfiles.end()
-                &&kharvox::objectGripConfigured(
-                    s.objectGripProfiles,s.objectGripKey,hand))
-                saved=&model->second.hands[hand];
-            else if(local!=s.objectGripSessionProfiles.end()
-                &&local->second.hands[hand].configured)
-                saved=&local->second.hands[hand];
-            s.objectGripHasProfile=saved!=nullptr;
-            s.objectGripCalibrating=!s.objectGripHasProfile;
-            if(saved){
-                for(int i=0;i<3;++i)
-                    s.objectGripOffsetUnits[i]=
-                        saved->offsetMetres[i]*s.worldScale;
-                s.objectGripRelativeAxis=
-                    kharvox::objectGripQuaternionToAxis(
-                        saved->localRotation);
-            }else{
-                for(int i=0;i<3;++i)
-                    s.objectGripOffsetUnits[i]=
-                        objectFeedback.localOffsetUnits[i];
-                std::copy(std::begin(objectFeedback.localAxis),
-                    std::end(objectFeedback.localAxis),
-                    s.objectGripRelativeAxis.begin());
-            }
+            // Each pickup starts fresh at the native canonical upright
+            // and centred palm-forward pose, regardless of prior profiles.
+            // Existing saves remain for the left/right ring indicators.
+            s.objectGripHasProfile=false;
+            s.objectGripCalibrating=true;
+            for(int i=0;i<3;++i)
+                s.objectGripOffsetUnits[i]=
+                    (i==0?0.f:i==1?-4.f:-20.f);
+            std::copy(std::begin(objectFeedback.localAxis),
+                std::end(objectFeedback.localAxis),
+                s.objectGripRelativeAxis.begin());
             s.objectGripNudgeAtMs=0;
             s.objectGripTriggerPrevious=
                 readFloatAction(s.weaponHandLeft
@@ -5236,13 +5220,24 @@ void updateGameplayActions(XrTime displayTime){
             log("[OBJECT-GRIP] acquired handle="
                 +std::to_string(s.objectGripHandle)
                 +" model="+s.objectGripName
-                +(s.objectGripHasProfile?" saved":" new"));
+                +" fresh neutral pickup");
         }
         s.objectGripWasHeld=true;
     }else{
-        s.objectGripWasHeld=false;
-        s.objectGripCalibrating=false;
-        s.objectGripHasProfile=false;
+        // The native thread may skip one XR frame while DOOM advances.
+        // Don't turn off calibration and observation on a single missed
+        // feedback sample; stop only after the native grace interval.
+        const auto now=GetTickCount64();
+        const bool transientMissing=s.objectGripWasHeld
+            &&s.objectGripLastFeedbackAtMs
+            &&now>=s.objectGripLastFeedbackAtMs
+            &&now-s.objectGripLastFeedbackAtMs<=300
+            &&supportGripDown;
+        if(!transientMissing){
+            s.objectGripWasHeld=false;
+            s.objectGripCalibrating=false;
+            s.objectGripHasProfile=false;
+        }
     }
     // Physical support-hand trigger selects 5cm quick fine-tune ONLY.
     // Primary weapon-hand trigger remains the exclusive RT-save button.
@@ -5344,10 +5339,9 @@ void updateGameplayActions(XrTime displayTime){
     // DOOM's weapon-bracing capture zone passes near that hand. Rechecking
     // the acquisition-only two-hand conditions here made Grip press drop the
     // barrel by invalidating our native pose during calibration.
-    const bool calibrationOwnsGrab=s.objectGripCalibrating
-        &&s.objectGripWasHeld;
+    const bool attachmentOwnsGrab=s.objectGripWasHeld;
     const bool freeHandClear=objectMode
-        &&(calibrationOwnsGrab
+        &&(attachmentOwnsGrab
             ||(!s.twoHandLatched&&!s.twoHandCalibrationMode
                 &&!supportGripInCaptureRange()
                 &&!s.behindHeadWheelActive&&!weaponWheelActive
@@ -5394,8 +5388,10 @@ void updateGameplayActions(XrTime displayTime){
                     +bodyAxis[6+j]*localDir[2];
         }
     }
+    // Losing crosshair focus must never unload the native cache when an
+    // item is already held. This was releasing it during hand movement.
     KharvoxCameraEnableWorldGrabNativeFocusObservation(objectMode
-        &&(worldInteractionFocus||s.objectGripCalibrating));
+        &&(worldInteractionFocus||s.objectGripWasHeld));
     KharvoxCameraSetObjectGripInput(
         gripPoseValid?nativeOrigin:nullptr,
         gripPoseValid?nativeAxis:nullptr,
