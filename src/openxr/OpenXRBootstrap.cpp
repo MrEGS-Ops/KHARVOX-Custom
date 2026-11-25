@@ -5300,15 +5300,18 @@ void updateGameplayActions(XrTime displayTime){
         if(s.objectGripCalibrating){
             s.objectGripInputConsumed=true;
             if(supportGripDown){
-                // Native GRIP mode owns hand tilt and right-stick X spin
-                // using a stable reference. Sample its verified relative
-                // orientation for saving, never rederive it from a pose on XR.
-                std::copy(std::begin(objectFeedback.localOffsetUnits),
-                    std::end(objectFeedback.localOffsetUnits),
-                    s.objectGripOffsetUnits.begin());
-                std::copy(std::begin(objectFeedback.localAxis),
-                    std::end(objectFeedback.localAxis),
-                    s.objectGripRelativeAxis.begin());
+                // Native GRIP mode owns tilt/spin. On a fresh reset pulse
+                // the XR feedback still describes the OLD pose from the
+                // previous DOOM tick; don't overwrite our neutral target
+                // with that stale snapshot before the reset arrives.
+                if(!s.objectGripResetPoseThisFrame){
+                    std::copy(std::begin(objectFeedback.localOffsetUnits),
+                        std::end(objectFeedback.localOffsetUnits),
+                        s.objectGripOffsetUnits.begin());
+                    std::copy(std::begin(objectFeedback.localAxis),
+                        std::end(objectFeedback.localAxis),
+                        s.objectGripRelativeAxis.begin());
+                }
             }else{
                 const auto now=GetTickCount64();
                 if(now>=s.objectGripNudgeAtMs+95){
