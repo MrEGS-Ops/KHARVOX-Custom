@@ -3042,6 +3042,14 @@ void KharvoxCameraSetCrouchState(bool active) {
     crouchRequested.store(active, std::memory_order_release);
 }
 
+unsigned KharvoxCameraObjectDiscoverySourceMode() {
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    return nativeGrabFocusObservationEnabled.load(std::memory_order_acquire)
+        ?objectDiscoverySourceMode.load(std::memory_order_acquire):0;
+#else
+    return 0;
+#endif
+}
 bool KharvoxCameraReadObjectDiscovery(
     KharvoxObjectDiscoverySnapshot& out) {
     out={};
@@ -3148,6 +3156,9 @@ void KharvoxCameraEnableWorldGrabNativeFocusObservation(bool enabled) {
     // XR-thread toggle. Only invalidate the shared request; the next game
     // world callback will safely release its pinned body.
     if(!enabled){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        objectDiscoverySourceMode.store(0,std::memory_order_release);
+#endif
         std::lock_guard<std::mutex> gripGuard(objectDiscoveryGripMutex);
         objectDiscoveryGripInput.enabled=false;
         ++objectDiscoveryGripInput.releaseSerial;
