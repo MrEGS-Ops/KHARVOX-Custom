@@ -9131,11 +9131,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                         &&kharvox::objectGripPoseValid(
                             session->second.hands[hand]);
                     ring.halfState[hand]=kharvox::objectDiscoveryHalfRingState(
-                        perModel||perInstance,target.nativeMotionObserved,
-                        radiusSquared,reachSquared);
+                        perModel||perInstance,target.nativeMotionObserved);
                 }
-                if(!kharvox::objectDiscoveryRingHasVisibleHalf(
-                    ring.halfState[0],ring.halfState[1]))continue;
                 unsigned insert=0;
                 while(insert<rankedCount
                     &&!kharvox::objectDiscoveryRingPrefer(
