@@ -5438,10 +5438,12 @@ void updateGameplayActions(XrTime displayTime){
                     +bodyAxis[6+j]*localDir[2];
         }
     }
-    // Losing crosshair focus must never unload the native cache when an
-    // item is already held. This was releasing it during hand movement.
-    KharvoxCameraEnableWorldGrabNativeFocusObservation(objectMode
-        &&(worldInteractionFocus||s.objectGripWasHeld));
+    // Object DISCOVERY is a player-radius service, not a gun/hand-ray
+    // interaction. Keep the passive world scanner enabled whenever the
+    // user opted into DEV discovery during gameplay; aiming or bracing
+    // must not switch off nearby enumeration. Grip acquisition still
+    // has its separate hand/focus/validity safety gates below.
+    KharvoxCameraEnableWorldGrabNativeFocusObservation(objectMode);
     KharvoxCameraSetObjectGripInput(
         gripPoseValid?nativeOrigin:nullptr,
         gripPoseValid?nativeAxis:nullptr,
