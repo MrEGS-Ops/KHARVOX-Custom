@@ -1,6 +1,7 @@
 #include "../src/openxr/ObjectGripProfileStore.h"
 #include "../src/camera/ObjectGripRotationPolicy.h"
 #include "../src/openxr/SmartGripVariantsPolicy.h"
+#include "../src/openxr/GrappleAnchorPolicy.h"
 #include "../src/openxr/ObjectGripInputOwnershipPolicy.h"
 #include <cassert>
 #include <cstdio>
@@ -218,6 +219,46 @@ int main(){
         objectPoint,unitAxis,nextOffset,nextAxis));
     assert(nextOffset==kObjectGripNeutralOffsetUnits);
     assert(nextAxis==kObjectGripNeutralLocalAxis);
+    GrappleAnchorSettings grapple{};
+    assert(!grapple.enabled);
+    grapple.enabled=true;
+    assert(grappleAnchorSave("grapple_anchor_test.cfg",grapple));
+    GrappleAnchorSettings grappleLoaded{};
+    assert(grappleAnchorLoad("grapple_anchor_test.cfg",grappleLoaded));
+    assert(grappleLoaded.enabled);
+    const float rayOrigin[3]{0,0,0};
+    const float rayForward[3]{0,0,1};
+    const float boxOrigin[3]{0,0,100};
+    GrappleRayAnchor anchor{};
+    assert(grappleRayEstimate(rayOrigin,rayForward,boxOrigin,200,55,anchor));
+    assert(!anchor.exactCollisionHit); // proxy must not masquerade as mesh hit
+    assert(std::abs(anchor.worldPoint[2]-80.f)<.001f);
+    assert(std::abs(anchor.missDistance)<.001f);
+    const float missed[3]{70,0,100};
+    assert(!grappleRayEstimate(rayOrigin,rayForward,missed,200,55,anchor));
+    const float cornerDirection[3]{0.2f,0.f,0.9797959f};
+    std::array<float,3> grOffset{};
+    std::array<float,9> grAxis{};
+    assert(grapplePickupPose(rayOrigin,unitAxis,cornerDirection,
+        boxOrigin,unitAxis,200,grOffset,grAxis,anchor));
+    assert(anchor.worldPoint[0]>10.f);
+    assert(grAxis[0]==1.f&&grAxis[4]==1.f&&grAxis[8]==1.f);
+    // The chosen estimated point becomes the hand's persistent anchor.
+    float nativePose[3]{},nativeAxis[9]{};
+    const float turnedHand[9]{0,1,0,-1,0,0,0,0,1};
+    objectGripToWorldPose(rayOrigin,turnedHand,
+        grOffset.data(),grAxis.data(),nativePose,nativeAxis);
+    const float localHit[3]{
+        anchor.worldPoint[0]-boxOrigin[0],
+        anchor.worldPoint[1]-boxOrigin[1],
+        anchor.worldPoint[2]-boxOrigin[2]};
+    for(int i=0;i<3;++i){
+        float worldHit=nativePose[i];
+        for(int col=0;col<3;++col)
+            worldHit+=nativeAxis[col*3+i]*localHit[col];
+        assert(std::abs(worldHit-rayOrigin[i])<.01f);
+    }
+    std::remove("grapple_anchor_test.cfg");
     std::remove("smart_grip_test.cfg");
     std::remove("object_grip_profile_test.cfg");
 }

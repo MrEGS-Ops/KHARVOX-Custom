@@ -792,7 +792,8 @@ void paintVrHandMenu() {
         // visible and pointer-clickable as soon as the row is highlighted.
         const bool expInline=devPage&&count>0
             &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
-                ||entries[selected].developer==kharvox::VrMenuDevOption::SmartGrip);
+                ||entries[selected].developer==kharvox::VrMenuDevOption::SmartGrip
+                ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor);
         if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
             const auto overview=entries[overviewSelected].developer
@@ -836,8 +837,27 @@ void paintVrHandMenu() {
             write(538,163,opt==D::Experimental
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::SmartGrip?"SMART GRIP PICKUP EXPERIMENTS"
+                :opt==D::GrappleAnchor?"GRAPPLE ANCHOR - SEPARATE TEST"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt==D::SmartGrip){
+            if(opt==D::GrappleAnchor){
+                const bool on=m.grappleAnchor.enabled;
+                fill(531,186,384,65,m.hovered==130
+                    ?RGB(52,83,99):RGB(39,49,63));
+                write(548,202,"GRAPPLE ANCHOR",white);
+                write(843,202,on?"ON":"OFF",on?RGB(128,255,177):muted);
+                write(548,230,"A / TRIGGER: TOGGLE",muted);
+                write(538,289,"Aim laser at a movable prop, then Grip.",white);
+                write(538,335,"The selected ray point pulls to your hand.",white);
+                write(538,381,"The object then follows your wrist in 6DOF.",white);
+                write(538,442,"TEST LIMITATION:",RGB(255,196,112));
+                write(538,472,"Ray point uses a geometry proxy, not",muted);
+                write(538,500,"a verified native mesh collision hit.",muted);
+                write(538,564,"Overrides Smart Grip while ON.",muted);
+                write(538,612,m.objectDiscovery.enabled
+                    ?"Discovery active. Only moving props grab."
+                    :"ENABLE OBJECT DISCOVERY FIRST",m.objectDiscovery.enabled
+                        ?RGB(128,255,177):RGB(255,196,112));
+            }else if(opt==D::SmartGrip){
                 const auto& cfg=m.smartGrip;
                 const std::array<const char*,6> labels{
                     "SMART GRIP - MASTER","PALM ANCHOR (12 UNITS)",
@@ -861,7 +881,7 @@ void paintVrHandMenu() {
                     ?"Discovery active. Grip+LT = recalibrate."
                     :"ENABLE OBJECT DISCOVERY TO GRAB",m.objectDiscovery.enabled
                         ?RGB(128,255,177):RGB(255,196,112));
-            }else if(opt!=D::Experimental){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
@@ -921,7 +941,8 @@ void paintVrHandMenu() {
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::SmartGrip){
+            }else if(opt!=D::Experimental&&opt!=D::SmartGrip
+                &&opt!=D::GrappleAnchor){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }

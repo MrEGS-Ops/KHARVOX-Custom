@@ -20,7 +20,7 @@ struct ObjectDiscoveryGripFrame {
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
-    bool smartGripEnabled{},meshInspectorEnabled{};
+    bool smartGripEnabled{},meshInspectorEnabled{},grappleAnchorEnabled{};
     unsigned smartGripModes{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
@@ -35,7 +35,7 @@ struct ObjectDiscoveryHeld {
     // The initial pickup Grip may immediately freeze the neutral object
     // once calibration is active; no extra release/re-press required.
     bool rotationActive{},neutralResetLatched{};
-    bool active{},calibrating{},nativeFollowConfirmed{};
+    bool active{},calibrating{},nativeFollowConfirmed{},grappleAnchor{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
@@ -784,7 +784,8 @@ void objectDiscoveryGameTick() {
     if(!objectDiscoveryHeld.active){
         if(!input.pressed||objectDiscoveryNeedsGripRelease)return;
         ObjectDiscoveryNativeRecord* nearest{};
-        float best2=input.reachUnits*input.reachUnits;
+        float best2=input.grappleAnchorEnabled
+            ?55.f*55.f:input.reachUnits*input.reachUnits;
         for(auto& item:objectDiscoveryNative){
             if(!item.entity||!item.poseValid||!item.nativeMotionObserved
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
@@ -796,11 +797,30 @@ void objectDiscoveryGameTick() {
                 squared+=delta*delta;
                 forward+=delta*input.aim[axis];
             }
-            if(squared>=best2||forward<=0.f
-                ||forward*forward<.64f*squared)continue;
-            best2=squared;nearest=&item;
+            if(input.grappleAnchorEnabled){
+                kharvox::GrappleRayAnchor ray{};
+                if(!kharvox::grappleRayEstimate(input.origin,input.aim,
+                        item.origin,input.reachUnits,55.f,ray))continue;
+                const float lateral2=ray.missDistance*ray.missDistance;
+                if(lateral2>=best2)continue;
+                best2=lateral2;nearest=&item;
+            }else{
+                if(squared>=best2||forward<=0.f
+                    ||forward*forward<.64f*squared)continue;
+                best2=squared;nearest=&item;
+            }
         }
-        if(!nearest)return;
+        if(!nearest){
+            if(input.grappleAnchorEnabled){
+                static unsigned long long lastGrappleMiss{};
+                if(now>=lastGrappleMiss+1200){
+                    lastGrappleMiss=now;
+                    log("[GRAPPLE-ANCHOR] Grip ray had NO valid moving "
+                        "object within reach and 55-unit ray tolerance");
+                }
+            }
+            return;
+        }
         auto& held=objectDiscoveryHeld;
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
@@ -822,7 +842,32 @@ void objectDiscoveryGameTick() {
         std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
         // Smart Grip is independent and OFF by default. It never
         // changes native discovery, movement eligibility or release.
-        if(input.smartGripEnabled){
+        if(input.grappleAnchorEnabled){
+            std::array<float,3> offset{};
+            std::array<float,9> axis{};
+            kharvox::GrappleRayAnchor ray{};
+            if(!kharvox::grapplePickupPose(input.origin,input.axis,
+                    input.aim,nearest->origin,nearest->axis,
+                    input.reachUnits,offset,axis,ray)
+                ||!objectDiscoveryAxisOk(axis.data())){
+                held={};return;
+            }
+            std::copy(offset.begin(),offset.end(),held.relativeOffset);
+            std::copy(axis.begin(),axis.end(),held.relativeAxis);
+            held.grappleAnchor=true;
+            log("[GRAPPLE-ANCHOR] grabbed handle="
+                +std::to_string(held.handle)
+                +" contact=ESTIMATED_RAY_PROXY (NOT_MESH_HIT)"
+                +" ray_depth="+std::to_string(ray.rayDistance)
+                +" miss="+std::to_string(ray.missDistance)
+                +" world_point="+std::to_string(ray.worldPoint[0])
+                +","+std::to_string(ray.worldPoint[1])
+                +","+std::to_string(ray.worldPoint[2])
+                +" locked 6DOF offset="
+                +std::to_string(offset[0])+","
+                +std::to_string(offset[1])+","
+                +std::to_string(offset[2]));
+        }else if(input.smartGripEnabled){
             std::array<float,3> offset{};
             std::array<float,9> axis{};
             if(kharvox::smartGripPickupPose(input.smartGripModes,
@@ -861,7 +906,7 @@ void objectDiscoveryGameTick() {
     // send both pose components to the same neutral starting point as a
     // fresh pickup, regardless of the object's current physical attitude.
     // Preserve the native held rigid body; do not drop/regrab or Activate.
-    if(input.resetToNeutral&&!held.neutralResetLatched){
+    if(!held.grappleAnchor&&input.resetToNeutral&&!held.neutralResetLatched){
         const auto neutral=kharvox::objectGripNeutralLocalAxis();
         if(objectDiscoveryAxisOk(neutral.data())){
             std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
@@ -877,7 +922,7 @@ void objectDiscoveryGameTick() {
     // Even the FIRST acquisition Grip can leave the freshly neutralized
     // prop floating while the player walks freely around it.
     bool releasedFrozenPoseThisTick=false;
-    if(held.calibrating&&input.freeze){
+    if(!held.grappleAnchor&&held.calibrating&&input.freeze){
         if(!held.rotationActive){
             // Freeze the complete CURRENT TARGET pose in world space,
             // NOT the lagging DOOM physics pose. The object keeps its
@@ -921,11 +966,11 @@ void objectDiscoveryGameTick() {
         // XR feedback is one world tick behind. Never overwrite the
         // world-locked pose with the previous frame's offset while Grip
         // is pressed or on the exact frame it is released.
-        if(input.calibrating&&input.offsetValid
+        if(!held.grappleAnchor&&input.calibrating&&input.offsetValid
             &&!held.rotationActive&&!releasedFrozenPoseThisTick
             &&input.poseLockAcknowledged==held.poseLockRevision){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
-        }else if(!input.calibrating&&input.offsetValid){
+        }else if(!held.grappleAnchor&&!input.calibrating&&input.offsetValid){
             for(int i=0;i<3;++i)held.relativeOffset[i]=input.wantedOffset[i];
             if(input.axisValid&&objectDiscoveryAxisOk(input.wantedAxis))
                 std::memcpy(held.relativeAxis,input.wantedAxis,

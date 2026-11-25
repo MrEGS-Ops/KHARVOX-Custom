@@ -15,6 +15,7 @@
 #include "CameraHook.h"
 #include "ObjectGripRotationPolicy.h"
 #include "../openxr/SmartGripVariantsPolicy.h"
+#include "../openxr/GrappleAnchorPolicy.h"
 #include "CameraBasisPolicy.h"
 #include "PlayerControlPolicy.h"
 #include "StoryCameraFocusPolicy.h"
@@ -2729,7 +2730,8 @@ bool KharvoxCameraReadObjectDiscovery(
 void KharvoxCameraSetObjectGripInput(
     const float origin[3],const float axis[9],const float aim[3],
     bool pressed,unsigned hand,float reachUnits,float scanUnits,bool enabled,
-    bool smartGripEnabled,unsigned smartGripModes,bool inspectMesh) {
+    bool smartGripEnabled,unsigned smartGripModes,bool inspectMesh,
+    bool grappleAnchorEnabled) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& frame=objectDiscoveryGripInput;
@@ -2741,6 +2743,7 @@ void KharvoxCameraSetObjectGripInput(
     frame.smartGripEnabled=smartGripEnabled;
     frame.smartGripModes=smartGripModes&15u;
     frame.meshInspectorEnabled=inspectMesh;
+    frame.grappleAnchorEnabled=grappleAnchorEnabled;
     frame.reachUnits=std::clamp(reachUnits,50.f,5000.f);
     frame.scanUnits=std::isfinite(scanUnits)
         ?std::clamp(scanUnits,25.f,5000.f):500.f;
@@ -2757,6 +2760,7 @@ void KharvoxCameraSetObjectGripInput(
     (void)origin;(void)axis;(void)aim;(void)pressed;
     (void)hand;(void)reachUnits;(void)scanUnits;(void)enabled;
     (void)smartGripEnabled;(void)smartGripModes;(void)inspectMesh;
+    (void)grappleAnchorEnabled;
 #endif
 }
 void KharvoxCameraSetObjectGripCalibration(

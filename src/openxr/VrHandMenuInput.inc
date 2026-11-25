@@ -501,7 +501,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             const bool expInline=row>=0&&row<static_cast<int>(list.size())
                 &&s.vrHandMenu.page==kharvox::VrMenuPage::Dev
                 &&(list[row].developer==kharvox::VrMenuDevOption::Experimental
-                    ||list[row].developer==kharvox::VrMenuDevOption::SmartGrip);
+                    ||list[row].developer==kharvox::VrMenuDevOption::SmartGrip
+                    ||list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor);
             const bool smartInline=expInline
                 &&list[row].developer==kharvox::VrMenuDevOption::SmartGrip;
             if(!s.vrHandMenu.navigation.settingsColumn&&!expInline){
@@ -515,7 +516,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=smartInline?6:expInline?4:5;
+            const int optionCount=smartInline?6:
+                list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?1:expInline?4:5;
             const int optionStep=smartInline?66:expInline?91:68;
             const int optionHeight=smartInline?58:expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -857,7 +859,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
                         ?4:entry.developer==kharvox::VrMenuDevOption::SmartGrip
-                            ?6:1; // Smart Grip master + 4 variants + inspector
+                            ?6:1; // Smart Grip and Grapple each own their settings
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -879,7 +881,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             // the right-side options; B returns to the overview.
             const bool experimentalSelected=devPage&&n>0
                 &&(rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip);
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor);
             kharvox::vrMenuNavigateStick(m.navigation,
                 (m.navigation.settingsColumn||experimentalSelected)
                     ?s.leftStick.x:0.f,
@@ -926,6 +929,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.recoilReturnToDev=true;
                     m.navigation={};
                     m.message="Tune weapon stability; B returns to DEV.";
+                }else if(entry.developer==D::GrappleAnchor){
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.message="Grapple Anchor: independent ray-point experiment.";
                 }else if(entry.developer==D::SmartGrip){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -997,6 +1004,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         ?"Object Discovery settings on right."
                         :devPage&&rows[newRow].developer==kharvox::VrMenuDevOption::SmartGrip
                             ?"Smart Grip options on right."
+                        :devPage&&rows[newRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                            ?"Grapple Anchor switch on right."
                         :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
@@ -1032,7 +1041,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }else if(devPage&&chosen>=130&&chosen<=135&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip)){
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor)){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1046,6 +1056,19 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
+                }else if(kind==D::GrappleAnchor){
+                    const auto previous=m.grappleAnchor;
+                    m.grappleAnchor.enabled=!m.grappleAnchor.enabled;
+                    if(!kharvox::grappleAnchorSave(kharvox::runtimePathA(
+                        "grapple_anchor.cfg"),m.grappleAnchor)){
+                        m.grappleAnchor=previous;
+                        m.message="Grapple Anchor: UserData save failed.";
+                    }else{
+                        m.message=std::string("Grapple Anchor ")
+                            +(m.grappleAnchor.enabled?"ON":"OFF")
+                            +" (laser-point estimate; native mesh contact UNVERIFIED)";
+                        log("[GRAPPLE-ANCHOR] "+m.message);
+                    }
                 }else if(kind==D::SmartGrip){
                     const auto previous=m.smartGrip;
                     const int option=chosen-130;

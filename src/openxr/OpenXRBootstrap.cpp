@@ -5249,12 +5249,13 @@ void updateGameplayActions(XrTime displayTime){
             // UNSAVED item: open calibration with a fresh neutral pose.
             // The two hand profiles remain independent and never infer
             // persistence from an RTTI class or transient pointer.
-            const auto* saved=kharvox::objectGripSavedPose(
+            const bool grappleAuto=s.vrHandMenu.grappleAnchor.enabled;
+            const auto* saved=grappleAuto?nullptr:kharvox::objectGripSavedPose(
                 s.objectGripProfiles,s.objectGripSessionProfiles,
                 s.objectGripKey,s.objectGripHandle,s.objectGripPhysicalHand);
-            const bool smartAuto=!saved&&s.vrHandMenu.smartGrip.enabled;
-            s.objectGripHasProfile=saved!=nullptr||smartAuto;
-            s.objectGripCalibrating=!saved&&!smartAuto;
+            const bool smartAuto=!grappleAuto&&!saved&&s.vrHandMenu.smartGrip.enabled;
+            s.objectGripHasProfile=saved!=nullptr||smartAuto||grappleAuto;
+            s.objectGripCalibrating=!s.objectGripHasProfile;
             if(saved){
                 for(int i=0;i<3;++i)
                     s.objectGripOffsetUnits[i]=saved->offsetMetres[i]
@@ -5265,7 +5266,7 @@ void updateGameplayActions(XrTime displayTime){
                     s.objectGripRelativeAxis.begin());
             }else{
                 for(int i=0;i<3;++i)
-                    s.objectGripOffsetUnits[i]=smartAuto
+                    s.objectGripOffsetUnits[i]=(smartAuto||grappleAuto)
                         ?objectFeedback.localOffsetUnits[i]
                         :(i==0?0.f:i==1?-4.f:-20.f);
                 std::copy(std::begin(objectFeedback.localAxis),
@@ -5281,7 +5282,8 @@ void updateGameplayActions(XrTime displayTime){
             log("[OBJECT-GRIP] acquired handle="
                 +std::to_string(s.objectGripHandle)
                 +" model="+s.objectGripName
-                +(saved?" saved profile / normal hold"
+                +(grappleAuto?" GRAPPLE-ANCHOR / ray-proxy 6DOF hold"
+                    :saved?" saved profile / normal hold"
                     :smartAuto?" SMART-GRIP automatic / normal hold"
                       :" unsaved / fresh neutral calibration"));
         }
@@ -5314,9 +5316,11 @@ void updateGameplayActions(XrTime displayTime){
     // GRIP + OFFHAND TRIGGER re-starts calibration at the canonical
     // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
     const bool recalibrateChord=objectHeld&&objectMode
+        &&!s.vrHandMenu.grappleAnchor.enabled
         &&supportGripDown&&objectFineTuneQuick;
     s.objectGripResetPoseThisFrame=kharvox::objectGripNeutralResetChordEdge(
-        objectHeld,objectMode,supportGripDown,objectFineTuneQuick,
+        objectHeld,objectMode&&!s.vrHandMenu.grappleAnchor.enabled,
+        supportGripDown,objectFineTuneQuick,
         s.objectGripRecalibrateChordPrevious);
     s.objectGripRecalibrateChordPrevious=recalibrateChord;
     if(objectHeld&&objectMode){
@@ -5536,7 +5540,8 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid,
         s.vrHandMenu.smartGrip.enabled,
         kharvox::smartGripFlags(s.vrHandMenu.smartGrip),
-        s.vrHandMenu.smartGrip.inspectMesh);
+        s.vrHandMenu.smartGrip.inspectMesh,
+        s.vrHandMenu.grappleAnchor.enabled);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -6626,6 +6631,9 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     if(!kharvox::smartGripLoad(kharvox::runtimePathA(
         "smart_grip_experiments.cfg"),s.vrHandMenu.smartGrip))
         s.vrHandMenu.smartGrip={};
+    if(!kharvox::grappleAnchorLoad(kharvox::runtimePathA(
+        "grapple_anchor.cfg"),s.vrHandMenu.grappleAnchor))
+        s.vrHandMenu.grappleAnchor={};
     const auto objectGripPath=kharvox::runtimePathA(
         "object_grip_profiles.cfg");
     if(!kharvox::objectGripLoad(objectGripPath,s.objectGripProfiles))

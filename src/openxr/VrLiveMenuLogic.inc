@@ -31,6 +31,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
         rows.push_back({"Smart Grip Experiments",VrLiveMod::Other,
             s.vrHandMenu.smartGrip.enabled,D::SmartGrip});
+        rows.push_back({"Grapple Anchor (Test)",VrLiveMod::Other,
+            s.vrHandMenu.grappleAnchor.enabled,D::GrappleAnchor});
 #endif
         return rows;
     }
@@ -171,6 +173,13 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
             ""}}};
+        case D::GrappleAnchor:return {{{
+            "Laser point becomes a temporary hand anchor.",
+            "Pulls the targeted point toward your grip.",
+            "Keeps original tilt; follows your wrist after.",
+            "NO saved profiles; independent Smart Grip test.",
+            "Currently an ESTIMATED ray point, not mesh hit.",
+            "Object Discovery ON; moving props only."}}};
         case D::SmartGrip:return {{{
             "Independent, optional object grab experiments.",
             "Master and individual variations start OFF.",
