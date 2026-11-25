@@ -8998,8 +8998,23 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             &&s.worldScale>1.f){
             const auto tracking=laserBodyTrackingTransform();
             const auto now=GetTickCount64();
+            const float scanUnits=s.vrHandMenu.objectDiscovery.scanRadiusMetres
+                *s.worldScale;
+            const float reachUnits=s.vrHandMenu.objectDiscovery.grabReachMetres
+                *s.worldScale;
+            const float scanSquared=scanUnits*scanUnits;
+            const float reachSquared=reachUnits*reachUnits;
+            // Discovery now holds up to 128 candidates, but only the 32
+            // most useful *visible* markers get submitted. This avoids
+            // distant completed models hiding nearby actionable objects.
+            struct RankedDiscoveryRing {
+                kharvox::hands::ObjectDiscoveryRing ring{};
+                float distanceSquared{};
+            };
+            std::array<RankedDiscoveryRing,32> ranked{};
+            unsigned rankedCount{};
             for(unsigned i=0;i<points.count
-                &&discoveryRingCount<discoveryRings.size();++i){
+                &&i<points.candidates.size();++i){
                 const auto& target=points.candidates[i];
                 if(!target.handle||target.generation!=points.generation
                    ||now<target.observedAtMs
@@ -9009,10 +9024,37 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     delta[j]=target.origin[j]-nativeBodyOrigin[j];
                     radiusSquared+=delta[j]*delta[j];
                 }
-                const float radius=s.vrHandMenu.objectDiscovery.scanRadiusMetres
-                    *s.worldScale;
                 if(!std::isfinite(radiusSquared)
-                    ||radiusSquared>radius*radius)continue;
+                    ||radiusSquared>scanSquared)continue;
+                // Each object tracks two independent saved hand profiles.
+                // Index 0 is physical LEFT, index 1 physical RIGHT.
+                const std::string key(target.modelKey.data());
+                const auto session=s.objectGripSessionProfiles.find(target.handle);
+                kharvox::hands::ObjectDiscoveryRing ring{};
+                for(unsigned hand=0;hand<2;++hand){
+                    const bool perModel=!key.empty()
+                        &&kharvox::objectGripConfigured(
+                            s.objectGripProfiles,key,hand);
+                    const bool perInstance=session!=
+                        s.objectGripSessionProfiles.end()
+                        &&session->second.hands[hand].configured
+                        &&kharvox::objectGripPoseValid(
+                            session->second.hands[hand]);
+                    ring.halfState[hand]=kharvox::objectDiscoveryHalfRingState(
+                        perModel||perInstance,target.nativeMotionObserved,
+                        radiusSquared,reachSquared);
+                }
+                if(!kharvox::objectDiscoveryRingHasVisibleHalf(
+                    ring.halfState[0],ring.halfState[1]))continue;
+                unsigned insert=0;
+                while(insert<rankedCount
+                    &&!kharvox::objectDiscoveryRingPrefer(
+                        radiusSquared,ring.halfState[0],ring.halfState[1],
+                        ranked[insert].distanceSquared,
+                        ranked[insert].ring.halfState[0],
+                        ranked[insert].ring.halfState[1],reachSquared))
+                    ++insert;
+                if(insert>=ranked.size())continue;
                 for(int row=0;row<3;++row)
                     for(int world=0;world<3;++world)
                         local[row]+=delta[world]*nativeBodyAxis[row*3+world];
@@ -9022,27 +9064,21 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
                     -local[0]/s.worldScale};
                 const auto mapped=addVector(tracking.position,
                     rotateVector(tracking.orientation,relative));
-                auto& ring=discoveryRings[discoveryRingCount++];
                 ring.pose.position[0]=mapped.x;
                 ring.pose.position[1]=mapped.y;
                 ring.pose.position[2]=mapped.z;
                 ring.pose.orientation[3]=1.f;
                 ring.pose.valid=true;
-                // Profile state is checked afresh each rendered frame,
-                // so RT-save changes every matching ring immediately.
-                const std::string key(target.modelKey.data());
-                const unsigned hand=s.weaponHandLeft?1u:0u;
-                const bool perModel=!key.empty()
-                    &&kharvox::objectGripConfigured(
-                        s.objectGripProfiles,key,hand);
-                const auto sessionProfile=
-                    s.objectGripSessionProfiles.find(target.handle);
-                const bool perInstance=sessionProfile!=
-                    s.objectGripSessionProfiles.end()
-                    &&sessionProfile->second.hands[hand].configured;
-                ring.state=perModel||perInstance?2
-                    :target.nativeMotionObserved?1:0;
+                const unsigned nextCount=std::min<unsigned>(
+                    rankedCount+1,ranked.size());
+                for(unsigned move=nextCount-1;move>insert;--move)
+                    ranked[move]=ranked[move-1];
+                ranked[insert]={ring,radiusSquared};
+                rankedCount=nextCount;
             }
+            discoveryRingCount=rankedCount;
+            for(unsigned i=0;i<rankedCount;++i)
+                discoveryRings[i]=ranked[i].ring;
         }
     }
 #endif
