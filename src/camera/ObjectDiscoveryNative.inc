@@ -435,15 +435,33 @@ void objectDiscoveryGameTick() {
         return;
     }
     objectDiscoverySweepNativePool(now,generation);
-    for(auto& item:objectDiscoveryNative){
+    // Larger 50m discovery cache, but a fixed per-tick physics read budget.
+    // Round-robin fairness avoids continuously rereading the first objects;
+    // a held object is exempt so its controller attachment stays responsive.
+    static unsigned readCursor{};
+    constexpr unsigned readsPerTick=24;
+    unsigned reads{};
+    const unsigned cacheCount=static_cast<unsigned>(objectDiscoveryNative.size());
+    for(unsigned checked=0;checked<cacheCount;++checked){
+        auto& item=objectDiscoveryNative[(readCursor+checked)%cacheCount];
         if(!item.entity)continue;
         if(item.generation!=generation){item={};continue;}
-        // Throttle read-only physics sampling and preserve the
-        // exact object even when FocusTracker points somewhere else.
-        if(now>=item.lastPositionAtMs
-            &&now-item.lastPositionAtMs<40
-            &&(!objectDiscoveryHeld.active
-                ||objectDiscoveryHeld.handle!=item.handle))continue;
+        const bool heldHere=objectDiscoveryHeld.active
+            &&objectDiscoveryHeld.handle==item.handle;
+        unsigned long long readIntervalMs=40;
+        if(!heldHere&&item.poseValid&&inputValid){
+            float d2{};
+            for(int axis=0;axis<3;++axis){
+                const float d=item.origin[axis]-input.origin[axis];
+                d2+=d*d;
+            }
+            if(d2>input.reachUnits*input.reachUnits*4.f)
+                readIntervalMs=140;
+        }
+        if(!heldHere&&now>=item.lastPositionAtMs
+            &&now-item.lastPositionAtMs<readIntervalMs)continue;
+        if(!heldHere&&reads>=readsPerTick)continue;
+        if(!heldHere)++reads;
         float xyz[3]{},axis[9]{};
         if(!objectDiscoveryReadBodyPose(item,xyz,axis)){
             if(objectDiscoveryHeld.active
@@ -469,6 +487,7 @@ void objectDiscoveryGameTick() {
         item.poseValid=true;item.lastPositionAtMs=now;
         objectDiscoveryPublish(item,now);
     }
+    readCursor=(readCursor+readsPerTick)%cacheCount;
     if(!inputValid)return;
     if(!objectDiscoveryHeld.active){
         if(!input.pressed||objectDiscoveryNeedsGripRelease)return;
