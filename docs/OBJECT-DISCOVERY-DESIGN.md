@@ -250,3 +250,36 @@ headset testing confirms the new runtime.
 - Once the replacement is demonstrated, remove the redundant calibration UI, code paths, profile-management logic, obsolete tests and dead configuration readers together, while preserving a safe rollback/migration policy for existing UserData. Keep the discovery rings themselves, scan-radius and grab-distance controls, cyan reach laser, object identification, and normal grab/release mechanics.
 - **Additional cleanup candidate (25 Nov 2026):** When per-object/manual grip profiles are retired, remove the old *profile-dependent ring colour machinery*, including grey/amber/green calibrated-status classification, per-hand profile-colour halves, and related profile-status rendering/refresh logic and obsolete tests. **Do not remove the discovery rings, their placement or visibility**, and do not remove distance/radius settings or the cyan grab-reach laser. Use a single consistent visual treatment for eligible-object rings instead of indicating non-existent saved profiles; avoid needlessly changing the object scanner or eligibility validation. Keep this removal conditional on universal grabbing actually replacing profiles.
 - Surface-contact targeting is distinct from user-authored pose presets. If the user later requests fixed poses (e.g. a mug automatically oriented to drink), treat that as a separate feature decision rather than silently preserving the entire manual calibration subsystem.
+
+## Brainstorm: Offhand single-round physics tap (25 Nov 2026)
+
+- **Updated user intent:** Fire exactly ONE normal-looking and normal-sounding
+  **Heavy Assault Rifle round** from the free/offhand controller's AIM ray on
+  an offhand-trigger press. Keep **the game's normal rifle shot visuals,
+  report, and impact sound/effect**. Earlier stealth/invisible/muted design is
+  explicitly **superseded**.
+- **Non-negotiable:** Health damage to enemies and other damageable entities
+  must be **exactly zero**. The shot should still transmit a real native bullet
+  hit/physical impulse that can wake and move eligible DOOM rigid bodies so
+  Object Discovery can subsequently grab them without the player kicking them.
+  If setting damage to zero suppresses native impact activation, intercept the
+  health-damage application separately from physical-impact handling; verify
+  this behavior experimentally, never assume it.
+- **Single shot** on one offhand trigger press, rather than automatic fire.
+  No normal weapon input interception, accidental normal weapon discharge,
+  or alteration to weapon-hand shots. Ideally no normal ammo spent (this was
+  part of the initial concept); verify native support before enforcing it.
+  Respect offhand input ownership: never interfere with existing Object Grip
+  calibration, equipment/grenade actions, controller swap, or menus.
+- Propose an independent **OFF-by-default** experiment while validating;
+  consider later using the same proven native impulse to wake inactive movable
+  props during a grapple attempt (separately consented feature change).
+- **Implementation status:** design only. The repository currently has native
+  weapon muzzle-direction manipulation and valid offhand pose/input plumbing,
+  but no VERIFIED independently invocable native Heavy Assault Rifle firing
+  function that guarantees normal effects, collision/impulse, zero health
+  damage and no ammo usage. Do not ship a control that pretends to fire.
+- Next investigation: identify and validate the game's native shot dispatch,
+  origin/axis parameters, per-hit damage application and physics impulse
+  handling. Add a fail-closed toggle ONLY after successful hook validation;
+  constrain to this offhand shot without changing ordinary gunfire.
