@@ -3896,6 +3896,12 @@ void updateGameplayActions(XrTime displayTime){
     // experimental calibration overlay owns them.
     const bool objectGripCalibrationOwnsInput=gameplay
         &&s.objectGripCalibrating&&s.vrHandMenu.objectDiscovery.enabled;
+    // Grip-HOLD freezes the object in WORLD SPACE: movement and turning
+    // must remain available so the player can walk around the prop.
+    // Only Grip-RELEASED fine tuning consumes both locomotion sticks.
+    // The full calibration still owns gameplay buttons (fire/grenades/etc).
+    const bool objectGripFineTuneOwnsSticks=
+        objectGripCalibrationOwnsInput&&!s.supportGripPressed;
     // Attachment has higher priority than the native equipment/grenade
     // binding, including the same offhand trigger used for 5cm nudges.
     // Query the DOOM-owned attachment mailbox now, BEFORE weapon/equipment
@@ -3912,7 +3918,7 @@ void updateGameplayActions(XrTime displayTime){
     const float rightStickY=std::isfinite(s.rightStick.y)
         ?std::copysign(std::clamp((std::abs(s.rightStick.y)-rightStickVerticalDeadzone)
             /(1.f-rightStickVerticalDeadzone),0.f,1.f),s.rightStick.y):0.f;
-    if(gameplay&&!objectGripCalibrationOwnsInput
+    if(gameplay&&!objectGripFineTuneOwnsSticks
         &&std::abs(s.rightStick.x)>=s.turnDeadzone
         &&kharvox::cancelPostCinematicYawGuard(s.postCinematicYawGuard)){
         log("[BODY-YAW] post-cinematic native yaw guard released reason=manual-turn absorbed="
@@ -4429,14 +4435,14 @@ void updateGameplayActions(XrTime displayTime){
     const XrVector2f requestedMovement=nativeUiMenu?nativeUiLeftStick
         :manualMove?movementDirectionRelativeStick(s.leftStick,gameplay)
         :(gameplay?s.roomscaleStick:s.leftStick);
-    XrVector2f movementStick=(weaponWheelActive||objectGripCalibrationOwnsInput)
+    XrVector2f movementStick=(weaponWheelActive||objectGripFineTuneOwnsSticks)
         ?XrVector2f{}:requestedMovement;
     if(gaussSlowChargeActive){
         constexpr float gaussChargeMovementScale=.45f;
         movementStick.x*=gaussChargeMovementScale;
         movementStick.y*=gaussChargeMovementScale;
     }
-    const bool movementActive=!weaponWheelActive&&!objectGripCalibrationOwnsInput
+    const bool movementActive=!weaponWheelActive&&!objectGripFineTuneOwnsSticks
         &&(moveActionActive||(gameplay&&(std::abs(movementStick.x)>.001f||std::abs(movementStick.y)>.001f)));
     if(std::abs(movementStick.x)>.15f||std::abs(movementStick.y)>.15f)focusDoomWindow();
     if(xinputHookReady)updateVirtualLeftStick(movementStick,movementActive);else{updateVirtualLeftStick({},false);updateVirtualRightStick({},false);}
@@ -4688,11 +4694,11 @@ void updateGameplayActions(XrTime displayTime){
         s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
     }
     if(!gameplay||weaponWheelActive){s.snapTurnActivationPending=false;s.artificialTurnActive=false;s.artificialTurnRemainingDegrees=0.f;publishArtificialTurnYaw();}
-    const float manualTurnX=objectGripCalibrationOwnsInput?0.f:
+    const float manualTurnX=objectGripFineTuneOwnsSticks?0.f:
         nativeManualTurnX(displayTime,turnActive&&gameplay
             &&!weaponSelectDown&&!weaponWheelActive);
     const bool manualTurnActive=manualTurnX!=0.f;
-    const float physicalBodyTurnX=objectGripCalibrationOwnsInput?0.f:
+    const float physicalBodyTurnX=objectGripFineTuneOwnsSticks?0.f:
         nativePhysicalBodyTurnX(gameplay&&!weaponWheelActive,manualTurnActive);
     const float gameplayTurnX=manualTurnActive?manualTurnX:physicalBodyTurnX;
     holdNativeTurnCvars(physicalBodyTurnX!=0.f?bodyFollowYawSpeed:manualTurnCarrierSpeed());
@@ -4758,13 +4764,13 @@ void updateGameplayActions(XrTime displayTime){
             &&(stickOwnsSelection?stickClick:wheelOutput.triggerHapticPulse))
             kharvox::queueControllerClick(s.wheelClicks[hapticHand],GetTickCount64());
     }
-    const XrVector2f nativeRightStick=objectGripCalibrationOwnsInput
+    const XrVector2f nativeRightStick=objectGripFineTuneOwnsSticks
         ?XrVector2f{}:nativeUiMenu?nativeUiRightStick
         :s.wheelCancelDrain.active()
             ?XrVector2f{s.wheelCancelDrain.originalSector.x,
                          s.wheelCancelDrain.originalSector.y}
         :weaponWheelActive?wheelSelectionStick:XrVector2f{gameplayTurnX,0.f};
-    const bool nativeRightStickActive=!objectGripCalibrationOwnsInput
+    const bool nativeRightStickActive=!objectGripFineTuneOwnsSticks
         &&(nativeUiMenu?turnActive
         :(s.wheelCancelDrain.active()||weaponWheelActive||gameplayTurnX!=0.f));
     if(xinputHookReady)updateVirtualRightStick(nativeRightStick,nativeRightStickActive);
