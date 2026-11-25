@@ -219,11 +219,11 @@ std::atomic<unsigned> objectDiscoverySourceMode{}; // 0=focus only,1=flat pool,2
 
 void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
     std::uintptr_t size,unsigned handle,unsigned long long generation);
-// Attempt DOOM's already-known game entity registry in addition to the
-// FocusTracker-adjacent flat pool. Its static code signature and exact game
-// vtable were independently validated for the supported retail executable
-// by the cinematic manager; a matching known movable entity is required
-// here before trusting it for proximity discovery.
+// Attempt DOOM's already-known game entity registry independently of the
+// gun-hand FocusTracker ray. Its exact signature/size and game vtable were
+// validated for this retail executable by the cinematic manager. Without a
+// FocusTracker seed, require several valid idEntity RTTI records including
+// at least one genuine moveable prop before trusting it for enumeration.
 void objectDiscoveryTryManagedPool(const void* knownEntity,
     std::uintptr_t imageBase,std::uintptr_t imageSize,
     unsigned long long generation) {
@@ -276,22 +276,58 @@ void objectDiscoveryTryManagedPool(const void* knownEntity,
         ||!objectDiscoveryReadable(reinterpret_cast<const void*>(entries),
             static_cast<std::size_t>(count)*sizeof(ObjectDiscoveryManagedEntry)))
         return;
-    // A registry is usable for proximity scanning only when the precise
-    // already-resolved FocusTracker movable entity is in the registry.
-    // This is a validation check, NOT the mechanism for finding new objects.
+    // Initial bootstrap must not depend on which way the gun points.
+    // Check a bounded, evenly distributed set of entries for multiple
+    // valid native idEntity-derived vtables and at least one movable.
+    // A focus-seeded object can also prove the same table identity.
     bool knownFound{};
-    for(int i=0;i<count;++i){
+    unsigned classValid{},movableFound{};
+    const auto stride=std::max(1,count/512);
+    for(int index=0;index<count;index+=stride){
         ObjectDiscoveryManagedEntry entry{};
         std::memcpy(&entry,reinterpret_cast<const void*>(
-            entries+static_cast<std::size_t>(i)*sizeof(entry)),sizeof(entry));
-        if(entry.entity==reinterpret_cast<std::uintptr_t>(knownEntity)
-            &&entry.id==entry.check&&entry.id!=0x1fffffe){
-            knownFound=true;break;
+            entries+static_cast<std::size_t>(index)*sizeof(entry)),
+            sizeof(entry));
+        if(!entry.entity||entry.id!=entry.check
+            ||entry.id==0x1fffffe)continue;
+        if(knownEntity&&entry.entity==
+            reinterpret_cast<std::uintptr_t>(knownEntity))
+            knownFound=true;
+        const auto* entity=reinterpret_cast<const void*>(entry.entity);
+        if(!objectDiscoveryReadable(entity,sizeof(std::uintptr_t)))
+            continue;
+        std::uintptr_t entityVtable{};
+        std::memcpy(&entityVtable,entity,sizeof(entityVtable));
+        if(entityVtable<imageBase
+            ||entityVtable-imageBase>=imageSize)continue;
+        std::array<char,80> label{};
+        if(!readNativeWorldGrabClassLabel(entityVtable,
+            imageBase,imageSize,label)
+            ||std::strncmp(label.data(),"id",2)!=0)continue;
+        ++classValid;
+        if(std::strcmp(label.data(),"idProp2")==0
+            ||std::strcmp(label.data(),"idProp_Moveable")==0)
+            ++movableFound;
+        if(classValid>=3&&movableFound>=1)break;
+    }
+    // The known FocusTracker object may lie outside the sample; verify it
+    // independently by exact pointer match before accepting this list.
+    if(knownEntity&&!knownFound){
+        for(int index=0;index<count;++index){
+            ObjectDiscoveryManagedEntry entry{};
+            std::memcpy(&entry,reinterpret_cast<const void*>(
+                entries+static_cast<std::size_t>(index)*sizeof(entry)),
+                sizeof(entry));
+            if(entry.entity==reinterpret_cast<std::uintptr_t>(knownEntity)
+                &&entry.id==entry.check&&entry.id!=0x1fffffe){
+                knownFound=true;break;
+            }
         }
     }
     std::memcpy(&again,reinterpret_cast<const void*>(game+0xa54d8),8);
     std::memcpy(&againCount,reinterpret_cast<const void*>(game+0xa54e0),4);
-    if(!knownFound||again!=entries||againCount!=count)return;
+    if((!knownFound&&(classValid<3||movableFound<1))
+        ||again!=entries||againCount!=count)return;
     pool.begin=reinterpret_cast<const unsigned char*>(entries);
     pool.game=game;pool.imageBase=imageBase;pool.imageSize=imageSize;
     pool.entries=static_cast<unsigned>(count);
