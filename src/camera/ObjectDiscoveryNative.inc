@@ -20,6 +20,8 @@ struct ObjectDiscoveryGripFrame {
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
+    bool smartGripEnabled{},meshInspectorEnabled{};
+    unsigned smartGripModes{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -182,6 +184,125 @@ void objectDiscoveryNativeModel(ObjectDiscoveryNativeRecord& item) {
     }
     if(!multiple)item.modelKey=found;
 }
+// Read-only targeted mesh/collision information gathering on actual grabs.
+// No unverified dimension ever modifies attachment or permanent identity.
+void objectDiscoveryInspectMesh(const ObjectDiscoveryNativeRecord& item){
+    std::array<char,80> klass{};
+    const bool classKnown=readNativeWorldGrabClassLabel(
+        item.entityVtable,item.imageBase,item.imageSize,klass);
+    log("[MESH-INSPECT] handle="+std::to_string(item.handle)
+        +" class="+(classKnown?std::string(klass.data()):"UNKNOWN")
+        +" model="+std::string(item.modelKey[0]
+            ?item.modelKey.data():"UNRESOLVED")
+        +" entity_vtable_rva="+std::to_string(
+            item.entityVtable-item.imageBase)
+        +" physics_vtable_rva="+std::to_string(
+            item.bodyVtable-item.imageBase)
+        +" collision_bounds=UNVERIFIED shape=UNVERIFIED mass=UNVERIFIED");
+    // Scan only readable direct string pointers and do not use a
+    // candidate as an object type or calibration key without validation.
+    unsigned pathCandidates{};
+    for(unsigned owner=0;owner<2;++owner){
+        const auto* src=static_cast<const unsigned char*>(
+            owner?item.body:item.entity);
+        const std::size_t limit=owner?0x800:0x2000;
+        if(!src)continue;
+        for(std::size_t off=0;off<limit;off+=sizeof(void*)){
+            if(!objectDiscoveryReadable(src+off,sizeof(void*)))break;
+            const char* ptr{};
+            std::memcpy(&ptr,src+off,sizeof(ptr));
+            if(!objectDiscoveryReadable(ptr,96))continue;
+            if(std::memcmp(ptr,"models/",7)!=0
+                &&std::memcmp(ptr,"model/",6)!=0)continue;
+            std::array<char,160> name{};
+            std::size_t n{};
+            for(;n<name.size()-1&&objectDiscoveryReadable(ptr+n,1);++n){
+                const char c=ptr[n];
+                if(!c)break;
+                if(!((c>='a'&&c<='z')||(c>='A'&&c<='Z')
+                    ||(c>='0'&&c<='9')||c=='/'||c=='_'||c=='-'
+                    ||c=='.'))break;
+                name[n]=c;
+            }
+            if(n<12||n>=name.size()-1||ptr[n])continue;
+            if(pathCandidates<8)
+                log("[MESH-INSPECT] UNVERIFIED model string owner="
+                    +std::string(owner?"physics":"entity")
+                    +" field_offset="+std::to_string(off)
+                    +" candidate="+std::string(name.data()));
+            ++pathCandidates;
+        }
+    }
+    log("[MESH-INSPECT] candidate_model_strings="
+        +std::to_string(pathCandidates));
+    // Look for actual RTTI-validated clip/render-model objects reachable
+    // directly from the physics record, preserving their offsets for
+    // a subsequent verified bounds accessor investigation.
+    unsigned knownComponents{};
+    const auto* physics=static_cast<const unsigned char*>(item.body);
+    for(std::size_t off=0;physics&&off<0x600;off+=sizeof(void*)){
+        if(!objectDiscoveryReadable(physics+off,sizeof(void*)))break;
+        const void* candidate{};
+        std::memcpy(&candidate,physics+off,sizeof(candidate));
+        if(!objectDiscoveryReadable(candidate,sizeof(std::uintptr_t)))continue;
+        std::uintptr_t vt{};
+        std::memcpy(&vt,candidate,sizeof(vt));
+        if(vt<item.imageBase||vt-item.imageBase>=item.imageSize)continue;
+        std::array<char,80> klass{};
+        if(!readNativeWorldGrabClassLabel(vt,item.imageBase,
+                item.imageSize,klass))continue;
+        const std::string type(klass.data());
+        if(type.find("ClipModel")==std::string::npos
+            &&type.find("RenderModel")==std::string::npos
+            &&type.find("CollisionModel")==std::string::npos)
+            continue;
+        if(knownComponents<8)
+            log("[MESH-INSPECT] RTTI-VERIFIED component class="+type
+                +" physics_ptr_offset="+std::to_string(off)
+                +" vtable_rva="+std::to_string(vt-item.imageBase)
+                +" component_bounds=NOT_YET_RESOLVED");
+        ++knownComponents;
+    }
+    log("[MESH-INSPECT] verified_component_candidates="
+        +std::to_string(knownComponents));
+    // An idBounds field is conventionally two vec3 min/max values.
+    // These are *heuristic samples*, not verified mesh dimensions.
+    // Inspect up to 0x600 bytes of a validated rigid body read-only.
+    unsigned hits{};
+    const auto* bytes=static_cast<const unsigned char*>(item.body);
+    for(std::size_t off=0;bytes&&off<0x600;off+=sizeof(float)){
+        if(!objectDiscoveryReadable(bytes+off,6*sizeof(float)))break;
+        float v[6]{};
+        std::memcpy(v,bytes+off,sizeof(v));
+        bool plausible=true;
+        float dims[3]{};
+        for(int axis=0;axis<3;++axis){
+            dims[axis]=v[axis+3]-v[axis];
+            if(!std::isfinite(v[axis])
+                ||!std::isfinite(v[axis+3])
+                ||v[axis]>=v[axis+3]
+                ||v[axis]>0.f||v[axis+3]<0.f
+                ||dims[axis]<1.f||dims[axis]>1000.f)
+                plausible=false;
+        }
+        if(!plausible)continue;
+        if(hits<4){
+            const float shortest=std::min({dims[0],dims[1],dims[2]});
+            const float longest=std::max({dims[0],dims[1],dims[2]});
+            log("[MESH-INSPECT] UNVERIFIED bounds candidate offset="
+                +std::to_string(off)
+                +" dims_xyz_native="+std::to_string(dims[0])
+                +","+std::to_string(dims[1])
+                +","+std::to_string(dims[2])
+                +" aspect="+std::to_string(longest/shortest)
+                +" NOT_USED_FOR_GRIP");
+        }
+        ++hits;
+    }
+    log("[MESH-INSPECT] candidate_bounds="+std::to_string(hits)
+        +" (mesh center/size/shape NOT yet verified)");
+}
+
 ObjectDiscoveryNativeRecord* objectDiscoveryNativeByHandle(unsigned handle) {
     for(auto& item:objectDiscoveryNative)
         if(item.handle==handle&&item.entity)return &item;
@@ -272,8 +393,16 @@ void objectDiscoveryTryManagedPool(
     // Validate the registry on its own. No FocusTracker sample, hand
     // ray or secondary entity pool is needed to bootstrap.
     unsigned classValid{},movableFound{};
-    const auto stride=std::max(1,count/512);
-    for(int index=0;index<count;index+=stride){
+    // The previous ~512 uniformly spaced samples could miss sparse
+    // movable entities altogether. Sweep contiguous 2K-entry windows
+    // on successive 5-second validations instead of repeatedly
+    // sampling the same indices. Still require strict class/registry proof.
+    const unsigned sampleCount=std::min<unsigned>(
+        static_cast<unsigned>(count),2048u);
+    const unsigned firstSample=pool.cursor;
+    for(unsigned sample=0;sample<sampleCount;++sample){
+        const int index=static_cast<int>(
+            (firstSample+sample)%static_cast<unsigned>(count));
         ObjectDiscoveryManagedEntry entry{};
         std::memcpy(&entry,reinterpret_cast<const void*>(
             entries+static_cast<std::size_t>(index)*sizeof(entry)),
@@ -297,10 +426,22 @@ void objectDiscoveryTryManagedPool(
             ++movableFound;
         if(classValid>=3&&movableFound>=1)break;
     }
+    pool.cursor=(firstSample+sampleCount)
+        %static_cast<unsigned>(count);
     std::memcpy(&again,reinterpret_cast<const void*>(game+0xa54d8),8);
     std::memcpy(&againCount,reinterpret_cast<const void*>(game+0xa54e0),4);
     if(classValid<3||movableFound<1
-        ||again!=entries||againCount!=count)return;
+        ||again!=entries||againCount!=count){
+        log("[OBJECT-DISCOVERY] proximity validation pending:"
+            " scanned="+std::to_string(sampleCount)
+            +" first="+std::to_string(firstSample)
+            +" registry_entries="+std::to_string(count)
+            +" valid_classes="+std::to_string(classValid)
+            +" movable_classes="+std::to_string(movableFound)
+            +" registry_stable="+std::to_string(
+                again==entries&&againCount==count));
+        return;
+    }
     pool.begin=reinterpret_cast<const unsigned char*>(entries);
     pool.game=game;pool.imageBase=imageBase;pool.imageSize=imageSize;
     pool.entries=static_cast<unsigned>(count);
@@ -575,6 +716,15 @@ void objectDiscoveryGameTick() {
     objectDiscoverySourceMode.store(
         objectDiscoveryManagedPool.begin?2u:0u,
         std::memory_order_release);
+    if(!objectDiscoveryManagedPool.begin){
+        static unsigned long long lastNoProximityLogAtMs{};
+        if(now>=lastNoProximityLogAtMs
+            &&now-lastNoProximityLogAtMs>=10000){
+            lastNoProximityLogAtMs=now;
+            log("[OBJECT-DISCOVERY] radius source UNAVAILABLE: "
+                "world registry not validated; NO gun/focus scanner fallback");
+        }
+    }
     objectDiscoverySweepNativePool(now,generation);
     // Conservative *background* physics budget. Held objects bypass ALL
     // of these throttles: keep the proven 12ms tick / hand follow intact.
@@ -670,6 +820,26 @@ void objectDiscoveryGameTick() {
             held={};return;
         }
         std::copy(neutral.begin(),neutral.end(),held.relativeAxis);
+        // Smart Grip is independent and OFF by default. It never
+        // changes native discovery, movement eligibility or release.
+        if(input.smartGripEnabled){
+            std::array<float,3> offset{};
+            std::array<float,9> axis{};
+            if(kharvox::smartGripPickupPose(input.smartGripModes,
+                    input.origin,input.axis,nearest->origin,nearest->axis,
+                    offset,axis)&&objectDiscoveryAxisOk(axis.data())){
+                std::copy(offset.begin(),offset.end(),held.relativeOffset);
+                std::copy(axis.begin(),axis.end(),held.relativeAxis);
+            }
+            log("[SMART-GRIP] acquired handle="
+                +std::to_string(held.handle)
+                +" variants="+std::to_string(input.smartGripModes)
+                +" offset_native="+std::to_string(held.relativeOffset[0])
+                +","+std::to_string(held.relativeOffset[1])
+                +","+std::to_string(held.relativeOffset[2]));
+        }
+        if(input.meshInspectorEnabled)
+            objectDiscoveryInspectMesh(*nearest);
         held.lastGripDownAtMs=now;
     }
     auto& held=objectDiscoveryHeld;

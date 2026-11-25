@@ -1,5 +1,6 @@
 #include "../src/openxr/ObjectGripProfileStore.h"
 #include "../src/camera/ObjectGripRotationPolicy.h"
+#include "../src/openxr/SmartGripVariantsPolicy.h"
 #include "../src/openxr/ObjectGripInputOwnershipPolicy.h"
 #include <cassert>
 #include <cstdio>
@@ -190,5 +191,33 @@ int main(){
     assert(!objectGripNeutralResetChordEdge(true,true,false,true,false));
     assert(!objectGripNeutralResetChordEdge(true,true,true,false,false));
     assert(!objectGripNeutralResetChordEdge(false,true,true,true,false));
+    SmartGripSettings cfg{};
+    assert(!cfg.enabled);
+    cfg.enabled=true;cfg.palmAnchor=true;cfg.worldUpright=true;
+    cfg.inspectMesh=true;
+    assert(smartGripSave("smart_grip_test.cfg",cfg));
+    SmartGripSettings loadedCfg{};
+    assert(smartGripLoad("smart_grip_test.cfg",loadedCfg));
+    assert(loadedCfg.enabled&&loadedCfg.palmAnchor
+        &&loadedCfg.worldUpright&&loadedCfg.inspectMesh);
+    assert(!loadedCfg.keepTilt&&!loadedCfg.pickupOffset);
+    const float unitAxis[9]{1,0,0,0,1,0,0,0,1};
+    const float handPoint[3]{0,0,0},objectPoint[3]{30,0,0};
+    std::array<float,3> nextOffset{};
+    std::array<float,9> nextAxis{};
+    assert(smartGripPickupPose(smartGripFlags(loadedCfg),
+        handPoint,unitAxis,objectPoint,unitAxis,nextOffset,nextAxis));
+    assert(nextOffset[0]==0.f&&nextOffset[1]==-2.f
+        &&nextOffset[2]==-12.f);
+    assert(nextAxis[0]==1.f&&nextAxis[4]==1.f&&nextAxis[8]==1.f);
+    loadedCfg.pickupOffset=true;
+    assert(smartGripPickupPose(smartGripFlags(loadedCfg),
+        handPoint,unitAxis,objectPoint,unitAxis,nextOffset,nextAxis));
+    assert(nextOffset[0]==30.f); // overrides Palm Anchor
+    assert(smartGripPickupPose(0,handPoint,unitAxis,
+        objectPoint,unitAxis,nextOffset,nextAxis));
+    assert(nextOffset==kObjectGripNeutralOffsetUnits);
+    assert(nextAxis==kObjectGripNeutralLocalAxis);
+    std::remove("smart_grip_test.cfg");
     std::remove("object_grip_profile_test.cfg");
 }

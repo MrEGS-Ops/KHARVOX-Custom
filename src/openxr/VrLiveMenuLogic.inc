@@ -29,6 +29,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
+        rows.push_back({"Smart Grip Experiments",VrLiveMod::Other,
+            s.vrHandMenu.smartGrip.enabled,D::SmartGrip});
 #endif
         return rows;
     }
@@ -169,6 +171,13 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
             ""}}};
+        case D::SmartGrip:return {{{
+            "Independent, optional object grab experiments.",
+            "Master and individual variations start OFF.",
+            "Uses DOOM physics origin and world rotation.",
+            "Mesh inspector logs size/shape candidates.",
+            "Requires Object Discovery to grab props.",
+            "Grip+LT retains manual recalibration."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
             "Scan radius: 1-15 m (default 5 m).",

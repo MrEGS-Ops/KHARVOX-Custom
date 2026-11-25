@@ -791,7 +791,8 @@ void paintVrHandMenu() {
         // Experimental is the one DEV row whose right-side switches are
         // visible and pointer-clickable as soon as the row is highlighted.
         const bool expInline=devPage&&count>0
-            &&entries[selected].developer==kharvox::VrMenuDevOption::Experimental;
+            &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
+                ||entries[selected].developer==kharvox::VrMenuDevOption::SmartGrip);
         if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
             const auto overview=entries[overviewSelected].developer
@@ -834,8 +835,33 @@ void paintVrHandMenu() {
             SelectObject(dc,smallFont);
             write(538,163,opt==D::Experimental
                 ?"OBJECT DISCOVERY MODE"
+                :opt==D::SmartGrip?"SMART GRIP PICKUP EXPERIMENTS"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt!=D::Experimental){
+            if(opt==D::SmartGrip){
+                const auto& cfg=m.smartGrip;
+                const std::array<const char*,6> labels{
+                    "SMART GRIP - MASTER","PALM ANCHOR (12 UNITS)",
+                    "KEEP PICKUP TILT","WORLD UPRIGHT AT PICKUP",
+                    "KEEP PICKUP OFFSET","MESH / SHAPE INSPECTOR"};
+                const std::array<bool,6> values{
+                    cfg.enabled,cfg.palmAnchor,cfg.keepTilt,
+                    cfg.worldUpright,cfg.pickupOffset,cfg.inspectMesh};
+                for(int i=0;i<6;++i){
+                    const int top=186+i*66;
+                    const bool hover=m.hovered==130+i
+                        ||(m.navigation.usingStick
+                            &&m.navigation.actionIndex==i);
+                    fill(531,top,384,58,hover?RGB(52,83,99):RGB(39,49,63));
+                    write(548,top+12,labels[i],white);
+                    write(847,top+12,values[i]?"ON":"OFF",
+                        values[i]?RGB(128,255,177):muted);
+                }
+                write(538,593,"OFFSET > PALM | UPRIGHT > TILT",muted);
+                write(538,617,m.objectDiscovery.enabled
+                    ?"Discovery active. Grip+LT = recalibrate."
+                    :"ENABLE OBJECT DISCOVERY TO GRAB",m.objectDiscovery.enabled
+                        ?RGB(128,255,177):RGB(255,196,112));
+            }else if(opt!=D::Experimental){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
@@ -895,7 +921,7 @@ void paintVrHandMenu() {
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental){
+            }else if(opt!=D::Experimental&&opt!=D::SmartGrip){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }

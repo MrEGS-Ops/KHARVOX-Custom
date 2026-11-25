@@ -500,7 +500,10 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             const int row=s.vrHandMenu.selectedRow;
             const bool expInline=row>=0&&row<static_cast<int>(list.size())
                 &&s.vrHandMenu.page==kharvox::VrMenuPage::Dev
-                &&list[row].developer==kharvox::VrMenuDevOption::Experimental;
+                &&(list[row].developer==kharvox::VrMenuDevOption::Experimental
+                    ||list[row].developer==kharvox::VrMenuDevOption::SmartGrip);
+            const bool smartInline=expInline
+                &&list[row].developer==kharvox::VrMenuDevOption::SmartGrip;
             if(!s.vrHandMenu.navigation.settingsColumn&&!expInline){
                 const bool devFolder=row>=0&&row<static_cast<int>(list.size())
                     &&list[row].developer==kharvox::VrMenuDevOption::Folder;
@@ -512,9 +515,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&kharvox::vrLiveModToggleable(list[row].mod);
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
-            const int optionCount=expInline?4:5;
-            const int optionStep=expInline?91:68;
-            const int optionHeight=expInline?77:58;
+            const int optionCount=smartInline?6:expInline?4:5;
+            const int optionStep=smartInline?66:expInline?91:68;
+            const int optionHeight=smartInline?58:expInline?77:58;
             for(int i=0;i<optionCount;++i)
                 if(pixelY>=optionY+i*optionStep
                     &&pixelY<optionY+optionHeight+i*optionStep)
@@ -853,7 +856,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?4:1; // discovery toggle, scan radius, grab reach, laser toggle
+                        ?4:entry.developer==kharvox::VrMenuDevOption::SmartGrip
+                            ?6:1; // Smart Grip master + 4 variants + inspector
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -874,7 +878,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             // open a config or make A adjust a value. A / CONFIGURE enters
             // the right-side options; B returns to the overview.
             const bool experimentalSelected=devPage&&n>0
-                &&rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental;
+                &&(rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip);
             kharvox::vrMenuNavigateStick(m.navigation,
                 (m.navigation.settingsColumn||experimentalSelected)
                     ?s.leftStick.x:0.f,
@@ -921,6 +926,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.recoilReturnToDev=true;
                     m.navigation={};
                     m.message="Tune weapon stability; B returns to DEV.";
+                }else if(entry.developer==D::SmartGrip){
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.message="Smart Grip: select independent experimental switches.";
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -986,6 +995,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.message=devPage&&rows[newRow].developer
                         ==kharvox::VrMenuDevOption::Experimental
                         ?"Object Discovery settings on right."
+                        :devPage&&rows[newRow].developer==kharvox::VrMenuDevOption::SmartGrip
+                            ?"Smart Grip options on right."
                         :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
@@ -1018,9 +1029,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=133&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=135&&n>0
                 &&(m.navigation.settingsColumn
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental)){
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::SmartGrip)){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1034,6 +1046,27 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
+                }else if(kind==D::SmartGrip){
+                    const auto previous=m.smartGrip;
+                    const int option=chosen-130;
+                    if(option==0)m.smartGrip.enabled=!m.smartGrip.enabled;
+                    if(option==1)m.smartGrip.palmAnchor=!m.smartGrip.palmAnchor;
+                    if(option==2)m.smartGrip.keepTilt=!m.smartGrip.keepTilt;
+                    if(option==3)m.smartGrip.worldUpright=!m.smartGrip.worldUpright;
+                    if(option==4)m.smartGrip.pickupOffset=!m.smartGrip.pickupOffset;
+                    if(option==5)m.smartGrip.inspectMesh=!m.smartGrip.inspectMesh;
+                    if(!kharvox::smartGripSave(kharvox::runtimePathA(
+                        "smart_grip_experiments.cfg"),m.smartGrip)){
+                        m.smartGrip=previous;
+                        m.message="Smart Grip: UserData save failed.";
+                    }else{
+                        m.message="Smart Grip "
+                            +std::string(m.smartGrip.enabled?"ON":"OFF")
+                            +" flags="+std::to_string(
+                                kharvox::smartGripFlags(m.smartGrip))
+                            +" inspector="+(m.smartGrip.inspectMesh?"ON":"OFF");
+                        log("[SMART-GRIP] "+m.message);
+                    }
                 }else if(kind==D::Experimental){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;

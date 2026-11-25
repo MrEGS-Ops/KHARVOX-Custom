@@ -5252,8 +5252,9 @@ void updateGameplayActions(XrTime displayTime){
             const auto* saved=kharvox::objectGripSavedPose(
                 s.objectGripProfiles,s.objectGripSessionProfiles,
                 s.objectGripKey,s.objectGripHandle,s.objectGripPhysicalHand);
-            s.objectGripHasProfile=saved!=nullptr;
-            s.objectGripCalibrating=!saved;
+            const bool smartAuto=!saved&&s.vrHandMenu.smartGrip.enabled;
+            s.objectGripHasProfile=saved!=nullptr||smartAuto;
+            s.objectGripCalibrating=!saved&&!smartAuto;
             if(saved){
                 for(int i=0;i<3;++i)
                     s.objectGripOffsetUnits[i]=saved->offsetMetres[i]
@@ -5264,8 +5265,9 @@ void updateGameplayActions(XrTime displayTime){
                     s.objectGripRelativeAxis.begin());
             }else{
                 for(int i=0;i<3;++i)
-                    s.objectGripOffsetUnits[i]=
-                        (i==0?0.f:i==1?-4.f:-20.f);
+                    s.objectGripOffsetUnits[i]=smartAuto
+                        ?objectFeedback.localOffsetUnits[i]
+                        :(i==0?0.f:i==1?-4.f:-20.f);
                 std::copy(std::begin(objectFeedback.localAxis),
                     std::end(objectFeedback.localAxis),
                     s.objectGripRelativeAxis.begin());
@@ -5280,6 +5282,7 @@ void updateGameplayActions(XrTime displayTime){
                 +std::to_string(s.objectGripHandle)
                 +" model="+s.objectGripName
                 +(saved?" saved profile / normal hold"
+                    :smartAuto?" SMART-GRIP automatic / normal hold"
                       :" unsaved / fresh neutral calibration"));
         }
         s.objectGripWasHeld=true;
@@ -5530,7 +5533,10 @@ void updateGameplayActions(XrTime displayTime){
         supportGripDown,s.weaponHandLeft?1u:0u,
         s.vrHandMenu.objectDiscovery.grabReachMetres*s.worldScale,
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
-        gripPoseValid);
+        gripPoseValid,
+        s.vrHandMenu.smartGrip.enabled,
+        kharvox::smartGripFlags(s.vrHandMenu.smartGrip),
+        s.vrHandMenu.smartGrip.inspectMesh);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -6617,6 +6623,9 @@ static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(m
     if(!kharvox::objectDiscoveryLoad(kharvox::runtimePathA(
         "object_discovery.cfg"),s.vrHandMenu.objectDiscovery))
         s.vrHandMenu.objectDiscovery={};
+    if(!kharvox::smartGripLoad(kharvox::runtimePathA(
+        "smart_grip_experiments.cfg"),s.vrHandMenu.smartGrip))
+        s.vrHandMenu.smartGrip={};
     const auto objectGripPath=kharvox::runtimePathA(
         "object_grip_profiles.cfg");
     if(!kharvox::objectGripLoad(objectGripPath,s.objectGripProfiles))
