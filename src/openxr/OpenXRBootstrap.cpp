@@ -5232,7 +5232,7 @@ void updateGameplayActions(XrTime displayTime){
             &&s.objectGripLastFeedbackAtMs
             &&now>=s.objectGripLastFeedbackAtMs
             &&now-s.objectGripLastFeedbackAtMs<=300
-            &&supportGripDown;
+            &&(s.objectGripCalibrating||supportGripDown);
         if(!transientMissing){
             s.objectGripWasHeld=false;
             s.objectGripCalibrating=false;
