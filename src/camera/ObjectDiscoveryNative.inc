@@ -473,15 +473,15 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
         0xC7,0x81,0x70,0x01,0x00,0x00,
         0xFF,0xFF,0xFF,0xFF,0xC3
     };
-    const auto* wake=reinterpret_cast<const unsigned char*>(
+    const auto* wakeCode=reinterpret_cast<const unsigned char*>(
         base+0x179A8F0);
     if(!objectDiscoveryReadable(linear,sizeof(linearSig))
         ||!objectDiscoveryReadable(angular,sizeof(angularSig))
-        ||!objectDiscoveryReadable(wake,sizeof(wakeSig))
+        ||!objectDiscoveryReadable(wakeCode,sizeof(wakeSig))
         ||std::memcmp(linear,linearSig,sizeof(linearSig))!=0
         ||std::memcmp(angular,angularSig,sizeof(angularSig))!=0
-        ||std::memcmp(wake,wakeSig,sizeof(wakeSig))!=0
-        ||!executableMemory(wake))return false;
+        ||std::memcmp(wakeCode,wakeSig,sizeof(wakeSig))!=0
+        ||!executableMemory(wakeCode))return false;
     auto* linearVelocity=reinterpret_cast<float*>(
         static_cast<unsigned char*>(item.body)+0x1EC);
     auto* angularVelocity=reinterpret_cast<float*>(
