@@ -44,6 +44,8 @@ std::mutex objectDiscoveryGripMutex;
 ObjectDiscoveryGripFrame objectDiscoveryGripInput{};
 ObjectDiscoveryGripFrame objectDiscoveryLastGoodInput{};
 KharvoxObjectGripFeedback objectDiscoveryGripFeedback{};
+unsigned objectGripTargetStatus{}; // 0 unknown, 1 clear, 2 eligible or reserved
+unsigned long long objectGripTargetAtMs{},objectGripTargetGeneration{};
 unsigned long long objectDiscoveryReleaseSerial{},objectDiscoveryLastTickMs{};
 bool objectDiscoveryNeedsGripRelease{};
 bool objectDiscoveryReadable(const void* address,std::size_t len) {
@@ -790,6 +792,42 @@ void objectDiscoveryGameTick() {
         objectDiscoveryPublish(item,now);
     }
     readCursor=(readCursor+readsPerTick)%cacheCount;
+    // Publish a current target check before any melee request or acquisition.
+    // Includes stationary props so a failed wake cannot fall through to BFG.
+    unsigned gripTarget=0;
+    if(inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease
+        &&objectDiscoveryManagedPool.begin&&input.physicalHand==0&&input.pressed){
+        gripTarget=1;
+        if(objectDiscoveryHeld.active)gripTarget=2;
+        for(const auto& item:objectDiscoveryNative){
+            if(gripTarget==2)break;
+            if(!item.entity||!item.body||!item.poseValid||item.generation!=generation
+                ||now<item.lastPositionAtMs||now-item.lastPositionAtMs>250)continue;
+            if(input.grappleAnchorEnabled||input.meleeProbeMode==3){
+                kharvox::GrappleRayAnchor ray{};
+                if(kharvox::grappleRayEstimate(input.rayOrigin,input.aim,item.origin,
+                    input.reachUnits,kharvox::kGrappleProxyMissUnits,ray))gripTarget=2;
+            }else{
+                float d2{},forward{};
+                for(int k=0;k<3;++k){
+                    const float d=item.origin[k]-input.origin[k];
+                    d2+=d*d;forward+=d*input.aim[k];
+                }
+                if(d2<input.reachUnits*input.reachUnits&&forward>0.f
+                    &&forward*forward>=.64f*d2)gripTarget=2;
+            }
+        }
+    }
+    {
+        std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
+        // Preserve any positive match for this uninterrupted press; the XR
+        // input dispatcher may not observe every native tick.
+        if(gripTarget==1&&objectGripTargetStatus==2&&objectGripTargetGeneration==generation
+            &&objectGripTargetAtMs&&now>=objectGripTargetAtMs&&now-objectGripTargetAtMs<200)
+            gripTarget=2;
+        objectGripTargetStatus=gripTarget;
+        objectGripTargetAtMs=now;objectGripTargetGeneration=generation;
+    }
     grappleGeometryInvestigatorTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     objectMeleeProbeTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     if(!inputValid)return;

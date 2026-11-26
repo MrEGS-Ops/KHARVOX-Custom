@@ -69,6 +69,8 @@ void KharvoxCameraSetObjectGripCalibration(
     unsigned poseLockAcknowledged);
 // One-shot world-thread request; no native pointers cross threads.
 bool KharvoxCameraTakeObjectMeleeRequest();
+// 0 = no fresh native answer, 1 = clear, 2 = object owns Grip.
+unsigned KharvoxCameraObjectGripTargetStatus();
 void KharvoxCameraReleaseObjectGrip();
 bool KharvoxCameraReadObjectGrip(KharvoxObjectGripFeedback& feedback);
 struct KharvoxObjectDiscoverySnapshot {

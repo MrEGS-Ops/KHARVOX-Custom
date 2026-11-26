@@ -3527,7 +3527,31 @@ void pistolGrappleEndCarrier(const char* reason){
     }
 }
 #endif
+// One native Xbox-Y pulse per physical left-Grip hold. Object ownership
+// latches until release, so a miss, moving target or failed wake cannot
+// unexpectedly select BFG. No synthetic alternate-fire or hand transfer.
+struct LeftGripBfgHold {
+    bool down{},blocked{},fired{};
+    XrTime started{},pulseUntil{};
+    void cancel(){blocked=true;pulseUntil=0;}
+    bool update(bool pressed,bool context,bool objectOwns,bool targetClear,XrTime now){
+        if(!pressed){*this={};return false;}
+        if(!down){down=true;started=now;}
+        if(!context||objectOwns)cancel();
+        if(blocked)return false;
+        if(!fired&&targetClear&&now>=started&&now-started>=1000000000LL){
+            fired=true;pulseUntil=now+100000000LL;
+            log("[BFG-GRIP] clear left Grip hold -> native BFG pulse");
+        }
+        return fired&&targetClear&&now<pulseUntil;
+    }
+};
+LeftGripBfgHold leftGripBfgHold{};
 void updateGameplayActions(XrTime displayTime){
+    struct BfgFrameGuard {
+        bool serviced{};
+        ~BfgFrameGuard(){if(!serviced){leftGripBfgHold.cancel();}}
+    } bfgFrameGuard;
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     struct PistolFrameGuard {
         bool serviced{};
@@ -4168,9 +4192,8 @@ void updateGameplayActions(XrTime displayTime){
         &&KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon
         &&triggerDown;
     KharvoxCameraSetGaussChargeMovementOverride(gaussSlowChargeActive);
-    // Native Xbox-Y is still used by Gunslinger quick-hip and the
-    // explicit in-menu BFG calibration selection. Holding the support Grip
-    // NEVER equips BFG; that Grip belongs to two-hand play and world grab.
+    // Native Xbox-Y serves Quick Hip and the restored left-Grip BFG
+    // hold. The latter is gated after the object activation dispatcher.
     const bool gestureWheel=anyGestureWheelEnabled
         &&s.behindHeadWheelActive;
     const char* weaponSelectControl=gestureWheel?"behind-head gesture"
@@ -5230,6 +5253,25 @@ void updateGameplayActions(XrTime displayTime){
     pistolGrappleInputLocked=pg.busy();
 #endif
     const bool nativeMeleeDown=(!pistolGrappleInputLocked&&ordinaryNativeMeleeDown)||testNativeMeleeDown;
+    const bool bfgGripContext=gameplay&&xinputHookReady&&!s.weaponHandLeft
+        &&s.leftGripController.valid&&s.leftGripController.positionTracked
+        &&s.leftController.valid&&s.leftController.positionTracked
+        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!quickHolsterGripConsumed
+        &&!s.wheelSupportGripSuppressedUntilRelease&&!s.quickHipPendingTransfer.active
+        &&!s.twoHandLatched&&!s.twoHandCalibrationMode&&!supportGripInCaptureRange()
+        &&!objectGripCalibrationOwnsInput&&!s.objectGripInputConsumed
+        &&!pistolGrappleInputLocked&&!nativeMeleeDown&&!nativeUseDown
+        &&!triggerDown&&!weaponModDown&&!syncAttackActive
+        &&!KharvoxCameraCutsceneActive()&&!KharvoxCameraBossSequenceActive()
+        &&!KharvoxCameraLedgeTransitionActive()
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+    const bool discoveryForBfg=s.vrHandMenu.objectDiscoveryActive();
+    const unsigned targetStatus=discoveryForBfg?KharvoxCameraObjectGripTargetStatus():1u;
+    const bool bfgObjectOwns=nativeObjectAttached||s.objectGripWasHeld
+        ||objectGripOwnsOffhand||targetStatus==2;
+    const bool leftGripBfgPulse=leftGripBfgHold.update(!s.weaponHandLeft&&supportGripDown,
+        bfgGripContext,bfgObjectOwns,targetStatus==1,displayTime);
+    bfgFrameGuard.serviced=true;
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown
@@ -5352,7 +5394,7 @@ void updateGameplayActions(XrTime displayTime){
         const bool rightShoulderDown=(nativeWeaponSelectDown&&!pistolGrappleInputLocked)
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
-        const bool yDown=backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
+        const bool yDown=backWeaponBfgPulse||leftGripBfgPulse||(nativeUiMenu&&switchWeaponModDown);
         // A first-run setup popup is modal to DOOM's front-menu button
         // input. Consume the acknowledgement chord and its release so it
         // cannot also select an underlying menu item or trigger native pause.

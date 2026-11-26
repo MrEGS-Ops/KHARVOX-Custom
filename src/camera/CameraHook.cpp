@@ -2802,10 +2802,26 @@ bool KharvoxCameraTakeObjectMeleeRequest() {
     return false;
 #endif
 }
+unsigned KharvoxCameraObjectGripTargetStatus(){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
+    const auto now=GetTickCount64();
+    if(!objectDiscoveryEnabled.load(std::memory_order_acquire)
+        ||!objectDiscoveryGripInput.enabled||!objectDiscoveryGripInput.pressed
+        ||!objectGripTargetAtMs||now<objectGripTargetAtMs
+        ||now-objectGripTargetAtMs>150
+        ||objectGripTargetGeneration!=levelTransitionGeneration.load(std::memory_order_acquire))
+        return 0;
+    return objectGripTargetStatus;
+#else
+    return 0;
+#endif
+}
 void KharvoxCameraReleaseObjectGrip() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     ++objectDiscoveryGripInput.releaseSerial;
+    objectGripTargetStatus=0;objectGripTargetAtMs=0;
     objectMeleeRequestAtMs=0;
     objectDiscoveryGripInput.pressed=false;
     objectDiscoveryGripInput.calibrating=false;
