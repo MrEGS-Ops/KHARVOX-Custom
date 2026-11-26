@@ -3899,7 +3899,7 @@ void updateGameplayActions(XrTime displayTime){
     // locomotion, turning, weapon-wheel, or face-button input while this
     // experimental calibration overlay owns them.
     const bool objectGripCalibrationOwnsInput=gameplay
-        &&s.objectGripCalibrating&&s.vrHandMenu.objectDiscovery.enabled;
+        &&s.objectGripCalibrating&&s.vrHandMenu.objectDiscoveryActive();
     // Grip-HOLD freezes the object in WORLD SPACE: movement and turning
     // must remain available so the player can walk around the prop.
     // Only Grip-RELEASED fine tuning consumes both locomotion sticks.
@@ -3914,7 +3914,7 @@ void updateGameplayActions(XrTime displayTime){
     const bool nativeObjectAttached=
         KharvoxCameraReadObjectGrip(equipmentGripAttachment);
     const bool objectGripOwnsOffhand=kharvox::objectGripBlocksOffhandEquipment(
-        gameplay,s.vrHandMenu.objectDiscovery.enabled,
+        gameplay,s.vrHandMenu.objectDiscoveryActive(),
         s.objectGripWasHeld,nativeObjectAttached);
     XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
@@ -5046,7 +5046,7 @@ void updateGameplayActions(XrTime displayTime){
     const auto meleeGeneration=KharvoxCameraLevelTransitionGeneration();
     const bool nativeMeleeTestAllowed=gameplay&&xinputHookReady
         &&s.vrHandMenu.objectMeleeProbeMode==3
-        &&s.vrHandMenu.objectDiscovery.enabled
+        &&s.vrHandMenu.objectDiscoveryActive()
         &&supportGripDown&&!s.weaponHandLeft
         &&!s.twoHandLatched&&!s.twoHandCalibrationMode
         &&!supportGripInCaptureRange()&&!s.behindHeadWheelActive
@@ -5256,7 +5256,7 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxObjectGripFeedback objectFeedback{};
     const bool objectHeld=KharvoxCameraReadObjectGrip(objectFeedback);
     if(objectHeld)s.objectGripLastFeedbackAtMs=GetTickCount64();
-    const bool objectMode=s.vrHandMenu.objectDiscovery.enabled
+    const bool objectMode=s.vrHandMenu.objectDiscoveryActive()
         &&gameplay&&s.trackingHeadPositionValid
         &&!controllerOnlyLocked.load(std::memory_order_acquire);
     s.objectGripInputConsumed=objectHeld&&s.objectGripCalibrating;
@@ -9153,7 +9153,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     float grabReachLaserMetres{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     const auto& discoveryConfig=s.vrHandMenu.objectDiscovery;
-    if(discoveryConfig.enabled&&discoveryConfig.grabReachLaserEnabled
+    if(s.vrHandMenu.objectGrabLaserActive()
         &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerOnlyLocked.load(std::memory_order_acquire)
         &&(!aerSourceMode||aerSourceQualified)){
@@ -9191,7 +9191,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     std::array<kharvox::hands::ObjectDiscoveryRing,32> discoveryRings{};
     unsigned discoveryRingCount{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    if(s.vrHandMenu.objectDiscovery.enabled&&handGameplayActive
+    if(s.vrHandMenu.objectDiscoveryActive()&&handGameplayActive
        &&s.headZeroValid&&s.headZeroPositionValid
        &&!controllerOnlyLocked.load(std::memory_order_acquire)){
         KharvoxObjectDiscoverySnapshot points{};

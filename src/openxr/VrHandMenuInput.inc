@@ -501,7 +501,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             const bool expInline=row>=0&&row<static_cast<int>(list.size())
                 &&s.vrHandMenu.page==kharvox::VrMenuPage::Dev
                 &&(list[row].developer==kharvox::VrMenuDevOption::Experimental
-                    ||list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor);
+                    ||list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||list[row].developer==kharvox::VrMenuDevOption::MeleeTests);
             if(!s.vrHandMenu.navigation.settingsColumn&&!expInline){
                 const bool devFolder=row>=0&&row<static_cast<int>(list.size())
                     &&list[row].developer==kharvox::VrMenuDevOption::Folder;
@@ -514,7 +515,9 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GrappleAnchor?1:expInline?5:5;
+                ==kharvox::VrMenuDevOption::GrappleAnchor?1:
+                list[row].developer==kharvox::VrMenuDevOption::MeleeTests?3:
+                expInline?4:5;
             const int optionStep=expInline?91:68;
             const int optionHeight=expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -854,8 +857,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 using kharvox::VrLiveMod;
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
-                    return entry.developer==kharvox::VrMenuDevOption::Experimental
-                        ?5:1;
+                    return entry.developer==kharvox::VrMenuDevOption::Experimental?4:
+                        entry.developer==kharvox::VrMenuDevOption::MeleeTests?3:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -877,7 +880,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             // the right-side options; B returns to the overview.
             const bool experimentalSelected=devPage&&n>0
                 &&(rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor);
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::MeleeTests);
             kharvox::vrMenuNavigateStick(m.navigation,
                 (m.navigation.settingsColumn||experimentalSelected)
                     ?s.leftStick.x:0.f,
@@ -928,6 +932,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
                     m.message="Grapple Grab: single universal grab path.";
+                }else if(entry.developer==D::MeleeTests){
+                    m.navigation.settingsColumn=true;
+                    m.navigation.actionIndex=0;
+                    m.message="Select one melee test. A or trigger toggles it.";
                 }else if(entry.developer==D::Experimental){
                     m.navigation.settingsColumn=true;
                     m.navigation.actionIndex=0;
@@ -995,6 +1003,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         ?"Object Discovery settings on right."
                         :devPage&&rows[newRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
                             ?"Grapple Anchor switch on right."
+                        :devPage&&rows[newRow].developer==kharvox::VrMenuDevOption::MeleeTests
+                            ?"Three independent melee test switches on right."
                         :"Browse mod details. A opens configuration.";
                 }
             }else if(chosen==115&&n>0){
@@ -1030,7 +1040,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }else if(devPage&&chosen>=130&&chosen<=135&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
-                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor)){
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::MeleeTests)){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
                 if(kind==D::WeaponAlignment){
@@ -1057,17 +1068,18 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             +" (visual-mesh hit not yet verified)";
                         log("[GRAPPLE-ANCHOR] "+m.message);
                     }
-                }else if(kind==D::Experimental){
+                }else if(kind==D::MeleeTests&&chosen>=130&&chosen<=132){
+                    const unsigned test=static_cast<unsigned>(chosen-129);
+                    m.objectMeleeProbeMode=m.objectMeleeProbeMode==test?0:test;
+                    const char* name=test==1?"A - Melee Trace":test==2?
+                        "B - Object Impact":"C - Native Melee Before Grab";
+                    m.message=std::string(name)+(m.objectMeleeProbeMode?
+                        " ON. Discovery and laser automatic.":" OFF.");
+                    log("[MELEE-PROBE] "+m.message);
+                }else if(kind==D::Experimental&&chosen<=133){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;
-                    if(option==4){
-                        m.objectMeleeProbeMode=(m.objectMeleeProbeMode+1)%4;
-                        m.message=m.objectMeleeProbeMode==1?"Melee A: trace diagnostic (manual melee).":
-                            m.objectMeleeProbeMode==2?"Melee B: target diagnostic (manual melee).":
-                            m.objectMeleeProbeMode==3?"Melee C: native melee before grab.":
-                            "Melee diagnostics OFF.";
-                        log("[MELEE-PROBE] "+m.message);
-                    }else if(option==0){
+                    if(option==0){
                         m.objectDiscovery.enabled=!m.objectDiscovery.enabled;
                     }else if(option==3){
                         m.objectDiscovery.grabReachLaserEnabled=
@@ -1093,7 +1105,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                                 1.f:next;
                         }
                     }
-                    if(option!=4){
                     m.objectDiscovery=kharvox::sanitizedObjectDiscoverySettings(
                         m.objectDiscovery);
                     if(!kharvox::objectDiscoverySave(kharvox::runtimePathA(
@@ -1108,7 +1119,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             +"m reach="+std::to_string(
                                 m.objectDiscovery.grabReachMetres)+"m laser="
                             +(m.objectDiscovery.grabReachLaserEnabled?"ON":"OFF");
-                    }
                     }
                 }
             }else if(!devPage&&m.navigation.settingsColumn

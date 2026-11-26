@@ -31,6 +31,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
             s.vrHandMenu.grappleAnchor.enabled,D::GrappleAnchor});
+        rows.push_back({"Melee Tests",VrLiveMod::Other,
+            s.vrHandMenu.objectMeleeProbeMode!=0,D::MeleeTests});
 #endif
         return rows;
     }
@@ -178,9 +180,16 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No named-shape presets or collision hulls.",
             "Render-mesh hit access is not yet verified.",
             "Object Discovery ON; moving props only."}}};
+        case D::MeleeTests:return {{{
+            "Three separate melee test switches.",
+            "Only one test can be active at a time.",
+            "Discovery and laser enable automatically.",
+            "A/B: manual melee diagnostics.",
+            "C: native melee before grab.",
+            "Turn off to restore normal settings."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
-            "Scan radius: 1-15 m (default 5 m).",
+            "Scan radius: 1-50 m (default 5 m).",
             "Grab reach: 1-5 m (default 2 m).",
             "Change sliders with pointer or A button.",
             "Nearby rings/calibration still being developed.",

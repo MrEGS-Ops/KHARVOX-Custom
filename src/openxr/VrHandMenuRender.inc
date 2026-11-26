@@ -792,7 +792,8 @@ void paintVrHandMenu() {
         // visible and pointer-clickable as soon as the row is highlighted.
         const bool expInline=devPage&&count>0
             &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
-                ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor);
+                ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                ||entries[selected].developer==kharvox::VrMenuDevOption::MeleeTests);
         if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
             const auto overview=entries[overviewSelected].developer
@@ -836,8 +837,27 @@ void paintVrHandMenu() {
             write(538,163,opt==D::Experimental
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
-                :"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt==D::GrappleAnchor){
+                :opt==D::MeleeTests?"CHOOSE ONE TEST":
+                "SESSION-ONLY DEVELOPER TOOL",muted);
+            if(opt==D::MeleeTests){
+                const char* titles[3]={"A - MELEE TRACE","B - OBJECT IMPACT","C - NATIVE MELEE"};
+                const char* hints[3]={"Grip + manual melee; logs only",
+                    "Grip + manual melee; logs only","Grip: melee first, then grab"};
+                for(int i=0;i<3;++i){
+                    const int top=186+i*91;
+                    const bool on=m.objectMeleeProbeMode==static_cast<unsigned>(i+1);
+                    const bool selected=m.hovered==130+i
+                        ||(m.navigation.usingStick&&m.navigation.actionIndex==i);
+                    fill(531,top,384,77,selected?RGB(52,83,99):RGB(39,49,63));
+                    write(548,top+12,titles[i],white);
+                    write(843,top+12,on?"ON":"OFF",on?RGB(128,255,177):muted);
+                    write(548,top+42,hints[i],muted);
+                }
+                write(538,486,"A / TRIGGER: toggle selected test.",white);
+                write(538,522,"Only one test can be ON.",muted);
+                write(538,558,"Discovery + laser automatic during tests.",muted);
+                write(538,592,"Switch all OFF for normal gameplay.",muted);
+            }else if(opt==D::GrappleAnchor){
                 const bool on=m.grappleAnchor.enabled;
                 fill(531,186,384,77,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
@@ -903,26 +923,18 @@ void paintVrHandMenu() {
                     +(cfg.grabReachLaserEnabled?"ON":"OFF"),
                     cfg.grabReachLaserEnabled?RGB(128,255,177):white);
                 write(548,507,"A / TRIGGER: TOGGLE",muted);
-                const bool meleeSelected=m.hovered==134
-                    ||(m.navigation.usingStick&&m.navigation.actionIndex==4);
-                fill(531,550,384,77,meleeSelected
-                    ?RGB(52,83,99):RGB(39,49,63));
-                write(548,558,m.objectMeleeProbeMode==1?"MELEE A: TRACE PROBE":
-                    m.objectMeleeProbeMode==2?"MELEE B: TARGET PROBE":
-                    m.objectMeleeProbeMode==3?"MELEE C: NATIVE MELEE":
-                    "MELEE PROBES: OFF",white);
-                write(548,580,m.objectMeleeProbeMode==3?
-                    "GRIP: ONE NATIVE MELEE, THEN GRAB":
-                    "GRIP + MANUAL MELEE; LOG ONLY",muted);
+                write(538,562,"Melee tests have their own DEV menu.",muted);
+                if(m.objectMeleeProbeMode)
+                    write(538,590,"TEST ACTIVE: discovery + laser automatic.",RGB(128,255,177));
                 const unsigned discoverySource=KharvoxCameraObjectDiscoverySourceMode();
-                write(548,605,!cfg.enabled?"SCANNER: OFF":
+                write(538,620,!m.objectDiscoveryActive()?"SCANNER: OFF":
                     discoverySource==2?"SCANNER: ACTIVE":"SCANNER: UNAVAILABLE",
                     discoverySource==2?RGB(128,255,177):RGB(255,196,112));
             }
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::MeleeTests){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }
