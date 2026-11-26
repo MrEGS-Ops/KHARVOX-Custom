@@ -22,7 +22,7 @@ struct ObjectDiscoveryGripFrame {
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
     bool grappleAnchorEnabled{},dynamicSurfaceOffset{};
     bool meleeActivationEnabled{};
-    bool nativeMeleeInputDown{};
+    bool nativeMeleeInputDown{},activationInvestigator{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -526,6 +526,7 @@ void objectDiscoveryReleaseNative() {
     objectDiscoveryGripFeedback={};
 }
 #include "GrappleGeometryInvestigator.inc"
+#include "ObjectActivationInvestigator.inc"
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
 // Log-derived layout hypothesis: entity +0x408 -> render instance,
  // render +0x78 = origin, +0x84 = axis, +0xa8 = stable model-local bounds.
@@ -742,12 +743,14 @@ void objectDiscoveryGameTick() {
         // Invalid free-hand aim must prevent a GRAB, never a 360-degree
         // radius scan; the latter only needs game-world/body coordinates.
         if(worldBlocked||explicitRelease){
+            objectActivationInvestigatorReset("world_or_release");
             objectMeleeActivationTick(input,false,now,0);return;
         }
     }
     if(!input.pressed)objectDiscoveryNeedsGripRelease=false;
     const auto generation=levelTransitionGeneration.load(std::memory_order_acquire);
     if(!objectDiscoveryEnabled.load(std::memory_order_acquire)){
+        objectActivationInvestigatorReset("scanner_disabled");
         objectMeleeActivationTick(input,false,now,generation);
         objectDiscoveryNative={};
         objectDiscoveryReleaseNative();
@@ -813,7 +816,7 @@ void objectDiscoveryGameTick() {
             &&pending.handle==item.handle&&pending.entity==item.entity
             &&pending.body==item.body&&pending.generation==generation
             &&now>=pending.started&&now-pending.started<=2000;
-        const bool priority=heldHere||pendingHere;
+        const bool priority=heldHere||pendingHere||objectActivationInvestigatorPriority(item,generation,input.activationInvestigator);
         unsigned long long readIntervalMs=80;
         if(!heldHere&&item.poseValid&&inputValid){
             float d2{};
@@ -911,6 +914,13 @@ void objectDiscoveryGameTick() {
         objectGripTargetStatus=gripTarget;
         objectGripTargetAtMs=now;objectGripTargetGeneration=generation;
     }
+    if(input.activationInvestigator){
+        objectMeleeActivationTick(input,false,now,generation);
+        if(objectDiscoveryHeld.active)objectDiscoveryReleaseNative();
+        objectActivationInvestigatorTick(input,inputValid&&!worldBlocked,now,generation);
+        return; // passive observation: no grab acquisition, follow or activation writes
+    }
+    objectActivationInvestigatorReset("toggle_off");
     grappleGeometryInvestigatorTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     objectMeleeActivationTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     if(!inputValid)return;

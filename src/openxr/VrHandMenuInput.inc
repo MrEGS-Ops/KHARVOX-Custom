@@ -515,9 +515,10 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
-            const int optionStep=expInline?91:68;
-            const int optionHeight=expInline?77:58;
+                ==kharvox::VrMenuDevOption::GrappleAnchor?5:expInline?3:5;
+            const bool grappleInline=list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor;
+            const int optionStep=grappleInline?68:expInline?91:68;
+            const int optionHeight=grappleInline?58:expInline?77:58;
             for(int i=0;i<optionCount;++i)
                 if(pixelY>=optionY+i*optionStep
                     &&pixelY<optionY+optionHeight+i*optionStep)
@@ -856,7 +857,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental?3:
-                        entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?4:1;
+                        entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?5:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1093,6 +1094,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         ?"Dynamic Surface Offset ON; kick first, no melee."
                         :"Dynamic Surface Offset OFF; original preference restored.";
                     log("[SURFACE-GRAPPLE] "+m.message);
+                }else if(kind==D::GrappleAnchor&&chosen==134){
+                    m.activationInvestigator=!m.activationInvestigator;
+                    m.message=m.activationInvestigator?"Activation Investigator ON: aim, then melee normally.":"Activation Investigator OFF; grab preferences restored.";
+                    log("[ACTIVATION-INV] "+m.message);
                 }else if(kind==D::Experimental&&chosen<=132){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;

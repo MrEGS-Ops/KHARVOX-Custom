@@ -577,18 +577,19 @@ struct VrHandMenuState {
     GrappleAnchorSettings grappleAnchor{};
     bool objectMeleeActivation{}; // original path, session only
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
+    bool activationInvestigator{}; // session-only passive native wake investigation
     bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
     bool objectGrappleActive() const noexcept {
-        return dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled;
+        return !activationInvestigator&&(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled);
     }
     bool objectMeleeActive() const noexcept {
-        return !dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
+        return !activationInvestigator&&!dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
     }
     bool objectDiscoveryActive() const noexcept {
-        return objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();
+        return activationInvestigator||objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();
     }
     bool objectGrabLaserActive() const noexcept {
-        return objectDiscoveryActive()&&(objectDiscovery.grabReachLaserEnabled||objectGrappleActive()||objectMeleeActive());
+        return objectDiscoveryActive()&&(activationInvestigator||objectDiscovery.grabReachLaserEnabled||objectGrappleActive()||objectMeleeActive());
     }
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press

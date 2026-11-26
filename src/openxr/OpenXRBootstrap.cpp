@@ -5617,7 +5617,7 @@ void updateGameplayActions(XrTime displayTime){
     bool gripPoseValid=freeHandClear&&gripController.valid
         &&gripController.positionTracked
         &&aimController.valid
-        &&(!s.vrHandMenu.objectGrappleActive()||aimController.positionTracked)
+        &&(!(s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.activationInvestigator)||aimController.positionTracked)
         &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis);
     if(gripPoseValid){
         const auto grip=controllerRelativeToBodyTrackingOrigin(gripController);
@@ -5676,7 +5676,7 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeRayOrigin:nullptr,
         s.vrHandMenu.objectMeleeActive(),
         s.vrHandMenu.objectMeleeActive()?testNativeMeleeDown:ordinaryNativeMeleeDown,
-        s.vrHandMenu.dynamicSurfaceOffset);
+        s.vrHandMenu.dynamicSurfaceOffset,s.vrHandMenu.activationInvestigator);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
