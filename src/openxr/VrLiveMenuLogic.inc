@@ -30,7 +30,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
-            s.vrHandMenu.grappleAnchor.enabled||s.vrHandMenu.objectMeleeActivation,D::GrappleAnchor});
+            s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.objectMeleeActive(),D::GrappleAnchor});
 #endif
         return rows;
     }

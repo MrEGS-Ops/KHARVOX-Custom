@@ -839,20 +839,20 @@ void paintVrHandMenu() {
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt==D::GrappleAnchor){
-                for(int i=0;i<2;++i){
+                for(int i=0;i<3;++i){
                     const int top=186+i*91;
-                    const bool active=i==0?m.grappleAnchor.enabled:m.objectMeleeActivation;
+                    const bool active=i==0?m.grappleAnchor.enabled:
+                        i==1?(!m.pistolGrappleEnabled&&m.objectMeleeActivation):m.pistolGrappleEnabled;
                     const bool selected=m.hovered==130+i||(m.navigation.usingStick&&m.navigation.actionIndex==i);
                     fill(531,top,384,77,selected?RGB(52,83,99):RGB(39,49,63));
-                    write(548,top+12,i==0?"GRAPPLE GRAB":"MELEE ACTIVATION",white);
+                    write(548,top+12,i==0?"GRAPPLE GRAB":i==1?"ORIGINAL MELEE":"PISTOL GRAPPLE",white);
                     write(843,top+12,active?"ON":"OFF",active?RGB(128,255,177):muted);
-                    write(548,top+42,i==0?"A / TRIGGER: TOGGLE":"Wake stationary props with Grip",muted);
+                    write(548,top+42,i==0?"Original grab path":i==1?"Wake props (original only)":"Hidden pistol / left-hand melee",muted);
                 }
-                write(538,388,"Fixed grab and melee reach: 2 m.",white);
-                write(538,425,"Discovery + laser automatic.",muted);
-                write(538,482,"Melee works with either grab style.",muted);
-                write(538,550,"Contact point still estimated.",RGB(255,196,112));
-                write(538,588,"Left-hand melee contact unverified.",muted);
+                write(538,478,"Only one Grapple variant at a time.",white);
+                write(538,514,"Fixed reach: 2 m. Discovery + laser auto.",muted);
+                write(538,550,"Pistol mode: session-only, experimental.",RGB(255,196,112));
+                write(538,588,"Contact point still estimated.",muted);
             }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));

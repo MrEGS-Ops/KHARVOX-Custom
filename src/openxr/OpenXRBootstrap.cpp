@@ -3501,8 +3501,41 @@ void serviceCampaignRunTime(bool gameplay,
 // Render-side compositor helper stays in its later Vulkan include.
 #include "VrLiveMenuLogic.inc"
 #include "VrHandMenuInput.inc"
+// Separate experimental carrier transaction. Input ownership remains with
+// the original right-hand weapon; only the weapon pose update borrows LEFT.
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+struct PistolGrappleTransaction {
+    enum Phase { Idle, Equip, Melee, RestorePending, RestoreWait } phase{Idle};
+    KharvoxWeaponKind original{KharvoxWeaponKind::Unknown};
+    WORD restoreKey{};
+    XrTime deadline{},pulseStart{},restoreStarted{};
+    unsigned long long generation{};
+    unsigned attempts{};
+    bool busy() const {return phase!=Idle;}
+    bool carrier() const {return phase==Melee;}
+};
+PistolGrappleTransaction pistolGrapple;
+void pistolGrappleEndCarrier(const char* reason){
+    KharvoxWeaponSetPistolGrappleHidden(false);
+    KharvoxWeaponSetMeleeAimOverride(nullptr,nullptr);
+    if(pistolGrapple.phase==PistolGrappleTransaction::Equip
+        ||pistolGrapple.phase==PistolGrappleTransaction::Melee){
+        log(std::string("[PISTOL-GRAPPLE] carrier ended: ")+reason);
+        pistolGrapple.phase=PistolGrappleTransaction::RestorePending;
+        pistolGrapple.attempts=0;
+        s.weaponCalibrated=false;s.weaponPoseSubmitted=false;
+    }
+}
+#endif
 void updateGameplayActions(XrTime displayTime){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    struct PistolFrameGuard {
+        bool serviced{};
+        ~PistolFrameGuard(){
+            if(!serviced)pistolGrappleEndCarrier("gameplay dispatcher early exit");
+        }
+    } pistolFrameGuard;
+
     // Every early return (menu, tracking loss, modal UI) cancels the pose
     // override and the pending input. The native hook also expires stale poses.
     static XrTime objectMeleePulseStart{},objectMeleePulseUntil{},objectMeleeAimUntil{};
@@ -3930,7 +3963,11 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraReadObjectGrip(equipmentGripAttachment);
     const bool objectGripOwnsOffhand=kharvox::objectGripBlocksOffhandEquipment(
         gameplay,s.vrHandMenu.objectDiscoveryActive(),
-        s.objectGripWasHeld,nativeObjectAttached);
+        s.objectGripWasHeld,nativeObjectAttached)
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        ||(gameplay&&pistolGrapple.busy())
+#endif
+        ;
     XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
     constexpr float rightStickVerticalDeadzone=.4f;
@@ -4252,6 +4289,9 @@ void updateGameplayActions(XrTime displayTime){
             ||activeWeaponKind==KharvoxWeaponKind::Chaingun,
         secondaryFireGripDown,supportGripDown);
     if(s.customMods.dynamicShoulderHolster&&gameplay
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+       &&!pistolGrapple.busy()
+#endif
        &&!quickHipTwoHandGuard
        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
        &&s.trackingHeadPositionValid&&s.headZeroValid){
@@ -4353,7 +4393,11 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxWeaponSetHolstered(false);
     kharvox::BackWeaponInput backWeaponInput{};
     backWeaponInput.shoulderGestureEnabled=!s.customMods.dynamicShoulderHolster;
-    backWeaponInput.gameplayActive=gameplay;
+    backWeaponInput.gameplayActive=gameplay
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        &&!pistolGrapple.busy()
+#endif
+        ;
     backWeaponInput.weaponWheelActive=weaponWheelActive;
     backWeaponInput.calibrationMode=s.twoHandCalibrationMode;
     backWeaponInput.trackingValid=backWeaponTrackingValid;
@@ -5055,13 +5099,14 @@ void updateGameplayActions(XrTime displayTime){
         displayTime<s.physicalPunchPulseUntil,
         displayTime>=s.usePulseUntil);
     bool testNativeMeleeDown=false;
+    bool pistolGrappleInputLocked=false;
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     const auto meleeGeneration=KharvoxCameraLevelTransitionGeneration();
     const bool nativeMeleeTestAllowed=gameplay&&xinputHookReady&&s.weapon6Dof
         &&!triggerDown&&!nativeFireDown&&!weaponModDown
         &&!ordinaryNativeMeleeDown&&!nativeUseDown
         &&!s.dynamicShoulderHolstered
-        &&s.vrHandMenu.objectMeleeActivation
+        &&s.vrHandMenu.objectMeleeActive()
         &&s.vrHandMenu.objectDiscoveryActive()
         &&supportGripDown&&!s.weaponHandLeft
         &&!s.twoHandLatched&&!s.twoHandCalibrationMode
@@ -5081,7 +5126,8 @@ void updateGameplayActions(XrTime displayTime){
         objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
     }
     const bool testRequested=KharvoxCameraTakeObjectMeleeRequest();
-    if(testRequested){
+    const bool pistolMode=s.vrHandMenu.pistolGrappleEnabled;
+    if(testRequested&&!pistolMode&&!pistolGrapple.busy()){
         if(nativeMeleeTestAllowed&&!objectMeleeAimUntil){
             // Pre-arm the existing native 6DOF source before the JOY8 edge;
             // keep it through the attack's expected contact window.
@@ -5092,7 +5138,7 @@ void updateGameplayActions(XrTime displayTime){
             log("[MELEE-C] left AIM override armed; lead=60ms pulse=200ms tail=300ms reach=2m");
         }else log("[MELEE-C] request discarded: input busy or gameplay gate failed");
     }
-    const bool meleeAimActive=nativeMeleeTestAllowed&&objectMeleeAimUntil
+    const bool meleeAimActive=!pistolMode&&!pistolGrapple.busy()&&nativeMeleeTestAllowed&&objectMeleeAimUntil
         &&displayTime<objectMeleeAimUntil;
     if(meleeAimActive){
         const auto left=controllerRelativeToBodyTrackingOrigin(s.leftController);
@@ -5113,12 +5159,81 @@ void updateGameplayActions(XrTime displayTime){
         objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
         KharvoxWeaponSetMeleeAimOverride(nullptr,nullptr);
     }
+    // The second mode uses the very same native number-row selector as
+    // Quick Hip. Do not fire until the renderer acknowledges actual Pistol.
+    using PG=PistolGrappleTransaction;
+    auto& pg=pistolGrapple;
+    pistolFrameGuard.serviced=true;
+    if(pg.busy()&&pg.generation!=meleeGeneration){
+        pistolGrappleEndCarrier("level changed; stale restore discarded");
+        pg={};
+    }
+    const bool restoreContext=gameplay&&xinputHookReady&&!weaponWheelActive
+        &&!s.behindHeadWheelActive&&!syncAttackActive
+        &&!KharvoxCameraCutsceneActive()&&!KharvoxCameraBossSequenceActive()
+        &&!KharvoxCameraLedgeTransitionActive()
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
+    const auto equipped=KharvoxWeaponCurrentKind();
+    if(testRequested&&pistolMode&&!pg.busy()){
+        const WORD originalKey=kharvox::backWeaponKeyboardVirtualKey(backWeaponKindFromActive(equipped));
+        if(nativeMeleeTestAllowed&&!s.quickHipPendingTransfer.active&&originalKey
+            &&KharvoxWeaponGetAmmoState(KharvoxWeaponKind::Pistol)!=KharvoxWeaponAmmoState::Unavailable){
+            pg.original=equipped;pg.restoreKey=originalKey;pg.generation=meleeGeneration;
+            pg.phase=PG::Equip;pg.deadline=displayTime+950000000LL;
+            if(equipped==KharvoxWeaponKind::Pistol||
+                startBackWeaponKeyboardPulse(kharvox::backWeaponKeyboardVirtualKey(kharvox::BackWeaponKind::Pistol),displayTime)){
+                log(std::string("[PISTOL-GRAPPLE] equip request; restore=")+KharvoxWeaponKindKey(equipped));
+            }else pistolGrappleEndCarrier("pistol hotkey failed");
+        }else log("[PISTOL-GRAPPLE] request rejected: busy, unsupported restore weapon, or pistol unavailable");
+    }
+    if(pg.phase==PG::Equip||pg.phase==PG::Melee){
+        if(nativeObjectAttached||s.objectGripWasHeld)pistolGrappleEndCarrier("native grab acquired");
+        else if(!pistolMode||!nativeMeleeTestAllowed)pistolGrappleEndCarrier("released or input/context conflict");
+        else if(displayTime>=pg.deadline)pistolGrappleEndCarrier("activation deadline");
+        else if(pg.phase==PG::Equip&&equipped==KharvoxWeaponKind::Pistol){
+            pg.phase=PG::Melee;pg.pulseStart=displayTime+60000000LL;
+            pg.deadline=pg.pulseStart+500000000LL;
+            s.weaponCalibrated=false;s.weaponPoseSubmitted=false;
+            log("[PISTOL-GRAPPLE] pistol acknowledged; left-hand pose, render hidden, melee armed");
+        }else if(pg.phase==PG::Melee&&equipped!=KharvoxWeaponKind::Pistol){
+            pistolGrappleEndCarrier("unexpected weapon change");
+        }
+    }
+    if(pg.phase==PG::Melee){
+        const auto left=controllerRelativeToBodyTrackingOrigin(s.leftController);
+        const float pos[3]{-left.position.z*s.worldScale,-left.position.x*s.worldScale,left.position.y*s.worldScale};
+        const float quat[4]{left.orientation.x,left.orientation.y,left.orientation.z,left.orientation.w};
+        KharvoxWeaponSetPistolGrappleHidden(true);
+        KharvoxWeaponSetMeleeAimOverride(pos,quat);
+        meleeFrameGuard.keep=true;
+        testNativeMeleeDown=displayTime>=pg.pulseStart&&displayTime<pg.pulseStart+200000000LL;
+    }
+    if(pg.phase==PG::RestorePending&&restoreContext){
+        if(pg.original==KharvoxWeaponKind::Pistol&&equipped==pg.original){
+            log("[PISTOL-GRAPPLE] original pistol retained; right-hand pose restored");pg={};
+        }else if(pg.restoreKey){
+            ++pg.attempts;
+            const bool sent=startBackWeaponKeyboardPulse(pg.restoreKey,displayTime);
+            pg.phase=PG::RestoreWait;pg.restoreStarted=displayTime;pg.deadline=displayTime+1500000000LL;
+            log(std::string("[PISTOL-GRAPPLE] original weapon restore ")+(sent?"requested":"hotkey failed"));
+        }
+    }else if(pg.phase==PG::RestoreWait){
+        if(!restoreContext){
+            pg.phase=PG::RestorePending;
+        }else if(equipped==pg.original&&displayTime>=pg.restoreStarted+150000000LL){
+            log("[PISTOL-GRAPPLE] original weapon acknowledged; right-hand pose restored");pg={};
+        }else if(displayTime>=pg.deadline){
+            if(pg.attempts<2)pg.phase=PG::RestorePending;
+            else{log("[PISTOL-GRAPPLE] RESTORE FAILED after two attempts; manual weapon selection required");pg={};}
+        }
+    }
+    pistolGrappleInputLocked=pg.busy();
 #endif
-    const bool nativeMeleeDown=ordinaryNativeMeleeDown||testNativeMeleeDown;
+    const bool nativeMeleeDown=(!pistolGrappleInputLocked&&ordinaryNativeMeleeDown)||testNativeMeleeDown;
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown
-        &&!objectGripOwnsOffhand;
+        &&!objectGripOwnsOffhand&&!pistolGrappleInputLocked;
     if(objectGripOwnsOffhand){
         // Kill any queued native grenade pulse before XInput sees it.
         // A pre-armed chest gesture must not complete on release while
@@ -5230,11 +5345,11 @@ void updateGameplayActions(XrTime displayTime){
         const bool nativeUiRightShoulderDown=restrictedLeftHandSwap?menuSupportGripDown:menuWeaponGripDown;
         // Experimental position edits do not synthesize weapon firing.
         const bool rightTriggerDown=gameplay
-            ?nativeFireDown:(nativeUiMenu&&nativeUiRightTriggerDown);
-        const bool leftTriggerDown=weaponModDown||(nativeUiMenu&&nativeUiLeftTriggerDown);
+            ?(nativeFireDown&&!pistolGrappleInputLocked):(nativeUiMenu&&nativeUiRightTriggerDown);
+        const bool leftTriggerDown=(weaponModDown&&!pistolGrappleInputLocked)||(nativeUiMenu&&nativeUiLeftTriggerDown);
         const bool rightThumbDown=nativeMeleeDown||(nativeUiMenu&&meleeDown);
         const bool leftShoulderDown=gameplayEquipmentDown||(nativeUiMenu&&nativeUiLeftShoulderDown);
-        const bool rightShoulderDown=nativeWeaponSelectDown
+        const bool rightShoulderDown=(nativeWeaponSelectDown&&!pistolGrappleInputLocked)
             ||(nativeUiMenu&&nativeUiRightShoulderDown);
         const bool backDown=(gameplay||nativeUiMenu)&&missionInfoDown;
         const bool yDown=backWeaponBfgPulse||(nativeUiMenu&&switchWeaponModDown);
@@ -5247,10 +5362,10 @@ void updateGameplayActions(XrTime displayTime){
                 false,false,false,false,false,false);
         else
             updateVirtualButtons(rightTriggerDown,gamepadADown,gamepadBDown,
-                leftTriggerDown,rightThumbDown,nativeUseDown,gamepadXDown,
+                leftTriggerDown,rightThumbDown,nativeUseDown&&!pistolGrappleInputLocked,gamepadXDown&&!pistolGrappleInputLocked,
                 leftShoulderDown,rightShoulderDown,backDown,
-                gameplay&&switchWeaponModDown,yDown,pauseDown,
-                gameplay&&!objectGripOwnsOffhand
+                gameplay&&switchWeaponModDown&&!pistolGrappleInputLocked,yDown&&!pistolGrappleInputLocked,pauseDown,
+                gameplay&&!objectGripOwnsOffhand&&!pistolGrappleInputLocked
                     &&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
@@ -5325,7 +5440,7 @@ void updateGameplayActions(XrTime displayTime){
             // UNSAVED item: open calibration with a fresh neutral pose.
             // The two hand profiles remain independent and never infer
             // persistence from an RTTI class or transient pointer.
-            const bool grappleAuto=s.vrHandMenu.grappleAnchor.enabled;
+            const bool grappleAuto=s.vrHandMenu.objectGrappleActive();
             const auto* saved=grappleAuto?nullptr:kharvox::objectGripSavedPose(
                 s.objectGripProfiles,s.objectGripSessionProfiles,
                 s.objectGripKey,s.objectGripHandle,s.objectGripPhysicalHand);
@@ -5390,10 +5505,10 @@ void updateGameplayActions(XrTime displayTime){
     // GRIP + OFFHAND TRIGGER re-starts calibration at the canonical
     // front/centre pose. Trigger with no GRIP remains 5cm fast nudge.
     const bool recalibrateChord=objectHeld&&objectMode
-        &&!s.vrHandMenu.grappleAnchor.enabled
+        &&!s.vrHandMenu.objectGrappleActive()
         &&supportGripDown&&objectFineTuneQuick;
     s.objectGripResetPoseThisFrame=kharvox::objectGripNeutralResetChordEdge(
-        objectHeld,objectMode&&!s.vrHandMenu.grappleAnchor.enabled,
+        objectHeld,objectMode&&!s.vrHandMenu.objectGrappleActive(),
         supportGripDown,objectFineTuneQuick,
         s.objectGripRecalibrateChordPrevious);
     s.objectGripRecalibrateChordPrevious=recalibrateChord;
@@ -5567,7 +5682,7 @@ void updateGameplayActions(XrTime displayTime){
     bool gripPoseValid=freeHandClear&&gripController.valid
         &&gripController.positionTracked
         &&aimController.valid
-        &&(!s.vrHandMenu.grappleAnchor.enabled||aimController.positionTracked)
+        &&(!s.vrHandMenu.objectGrappleActive()||aimController.positionTracked)
         &&KharvoxCameraGetBodyPose(bodyOrigin,bodyAxis);
     if(gripPoseValid){
         const auto grip=controllerRelativeToBodyTrackingOrigin(gripController);
@@ -5622,10 +5737,10 @@ void updateGameplayActions(XrTime displayTime){
         kharvox::kObjectDiscoveryGrabReachM*s.worldScale,
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid,
-        s.vrHandMenu.grappleAnchor.enabled,
+        s.vrHandMenu.objectGrappleActive(),
         gripPoseValid?nativeRayOrigin:nullptr,
-        s.vrHandMenu.objectMeleeActivation?3u:0u,
-        s.vrHandMenu.objectMeleeActivation?testNativeMeleeDown:ordinaryNativeMeleeDown);
+        s.vrHandMenu.objectMeleeActive()?3u:0u,
+        s.vrHandMenu.objectMeleeActive()?testNativeMeleeDown:ordinaryNativeMeleeDown);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -5751,7 +5866,18 @@ void updateGameplayActions(XrTime displayTime){
     // native sync_noAdaptiveTick bypass for fast kills. Keep only Boxing
     // Guard's separate, opt-in time dilation, never overriding kill timing.
     KharvoxCameraSetGloryKillTimescaleOverride(0.f);
-    updateWeapon6Dof();
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(pistolGrapple.carrier()){
+        // Only the native weapon-pose submission borrows LEFT ownership.
+        // All input, grapple acquisition, and holster routing above retain
+        // their original physical hand roles, including the held left Grip.
+        const bool previous=s.weaponHandLeft;
+        s.weaponHandLeft=true;
+        updateWeapon6Dof();
+        s.weaponHandLeft=previous;
+    }else
+#endif
+        updateWeapon6Dof();
 }
 bool createGameplayActions(){
     s.leftHanded=environmentEnabled("KHARVOX_LEFT_HANDED");

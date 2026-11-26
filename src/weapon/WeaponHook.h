@@ -60,6 +60,8 @@ bool KharvoxWeaponChaingunRotorModeActive();
 // Presentation-only holster state: keeps DOOM's selected weapon alive while
 // moving its VR render out of view. Input suppression is handled by OpenXR.
 void KharvoxWeaponSetHolstered(bool holstered);
+// Render-only short lease; does not change weapon inventory or native pose.
+void KharvoxWeaponSetPistolGrappleHidden(bool hidden);
 bool KharvoxWeaponHolstered();
 // Hide only the equipped first-person model while the native radial wheel is open.
 void KharvoxWeaponSetWheelPresentationActive(bool active);

@@ -575,12 +575,19 @@ struct VrHandMenuState {
     bool devWeaponAlignment{},devControllerInputs{};
     ObjectDiscoverySettings objectDiscovery{};
     GrappleAnchorSettings grappleAnchor{};
-    bool objectMeleeActivation{}; // session only
+    bool objectMeleeActivation{}; // original path, session only
+    bool pistolGrappleEnabled{}; // separate experimental variant, session only
+    bool objectGrappleActive() const noexcept {
+        return grappleAnchor.enabled||pistolGrappleEnabled;
+    }
+    bool objectMeleeActive() const noexcept {
+        return objectMeleeActivation||pistolGrappleEnabled;
+    }
     bool objectDiscoveryActive() const noexcept {
-        return objectDiscovery.enabled||grappleAnchor.enabled||objectMeleeActivation;
+        return objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();
     }
     bool objectGrabLaserActive() const noexcept {
-        return objectDiscoveryActive()&&(objectDiscovery.grabReachLaserEnabled||grappleAnchor.enabled||objectMeleeActivation);
+        return objectDiscoveryActive()&&(objectDiscovery.grabReachLaserEnabled||objectGrappleActive()||objectMeleeActive());
     }
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press

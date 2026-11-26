@@ -126,6 +126,7 @@ std::atomic<bool> gaussSiegeChargeActive{};
 std::atomic<bool> chaingunTurretModeActive{};
 std::atomic<bool> chaingunRotorModeActive{};
 std::atomic<bool> weaponHolstered{};
+std::atomic<unsigned long long> pistolGrappleHideUntilMs{};
 std::atomic<bool> weaponWheelPresentationActive{}; // native wheel render-only state
 std::atomic<uintptr_t> activeWeaponData{};
 using InventoryCountFn = int(__fastcall*)(void*);
@@ -2010,7 +2011,9 @@ extern "C" void __fastcall weaponRenderUpdateHook(
     // 0.001 is nonzero so the native model matrix remains invertible.
     const bool hidePresentation=verifiedWeaponCaller
         &&(weaponWheelPresentationActive.load(std::memory_order_acquire)
-            ||(weaponPresentation&&weaponHolstered.load(std::memory_order_acquire)));
+            ||(weaponPresentation&&weaponHolstered.load(std::memory_order_acquire))
+            ||(weaponPresentation&&activeWeaponKind.load(std::memory_order_acquire)==KharvoxWeaponKind::Pistol
+                &&GetTickCount64()<pistolGrappleHideUntilMs.load(std::memory_order_acquire)));
     const float submittedModelScale=hidePresentation?0.001f:modelScale;
     // Preserve DOOM's original first-person weapon submission depth.
     // Hand projection maintains its own near-plane behaviour.
@@ -2753,6 +2756,10 @@ void KharvoxWeaponSetWheelPresentationActive(bool active) {
     if(previous!=active)
         log(active?"[WEAPON-WHEEL] first-person gun render suppressed":
                    "[WEAPON-WHEEL] first-person gun render restored");
+}
+
+void KharvoxWeaponSetPistolGrappleHidden(bool hidden){
+    pistolGrappleHideUntilMs.store(hidden?GetTickCount64()+150:0,std::memory_order_release);
 }
 
 void KharvoxWeaponSetHolstered(bool holstered) {
