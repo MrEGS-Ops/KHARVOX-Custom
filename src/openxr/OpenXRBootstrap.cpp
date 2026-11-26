@@ -77,7 +77,6 @@
 #include "ObjectGripInputOwnershipPolicy.h"
 #include "WeaponRecoilPolicy.h"
 #include "PrimaryGripAnchorPolicy.h"
-#include "PhysicalGrenadeGesturePolicy.h"
 #include "PhysicalPunchPolicy.h"
 #include "PhysicalGlorykillMeleePolicy.h"
 #include "HandFocusPolicy.h"
@@ -345,8 +344,7 @@ struct State {
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
-    bool chestZoneEntered{},shoulderZoneEntered{};
-    std::uint64_t nextCookPulseAt{};
+    bool shoulderZoneEntered{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
     // Retired standalone remap. Gunslinger alone owns behind-head wheel input.
     bool weaponWheelRemapEnabled{false};
@@ -375,9 +373,7 @@ struct State {
     bool persistentSsgBlockedLogged{};
     std::array<bool,2> quickHolsterPhysicalGripHeld{};
     bool chainsawArmed{true},pausePressed{};
-    bool equipmentButtonPressed{},physicalGrenadeArmed{};
-    kharvox::PhysicalGrenadeGestureState grenadeGesture{};
-    XrTime grenadeCyclePulseUntil{};
+    bool equipmentButtonPressed{};
     bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{}; // retained for fallback diagnostics
@@ -399,7 +395,6 @@ struct State {
     int chainsawMotionLastLoggedHz{200};
     unsigned long long chainsawMotionLastLogMs{};
     XrTime lastChainsawAttackAt{};
-    XrTime equipmentThrowPulseUntil{};
     XrTime weaponSelectPressedTime{},weaponSwitchPulseUntil{},chainsawPulseUntil{};
     XrTime usePulseUntil{},meleePulseUntil{},physicalPunchPulseUntil{};
     bool immersiveCinematics{immersiveCinematicsRequested()};
@@ -2419,8 +2414,6 @@ void selectPhysicalWeaponHand(bool left,const char* action){
     s.supportGripPressed=false;
     s.interactionProfilesDirty=true;
     s.interactionProfilesKnown=false;
-    s.grenadeGesture={};
-    s.equipmentThrowPulseUntil=0;
     log(std::string("[WEAPON-HAND] ")+action+" -> "
         +(left?"LEFT weapon / RIGHT grenade":"RIGHT weapon / LEFT grenade")
         +"; movement, jump, crouch and menus unchanged");
@@ -3622,7 +3615,7 @@ void updateGameplayActions(XrTime displayTime){
         KharvoxCameraServiceSuperShotgunNativeReloadReplay(false,false);
         s.handZoneCues={};s.headZoneEntered={};s.hipZoneEntered={};
         kharvox::resetQuickHipGestures(s.quickHolsters);
-        s.chestZoneEntered=false;s.shoulderZoneEntered=false;s.nextCookPulseAt=0;
+        s.shoulderZoneEntered=false;
         s.weaponSelectPressed=false;s.weaponSelectNativeStarted=false;s.weaponWheelOpened=false;
         s.weaponSelectPressedTime=0;s.weaponSwitchPulseUntil=0;
         s.crouchToggleActive=false;s.physicalCrouchActive=false;
@@ -3650,10 +3643,8 @@ void updateGameplayActions(XrTime displayTime){
         s.persistentSsgReload.lastFrameEquipped=false;
         s.persistentSsgReload.triggerPreviouslyDown=false;
         KharvoxWeaponSetHolstered(false);
-        s.equipmentButtonPressed=false;s.physicalGrenadeArmed=false;
-        s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
+        s.equipmentButtonPressed=false;
         s.chainsawKillLatched=false;s.lastChainsawAttackAt=0;
-        s.grenadeGesture={};
         s.backWeaponState.zoneActive=false;
         s.backWeaponState.selectionPhase=kharvox::BackWeaponSelectionPhase::Idle;
         s.backWeaponState.pendingTarget=kharvox::BackWeaponKind::Unknown;
@@ -3849,8 +3840,7 @@ void updateGameplayActions(XrTime displayTime){
         s.primaryFireDown=false;s.firePressed=false;
         s.secondaryFireGripPressed=false;s.supportGripPressed=false;
         s.twoHandLatched=false;s.twoHandLatchedWeapon=KharvoxWeaponKind::Unknown;
-        s.grenadeGesture={};s.equipmentGrip.cancel();
-        s.equipmentThrowPulseUntil=0;s.grenadeCyclePulseUntil=0;
+        s.equipmentGrip.cancel();
         s.usePulseUntil=0;s.meleePulseUntil=0;s.physicalPunchPulseUntil=0;
         s.backWeaponPulseUntil=0;s.weaponSwitchPulseUntil=0;
         s.motionWheelState={};s.behindHeadWheelActive=false;
@@ -4150,7 +4140,7 @@ void updateGameplayActions(XrTime displayTime){
     if(!supportGripDown)s.wheelSupportGripSuppressedUntilRelease=false;
     const bool cycleEquipment=s.equipmentGrip.update(supportGripDown,
         gameplay&&!objectGripCalibrationOwnsInput
-            &&!s.customMods.physicalGrenadeThrow&&!s.behindHeadWheelActive
+            &&!s.behindHeadWheelActive
             &&!s.wheelSupportGripSuppressedUntilRelease,
         supportGripController().valid&&weaponController().valid,
         s.twoHandLatched||s.twoHandCalibrationMode||supportGripInCaptureRange(),displayTime);
@@ -5276,78 +5266,13 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown
         &&!objectGripOwnsOffhand&&!pistolGrappleInputLocked;
-    if(objectGripOwnsOffhand){
-        // Kill any queued native grenade pulse before XInput sees it.
-        // A pre-armed chest gesture must not complete on release while
-        // a movable world object is in the free hand.
-        s.grenadeGesture={};
-        s.equipmentThrowPulseUntil=0;
-        s.grenadeCyclePulseUntil=0;
-        s.chestZoneEntered=false;
-        s.nextCookPulseAt=0;
+    // Native offhand trigger remains the only grenade throw input.
+    // Holding a prop or using the temporary pistol carrier blocks it.
+    if(objectGripOwnsOffhand||pistolGrappleInputLocked){
+        s.equipmentGrip.cancel();
         s.equipmentButtonPressed=false;
-        gameplayEquipmentDown=false;
-    }else if(s.customMods.physicalGrenadeThrow){
-        const auto& support=supportGripController();
-        const bool tracked=gameplay&&s.trackingHeadPositionValid
-            &&s.headZeroValid&&support.valid&&support.positionTracked;
-        bool insideChest=false;
-        if(tracked){
-            const auto hand=controllerRelativeToBodyTrackingOrigin(support).position;
-            const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-            const float dx=hand.x-head.x;
-            const float dy=hand.y-head.y;
-            const float dz=hand.z-head.z;
-            // Palm-sized chest volume, not a torso-wide grenade trigger.
-            // Keep it anchored close to the sternum as the HMD moves.
-            insideChest=kharvox::insideChestGrenadeZone(dx,dy,dz);
-        }
-        const int equipmentHapticHand=s.weaponHandLeft?1:0;
-        const auto hapticNow=GetTickCount64();
-        if(insideChest&&!s.chestZoneEntered)
-            kharvox::queueControllerZoneCue(
-                s.handZoneCues[equipmentHapticHand],hapticNow,35,.32f,155.f);
-        s.chestZoneEntered=insideChest;
-        const auto action=kharvox::updateChestGrenadeGesture(
-            s.grenadeGesture,gameplay,supportGripDown,tracked,insideChest,
-            static_cast<std::int64_t>(displayTime));
-        if(action==kharvox::ChestGrenadeAction::Cycle){
-            s.grenadeCyclePulseUntil=displayTime+100000000;
-            kharvox::queueControllerZoneCue(
-                s.handZoneCues[equipmentHapticHand],hapticNow,85,.72f,195.f);
-            s.nextCookPulseAt=hapticNow+350;
-            log("[GRENADE] support Grip in chest pocket -> cycle grenade; pin armed");
-        }else if(action==kharvox::ChestGrenadeAction::Throw){
-            s.equipmentThrowPulseUntil=displayTime+100000000;
-            log("[GRENADE] pulled outside chest and released Grip -> one native throw");
-        }
-        if(s.grenadeGesture.held&&s.grenadeGesture.armed)
-        // Quiet periodic heartbeat only after the 'pin' has been pulled.
-        // Native damage/firing rumble is always higher priority.
-        if(s.grenadeGesture.held&&s.grenadeGesture.armed
-            &&s.grenadeGesture.pulled){
-            if(hapticNow>=s.nextCookPulseAt){
-                kharvox::queueControllerZoneCue(
-                    s.handZoneCues[equipmentHapticHand],hapticNow,85,.44f,110.f);
-                s.nextCookPulseAt=hapticNow+350;
-            }
-        }else if(!s.grenadeGesture.held){
-            s.nextCookPulseAt=0;
-        }
-        if(!gameplay){
-            s.grenadeCyclePulseUntil=0;
-            s.equipmentThrowPulseUntil=0;
-        }
-        // Equipment trigger is owned by the standard layout, but in this mod
-        // only a completed physical Grip release generates a throw pulse.
-        gameplayEquipmentDown=gameplay&&displayTime<s.equipmentThrowPulseUntil;
-        s.equipmentButtonPressed=supportGripDown;
     }else{
         s.equipmentButtonPressed=equipmentDown;
-        s.grenadeGesture={};
-        s.equipmentThrowPulseUntil=0;
-        s.grenadeCyclePulseUntil=0;
-        s.chestZoneEntered=false;s.nextCookPulseAt=0;
     }
     const bool missionInfoDown=readBooleanAction(s.doomMissionInfo);
     if(missionInfoDown!=s.missionInfoPressed)
@@ -5408,7 +5333,7 @@ void updateGameplayActions(XrTime displayTime){
                 leftShoulderDown,rightShoulderDown,backDown,
                 gameplay&&switchWeaponModDown&&!pistolGrappleInputLocked,yDown&&!pistolGrappleInputLocked,pauseDown,
                 gameplay&&!objectGripOwnsOffhand&&!pistolGrappleInputLocked
-                    &&(cycleEquipment||displayTime<s.grenadeCyclePulseUntil));
+                    &&cycleEquipment);
     }else{
         updateVirtualButtons(false,false,false,false,false,false,false,false,false,false,false,false,false);
     }
@@ -5940,7 +5865,6 @@ bool createGameplayActions(){
             ?"requested-but-disabled-until-native-animation-hook":"off")
         +" fastGK="+(s.customMods.fastGloryKills?"on":"off")
         +" fastChainsaw="+(s.customMods.fastChainsawKills?"on":"off")
-        +" grenade="+(s.customMods.physicalGrenadeThrow?"on":"off")
         +" storySkipRS="+(s.customMods.storyCinematicSkip&&!s.customMods.storyFreeWalk?"on (experimental native 4x)":"off")
         +" storyFreeWalkRS="+(s.customMods.storyFreeWalk?"ON (experimental horizontal movement)":"off")
         +" storyCameraFocus="+(s.customMods.storyCameraFocus?"ON (native scripted heading test)":"off")

@@ -1270,8 +1270,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     s.usePulseUntil=0;s.meleePulseUntil=0;
     s.chainsawPulseUntil=0;
     s.backWeaponPulseUntil=0;
-    s.grenadeCyclePulseUntil=0;
-    s.equipmentThrowPulseUntil=0;
     s.twoHandLatched=false;
     return true;
 }

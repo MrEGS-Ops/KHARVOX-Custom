@@ -29,7 +29,6 @@ struct CustomModFlags {
     bool physicalCrouch{};
     bool dynamicShoulderHolster{};
     bool persistentSuperShotgunReload{};
-    bool physicalGrenadeThrow{};
     bool storyCinematicSkip{};
     bool storyFreeWalk{};
     bool storyCameraFocus{};
@@ -70,7 +69,6 @@ inline CustomModFlags loadCustomModFlags() {
     flags.physicalCrouch = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_CROUCH");
     flags.dynamicShoulderHolster = customModEnvironmentEnabled("KHARVOX_MOD_DYNAMIC_SHOULDER");
     flags.persistentSuperShotgunReload = customModEnvironmentEnabled("KHARVOX_MOD_SSG_PERSISTENT_RELOAD");
-    flags.physicalGrenadeThrow = customModEnvironmentEnabled("KHARVOX_MOD_PHYSICAL_GRENADE");
     flags.storyCinematicSkip = customModEnvironmentEnabled("KHARVOX_MOD_STORY_SKIP_RS");
     flags.storyFreeWalk = customModEnvironmentEnabled("KHARVOX_MOD_STORY_FREE_WALK_RS");
     flags.storyCameraFocus = customModEnvironmentEnabled("KHARVOX_MOD_STORY_CAMERA_FOCUS");
