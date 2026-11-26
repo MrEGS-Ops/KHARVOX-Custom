@@ -11,12 +11,12 @@ headset testing confirms the new runtime.
 
 - Mods > DEV > Experimental Features > Object Discovery Mode is toggleable.
 - Scan radius: **1–50 metres** in 1 m increments, default **5 m**.
-- Grab reach: **1–5 metres** in 0.5 m increments, default **2 m**.
-- Scan and reach are separate and saved in `UserData/ObjectGrip/object_discovery.cfg`.
+- Grab reach: **fixed at 2 metres**; only scan radius is adjustable.
+- Scan radius and laser preferences are saved in `UserData/ObjectGrip/object_discovery.cfg`.
 - Grab Reach Laser: separate default-OFF toggle. A cyan free-hand pointer shows
-  precisely the configured 1–5 m reach (not the larger scan radius), and
+  precisely the fixed 2 m reach (not the larger scan radius), and
   tracks the currently selected weapon hand's opposite free-hand AIM ray.
-  It remains the configured length even if an object or wall lies before it;
+  It remains the fixed length even if an object or wall lies before it;
   disabling the visual does not affect scanning or grabbing.
 - Each ring has two vertical semicircles: screen-left is the **physical LEFT**
   hand profile, screen-right is the **physical RIGHT** hand profile.
@@ -24,7 +24,7 @@ headset testing confirms the new runtime.
   naturally moved but uncalibrated item, GREEN for a calibrated hand.
 - GREY, AMBER and GREEN halves all remain visible throughout the selected
   1–50 m SCAN RADIUS. Saved hand profiles stay GREEN even when the player
-  steps beyond Grab Reach. Grab Reach changes only whether a catch is allowed.
+  steps beyond Grab Reach. Grab Reach limits whether a catch is allowed.
 - Every frame reads both hand profiles, so saving recolours matching objects
   immediately. One object uses one of the 32 visible marker slots even though
   the GPU may draw two semicircle meshes.
@@ -269,7 +269,7 @@ headset testing confirms the new runtime.
   offhand shot MUST ONLY fire when the offhand AIM ray first hits an
   **independently validated eligible movable-world prop** (same intended
   eligibility category as Object Discovery), with the contact point INSIDE
-  the user's configured **Grab Reach (1–5 m)**, measured from the offhand
+  the fixed **Grab Reach (2 m)**, measured from the offhand
   ray origin. It must NOT fire at enemies, walls, scenery, collectibles,
   unverified objects, empty space, or eligible props beyond grab reach.
   Never send a native shot then merely discard its result: validate the
@@ -310,7 +310,7 @@ headset testing confirms the new runtime.
 artificial Heavy Assault Rifle shot, make pressing the physical left Grip
 perform ONE normal native DOOM melee impact aimed with the offhand, only after
 checking that the target is an eligible world-movable prop inside the
-configured grab reach. Then complete the original grab automatically when the
+fixed 2 m grab reach. Then complete the original grab automatically when the
 hit activates physics, without asking for a second Grip press. Leave the
 melee animation, sounds, effects and original damage intact for the FIRST
 proof; investigate invisible animation and damage changes only AFTER that
@@ -324,7 +324,7 @@ melee input path. Thus toggling Hand Focus and pressing melee is NOT verified
 as a hand-ray-directed hit. A source-qualified native melee attack origin,
 direction and contact trace must be found, or the selected object may not be
 hit. Existing player melee's native effective range may be shorter than the
-1–5 m Grab Reach slider, even if the selector covers that range.
+fixed 2 m Grab Reach, even if the selector covers that range.
 
 **Required design and validation sequence:**
 

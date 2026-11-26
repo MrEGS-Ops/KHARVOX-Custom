@@ -2,6 +2,16 @@
 
 Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR installation. This changelog describes the current experimental work; successful builds and code tests do not substitute for headset verification.
 
+## 26 November 2026 — Pre-cleanup baseline and first retirement pass
+
+- Native Build 119 and Experimental Build 121 passed at `c1bf9fe0`; source rollback: `rollback/pre-cleanup-20261126-1921-build121`.
+- Removed the retired chest-pocket physical grenade implementation, standalone policy tests, launcher setting and environment flag. Normal native grenade input and object-held lockout remain.
+- Removed the permanently disabled physical chainsaw timescale gesture and the unused four-zone stroke state from the runtime. Current PAINSAW revving remains unchanged.
+- Replaced the obsolete numbered melee probe selector with one boolean activation flag; preserved original and Pistol Grapple paths, native wake eligibility and detailed geometry diagnostics. Consolidated active melee logs and documentation names.
+- Fixed grab reach at 2 m; scan radius remains 1–50 m. The old proxy remains an estimate, not a verified mesh contact. Existing saved settings are read for migration only.
+- Restored the left-Grip BFG shortcut with object priority. Headset verification is still required for the latest experimental grab behaviour.
+- First cleanup pass only: current PAINSAW mode consolidation and broader UI/native-hook audit remain pending. Compilation of this pass must be verified separately.
+
 ## 25 November 2026 — RIPSHIFT packaging and name cleanup
 
 - Consolidated the current experimental packaging into `.github/workflows/build-ripshift.yml` with the `RIPSHIFT-Experimental` artifact, preserving the current `_RIPSHIFT.exe` launcher and verified experimental native DLL.

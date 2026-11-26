@@ -26,9 +26,7 @@ Store and retrieve weapons from adjustable hip holsters, with tactile controller
 
 ### 4. PAINSAW — Physical Chainsaw Combat
 
-Make chainsaw executions more interactive through trigger-controlled operation, physical cutting movements and responsive haptic feedback.
-
-Bring a more hands-on approach to ripping and tearing.
+PAINSAW uses pressure-sensitive trigger revs during native chainsaw executions, with native DOOM audio and responsive haptics. The initial trigger pull starts the kill; release and pull again to rev, and the third pull commits to a fast finish. Disable PAINSAW to restore normal chainsaw execution.
 
 ### 5. Physical Glory Kills & KILLTIME
 
@@ -48,7 +46,11 @@ One-handed shooting introduces physical muzzle climb, requiring you to compensat
 
 Grip weapons with both hands for greater stability, rewarding controlled shooting over simply pointing and firing.
 
-### 8. Smarter Controller Reconnection
+### 8. Experimental Object Discovery & Grapple
+
+In the experimental build, open **Mods > DEV > Experimental Features** for movable-object discovery, scan radius (1–50 m, default 5 m), calibration and the optional cyan reach laser. Grab reach is fixed at 2 m. **Grapple Grab** and **Pistol Grapple** are mutually exclusive experimental pickup methods; both use the current estimated ray anchor. Melee activation can wake stationary props, but actual surface geometry and native contact are not yet verified. Normal grenade input is blocked while holding objects or during the temporary pistol activation transaction.
+
+### 9. Smarter Controller Reconnection
 
 Improved controller-disconnect handling provides clear in-headset guidance when tracking is lost.
 

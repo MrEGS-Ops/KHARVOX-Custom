@@ -32,7 +32,6 @@
 #include "../camera/StoryCameraFocusPolicy.h"
 #include "ActionExitHandoffPolicy.h"
 #include "ChainsawMotionSpeedPolicy.h"
-#include "ChainsawStrokePolicy.h"
 #include "ChainsawExperimentalModesPolicy.h"
 #include "ChainsawLoopProbePolicy.h"
 #include "ChainsawAnimationInvestigationPolicy.h"
@@ -374,10 +373,8 @@ struct State {
     std::array<bool,2> quickHolsterPhysicalGripHeld{};
     bool chainsawArmed{true},pausePressed{};
     bool equipmentButtonPressed{};
-    bool chainsawGestureActive{},chainsawGestureMoving{};
     bool chainsawKillLatched{};
     kharvox::ChainsawMotionSpeedState chainsawMotionSpeed{}; // retained for fallback diagnostics
-    kharvox::ChainsawStrokeState chainsawStroke{}; // retired four-zone logic; no longer called
     kharvox::ChainsawExperimentState chainsawExperiment{};
     kharvox::ChainsawLoopProbeState chainsawLoopProbe{};
     kharvox::ChainsawAnimationInvestigationState chainsawAnimationInvestigation{};
@@ -4661,8 +4658,6 @@ void updateGameplayActions(XrTime displayTime){
     if(s.customMods.uninterruptedStory)
         KharvoxCameraServiceUninterruptedStory(
             uninterrupted.active,narrativeStick);
-    const bool chainsawSyncGesture=s.customMods.physicalChainsawGestures
-        &&syncAttackActive&&s.chainsawKillLatched;
     const bool physicalPunchContext=s.physicalGlorykillEnabled
         &&gameplay&&!fullscreenMenu&&!weaponWheelActive;
     const std::array<const ControllerPose*,2> punchControllers{{&s.rightController,&s.leftController}};
@@ -4677,13 +4672,6 @@ void updateGameplayActions(XrTime displayTime){
                 ?s.physicalGlorykillHands!=PhysicalGlorykillHands::Left
                 :s.physicalGlorykillHands!=PhysicalGlorykillHands::Right;
             if(!handAllowed){s.physicalPunchArmed[hand]=false;continue;}
-            // During chainsaw sync kills, ignore punches altogether. The
-            // chainsaw gesture owns timescale AND melee routing; otherwise a
-            // punch could fall through to a normal melee pulse.
-            if(chainsawSyncGesture){
-                s.physicalPunchArmed[hand]=false;
-                continue;
-            }
             const auto& controller=*punchControllers[hand];
             if(!controller.valid||!controller.linearVelocityValid){s.physicalPunchArmed[hand]=false;continue;}
             // Punches move toward the player's facing direction, not wherever
@@ -4737,33 +4725,6 @@ void updateGameplayActions(XrTime displayTime){
             log(o.str());
             break;
         }
-    }
-    if(chainsawSyncGesture){
-        const auto& chainsawController=weaponController();
-        const bool tracked=chainsawController.valid&&chainsawController.linearVelocityValid;
-        const float downSpeed=tracked?std::max(0.f,-chainsawController.linearVelocity.y):0.f;
-        const float sideSpeed=tracked?std::abs(chainsawController.linearVelocity.x):0.f;
-        const float gestureSpeed=std::max(downSpeed,sideSpeed);
-        const bool moving=gestureSpeed>=.25f;
-        const float normalized=std::clamp((gestureSpeed-.25f)/(1.75f-.25f),0.f,1.f);
-        const float timescale=moving?(.25f+.75f*normalized):.12f;
-        KharvoxCameraSetGloryKillTimescaleOverride(timescale);
-        if(!s.chainsawGestureActive){
-            s.chainsawGestureActive=true;
-            log("[CHAINSAW-GESTURE] kill gate active; downward/sideways hand motion drives playback");
-        }
-        if(moving!=s.chainsawGestureMoving){
-            s.chainsawGestureMoving=moving;
-            log(std::string("[CHAINSAW-GESTURE] ")
-                +(moving?"motion -> advancing":"hand stopped -> idle cutting hold")
-                +" speed="+std::to_string(gestureSpeed)+"m/s timescale="
-                +std::to_string(timescale));
-        }
-    }else if(s.chainsawGestureActive){
-        s.chainsawGestureActive=false;
-        s.chainsawGestureMoving=false;
-        KharvoxCameraSetGloryKillTimescaleOverride(0.f);
-        log("[CHAINSAW-GESTURE] kill gate released");
     }
     if(!gameplay){
         s.usePulseUntil=0;
@@ -5135,7 +5096,7 @@ void updateGameplayActions(XrTime displayTime){
         &&!KharvoxCameraLedgeTransitionActive();
 
     if(!nativeMeleeTestAllowed||objectMeleePulseGeneration!=meleeGeneration){
-        if(objectMeleeAimUntil)log("[MELEE-C] left AIM override cancelled; normal weapon pose restored");
+        if(objectMeleeAimUntil)log("[GRAPPLE-MELEE] left AIM override cancelled; normal weapon pose restored");
         objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
     }
     const bool testRequested=KharvoxCameraTakeObjectMeleeRequest();
@@ -5148,8 +5109,8 @@ void updateGameplayActions(XrTime displayTime){
             objectMeleePulseUntil=objectMeleePulseStart+200000000LL;
             objectMeleeAimUntil=objectMeleePulseStart+500000000LL;
             objectMeleePulseGeneration=meleeGeneration;
-            log("[MELEE-C] left AIM override armed; lead=60ms pulse=200ms tail=300ms reach=2m");
-        }else log("[MELEE-C] request discarded: input busy or gameplay gate failed");
+            log("[GRAPPLE-MELEE] left AIM override armed; lead=60ms pulse=200ms tail=300ms reach=2m");
+        }else log("[GRAPPLE-MELEE] request discarded: input busy or gameplay gate failed");
     }
     const bool meleeAimActive=!pistolMode&&!pistolGrapple.busy()&&nativeMeleeTestAllowed&&objectMeleeAimUntil
         &&displayTime<objectMeleeAimUntil;
@@ -5164,11 +5125,11 @@ void updateGameplayActions(XrTime displayTime){
         testNativeMeleeDown=displayTime>=objectMeleePulseStart
             &&displayTime<objectMeleePulseUntil;
         if(testNativeMeleeDown&&objectMeleePulseStart){
-            log("[MELEE-C] native JOY8 pulse with left AIM pose; contact not verified");
+            log("[GRAPPLE-MELEE] native JOY8 pulse with left AIM pose; contact not verified");
             objectMeleePulseStart=0;
         }
     }else{
-        if(objectMeleeAimUntil)log("[MELEE-C] left AIM window ended; normal weapon pose restored");
+        if(objectMeleeAimUntil)log("[GRAPPLE-MELEE] left AIM window ended; normal weapon pose restored");
         objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
         KharvoxWeaponSetMeleeAimOverride(nullptr,nullptr);
     }
@@ -5706,7 +5667,7 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid,
         s.vrHandMenu.objectGrappleActive(),
         gripPoseValid?nativeRayOrigin:nullptr,
-        s.vrHandMenu.objectMeleeActive()?3u:0u,
+        s.vrHandMenu.objectMeleeActive(),
         s.vrHandMenu.objectMeleeActive()?testNativeMeleeDown:ordinaryNativeMeleeDown);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
@@ -5871,7 +5832,6 @@ bool createGameplayActions(){
         +" uninterruptedStory="+(s.customMods.uninterruptedStory?"ON (automatic hold analyzer)":"off")
         +" actionExitGK150ms="+(s.customMods.cinematicExitHandoff?"opt-in ON":"OFF/game-default")
         +" gloryMotion="+(s.customMods.motionGloryKillSpeed?"on":"off")
-        +" chainsawGestures="+(s.customMods.physicalChainsawGestures?"on":"off")
         +" chainsawMotionHz="+(s.customMods.motionChainsawKillSpeed?"on (200..30Hz dynamic)":"off")
         +" chainsawTriggerThrottle="+(s.customMods.chainsawTriggerThrottle?"ON (240..30Hz trigger + hand motion)":"off")
         +" hapticOverhaul="+(s.customMods.hapticOverhaul?"on (vitals reader pending)":"off")

@@ -177,12 +177,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Grab and melee eligibility: 2 metres.",
             "Discovery and laser enable automatically.",
             "Grapple contact remains estimated.",
-            "Left AIM contact still experimental."}}};
+            "Original or Pistol Grapple; choose one."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
             "Scan radius: 1-50 m (default 5 m).",
             "Grab reach: fixed 2 metres.",
-            "Change sliders with pointer or A button.",
+            "Adjust scan radius with pointer or A.",
             "Nearby rings/calibration still being developed.",
             "Melee activation is under Grapple Grab."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};

@@ -193,7 +193,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
         +" grip="+geometryFloats(in.origin,3)+" grip_axis="+geometryFloats(in.axis,9)
         +" ray="+geometryFloats(in.rayOrigin,3)+" aim="+geometryFloats(in.aim,3)
         +" reach="+std::to_string(in.reachUnits)+" scan="+std::to_string(in.scanUnits)
-        +" melee="+std::to_string(in.meleeProbeMode));
+        +" melee="+std::to_string(in.meleeActivationEnabled));
     struct Candidate{const ObjectDiscoveryNativeRecord* item{};float depth{},miss{},dist{};bool accepted{};};
     std::vector<Candidate> candidates;
     float norm2{};for(float x:in.aim)norm2+=x*x;

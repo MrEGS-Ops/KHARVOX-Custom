@@ -2730,7 +2730,7 @@ void KharvoxCameraSetObjectGripInput(
     const float origin[3],const float axis[9],const float aim[3],
     bool pressed,unsigned hand,float reachUnits,float scanUnits,bool enabled,
     bool grappleAnchorEnabled,const float rayOrigin[3],
-    unsigned meleeProbeMode,bool manualMeleeRequested) {
+    bool meleeActivationEnabled,bool nativeMeleeInputDown) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& frame=objectDiscoveryGripInput;
@@ -2740,8 +2740,8 @@ void KharvoxCameraSetObjectGripInput(
         &&reachUnits>=50.f&&reachUnits<=5000.f
         &&objectDiscoveryAxisOk(axis);
     frame.pressed=pressed;frame.physicalHand=hand;
-    frame.meleeProbeMode=meleeProbeMode<=3?meleeProbeMode:0;
-    frame.manualMeleeRequested=manualMeleeRequested;
+    frame.meleeActivationEnabled=meleeActivationEnabled;
+    frame.nativeMeleeInputDown=nativeMeleeInputDown;
     frame.grappleAnchorEnabled=grappleAnchorEnabled;
     frame.reachUnits=std::clamp(reachUnits,50.f,5000.f);
     frame.scanUnits=std::isfinite(scanUnits)
@@ -2761,7 +2761,7 @@ void KharvoxCameraSetObjectGripInput(
     (void)origin;(void)axis;(void)aim;(void)pressed;
     (void)hand;(void)reachUnits;(void)scanUnits;(void)enabled;
     (void)grappleAnchorEnabled;(void)rayOrigin;
-    (void)meleeProbeMode;(void)manualMeleeRequested;
+    (void)meleeActivationEnabled;(void)nativeMeleeInputDown;
 #endif
 }
 void KharvoxCameraSetObjectGripCalibration(
@@ -2795,7 +2795,7 @@ bool KharvoxCameraTakeObjectMeleeRequest() {
     const auto& f=objectDiscoveryGripInput;
     return request&&now>=request&&now-request<=150
         &&f.enabled&&f.pressed&&!f.calibrating&&f.physicalHand==0
-        &&f.meleeProbeMode==3&&f.frameAtMs&&now>=f.frameAtMs
+        &&f.meleeActivationEnabled&&f.frameAtMs&&now>=f.frameAtMs
         &&now-f.frameAtMs<180
         &&objectMeleeRequestGeneration==levelTransitionGeneration.load(std::memory_order_acquire);
 #else

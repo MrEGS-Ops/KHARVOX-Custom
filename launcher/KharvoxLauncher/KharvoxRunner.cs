@@ -628,7 +628,6 @@ internal static class KharvoxRunner
             psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_CROUCH"] = customMods.PhysicalCrouch ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_DYNAMIC_SHOULDER"] = customMods.DynamicShoulderHolster ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_SSG_PERSISTENT_RELOAD"] = customMods.PersistentSuperShotgunReload ? "1" : "0";
-            psi.EnvironmentVariables["KHARVOX_MOD_PHYSICAL_GRENADE"] = customMods.PhysicalGrenadeThrow ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_STORY_SKIP_RS"] = customMods.StoryCinematicSkip && !customMods.StoryFreeWalk && !customMods.UninterruptedStory ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_STORY_FREE_WALK_RS"] = customMods.StoryFreeWalk && !customMods.UninterruptedStory ? "1" : "0";
             psi.EnvironmentVariables["KHARVOX_MOD_UNINTERRUPTED_STORY"] = customMods.UninterruptedStory ? "1" : "0";

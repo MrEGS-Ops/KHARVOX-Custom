@@ -77,13 +77,11 @@ internal sealed class CustomModSettings
     public bool RevengeDemon { get; set; }
     public bool DynamicShoulderHolster { get; set; }
     public bool PersistentSuperShotgunReload { get; set; }
-    public bool PhysicalGrenadeThrow { get; set; }
     public bool StoryCinematicSkip { get; set; } // legacy opt-in; timescale unreliable
     public bool StoryFreeWalk { get; set; } // separate explicit opt-in, never migrated from old skip
     public bool StoryCameraFocus { get; set; } // opt-in native authored story-camera yaw
     public bool UninterruptedStory { get; set; } // opt-in automatic, never migrated ON
     public bool MotionGloryKillSpeed { get; set; }
-    public bool PhysicalChainsawGestures { get; set; }
     public bool ChainsawTriggerThrottle { get; set; } // Separate experimental native trigger + hand-motion chainsaw throttle
     public bool MotionChainsawKillSpeed { get; set; } // opt-in live native tick target, separate from retired timescale gestures
     public int ChainsawMotionFullSpeedCmPerSec { get; set; } = 180; // deprecated v1 velocity calibration, retained for old JSON
@@ -118,7 +116,6 @@ internal static class CustomModSettingsStore
         value.RevengeDemon = false;
         value.DynamicShoulderHolster = false;
         value.PersistentSuperShotgunReload = false;
-        value.PhysicalGrenadeThrow = false;
         value.StoryCinematicSkip = false;
         value.StoryFreeWalk = false;
         value.StoryCameraFocus = false;
@@ -126,7 +123,6 @@ internal static class CustomModSettingsStore
         value.CinematicExitHandoff = false;
         value.HapticOverhaul = false;
         value.MotionGloryKillSpeed = false;
-        value.PhysicalChainsawGestures = false;
     }
 
     internal static CustomModSettings ApplyDevelopmentTestDefaults(CustomModSettings value)
