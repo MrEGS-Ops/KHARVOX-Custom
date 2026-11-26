@@ -5061,7 +5061,7 @@ void updateGameplayActions(XrTime displayTime){
         &&!triggerDown&&!nativeFireDown&&!weaponModDown
         &&!ordinaryNativeMeleeDown&&!nativeUseDown
         &&!s.dynamicShoulderHolstered
-        &&s.vrHandMenu.objectMeleeProbeMode==3
+        &&s.vrHandMenu.objectMeleeActivation
         &&s.vrHandMenu.objectDiscoveryActive()
         &&supportGripDown&&!s.weaponHandLeft
         &&!s.twoHandLatched&&!s.twoHandCalibrationMode
@@ -5619,13 +5619,13 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeAxis:nullptr,
         gripPoseValid?nativeAim:nullptr,
         supportGripDown,s.weaponHandLeft?1u:0u,
-        s.vrHandMenu.objectEffectiveGrabReachMetres()*s.worldScale,
+        kharvox::kObjectDiscoveryGrabReachM*s.worldScale,
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid,
         s.vrHandMenu.grappleAnchor.enabled,
         gripPoseValid?nativeRayOrigin:nullptr,
-        s.vrHandMenu.objectMeleeProbeMode,
-        s.vrHandMenu.objectMeleeProbeMode==3?testNativeMeleeDown:ordinaryNativeMeleeDown);
+        s.vrHandMenu.objectMeleeActivation?3u:0u,
+        s.vrHandMenu.objectMeleeActivation?testNativeMeleeDown:ordinaryNativeMeleeDown);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -9190,7 +9190,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     // Grab Reach Laser shares the world-space tracking origin and AIM
     // direction of the free-hand native grab. Its origin is the source-time
     // physical GRIP, so asynchronous stereo pairs keep both eyes coherent.
-    // The visible laser ends exactly at the configured 1-5 metre grab limit.
+    // The visible laser ends exactly at the fixed 2 metre grab limit.
     kharvox::hands::HandPose grabReachLaser{};
     float grabReachLaserMetres{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
@@ -9223,7 +9223,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             grabReachLaser.orientation[1]=directionRotation.y;
             grabReachLaser.orientation[2]=directionRotation.z;
             grabReachLaser.orientation[3]=directionRotation.w;
-            grabReachLaserMetres=s.vrHandMenu.objectEffectiveGrabReachMetres();
+            grabReachLaserMetres=kharvox::kObjectDiscoveryGrabReachM;
         }
     }
 #endif
@@ -9244,7 +9244,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             const auto now=GetTickCount64();
             const float scanUnits=s.vrHandMenu.objectDiscovery.scanRadiusMetres
                 *s.worldScale;
-            const float reachUnits=s.vrHandMenu.objectEffectiveGrabReachMetres()
+            const float reachUnits=kharvox::kObjectDiscoveryGrabReachM
                 *s.worldScale;
             const float scanSquared=scanUnits*scanUnits;
             const float reachSquared=reachUnits*reachUnits;

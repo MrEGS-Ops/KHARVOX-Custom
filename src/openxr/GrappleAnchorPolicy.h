@@ -34,6 +34,7 @@ inline bool grappleAnchorLoad(const std::string& path,GrappleAnchorSettings& s){
     }
     return !std::getline(f,extra);
 }
+inline constexpr float kGrappleProxyMissUnits=25.f;
 enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles };
 struct GrappleRayAnchor {
     std::array<float,3> worldPoint{};
@@ -176,7 +177,7 @@ inline bool grapplePickupPose(
     std::array<float,9>& localAxis,GrappleRayAnchor& anchor) noexcept {
     if(!handOrigin||!handAxis||!bodyAxis
         ||!grappleRayEstimate(rayOrigin,aim,bodyOrigin,reachUnits,
-             55.f,anchor))return false;
+             kGrappleProxyMissUnits,anchor))return false;
     return grapplePickupPoseFromHit(handOrigin,handAxis,
         bodyOrigin,bodyAxis,anchor,localOffset,localAxis);
 }

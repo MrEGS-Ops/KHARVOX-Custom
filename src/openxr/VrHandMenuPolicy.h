@@ -108,7 +108,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,MeleeTests
+    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -574,18 +574,14 @@ struct VrHandMenuState {
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
     ObjectDiscoverySettings objectDiscovery{};
-    unsigned objectMeleeProbeMode{}; // session only: OFF, trace A, target B, native C
+    GrappleAnchorSettings grappleAnchor{};
+    bool objectMeleeActivation{}; // session only
     bool objectDiscoveryActive() const noexcept {
-        return objectDiscovery.enabled||objectMeleeProbeMode!=0;
-    }
-    float objectEffectiveGrabReachMetres() const noexcept {
-        return objectMeleeProbeMode==3?2.f:objectDiscovery.grabReachMetres;
+        return objectDiscovery.enabled||grappleAnchor.enabled||objectMeleeActivation;
     }
     bool objectGrabLaserActive() const noexcept {
-        return objectDiscoveryActive()
-            &&(objectDiscovery.grabReachLaserEnabled||objectMeleeProbeMode!=0);
+        return objectDiscoveryActive()&&(objectDiscovery.grabReachLaserEnabled||grappleAnchor.enabled||objectMeleeActivation);
     }
-    GrappleAnchorSettings grappleAnchor{};
     bool recoilReturnToDev{};
     std::uint64_t confirmDeathResetUntilMs{}; // explicit second A/trigger press
     VrDevControllerInputSnapshot devInput{};

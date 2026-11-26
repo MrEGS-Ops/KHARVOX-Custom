@@ -520,7 +520,7 @@ void objectDiscoveryReleaseNative() {
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
-// A/B are read-only diagnostics; C requests ordinary JOY8 once.
+// Melee activation requests ordinary JOY8 once; keep diagnostic logging.
 // The ray is an origin proxy, not a collision or LOS query. Native melee
 // direction and actual contact remain controlled by DOOM.
 struct ObjectMeleeProbe {
@@ -563,14 +563,14 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
             log("[MELEE-PROBE] skipped: already holding object");return;
         }
         ObjectDiscoveryNativeRecord* best=nullptr;
-        float bestMiss=55.f,bestDepth=in.reachUnits;
+        float bestMiss=kharvox::kGrappleProxyMissUnits,bestDepth=in.reachUnits;
         unsigned candidates=0;
         for(auto& item:objectDiscoveryNative){
             if(!item.entity||!item.body||!item.poseValid||item.generation!=generation
                 ||now<item.lastPositionAtMs||now-item.lastPositionAtMs>250)continue;
             kharvox::GrappleRayAnchor ray{};
             if(!kharvox::grappleRayEstimate(in.rayOrigin,in.aim,item.origin,
-                    in.reachUnits,55.f,ray))continue;
+                    in.reachUnits,kharvox::kGrappleProxyMissUnits,ray))continue;
             ++candidates;
             if(!best||ray.missDistance<bestMiss
                 ||(ray.missDistance==bestMiss&&ray.rayDistance<bestDepth)){
@@ -592,22 +592,7 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
             +" pos="+vec(best->origin)+" ray_depth="+std::to_string(bestDepth)
             +" miss="+std::to_string(bestMiss)
             +" prior_motion="+std::to_string(best->nativeMotionObserved));
-        if(p.mode==1){
-            float head[3]{},axis[9]{};
-            if(KharvoxCameraGetHeadRenderPose(head,axis))
-                log("[MELEE-A] head_origin="+vec(head)+" head_forward="+vec(axis)
-                    +" hand_head_dot="+std::to_string(axis[0]*in.aim[0]+
-                        axis[1]*in.aim[1]+axis[2]*in.aim[2]));
-            log("[MELEE-A] native attack trace hook unresolved; USE ray is not melee");
-        }else if(p.mode==2){
-            std::array<char,80> klass{};
-            readNativeWorldGrabClassLabel(best->entityVtable,best->imageBase,
-                best->imageSize,klass);
-            log("[MELEE-B] entity_class="+std::string(klass.data())
-                +" entity_vtable_rva="+std::to_string(best->entityVtable-best->imageBase)
-                +" body_vtable_rva="+std::to_string(best->bodyVtable-best->imageBase)
-                +" impact_abi=UNVERIFIED");
-        }else{
+        {
             if(best->nativeMotionObserved&&best->nativeMovedAtMs
                 &&now>=best->nativeMovedAtMs&&now-best->nativeMovedAtMs<=3000){
                 p.readyToGrab=true;
@@ -809,7 +794,7 @@ void objectDiscoveryGameTick() {
         if(!input.pressed||objectDiscoveryNeedsGripRelease)return;
         ObjectDiscoveryNativeRecord* nearest{};
         float best2=input.grappleAnchorEnabled
-            ?55.f*55.f:input.reachUnits*input.reachUnits;
+            ?kharvox::kGrappleProxyMissUnits*kharvox::kGrappleProxyMissUnits:input.reachUnits*input.reachUnits;
         for(auto& item:objectDiscoveryNative){
             if(input.meleeProbeMode==3&&input.physicalHand==0
                 &&(!objectMeleeProbe.readyToGrab||item.handle!=objectMeleeProbe.handle
@@ -829,7 +814,7 @@ void objectDiscoveryGameTick() {
                 // The current broad-phase uses DOOM body origins only.
                 // No shape-specific collision mesh/radius is inferred.
                 if(!kharvox::grappleRayEstimate(input.rayOrigin,input.aim,
-                        item.origin,input.reachUnits,55.f,ray))continue;
+                        item.origin,input.reachUnits,kharvox::kGrappleProxyMissUnits,ray))continue;
                 const float lateral2=ray.missDistance*ray.missDistance;
                 if(lateral2>=best2)continue;
                 best2=lateral2;nearest=&item;
@@ -845,7 +830,7 @@ void objectDiscoveryGameTick() {
                 if(now>=lastGrappleMiss+1200){
                     lastGrappleMiss=now;
                     log("[GRAPPLE-ANCHOR] Grip ray had NO valid moving "
-                        "object within reach and 55-unit ray tolerance");
+                        "object within reach and tightened 25-unit ray tolerance");
                 }
             }
             return;

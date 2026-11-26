@@ -13,15 +13,11 @@ inline constexpr float kObjectDiscoveryMaxScanRadiusM = 50.0f;
 inline constexpr float kObjectDiscoveryDefaultScanRadiusM = 5.0f;
 inline constexpr float kObjectDiscoveryScanRadiusStepM = 1.0f;
 
-inline constexpr float kObjectDiscoveryMinGrabReachM = 1.0f;
-inline constexpr float kObjectDiscoveryMaxGrabReachM = 5.0f;
-inline constexpr float kObjectDiscoveryDefaultGrabReachM = 2.0f;
-inline constexpr float kObjectDiscoveryGrabReachStepM = 0.5f;
+inline constexpr float kObjectDiscoveryGrabReachM = 2.f;
 
 struct ObjectDiscoverySettings {
     bool enabled{false}; // Opt-in.
     float scanRadiusMetres{kObjectDiscoveryDefaultScanRadiusM};
-    float grabReachMetres{kObjectDiscoveryDefaultGrabReachM};
     bool grabReachLaserEnabled{false}; // Visual aid only; OFF by default.
 };
 
@@ -63,10 +59,6 @@ inline ObjectDiscoverySettings sanitizedObjectDiscoverySettings(
         requested.scanRadiusMetres,
         kObjectDiscoveryMinScanRadiusM, kObjectDiscoveryMaxScanRadiusM,
         kObjectDiscoveryScanRadiusStepM, kObjectDiscoveryDefaultScanRadiusM);
-    requested.grabReachMetres = objectDiscoverySnap(
-        requested.grabReachMetres,
-        kObjectDiscoveryMinGrabReachM, kObjectDiscoveryMaxGrabReachM,
-        kObjectDiscoveryGrabReachStepM, kObjectDiscoveryDefaultGrabReachM);
     return requested;
 }
 
@@ -75,11 +67,10 @@ inline bool objectDiscoverySave(const std::string& path,
     settings = sanitizedObjectDiscoverySettings(settings);
     std::ofstream output(path, std::ios::trunc);
     if (!output) return false;
-    output << "object_discovery_v2\n"
+    output << "object_discovery_v3\n"
            << "enabled=" << (settings.enabled ? 1 : 0) << "\n"
            << "scan_radius_m=" << std::fixed << std::setprecision(1)
            << settings.scanRadiusMetres << "\n"
-           << "grab_reach_m=" << settings.grabReachMetres << "\n"
            << "grab_reach_laser=" << (settings.grabReachLaserEnabled ? 1 : 0) << "\n";
     output.flush();
     return output.good();
@@ -90,10 +81,11 @@ inline bool objectDiscoveryLoad(const std::string& path,
     if (!input) return false;
     std::string header, enabled, scan, reach, laser, extra;
     if (!std::getline(input,header)
-        || (header!="object_discovery_v1"&&header!="object_discovery_v2")
-        || !std::getline(input,enabled) || !std::getline(input,scan)
-        || !std::getline(input,reach))return false;
-    if (header=="object_discovery_v2"
+        || (header!="object_discovery_v1"&&header!="object_discovery_v2"&&header!="object_discovery_v3")
+        || !std::getline(input,enabled) || !std::getline(input,scan))return false;
+    if(header!="object_discovery_v3"&&(!std::getline(input,reach)
+        ||reach.rfind("grab_reach_m=",0)!=0))return false;
+    if (header!="object_discovery_v1"
         &&(!std::getline(input,laser)
             ||(laser!="grab_reach_laser=0"&&laser!="grab_reach_laser=1")))
         return false;
@@ -113,8 +105,7 @@ inline bool objectDiscoveryLoad(const std::string& path,
     ObjectDiscoverySettings parsed{};
     parsed.enabled=enabled=="enabled=1";
     parsed.grabReachLaserEnabled=laser=="grab_reach_laser=1";
-    if (!parse(scan,"scan_radius_m=",parsed.scanRadiusMetres)
-        || !parse(reach,"grab_reach_m=",parsed.grabReachMetres))
+    if (!parse(scan,"scan_radius_m=",parsed.scanRadiusMetres))
         return false;
     result=sanitizedObjectDiscoverySettings(parsed);
     return true;

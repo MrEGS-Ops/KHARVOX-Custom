@@ -30,9 +30,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Experimental Features",VrLiveMod::Other,
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
-            s.vrHandMenu.grappleAnchor.enabled,D::GrappleAnchor});
-        rows.push_back({"Melee Tests",VrLiveMod::Other,
-            s.vrHandMenu.objectMeleeProbeMode!=0,D::MeleeTests});
+            s.vrHandMenu.grappleAnchor.enabled||s.vrHandMenu.objectMeleeActivation,D::GrappleAnchor});
 #endif
         return rows;
     }
@@ -174,26 +172,19 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Counters keep tracking in background.",
             ""}}};
         case D::GrappleAnchor:return {{{
-            "Laser point becomes a temporary hand anchor.",
-            "Pulls the targeted point toward your grip.",
-            "Keeps original tilt; follows your wrist after.",
-            "No named-shape presets or collision hulls.",
-            "Render-mesh hit access is not yet verified.",
-            "Object Discovery ON; moving props only."}}};
-        case D::MeleeTests:return {{{
-            "Three separate melee test switches.",
-            "Only one test can be active at a time.",
+            "Grip to pick up movable props.",
+            "Melee activation wakes stationary props.",
+            "Grab and melee eligibility: 2 metres.",
             "Discovery and laser enable automatically.",
-            "A/B: manual melee diagnostics.",
-            "C: native melee before grab.",
-            "Turn off to restore normal settings."}}};
+            "Grapple contact remains estimated.",
+            "Left AIM contact still experimental."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
             "Scan radius: 1-50 m (default 5 m).",
-            "Grab reach: 1-5 m (default 2 m).",
+            "Grab reach: fixed 2 metres.",
             "Change sliders with pointer or A button.",
             "Nearby rings/calibration still being developed.",
-            "Grip cannot move stationary props."}}};
+            "Melee activation is under Grapple Grab."}}};
         default:return {{{"Select a developer tool.","","","","",""}}};
     }
 }
