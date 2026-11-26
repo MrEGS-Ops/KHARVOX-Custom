@@ -842,7 +842,7 @@ void paintVrHandMenu() {
             if(opt==D::MeleeTests){
                 const char* titles[3]={"A - MELEE TRACE","B - OBJECT IMPACT","C - NATIVE MELEE"};
                 const char* hints[3]={"Grip + manual melee; logs only",
-                    "Grip + manual melee; logs only","Grip: melee first, then grab"};
+                    "Grip + manual melee; logs only","Grip: left AIM melee, then grab"};
                 for(int i=0;i<3;++i){
                     const int top=186+i*91;
                     const bool on=m.objectMeleeProbeMode==static_cast<unsigned>(i+1);
@@ -856,7 +856,7 @@ void paintVrHandMenu() {
                 write(538,486,"A / TRIGGER: toggle selected test.",white);
                 write(538,522,"Only one test can be ON.",muted);
                 write(538,558,"Discovery + laser automatic during tests.",muted);
-                write(538,592,"Switch all OFF for normal gameplay.",muted);
+                write(538,592,"C: fixed 2m reach. All OFF = normal.",muted);
             }else if(opt==D::GrappleAnchor){
                 const bool on=m.grappleAnchor.enabled;
                 fill(531,186,384,77,m.hovered==130

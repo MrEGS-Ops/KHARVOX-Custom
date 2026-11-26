@@ -578,6 +578,9 @@ struct VrHandMenuState {
     bool objectDiscoveryActive() const noexcept {
         return objectDiscovery.enabled||objectMeleeProbeMode!=0;
     }
+    float objectEffectiveGrabReachMetres() const noexcept {
+        return objectMeleeProbeMode==3?2.f:objectDiscovery.grabReachMetres;
+    }
     bool objectGrabLaserActive() const noexcept {
         return objectDiscoveryActive()
             &&(objectDiscovery.grabReachLaserEnabled||objectMeleeProbeMode!=0);

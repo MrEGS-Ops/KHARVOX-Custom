@@ -80,6 +80,8 @@ const char* KharvoxWeaponKindKey(KharvoxWeaponKind kind);
 const char* KharvoxWeaponKindDisplayName(KharvoxWeaponKind kind);
 KharvoxWeaponKind KharvoxWeaponKindFromKey(const char* key);
 void KharvoxWeaponResetCalibration();
+// Experimental transient native pose routing; does not change saved handedness.
+void KharvoxWeaponSetMeleeAimOverride(const float position[3],const float orientation[4]);
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,
     float baselineForward, float baselineLateral, float baselineUp,

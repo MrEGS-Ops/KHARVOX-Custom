@@ -617,7 +617,7 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
                 objectMeleeRequestAtMs=now;
                 objectMeleeRequestGeneration=generation;
                 log("[MELEE-C] queued ordinary native melee for proxy handle="
-                    +std::to_string(p.handle)+" (native hit direction unverified)");
+                    +std::to_string(p.handle)+" (left AIM pose requested; actual hit direction unverified)");
             }
         }
     }
@@ -640,7 +640,8 @@ void objectMeleeProbeTick(const ObjectDiscoveryGripFrame& in,
             p.motionLogged=true;return;
         }
         if(item.nativeMovedAtMs>p.lastMoved&&item.nativeMovedAtMs>=p.started){
-            if(p.mode==3&&p.sawInput)p.readyToGrab=true;
+            if(p.mode==3&&!p.sawInput)return; // wait for actual input observation
+            if(p.mode==3)p.readyToGrab=true;
             log("[MELEE-PROBE] SAME TARGET native movement observed elapsed_ms="
                 +std::to_string(now-p.started)+" handle="+std::to_string(p.handle)
                 +" before="+vec(p.baseline)+" after="+vec(item.origin)

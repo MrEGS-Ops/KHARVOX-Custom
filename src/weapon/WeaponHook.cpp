@@ -48,6 +48,11 @@ struct PoseState {
 
 PoseState pose;
 std::mutex controllerInputMutex;
+struct MeleeAimOverride {
+    float position[3]{},orientation[4]{};
+    unsigned long long expiresAtMs{},generation{};
+};
+MeleeAimOverride meleeAimOverride{};
 std::atomic<uint64_t> weaponSourceEpoch{1};
 kharvox::AerWeaponSourceHistory weaponSourceHistory;
 kharvox::AerWeaponSourceTransforms weaponSourceTransforms;
@@ -62,6 +67,14 @@ kharvox::AerWeaponInput currentControllerInput(){
     for(int i=0;i<4;++i)input.orientation[i]=pose.deltaQuaternion[i].load();
     input.valid=pose.valid.load();input.generation=pose.resetGeneration.load();input.epoch=weaponSourceEpoch.load();
     input.sampleQpc=pose.sampleQpc;
+    if(input.valid&&meleeAimOverride.expiresAtMs
+        &&GetTickCount64()<meleeAimOverride.expiresAtMs
+        &&meleeAimOverride.generation==KharvoxCameraLevelTransitionGeneration()){
+        for(int i=0;i<3;++i)input.grip[i]=meleeAimOverride.position[i];
+        for(int i=0;i<4;++i)input.orientation[i]=meleeAimOverride.orientation[i];
+        LARGE_INTEGER qpc{};QueryPerformanceCounter(&qpc);
+        input.sampleQpc=static_cast<uint64_t>(qpc.QuadPart);
+    }
     return input;
 }
 bool resolveWeaponSource(kharvox::AerWeaponFrame& frame,
@@ -3008,6 +3021,22 @@ void KharvoxWeaponResetCalibration() {
     pose.resetGeneration.fetch_add(1, std::memory_order_acq_rel);
 }
 
+void KharvoxWeaponSetMeleeAimOverride(const float position[3],const float orientation[4]){
+    std::lock_guard lock(controllerInputMutex);
+    if(!position||!orientation){meleeAimOverride={};return;}
+    float norm{};
+    for(int i=0;i<3;++i)if(!std::isfinite(position[i])){meleeAimOverride={};return;}
+    for(int i=0;i<4;++i){
+        if(!std::isfinite(orientation[i])){meleeAimOverride={};return;}
+        norm+=orientation[i]*orientation[i];
+    }
+    if(norm<.9f||norm>1.1f){meleeAimOverride={};return;}
+    std::copy(position,position+3,meleeAimOverride.position);
+    std::copy(orientation,orientation+4,meleeAimOverride.orientation);
+    meleeAimOverride.generation=KharvoxCameraLevelTransitionGeneration();
+    meleeAimOverride.expiresAtMs=GetTickCount64()+100;
+}
+
 void KharvoxWeaponSetControllerPose(
     float gripForward, float gripLateral, float gripUp,
     float baselineForward, float baselineLateral, float baselineUp,
@@ -3026,6 +3055,7 @@ void KharvoxWeaponSetControllerPose(
     }
     std::lock_guard lock(controllerInputMutex);
     if (!valid) {
+        meleeAimOverride={};
         pose.valid.store(false, std::memory_order_release);
         setMuzzleFireAxisOverride(false);
         return;

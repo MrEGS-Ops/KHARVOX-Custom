@@ -3502,6 +3502,21 @@ void serviceCampaignRunTime(bool gameplay,
 #include "VrLiveMenuLogic.inc"
 #include "VrHandMenuInput.inc"
 void updateGameplayActions(XrTime displayTime){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    // Every early return (menu, tracking loss, modal UI) cancels the pose
+    // override and the pending input. The native hook also expires stale poses.
+    static XrTime objectMeleePulseStart{},objectMeleePulseUntil{},objectMeleeAimUntil{};
+    static unsigned long long objectMeleePulseGeneration{};
+    struct MeleeFrameGuard {
+        XrTime& start;XrTime& pulse;XrTime& aim;
+        bool keep{};
+        ~MeleeFrameGuard(){
+            if(keep)return;
+            start=pulse=aim=0;
+            KharvoxWeaponSetMeleeAimOverride(nullptr,nullptr);
+        }
+    } meleeFrameGuard{objectMeleePulseStart,objectMeleePulseUntil,objectMeleeAimUntil};
+#endif
     if(!s.actionsReady){
         KharvoxWeaponSetWheelPresentationActive(false);
         releaseHandFocusUseKeyboardPulse();
@@ -5041,10 +5056,11 @@ void updateGameplayActions(XrTime displayTime){
         displayTime>=s.usePulseUntil);
     bool testNativeMeleeDown=false;
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    static XrTime objectMeleePulseUntil{};
-    static unsigned long long objectMeleePulseGeneration{};
     const auto meleeGeneration=KharvoxCameraLevelTransitionGeneration();
-    const bool nativeMeleeTestAllowed=gameplay&&xinputHookReady
+    const bool nativeMeleeTestAllowed=gameplay&&xinputHookReady&&s.weapon6Dof
+        &&!triggerDown&&!nativeFireDown&&!weaponModDown
+        &&!ordinaryNativeMeleeDown&&!nativeUseDown
+        &&!s.dynamicShoulderHolstered
         &&s.vrHandMenu.objectMeleeProbeMode==3
         &&s.vrHandMenu.objectDiscoveryActive()
         &&supportGripDown&&!s.weaponHandLeft
@@ -5059,18 +5075,44 @@ void updateGameplayActions(XrTime displayTime){
         &&!syncAttackActive&&!KharvoxCameraCutsceneActive()
         &&!KharvoxCameraBossSequenceActive()
         &&!KharvoxCameraLedgeTransitionActive();
-    if(!nativeMeleeTestAllowed||objectMeleePulseGeneration!=meleeGeneration)
-        objectMeleePulseUntil=0;
+
+    if(!nativeMeleeTestAllowed||objectMeleePulseGeneration!=meleeGeneration){
+        if(objectMeleeAimUntil)log("[MELEE-C] left AIM override cancelled; normal weapon pose restored");
+        objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
+    }
     const bool testRequested=KharvoxCameraTakeObjectMeleeRequest();
     if(testRequested){
-        if(nativeMeleeTestAllowed&&!ordinaryNativeMeleeDown&&!nativeUseDown
-            &&displayTime>=objectMeleePulseUntil){
-            objectMeleePulseUntil=displayTime+200000000LL;
+        if(nativeMeleeTestAllowed&&!objectMeleeAimUntil){
+            // Pre-arm the existing native 6DOF source before the JOY8 edge;
+            // keep it through the attack's expected contact window.
+            objectMeleePulseStart=displayTime+60000000LL;
+            objectMeleePulseUntil=objectMeleePulseStart+200000000LL;
+            objectMeleeAimUntil=objectMeleePulseStart+500000000LL;
             objectMeleePulseGeneration=meleeGeneration;
-            log("[MELEE-C] native JOY8 pulse requested (200ms); native direction/range unchanged");
+            log("[MELEE-C] left AIM override armed; lead=60ms pulse=200ms tail=300ms reach=2m");
         }else log("[MELEE-C] request discarded: input busy or gameplay gate failed");
     }
-    testNativeMeleeDown=nativeMeleeTestAllowed&&displayTime<objectMeleePulseUntil;
+    const bool meleeAimActive=nativeMeleeTestAllowed&&objectMeleeAimUntil
+        &&displayTime<objectMeleeAimUntil;
+    if(meleeAimActive){
+        const auto left=controllerRelativeToBodyTrackingOrigin(s.leftController);
+        const float pos[3]{-left.position.z*s.worldScale,
+            -left.position.x*s.worldScale,left.position.y*s.worldScale};
+        const float quat[4]{left.orientation.x,left.orientation.y,
+            left.orientation.z,left.orientation.w};
+        KharvoxWeaponSetMeleeAimOverride(pos,quat);
+        meleeFrameGuard.keep=true;
+        testNativeMeleeDown=displayTime>=objectMeleePulseStart
+            &&displayTime<objectMeleePulseUntil;
+        if(testNativeMeleeDown&&objectMeleePulseStart){
+            log("[MELEE-C] native JOY8 pulse with left AIM pose; contact not verified");
+            objectMeleePulseStart=0;
+        }
+    }else{
+        if(objectMeleeAimUntil)log("[MELEE-C] left AIM window ended; normal weapon pose restored");
+        objectMeleePulseStart=objectMeleePulseUntil=objectMeleeAimUntil=0;
+        KharvoxWeaponSetMeleeAimOverride(nullptr,nullptr);
+    }
 #endif
     const bool nativeMeleeDown=ordinaryNativeMeleeDown||testNativeMeleeDown;
     const bool equipmentDown=readFloatAction(
@@ -5577,7 +5619,7 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeAxis:nullptr,
         gripPoseValid?nativeAim:nullptr,
         supportGripDown,s.weaponHandLeft?1u:0u,
-        s.vrHandMenu.objectDiscovery.grabReachMetres*s.worldScale,
+        s.vrHandMenu.objectEffectiveGrabReachMetres()*s.worldScale,
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid,
         s.vrHandMenu.grappleAnchor.enabled,
@@ -9152,7 +9194,6 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     kharvox::hands::HandPose grabReachLaser{};
     float grabReachLaserMetres{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    const auto& discoveryConfig=s.vrHandMenu.objectDiscovery;
     if(s.vrHandMenu.objectGrabLaserActive()
         &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerOnlyLocked.load(std::memory_order_acquire)
@@ -9182,7 +9223,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             grabReachLaser.orientation[1]=directionRotation.y;
             grabReachLaser.orientation[2]=directionRotation.z;
             grabReachLaser.orientation[3]=directionRotation.w;
-            grabReachLaserMetres=discoveryConfig.grabReachMetres;
+            grabReachLaserMetres=s.vrHandMenu.objectEffectiveGrabReachMetres();
         }
     }
 #endif
@@ -9203,7 +9244,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             const auto now=GetTickCount64();
             const float scanUnits=s.vrHandMenu.objectDiscovery.scanRadiusMetres
                 *s.worldScale;
-            const float reachUnits=s.vrHandMenu.objectDiscovery.grabReachMetres
+            const float reachUnits=s.vrHandMenu.objectEffectiveGrabReachMetres()
                 *s.worldScale;
             const float scanSquared=scanUnits*scanUnits;
             const float reachSquared=reachUnits*reachUnits;
