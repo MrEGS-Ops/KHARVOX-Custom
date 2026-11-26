@@ -5173,6 +5173,8 @@ void updateGameplayActions(XrTime displayTime){
             pistolGrappleEndCarrier("unexpected weapon change");
         }
     }
+    if(pg.phase==PG::Equip&&equipped==KharvoxWeaponKind::Pistol)
+        KharvoxWeaponSetPistolGrappleHidden(true);
     if(pg.phase==PG::Melee){
         const auto left=controllerRelativeToBodyTrackingOrigin(s.leftController);
         const float pos[3]{-left.position.z*s.worldScale,-left.position.x*s.worldScale,left.position.y*s.worldScale};
@@ -5201,6 +5203,11 @@ void updateGameplayActions(XrTime displayTime){
             else{log("[PISTOL-GRAPPLE] RESTORE FAILED after two attempts; manual weapon selection required");pg={};}
         }
     }
+    // A temporary pistol may remain rendered while the restore key is in
+    // flight. Do not hide an original pistol after restoring its right pose.
+    if((pg.phase==PG::RestorePending||pg.phase==PG::RestoreWait)
+        &&pg.original!=KharvoxWeaponKind::Pistol&&equipped==KharvoxWeaponKind::Pistol)
+        KharvoxWeaponSetPistolGrappleHidden(true);
     pistolGrappleInputLocked=pg.busy();
 #endif
     const bool nativeMeleeDown=(!pistolGrappleInputLocked&&ordinaryNativeMeleeDown)||testNativeMeleeDown;

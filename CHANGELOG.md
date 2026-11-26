@@ -2,6 +2,12 @@
 
 Changes to the RIPSHIFT VR add-on for DOOM (2016) using the original KHARVOX VR installation. This changelog describes the current experimental work; successful builds and code tests do not substitute for headset verification.
 
+## 26 November 2026 — Grapple follow-up (experimental)
+
+- Latch target identity and estimated anchor before native melee, prioritise native target pose reads and catch after movement without re-testing the original ray. Clear residual momentum with existing signature checks, without waking the body a second time.
+- Extend the temporary pistol render-hide request through melee and non-pistol restoration; add hide submission diagnostics. Actual visibility and visible mesh following still need headset verification.
+- Publish observed native physics pose instead of commanded hand position after follow writes; retain the detailed geometry investigator. No invented mesh bounds or cylinder-specific targeting.
+
 ## 26 November 2026 — Pre-cleanup baseline and first retirement pass
 
 - Native Build 119 and Experimental Build 121 passed at `c1bf9fe0`; source rollback: `rollback/pre-cleanup-20261126-1921-build121`.

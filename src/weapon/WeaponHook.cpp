@@ -2009,11 +2009,19 @@ extern "C" void __fastcall weaponRenderUpdateHook(
     // first-person weapon model, not the wheel HUD. This extends the existing
     // quick-holster render gate without altering gameplay physics or UserData.
     // 0.001 is nonzero so the native model matrix remains invertible.
+    // The native melee animation may temporarily clear GameplayActive.
+    // Keep the carrier hide at the verified weapon caller during that gap.
+    const bool hideCarrier=verifiedWeaponCaller
+        &&activeWeaponKind.load(std::memory_order_acquire)==KharvoxWeaponKind::Pistol
+        &&GetTickCount64()<pistolGrappleHideUntilMs.load(std::memory_order_acquire);
     const bool hidePresentation=verifiedWeaponCaller
         &&(weaponWheelPresentationActive.load(std::memory_order_acquire)
             ||(weaponPresentation&&weaponHolstered.load(std::memory_order_acquire))
-            ||(weaponPresentation&&activeWeaponKind.load(std::memory_order_acquire)==KharvoxWeaponKind::Pistol
-                &&GetTickCount64()<pistolGrappleHideUntilMs.load(std::memory_order_acquire)));
+            ||hideCarrier);
+    static std::atomic<bool> carrierHideReported{};
+    if(hideCarrier&&!carrierHideReported.exchange(true,std::memory_order_relaxed))
+        log("[PISTOL-GRAPPLE] verified child render hide submitted; mesh visibility unverified");
+    else if(!hideCarrier&&verifiedWeaponCaller)carrierHideReported.store(false,std::memory_order_relaxed);
     const float submittedModelScale=hidePresentation?0.001f:modelScale;
     // Preserve DOOM's original first-person weapon submission depth.
     // Hand projection maintains its own near-plane behaviour.

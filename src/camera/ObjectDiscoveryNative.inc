@@ -447,7 +447,7 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
 // stale solver momentum and resume DOOM's own gravity via its exact
 // signature-checked native Activate implementation. NEVER run on discovery,
 // ray hits, or stationary/unverified bodies.
-bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item) {
+bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake=true) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     if(!item.nativeMotionObserved
         ||item.generation!=levelTransitionGeneration.load(
@@ -501,13 +501,13 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item) {
         std::memcpy(linearVelocity,stopped,sizeof(stopped));
         std::memcpy(angularVelocity,stopped,sizeof(stopped));
         using Fn=void (__fastcall*)(void*);
-        reinterpret_cast<Fn>(base+0x179A8F0)(item.body);
+        if(wake)reinterpret_cast<Fn>(base+0x179A8F0)(item.body);
 #if defined(_MSC_VER)
     }__except(EXCEPTION_EXECUTE_HANDLER){return false;}
 #endif
     return true;
 #else
-    (void)item;return false;
+    (void)item;(void)wake;return false;
 #endif
 }
 void objectDiscoveryReleaseNative() {
@@ -534,6 +534,10 @@ struct ObjectMeleeActivation {
     const void* entity{};
     const void* body{};
     float baseline[3]{};
+    bool pickupPoseValid{};
+    kharvox::GrappleRayAnchor pickupRay{};
+    std::array<float,3> pickupOffset{};
+    std::array<float,9> pickupAxis{};
 };
 ObjectMeleeActivation objectMeleeActivation{};
 // Mailbox protected by objectDiscoveryGripMutex; no pointers are published.
@@ -577,6 +581,7 @@ void objectMeleeActivationTick(const ObjectDiscoveryGripFrame& in,
             if(!best||ray.missDistance<bestMiss
                 ||(ray.missDistance==bestMiss&&ray.rayDistance<bestDepth)){
                 best=&item;bestMiss=ray.missDistance;bestDepth=ray.rayDistance;
+                p.pickupRay=ray;
             }
         }
         log("[GRAPPLE-MELEE] begin gen="+std::to_string(generation)+" origin="+vec(in.rayOrigin)
@@ -584,6 +589,12 @@ void objectMeleeActivationTick(const ObjectDiscoveryGripFrame& in,
             +" proxy_candidates="+std::to_string(candidates)
             +" contact=UNVERIFIED LOS=UNVERIFIED dispatch=NATIVE_JOY8");
         if(!best){log("[GRAPPLE-MELEE] no fresh rigid-body proxy in reach");return;}
+        if(in.grappleAnchorEnabled){
+            p.pickupPoseValid=kharvox::grapplePickupPoseFromHit(in.origin,in.axis,
+                best->origin,best->axis,p.pickupRay,p.pickupOffset,p.pickupAxis)
+                &&objectDiscoveryAxisOk(p.pickupAxis.data());
+            if(!p.pickupPoseValid){log("[GRAPPLE-MELEE] invalid pre-impact anchor; no pulse");return;}
+        }
         p.handle=best->handle;p.entity=best->entity;p.body=best->body;
         p.lastMoved=best->nativeMovedAtMs;
         std::memcpy(p.baseline,best->origin,sizeof(p.baseline));
@@ -747,6 +758,14 @@ void objectDiscoveryGameTick() {
         if(item.generation!=generation){item={};continue;}
         const bool heldHere=objectDiscoveryHeld.active
             &&objectDiscoveryHeld.handle==item.handle;
+        // A selected melee target bypasses background read throttles until
+        // acquisition or timeout, even if the impulse moves it off the ray.
+        const auto& pending=objectMeleeActivation;
+        const bool pendingHere=inputValid&&input.pressed&&input.meleeActivationEnabled
+            &&pending.handle==item.handle&&pending.entity==item.entity
+            &&pending.body==item.body&&pending.generation==generation
+            &&now>=pending.started&&now-pending.started<=2000;
+        const bool priority=heldHere||pendingHere;
         unsigned long long readIntervalMs=80;
         if(!heldHere&&item.poseValid&&inputValid){
             float d2{};
@@ -757,10 +776,10 @@ void objectDiscoveryGameTick() {
             if(d2>input.reachUnits*input.reachUnits*4.f)
                 readIntervalMs=250;
         }
-        if(!heldHere&&now>=item.lastPositionAtMs
+        if(!priority&&now>=item.lastPositionAtMs
             &&now-item.lastPositionAtMs<readIntervalMs)continue;
-        if(!heldHere&&reads>=readsPerTick)continue;
-        if(!heldHere)++reads;
+        if(!priority&&reads>=readsPerTick)continue;
+        if(!priority)++reads;
         float xyz[3]{},axis[9]{};
         if(!objectDiscoveryReadBodyPose(item,xyz,axis)){
             if(heldHere&&++objectDiscoveryHeld.poseReadMisses<=3)
@@ -840,6 +859,12 @@ void objectDiscoveryGameTick() {
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
                 ||now-item.lastPositionAtMs>250||item.generation!=generation)
                 continue;
+            // Target eligibility was established before the native melee.
+            // Do not require a second ray hit after the impulse. Identity,
+            // generation, fresh native movement and the grip are still gated.
+            if(input.meleeActivationEnabled&&input.physicalHand==0){
+                nearest=&item;break;
+            }
             float squared{},forward{};
             for(int axis=0;axis<3;++axis){
                 const float delta=item.origin[axis]-input.origin[axis];
@@ -897,10 +922,17 @@ void objectDiscoveryGameTick() {
             std::array<float,3> offset{};
             std::array<float,9> axis{};
             kharvox::GrappleRayAnchor ray{};
-            if(!kharvox::grapplePickupPose(input.origin,input.axis,
+            const bool useLatched=input.meleeActivationEnabled&&input.physicalHand==0
+                &&objectMeleeActivation.handle==nearest->handle;
+            bool poseValid=false;
+            if(useLatched){
+                const auto& p=objectMeleeActivation;
+                offset=p.pickupOffset;axis=p.pickupAxis;ray=p.pickupRay;
+                poseValid=p.pickupPoseValid;
+            }else poseValid=kharvox::grapplePickupPose(input.origin,input.axis,
                     input.rayOrigin,input.aim,nearest->origin,nearest->axis,
-                    input.reachUnits,offset,axis,ray)
-                ||!objectDiscoveryAxisOk(axis.data())){
+                    input.reachUnits,offset,axis,ray);
+            if(!poseValid||!objectDiscoveryAxisOk(axis.data())){
                 held={};return;
             }
             std::copy(offset.begin(),offset.end(),held.relativeOffset);
@@ -1040,13 +1072,26 @@ void objectDiscoveryGameTick() {
                 +(desired[i]-item->origin[i])*factor;
         if(objectDiscoveryAxisOk(desiredAxis)
             &&objectDiscoveryWriteBody(*item,desired,desiredAxis)){
-            if(!held.nativeFollowConfirmed&&input.meleeActivationEnabled
-                &&held.handle==objectMeleeActivation.handle)
-                log("[GRAPPLE-MELEE] native hold confirmed handle="+std::to_string(held.handle));
-            held.nativeFollowConfirmed=true;
-            std::memcpy(item->origin,desired,sizeof(desired));
-            std::memcpy(item->axis,desiredAxis,sizeof(desiredAxis));
-            objectDiscoveryPublish(*item,now);
+            // Read back native pose instead of publishing the commanded
+            // position as if it were a verified visible mesh transform.
+            float actual[3]{},actualAxis[9]{};
+            if(objectDiscoveryReadBodyPose(*item,actual,actualAxis)){
+                float error2{};for(int i=0;i<3;++i){const float e=actual[i]-desired[i];error2+=e*e;}
+                if(!held.nativeFollowConfirmed&&input.meleeActivationEnabled
+                    &&held.handle==objectMeleeActivation.handle){
+                    const bool stopped=objectDiscoveryReleaseToGravity(*item,false);
+                    log("[GRAPPLE-MELEE] catch write readback handle="+std::to_string(held.handle)
+                        +" elapsed_ms="+std::to_string(now-objectMeleeActivation.started)
+                        +" pose_error_units="+std::to_string(std::sqrt(error2))
+                        +" momentum_clear="+std::to_string(stopped)+" render_mesh=UNVERIFIED");
+                }
+                if(std::isfinite(error2)&&error2<1.f)held.nativeFollowConfirmed=true;
+                std::memcpy(item->origin,actual,sizeof(actual));
+                std::memcpy(item->axis,actualAxis,sizeof(actualAxis));
+                // Discovery markers use actual sampled native physics pose,
+                // not the synthetic desired hand target.
+                objectDiscoveryPublish(*item,now);
+            }
         }
     }
     // Do not report a "grabbed" object or open calibration if native
