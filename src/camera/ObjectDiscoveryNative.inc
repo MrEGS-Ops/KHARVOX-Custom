@@ -520,6 +520,8 @@ void objectDiscoveryReleaseNative() {
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
+#include "GrappleGeometryInvestigator.inc"
+
 // Melee activation requests ordinary JOY8 once; keep diagnostic logging.
 // The ray is an origin proxy, not a collision or LOS query. Native melee
 // direction and actual contact remain controlled by DOOM.
@@ -788,6 +790,7 @@ void objectDiscoveryGameTick() {
         objectDiscoveryPublish(item,now);
     }
     readCursor=(readCursor+readsPerTick)%cacheCount;
+    grappleGeometryInvestigatorTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     objectMeleeProbeTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     if(!inputValid)return;
     if(!objectDiscoveryHeld.active){
@@ -835,6 +838,7 @@ void objectDiscoveryGameTick() {
             }
             return;
         }
+        grappleGeometryInvestigatorAcquired(input,*nearest,now);
         auto& held=objectDiscoveryHeld;
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
@@ -869,6 +873,7 @@ void objectDiscoveryGameTick() {
             std::copy(offset.begin(),offset.end(),held.relativeOffset);
             std::copy(axis.begin(),axis.end(),held.relativeAxis);
             held.grappleAnchor=true;
+            grappleGeometryInvestigatorContact(input,*nearest,ray,offset,axis);
             log("[GRAPPLE-ANCHOR] grabbed handle="
                 +std::to_string(held.handle)
                 +" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)"
