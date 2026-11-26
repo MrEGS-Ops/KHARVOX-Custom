@@ -577,11 +577,12 @@ struct VrHandMenuState {
     GrappleAnchorSettings grappleAnchor{};
     bool objectMeleeActivation{}; // original path, session only
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
+    bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
     bool objectGrappleActive() const noexcept {
-        return grappleAnchor.enabled||pistolGrappleEnabled;
+        return dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled;
     }
     bool objectMeleeActive() const noexcept {
-        return objectMeleeActivation||pistolGrappleEnabled;
+        return !dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
     }
     bool objectDiscoveryActive() const noexcept {
         return objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();

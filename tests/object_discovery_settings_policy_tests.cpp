@@ -1,4 +1,5 @@
 #include "../src/openxr/ObjectDiscoverySettingsPolicy.h"
+#include "../src/openxr/GrappleAnchorPolicy.h"
 #include <cassert>
 #include <limits>
 #include <cstdio>
@@ -29,4 +30,21 @@ int main(){
     {std::ofstream f(path);f<<"object_discovery_v3\nenabled=1\nscan_radius_m=8.0\ngrab_reach_laser=bogus\n";}
     assert(!objectDiscoveryLoad(path,loaded)&&loaded.grabReachLaserEnabled);
     std::remove(path.c_str());
+    // Rotated/off-centre bounds, nearest front face and strict reach.
+    const float rayO[3]{0,0,0},rayD[3]{1,0,0},modelO[3]{30,0,0};
+    const float I[9]{1,0,0,0,1,0,0,0,1};
+    const float R[9]{0,1,0,-1,0,0,0,0,1};
+    const float bounds[6]{-2,-5,-1,4,6,7};
+    GrappleRayAnchor hit{};
+    assert(grappleSurfaceBoundsHit(rayO,rayD,modelO,I,bounds,40,hit));
+    assert(std::abs(hit.rayDistance-28.f)<.001f&&!hit.exactVisualMeshHit);
+    assert(grappleSurfaceBoundsHit(rayO,rayD,modelO,R,bounds,40,hit));
+    assert(std::abs(hit.rayDistance-24.f)<.001f);
+    assert(!grappleSurfaceBoundsHit(rayO,rayD,modelO,R,bounds,23,hit));
+    const float miss[3]{0,1,0};
+    assert(!grappleSurfaceBoundsHit(rayO,miss,modelO,R,bounds,40,hit));
+    const float bad[6]{0,0,0,0,1,1};
+    assert(!grappleSurfaceBoundsHit(rayO,rayD,modelO,I,bad,40,hit));
+    const float invalidAxis[9]{1,0,0,1,0,0,0,0,1};
+    assert(!grappleSurfaceBoundsHit(rayO,rayD,modelO,invalidAxis,bounds,40,hit));
 }

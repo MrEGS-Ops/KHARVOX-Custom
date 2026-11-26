@@ -177,7 +177,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Grab and melee eligibility: 2 metres.",
             "Discovery and laser enable automatically.",
             "Grapple contact remains estimated.",
-            "Original or Pistol Grapple; choose one."}}};
+            "Surface Offset: kick only; choose one variant."}}};
         case D::Experimental:return {{{
             "Enable read-only native object observation.",
             "Scan radius: 1-50 m (default 5 m).",

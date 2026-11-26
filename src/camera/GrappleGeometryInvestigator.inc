@@ -183,7 +183,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const char* reas
 void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool valid,
     unsigned long long now,unsigned long long generation){
     auto& s=grappleGeometryInvestigation;
-    if(!valid||!in.pressed||!in.grappleAnchorEnabled||in.calibrating){
+    if(!valid||!in.pressed||!in.grappleAnchorEnabled||in.calibrating||in.dynamicSurfaceOffset){
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
         s.down=false;s.pending=false;return;
     }

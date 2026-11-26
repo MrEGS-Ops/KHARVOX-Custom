@@ -35,7 +35,7 @@ inline bool grappleAnchorLoad(const std::string& path,GrappleAnchorSettings& s){
     return !std::getline(f,extra);
 }
 inline constexpr float kGrappleProxyMissUnits=25.f;
-enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles };
+enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles, CandidateRenderBounds };
 struct GrappleRayAnchor {
     std::array<float,3> worldPoint{};
     float rayDistance{},missDistance{};
@@ -143,6 +143,46 @@ inline bool grappleRayEstimate(
         result.worldPoint[i]=rayOrigin[i]+unit[i]*pointDistance;
     result.rayDistance=pointDistance;
     result.missDistance=std::sqrt(miss2);
+    return true;
+}
+// Ray versus oriented model-local bounds. Candidate geometry, not a mesh or LOS query.
+inline bool grappleSurfaceBoundsHit(const float rayOrigin[3],const float rayDir[3],
+    const float modelOrigin[3],const float modelAxis[9],const float bounds[6],
+    float reach,GrappleRayAnchor& out) noexcept {
+    out={};
+    if(!rayOrigin||!rayDir||!modelOrigin||!modelAxis||!bounds||!std::isfinite(reach)||reach<=0.f)return false;
+    float n2{};
+    for(int i=0;i<3;++i){
+        if(!std::isfinite(rayOrigin[i])||!std::isfinite(rayDir[i])||!std::isfinite(modelOrigin[i])
+            ||!std::isfinite(bounds[i])||!std::isfinite(bounds[i+3])
+            ||bounds[i+3]-bounds[i]<.1f||bounds[i+3]-bounds[i]>300.f
+            ||std::abs(bounds[i])>300.f||std::abs(bounds[i+3])>300.f)return false;
+        n2+=rayDir[i]*rayDir[i];
+        for(int j=0;j<3;++j)if(!std::isfinite(modelAxis[3*i+j]))return false;
+        for(int j=0;j<=i;++j){
+            float dot{};for(int k=0;k<3;++k)dot+=modelAxis[3*i+k]*modelAxis[3*j+k];
+            if(std::abs(dot-(i==j?1.f:0.f))>.025f)return false;
+        }
+    }
+    if(n2<.25f||n2>4.f)return false;
+    const float inv=1.f/std::sqrt(n2);
+    float lo=0.f,hi=reach;
+    for(int i=0;i<3;++i){
+        float o{},d{};
+        for(int j=0;j<3;++j){
+            o+=(rayOrigin[j]-modelOrigin[j])*modelAxis[3*i+j];
+            d+=rayDir[j]*inv*modelAxis[3*i+j];
+        }
+        if(std::abs(d)<1e-6f){if(o<bounds[i]||o>bounds[i+3])return false;continue;}
+        float a=(bounds[i]-o)/d,b=(bounds[i+3]-o)/d;
+        if(a>b)std::swap(a,b);
+        lo=std::max(lo,a);hi=std::min(hi,b);
+        if(lo>hi)return false;
+    }
+    // Do not grab from inside the approximation or behind the controller.
+    if(lo<=.001f||lo>reach)return false;
+    for(int i=0;i<3;++i)out.worldPoint[i]=rayOrigin[i]+rayDir[i]*inv*lo;
+    out.rayDistance=lo;out.source=GrappleContactSource::CandidateRenderBounds;
     return true;
 }
 inline bool grapplePickupPoseFromHit(

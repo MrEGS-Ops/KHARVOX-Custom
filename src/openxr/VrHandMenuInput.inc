@@ -515,7 +515,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GrappleAnchor?3:expInline?3:5;
+                ==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
             const int optionStep=expInline?91:68;
             const int optionHeight=expInline?77:58;
             for(int i=0;i<optionCount;++i)
@@ -856,7 +856,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental?3:
-                        entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?3:1;
+                        entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?4:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1049,20 +1049,21 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
                 }else if(kind==D::GrappleAnchor&&chosen==130){
                     const auto previous=m.grappleAnchor;
-                    m.grappleAnchor.enabled=!m.grappleAnchor.enabled;
+                    m.grappleAnchor.enabled=m.dynamicSurfaceOffset||!m.grappleAnchor.enabled;
                     if(!kharvox::grappleAnchorSave(kharvox::runtimePathA(
                         "grapple_anchor.cfg"),m.grappleAnchor)){
                         m.grappleAnchor=previous;
                         m.message="Grapple Anchor: UserData save failed.";
                     }else{
-                        if(m.grappleAnchor.enabled)m.pistolGrappleEnabled=false;
+                        if(m.grappleAnchor.enabled){m.pistolGrappleEnabled=false;m.dynamicSurfaceOffset=false;}
                         m.message=std::string("Grapple Grab ")
                             +(m.grappleAnchor.enabled?"ON":"OFF")
                             +" (visual-mesh hit not yet verified)";
                         log("[GRAPPLE-ANCHOR] "+m.message);
                     }
                 }else if(kind==D::GrappleAnchor&&chosen==131){
-                    if(m.pistolGrappleEnabled)m.message="Pistol Grapple has its own automatic melee.";
+                    if(m.dynamicSurfaceOffset)m.message="Surface Offset is kick-only; melee disabled.";
+                    else if(m.pistolGrappleEnabled)m.message="Pistol Grapple has its own automatic melee.";
                     else{
                         m.objectMeleeActivation=!m.objectMeleeActivation;
                         m.message=m.objectMeleeActivation?"Melee activation ON.":"Melee activation OFF.";
@@ -1080,11 +1081,18 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             m.grappleAnchor=previous;
                             m.message="Pistol Grapple: unable to save original OFF.";
                         }else{
-                            m.pistolGrappleEnabled=true;
+                            m.pistolGrappleEnabled=true;m.dynamicSurfaceOffset=false;
                             m.message="Pistol Grapple ON; original OFF.";
                         }
                     }
                     log("[PISTOL-GRAPPLE] "+m.message);
+                }else if(kind==D::GrappleAnchor&&chosen==133){
+                    m.dynamicSurfaceOffset=!m.dynamicSurfaceOffset;
+                    if(m.dynamicSurfaceOffset)m.pistolGrappleEnabled=false;
+                    m.message=m.dynamicSurfaceOffset
+                        ?"Dynamic Surface Offset ON; kick first, no melee."
+                        :"Dynamic Surface Offset OFF; original preference restored.";
+                    log("[SURFACE-GRAPPLE] "+m.message);
                 }else if(kind==D::Experimental&&chosen<=132){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;

@@ -2730,7 +2730,7 @@ void KharvoxCameraSetObjectGripInput(
     const float origin[3],const float axis[9],const float aim[3],
     bool pressed,unsigned hand,float reachUnits,float scanUnits,bool enabled,
     bool grappleAnchorEnabled,const float rayOrigin[3],
-    bool meleeActivationEnabled,bool nativeMeleeInputDown) {
+    bool meleeActivationEnabled,bool nativeMeleeInputDown,bool dynamicSurfaceOffset) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& frame=objectDiscoveryGripInput;
@@ -2740,7 +2740,8 @@ void KharvoxCameraSetObjectGripInput(
         &&reachUnits>=50.f&&reachUnits<=5000.f
         &&objectDiscoveryAxisOk(axis);
     frame.pressed=pressed;frame.physicalHand=hand;
-    frame.meleeActivationEnabled=meleeActivationEnabled;
+    frame.dynamicSurfaceOffset=dynamicSurfaceOffset;
+    frame.meleeActivationEnabled=meleeActivationEnabled&&!dynamicSurfaceOffset;
     frame.nativeMeleeInputDown=nativeMeleeInputDown;
     frame.grappleAnchorEnabled=grappleAnchorEnabled;
     frame.reachUnits=std::clamp(reachUnits,50.f,5000.f);
@@ -2761,7 +2762,7 @@ void KharvoxCameraSetObjectGripInput(
     (void)origin;(void)axis;(void)aim;(void)pressed;
     (void)hand;(void)reachUnits;(void)scanUnits;(void)enabled;
     (void)grappleAnchorEnabled;(void)rayOrigin;
-    (void)meleeActivationEnabled;(void)nativeMeleeInputDown;
+    (void)meleeActivationEnabled;(void)nativeMeleeInputDown;(void)dynamicSurfaceOffset;
 #endif
 }
 void KharvoxCameraSetObjectGripCalibration(

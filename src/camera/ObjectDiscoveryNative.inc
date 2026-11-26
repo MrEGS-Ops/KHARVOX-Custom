@@ -20,7 +20,7 @@ struct ObjectDiscoveryGripFrame {
     unsigned long long frameAtMs{},releaseSerial{};
     bool enabled{},pressed{},calibrating{},freeze{},offsetValid{},axisValid{};
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
-    bool grappleAnchorEnabled{};
+    bool grappleAnchorEnabled{},dynamicSurfaceOffset{};
     bool meleeActivationEnabled{};
     bool nativeMeleeInputDown{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
@@ -37,6 +37,9 @@ struct ObjectDiscoveryHeld {
     // once calibration is active; no extra release/re-press required.
     bool rotationActive{},neutralResetLatched{};
     bool active{},calibrating{},nativeFollowConfirmed{},grappleAnchor{};
+    bool surfaceApproaching{};
+    float surfaceLocalContact[3]{},surfacePullAxis[9]{};
+    unsigned long long surfaceStarted{};
 };
 std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
@@ -523,6 +526,51 @@ void objectDiscoveryReleaseNative() {
     objectDiscoveryGripFeedback={};
 }
 #include "GrappleGeometryInvestigator.inc"
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+// Log-derived layout hypothesis: entity +0x408 -> render instance,
+ // render +0x78 = origin, +0x84 = axis, +0xa8 = stable model-local bounds.
+ // No function invocation or write through the candidate render pointer.
+bool objectSurfaceCandidate(const ObjectDiscoveryNativeRecord& item,
+    const ObjectDiscoveryGripFrame& in,kharvox::GrappleRayAnchor& hit,
+    bool debug) {
+    const auto reject=[&](const char* why){
+        if(debug)log("[SURFACE-GRAPPLE] reject handle="+std::to_string(item.handle)+" reason="+why);
+        return false;
+    };
+    float distance2{};
+    for(int i=0;i<3;++i){const float d=item.origin[i]-in.rayOrigin[i];distance2+=d*d;}
+    const float broad=in.reachUnits+300.f;
+    if(!std::isfinite(distance2)||distance2>broad*broad)return false;
+    std::uintptr_t render{},vt{},ev{},bv{};
+    if(!geometryRead(reinterpret_cast<std::uintptr_t>(item.entity),&ev,sizeof(ev))
+        ||!geometryRead(reinterpret_cast<std::uintptr_t>(item.body),&bv,sizeof(bv))
+        ||ev!=item.entityVtable||bv!=item.bodyVtable
+        ||!geometryRead(reinterpret_cast<std::uintptr_t>(item.entity)+0x408,&render,sizeof(render))
+        ||!geometryRead(render,&vt,sizeof(vt))||!geometryInImage(item,vt)
+        ||vt-item.imageBase!=0x283f9b8||geometryType(item,render)!="idRenderModelStatic")
+        return reject("render_identity");
+    float poseBounds[18]{};
+    if(!geometryRead(render+0x78,poseBounds,sizeof(poseBounds)))return reject("read");
+    const float* origin=poseBounds;const float* axis=poseBounds+3;const float* bounds=poseBounds+12;
+    float error2{};
+    for(int i=0;i<3;++i){const float d=origin[i]-item.origin[i];error2+=d*d;}
+    if(!std::isfinite(error2)||error2>64.f||!objectDiscoveryAxisOk(axis))
+        return reject("render_physics_pose_disagreement");
+    for(int i=0;i<3;++i){
+        float dot{};for(int j=0;j<3;++j)dot+=axis[3*i+j]*item.axis[3*i+j];
+        if(!std::isfinite(dot)||dot<.98f)return reject("render_physics_axis_disagreement");
+    }
+    const bool ok=kharvox::grappleSurfaceBoundsHit(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
+    if(debug)log("[SURFACE-GRAPPLE] candidate handle="+std::to_string(item.handle)
+        +" model="+item.modelKey.data()+" body_origin="+geometryFloats(item.origin,3)
+        +" render_origin="+geometryFloats(origin,3)+" render_axis="+geometryFloats(axis,9)
+        +" bounds="+geometryFloats(bounds,6)+" origin_error="+std::to_string(std::sqrt(error2))
+        +" moving="+std::to_string(item.nativeMotionObserved)+" hit="+std::to_string(ok)
+        +" depth="+std::to_string(hit.rayDistance)+" point="+geometryFloats(hit.worldPoint.data(),3)
+        +" layout=CANDIDATE_BOUNDS NOT_MESH");
+    return ok;
+}
+#endif
 
 // Melee activation requests ordinary JOY8 once; keep diagnostic logging.
 // The ray is an origin proxy, not a collision or LOS query. Native melee
@@ -809,11 +857,31 @@ void objectDiscoveryGameTick() {
     readCursor=(readCursor+readsPerTick)%cacheCount;
     // Publish a current target check before any melee request or acquisition.
     // Includes stationary props so a failed wake cannot fall through to BFG.
+    ObjectDiscoveryNativeRecord* surfaceTarget{};
+    kharvox::GrappleRayAnchor surfaceHit{};
+    static unsigned long long surfaceDebugAt{};
+    if(inputValid&&input.pressed&&!worldBlocked&&!objectDiscoveryNeedsGripRelease
+        &&input.dynamicSurfaceOffset&&!objectDiscoveryHeld.active){
+        const bool debug=!surfaceDebugAt||now<surfaceDebugAt||now-surfaceDebugAt>=1200;
+        if(debug){surfaceDebugAt=now;log("[SURFACE-GRAPPLE] scan grip="+geometryFloats(input.origin,3)
+            +" ray="+geometryFloats(input.rayOrigin,3)+" aim="+geometryFloats(input.aim,3));}
+        for(auto& item:objectDiscoveryNative){
+            if(!item.entity||!item.body||!item.poseValid||item.generation!=generation
+                ||now<item.lastPositionAtMs||now-item.lastPositionAtMs>250)continue;
+            kharvox::GrappleRayAnchor hit{};
+            if(objectSurfaceCandidate(item,input,hit,debug)
+                &&(!surfaceTarget||hit.rayDistance<surfaceHit.rayDistance)){
+                surfaceTarget=&item;surfaceHit=hit;
+            }
+        }
+        if(debug)log("[SURFACE-GRAPPLE] selected="+std::to_string(surfaceTarget?surfaceTarget->handle:0)
+            +" motion="+std::to_string(surfaceTarget&&surfaceTarget->nativeMotionObserved));
+    }else surfaceDebugAt=0;
     unsigned gripTarget=0;
     if(inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease
         &&objectDiscoveryManagedPool.begin&&input.physicalHand==0&&input.pressed){
         gripTarget=1;
-        if(objectDiscoveryHeld.active)gripTarget=2;
+        if(objectDiscoveryHeld.active||surfaceTarget)gripTarget=2;
         for(const auto& item:objectDiscoveryNative){
             if(gripTarget==2)break;
             if(!item.entity||!item.body||!item.poseValid||item.generation!=generation
@@ -852,6 +920,7 @@ void objectDiscoveryGameTick() {
         float best2=input.grappleAnchorEnabled
             ?kharvox::kGrappleProxyMissUnits*kharvox::kGrappleProxyMissUnits:input.reachUnits*input.reachUnits;
         for(auto& item:objectDiscoveryNative){
+            if(input.dynamicSurfaceOffset&&(&item!=surfaceTarget))continue;
             if(input.meleeActivationEnabled&&input.physicalHand==0
                 &&(!objectMeleeActivation.readyToGrab||item.handle!=objectMeleeActivation.handle
                     ||item.entity!=objectMeleeActivation.entity||item.body!=objectMeleeActivation.body))continue;
@@ -859,6 +928,7 @@ void objectDiscoveryGameTick() {
                 ||!item.nativeMovedAtMs||now-item.nativeMovedAtMs>3000
                 ||now-item.lastPositionAtMs>250||item.generation!=generation)
                 continue;
+            if(input.dynamicSurfaceOffset){nearest=&item;break;}
             // Target eligibility was established before the native melee.
             // Do not require a second ray hit after the impulse. Identity,
             // generation, fresh native movement and the grip are still gated.
@@ -925,7 +995,11 @@ void objectDiscoveryGameTick() {
             const bool useLatched=input.meleeActivationEnabled&&input.physicalHand==0
                 &&objectMeleeActivation.handle==nearest->handle;
             bool poseValid=false;
-            if(useLatched){
+            if(input.dynamicSurfaceOffset){
+                ray=surfaceHit;
+                poseValid=kharvox::grapplePickupPoseFromHit(input.origin,input.axis,
+                    nearest->origin,nearest->axis,ray,offset,axis);
+            }else if(useLatched){
                 const auto& p=objectMeleeActivation;
                 offset=p.pickupOffset;axis=p.pickupAxis;ray=p.pickupRay;
                 poseValid=p.pickupPoseValid;
@@ -938,10 +1012,24 @@ void objectDiscoveryGameTick() {
             std::copy(offset.begin(),offset.end(),held.relativeOffset);
             std::copy(axis.begin(),axis.end(),held.relativeAxis);
             held.grappleAnchor=true;
+            if(input.dynamicSurfaceOffset){
+                held.surfaceApproaching=true;held.surfaceStarted=now;
+                for(int i=0;i<3;++i){
+                    held.surfaceLocalContact[i]=0.f;
+                    for(int j=0;j<3;++j)held.surfaceLocalContact[i]+=nearest->axis[3*i+j]
+                        *(ray.worldPoint[j]-nearest->origin[j]);
+                }
+                std::memcpy(held.surfacePullAxis,nearest->axis,sizeof(held.surfacePullAxis));
+                log("[SURFACE-GRAPPLE] pull handle="+std::to_string(held.handle)
+                    +" point="+geometryFloats(ray.worldPoint.data(),3)
+                    +" local_contact="+geometryFloats(held.surfaceLocalContact,3)
+                    +" initial_offset="+geometryFloats(offset.data(),3)
+                    +" depth="+std::to_string(ray.rayDistance)+" kick_only=1");
+            }
             grappleGeometryInvestigatorContact(input,*nearest,ray,offset,axis);
             log("[GRAPPLE-ANCHOR] grabbed handle="
                 +std::to_string(held.handle)
-                +" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)"
+                +(input.dynamicSurfaceOffset?" contact=CANDIDATE_ORIENTED_BOUNDS (NOT_RENDER_MESH)":" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)")
                 +" ray_depth="+std::to_string(ray.rayDistance)
                 +" miss="+std::to_string(ray.missDistance)
                 +" world_point="+std::to_string(ray.worldPoint[0])
@@ -1052,6 +1140,18 @@ void objectDiscoveryGameTick() {
         kharvox::objectGripToWorldPose(input.origin,input.axis,
             held.relativeOffset,held.relativeAxis,
             desired,desiredAxis);
+        if(held.surfaceApproaching){
+            if(!input.pressed||!input.dynamicSurfaceOffset||now<held.surfaceStarted
+                ||now-held.surfaceStarted>1000){
+                log("[SURFACE-GRAPPLE] approach cancelled/timeout");
+                objectDiscoveryReleaseNative();return;
+            }
+            std::memcpy(desiredAxis,held.surfacePullAxis,sizeof(desiredAxis));
+            for(int j=0;j<3;++j){
+                desired[j]=input.origin[j];
+                for(int i=0;i<3;++i)desired[j]-=desiredAxis[3*i+j]*held.surfaceLocalContact[i];
+            }
+        }
         float len2{};
         for(int i=0;i<3;++i){
             float d=desired[i]-item->origin[i];len2+=d*d;
@@ -1065,7 +1165,7 @@ void objectDiscoveryGameTick() {
         if(!std::isfinite(len)||len>1500.f){
             objectDiscoveryReleaseNative();return;
         }
-        constexpr float followPerTick=40.f;
+        const float followPerTick=held.surfaceApproaching?80.f:40.f;
         const float factor=len>followPerTick?followPerTick/len:1.f;
         for(int i=0;i<3;++i)
             desired[i]=item->origin[i]
@@ -1085,7 +1185,26 @@ void objectDiscoveryGameTick() {
                         +" pose_error_units="+std::to_string(std::sqrt(error2))
                         +" momentum_clear="+std::to_string(stopped)+" render_mesh=UNVERIFIED");
                 }
-                if(std::isfinite(error2)&&error2<1.f)held.nativeFollowConfirmed=true;
+                if(held.surfaceApproaching){
+                    float arrival2{};
+                    for(int j=0;j<3;++j){
+                        float contact=actual[j];
+                        for(int i=0;i<3;++i)contact+=actualAxis[3*i+j]*held.surfaceLocalContact[i];
+                        const float d=contact-input.origin[j];arrival2+=d*d;
+                    }
+                    if(std::isfinite(arrival2)&&arrival2<1.f&&error2<1.f){
+                        kharvox::objectGripToHandLocalPose(input.origin,input.axis,actual,actualAxis,
+                            held.relativeOffset,held.relativeAxis);
+                        if(!objectDiscoveryAxisOk(held.relativeAxis)){objectDiscoveryReleaseNative();return;}
+                        held.surfaceApproaching=false;held.nativeFollowConfirmed=true;
+                        const bool stopped=objectDiscoveryReleaseToGravity(*item,false);
+                        log("[SURFACE-GRAPPLE] arrived handle="+std::to_string(held.handle)
+                            +" elapsed_ms="+std::to_string(now-held.surfaceStarted)
+                            +" contact_error="+std::to_string(std::sqrt(arrival2))
+                            +" offset="+geometryFloats(held.relativeOffset,3)
+                            +" momentum_clear="+std::to_string(stopped)+" mesh=UNVERIFIED");
+                    }
+                }else if(std::isfinite(error2)&&error2<1.f)held.nativeFollowConfirmed=true;
                 std::memcpy(item->origin,actual,sizeof(actual));
                 std::memcpy(item->axis,actualAxis,sizeof(actualAxis));
                 // Discovery markers use actual sampled native physics pose,
