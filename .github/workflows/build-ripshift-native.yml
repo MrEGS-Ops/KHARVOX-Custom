@@ -146,7 +146,7 @@ jobs:
           path: .vcpkg-bincache
           key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
 
-      - name: Compile and run native grenade gesture policy test
+      - name: Compile and run native input and gameplay policy tests
         shell: powershell
         run: |
           cmake -S tests/policy -B build/gesture-policy -A x64
