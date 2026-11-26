@@ -848,7 +848,7 @@ void paintVrHandMenu() {
                     fill(531,top,384,58,selected?RGB(52,83,99):RGB(39,49,63));
                     write(548,top+8,i==0?"GRAPPLE GRAB":i==1?"ORIGINAL MELEE":i==2?"PISTOL GRAPPLE":i==3?"DYNAMIC SURFACE OFFSET":"ACTIVATION INVESTIGATOR",white);
                     write(843,top+8,active?"ON":"OFF",active?RGB(128,255,177):muted);
-                    write(548,top+30,i==0?"Original grab path":i==1?"Wake props (original only)":i==2?"Hidden pistol / left-hand melee":i==3?"Kick first / bounds contact":"Aim, melee normally; read-only",muted);
+                    write(548,top+30,i==0?"Original grab path":i==1?"Wake props (original only)":i==2?"Hidden pistol / left-hand melee":i==3?"Kick first / bounds contact":"Weapon hand melee; read-only",muted);
                 }
                 write(538,550,m.activationInvestigator?"Investigator pauses all grabbing.":"Only one grab variant. Reach 2 m.",white);
                 write(538,588,"Surface/Pistol/Investigator: session only.",muted);

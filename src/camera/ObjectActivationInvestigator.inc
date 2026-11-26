@@ -92,7 +92,7 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     if(p.handle&&(p.generation!=generation||now<p.armed)){
         objectActivationInvestigatorReset("generation_or_clock");return;
     }
-    // Point without holding grip. A selected body remains latched during a
+    // Point the weapon-hand ray without holding grip. A selected body remains latched during a
     // punch even if the hand ray moves away. No input is generated here.
     ObjectDiscoveryNativeRecord* aimed{};
     float bestMiss=kharvox::kGrappleProxyMissUnits,bestDepth=in.reachUnits;
@@ -128,6 +128,8 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
             +" body_vtable_rva="+geometryHex(aimed->bodyVtable-aimed->imageBase)
             +" entity_vtable_rva="+geometryHex(aimed->entityVtable-aimed->imageBase)
             +" wake_rva=0x179a8f0 signature_ok="+std::to_string(p.signatureOk)
+            +" weapon_hand="+std::string(in.physicalHand==1?"right":"left")
+            +" aim_origin="+geometryFloats(in.rayOrigin,3)+" aim_dir="+geometryFloats(in.aim,3)
             +" proxy_miss="+std::to_string(bestMiss)+" contact_unverified=1");
         // Enumerate matching virtual slots, without invoking any function.
         if(p.signatureOk)for(unsigned i=0;i<128;++i){

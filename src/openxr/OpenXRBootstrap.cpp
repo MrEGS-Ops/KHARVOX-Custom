@@ -5600,17 +5600,21 @@ void updateGameplayActions(XrTime displayTime){
     // the acquisition-only two-hand conditions here made Grip press drop the
     // barrel by invalidating our native pose during calibration.
     const bool attachmentOwnsGrab=s.objectGripWasHeld;
+    const bool investigateActivation=s.vrHandMenu.activationInvestigator;
     const bool freeHandClear=objectMode
-        &&(attachmentOwnsGrab
+        &&(investigateActivation||attachmentOwnsGrab
             ||(!s.twoHandLatched&&!s.twoHandCalibrationMode
                 &&!supportGripInCaptureRange()
                 &&!s.behindHeadWheelActive&&!weaponWheelActive
                 &&!quickHolsterGripConsumed))
         &&s.headZeroValid&&s.worldScale>1.f
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed;
-    const auto& gripController=s.weaponHandLeft
+    // The investigator follows ordinary native melee on the weapon hand.
+    // Only the observer input changes; the actual weapon/melee route does not.
+    const bool observedHandRight=investigateActivation?!s.weaponHandLeft:s.weaponHandLeft;
+    const auto& gripController=observedHandRight
         ?s.rightGripController:s.leftGripController;
-    const auto& aimController=s.weaponHandLeft
+    const auto& aimController=observedHandRight
         ?s.rightController:s.leftController;
     float nativeOrigin[3]{},nativeRayOrigin[3]{},nativeAxis[9]{},nativeAim[3]{};
     float bodyOrigin[3]{},bodyAxis[9]{};
@@ -5668,7 +5672,7 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeOrigin:nullptr,
         gripPoseValid?nativeAxis:nullptr,
         gripPoseValid?nativeAim:nullptr,
-        supportGripDown,s.weaponHandLeft?1u:0u,
+        investigateActivation?false:supportGripDown,observedHandRight?1u:0u,
         kharvox::kObjectDiscoveryGrabReachM*s.worldScale,
         s.vrHandMenu.objectDiscovery.scanRadiusMetres*s.worldScale,
         gripPoseValid,
@@ -9258,7 +9262,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerOnlyLocked.load(std::memory_order_acquire)
         &&(!aerSourceMode||aerSourceQualified)){
-        const bool freeHandRight=s.weaponHandLeft;
+        const bool freeHandRight=s.vrHandMenu.activationInvestigator
+            ?!s.weaponHandLeft:s.weaponHandLeft;
         const auto& sourceGrip=freeHandRight
             ?integratedRightHandPose:integratedLeftHandPose;
         const auto& liveGrip=freeHandRight
