@@ -849,7 +849,7 @@ void paintVrHandMenu() {
                     fill(531,top,384,46,selected?RGB(52,83,99):RGB(39,49,63));
                     write(548,top+4,i?labels[i-1]:(m.nativeResearchTestPage?"TEST MODE (A: COLLECT)":"COLLECT MODE (A: TEST)"),white);
                     if(i){write(843,top+4,on?"ON":"OFF",on?RGB(128,255,177):muted);
-                        write(548,top+23,(ready&bit)?"Data ready / comparison available":"Awaiting usable data",muted);}
+                        write(548,top+23,(ready&bit)?"Data ready / comparison available":(m.nativeResearchTestPage?"LOCKED - collect usable data":"Awaiting usable data"),muted);}
                 }
                 write(538,558,"Tests keep collecting. Read-only.",muted);
                 write(538,583,"Activation pauses grabbing; disable to hold.",muted);

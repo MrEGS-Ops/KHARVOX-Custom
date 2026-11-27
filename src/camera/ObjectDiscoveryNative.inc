@@ -459,7 +459,16 @@ unsigned nativeResearchTests{};
 void nativeResearchEvidence(unsigned bit,const std::string& summary){
     const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
     if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));
-    if(nativeResearchTests&bit)log("[NATIVE-RESEARCH-TEST] group="+std::to_string(bit)+" "+summary);
+    static std::array<unsigned long long,6> lastTest{};
+    static unsigned long long lastGeneration{};
+    const auto generation=nativeResearchReadyGeneration.load(std::memory_order_acquire);
+    if(lastGeneration!=generation){lastTest={};lastGeneration=generation;}
+    if(!(nativeResearchTests&bit))return;
+    unsigned index=0;for(unsigned b=bit;b>1;b>>=1)++index;
+    const auto now=GetTickCount64();
+    if(index>=lastTest.size()||(lastTest[index]&&now>=lastTest[index]&&now-lastTest[index]<500))return;
+    lastTest[index]=now;
+    log("[NATIVE-RESEARCH-TEST] group="+std::to_string(bit)+" "+summary);
 }
 #endif
 #include "GrappleGeometryInvestigator.inc"
@@ -517,7 +526,15 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
         +" measured_acceleration="+geometryFloats(accel,3)
         +" render_pose_valid="+std::to_string(renderOk)
         +(renderOk?" render_origin="+geometryFloats(renderPose,3)+" render_axis="+geometryFloats(renderPose+3,9):std::string{}));
-    if(delta&&item.bodyVtable==item.imageBase+0x2874190)nativeResearchEvidence(8u,"release displacement_velocity="+geometryFloats(measured,3));
+    if(delta&&item.bodyVtable==item.imageBase+0x2874190){
+        float gravity[3]{};std::memcpy(gravity,body.data()+0x44,12);
+        float dot=0.f,norm=0.f;for(unsigned k=0;k<3;++k){dot+=accel[k]*gravity[k];norm+=gravity[k]*gravity[k];}
+        const bool usable=priorMeasured&&std::isfinite(dot)&&std::isfinite(norm)&&norm>.001f;
+        nativeResearchEvidence(8u,"release displacement_velocity="+geometryFloats(measured,3)
+            +" gravity_projection="+std::to_string(usable?dot/std::sqrt(norm):0.f)
+            +" outcome="+(usable?(dot>0.f?"ACCEL_WITH_GRAVITY":"ACCEL_NOT_WITH_GRAVITY"):"INCONCLUSIVE")
+            +" native_release_unchanged=1");
+    }
     std::memcpy(t.previousOrigin,origin,sizeof(origin));
     if(delta)std::memcpy(t.previousVelocity,measured,sizeof(measured));
     t.previousValid=true;t.lastSample=now;
@@ -830,7 +847,15 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
                     +" world_clip="+geometryHex(world)+" world_bounds_valid="+std::to_string(worldRead)+" world_bounds="+geometryFloats(worldBounds,6));
                 kharvox::GrappleRayAnchor hit{};
                 const bool boundsHit=kharvox::grappleSurfaceBoundsHit(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
-                if(objectDiscoveryAxisOk(axis)&&bytes[8]&&!bytes[9])nativeResearchEvidence(2u,"clip_bounds_candidate="+std::to_string(boundsHit)+" native_ray_called=0 world_clip_read="+std::to_string(worldRead));
+                bool boundsOk=true;float poseError=0.f;
+                for(unsigned k=0;k<3;++k){
+                    boundsOk=boundsOk&&std::isfinite(bounds[k])&&std::isfinite(bounds[k+3])&&bounds[k]<=bounds[k+3]&&std::isfinite(origin[k]);
+                    const float e=origin[k]-target->origin[k];poseError+=e*e;
+                }
+                if(boundsOk&&objectDiscoveryAxisOk(axis)&&bytes[8]&&!bytes[9])
+                    nativeResearchEvidence(2u,"clip_bounds_candidate="+std::to_string(boundsHit)
+                        +" clip_body_pose_error="+std::to_string(std::sqrt(poseError))
+                        +" outcome="+(boundsHit?"BOUNDS_HIT":"BOUNDS_MISS")+" native_ray_called=0 world_clip_read="+std::to_string(worldRead));
             }
         }
     }
@@ -850,14 +875,28 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
             float delta[3]{},dest[3]{};std::memcpy(delta,req.data(),12);std::memcpy(dest,req.data()+12,12);
             bool finite=true;for(float v:state)finite=finite&&std::isfinite(v);
             log("[NATIVE-RESEARCH] movement origin_velocity="+geometryFloats(state,9)+" request_delta="+geometryFloats(delta,3)+" destination="+geometryFloats(dest,3)+" clip_move="+std::to_string(req[0x18]));
-            if(finite)nativeResearchEvidence(16u,"observed native movement request; no movement submitted");
+            bool requestFinite=true;for(float v:delta)requestFinite=requestFinite&&std::isfinite(v);for(float v:dest)requestFinite=requestFinite&&std::isfinite(v);
+            if(finite&&requestFinite){
+                static unsigned long long priorGen{},priorAt{};static std::uintptr_t priorOwner{};static float prior[3]{};
+                float speed=0.f;const bool comparable=priorGen==generation&&priorOwner==owner&&priorAt&&now>priorAt&&now-priorAt<2000;
+                if(comparable){for(unsigned k=0;k<3;++k){const float e=state[k]-prior[k];speed+=e*e;}speed=std::sqrt(speed)*1000.f/static_cast<float>(now-priorAt);}
+                std::memcpy(prior,state,12);priorGen=generation;priorOwner=owner;priorAt=now;
+                nativeResearchEvidence(16u,"outcome="+std::string(comparable?"NATIVE_MOVEMENT_SAMPLED":"BASELINE")
+                    +" measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
+            }
         }
     }
     if(mask&32u){
         const bool same=playerLedgeTransitionOwner.load(std::memory_order_acquire)==owner;
         const bool active=playerLedgeTransitionActive.load(std::memory_order_acquire);
-        if(same){log("[NATIVE-RESEARCH] native ledge state active="+std::to_string(active));
-            nativeResearchEvidence(32u,"native ledge active="+std::to_string(active)+" no custom climb");}
+        if(same){
+            static unsigned long long lastGen{};static bool seen{},prior{};
+            if(lastGen!=generation){lastGen=generation;seen=false;prior=false;}
+            const bool changed=seen&&prior!=active;
+            log("[NATIVE-RESEARCH] native ledge state active="+std::to_string(active)+" transition="+std::to_string(changed));
+            if(active||changed)nativeResearchEvidence(32u,"outcome="+std::string(changed?"NATIVE_TRANSITION":"NATIVE_ACTIVE")+" active="+std::to_string(active)+" no_custom_climb=1");
+            seen=true;prior=active;
+        }
     }
 }
 #endif

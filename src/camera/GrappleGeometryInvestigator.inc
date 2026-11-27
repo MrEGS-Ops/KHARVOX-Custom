@@ -178,7 +178,7 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
     std::uintptr_t after{};std::uint32_t afterCount{};
     const bool stable=geometryRead(model+0xae0,&after,sizeof(after))&&after==surfaces
         &&geometryRead(model+0xae8,&afterCount,sizeof(afterCount))&&afterCount==count;
-    if(stable&&decoded&&pose)nativeResearchEvidence(1u,"mesh decoded="+std::to_string(decoded)+" candidate_hit="+std::to_string(best<=in.reachUnits)+" depth="+std::to_string(best));
+    if(stable&&decoded&&pose)nativeResearchEvidence(1u,"mesh decoded="+std::to_string(decoded)+" candidate_hit="+std::to_string(best<=in.reachUnits)+" depth="+std::to_string(best)+" outcome="+(best<=in.reachUnits?"CANDIDATE_TRIANGLE_HIT":(visited==count&&decoded==count?"CANDIDATE_MISS":"INCONCLUSIVE_PARTIAL_MESH")));
     geometryLog("MESH_END visited="+std::to_string(visited)+" decoded="+std::to_string(decoded)
         +" triangles="+std::to_string(totalTriangles)+" logged="+std::to_string(logged)
         +" list_stable="+std::to_string(stable)+" candidate_hit="+std::to_string(stable&&best<=in.reachUnits)

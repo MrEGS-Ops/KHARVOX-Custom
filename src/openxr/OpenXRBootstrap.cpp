@@ -5600,6 +5600,10 @@ void updateGameplayActions(XrTime displayTime){
     // the acquisition-only two-hand conditions here made Grip press drop the
     // barrel by invalidating our native pose during calibration.
     const bool attachmentOwnsGrab=s.objectGripWasHeld;
+    // Drop stale test permissions when the native level generation changes.
+    s.vrHandMenu.nativeResearchTestMask&=KharvoxCameraNativeResearchReady();
+    s.vrHandMenu.activationInvestigator=((s.vrHandMenu.nativeResearchMask|s.vrHandMenu.nativeResearchTestMask)&4u)!=0;
+    s.vrHandMenu.releaseInvestigator=((s.vrHandMenu.nativeResearchMask|s.vrHandMenu.nativeResearchTestMask)&8u)!=0;
     const bool investigateActivation=s.vrHandMenu.activationInvestigator;
     const bool freeHandClear=objectMode
         &&(investigateActivation||attachmentOwnsGrab
