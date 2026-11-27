@@ -793,6 +793,7 @@ void paintVrHandMenu() {
         const bool expInline=devPage&&count>0
             &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
                 ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                ||entries[selected].developer==kharvox::VrMenuDevOption::NativeInteractionResearch
 );
         if(!m.navigation.settingsColumn&&!expInline){
             const auto mod=count>0?entries[overviewSelected].mod:kharvox::VrLiveMod::Other;
@@ -838,8 +839,23 @@ void paintVrHandMenu() {
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt==D::GrappleAnchor){
-                for(int i=0;i<6;++i){
+            if(opt==D::NativeInteractionResearch){
+                const unsigned ready=KharvoxCameraNativeResearchReady();
+                const char* labels[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HOLD / RELEASE","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
+                for(int i=0;i<7;++i){
+                    const int top=186+i*52;const unsigned bit=i?1u<<(i-1):0u;
+                    const bool on=i&&((m.nativeResearchTestPage?m.nativeResearchTestMask:m.nativeResearchMask)&bit);
+                    const bool selected=m.hovered==130+i||(m.navigation.usingStick&&m.navigation.actionIndex==i);
+                    fill(531,top,384,46,selected?RGB(52,83,99):RGB(39,49,63));
+                    write(548,top+4,i?labels[i-1]:(m.nativeResearchTestPage?"TEST MODE (A: COLLECT)":"COLLECT MODE (A: TEST)"),white);
+                    if(i){write(843,top+4,on?"ON":"OFF",on?RGB(128,255,177):muted);
+                        write(548,top+23,(ready&bit)?"Data ready / comparison available":"Awaiting usable data",muted);}
+                }
+                write(538,558,"Tests keep collecting. Read-only.",muted);
+                write(538,583,"Activation pauses grabbing; disable to hold.",muted);
+                write(538,608,"Research switches reset on restart.",muted);
+            }else if(opt==D::GrappleAnchor){
+                for(int i=0;i<4;++i){
                     const int top=186+i*60;
                     const bool active=i==5?m.releaseInvestigator:i==4?m.activationInvestigator:!m.activationInvestigator&&(i==0?(!m.dynamicSurfaceOffset&&m.grappleAnchor.enabled):
                         i==1?(!m.dynamicSurfaceOffset&&!m.pistolGrappleEnabled&&m.objectMeleeActivation):
@@ -852,7 +868,7 @@ void paintVrHandMenu() {
                 }
                 write(538,550,m.activationInvestigator?"Investigator pauses all grabbing.":"Only one grab variant. Reach 2 m.",white);
                 write(538,588,"Surface/Pistol/Investigator: session only.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
@@ -909,7 +925,7 @@ void paintVrHandMenu() {
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }

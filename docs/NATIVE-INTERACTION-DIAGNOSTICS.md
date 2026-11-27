@@ -9,3 +9,6 @@ Based on uploaded Vulkan executable SHA-256 3d8b4393649f80bdae85c19ae2c985c45ec9
 - Stage isolated from active experimental branch while #130 compiles; do not publish until baseline and native compile validation succeed.
 
 Reference: https://github.com/id-Software/DOOM-3-BFG/blob/master/neo/d3xp/physics/Physics_RigidBody.cpp and https://github.com/id-Software/DOOM-3-BFG/blob/master/neo/renderer/Model.h . No copied implementation.
+
+## In-game suite
+DEV > Native Interaction Research Suite: switch Collect/Test; six independent groups. Ready flags require an observed sample and reset per level generation. Test mode runs read-only comparisons while continuing collection. Activation uses weapon-hand aim and pauses object grabbing, release requires existing grab enabled; mesh/collision use support-hand aim. Collision includes clip bounds/world clip identity, not a verified native trace. Player movement observes request/current state, ledge observes existing native state capture. No custom climbing, actual activation call, force hold or VR wireframe implemented. Tests do not submit movement or invoke unknown native functions. No executable redistributed.

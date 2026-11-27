@@ -178,6 +178,7 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
     std::uintptr_t after{};std::uint32_t afterCount{};
     const bool stable=geometryRead(model+0xae0,&after,sizeof(after))&&after==surfaces
         &&geometryRead(model+0xae8,&afterCount,sizeof(afterCount))&&afterCount==count;
+    if(stable&&decoded&&pose)nativeResearchEvidence(1u,"mesh decoded="+std::to_string(decoded)+" candidate_hit="+std::to_string(best<=in.reachUnits)+" depth="+std::to_string(best));
     geometryLog("MESH_END visited="+std::to_string(visited)+" decoded="+std::to_string(decoded)
         +" triangles="+std::to_string(totalTriangles)+" logged="+std::to_string(logged)
         +" list_stable="+std::to_string(stable)+" candidate_hit="+std::to_string(stable&&best<=in.reachUnits)
@@ -318,7 +319,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDisc
 void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool valid,
     unsigned long long now,unsigned long long generation){
     auto& s=grappleGeometryInvestigation;
-    if(!valid||!in.pressed||!in.grappleAnchorEnabled||in.calibrating){
+    if(!valid||!in.pressed||!((in.researchMask|in.researchTestMask)&1u)||in.calibrating){
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
         s.down=false;s.pending=false;return;
     }
@@ -367,7 +368,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
 void grappleGeometryInvestigatorAcquired(const ObjectDiscoveryGripFrame& in,
     const ObjectDiscoveryNativeRecord& item,unsigned long long now){
     auto& s=grappleGeometryInvestigation;
-    if(!in.grappleAnchorEnabled||!s.down||!s.pending)return;
+    if(!((in.researchMask|in.researchTestMask)&1u)||!s.down||!s.pending)return;
     s.pending=false;
     geometryLog("ACQUIRED handle="+std::to_string(item.handle)+" initial_dump_handle="+std::to_string(s.handle)
         +" latency_ms="+std::to_string(now-s.started)+" origin="+geometryFloats(item.origin,3)
@@ -377,7 +378,7 @@ void grappleGeometryInvestigatorAcquired(const ObjectDiscoveryGripFrame& in,
 void grappleGeometryInvestigatorContact(const ObjectDiscoveryGripFrame& in,
     const ObjectDiscoveryNativeRecord& item,const kharvox::GrappleRayAnchor& ray,
     const std::array<float,3>& offset,const std::array<float,9>& axis){
-    if(!grappleGeometryInvestigation.down||!in.grappleAnchorEnabled)return;
+    if(!grappleGeometryInvestigation.down||!((in.researchMask|in.researchTestMask)&1u))return;
     geometryLog("CONTACT handle="+std::to_string(item.handle)
         +" world="+geometryFloats(ray.worldPoint.data(),3)+" depth="+std::to_string(ray.rayDistance)
         +" miss="+std::to_string(ray.missDistance)+" offset="+geometryFloats(offset.data(),3)

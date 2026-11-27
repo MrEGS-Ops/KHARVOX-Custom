@@ -23,6 +23,7 @@ struct ObjectDiscoveryGripFrame {
     bool grappleAnchorEnabled{},dynamicSurfaceOffset{};
     bool meleeActivationEnabled{};
     bool nativeMeleeInputDown{},activationInvestigator{},releaseInvestigator{};
+    unsigned researchMask{},researchTestMask{};bool researchOnly{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -451,6 +452,16 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
     out.modelKey=item.modelKey;
     for(int i=0;i<3;++i)out.origin[i]=item.origin[i];
 }
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+std::atomic<unsigned> nativeResearchReady{};
+std::atomic<unsigned long long> nativeResearchReadyGeneration{};
+unsigned nativeResearchTests{};
+void nativeResearchEvidence(unsigned bit,const std::string& summary){
+    const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
+    if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));
+    if(nativeResearchTests&bit)log("[NATIVE-RESEARCH-TEST] group="+std::to_string(bit)+" "+summary);
+}
+#endif
 #include "GrappleGeometryInvestigator.inc"
 #include "ObjectActivationInvestigator.inc"
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
@@ -506,6 +517,7 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
         +" measured_acceleration="+geometryFloats(accel,3)
         +" render_pose_valid="+std::to_string(renderOk)
         +(renderOk?" render_origin="+geometryFloats(renderPose,3)+" render_axis="+geometryFloats(renderPose+3,9):std::string{}));
+    if(delta&&item.bodyVtable==item.imageBase+0x2874190)nativeResearchEvidence(8u,"release displacement_velocity="+geometryFloats(measured,3));
     std::memcpy(t.previousOrigin,origin,sizeof(origin));
     if(delta)std::memcpy(t.previousVelocity,measured,sizeof(measured));
     t.previousValid=true;t.lastSample=now;
@@ -786,6 +798,69 @@ void objectMeleeActivationTick(const ObjectDiscoveryGripFrame& in,
     log("[GRAPPLE-MELEE] target identity lost; no retarget");
     p.motionLogged=true;
 }
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigned long long now,unsigned long long generation){
+    const unsigned mask=in.researchMask|in.researchTestMask;
+    static unsigned long long last{};
+    static bool gripWasDown{};
+    const bool edge=valid&&in.pressed&&!gripWasDown;
+    gripWasDown=valid&&in.pressed;
+    if(!(mask&50u)||!valid)return;
+    if(!edge&&last&&now>=last&&now-last<500)return;
+    last=now;
+    if(mask&2u){
+        const ObjectDiscoveryNativeRecord* target{};float miss=100.f;
+        for(const auto& item:objectDiscoveryNative){
+            if(!item.entity||!item.body||!item.poseValid||item.generation!=generation||item.bodyVtable!=item.imageBase+0x2874190)continue;
+            kharvox::GrappleRayAnchor hit{};
+            if(kharvox::grappleRayEstimate(in.rayOrigin,in.aim,item.origin,in.reachUnits,25.f,hit)&&hit.missDistance<miss){target=&item;miss=hit.missDistance;}
+        }
+        if(target&&activationSignature(*target)){
+            std::uintptr_t clip{},ownerClip{},world{},vt{};
+            const auto bp=reinterpret_cast<std::uintptr_t>(target->body);
+            std::array<unsigned char,0xb8> bytes{};
+            if(geometryRead(bp+0xe0,&clip,8)&&geometryType(*target,clip).find("idClipModel")!=std::string::npos
+                &&geometryRead(clip,bytes.data(),bytes.size())){
+                float bounds[6]{},origin[3]{},axis[9]{};
+                std::memcpy(bounds,bytes.data()+0x30,24);std::memcpy(origin,bytes.data()+0x88,12);std::memcpy(axis,bytes.data()+0x94,36);
+                const bool worldOk=geometryRead(bp+0x20,&ownerClip,8)&&geometryRead(ownerClip,&world,8)
+                    &&geometryRead(world,&vt,8)&&geometryInImage(*target,vt)&&geometryType(*target,world).find("idClipModel")!=std::string::npos;
+                float worldBounds[6]{};const bool worldRead=worldOk&&geometryRead(world+0x18,worldBounds,24);
+                log("[NATIVE-RESEARCH] collision handle="+std::to_string(target->handle)+" clip="+geometryHex(clip)+" local_bounds="+geometryFloats(bounds,6)
+                    +" world_clip="+geometryHex(world)+" world_bounds_valid="+std::to_string(worldRead)+" world_bounds="+geometryFloats(worldBounds,6));
+                kharvox::GrappleRayAnchor hit{};
+                const bool boundsHit=kharvox::grappleSurfaceBoundsHit(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
+                if(objectDiscoveryAxisOk(axis)&&bytes[8]&&!bytes[9])nativeResearchEvidence(2u,"clip_bounds_candidate="+std::to_string(boundsHit)+" native_ray_called=0 world_clip_read="+std::to_string(worldRead));
+            }
+        }
+    }
+    const auto owner=playerPhysicsOwner.load(std::memory_order_acquire);
+    const auto present=cameraPresentSerial.load(std::memory_order_acquire);
+    const auto capture=playerPhysicsCapturePresent.load(std::memory_order_acquire);
+    if(!owner||!playerPhysicsOriginValid.load(std::memory_order_acquire)||!capture||present<capture||present-capture>2)return;
+    if(mask&16u){
+        const auto phys=owner+0x14e58;
+        std::uintptr_t vt{};
+        const auto base=objectDiscoveryManagedPool.imageBase;
+        std::array<unsigned char,0x3c> req{};
+        float state[9]{};
+        if(base&&geometryRead(phys,&vt,8)&&vt==base+0x28589b0
+            &&geometryRead(phys+0x1a70,req.data(),req.size())&&geometryRead(phys+0x1ab8,state,sizeof(state))
+            &&owner==playerPhysicsOwner.load(std::memory_order_acquire)){
+            float delta[3]{},dest[3]{};std::memcpy(delta,req.data(),12);std::memcpy(dest,req.data()+12,12);
+            bool finite=true;for(float v:state)finite=finite&&std::isfinite(v);
+            log("[NATIVE-RESEARCH] movement origin_velocity="+geometryFloats(state,9)+" request_delta="+geometryFloats(delta,3)+" destination="+geometryFloats(dest,3)+" clip_move="+std::to_string(req[0x18]));
+            if(finite)nativeResearchEvidence(16u,"observed native movement request; no movement submitted");
+        }
+    }
+    if(mask&32u){
+        const bool same=playerLedgeTransitionOwner.load(std::memory_order_acquire)==owner;
+        const bool active=playerLedgeTransitionActive.load(std::memory_order_acquire);
+        if(same){log("[NATIVE-RESEARCH] native ledge state active="+std::to_string(active));
+            nativeResearchEvidence(32u,"native ledge active="+std::to_string(active)+" no custom climb");}
+    }
+}
+#endif
 void objectDiscoveryGameTick() {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     const auto now=GetTickCount64();
@@ -800,6 +875,9 @@ void objectDiscoveryGameTick() {
     bool inputValid=input.enabled&&input.frameAtMs
         &&now>=input.frameAtMs&&now-input.frameAtMs<180
         &&objectDiscoveryAxisOk(input.axis);
+    const auto researchGeneration=levelTransitionGeneration.load(std::memory_order_acquire);
+    if(nativeResearchReadyGeneration.load(std::memory_order_acquire)!=researchGeneration){nativeResearchReady.store(0,std::memory_order_release);nativeResearchReadyGeneration.store(researchGeneration,std::memory_order_release);}
+    nativeResearchTests=input.researchTestMask&nativeResearchReady.load(std::memory_order_acquire);
     const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
     const bool worldBlocked=!KharvoxCameraWorldActive()
         ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();
@@ -1010,6 +1088,7 @@ void objectDiscoveryGameTick() {
         objectGripTargetStatus=gripTarget;
         objectGripTargetAtMs=now;objectGripTargetGeneration=generation;
     }
+    nativeResearchObserve(input,inputValid&&!worldBlocked,now,generation);
     if(input.activationInvestigator){
         objectMeleeActivationTick(input,false,now,generation);
         if(objectDiscoveryHeld.active)objectDiscoveryReleaseNative();
@@ -1018,6 +1097,7 @@ void objectDiscoveryGameTick() {
     }
     objectActivationInvestigatorReset("toggle_off");
     grappleGeometryInvestigatorTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
+    if(input.researchOnly){objectMeleeActivationTick(input,false,now,generation);if(objectDiscoveryHeld.active)objectDiscoveryReleaseNative();return;}
     objectMeleeActivationTick(input,inputValid&&!worldBlocked&&!objectDiscoveryNeedsGripRelease,now,generation);
     if(!inputValid)return;
     if(!objectDiscoveryHeld.active){

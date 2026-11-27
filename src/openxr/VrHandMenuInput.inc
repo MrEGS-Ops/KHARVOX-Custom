@@ -502,6 +502,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
                 &&s.vrHandMenu.page==kharvox::VrMenuPage::Dev
                 &&(list[row].developer==kharvox::VrMenuDevOption::Experimental
                     ||list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch
 );
             if(!s.vrHandMenu.navigation.settingsColumn&&!expInline){
                 const bool devFolder=row>=0&&row<static_cast<int>(list.size())
@@ -515,10 +516,11 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GrappleAnchor?6:expInline?3:5;
+                ==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
             const bool grappleInline=list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor;
-            const int optionStep=grappleInline?60:expInline?91:68;
-            const int optionHeight=grappleInline?52:expInline?77:58;
+            const bool researchInline=list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch;
+            const int optionStep=researchInline?52:grappleInline?60:expInline?91:68;
+            const int optionHeight=researchInline?46:grappleInline?52:expInline?77:58;
             for(int i=0;i<optionCount;++i)
                 if(pixelY>=optionY+i*optionStep
                     &&pixelY<optionY+optionHeight+i*optionStep)
@@ -857,7 +859,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental?3:
-                        entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?6:1;
+                        entry.developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?4:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -880,6 +882,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool experimentalSelected=devPage&&n>0
                 &&(rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::NativeInteractionResearch
 );
             kharvox::vrMenuNavigateStick(m.navigation,
                 (m.navigation.settingsColumn||experimentalSelected)
@@ -1030,10 +1033,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.selectedRow=std::max(0,static_cast<int>(activeVrMenuEntries().size())-1);
                 m.modScroll=0;m.navigation={};
                 m.message="Back to MOD SETTINGS.";
-            }else if(devPage&&chosen>=130&&chosen<=135&&n>0
+            }else if(devPage&&chosen>=130&&chosen<=136&&n>0
                 &&(m.navigation.settingsColumn
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::Experimental
                     ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::GrappleAnchor
+                    ||rows[m.selectedRow].developer==kharvox::VrMenuDevOption::NativeInteractionResearch
 )){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
@@ -1094,14 +1098,21 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         ?"Dynamic Surface Offset ON; kick first, no melee."
                         :"Dynamic Surface Offset OFF; original preference restored.";
                     log("[SURFACE-GRAPPLE] "+m.message);
-                }else if(kind==D::GrappleAnchor&&chosen==134){
-                    m.activationInvestigator=!m.activationInvestigator;
-                    m.message=m.activationInvestigator?"Activation Investigator ON: aim, then melee normally.":"Activation Investigator OFF; grab preferences restored.";
-                    log("[ACTIVATION-INV] "+m.message);
-                }else if(kind==D::GrappleAnchor&&chosen==135){
-                    m.releaseInvestigator=!m.releaseInvestigator;
-                    m.message=m.releaseInvestigator?"Release Investigator ON: grab and release normally.":"Release Investigator OFF.";
-                    log("[RELEASE-INV] "+m.message);
+                }else if(kind==D::NativeInteractionResearch){
+                    const int index=chosen-130;
+                    if(!index){m.nativeResearchTestPage=!m.nativeResearchTestPage;m.message=m.nativeResearchTestPage?"TEST: unlocks after usable data.":"COLLECT: toggle groups.";}
+                    else{
+                        const unsigned bit=1u<<(index-1);
+                        const unsigned ready=KharvoxCameraNativeResearchReady();
+                        if(m.nativeResearchTestPage){
+                            if(m.nativeResearchTestMask&bit)m.nativeResearchTestMask&=~bit;
+                            else if(ready&bit)m.nativeResearchTestMask|=bit;
+                            else{m.message="Test locked: collect usable data first.";}
+                        }else m.nativeResearchMask^=bit;
+                        m.activationInvestigator=((m.nativeResearchMask|m.nativeResearchTestMask)&4u)!=0;
+                        m.releaseInvestigator=((m.nativeResearchMask|m.nativeResearchTestMask)&8u)!=0;
+                        log("[NATIVE-RESEARCH] collect="+std::to_string(m.nativeResearchMask)+" test="+std::to_string(m.nativeResearchTestMask)+" ready="+std::to_string(ready));
+                    }
                 }else if(kind==D::Experimental&&chosen<=132){
                     const auto previous=m.objectDiscovery;
                     const int option=chosen-130;

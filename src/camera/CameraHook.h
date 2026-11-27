@@ -64,7 +64,8 @@ void KharvoxCameraSetObjectGripInput(
     bool grappleAnchorEnabled,const float rayOrigin[3],
     bool meleeActivationEnabled=false,bool nativeMeleeInputDown=false,
     bool dynamicSurfaceOffset=false,bool activationInvestigator=false,
-    bool releaseInvestigator=false);
+    bool releaseInvestigator=false,unsigned researchMask=0,unsigned researchTestMask=0,bool researchOnly=false);
+unsigned KharvoxCameraNativeResearchReady();
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
     bool calibrating,bool freezeObject,bool resetToNeutral,

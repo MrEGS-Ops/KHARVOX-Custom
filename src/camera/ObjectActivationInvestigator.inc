@@ -187,6 +187,7 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     }
     if(p.tracing){
         ++p.samples;p.motionSeen=p.motionSeen||moved;
+        if(p.signatureOk&&item->bodyVtable==item->imageBase+0x2874190&&p.motionSeen)nativeResearchEvidence(4u,"native_motion=1 rest_word="+geometryHex(activationWord(body,0x170))+" callback_call_observed=0");
         const auto elapsed=now-p.started;
         activationDiff("body",p.previous,body,elapsed);
         activationDiff("entity",p.entityPrevious,entity,elapsed);

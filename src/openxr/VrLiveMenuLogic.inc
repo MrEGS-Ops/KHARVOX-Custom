@@ -31,6 +31,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.objectDiscovery.enabled,D::Experimental});
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
             s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.objectMeleeActive(),D::GrappleAnchor});
+        rows.push_back({"Native Interaction Research Suite",VrLiveMod::Other,s.vrHandMenu.nativeResearchActive(),D::NativeInteractionResearch});
 #endif
         return rows;
     }
@@ -171,6 +172,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
             ""}}};
+        case D::NativeInteractionResearch:return {{{"Collect and test six native systems.",
+            "All switches session-only; OFF at launch.",
+            "Tests unlock after usable data.",
+            "Activation uses weapon hand; pauses grab.",
+            "Hold/release uses existing Grapple Grab.",
+            "Read-only comparison tests."}}};
         case D::GrappleAnchor:return {{{
             "Grip to pick up movable props.",
             "Melee activation wakes stationary props.",

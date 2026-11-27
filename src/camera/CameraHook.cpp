@@ -2730,7 +2730,7 @@ void KharvoxCameraSetObjectGripInput(
     const float origin[3],const float axis[9],const float aim[3],
     bool pressed,unsigned hand,float reachUnits,float scanUnits,bool enabled,
     bool grappleAnchorEnabled,const float rayOrigin[3],
-    bool meleeActivationEnabled,bool nativeMeleeInputDown,bool dynamicSurfaceOffset,bool activationInvestigator,bool releaseInvestigator) {
+    bool meleeActivationEnabled,bool nativeMeleeInputDown,bool dynamicSurfaceOffset,bool activationInvestigator,bool releaseInvestigator,unsigned researchMask,unsigned researchTestMask,bool researchOnly) {
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     auto& frame=objectDiscoveryGripInput;
@@ -2743,6 +2743,7 @@ void KharvoxCameraSetObjectGripInput(
     frame.dynamicSurfaceOffset=dynamicSurfaceOffset&&!activationInvestigator;
     frame.activationInvestigator=activationInvestigator;
     frame.releaseInvestigator=releaseInvestigator;
+    frame.researchMask=researchMask;frame.researchTestMask=researchTestMask;frame.researchOnly=researchOnly;
     frame.meleeActivationEnabled=meleeActivationEnabled&&!dynamicSurfaceOffset;
     frame.nativeMeleeInputDown=nativeMeleeInputDown;
     frame.grappleAnchorEnabled=grappleAnchorEnabled;
@@ -2764,7 +2765,15 @@ void KharvoxCameraSetObjectGripInput(
     (void)origin;(void)axis;(void)aim;(void)pressed;
     (void)hand;(void)reachUnits;(void)scanUnits;(void)enabled;
     (void)grappleAnchorEnabled;(void)rayOrigin;
-    (void)meleeActivationEnabled;(void)nativeMeleeInputDown;(void)dynamicSurfaceOffset;(void)activationInvestigator;(void)releaseInvestigator;
+    (void)meleeActivationEnabled;(void)nativeMeleeInputDown;(void)dynamicSurfaceOffset;(void)activationInvestigator;(void)releaseInvestigator;(void)researchMask;(void)researchTestMask;(void)researchOnly;
+#endif
+}
+unsigned KharvoxCameraNativeResearchReady(){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(nativeResearchReadyGeneration.load(std::memory_order_acquire)!=levelTransitionGeneration.load(std::memory_order_acquire))return 0;
+    return nativeResearchReady.load(std::memory_order_acquire);
+#else
+    return 0;
 #endif
 }
 void KharvoxCameraSetObjectGripCalibration(
