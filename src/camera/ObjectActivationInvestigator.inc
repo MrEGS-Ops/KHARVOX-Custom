@@ -69,6 +69,31 @@ void activationDiff(const char* type,const std::array<unsigned char,0x300>& befo
     if(changes)activationLog(std::string("delta ")+type+" t_ms="+std::to_string(elapsed)
         +" changed="+std::to_string(changes)+line);
 }
+// Field names are reflected metadata, not a claim about solver units or vector halves.
+// Exact rigid-body RTTI vtable is required; no callbacks are invoked.
+std::string activationReflectedState(const ObjectDiscoveryNativeRecord& item,
+    const std::array<unsigned char,0x300>& bytes){
+    if(item.bodyVtable!=item.imageBase+0x2874190||!activationSignature(item))
+        return " reflected_layout_unavailable=1";
+    float spatial[6]{},force[6]{},push[6]{},solverOrigin[3]{},solverAxis[9]{},gravity[3]{};
+    std::int32_t rest{};std::uint32_t physicsId{};std::uintptr_t callback{},vt{},fn{};
+    std::memcpy(&rest,bytes.data()+0x170,4);
+    std::memcpy(spatial,bytes.data()+0x1d4,24);std::memcpy(force,bytes.data()+0x1ec,24);
+    std::memcpy(push,bytes.data()+0x204,24);
+    std::memcpy(solverOrigin,bytes.data()+0x1a4,12);std::memcpy(solverAxis,bytes.data()+0x1b0,36);
+    std::memcpy(gravity,bytes.data()+0x44,12);std::memcpy(&physicsId,bytes.data()+0xc,4);
+    std::memcpy(&callback,bytes.data()+0x28,8);
+    const bool callbackOk=geometryRead(callback,&vt,8)&&geometryInImage(item,vt)
+        &&geometryRead(vt+0x48,&fn,8)&&geometryInImage(item,fn)
+        &&executableMemory(reinterpret_cast<const void*>(fn));
+    return " at_rest="+std::to_string(rest)+" spatial_velocity_1d4="+geometryFloats(spatial,6)
+        +" external_force_1ec="+geometryFloats(force,6)+" push_velocity_204="+geometryFloats(push,6)
+        +" solver_origin="+geometryFloats(solverOrigin,3)+" solver_axis="+geometryFloats(solverAxis,9)
+        +" gravity="+geometryFloats(gravity,3)+" physics_id="+std::to_string(physicsId)
+        +" callback="+geometryHex(callback)+" callback_type="+(callbackOk?geometryType(item,callback):std::string{})
+        +" callback_slot48_rva="+geometryHex(callbackOk?fn-item.imageBase:0)
+        +" callback_observed_call=0";
+}
 void activationSummary(const ObjectDiscoveryNativeRecord& item,
     const std::array<unsigned char,0x300>& bytes,unsigned long long elapsed,const char* phase){
     const auto& p=activationInvestigation;
@@ -77,15 +102,7 @@ void activationSummary(const ObjectDiscoveryNativeRecord& item,
         +" last_motion_ms="+std::to_string(item.nativeMovedAtMs)
         +" origin="+geometryFloats(item.origin,3)
         +" axis="+geometryFloats(item.axis,9);
-    if(p.signatureOk){
-        float lin[3]{},ang[3]{},candidateImpulse[6]{};
-        std::memcpy(candidateImpulse,bytes.data()+0x1D4,sizeof(candidateImpulse));
-        std::memcpy(lin,bytes.data()+0x1EC,sizeof(lin));
-        std::memcpy(ang,bytes.data()+0x1F8,sizeof(ang));
-        line+=" wake_word_170="+geometryHex(activationWord(bytes,0x170))
-            +" linear_1ec="+geometryFloats(lin,3)+" angular_1f8="+geometryFloats(ang,3)
-            +" candidate_impulse_1d4="+geometryFloats(candidateImpulse,6);
-    }else line+=" wake_signature_mismatch=1";
+    line+=activationReflectedState(item,bytes);
     activationLog(line);
 }
 void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool valid,
@@ -137,8 +154,8 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
         if(p.signatureOk)for(unsigned i=0;i<128;++i){
             std::uintptr_t fn{};
             if(!geometryRead(aimed->bodyVtable+i*sizeof(fn),&fn,sizeof(fn)))break;
-            if(fn==aimed->imageBase+0x179A8F0)
-                activationLog("candidate wake virtual slot="+geometryHex(i*sizeof(fn)));
+            if(fn==aimed->imageBase+0x179A8F0||fn==aimed->imageBase+0x179A900||fn==aimed->imageBase+0x179AAD0)
+                activationLog("candidate native slot="+geometryHex(i*sizeof(fn))+" rva="+geometryHex(fn-aimed->imageBase));
         }
         activationSummary(*aimed,body,0,"baseline");
         return;
@@ -160,11 +177,11 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     float d2{};for(unsigned i=0;i<3;++i){const float d=item->origin[i]-p.priorOrigin[i];d2+=d*d;}
     const bool moved=std::isfinite(d2)&&d2>.25f;
     const bool wakeChanged=p.signatureOk&&activationWord(body,0x170)!=activationWord(p.previous,0x170);
-    const bool velocityChanged=p.signatureOk&&std::memcmp(body.data()+0x1EC,p.previous.data()+0x1EC,24)!=0;
+    const bool velocityChanged=p.signatureOk&&std::memcmp(body.data()+0x1D4,p.previous.data()+0x1D4,72)!=0;
     if(!p.tracing&&(edge||moved||wakeChanged||velocityChanged)){
         p.tracing=true;p.started=now;p.lastSummary=0;
         p.baseline=p.previous;p.entityBaseline=p.entityPrevious;
-        activationLog("trace_start reason="+std::string(edge?"melee_input":wakeChanged?"wake_word_change":velocityChanged?"velocity_change":"native_motion")
+        activationLog("trace_start reason="+std::string(edge?"melee_input":wakeChanged?"wake_word_change":velocityChanged?"reflected_state_change":"native_motion")
             +" sampled_order_not_call_trace=1");
         activationSummary(*item,p.previous,0,"pre_event_bytes");
     }

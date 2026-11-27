@@ -50,7 +50,141 @@ std::string geometryAsset(std::uintptr_t address){
 void geometryLog(const std::string& line){
     log("[GEOMETRY-INV] id="+std::to_string(grappleGeometryInvestigation.serial)+" "+line);
 }
-void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const char* reason){
+// Reflected DOOM 2016 Vulkan layout. Diagnostic only: never supplies a gameplay hit.
+// Bound all work, reject alternate encodings, and compare decoded local bounds.
+bool geometryReflectedSignature(const ObjectDiscoveryNativeRecord& item){
+    constexpr unsigned char getter[]{0x48,0x8b,0x81,0x90,0x0e,0x00,0x00,0x48,0x85,0xc0,0x75,0x01,0xc3,0x48,0x05,0x88,0x00,0x00,0x00,0xc3};
+    constexpr unsigned char loop[]{0x48,0x89,0x5c,0x24,0x18,0x48,0x89,0x6c,0x24,0x20,0x41,0x56,0x48,0x83,0xec,0x20,0x45,0x33,0xf6,0x48,0x8b,0xd9};
+    unsigned char buf[32]{};
+    return item.imageSize>0x283f9b8+8
+        &&geometryRead(item.imageBase+0x15de100,buf,sizeof(getter))
+        &&std::memcmp(buf,getter,sizeof(getter))==0
+        &&geometryRead(item.imageBase+0x15d85e0,buf,sizeof(loop))
+        &&std::memcmp(buf,loop,sizeof(loop))==0;
+}
+void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectDiscoveryGripFrame& in){
+    const auto start=GetTickCount64();
+    if(!geometryReflectedSignature(item)){geometryLog("MESH_SKIP reason=signature");return;}
+    std::uintptr_t model{},vt{},surfaces{};
+    std::uint32_t count{};
+    float transform[15]{};
+    const auto ep=reinterpret_cast<std::uintptr_t>(item.entity);
+    if(!geometryRead(ep+0x408,&model,sizeof(model))||!geometryRead(model,&vt,sizeof(vt))
+        ||vt!=item.imageBase+0x283f9b8||!geometryRead(model+0xae0,&surfaces,sizeof(surfaces))
+        ||!geometryRead(model+0xae8,&count,sizeof(count))||!geometryRead(model+0xc8,transform,sizeof(transform))
+        ||!surfaces||!count||count>128){
+        geometryLog("MESH_SKIP reason=model_or_list model="+geometryHex(model)+" count="+std::to_string(count));return;
+    }
+    bool pose=objectDiscoveryAxisOk(transform+3);
+    for(unsigned k=0;k<3;++k)
+        pose=pose&&std::isfinite(transform[k])&&std::isfinite(transform[12+k])
+            &&std::abs(transform[12+k])>.0001f&&std::abs(transform[12+k])<100.f;
+    geometryLog("MESH_BEGIN model="+geometryHex(model)+" surfaces="+std::to_string(count)
+        +" game_origin="+geometryFloats(transform,3)+" game_axis="+geometryFloats(transform+3,9)
+        +" scale="+geometryFloats(transform+12,3)+" pose_plausible="+std::to_string(pose)
+        +" ray="+geometryFloats(in.rayOrigin,3)+" aim="+geometryFloats(in.aim,3));
+    unsigned decoded=0,logged=0,visited=0,totalTriangles=0;
+    float best=in.reachUnits+1.f;std::array<float,3> hitPoint{};
+    for(unsigned si=0;si<count&&si<16&&GetTickCount64()-start<20;++si){
+        ++visited;
+        std::array<unsigned char,0x60> surface{};
+        if(!geometryRead(surfaces+si*0x60,surface.data(),surface.size()))break;
+        std::uintptr_t material{},tri{},joints{},morph{};
+        std::memcpy(&material,surface.data(),8);std::memcpy(&tri,surface.data()+0x18,8);
+        std::memcpy(&joints,surface.data()+0x30,8);std::memcpy(&morph,surface.data()+0x40,8);
+        if(!material||!tri||joints||morph){geometryLog("MESH_SURFACE_SKIP i="+std::to_string(si)+" reason=disabled_or_deformed");continue;}
+        std::array<unsigned char,0x84> h{};
+        if(!geometryRead(tri,h.data(),h.size()))continue;
+        float bounds[6]{};std::uint32_t primitive{},ni{},nv{},mask{},gpuMask{};
+        std::uintptr_t verts{},indices{};
+        std::memcpy(bounds,h.data(),24);std::memcpy(&primitive,h.data()+0x1c,4);
+        std::memcpy(&ni,h.data()+0x20,4);std::memcpy(&nv,h.data()+0x24,4);
+        std::memcpy(&mask,h.data()+0x68,4);std::memcpy(&verts,h.data()+0x70,8);
+        std::memcpy(&indices,h.data()+0x78,8);std::memcpy(&gpuMask,h.data()+0x80,4);
+        geometryLog("MESH_SURFACE i="+std::to_string(si)+" primitive="+std::to_string(primitive)
+            +" vertices="+std::to_string(nv)+" indices="+std::to_string(ni)
+            +" cpu_mask="+geometryHex(mask)+" gpu_mask="+geometryHex(gpuMask)
+            +" cpu_verts="+geometryHex(verts)+" cpu_indices="+geometryHex(indices)
+            +" bounds="+geometryFloats(bounds,6));
+        if(primitive!=0||mask!=0x1801f||!verts||!indices||nv<3||nv>4096||ni<3||ni%3||ni>12288
+            ||totalTriangles+ni/3>8192)continue;
+        bool boundsOk=true;
+        for(unsigned k=0;k<3;++k)boundsOk=boundsOk&&std::isfinite(bounds[k])&&std::isfinite(bounds[k+3])
+            &&bounds[k]<=bounds[k+3]&&std::abs(bounds[k])<100000.f&&std::abs(bounds[k+3])<100000.f;
+        if(!boundsOk)continue;
+        std::vector<std::uint16_t> ix(ni);
+        if(!geometryRead(indices,ix.data(),ix.size()*sizeof(ix[0])))continue;
+        bool indexOk=true;for(auto i:ix)if(i>=nv){indexOk=false;break;}
+        if(!indexOk){geometryLog("MESH_REJECT reason=index_range");continue;}
+        // Reflection says 48 bytes; an embedded comment says 32. Evaluate both,
+        // accept only a unique bounds-consistent interpretation for telemetry.
+        std::vector<std::array<float,3>> points;
+        unsigned chosen=0,passing=0;
+        for(unsigned stride:{48u,32u}){
+            std::vector<unsigned char> raw(static_cast<std::size_t>(nv)*stride);
+            if(!geometryRead(verts,raw.data(),raw.size()))continue;
+            std::vector<std::array<float,3>> trial(nv);
+            float lo[3]{1e30f,1e30f,1e30f},hi[3]{-1e30f,-1e30f,-1e30f};
+            bool ok=true;
+            for(unsigned i=0;i<nv&&ok;++i){
+                std::memcpy(trial[i].data(),raw.data()+static_cast<std::size_t>(i)*stride,12);
+                for(unsigned k=0;k<3;++k){
+                    const float f=trial[i][k];
+                    if(!std::isfinite(f)||std::abs(f)>100000.f){ok=false;break;}
+                    lo[k]=std::min(lo[k],f);hi[k]=std::max(hi[k],f);
+                }
+            }
+            for(unsigned k=0;k<3&&ok;++k){
+                const float tolerance=std::max(.25f,(bounds[k+3]-bounds[k])*.025f);
+                if(std::abs(lo[k]-bounds[k])>tolerance||std::abs(hi[k]-bounds[k+3])>tolerance)ok=false;
+            }
+            geometryLog("MESH_LAYOUT i="+std::to_string(si)+" stride="+std::to_string(stride)
+                +" bounds_match="+std::to_string(ok)+" lo="+geometryFloats(lo,3)+" hi="+geometryFloats(hi,3));
+            if(ok){++passing;chosen=stride;points=std::move(trial);}
+        }
+        std::array<unsigned char,0x84> check{};
+        if(passing!=1||!geometryRead(tri,check.data(),check.size())||check!=h){
+            geometryLog("MESH_REJECT i="+std::to_string(si)+" reason=ambiguous_or_changed");continue;
+        }
+        ++decoded;totalTriangles+=ni/3;
+        std::vector<float> world;world.reserve(static_cast<std::size_t>(ni)*3);
+        // Local triangle samples allow an offline wireframe comparison. No XR
+        // render-thread publication or native renderer invocation in this pass.
+        std::ostringstream sample;unsigned batch=0;
+        for(unsigned j=0;j<ni;j+=3){
+            for(unsigned q=0;q<3;++q){
+                const auto& p=points[ix[j+q]];
+                if(logged<256){
+                    if(q)sample<<';';
+                    sample<<geometryFloats(p.data(),3);
+                }
+                if(pose)for(unsigned k=0;k<3;++k){
+                    float v=transform[k];
+                    for(unsigned l=0;l<3;++l)v+=p[l]*transform[12+l]*transform[3+3*l+k];
+                    world.push_back(v);
+                }
+            }
+            if(logged<256){sample<<'|';++logged;++batch;}
+            if(batch==8||(j+3==ni&&batch)){geometryLog("MESH_TRIANGLES i="+std::to_string(si)+" local="+sample.str());sample.str("");sample.clear();batch=0;}
+        }
+        geometryLog("MESH_DECODE i="+std::to_string(si)+" stride="+std::to_string(chosen)
+            +" triangles="+std::to_string(ni/3)+" status=CANDIDATE_NOT_GAMEPLAY");
+        if(pose&&!world.empty()){
+            kharvox::GrappleRayAnchor hit{};
+            if(kharvox::grappleRenderTriangleHit(in.rayOrigin,in.aim,world.data(),ni/3,in.reachUnits,hit)
+                &&hit.rayDistance<best){best=hit.rayDistance;hitPoint=hit.worldPoint;}
+        }
+    }
+    std::uintptr_t after{};std::uint32_t afterCount{};
+    const bool stable=geometryRead(model+0xae0,&after,sizeof(after))&&after==surfaces
+        &&geometryRead(model+0xae8,&afterCount,sizeof(afterCount))&&afterCount==count;
+    geometryLog("MESH_END visited="+std::to_string(visited)+" decoded="+std::to_string(decoded)
+        +" triangles="+std::to_string(totalTriangles)+" logged="+std::to_string(logged)
+        +" list_stable="+std::to_string(stable)+" candidate_hit="+std::to_string(stable&&best<=in.reachUnits)
+        +" candidate_world="+geometryFloats(hitPoint.data(),3)+" candidate_depth="+std::to_string(best)
+        +" elapsed_ms="+std::to_string(GetTickCount64()-start)+" verified_geometry=NONE");
+}
+void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDiscoveryGripFrame& in,const char* reason){
     auto& state=grappleGeometryInvestigation;
     if(state.dumps>=2||!item.entity||!item.body)return;
     if(item.generation!=levelTransitionGeneration.load(std::memory_order_acquire))return;
@@ -71,6 +205,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const char* reas
         +" motion="+std::to_string(item.nativeMotionObserved)
         +" observed_ms="+std::to_string(item.observedAtMs)
         +" moved_ms="+std::to_string(item.nativeMovedAtMs));
+    geometryReflectedMesh(item,in);
     struct Node{std::uintptr_t address{},parent{};unsigned offset{},depth{},limit{};std::string type;};
     std::vector<Node> nodes;
     nodes.push_back({ep,0,0,0,4096,geometryType(item,ep)});
@@ -183,7 +318,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const char* reas
 void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool valid,
     unsigned long long now,unsigned long long generation){
     auto& s=grappleGeometryInvestigation;
-    if(!valid||!in.pressed||!in.grappleAnchorEnabled||in.calibrating||in.dynamicSurfaceOffset){
+    if(!valid||!in.pressed||!in.grappleAnchorEnabled||in.calibrating){
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
         s.down=false;s.pending=false;return;
     }
@@ -226,7 +361,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
             +" pose_age_ms="+std::to_string(now>=item.lastPositionAtMs?now-item.lastPositionAtMs:0)
             +" moving="+std::to_string(item.nativeMotionObserved));
     }
-    if(!candidates.empty())geometryDumpObject(*candidates.front().item,"initial_ray_candidate");
+    if(!candidates.empty())geometryDumpObject(*candidates.front().item,in,"initial_ray_candidate");
     else geometryLog("NO_CANDIDATE near ray");
 }
 void grappleGeometryInvestigatorAcquired(const ObjectDiscoveryGripFrame& in,
@@ -237,7 +372,7 @@ void grappleGeometryInvestigatorAcquired(const ObjectDiscoveryGripFrame& in,
     geometryLog("ACQUIRED handle="+std::to_string(item.handle)+" initial_dump_handle="+std::to_string(s.handle)
         +" latency_ms="+std::to_string(now-s.started)+" origin="+geometryFloats(item.origin,3)
         +" axis="+geometryFloats(item.axis,9));
-    if(s.handle!=item.handle)geometryDumpObject(item,"actual_acquisition");
+    if(s.handle!=item.handle)geometryDumpObject(item,in,"actual_acquisition");
 }
 void grappleGeometryInvestigatorContact(const ObjectDiscoveryGripFrame& in,
     const ObjectDiscoveryNativeRecord& item,const kharvox::GrappleRayAnchor& ray,

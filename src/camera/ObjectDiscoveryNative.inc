@@ -480,16 +480,14 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
         ||!activationRead(item,body,entity)){
         log("[RELEASE-INV] end reason=identity_or_read_failed");t={};return;
     }
-    float lin[3]{},ang[3]{},impulse[6]{},measured[3]{},accel[3]{};
-    std::memcpy(lin,body.data()+0x1ec,sizeof(lin));
-    std::memcpy(ang,body.data()+0x1f8,sizeof(ang));
-    std::memcpy(impulse,body.data()+0x1d4,sizeof(impulse));
+    float measured[3]{},accel[3]{};
+    const bool priorMeasured=t.previousValid&&t.lastSample>t.started;
     const bool delta=t.previousValid&&now>t.lastSample;
     if(delta){
         const float invDt=1000.f/static_cast<float>(now-t.lastSample);
         for(int i=0;i<3;++i){
             measured[i]=(origin[i]-t.previousOrigin[i])*invDt;
-            accel[i]=(lin[i]-t.previousVelocity[i])*invDt;
+            if(priorMeasured)accel[i]=(measured[i]-t.previousVelocity[i])*invDt;
         }
     }
     std::uintptr_t render{},vt{};
@@ -501,16 +499,15 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
     log("[RELEASE-INV] handle="+std::to_string(item.handle)
         +" phase="+phase+" t_ms="+std::to_string(now-t.started)
         +" origin="+geometryFloats(origin,3)+" axis="+geometryFloats(axis,9)
-        +" linear_1ec="+geometryFloats(lin,3)+" angular_1f8="+geometryFloats(ang,3)
-        +" candidate_impulse_1d4="+geometryFloats(impulse,6)
-        +" wake_word_170="+geometryHex(activationWord(body,0x170))
+        +activationReflectedState(item,body)
         +" delta_valid="+std::to_string(delta)
         +" position_velocity="+geometryFloats(measured,3)
-        +" candidate_momentum_delta_per_sec="+geometryFloats(accel,3)
+        +" measured_acceleration_valid="+std::to_string(delta&&priorMeasured)
+        +" measured_acceleration="+geometryFloats(accel,3)
         +" render_pose_valid="+std::to_string(renderOk)
         +(renderOk?" render_origin="+geometryFloats(renderPose,3)+" render_axis="+geometryFloats(renderPose+3,9):std::string{}));
     std::memcpy(t.previousOrigin,origin,sizeof(origin));
-    std::memcpy(t.previousVelocity,lin,sizeof(lin));
+    if(delta)std::memcpy(t.previousVelocity,measured,sizeof(measured));
     t.previousValid=true;t.lastSample=now;
 }
 void objectReleaseTraceTick(unsigned long long now,unsigned long long generation,bool enabled){

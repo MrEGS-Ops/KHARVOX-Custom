@@ -1,0 +1,11 @@
+# Native interaction diagnostic staging — 2026-11-28
+
+Based on uploaded Vulkan executable SHA-256 3d8b4393649f80bdae85c19ae2c985c45ec9ac54f74ab04a18816e30ead63c21, existing RIPSHIFT registry and DOOM 3 BFG source semantics. Research is not a callable ABI.
+
+- Existing Grapple Geometry Investigator (grip at an eligible prop; dynamic surface mode no longer suppresses diagnostic). Read-only candidate geometry from entity+0x408, exact static-model vtable RVA 0x283f9b8, renderer signatures 0x15de100/0x15d85e0, model surfaces +0xae0/+0xae8, stride 0x60, triangle pointer +0x18. idTriangles bounds +0, counts +0x20/+0x24, CPU mask +0x68, CPU vertex/index pointers +0x70/+0x78. Only mask 0x1801f, primitive 0, bounded counts and valid 16-bit indices; skip joints/morphs. Reflection says 48-byte stride, comment says 32: require exactly one bounds-consistent layout. Log raw candidate triangles (up to 256 per object), transform and candidate ray intersection; no gameplay use. GPU-only meshes are not decoded. The 20 ms loop deadline is cooperative, not a hard frame-time guarantee. In-headset wireframe is not yet implemented; use samples for offline inspection first.
+- Existing Activation Investigator: aim with weapon hand at a non-explosive prop, then perform ordinary native melee. Exact rigid-body vtable RVA 0x2874190 plus known signatures. Record rest state +0x170, spatialVelocity +0x1d4, externalForce +0x1ec, pushVelocity +0x204 (six floats each), gravity +0x44, solver origin/axis +0x1a4/+0x1b0, physics ID +0xc, callback +0x28 and slot +0x48 if readable. Snapshot differences are not proof of call execution. No new hook or native call.
+- Existing release trace: compare measured displacement-derived velocity and acceleration with the reflected fields before/after release. No new physics writes or changes to legacy release.
+- Native wall/ledge mechanics and explicit movement are future research; no climbing or static-world grapple introduced.
+- Stage isolated from active experimental branch while #130 compiles; do not publish until baseline and native compile validation succeed.
+
+Reference: https://github.com/id-Software/DOOM-3-BFG/blob/master/neo/d3xp/physics/Physics_RigidBody.cpp and https://github.com/id-Software/DOOM-3-BFG/blob/master/neo/renderer/Model.h . No copied implementation.
