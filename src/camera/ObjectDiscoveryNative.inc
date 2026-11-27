@@ -1,6 +1,6 @@
 // Experimental DOOM-thread object cache and hand-relative pin.
-// FocusTracker only seeds candidates; cached candidates are refreshed in the
-// normal native world tick. Scanner and grip never wake stationary bodies.
+// One native registry and one shared physics cache; rings are output only.
+// Scanner and grip never wake stationary bodies.
 struct ObjectDiscoveryNativeRecord {
     const void* entity{};
     void* body{};
@@ -22,7 +22,7 @@ struct ObjectDiscoveryGripFrame {
     bool resetToNeutral{}; // one edge, re-arm only when the chord releases
     bool grappleAnchorEnabled{},dynamicSurfaceOffset{};
     bool meleeActivationEnabled{};
-    bool nativeMeleeInputDown{},activationInvestigator{};
+    bool nativeMeleeInputDown{},activationInvestigator{},releaseInvestigator{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -37,11 +37,11 @@ struct ObjectDiscoveryHeld {
     // once calibration is active; no extra release/re-press required.
     bool rotationActive{},neutralResetLatched{};
     bool active{},calibrating{},nativeFollowConfirmed{},grappleAnchor{};
-    bool surfaceApproaching{};
+    bool surfaceApproaching{},releaseInvestigator{};
     float surfaceLocalContact[3]{},surfacePullAxis[9]{};
     unsigned long long surfaceStarted{};
 };
-std::array<ObjectDiscoveryNativeRecord,128> objectDiscoveryNative{};
+std::array<ObjectDiscoveryNativeRecord,512> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
 std::mutex objectDiscoveryGripMutex;
 ObjectDiscoveryGripFrame objectDiscoveryGripInput{};
@@ -233,7 +233,7 @@ void objectDiscoveryTryManagedPool(
     if(pool.generation!=generation)pool={};
     const auto now=GetTickCount64();
     if(pool.begin||now<pool.lastAttemptMs
-        ||now-pool.lastAttemptMs<5000)return;
+        ||now-pool.lastAttemptMs<250)return;
     pool.lastAttemptMs=now;pool.generation=generation;
     constexpr unsigned char expectedCode[]{
         0x48,0x8b,0x05,0x2c,0x50,0x7b,0x05};
@@ -282,7 +282,7 @@ void objectDiscoveryTryManagedPool(
     unsigned classValid{},movableFound{};
     // The previous ~512 uniformly spaced samples could miss sparse
     // movable entities altogether. Sweep contiguous 2K-entry windows
-    // on successive 5-second validations instead of repeatedly
+    // on successive short validations instead of repeatedly
     // sampling the same indices. Still require strict class/registry proof.
     const unsigned sampleCount=std::min<unsigned>(
         static_cast<unsigned>(count),2048u);
@@ -345,11 +345,11 @@ void objectDiscoverySweepNativePool(unsigned long long now,
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     // TRUE proximity enumerator: advance through DOOM's validated
     // game-owned entity registry independent of the gun-hand focus ray.
-    // The focus ray is used only once to PROVE the table's identity.
+    // No focus-ray or rendered-ring dependency.
     auto& registry=objectDiscoveryManagedPool;
     if(registry.begin&&registry.generation==generation
         &&now>=registry.lastSweepMs
-        &&now-registry.lastSweepMs>=175){
+        &&now-registry.lastSweepMs>=12){
         registry.lastSweepMs=now;
         std::uintptr_t entriesNow{};
         std::int32_t countNow{};
@@ -369,12 +369,18 @@ void objectDiscoverySweepNativePool(unsigned long long now,
                 registry={};
             }else{
                 registry.entries=static_cast<unsigned>(countNow);
-                // Low-cost scan: 48 entries every 175ms instead of
-                // 64 every 75ms (~68% fewer registry entry checks).
-                // The FULL player-radius discovery remains enabled;
-                // only its refresh cadence is reduced.
-                constexpr unsigned managedReadsPerSweep=48;
-                for(unsigned scanned=0;scanned<managedReadsPerSweep;++scanned){
+                // Short bounded slices on the existing game-thread tick.
+                // Cache resolved bodies across room/radius changes; do not
+                // repeat expensive probing just because a marker is hidden.
+                constexpr unsigned managedReadsPerSweep=384;
+                LARGE_INTEGER frequency{},start{},elapsed{};
+                const bool timed=QueryPerformanceFrequency(&frequency)
+                    &&frequency.QuadPart>0&&QueryPerformanceCounter(&start);
+                const auto limit=std::min(managedReadsPerSweep,registry.entries);
+                for(unsigned scanned=0;scanned<limit;++scanned){
+                    if(scanned&&timed&&QueryPerformanceCounter(&elapsed)
+                        &&(elapsed.QuadPart-start.QuadPart)*1000.0
+                            >=2.0*frequency.QuadPart)break;
                     const auto index=registry.cursor++%registry.entries;
                     ObjectDiscoveryManagedEntry slot{};
                     std::memcpy(&slot,registry.begin
@@ -445,6 +451,84 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
     out.modelKey=item.modelKey;
     for(int i=0;i<3;++i)out.origin[i]=item.origin[i];
 }
+#include "GrappleGeometryInvestigator.inc"
+#include "ObjectActivationInvestigator.inc"
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+// Read-only release trace. Reuse the activation investigator's validated
+// signatures and identity-checked snapshots. No additional physics writes.
+struct ObjectReleaseTrace {
+    unsigned handle{};
+    const void* entity{};
+    void* body{};
+    unsigned long long generation{},started{},lastSample{};
+    float previousOrigin[3]{},previousVelocity[3]{};
+    bool previousValid{};
+};
+ObjectReleaseTrace objectReleaseTrace{};
+bool objectReleaseTraceMatches(const ObjectDiscoveryNativeRecord& item) {
+    const auto& t=objectReleaseTrace;
+    return t.handle&&item.handle==t.handle&&item.entity==t.entity
+        &&item.body==t.body&&item.generation==t.generation;
+}
+void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
+    unsigned long long now,const char* phase) {
+    auto& t=objectReleaseTrace;
+    float origin[3]{},axis[9]{};
+    std::array<unsigned char,0x300> body{},entity{};
+    if(!objectReleaseTraceMatches(item)||!activationSignature(item)
+        ||!objectDiscoveryReadBodyPose(item,origin,axis)
+        ||!activationRead(item,body,entity)){
+        log("[RELEASE-INV] end reason=identity_or_read_failed");t={};return;
+    }
+    float lin[3]{},ang[3]{},impulse[6]{},measured[3]{},accel[3]{};
+    std::memcpy(lin,body.data()+0x1ec,sizeof(lin));
+    std::memcpy(ang,body.data()+0x1f8,sizeof(ang));
+    std::memcpy(impulse,body.data()+0x1d4,sizeof(impulse));
+    const bool delta=t.previousValid&&now>t.lastSample;
+    if(delta){
+        const float invDt=1000.f/static_cast<float>(now-t.lastSample);
+        for(int i=0;i<3;++i){
+            measured[i]=(origin[i]-t.previousOrigin[i])*invDt;
+            accel[i]=(lin[i]-t.previousVelocity[i])*invDt;
+        }
+    }
+    std::uintptr_t render{},vt{};
+    float renderPose[12]{};
+    const bool renderOk=geometryRead(reinterpret_cast<std::uintptr_t>(item.entity)+0x408,&render,sizeof(render))
+        &&geometryRead(render,&vt,sizeof(vt))&&geometryInImage(item,vt)
+        &&vt-item.imageBase==0x283f9b8
+        &&geometryRead(render+0x78,renderPose,sizeof(renderPose));
+    log("[RELEASE-INV] handle="+std::to_string(item.handle)
+        +" phase="+phase+" t_ms="+std::to_string(now-t.started)
+        +" origin="+geometryFloats(origin,3)+" axis="+geometryFloats(axis,9)
+        +" linear_1ec="+geometryFloats(lin,3)+" angular_1f8="+geometryFloats(ang,3)
+        +" candidate_impulse_1d4="+geometryFloats(impulse,6)
+        +" wake_word_170="+geometryHex(activationWord(body,0x170))
+        +" delta_valid="+std::to_string(delta)
+        +" position_velocity="+geometryFloats(measured,3)
+        +" candidate_momentum_delta_per_sec="+geometryFloats(accel,3)
+        +" render_pose_valid="+std::to_string(renderOk)
+        +(renderOk?" render_origin="+geometryFloats(renderPose,3)+" render_axis="+geometryFloats(renderPose+3,9):std::string{}));
+    std::memcpy(t.previousOrigin,origin,sizeof(origin));
+    std::memcpy(t.previousVelocity,lin,sizeof(lin));
+    t.previousValid=true;t.lastSample=now;
+}
+void objectReleaseTraceTick(unsigned long long now,unsigned long long generation,bool enabled){
+    auto& t=objectReleaseTrace;
+    if(!t.handle)return;
+    if(!enabled||t.generation!=generation||now<t.started
+        ||(objectDiscoveryHeld.active&&objectDiscoveryHeld.handle==t.handle)){
+        log("[RELEASE-INV] end reason=context_or_regrab");t={};return;
+    }
+    if(now-t.started>1000){
+        log("[RELEASE-INV] end reason=one_second");t={};return;
+    }
+    if(now<t.lastSample||now-t.lastSample<20)return;
+    auto* item=objectDiscoveryNativeByHandle(t.handle);
+    if(!item){log("[RELEASE-INV] end reason=cache_identity_lost");t={};return;}
+    objectReleaseTraceSample(*item,now,"native_followup");
+}
+#endif
 // Gentle native drop. No artificial downward velocity, kick or force.
 // After previously verified real movement and a successful hold, clear any
 // stale solver momentum and resume DOOM's own gravity via its exact
@@ -459,32 +543,8 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
     float xyz[3]{},basis[9]{};
     if(!objectDiscoveryReadBodyPose(item,xyz,basis))return false;
     const auto base=item.imageBase;
-    const auto* linear=reinterpret_cast<const unsigned char*>(
-        base+0x179A958);
-    const auto* angular=reinterpret_cast<const unsigned char*>(
-        base+0x179AA70);
-    constexpr unsigned char linearSig[]{
-        0xF3,0x0F,0x10,0x87,0xEC,0x01,0x00,0x00,
-        0xF3,0x0F,0x58,0x06,0xF3,0x0F,0x11,0x87,
-        0xEC,0x01,0x00,0x00
-    };
-    constexpr unsigned char angularSig[]{
-        0xF3,0x0F,0x11,0xA7,0xF8,0x01,0x00,0x00,
-        0xF3,0x0F,0x58,0x87,0xFC,0x01,0x00,0x00
-    };
-    constexpr unsigned char wakeSig[]{
-        0xC7,0x81,0x70,0x01,0x00,0x00,
-        0xFF,0xFF,0xFF,0xFF,0xC3
-    };
-    const auto* wakeCode=reinterpret_cast<const unsigned char*>(
-        base+0x179A8F0);
-    if(!objectDiscoveryReadable(linear,sizeof(linearSig))
-        ||!objectDiscoveryReadable(angular,sizeof(angularSig))
-        ||!objectDiscoveryReadable(wakeCode,sizeof(wakeSig))
-        ||std::memcmp(linear,linearSig,sizeof(linearSig))!=0
-        ||std::memcmp(angular,angularSig,sizeof(angularSig))!=0
-        ||std::memcmp(wakeCode,wakeSig,sizeof(wakeSig))!=0
-        ||!executableMemory(wakeCode))return false;
+    const auto* wakeCode=reinterpret_cast<const unsigned char*>(base+0x179A8F0);
+    if(!activationSignature(item)||!executableMemory(wakeCode))return false;
     auto* linearVelocity=reinterpret_cast<float*>(
         static_cast<unsigned char*>(item.body)+0x1EC);
     auto* angularVelocity=reinterpret_cast<float*>(
@@ -513,20 +573,40 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
     (void)item;(void)wake;return false;
 #endif
 }
-void objectDiscoveryReleaseNative() {
+void objectDiscoveryReleaseNative(const char* reason="context_or_follow_failure") {
     if(objectDiscoveryHeld.active&&objectDiscoveryHeld.nativeFollowConfirmed){
-        if(auto* item=objectDiscoveryNativeByHandle(
-                objectDiscoveryHeld.handle))
-            if(item->generation==objectDiscoveryHeld.generation)
-                objectDiscoveryReleaseToGravity(*item);
+        if(auto* item=objectDiscoveryNativeByHandle(objectDiscoveryHeld.handle)){
+            if(item->generation==objectDiscoveryHeld.generation){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+                if(objectDiscoveryHeld.releaseInvestigator&&KharvoxCameraWorldActive()){
+                    objectReleaseTrace={};
+                    auto& t=objectReleaseTrace;
+                    t.handle=item->handle;t.entity=item->entity;t.body=item->body;
+                    t.generation=item->generation;t.started=GetTickCount64();
+                    log("[RELEASE-INV] begin reason="+std::string(reason)
+                        +" handle="+std::to_string(item->handle)+" model="+item->modelKey.data()
+                        +" relative_offset="+geometryFloats(objectDiscoveryHeld.relativeOffset,3));
+                    objectReleaseTraceSample(*item,t.started,"before_clear");
+                }
+#endif
+                const bool stopped=objectDiscoveryReleaseToGravity(*item);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+                if(objectReleaseTraceMatches(*item)){
+                    log("[RELEASE-INV] clear_and_wake_ok="+std::to_string(stopped));
+                    objectReleaseTraceSample(*item,GetTickCount64(),"after_clear_and_wake");
+                }
+#else
+                (void)stopped;
+#endif
+            }
+        }
     }
     objectDiscoveryHeld={};
     objectDiscoveryLastGoodInput={};
     std::lock_guard<std::mutex> lock(objectDiscoveryGripMutex);
     objectDiscoveryGripFeedback={};
 }
-#include "GrappleGeometryInvestigator.inc"
-#include "ObjectActivationInvestigator.inc"
+
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
 // Log-derived layout hypothesis: entity +0x408 -> render instance,
  // render +0x78 = origin, +0x84 = axis, +0xa8 = stable model-local bounds.
@@ -720,6 +800,10 @@ void objectDiscoveryGameTick() {
     const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
     const bool worldBlocked=!KharvoxCameraWorldActive()
         ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();
+    objectReleaseTraceTick(now,levelTransitionGeneration.load(std::memory_order_acquire),
+        input.releaseInvestigator&&!worldBlocked);
+    if(objectDiscoveryHeld.active)
+        objectDiscoveryHeld.releaseInvestigator=input.releaseInvestigator;
     // A single lost tracking sample / late XR submit must not drop an
     // already-attached rigid body. Retain its last validated hand pose for
     // at most 300ms; NEVER bridge an explicit release or blocked world.
@@ -752,8 +836,9 @@ void objectDiscoveryGameTick() {
     if(!objectDiscoveryEnabled.load(std::memory_order_acquire)){
         objectActivationInvestigatorReset("scanner_disabled");
         objectMeleeActivationTick(input,false,now,generation);
+        objectDiscoveryReleaseNative("scanner_disabled");
         objectDiscoveryNative={};
-        objectDiscoveryReleaseNative();
+        objectReleaseTrace={};
         objectDiscoverySourceMode.store(0,std::memory_order_release);
         return;
     }
@@ -800,8 +885,13 @@ void objectDiscoveryGameTick() {
     // of these throttles: keep the proven 12ms tick / hand follow intact.
     // Round-robin cursor prevents distant candidates starving near ones.
     static unsigned readCursor{};
-    constexpr unsigned readsPerTick=12;
-    unsigned reads{};
+    constexpr unsigned readsPerTick=24;
+    constexpr unsigned nearReadsPerTick=24;
+    unsigned reads{},nearReads{};
+    float player[3]{},playerAxis[9]{};
+    const bool playerValid=KharvoxCameraGetBodyPose(player,playerAxis);
+    const float visualRadius=input.scanUnits;
+    const float priorityRadius=std::max(visualRadius,input.reachUnits+300.f);
     const unsigned cacheCount=static_cast<unsigned>(objectDiscoveryNative.size());
     for(unsigned checked=0;checked<cacheCount;++checked){
         auto& item=objectDiscoveryNative[(readCursor+checked)%cacheCount];
@@ -816,21 +906,21 @@ void objectDiscoveryGameTick() {
             &&pending.handle==item.handle&&pending.entity==item.entity
             &&pending.body==item.body&&pending.generation==generation
             &&now>=pending.started&&now-pending.started<=2000;
-        const bool priority=heldHere||pendingHere||objectActivationInvestigatorPriority(item,generation,input.activationInvestigator);
-        unsigned long long readIntervalMs=80;
-        if(!heldHere&&item.poseValid&&inputValid){
-            float d2{};
-            for(int axis=0;axis<3;++axis){
-                const float d=item.origin[axis]-input.origin[axis];
-                d2+=d*d;
-            }
-            if(d2>input.reachUnits*input.reachUnits*4.f)
-                readIntervalMs=250;
+        const bool priority=heldHere||pendingHere||objectReleaseTraceMatches(item)
+            ||objectActivationInvestigatorPriority(item,generation,input.activationInvestigator);
+        float nearD2{};
+        for(int j=0;j<3;++j){
+            const float d=item.origin[j]-player[j];nearD2+=d*d;
         }
-        if(!priority&&now>=item.lastPositionAtMs
+        const bool near=playerValid&&item.poseValid&&nearD2<=priorityRadius*priorityRadius;
+        const unsigned long long readIntervalMs=near?(input.pressed?12:40):500;
+        if(!priority&&item.poseValid&&now>=item.lastPositionAtMs
             &&now-item.lastPositionAtMs<readIntervalMs)continue;
-        if(!priority&&reads>=readsPerTick)continue;
-        if(!priority)++reads;
+        if(!priority){
+            if(near&&nearReads<nearReadsPerTick)++nearReads;
+            else if(reads<readsPerTick)++reads;
+            else continue;
+        }
         float xyz[3]{},axis[9]{};
         if(!objectDiscoveryReadBodyPose(item,xyz,axis)){
             if(heldHere&&++objectDiscoveryHeld.poseReadMisses<=3)
@@ -855,7 +945,10 @@ void objectDiscoveryGameTick() {
         std::memcpy(item.origin,xyz,sizeof(xyz));
         std::memcpy(item.axis,axis,sizeof(axis));
         item.poseValid=true;item.lastPositionAtMs=now;
-        objectDiscoveryPublish(item,now);
+        float visualD2{};
+        for(int j=0;j<3;++j){const float d=xyz[j]-player[j];visualD2+=d*d;}
+        if(heldHere||(playerValid&&visualD2<=visualRadius*visualRadius))
+            objectDiscoveryPublish(item,now);
     }
     readCursor=(readCursor+readsPerTick)%cacheCount;
     // Publish a current target check before any melee request or acquisition.
@@ -982,6 +1075,10 @@ void objectDiscoveryGameTick() {
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
         held.generation=generation;
+        held.releaseInvestigator=input.releaseInvestigator;
+        if(objectReleaseTraceMatches(*nearest)){
+            log("[RELEASE-INV] end reason=regrab");objectReleaseTrace={};
+        }
         // Capture an invariant 6DOF controller-relative target on GRAB,
         // not the body's current position. Otherwise an object one metre
         // away inherits its pickup offset for several frames, making
@@ -1064,7 +1161,7 @@ void objectDiscoveryGameTick() {
     if(!input.pressed&&!input.calibrating
         &&(now<held.lastGripDownAtMs
            ||now-held.lastGripDownAtMs>150)){
-        objectDiscoveryReleaseNative();return;
+        objectDiscoveryReleaseNative("grip_up");return;
     }
     held.calibrating=input.calibrating;
     // The GRIP+offhand-trigger chord is an explicit re-calibration RESET:
@@ -1259,9 +1356,10 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
         // scanning a crowded area; Grip ownership survives ray changes.
         item=nullptr;
         for(auto& existing:objectDiscoveryNative){
-            if(objectDiscoveryHeld.active
+            if((objectDiscoveryHeld.active
                 &&existing.handle==objectDiscoveryHeld.handle
                 &&existing.generation==objectDiscoveryHeld.generation)
+                ||objectReleaseTraceMatches(existing))
                 continue;
             if(!item||!existing.entity
                 ||(item->entity
@@ -1300,33 +1398,10 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
         }
         if(item->body)objectDiscoveryNativeModel(*item);
     }
-    // Radius filtering applies before a newly resolved entity enters the
-    // persistent discovery list. Grip ownership is independent of this
-    // visual scan boundary and keeps the originally pinned body intact.
-    if(item->body
-        &&(!objectDiscoveryHeld.active
-            ||objectDiscoveryHeld.handle!=handle)){
-        float xyz[3]{},nativeAxis[9]{},player[3]{},playerAxis[9]{};
-        ObjectDiscoveryGripFrame published{};
-        {
-            std::lock_guard<std::mutex> guard(objectDiscoveryGripMutex);
-            published=objectDiscoveryGripInput;
-        }
-        if(objectDiscoveryReadBodyPose(*item,xyz,nativeAxis)
-            &&KharvoxCameraGetBodyPose(player,playerAxis)){
-            float d2{};
-            for(int i=0;i<3;++i){
-                const float delta=xyz[i]-player[i];
-                d2+=delta*delta;
-            }
-            if(d2>published.scanUnits*published.scanUnits){
-                *item={};return;
-            }
-        }
-    }
-    // The normal DOOM world callback ticks discovery every 12ms. Avoid
-    // re-entering that tick recursively from within the 64-entry proximity
-    // sweep; it can otherwise lose the held object or overflow the stack.
+    // Keep resolved bodies cached outside the marker radius. The single
+    // world tick refreshes poses and publishes nearby rings; grip reads the
+    // same cache directly even when no ring has yet been rendered.
+    // Never recursively re-enter the world tick from this registry sweep.
 #else
     (void)entity;(void)base;(void)imageSize;(void)handle;(void)generation;
 #endif

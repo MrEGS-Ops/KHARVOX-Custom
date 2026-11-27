@@ -78,11 +78,13 @@ void activationSummary(const ObjectDiscoveryNativeRecord& item,
         +" origin="+geometryFloats(item.origin,3)
         +" axis="+geometryFloats(item.axis,9);
     if(p.signatureOk){
-        float lin[3]{},ang[3]{};
+        float lin[3]{},ang[3]{},candidateImpulse[6]{};
+        std::memcpy(candidateImpulse,bytes.data()+0x1D4,sizeof(candidateImpulse));
         std::memcpy(lin,bytes.data()+0x1EC,sizeof(lin));
         std::memcpy(ang,bytes.data()+0x1F8,sizeof(ang));
         line+=" wake_word_170="+geometryHex(activationWord(bytes,0x170))
-            +" linear_1ec="+geometryFloats(lin,3)+" angular_1f8="+geometryFloats(ang,3);
+            +" linear_1ec="+geometryFloats(lin,3)+" angular_1f8="+geometryFloats(ang,3)
+            +" candidate_impulse_1d4="+geometryFloats(candidateImpulse,6);
     }else line+=" wake_signature_mismatch=1";
     activationLog(line);
 }

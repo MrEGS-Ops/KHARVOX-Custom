@@ -578,6 +578,7 @@ struct VrHandMenuState {
     bool objectMeleeActivation{}; // original path, session only
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
     bool activationInvestigator{}; // session-only passive native wake investigation
+    bool releaseInvestigator{}; // session-only observer, can coexist with grabs
     bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
     bool objectGrappleActive() const noexcept {
         return !activationInvestigator&&(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled);
