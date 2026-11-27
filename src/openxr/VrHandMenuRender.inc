@@ -128,7 +128,7 @@ void paintVrHandMenu() {
             [](bool on){return on;});
     const bool guideView=statsGameplay&&guidedOverlayVisible()&&m.mode==kharvox::VrHandMenuMode::Closed
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
-    constexpr int guideX=178,guideY=12,guideW=604,guideH=94;
+    const bool calibrationGuide=guidedCalibrationVisible()&&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView;
     constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
@@ -763,6 +763,7 @@ void paintVrHandMenu() {
         for(int shown=0;shown<10;++shown){
             const int index=shown+m.modScroll;
             if(index>=count)break;
+            if(!devPage&&index==count-1)continue;
             const int y=136+shown*45;
             const bool active=index==selected;
             const bool hovered=m.hovered==1000+index
@@ -785,6 +786,12 @@ void paintVrHandMenu() {
                 switchable?(entries[index].enabled?"ON":"OFF"):">",
                 switchable?(entries[index].enabled?RGB(108,235,161)
                     :RGB(151,158,171)):RGB(84,233,214));
+        }
+        if(!devPage){
+            const bool focused=selected==count-1||m.hovered==1000+count-1;
+            fill(38,610,455,40,focused?RGB(32,89,104):RGB(27,32,43));
+            write(55,620,"Guided Instructions",white);
+            write(436,620,m.guidedTestingEnabled?"ON":"OFF",m.guidedTestingEnabled?RGB(108,235,161):muted);
         }
         if(count>10){
             SelectObject(dc,smallFont);
@@ -1279,6 +1286,33 @@ void paintVrHandMenu() {
         write(guideX+14,guideY+56,next,g.completeAt?RGB(128,255,177):white);
         fill(guideX+12,guideY+85,guideW-24,3,RGB(58,70,79));
         fill(guideX+12,guideY+85,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
+        if(guidedResponseVisible()){
+            const char* names[]{"PASS","FAIL","RETRY","SKIP"};
+            for(int j=0;j<4;++j){
+                const bool enabled=j>=2||guidedManualStep();
+                const int bx=guideX+12+j*145;
+                fill(bx,guideY+91,139,32,guidedHover==j?RGB(45,101,112):RGB(35,43,52));
+                write(bx+15,guideY+94,names[j],enabled?white:muted);
+            }
+            if(guidedHover>=0)
+                fill(static_cast<int>(guidedCursorX)-3,static_cast<int>(guidedCursorY)-3,6,6,RGB(97,255,234));
+        }
+    }
+    if(calibrationGuide){
+        fill(guideX,guideY,guideW,94,RGB(12,17,22));
+        fill(guideX,guideY,4,94,RGB(55,209,214));
+        SelectObject(dc,smallFont);
+        const bool object=s.objectGripCalibrating;
+        const bool zone=!object&&kharvox::vrLiveIsGunslingerCapture(m.liveCapture);
+        const bool primary=!object&&!zone&&m.rightHand!=s.weaponHandLeft;
+        write(guideX+14,guideY+5,object?"OBJECT GRIP CALIBRATION":zone?"GUNSLINGER / ZONE PLACEMENT":"WEAPON GRIP CALIBRATION",RGB(84,233,214));
+        const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object":"No Grip: fine-tune; hold Grip to freeze object")
+            :zone?(m.gunslingerZoneMoving?"Move hand to desired zone; release Grip to freeze":"Hold matching Grip to move zone, then release")
+            :!m.previewValid?"Waiting for valid controller tracking"
+            :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Sticks fine-tune position; hold Grip to rotate")
+            :"Move support hand into desired grip position";
+        write(guideX+14,guideY+32,instruction,white);
+        write(guideX+14,guideY+62,"RIGHT TRIGGER: SAVE     B: CANCEL",RGB(108,235,161));
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
@@ -1317,6 +1351,7 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
+            :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+94?205
             :objectCalibrationView
                 ?(x>=38&&x<698&&y>=150&&y<571?245:0)
             :(statsLiveView||guideView)

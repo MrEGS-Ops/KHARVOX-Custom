@@ -642,7 +642,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL runtimeManagedGipa(VkInstance instance,
     return resolved.function;
 }
 void log(const std::string& x, bool operational){
-    kharvox::writeRuntimeLog("[KHARVOX][XR]", x, operational);
+    kharvox::writeRuntimeLog("[KHARVOX][XR]", x, operational||x.rfind("[GUIDED-TEST]",0)==0);
 }
 
 double performanceMilliseconds(LARGE_INTEGER begin,LARGE_INTEGER end){static const double ticksPerMillisecond=[](){LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);return double(frequency.QuadPart)/1000.0;}();return ticksPerMillisecond>0.0?double(end.QuadPart-begin.QuadPart)/ticksPerMillisecond:0.0;}
@@ -3914,6 +3914,25 @@ void updateGameplayActions(XrTime displayTime){
         updateWeapon6Dof();
         return;
     }
+    // Use the same physical right-controller ray as the menu.
+    const bool guideTrigger=readFloatAction(s.rightWeaponTrigger)>.55f;
+    guidedHover=-1;guidedCursorX=guidedCursorY=-1.f;
+    if(gameplay&&guidedResponseVisible()){
+        vrMenuRayTarget(guidedCursorX,guidedCursorY);
+        if(guidedCursorX>=guideX+12&&guidedCursorX<guideX+guideW-12
+            &&guidedCursorY>=guideY+91&&guidedCursorY<guideY+123){
+            const int slot=static_cast<int>((guidedCursorX-guideX-12)/145.f);
+            if(slot>=0&&slot<4&&(slot>=2||guidedManualStep()))guidedHover=slot;
+        }
+        if(guideTrigger&&!guidedTriggerPreviously&&guidedHover>=0){
+            const unsigned commands[]{3,4,1,2};
+            s.vrHandMenu.guidedCommand=commands[guidedHover];
+            guidedTriggerOwned=true;
+            kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),85,.65f,175.f);
+        }
+    }
+    if(!guideTrigger)guidedTriggerOwned=false;
+    guidedTriggerPreviously=guideTrigger;
     // A short isolated click on the CURRENT WEAPON HAND invokes world Use:
     // R3 when right-handed, L3 when Gunslinger transfers the gun left.
     // The opposite short click handles Pause. Long R3 still opens the
@@ -4109,6 +4128,7 @@ void updateGameplayActions(XrTime displayTime){
         s.weaponHandLeft?s.leftWeaponTrigger:s.rightWeaponTrigger);
     s.chainsawTriggerPressure=std::isfinite(weaponTriggerPressure)
         ?std::clamp(weaponTriggerPressure,0.f,1.f):0.f;
+    if(guidedTriggerOwned&&!s.weaponHandLeft)s.chainsawTriggerPressure=0.f;
     const bool triggerDown=s.chainsawTriggerPressure>.55f;
     const bool legacyWeaponSelectDown=rightStickDownGesture;
     // Gunslinger owns selection exclusively. A now always crouches, while
@@ -5234,7 +5254,7 @@ void updateGameplayActions(XrTime displayTime){
     const bool equipmentDown=readFloatAction(
         s.weaponHandLeft?s.rightWeaponTrigger:s.leftWeaponTrigger)>.55f;
     bool gameplayEquipmentDown=gameplay&&equipmentDown
-        &&!objectGripOwnsOffhand&&!pistolGrappleInputLocked;
+        &&!objectGripOwnsOffhand&&!pistolGrappleInputLocked&&!(guidedTriggerOwned&&s.weaponHandLeft);
     // Native offhand trigger remains the only grenade throw input.
     // Holding a prop or using the temporary pistol carrier blocks it.
     if(objectGripOwnsOffhand||pistolGrappleInputLocked){

@@ -32,7 +32,6 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
             s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.objectMeleeActive(),D::GrappleAnchor});
         rows.push_back({"Native Interaction Research Suite",VrLiveMod::Other,s.vrHandMenu.nativeResearchActive(),D::NativeInteractionResearch});
-        rows.push_back({"Guided Testing",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled,D::GuidedTesting});
 #endif
         return rows;
     }
@@ -61,6 +60,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
     if(s.vrHandMenu.devReveal.visible)
         rows.push_back({"DEV  >",VrLiveMod::Other,true,
             kharvox::VrMenuDevOption::Folder});
+    rows.push_back({"Guided Instructions",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled});
     return rows;
 }
 // This is the PLAYABILITY overview, not a calibration tutorial. It appears

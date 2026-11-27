@@ -88,6 +88,7 @@ std::atomic<uintptr_t> playerPhysicsOwner{};
 std::atomic<bool> playerPhysicsOriginValid{};
 std::atomic<uintptr_t> playerLedgeTransitionOwner{};
 std::atomic<bool> playerLedgeTransitionActive{};
+std::atomic<unsigned> playerLedgeTransitionSerial{};
 std::atomic<bool> syncAttackClassifierSupported{};
 std::atomic<bool> playerControlClassifierSupported{};
 std::atomic<unsigned long long> cameraPresentSerial{};
@@ -232,7 +233,8 @@ void log(const std::string& text) {
     // Use the same runtime-owned logs/KHARVOX.log as the XR layer and launcher.
     // The previous %TEMP%/KHARVOX.log silently excluded movement diagnostics
     // from the launcher's collected /logs bundle.
-    kharvox::writeRuntimeLog("[KHARVOX][CAMERA]", text);
+    const bool research=text.rfind("[NATIVE-RESEARCH",0)==0||text.rfind("[ACTIVATION-INV]",0)==0||text.rfind("[RELEASE-INV]",0)==0||text.rfind("[GEOMETRY-INV]",0)==0;
+    kharvox::writeRuntimeLog("[KHARVOX][CAMERA]", text,research);
 }
 
 void rotateCameraBasis(float* basis, float yaw, float pitch, float roll) {
@@ -606,6 +608,7 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     const uintptr_t owner = *reinterpret_cast<const uintptr_t*>(mechanic + 0x10);
     playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
     playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
+    playerLedgeTransitionSerial.fetch_add(1,std::memory_order_release);
 }
 
 bool installPlayerLedgeStateCapture(unsigned char* image) {

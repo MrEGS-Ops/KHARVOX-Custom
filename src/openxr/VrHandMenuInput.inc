@@ -490,6 +490,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         if(s.vrHandMenu.page==kharvox::VrMenuPage::Mods
             &&pixelX>=38&&pixelX<=505&&pixelY>=18&&pixelY<75)
             return 1500;
+        if(s.vrHandMenu.page==kharvox::VrMenuPage::Mods&&pixelX>=38&&pixelX<=493&&pixelY>=610&&pixelY<650)
+            return 1000+static_cast<int>(activeVrMenuEntries().size())-1;
         if(pixelX>=38&&pixelX<=493){
             for(int i=0;i<10;++i)
                 if(pixelY>=136+i*45&&pixelY<176+i*45)
@@ -945,7 +947,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }
                 return true;
             };
-            if(chosen==1500){
+            if(!devPage&&n>0&&chosen==1000+n-1){
+                m.selectedRow=n-1;m.selectedMod=kharvox::VrLiveMod::Other;m.navigation.settingsColumn=false;
+                m.guidedTestingEnabled=!m.guidedTestingEnabled;
+                m.message=m.guidedTestingEnabled?"Guided Instructions ON":"Guided Instructions OFF";
+                log("[GUIDED-TEST] "+m.message,true);
+            }else if(chosen==1500){
                 if(kharvox::vrMenuDeveloperTap(m.devReveal,GetTickCount64())){
                     const int updatedCount=static_cast<int>(activeVrMenuEntries().size());
                     m.selectedRow=std::clamp(m.selectedRow,0,

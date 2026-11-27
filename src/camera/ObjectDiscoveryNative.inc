@@ -575,6 +575,12 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
     const auto base=item.imageBase;
     const auto* wakeCode=reinterpret_cast<const unsigned char*>(base+0x179A8F0);
     if(!activationSignature(item)||!executableMemory(wakeCode))return false;
+    // Reflected rigid-body spatial velocity is +1D4, external force +1EC.
+    // Only alter the exact runtime-verified rigid body layout.
+    if(item.bodyVtable!=base+0x2874190)return false;
+    auto* spatialVelocity=reinterpret_cast<float*>(static_cast<unsigned char*>(item.body)+0x1D4);
+    if(!writableMemory(spatialVelocity,6*sizeof(float)))return false;
+    for(int j=0;j<6;++j)if(!std::isfinite(spatialVelocity[j])||std::abs(spatialVelocity[j])>1e7f)return false;
     auto* linearVelocity=reinterpret_cast<float*>(
         static_cast<unsigned char*>(item.body)+0x1EC);
     auto* angularVelocity=reinterpret_cast<float*>(
@@ -591,6 +597,8 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
     __try{
 #endif
         constexpr float stopped[3]{0,0,0};
+        std::memcpy(spatialVelocity,stopped,sizeof(stopped));
+        std::memcpy(spatialVelocity+3,stopped,sizeof(stopped));
         std::memcpy(linearVelocity,stopped,sizeof(stopped));
         std::memcpy(angularVelocity,stopped,sizeof(stopped));
         using Fn=void (__fastcall*)(void*);
@@ -897,9 +905,11 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
         const bool same=playerLedgeTransitionOwner.load(std::memory_order_acquire)==owner;
         const bool active=playerLedgeTransitionActive.load(std::memory_order_acquire);
         if(same){
-            static unsigned long long lastGen{};static bool seen{},prior{};
-            if(lastGen!=generation){lastGen=generation;seen=false;prior=false;}
-            const bool changed=seen&&prior!=active;
+            static unsigned long long lastGen{};static bool seen{},prior{};static unsigned priorSerial{};
+            const unsigned serial=playerLedgeTransitionSerial.load(std::memory_order_acquire);
+            if(lastGen!=generation){lastGen=generation;seen=false;prior=false;priorSerial=serial;}
+            const bool changed=seen&&(prior!=active||priorSerial!=serial);
+            priorSerial=serial;
             log("[NATIVE-RESEARCH] native ledge state active="+std::to_string(active)+" transition="+std::to_string(changed));
             if(active||changed)nativeResearchEvidence(32u,"outcome="+std::string(changed?"NATIVE_TRANSITION":"NATIVE_ACTIVE")+" active="+std::to_string(active)+" no_custom_climb=1");
             seen=true;prior=active;
@@ -1443,6 +1453,7 @@ void objectDiscoveryGameTick() {
                             +" momentum_clear="+std::to_string(stopped)+" mesh=UNVERIFIED");
                     }
                 }else if(std::isfinite(error2)&&error2<1.f)held.nativeFollowConfirmed=true;
+                if(held.nativeFollowConfirmed&&!held.surfaceApproaching)objectDiscoveryReleaseToGravity(*item,false);
                 std::memcpy(item->origin,actual,sizeof(actual));
                 std::memcpy(item->axis,actualAxis,sizeof(actualAxis));
                 // Discovery markers use actual sampled native physics pose,

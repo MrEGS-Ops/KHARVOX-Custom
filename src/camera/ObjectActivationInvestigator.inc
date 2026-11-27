@@ -130,13 +130,15 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     }
     if(p.handle&&!p.tracing&&aimed&&aimed->handle==p.handle&&aimed->entity==p.entity&&aimed->body==p.body)
         p.lastAim=now;
-    if(p.handle&&!p.tracing&&now-p.lastAim>1200&&!in.nativeMeleeInputDown){
+    // Retain a stationary selection during hand movement before the melee edge.
+    if(p.handle&&!p.tracing&&now-p.lastAim>10000&&!in.nativeMeleeInputDown){
         objectActivationInvestigatorReset("aim_lost");
     }
     if(!p.handle){
         if(!aimed||in.nativeMeleeInputDown)return;
         std::array<unsigned char,0x300> body{},entity{};
         if(!activationRead(*aimed,body,entity))return;
+        if(static_cast<std::int32_t>(activationWord(body,0x170))<0)return; // require resting baseline
         p.handle=aimed->handle;p.entity=aimed->entity;p.body=aimed->body;
         p.generation=generation;p.serial=++activationInvestigationSerial;p.armed=now;p.lastAim=now;
         p.signatureOk=activationSignature(*aimed);
