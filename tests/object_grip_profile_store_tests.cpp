@@ -244,6 +244,21 @@ int main(){
     assert(std::abs(visual.worldPoint[2]-12.f)<.001f);
     assert(!grappleRenderTriangleHit(aimAtFace,rayForward,
         nullptr,0,200,visual));
+    // Asymmetric tank bounds include a side fitting. Central side contact
+    // must advance to the circular surface while preserving the mesh flags.
+    const float tankBounds[6]{-6.2f,-6.2f,0.f,14.3f,6.2f,77.75f};
+    const float tankOrigin[3]{0,0,0},tankRay[3]{30,4,40},tankDir[3]{-1,0,0};
+    GrappleRayAnchor tank{};
+    assert(grappleSurfaceBoundsHit(tankRay,tankDir,tankOrigin,unitAxis,tankBounds,100,tank));
+    const float boxDepth=tank.rayDistance;
+    assert(grappleRefineCylinderSide(tankRay,tankDir,tankOrigin,unitAxis,tankBounds,100,tank));
+    assert(tank.source==GrappleContactSource::CandidateCylinderSide
+        &&!tank.exactVisualMeshHit&&!tank.exactCollisionHit);
+    assert(tank.rayDistance>boxDepth&&std::abs(tank.worldPoint[0]-std::sqrt(6.2f*6.2f-16.f))<.01f);
+    const float valveRay[3]{30,4,75};
+    assert(grappleSurfaceBoundsHit(valveRay,tankDir,tankOrigin,unitAxis,tankBounds,100,tank));
+    assert(!grappleRefineCylinderSide(valveRay,tankDir,tankOrigin,unitAxis,tankBounds,100,tank));
+    assert(tank.source==GrappleContactSource::CandidateRenderBounds);
     std::remove("grapple_anchor_test.cfg");
     std::remove("object_grip_profile_test.cfg");
 }

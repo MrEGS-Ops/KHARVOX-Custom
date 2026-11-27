@@ -1,8 +1,8 @@
 #pragma once
 // RIPSHIFT universal grapple contact policy. Any verified render triangles
 // use exact first-hit intersection. Until DOOM render triangles are exposed,
-// preserve the proven but imprecise ray-origin proxy; never use per-model
-// dimensions or the native collision shape as a visual surface substitute.
+// preserve the original ray proxy and experimental, explicitly unverified
+// model-local shape approximations.
 #include "../camera/ObjectGripRotationPolicy.h"
 #include <array>
 #include <cmath>
@@ -35,7 +35,7 @@ inline bool grappleAnchorLoad(const std::string& path,GrappleAnchorSettings& s){
     return !std::getline(f,extra);
 }
 inline constexpr float kGrappleProxyMissUnits=25.f;
-enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles, CandidateRenderBounds };
+enum class GrappleContactSource { RayOriginProxy, VerifiedRenderTriangles, CandidateRenderBounds, CandidateCylinderSide };
 struct GrappleRayAnchor {
     std::array<float,3> worldPoint{};
     float rayDistance{},missDistance{};
@@ -183,6 +183,50 @@ inline bool grappleSurfaceBoundsHit(const float rayOrigin[3],const float rayDir[
     if(lo<=.001f||lo>reach)return false;
     for(int i=0;i<3;++i)out.worldPoint[i]=rayOrigin[i]+rayDir[i]*inv*lo;
     out.rayDistance=lo;out.source=GrappleContactSource::CandidateRenderBounds;
+    return true;
+}
+// Refine a validated bounds hit on a known long cylinder's straight side.
+// End caps, handles and fittings remain on the existing bounds fallback.
+// This is an analytic estimate, NOT a render/collision mesh intersection.
+inline bool grappleRefineCylinderSide(const float rayOrigin[3],const float rayDir[3],
+    const float modelOrigin[3],const float modelAxis[9],const float bounds[6],
+    float reach,GrappleRayAnchor& out) noexcept {
+    if(!rayOrigin||!rayDir||!modelOrigin||!modelAxis||!bounds
+        ||out.source!=GrappleContactSource::CandidateRenderBounds
+        ||!std::isfinite(out.rayDistance)||!std::isfinite(reach)||reach<=0.f)return false;
+    const float r=(bounds[4]-bounds[1])*.5f;
+    const float cx=bounds[0]+r,cy=(bounds[1]+bounds[4])*.5f;
+    const float z0=bounds[2]+r,z1=bounds[5]-2.f*r;
+    // Require a long body with approximately centred circular section.
+    // The extra positive-X extent may be a valve/fitting, so do not use it
+    // as the diameter of the central cylinder.
+    if(!std::isfinite(r)||r<.1f||!std::isfinite(cx)||!std::isfinite(cy)
+        ||std::abs(cx)>.25f*r||std::abs(cy)>.25f*r
+        ||!std::isfinite(z0)||!std::isfinite(z1)||z1<=z0
+        ||bounds[3]<cx+r-.1f)return false;
+    float n2{},o[3]{},d[3]{},boxZ{};
+    for(int i=0;i<3;++i)n2+=rayDir[i]*rayDir[i];
+    if(!std::isfinite(n2)||n2<.25f||n2>4.f)return false;
+    const float inv=1.f/std::sqrt(n2);
+    for(int i=0;i<3;++i){
+        for(int j=0;j<3;++j){
+            o[i]+=(rayOrigin[j]-modelOrigin[j])*modelAxis[3*i+j];
+            d[i]+=rayDir[j]*inv*modelAxis[3*i+j];
+        }
+    }
+    boxZ=o[2]+d[2]*out.rayDistance;
+    if(!std::isfinite(boxZ)||boxZ<z0||boxZ>z1)return false;
+    const float x=o[0]-cx,y=o[1]-cy;
+    const float a=d[0]*d[0]+d[1]*d[1];
+    const float b=x*d[0]+y*d[1],c=x*x+y*y-r*r;
+    if(!std::isfinite(a)||a<1e-6f||!std::isfinite(c)||c<=0.f)return false;
+    const float discriminant=b*b-a*c;
+    if(!std::isfinite(discriminant)||discriminant<0.f)return false;
+    const float t=(-b-std::sqrt(discriminant))/a,z=o[2]+d[2]*t;
+    if(!std::isfinite(t)||t<=.001f||t>reach||t+0.05f<out.rayDistance
+        ||!std::isfinite(z)||z<z0||z>z1)return false;
+    for(int i=0;i<3;++i)out.worldPoint[i]=rayOrigin[i]+rayDir[i]*inv*t;
+    out.rayDistance=t;out.source=GrappleContactSource::CandidateCylinderSide;
     return true;
 }
 inline bool grapplePickupPoseFromHit(

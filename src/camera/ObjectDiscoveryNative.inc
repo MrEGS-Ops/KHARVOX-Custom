@@ -642,13 +642,19 @@ bool objectSurfaceCandidate(const ObjectDiscoveryNativeRecord& item,
         if(!std::isfinite(dot)||dot<.98f)return reject("render_physics_axis_disagreement");
     }
     const bool ok=kharvox::grappleSurfaceBoundsHit(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
+    // The headset log confirms this exact asset's asymmetric X bounds,
+    // narrow Y diameter and long local Z axis. Only refine its straight
+    // central side; preserve bounds for the unverified ends and other props.
+    if(ok&&std::strcmp(item.modelKey.data(),"models/mapobjects/prop/airtank_lg_clip.lwo")==0)
+        kharvox::grappleRefineCylinderSide(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
     if(debug)log("[SURFACE-GRAPPLE] candidate handle="+std::to_string(item.handle)
         +" model="+item.modelKey.data()+" body_origin="+geometryFloats(item.origin,3)
         +" render_origin="+geometryFloats(origin,3)+" render_axis="+geometryFloats(axis,9)
         +" bounds="+geometryFloats(bounds,6)+" origin_error="+std::to_string(std::sqrt(error2))
         +" moving="+std::to_string(item.nativeMotionObserved)+" hit="+std::to_string(ok)
         +" depth="+std::to_string(hit.rayDistance)+" point="+geometryFloats(hit.worldPoint.data(),3)
-        +" layout=CANDIDATE_BOUNDS NOT_MESH");
+        +" layout="+std::string(hit.source==kharvox::GrappleContactSource::CandidateCylinderSide
+            ?"CANDIDATE_CYLINDER_SIDE":"CANDIDATE_BOUNDS")+" NOT_MESH");
     return ok;
 }
 #endif
@@ -1136,7 +1142,9 @@ void objectDiscoveryGameTick() {
             grappleGeometryInvestigatorContact(input,*nearest,ray,offset,axis);
             log("[GRAPPLE-ANCHOR] grabbed handle="
                 +std::to_string(held.handle)
-                +(input.dynamicSurfaceOffset?" contact=CANDIDATE_ORIENTED_BOUNDS (NOT_RENDER_MESH)":" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)")
+                +(input.dynamicSurfaceOffset?(ray.source==kharvox::GrappleContactSource::CandidateCylinderSide
+                    ?" contact=CANDIDATE_CYLINDER_SIDE (NOT_RENDER_MESH)":" contact=CANDIDATE_ORIENTED_BOUNDS (NOT_RENDER_MESH)")
+                    :" contact=ESTIMATED_RAY_PROXY (NOT_RENDER_MESH)")
                 +" ray_depth="+std::to_string(ray.rayDistance)
                 +" miss="+std::to_string(ray.missDistance)
                 +" world_point="+std::to_string(ray.worldPoint[0])
