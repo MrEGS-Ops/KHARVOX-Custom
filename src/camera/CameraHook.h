@@ -40,7 +40,7 @@ void KharvoxCameraEnableObjectDiscovery(bool enabled);
 // No native pointers cross the DOOM/OpenXR thread boundary.
 struct KharvoxObjectDiscoveryCandidate {
     unsigned int handle{};
-    unsigned long long generation{},observedAtMs{};
+    unsigned long long generation{},observedAtMs{},nativeMovedAtMs{};
     float origin[3]{};
     bool nativeMotionObserved{};
     // Only a uniquely validated native model-path string can form a
@@ -66,6 +66,11 @@ void KharvoxCameraSetObjectGripInput(
     bool dynamicSurfaceOffset=false,bool activationInvestigator=false,
     bool releaseInvestigator=false,unsigned researchMask=0,unsigned researchTestMask=0,bool researchOnly=false);
 unsigned KharvoxCameraNativeResearchReady();
+struct KharvoxGuidedEvidence {
+    std::array<unsigned,6> collect{},test{};
+    unsigned releaseCount{};
+};
+KharvoxGuidedEvidence KharvoxCameraGuidedEvidence();
 void KharvoxCameraSetObjectGripCalibration(
     const float offsetUnits[3],const float relativeAxis[9],
     bool calibrating,bool freezeObject,bool resetToNeutral,

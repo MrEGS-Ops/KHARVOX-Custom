@@ -32,6 +32,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Grapple Grab",VrLiveMod::Other,
             s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.objectMeleeActive(),D::GrappleAnchor});
         rows.push_back({"Native Interaction Research Suite",VrLiveMod::Other,s.vrHandMenu.nativeResearchActive(),D::NativeInteractionResearch});
+        rows.push_back({"Guided Testing",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled,D::GuidedTesting});
 #endif
         return rows;
     }
@@ -172,6 +173,12 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "No Stats display settings are changed.",
             "Counters keep tracking in background.",
             ""}}};
+        case D::GuidedTesting:return {{{"Offline test instructions at top of view.",
+            "Automatically follows native evidence.",
+            "Retry, skip or confirm visual checks here.",
+            "Timeout is inconclusive, not a pass.",
+            "All outcomes logged; no gameplay writes.",
+            "Toggle overlay without disabling mods."}}};
         case D::NativeInteractionResearch:return {{{"Collect and test six native systems.",
             "All switches session-only; OFF at launch.",
             "Tests unlock after usable data.",

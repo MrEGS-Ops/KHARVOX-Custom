@@ -3490,6 +3490,7 @@ void serviceCampaignRunTime(bool gameplay,
 // Native VR hand menu input must precede the gameplay input dispatcher.
 // Render-side compositor helper stays in its later Vulkan include.
 #include "VrLiveMenuLogic.inc"
+#include "GuidedTesting.inc"
 #include "VrHandMenuInput.inc"
 // Separate experimental carrier transaction. Input ownership remains with
 // the original right-hand weapon; only the weapon pose update borrows LEFT.
@@ -5687,6 +5688,7 @@ void updateGameplayActions(XrTime displayTime){
         s.vrHandMenu.dynamicSurfaceOffset,s.vrHandMenu.activationInvestigator,
         s.vrHandMenu.releaseInvestigator,s.vrHandMenu.nativeResearchMask,s.vrHandMenu.nativeResearchTestMask,
         s.vrHandMenu.nativeResearchActive()&&!s.vrHandMenu.objectDiscovery.enabled&&!s.vrHandMenu.objectGrappleActive()&&!s.vrHandMenu.objectMeleeActive());
+    guidedTick(gameplay,supportGripDown,ordinaryNativeMeleeDown,objectHeld,objectFeedback,discoveryGeneration);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -9089,6 +9091,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
+            ||(deathCounterGameplay&&guidedOverlayVisible()&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed)
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
             ||s.objectGripCalibrating)
         &&vrHandMenuSurface.ready){

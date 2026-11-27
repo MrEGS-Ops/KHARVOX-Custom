@@ -516,7 +516,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
+                ==kharvox::VrMenuDevOption::GuidedTesting?5:list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
             const bool grappleInline=list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor;
             const bool researchInline=list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch;
             const int optionStep=researchInline?52:grappleInline?60:expInline?91:68;
@@ -859,7 +859,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 const auto mod=entry.mod;
                 if(entry.developer!=kharvox::VrMenuDevOption::None)
                     return entry.developer==kharvox::VrMenuDevOption::Experimental?3:
-                        entry.developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?4:1;
+                        entry.developer==kharvox::VrMenuDevOption::GuidedTesting?5:entry.developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:entry.developer==kharvox::VrMenuDevOption::GrappleAnchor?4:1;
                 if(!kharvox::vrLiveModEditable(mod))return 0;
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
@@ -1052,6 +1052,10 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }else if(kind==D::ControllerMonitor){
                     m.devControllerInputs=!m.devControllerInputs;
                     m.message=m.devControllerInputs?"Gunslinger input monitor ON.":"Gunslinger input monitor OFF.";
+                }else if(kind==D::GuidedTesting&&chosen<=134){
+                    if(chosen==130){m.guidedTestingEnabled=!m.guidedTestingEnabled;m.message=m.guidedTestingEnabled?"Guided Testing ON":"Guided Testing OFF";}
+                    else{m.guidedCommand=static_cast<unsigned>(chosen-130);m.message="Guide command queued; resume gameplay.";}
+                    log("[GUIDED-TEST] menu "+m.message);
                 }else if(kind==D::GrappleAnchor&&chosen==130){
                     const auto previous=m.grappleAnchor;
                     m.grappleAnchor.enabled=m.dynamicSurfaceOffset||!m.grappleAnchor.enabled;

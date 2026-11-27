@@ -2776,6 +2776,17 @@ unsigned KharvoxCameraNativeResearchReady(){
     return 0;
 #endif
 }
+KharvoxGuidedEvidence KharvoxCameraGuidedEvidence(){
+    KharvoxGuidedEvidence out{};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    for(unsigned i=0;i<6;++i){
+        out.collect[i]=nativeGuidedCollect[i].load(std::memory_order_acquire);
+        out.test[i]=nativeGuidedTest[i].load(std::memory_order_acquire);
+    }
+    out.releaseCount=nativeGuidedReleaseCount.load(std::memory_order_acquire);
+#endif
+    return out;
+}
 void KharvoxCameraSetObjectGripCalibration(
     const float offset[3],const float axis[9],
     bool calibrating,bool freezeObject,bool resetToNeutral,

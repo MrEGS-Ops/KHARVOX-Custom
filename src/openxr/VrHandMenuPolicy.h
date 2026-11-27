@@ -108,7 +108,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch
+    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -579,6 +579,8 @@ struct VrHandMenuState {
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
     unsigned nativeResearchMask{},nativeResearchTestMask{};
     bool nativeResearchTestPage{};
+    bool guidedTestingEnabled{true};
+    unsigned guidedCommand{}; // 1 retry, 2 skip, 3 observed OK, 4 observed failure
     bool nativeResearchActive() const noexcept {return (nativeResearchMask|nativeResearchTestMask)!=0;}
     bool activationInvestigator{}; // session-only passive native wake investigation
     bool releaseInvestigator{}; // session-only observer, can coexist with grabs

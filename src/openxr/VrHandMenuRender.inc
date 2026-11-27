@@ -126,6 +126,9 @@ void paintVrHandMenu() {
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
         &&std::any_of(statsVisible.begin(),statsVisible.end(),
             [](bool on){return on;});
+    const bool guideView=statsGameplay&&guidedOverlayVisible()&&m.mode==kharvox::VrHandMenuMode::Closed
+        &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
+    constexpr int guideX=178,guideY=12,guideW=604,guideH=94;
     constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
@@ -160,7 +163,7 @@ void paintVrHandMenu() {
         fill(38,150,660,421,RGB(16,25,35));
         fill(38,150,6,421,RGB(55,209,214));
         fill(38,150,660,65,RGB(28,55,65));
-    }else if(statsLiveView){
+    }else if(statsLiveView||guideView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
@@ -294,7 +297,7 @@ void paintVrHandMenu() {
             ?"Model name unverified: item profile is session-only."
             :"Profile auto-named from verified model resource.",
             s.objectGripKey.empty()?RGB(255,196,112):muted);
-    }else if(statsLiveView){
+    }else if(statsLiveView||guideView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
@@ -839,7 +842,17 @@ void paintVrHandMenu() {
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
                 :"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt==D::NativeInteractionResearch){
+            if(opt==D::GuidedTesting){
+                const char* labels[]{m.guidedTestingEnabled?"GUIDE HUD: ON":"GUIDE HUD: OFF","RETRY CURRENT STEP","SKIP CURRENT STEP","VISUAL CHECK: OK","VISUAL CHECK: FAIL"};
+                for(int i=0;i<5;++i){
+                    const int top=186+i*68;
+                    const bool selected=m.hovered==130+i||(m.navigation.usingStick&&m.navigation.actionIndex==i);
+                    fill(531,top,384,58,selected?RGB(52,83,99):RGB(39,49,63));
+                    write(548,top+12,labels[i],white);
+                }
+                write(538,550,"Commands apply after closing DEV.",muted);
+                write(538,577,"OK / FAIL only for manual visual steps.",muted);
+            }else if(opt==D::NativeInteractionResearch){
                 const unsigned ready=KharvoxCameraNativeResearchReady();
                 const char* labels[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HOLD / RELEASE","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
                 for(int i=0;i<7;++i){
@@ -868,7 +881,7 @@ void paintVrHandMenu() {
                 }
                 write(538,550,m.activationInvestigator?"Investigator pauses all grabbing.":"Only one grab variant. Reach 2 m.",white);
                 write(538,588,"Surface/Pistol/Investigator: session only.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch&&opt!=D::GuidedTesting){
                 fill(531,186,384,58,m.hovered==130
                     ?RGB(52,83,99):RGB(39,49,63));
                 write(548,204,opt==D::WeaponStability
@@ -925,7 +938,7 @@ void paintVrHandMenu() {
             if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
-            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch){
+            }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch&&opt!=D::GuidedTesting){
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }
@@ -1252,10 +1265,25 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(815,30,"BACK",white);
     }
+    if(guideView){
+        const auto& g=guidedRun;const auto plan=guidedPlan(g.id);
+        fill(guideX,guideY,guideW,guideH,RGB(12,17,22));
+        fill(guideX,guideY,4,guideH,RGB(55,209,214));
+        SelectObject(dc,smallFont);
+        const std::string phase=g.id>=11?"TEST":g.id>=5?"COLLECT":"REGRESSION";
+        write(guideX+14,guideY+5,std::string(plan.title)+" / "+phase+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
+        std::string previous=g.previous;if(previous.size()>54)previous.resize(54);
+        if(!previous.empty())write(guideX+14,guideY+30,previous,
+            previous.find("FAIL")==0?RGB(255,130,125):previous.find("TIMEOUT")==0||previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
+        const std::string next=g.completeAt?"Sequence done; see log for outcomes":plan.steps[g.step].text;
+        write(guideX+14,guideY+56,next,g.completeAt?RGB(128,255,177):white);
+        fill(guideX+12,guideY+85,guideW-24,3,RGB(58,70,79));
+        fill(guideX+12,guideY+85,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
+    }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!statsLiveView&&!resultView&&!calibrationView
+       &&!statsLiveView&&!guideView&&!resultView&&!calibrationView
        &&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
@@ -1291,8 +1319,10 @@ void paintVrHandMenu() {
                     &&y>=resultY&&y<resultY+resultH?245:0)
             :objectCalibrationView
                 ?(x>=38&&x<698&&y>=150&&y<571?245:0)
-            :(statsLiveView)
+            :(statsLiveView||guideView)
                 ?([&](){
+                    if(guideView&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH)return 205;
+                    if(!statsLiveView)return 0;
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
                         const int width=kharvox::campaignStatsPanelWidth(i);
                         const int left=kharvox::statsPanelX(

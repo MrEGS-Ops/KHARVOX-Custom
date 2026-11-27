@@ -448,7 +448,7 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
     auto& out=snapshot.candidates[slot];
     out={};out.handle=item.handle;
     out.generation=item.generation;out.observedAtMs=now;
-    out.nativeMotionObserved=item.nativeMotionObserved;
+    out.nativeMotionObserved=item.nativeMotionObserved;out.nativeMovedAtMs=item.nativeMovedAtMs;
     out.modelKey=item.modelKey;
     for(int i=0;i<3;++i)out.origin[i]=item.origin[i];
 }
@@ -456,6 +456,8 @@ void objectDiscoveryPublish(const ObjectDiscoveryNativeRecord& item,
 std::atomic<unsigned> nativeResearchReady{};
 std::atomic<unsigned long long> nativeResearchReadyGeneration{};
 unsigned nativeResearchTests{};
+std::array<std::atomic<unsigned>,6> nativeGuidedCollect{},nativeGuidedTest{};
+std::atomic<unsigned> nativeGuidedReleaseCount{};
 void nativeResearchEvidence(unsigned bit,const std::string& summary){
     const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
     if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));
@@ -463,11 +465,13 @@ void nativeResearchEvidence(unsigned bit,const std::string& summary){
     static unsigned long long lastGeneration{};
     const auto generation=nativeResearchReadyGeneration.load(std::memory_order_acquire);
     if(lastGeneration!=generation){lastTest={};lastGeneration=generation;}
-    if(!(nativeResearchTests&bit))return;
     unsigned index=0;for(unsigned b=bit;b>1;b>>=1)++index;
+    if(index>=nativeGuidedCollect.size())return;
+    nativeGuidedCollect[index].fetch_add(1,std::memory_order_release);
+    if(!(nativeResearchTests&bit))return;
     const auto now=GetTickCount64();
     if(index>=lastTest.size()||(lastTest[index]&&now>=lastTest[index]&&now-lastTest[index]<500))return;
-    lastTest[index]=now;
+    lastTest[index]=now;nativeGuidedTest[index].fetch_add(1,std::memory_order_release);
     log("[NATIVE-RESEARCH-TEST] group="+std::to_string(bit)+" "+summary);
 }
 #endif
@@ -601,6 +605,9 @@ bool objectDiscoveryReleaseToGravity(ObjectDiscoveryNativeRecord& item,bool wake
 }
 void objectDiscoveryReleaseNative(const char* reason="context_or_follow_failure") {
     if(objectDiscoveryHeld.active&&objectDiscoveryHeld.nativeFollowConfirmed){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        if(std::strcmp(reason,"grip_up")==0)nativeGuidedReleaseCount.fetch_add(1,std::memory_order_release);
+#endif
         if(auto* item=objectDiscoveryNativeByHandle(objectDiscoveryHeld.handle)){
             if(item->generation==objectDiscoveryHeld.generation){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
