@@ -918,12 +918,12 @@ void objectDiscoveryGameTick() {
         for(int j=0;j<3;++j){
             const float d=item.origin[j]-player[j];nearD2+=d*d;
         }
-        const bool near=playerValid&&item.poseValid&&nearD2<=priorityRadius*priorityRadius;
-        const unsigned long long readIntervalMs=near?(input.pressed?12:40):500;
+        const bool isNearby=playerValid&&item.poseValid&&nearD2<=priorityRadius*priorityRadius;
+        const unsigned long long readIntervalMs=isNearby?(input.pressed?12:40):500;
         if(!priority&&item.poseValid&&now>=item.lastPositionAtMs
             &&now-item.lastPositionAtMs<readIntervalMs)continue;
         if(!priority){
-            if(near&&nearReads<nearReadsPerTick)++nearReads;
+            if(isNearby&&nearReads<nearReadsPerTick)++nearReads;
             else if(reads<readsPerTick)++reads;
             else continue;
         }
