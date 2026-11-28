@@ -739,7 +739,7 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
     static bool gripWasDown{};
     const bool edge=valid&&in.pressed&&!gripWasDown;
     gripWasDown=valid&&in.pressed;
-    if(!(mask&50u)||!valid)return;
+    if(!(mask&58u)||!valid)return;
     if(!edge&&last&&now>=last&&now-last<500)return;
     last=now;
     if((mask&2u)&&in.pressed){
@@ -802,7 +802,7 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
     const auto present=cameraPresentSerial.load(std::memory_order_acquire);
     const auto capture=playerPhysicsCapturePresent.load(std::memory_order_acquire);
     if(!owner||!playerPhysicsOriginValid.load(std::memory_order_acquire)||!capture||present<capture||present-capture>2)return;
-    if(mask&(16u|2u)){
+    if(mask&(16u|2u|8u)){
         const auto phys=owner+0x14e58;
         std::uintptr_t vt{};
         const auto base=objectDiscoveryManagedPool.imageBase;
@@ -1394,12 +1394,20 @@ void objectDiscoveryGameTick() {
                     if(lastHandle!=item->handle||lastGen!=generation||now-lastAt>=40){
                         lastHandle=item->handle;lastGen=generation;lastAt=now;
                         const bool playerAfterValid=readLivePlayerPhysicsOrigin(livePlayerAfter,nullptr);
+                        float movementRequest[6]{};unsigned char clipMove{};std::uintptr_t playerTable{};
+                        const auto owner=playerPhysicsOwner.load(std::memory_order_acquire);
+                        const bool requestValid=owner&&geometryRead(owner+0x14e58,&playerTable,8)
+                            &&playerTable==item->imageBase+0x28589b0
+                            &&geometryRead(owner+0x14e58+0x1a70,movementRequest,24)
+                            &&geometryRead(owner+0x14e58+0x1a88,&clipMove,1)
+                            &&owner==playerPhysicsOwner.load(std::memory_order_acquire);
                         const auto afterSequence=nativeInvestigationSequence.fetch_add(1,std::memory_order_relaxed)+1;
                         log("[ANCHOR-MOVEMENT] anchor_begin_seq="+std::to_string(anchorSequence)+" anchor_end_seq="+std::to_string(afterSequence)
                             +" capture_before_seq="+std::to_string(captureBefore)+" capture_after_seq="+std::to_string(nativePlayerCaptureSequence.load(std::memory_order_acquire))
                             +" capture_ms="+std::to_string(nativePlayerCaptureAt.load())+" capture_thread="+std::to_string(nativePlayerCaptureThread.load())+" world_thread="+std::to_string(GetCurrentThreadId())
                             +" live_before_valid="+std::to_string(playerBeforeValid)+" live_before="+geometryFloats(livePlayerBefore,3)
                             +" live_after_valid="+std::to_string(playerAfterValid)+" live_after="+geometryFloats(livePlayerAfter,3)
+                            +" request_valid="+std::to_string(requestValid)+" requested_delta_destination="+geometryFloats(movementRequest,6)+" clip_move="+std::to_string(clipMove)
                             +" tick_ms="+std::to_string(now)+" input_ms="+std::to_string(input.frameAtMs)
                             +" handle="+std::to_string(item->handle)+" stick="+std::to_string(input.moveX)+","+std::to_string(input.moveY)
                             +" player_submit_valid="+std::to_string(input.playerAtSubmitValid)+" player_submit="+geometryFloats(input.playerAtSubmit,3)
