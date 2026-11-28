@@ -25,6 +25,11 @@ int main(){
     assert(updateVrMenuHoldShortcut(hold,false,1400)==VrMenuShortcutAction::None);
     assert(!radialHasFlyout(3)&&radialHasFlyout(5));
     assert(radialDescriptionX(5)==692&&radialDescriptionX(1)==8);
+    assert(radialPanelX(radialWeaponGripIndex)==350);
+    assert(radialRowY(radialWeaponGripIndex,0)==36);
+    assert(radialHit(480,58,radialWeaponGripIndex,1)==radialRowTarget+1);
+    assert(radialHit(480,85,radialWeaponGripIndex,1)==-1);
+    assert(radialRowY(radialWeaponGripIndex,1)+32<158);
     const auto rimSample=radialCoverage(0.f,-202.f);
     assert(rimSample.category==0&&rimSample.outer>.4f&&rimSample.outer<.6f&&rimSample.inner==0.f);
     assert(radialCoverage(0.f,-137.f).inner==1.f);
