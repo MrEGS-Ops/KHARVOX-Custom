@@ -60,8 +60,11 @@ inline constexpr int statsGridCellFromPosition(int position) noexcept {
 inline constexpr int statsPositionFromGridCell(int cell) noexcept {
     return statsGridCellSelectable(cell)?kStatsFinePositionBase+cell:-1;
 }
+// Pixel coordinates in the existing 960 x 720 HUD. Legacy slots keep their IDs.
+inline constexpr int statsPixelPosition(int x,int y) noexcept { return 10000+y*960+x; }
+inline constexpr bool statsPixelValid(int p) noexcept { return p>=10000&&p<10000+960*720; }
 inline constexpr bool statsPositionValid(int position) noexcept {
-    return statsGridCellFromPosition(position)>=0;
+    return statsPixelValid(position)||statsGridCellFromPosition(position)>=0;
 }
 inline constexpr int statsMenuGridCellAt(int x,int y) noexcept {
     const int dx=x-kStatsMenuGridX,dy=y-kStatsMenuGridY;
@@ -73,6 +76,7 @@ inline constexpr int statsMenuGridCellAt(int x,int y) noexcept {
 }
 inline constexpr int statsPanelX(int position,int width,int panelWidth,
     int margin=32) noexcept {
+    if(statsPixelValid(position)){const int x=(position-10000)%960;return x<width-panelWidth?x:width-panelWidth;}
     if(position>=kStatsFinePositionBase){
         const int cell=statsGridCellFromPosition(position);
         if(cell<0)return deathCounterPanelX(1,width,panelWidth,margin);
@@ -84,6 +88,7 @@ inline constexpr int statsPanelX(int position,int width,int panelWidth,
 }
 inline constexpr int statsPanelY(int position,int height,int panelHeight,
     int margin=28) noexcept {
+    if(statsPixelValid(position)){const int y=(position-10000)/960;return y<height-panelHeight?y:height-panelHeight;}
     if(position>=kStatsFinePositionBase){
         const int cell=statsGridCellFromPosition(position);
         if(cell<0)return deathCounterPanelY(1,height,panelHeight,margin);

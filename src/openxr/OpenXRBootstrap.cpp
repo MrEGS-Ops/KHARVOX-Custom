@@ -2749,7 +2749,10 @@ void updateWeapon6Dof(){
             gripPivotEnabled,
             [](const XrQuaternionf&q,const XrVector3f&v){return rotateVector(q,v);});
     };
-    if(s.twoHandEnabled){
+    const bool testingSupport=menu.mode==kharvox::VrHandMenuMode::Calibrating
+        &&menu.supportPreviewHeld&&menu.previewValid&&menu.rightHand==s.weaponHandLeft
+        &&menu.calibratingWeaponLeft==s.weaponHandLeft&&kind==KharvoxWeaponKindFromKey(menu.weapon());
+    if(s.twoHandEnabled||testingSupport){
         if(s.twoHandLatched&&s.twoHandLatchedWeapon!=kind){
             log(std::string("[TWO-HAND] support released after weapon change from ")
                 +KharvoxWeaponKindKey(s.twoHandLatchedWeapon)+" to "+KharvoxWeaponKindKey(kind));
@@ -2787,7 +2790,9 @@ void updateWeapon6Dof(){
             const auto supportGrip=controllerRelativeToBodyTrackingOrigin(supportController);
             auto activeCalibration=activeHandCalibration(*calibration);
             XrVector3f activeAlternateSupport{};
-            if(altHeavySupport(kind,activeAlternateSupport))
+            if(testingSupport)
+                activeCalibration.supportPosition={menu.previewPosition.x,menu.previewPosition.y,menu.previewPosition.z};
+            else if(altHeavySupport(kind,activeAlternateSupport))
                 activeCalibration.supportPosition=activeAlternateSupport;
             // Existing support grab offsets were captured relative to
             // controller AIM. Rebase them to the immutable physical GRIP
@@ -2809,7 +2814,7 @@ void updateWeapon6Dof(){
                         rotateVector(current.orientation,
                             activeCalibration.supportPosition));
                 const float distance=vectorLength(subtractVector(supportGrip.position,target));
-                if(distance<=activeCalibration.captureRadius){
+                if(testingSupport||distance<=activeCalibration.captureRadius){
                     s.twoHandLatched=true;
                     s.twoHandLatchedWeapon=kind;
                     // Built-in calibration feedback: one quiet pulse when
@@ -2934,11 +2939,11 @@ void updateWeapon6Dof(){
     // on the primary controller laser. Calibration screens remain unchanged.
     const bool gameplayTwoHandSteering=
         kharvox::weaponpose::twoHandGameplaySteeringActive(
-            s.twoHandEnabled,s.twoHandLatched,
+            s.twoHandEnabled||testingSupport,s.twoHandLatched,
             s.twoHandLatchedWeapon==kind,s.supportGripPressed,
             supportController.valid,s.dynamicShoulderHolstered,
             s.twoHandCalibrationMode||
-                s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating);
+                (s.vrHandMenu.mode==kharvox::VrHandMenuMode::Calibrating&&!testingSupport));
     if(s.showHands)
         rotation=kharvox::weaponpose::gameplayWeaponAim(
             current.orientation,rotation,gameplayTwoHandSteering);
@@ -3906,6 +3911,7 @@ void updateGameplayActions(XrTime displayTime){
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f,
+         readFloatAction(s.weaponHandLeft?s.rightWeaponGrip:s.leftWeaponGrip)>.55f,
          readBooleanAction(s.doomCrouch), // physical RIGHT A: menu select
          readBooleanAction(s.doomJump))){ // physical RIGHT B: menu back
         releaseHandFocusUseKeyboardPulse();

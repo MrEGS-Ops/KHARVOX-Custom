@@ -33,6 +33,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.vrHandMenu.objectGrappleActive()||s.vrHandMenu.objectMeleeActive(),D::GrappleAnchor});
         rows.push_back({"Native Interaction Research Suite",VrLiveMod::Other,s.vrHandMenu.nativeResearchActive(),D::NativeInteractionResearch});
 #endif
+        rows.push_back({"Guided Instructions",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled,D::GuidedTesting});
         return rows;
     }
     const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){

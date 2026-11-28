@@ -183,6 +183,15 @@ int main(){
     assert(std::abs(defaults.hipShift[1].z+.1343255f)<.0000001f);
     assert(defaults.wheelShift[0].x==0.f
         &&defaults.wheelShift[1].z==0.f);
+    VrLiveSettings layout{};
+    const int pixel=statsPixelPosition(117,348);
+    assert(statsPositionValid(pixel));
+    assert(statsPanelX(pixel,960,226)==117&&statsPanelY(pixel,720,60)==348);
+    assert(vrStatsSetCorner(layout,3,pixel)&&vrStatsSetEnabled(layout,3,true));
+    assert(vrLiveSave(file,layout)&&vrLiveLoad(file,read));
+    assert(vrStatsCorner(read,3)==pixel&&vrStatsEnabled(read,3));
+    assert(vrStatsSetCorner(read,1,statsPixelPosition(118,349)));
+    assert(vrStatsSetEnabled(read,1,true)&&!vrStatsEnabled(read,3));
     std::remove(file.c_str());
     return 0;
 }

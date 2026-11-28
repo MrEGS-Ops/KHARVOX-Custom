@@ -562,6 +562,12 @@ struct VrHandMenuState {
     int selectedWeapon{1};
     int selectedRecoilWeapon{1}; // separate from physical hand calibration
     bool rightHand{true};
+    int radialCategory{-1}, suppressedCategory{-1};
+    bool radialPinned{}, supportPreviewHeld{}, resetWeaponPending{};
+    bool calibrationWheel{}, waitingForEquip{};
+    unsigned long long wheelReleasedAt{};
+    VrLiveSettings hudDraft{};
+    int hudSelection{-1},hudDrag{-1},hudOffsetX{},hudOffsetY{},hudX{},hudY{};
     // Both Gauss and Chaingun: NORMAL / ALT FIRE. The latter is a
     // generic secondary-fire grip slot, regardless of installed attachment.
     bool alternateProfile{},calibrationAlternateProfile{};

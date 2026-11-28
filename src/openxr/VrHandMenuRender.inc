@@ -105,22 +105,26 @@ void paintVrHandMenu() {
         &&!KharvoxHudEndOfLevelMenuActive()
         &&!s.quadMode&&!s.centeredQuadTransitionPending
         &&!s.immersiveCinematicActive;
+    const bool editingHud=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Stats&&!disconnectView;
+    const bool radialView=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods;
+    const bool pickingWeapon=m.mode==kharvox::VrHandMenuMode::Menu&&(m.calibrationWheel||m.waitingForEquip);
+    const auto& layout=editingHud?m.hudDraft:s.vrLiveSettings;
     const std::array<bool,kharvox::kVrStatsItemCount> statsVisible{
-        s.vrLiveSettings.deathCounterEnabled,
-        s.vrLiveSettings.deathStatisticsEnabled,
-        s.vrLiveSettings.campaignTimerEnabled,
-        s.vrLiveSettings.sessionTimerEnabled,
-        s.vrLiveSettings.levelDisplayEnabled[0],
-        s.vrLiveSettings.levelDisplayEnabled[1],
-        s.vrLiveSettings.levelDisplayEnabled[2]};
+        layout.deathCounterEnabled,
+        layout.deathStatisticsEnabled,
+        layout.campaignTimerEnabled,
+        layout.sessionTimerEnabled,
+        layout.levelDisplayEnabled[0],
+        layout.levelDisplayEnabled[1],
+        layout.levelDisplayEnabled[2]};
     const std::array<int,kharvox::kVrStatsItemCount> statsCorners{
-        s.vrLiveSettings.deathCounterCorner,
-        s.vrLiveSettings.deathStatisticsCorner,
-        s.vrLiveSettings.campaignTimerCorner,
-        s.vrLiveSettings.sessionTimerCorner,
-        s.vrLiveSettings.levelDisplayPosition[0],
-        s.vrLiveSettings.levelDisplayPosition[1],
-        s.vrLiveSettings.levelDisplayPosition[2]};
+        layout.deathCounterCorner,
+        layout.deathStatisticsCorner,
+        layout.campaignTimerCorner,
+        layout.sessionTimerCorner,
+        layout.levelDisplayPosition[0],
+        layout.levelDisplayPosition[1],
+        layout.levelDisplayPosition[2]};
     const bool statsLiveView=kharvox::campaignStatsCanDraw(
         statsGameplay,m.mode==kharvox::VrHandMenuMode::Closed,
         firstTimeSetupView||gameplayWelcomeView,disconnectView)
@@ -128,7 +132,8 @@ void paintVrHandMenu() {
             [](bool on){return on;});
     const bool guideView=statsGameplay&&guidedOverlayVisible()&&m.mode==kharvox::VrHandMenuMode::Closed
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
-    const bool calibrationGuide=guidedCalibrationVisible()&&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView;
+    const bool weaponGuide=m.mode==kharvox::VrHandMenuMode::Calibrating&&m.liveCapture==kharvox::VrLiveCapture::None&&m.weaponCalibrationStage;
+    const bool calibrationGuide=(guidedCalibrationVisible()||weaponGuide)&&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView;
     constexpr int counterH=60;
     // These independent onboarding panels share one transparent menu Quad.
     constexpr int setupX=95,setupY=115,setupW=770,setupH=495;
@@ -139,6 +144,7 @@ void paintVrHandMenu() {
     const bool devPanel=kharvox::vrDevCalibrationPanelVisible(
         m.mode,m.liveCapture,m.devWeaponAlignment,
         m.devControllerInputs);
+    if(editingHud)fill(0,0,960,720,RGB(50,54,58));
     if(disconnectView){
         fill(bannerX,bannerY,bannerW,bannerH,RGB(17,24,32));
         fill(bannerX,bannerY,6,bannerH,RGB(231,161,62));
@@ -161,11 +167,11 @@ void paintVrHandMenu() {
         fill(resultX+7,resultY,resultW-7,3,accent);
     }else if(objectCalibrationView){
         // Object calibration uses only the shared top instructor.
-    }else if(statsLiveView||guideView){
-        if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+    }else if(statsLiveView||guideView||editingHud){
+        if(statsLiveView||editingHud)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){
             const int width=kharvox::campaignStatsPanelWidth(i);
-            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
-            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
+            const int x=editingHud&&m.hudDrag==i?m.hudX:kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=editingHud&&m.hudDrag==i?m.hudY:kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             fill(x,y,width,counterH,RGB(19,23,30));
             fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
         }
@@ -175,6 +181,8 @@ void paintVrHandMenu() {
             fill(630,144,5,432,RGB(55,209,214));
             fill(630,198,308,2,RGB(76,88,99));
         }
+    }else if(radialView||pickingWeapon){
+        fill(0,0,960,720,RGB(0,0,0));
     }else{
         fill(0,0,vrMenuW,vrMenuH,RGB(15,18,24));
         fill(0,0,vrMenuW,84,RGB(24,29,40));
@@ -270,11 +278,11 @@ void paintVrHandMenu() {
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
     }else if(objectCalibrationView){
         // Instructions rendered by calibrationGuide below.
-    }else if(statsLiveView||guideView){
-        if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+    }else if(statsLiveView||guideView||editingHud){
+        if(statsLiveView||editingHud)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){
             const int width=kharvox::campaignStatsPanelWidth(i);
-            const int x=kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
-            const int y=kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
+            const int x=editingHud&&m.hudDrag==i?m.hudX:kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
+            const int y=editingHud&&m.hudDrag==i?m.hudY:kharvox::statsPanelY(statsCorners[i],vrMenuH,counterH);
             SelectObject(dc,smallFont);
             if(i==0||i==1){
                 write(x+16,y+5,i==0?"CAMPAIGN DEATHS":"SESSION DEATHS",muted);
@@ -328,6 +336,27 @@ void paintVrHandMenu() {
                     if(deathsX+deathSize.cx<=x+width-10)
                         write(deathsX,y+28,deathsText,RGB(235,92,99));
                 }
+            }
+        }
+        if(editingHud){
+            SelectObject(dc,smallFont);
+            write(332,335,"CLICK AND DRAG INTO POSITION",muted);
+            for(int i=0;i<7;++i){
+                if(!statsVisible[i]&&m.hudDrag!=i){
+                    fill(700,hudTrayY(i),254,35,RGB(45,49,54));
+                    write(710,hudTrayY(i)+5,kharvox::vrStatsLabel(i),muted);
+                }else{
+                    const int w=kharvox::campaignStatsPanelWidth(i);
+                    const int x=m.hudDrag==i?m.hudX:kharvox::statsPanelX(statsCorners[i],960,w);
+                    const int y=m.hudDrag==i?m.hudY:kharvox::statsPanelY(statsCorners[i],720,60);
+                    const auto edge=i==m.hudSelection?RGB(104,255,228):RGB(50,144,146);
+                    fill(x,y,w,2,edge);fill(x,y+58,w,2,edge);fill(x,y,2,60,edge);fill(x+w-2,y,2,60,edge);
+                }
+            }
+            const char* labels[]={"SAVE","CANCEL","REMOVE"};
+            for(int i=0;i<3;++i){
+                fill(220+i*140,660,137,48,RGB(27,36,42));
+                write(245+i*140,672,labels[i],i==2&&(m.hudSelection<0||!kharvox::vrStatsEnabled(layout,m.hudSelection))?muted:white);
             }
         }
     }else if(calibrationView){
@@ -408,6 +437,46 @@ void paintVrHandMenu() {
                 }
             }
         }
+    }else if(pickingWeapon){
+        // The native game composites the actual weapon wheel.
+    }else if(radialView){
+        SelectObject(dc,smallFont);
+        auto label=[&](int x,int y,int w,int h,const char* value,COLORREF colour){
+            RECT rc{x,y,x+w,y+h};SetTextColor(dc,colour);
+            DrawTextA(dc,value,-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        };
+        for(int i=0;i<7;++i){
+            POINT points[36]{};
+            for(int j=0;j<18;++j){
+                const double a=radialAngle(i)+(j/17.0-.5)*(radialStep-.018);
+                points[j]={LONG(480+202*std::cos(a)),LONG(360+202*std::sin(a))};
+                points[35-j]={LONG(480+61*std::cos(a)),LONG(360+61*std::sin(a))};
+            }
+            const auto brush=CreateSolidBrush(m.radialCategory==i?RGB(33,77,84):RGB(35,41,47));
+            const auto old=SelectObject(dc,brush);Polygon(dc,points,36);SelectObject(dc,old);DeleteObject(brush);
+            const int x=int(480+137*std::cos(radialAngle(i))),y=int(360+137*std::sin(radialAngle(i)));
+            label(x-72,y-15,144,29,radialGroups[i].name,white);
+            if(i>=5){
+                const bool on=i==6?s.customMods.physicalCrouch:(s.customMods.chainsawTriggerThrottle||s.customMods.motionChainsawKillSpeed);
+                label(x-40,y+10,80,23,on?"ON":"OFF",on?RGB(111,224,156):muted);
+            }
+        }
+        const auto brush=CreateSolidBrush(RGB(24,36,40));const auto old=SelectObject(dc,brush);
+        Ellipse(dc,421,301,539,419);SelectObject(dc,old);DeleteObject(brush);
+        label(423,341,114,38,"RIPSHIFT",RGB(112,232,224));
+        if(m.radialCategory>=0&&m.radialCategory<5){
+            const int x=radialPanelX(m.radialCategory);const auto& opts=radialGroups[m.radialCategory].settings;
+            for(int i=0;i<int(opts.size());++i){
+                fill(x,170+i*49,260,47,m.hovered==200+i?RGB(35,88,93):RGB(31,40,47));
+                label(x,170+i*49,260,47,opts[i].label,white);
+            }
+            if(m.radialCategory==1||m.radialCategory==4){
+                const auto value=m.radialCategory==1?std::to_string(int(s.vrLiveSettings.smoothTurnSpeedDegreesPerSec?s.vrLiveSettings.smoothTurnSpeedDegreesPerSec:s.vrDesktopSmoothTurnSpeed))+" deg/s":
+                    vrLiveGloryKillSpeedText()+" / "+std::to_string(s.vrLiveSettings.punchSpeedMetersPerSec).substr(0,3)+" m/s";
+                label(x,125,260,42,value.c_str(),white);
+            }
+        }
+        if(m.hovered==105||m.hovered==106)label(160,577,640,36,m.hovered==105?"Control chainsaw speed with physical motion":"Lower your head to crouch in game",white);
     }else if(m.page==kharvox::VrMenuPage::Records
         ||m.page==kharvox::VrMenuPage::DevRecords){
         const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
@@ -1196,7 +1265,19 @@ void paintVrHandMenu() {
                 fill(static_cast<int>(guidedCursorX)-3,static_cast<int>(guidedCursorY)-3,6,6,RGB(97,255,234));
         }
     }
-    if(calibrationGuide){
+    if(calibrationGuide&&weaponGuide){
+        fill(12,3,936,99,RGB(23,33,39));SelectObject(dc,smallFont);
+        const std::string heading=std::string(m.weapon())+"   /   "+(m.rightHand!=s.weaponHandLeft?"Primary":"Support")
+            +"   /   RH "+(m.rightSaved[m.selectedWeapon]?"saved":"unsaved")+"   LH "+(m.leftSaved[m.selectedWeapon]?"saved":"unsaved");
+        write(24,7,heading,RGB(84,233,214));
+        write(24,33,m.weaponCalibrationStage==3?"Right-handed sequence saved. LT starts left-handed calibration. RT finishes.":
+            m.rightHand!=s.weaponHandLeft?"Grip released: sticks adjust position. Hold Grip and rotate the weapon hand.":
+            "Place support hand, hold its Grip to test aiming, release to reposition.",white);
+        write(24,68,m.weaponCalibrationStage==3?"B: finish":m.rightHand?"RT: save    B: cancel":"LT: save    B: cancel",white);
+        write(465,68,m.resetWeaponPending?"Confirm reset":"Reset weapon",white);write(641,68,"Change weapon",white);
+        if(KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon||KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chaingun)
+            write(799,68,m.alternateProfile?"Alt fire":"Normal",white);
+    }else if(calibrationGuide){
         fill(guideX,guideY,guideW,guideH,RGB(12,17,22));
         fill(guideX,guideY,4,guideH,RGB(55,209,214));
         SelectObject(dc,smallFont);
@@ -1221,7 +1302,7 @@ void paintVrHandMenu() {
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!statsLiveView&&!guideView&&!resultView&&!calibrationView
+       &&!statsLiveView&&!guideView&&!resultView&&(!calibrationView||weaponGuide)
        &&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
@@ -1255,6 +1336,9 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
+            :weaponGuide?(x>=12&&x<948&&y>=3&&y<102?225:devPanel&&x>=630&&x<938&&y>=144&&y<576?255:0)
+            :radialView||pickingWeapon?(src[b]||src[b+1]||src[b+2]?226:0)
+            :editingHud?210
             :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH?205
             :objectCalibrationView
                 ?0
@@ -1262,7 +1346,7 @@ void paintVrHandMenu() {
                 ?([&](){
                     if(guideView&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH)return 205;
                     if(!statsLiveView)return 0;
-                    for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
+                    for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){
                         const int width=kharvox::campaignStatsPanelWidth(i);
                         const int left=kharvox::statsPanelX(
                             statsCorners[i],vrMenuW,width);
