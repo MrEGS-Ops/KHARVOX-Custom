@@ -45,10 +45,10 @@ int main(){
     assert(radialNoticeY>=574+28&&radialNoticeBottom<=720);
     assert(radialHit(480,radialNoticeY+10,0,1)==-1);
     assert(radialPanelX(radialWeaponGripIndex)==350);
-    assert(radialRowY(radialWeaponGripIndex,0)==36);
-    assert(radialHit(480,58,radialWeaponGripIndex,1)==radialRowTarget+1);
-    assert(radialHit(480,85,radialWeaponGripIndex,1)==-1);
-    assert(radialRowY(radialWeaponGripIndex,1)+32<158);
+    assert(radialRowY(radialWeaponGripIndex,0)==102);
+    assert(radialHit(480,124,radialWeaponGripIndex,1)==radialRowTarget+1);
+    assert(radialHit(480,147,radialWeaponGripIndex,1)==-1);
+    assert(radialRowY(radialWeaponGripIndex,0)+radialRowHeight+12<=158);
     const auto rimSample=radialCoverage(0.f,-202.f);
     assert(rimSample.category==0&&rimSample.outer>.4f&&rimSample.outer<.6f&&rimSample.inner==0.f);
     assert(radialCoverage(0.f,-137.f).inner==1.f);

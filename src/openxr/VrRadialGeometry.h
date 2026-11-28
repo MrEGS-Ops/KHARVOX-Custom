@@ -21,7 +21,7 @@ constexpr double radialStep=6.283185307179586/radialCategoryCount;
 
 inline double radialAngle(int i){return -1.570796326794897+i*radialStep;}
 constexpr int radialWeaponGripIndex=0;
-constexpr int radialWeaponGripTop=36;
+constexpr int radialWeaponGripTop=102;
 inline int radialPanelX(int i){return i==radialWeaponGripIndex?(960-radialPanelWidth)/2:std::cos(radialAngle(i))<-.01?8:692;}
 inline int radialPanelTop(int category){return category==radialWeaponGripIndex?radialWeaponGripTop:radialRowTop;}
 inline int radialRowY(int category,int row){return radialPanelTop(category)+row*radialRowStep;}
