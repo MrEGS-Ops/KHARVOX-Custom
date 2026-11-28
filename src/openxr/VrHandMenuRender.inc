@@ -137,6 +137,9 @@ void paintVrHandMenu() {
             [](bool on){return on;});
     const bool guideView=statsGameplay&&guidedOverlayVisible()&&m.mode==kharvox::VrHandMenuMode::Closed
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
+    const bool gunslingerView=statsGameplay&&gunslingerHelperVisible()&&!guideView
+        &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
+    constexpr int helperX=190,helperY=12,helperW=580,helperH=84;
     const bool weaponGuide=m.mode==kharvox::VrHandMenuMode::Calibrating&&m.liveCapture==kharvox::VrLiveCapture::None&&m.weaponCalibrationStage;
     const bool calibrationGuide=(guidedCalibrationVisible()||weaponGuide)&&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView;
     constexpr int counterH=60;
@@ -172,7 +175,7 @@ void paintVrHandMenu() {
         fill(resultX+7,resultY,resultW-7,3,accent);
     }else if(objectCalibrationView){
         // Object calibration uses only the shared top instructor.
-    }else if(statsLiveView||guideView||editingHud){
+    }else if(statsLiveView||guideView||gunslingerView||editingHud){
         if(statsLiveView||editingHud)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=editingHud&&m.hudDrag==i?m.hudX:kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
@@ -283,7 +286,7 @@ void paintVrHandMenu() {
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
     }else if(objectCalibrationView){
         // Instructions rendered by calibrationGuide below.
-    }else if(statsLiveView||guideView||editingHud){
+    }else if(statsLiveView||guideView||gunslingerView||editingHud){
         if(statsLiveView||editingHud)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){
             const int width=kharvox::campaignStatsPanelWidth(i);
             const int x=editingHud&&m.hudDrag==i?m.hudX:kharvox::statsPanelX(statsCorners[i],vrMenuW,width);
@@ -529,6 +532,7 @@ void paintVrHandMenu() {
                 }else if(option.control==RadialControl::Toggle||option.control==RadialControl::Choice){
                     const bool toggle=option.control==RadialControl::Toggle;
                     const bool on=option.mod==RadialMod::PhysicalCrouch?s.customMods.physicalCrouch:
+                        option.mod==RadialMod::Gunslinger?s.gunslingerTutorial.enabled&&s.gunslingerTutorial.step<kharvox::gunslingerLessonCount:
                         s.vrLiveSettings.gaussRequireTwoHandFire;
                     const char* hands[]{"RIGHT","LEFT","BOTH"};
                     control(x,y,w,h,"",hot,white);
@@ -1203,6 +1207,29 @@ void paintVrHandMenu() {
             ?RGB(47,95,110):RGB(39,49,63));
         write(815,30,"BACK",white);
     }
+    if(gunslingerView){
+        const auto& t=s.gunslingerTutorial;
+        fill(helperX,helperY,helperW,helperH,RGB(16,25,32));
+        fill(helperX,helperY,3,helperH,RGB(55,209,214));
+        SelectObject(dc,smallFont);
+        const bool done=t.step>=kharvox::gunslingerLessonCount;
+        std::string titleText=done?"GUNSLINGER / TRAINING COMPLETE":
+            "GUNSLINGER / "+std::to_string(t.step+1)+" of "+std::to_string(kharvox::gunslingerLessonCount);
+        write(helperX+12,helperY+4,titleText,RGB(84,233,214));
+        const int side=kharvox::gunslingerLessonSide(t.step);
+        const std::string hand=side==0?"RIGHT":"LEFT";
+        std::string hint;
+        if(done)hint="Now go rip and tear. You can replay training in Gunslinger.";
+        else if(t.pendingSide>=0)hint="Waiting for DOOM to equip your selected weapon...";
+        else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::WheelEquip){
+            if(s.behindHeadWheelActive&&s.behindHeadWheelSide==side)
+                hint=s.wheelSelectionFrozen?"Keep Grip held and pull your hand forward.":"Move your arm to a gun, then hold Grip to lock it.";
+            else hint="Reach behind your head with your "+hand+" hand.";
+        }else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::HipAssign)
+            hint="Hold "+hand+" Grip, lower to that hip, then release Grip.";
+        else hint="Reach into your "+hand+" hip and press Grip to quick draw.";
+        wrap(helperX+12,helperY+30,helperW-24,helperH-32,hint,white);
+    }
     if(guideView){
         const auto& g=guidedRun;const auto plan=guidedPlan(g.id);
         fill(guideX,guideY,guideW,guideH,RGB(12,17,22));
@@ -1298,7 +1325,7 @@ void paintVrHandMenu() {
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
     if(!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView
-       &&!statsLiveView&&!guideView&&!resultView&&(!calibrationView||weaponGuide)
+       &&!statsLiveView&&!guideView&&!gunslingerView&&!resultView&&(!calibrationView||weaponGuide)
        &&m.cursorX>=0&&m.cursorY>=0
        &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH){
         HBRUSH marker=CreateSolidBrush(RGB(97,255,234));
@@ -1350,8 +1377,9 @@ void paintVrHandMenu() {
             :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+156?205
             :objectCalibrationView
                 ?0
-            :(statsLiveView||guideView)
+            :(statsLiveView||guideView||gunslingerView)
                 ?([&](){
+                    if(gunslingerView&&x>=helperX&&x<helperX+helperW&&y>=helperY&&y<helperY+helperH)return 205;
                     if(guideView&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH)return 205;
                     if(!statsLiveView)return 0;
                     for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]||(editingHud&&m.hudDrag==i)){

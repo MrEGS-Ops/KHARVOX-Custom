@@ -202,20 +202,20 @@ int main(){
     assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
     assert(progression.armed&&progression.time.elapsedMs==0
         &&progression.deaths==0);
-    levelProgressAdvance(progression,true,1000);
-    levelProgressAdvance(progression,true,1600);
+    levelProgressAdvance(progression,false,1000);
+    levelProgressAdvance(progression,false,1600);
     levelProgressDeath(progression);
     levelProgressDeath(progression);
-    assert(progression.time.elapsedMs==250); // maximum frame delta
+    assert(progression.time.elapsedMs==600); // actual monotonic time, not capped
     assert(progression.deaths==2);
-    levelProgressAdvance(progression,false,2000);
-    levelProgressAdvance(progression,true,3000);
-    levelProgressAdvance(progression,true,3030);
-    assert(progression.time.elapsedMs==280);
+    levelProgressAdvance(progression,true,2000); // native pause
+    levelProgressAdvance(progression,false,3000); // resume; exclude pause gap
+    levelProgressAdvance(progression,false,3030);
+    assert(progression.time.elapsedMs==630);
     // First completion is a personal best, disarms timer, saves date/deaths.
     assert(levelProgressComplete(progression,bests,4000,20261116));
     assert(!progression.armed&&progression.completed&&progression.deaths==2);
-    assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(levelBestFor(bests,"maps/game/uem1")==630);
     assert(progression.bestUpdated&&progression.previousBestMs==0
         &&progression.bestImprovementMs==0);
     assert(bests.runs.at("maps/game/uem1").front().deaths==2);
@@ -223,7 +223,7 @@ int main(){
     assert(!levelProgressComplete(progression,bests,4010,20261116));
     levelProgressAdvance(progression,true,4300);
     levelProgressDeath(progression);
-    assert(progression.time.elapsedMs==280&&progression.deaths==2);
+    assert(progression.time.elapsedMs==630&&progression.deaths==2);
     // New level/replay cannot auto-start a previous mission's record.
     levelProgressNextUnidentified(progression);
     assert(!progression.armed&&progression.verifiedMapKey.empty());
@@ -235,8 +235,8 @@ int main(){
     // Same-mission retry explicitly resets timer/deaths and keeps old PB.
     LevelProgress retry{};
     assert(levelProgressStartAttempt(retry,"campaign/01"));
-    levelProgressAdvance(retry,true,100);
-    levelProgressAdvance(retry,true,200);
+    levelProgressAdvance(retry,false,100);
+    levelProgressAdvance(retry,false,200);
     levelProgressDeath(retry);
     assert(retry.time.elapsedMs==100&&retry.deaths==1);
     assert(levelProgressStartAttempt(retry,"campaign/01"));
@@ -245,19 +245,19 @@ int main(){
     assert(!levelProgressStartAttempt(retry,"bad map name"));
     // A slower completion still enters the leaderboard (not a personal best).
     assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
-    levelProgressAdvance(progression,true,4000);
-    levelProgressAdvance(progression,true,4400);
+    levelProgressAdvance(progression,false,4000);
+    levelProgressAdvance(progression,false,4800);
     assert(levelProgressComplete(progression,bests,5000,20261117));
-    assert(!progression.bestUpdated&&progression.previousBestMs==280);
-    assert(levelBestFor(bests,"maps/game/uem1")==280);
+    assert(!progression.bestUpdated&&progression.previousBestMs==630);
+    assert(levelBestFor(bests,"maps/game/uem1")==630);
     assert(bests.runs.at("maps/game/uem1").size()==2);
     // Improved completion reports the exact margin by which the PB fell.
     assert(levelProgressStartAttempt(progression,"maps/game/uem1"));
-    levelProgressAdvance(progression,true,6000);
-    levelProgressAdvance(progression,true,6150);
+    levelProgressAdvance(progression,false,6000);
+    levelProgressAdvance(progression,false,6150);
     assert(levelProgressComplete(progression,bests,6300,20261118));
-    assert(progression.bestUpdated&&progression.previousBestMs==280
-        &&progression.bestImprovementMs==130);
+    assert(progression.bestUpdated&&progression.previousBestMs==630
+        &&progression.bestImprovementMs==480);
     assert(levelBestFor(bests,"maps/game/uem1")==150);
     // Keep top five by TIME and top five by DEATHS from the SAME run pool.
     // Maintaining the union (up to 10) ensures that sorting never loses a

@@ -185,3 +185,7 @@ endif()
 add_executable(KharvoxVrMenuNavigationTests ../vr_menu_navigation_tests.cpp)
 target_compile_features(KharvoxVrMenuNavigationTests PRIVATE cxx_std_17)
 add_test(NAME vr-menu-navigation COMMAND KharvoxVrMenuNavigationTests)
+
+add_executable(KharvoxGunslingerTutorialTests ../gunslinger_tutorial_tests.cpp)
+target_compile_features(KharvoxGunslingerTutorialTests PRIVATE cxx_std_17)
+add_test(NAME gunslinger-tutorial COMMAND KharvoxGunslingerTutorialTests)

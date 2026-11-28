@@ -50,6 +50,7 @@
 #include "../weapon/WeaponControllerPosePolicy.h"
 #include "../weapon/BackWeaponPolicy.h"
 #include "../weapon/QuickHolsterPolicy.h"
+#include "GunslingerTutorialPolicy.h"
 #include "../fsr/Fsr1Policy.h"
 #include "../native/NativePresentationPolicy.h"
 #include "../fsr/Fsr1Upscaler.h"
@@ -367,6 +368,7 @@ struct State {
     KharvoxWeaponKind openHandUnequippedKind{KharvoxWeaponKind::Unknown};
     kharvox::OpenHandReleaseState openHandRelease{};
     kharvox::QuickHolsters quickHolsters{};
+    kharvox::GunslingerTutorial gunslingerTutorial{};
     kharvox::QuickHipPendingTransfer quickHipPendingTransfer{};
     kharvox::PersistentSuperShotgunReloadState persistentSsgReload{};
     std::uint64_t persistentSsgLevelGeneration{};
@@ -3495,6 +3497,36 @@ void serviceCampaignRunTime(bool gameplay,
 }
 // Native VR hand menu input must precede the gameplay input dispatcher.
 // Render-side compositor helper stays in its later Vulkan include.
+// Separate file so an older rollback never rejects the existing live settings
+// schema. Only the on/off/completed preference is persisted, not half a lesson.
+bool saveGunslingerTutorial(){
+    const auto path=kharvox::runtimePath(L"gunslinger_helper_saved.cfg");
+    const auto temp=path+L".tmp";
+    std::ofstream out(std::filesystem::path(temp),std::ios::trunc);
+    out<<kharvox::gunslingerTutorialPreference(s.gunslingerTutorial)<<'\n';
+    out.close();
+    if(out&&MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return true;
+    DeleteFileW(temp.c_str());return false;
+}
+void loadGunslingerTutorial(){
+    std::ifstream in(kharvox::runtimePathA("gunslinger_helper_saved.cfg"));
+    int value{};std::string extra;
+    if((in>>value)&&value>=0&&value<=2&&!(in>>extra))
+        kharvox::gunslingerTutorialApplyPreference(s.gunslingerTutorial,value);
+}
+void gunslingerLesson(kharvox::GunslingerLessonEvent event,int side,kharvox::BackWeaponKind weapon){
+    if(kharvox::gunslingerLessonObserve(s.gunslingerTutorial,event,side,weapon,GetTickCount64())){
+        log("[GUNSLINGER-HELPER] step="+std::to_string(s.gunslingerTutorial.step));
+        if(s.gunslingerTutorial.step==kharvox::gunslingerLessonCount&&!saveGunslingerTutorial())
+            log("[GUNSLINGER-HELPER] completion not saved");
+    }
+}
+bool gunslingerHelperVisible(){
+    return s.customMods.behindHeadWeaponWheel&&s.customMods.dynamicShoulderHolster
+        &&!s.customMods.disableWeaponWheel&&!s.objectGripCalibrating
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
+        &&kharvox::gunslingerTutorialVisible(s.gunslingerTutorial,GetTickCount64());
+}
 #include "VrLiveMenuLogic.inc"
 #include "GuidedTesting.inc"
 #include "VrHandMenuInput.inc"
@@ -4081,6 +4113,7 @@ void updateGameplayActions(XrTime displayTime){
         // cancels and restores the weapon selected before opening.
         behindHeadWheelRequested=selectedSide>=0&&inside;
         if(behindHeadWheelRequested&&!s.behindHeadWheelActive){
+            kharvox::gunslingerCancelPending(s.gunslingerTutorial);
             s.motionWheelState={}; // fresh anchor on each opening (drift reset)
             s.wheelClicks={};
             s.wheelSelectionFrozen=false;
@@ -4112,6 +4145,9 @@ void updateGameplayActions(XrTime displayTime){
             // Wheel hand is selected by the completed physical pull only.
             s.quickHipPendingTransfer={}; // An explicit wheel selection wins.
             selectPhysicalWeaponHand(selectedSide==1,"confirmed behind-head wheel");
+            if(s.wheelSelectionFrozen)
+                kharvox::gunslingerExpectWheel(s.gunslingerTutorial,selectedSide,
+                    kharvox::gunslingerWheelTarget(s.frozenWheelStick.x,s.frozenWheelStick.y),GetTickCount64());
             // The same physical Grip that confirms a wheel pull must not
             // immediately fall through into weapon-mod fire, support-grip
             // two-hand acquisition, equipment use or the held BFG shortcut.
@@ -4189,6 +4225,9 @@ void updateGameplayActions(XrTime displayTime){
         s.supportGripPressed=supportGripDown;
     }
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
+    if(gameplay&&kharvox::gunslingerPollWheel(s.gunslingerTutorial,s.weaponHandLeft?1:0,
+        backWeaponKindFromActive(activeWeaponKind),GetTickCount64()))
+        log("[GUNSLINGER-HELPER] wheel equip confirmed");
     // A native keyboard hotkey is immediate, but DOOM may not equip the
     // requested weapon until a later game frame. Keep the previous gun in its
     // original physical hand until the requested weapon is truly equipped.
@@ -4199,6 +4238,7 @@ void updateGameplayActions(XrTime displayTime){
         static_cast<std::uint64_t>(std::max<XrTime>(0,displayTime)));
     if(hipTransfer==kharvox::QuickHipTransferResult::Confirmed){
         selectPhysicalWeaponHand(pendingHipLeft,"confirmed quick-hip native equip");
+        if(gameplay)gunslingerLesson(kharvox::GunslingerLessonEvent::HipDraw,pendingHipLeft?1:0,pendingHipWeapon);
         log(std::string("[QUICK-HOTKEY] confirmed native equip ")
             +backWeaponKindKey(pendingHipWeapon)+" -> hand transferred");
     }else if(hipTransfer==kharvox::QuickHipTransferResult::TimedOut){
@@ -4379,6 +4419,7 @@ void updateGameplayActions(XrTime displayTime){
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" zone ENTER");
             }else if(action==kharvox::QuickHipAction::Assign){
+                gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
                 kharvox::queueControllerTriplePulse(
                     s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
                     GetTickCount64());
@@ -4414,6 +4455,7 @@ void updateGameplayActions(XrTime displayTime){
                         s.quickHipPendingTransfer={};
                         selectPhysicalWeaponHand(plan.leftWeaponHand,
                             side==0?"right-hip already equipped":"left-hip already equipped");
+                        gunslingerLesson(kharvox::GunslingerLessonEvent::HipDraw,side,plan.weapon);
                     }
                 }else log("[QUICK-HOTKEY] native selection failed; original hand retained");
                 s.wheelWeaponGripSuppressedUntilRelease=true;
@@ -6808,6 +6850,7 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     loadCampaignRunTime();
+    loadGunslingerTutorial();
     if(!kharvox::levelRecordsLoad(
         kharvox::runtimePathA("level_best_records.cfg"),s.levelRecords))
         log("[STATS] invalid saved level records; using safe empty records");
@@ -9124,6 +9167,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
+            ||(deathCounterGameplay&&gunslingerHelperVisible())
             ||(deathCounterGameplay&&guidedOverlayVisible()&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed)
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
             ||s.objectGripCalibrating)

@@ -28,7 +28,8 @@ const RadialGroup radialGroups[]{
     {"Gunslinger",{
         {"Set holsters",RadialMod::Gunslinger,130},
         {"Set wheel zones",RadialMod::Gunslinger,131},
-        {"Reset zones",RadialMod::Gunslinger,132,RadialControl::Reset}}}
+        {"Reset zones",RadialMod::Gunslinger,132,RadialControl::Reset},
+        {"Auto helper",RadialMod::Gunslinger,140,RadialControl::Toggle}}}
 };
 static_assert(sizeof(radialGroups)/sizeof(*radialGroups)==kharvox::radialCategoryCount);
 int radialTarget(float x,float y){
@@ -122,7 +123,13 @@ void radialInput(int hit,bool click,bool rightGrip){
         m.message.clear();
         m.radialPinned=true;
         m.selectedMod=setting.mod;
-        if(setting.mod==RadialMod::PhysicalCrouch&&setting.action==130)openVrCombinedCrouch();
+        if(setting.mod==RadialMod::Gunslinger&&setting.action==140){
+            const auto before=s.gunslingerTutorial;
+            kharvox::gunslingerTutorialToggle(s.gunslingerTutorial);
+            if(!saveGunslingerTutorial()){
+                s.gunslingerTutorial=before;m.message="Could not save helper setting.";
+            }else m.message=s.gunslingerTutorial.enabled?"Helper ready. Close menu to begin.":"Auto helper OFF.";
+        }else if(setting.mod==RadialMod::PhysicalCrouch&&setting.action==130)openVrCombinedCrouch();
         else if(setting.mod==RadialMod::WeaponGrip)openCalibrationWheel();
         else if(setting.mod==RadialMod::Stats){
             m.page=setting.action==1?VrMenuPage::Stats:VrMenuPage::Records;
