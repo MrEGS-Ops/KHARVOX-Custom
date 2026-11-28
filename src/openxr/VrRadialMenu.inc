@@ -9,7 +9,7 @@ struct RadialSetting {
 };
 struct RadialGroup { const char* name; std::vector<RadialSetting> settings; };
 const RadialGroup radialGroups[]{
-    {"Weapons",{
+    {"Weapon Grip",{
         {"Grip calibration",RadialMod::WeaponGrip,130}}},
     {"Movement",{
         {"Turn speed",RadialMod::TurnSpeed,130,RadialControl::Stepper},
