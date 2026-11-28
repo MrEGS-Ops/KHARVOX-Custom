@@ -221,7 +221,7 @@ int main(){
     }
     assert(radialHit(480,360,-1,0)==99);
     assert(radialHit(480,580,-1,0)==-1);
-    const int panel=radialPanelX(4), row=radialRowY(1);
+    const int panel=radialPanelX(4), row=radialRowY(4,1);
     assert(radialHit(float(panel+20),float(row+1),4,5)==radialRowTarget+3);
     assert(radialHit(float(panel+130),float(row+1),4,5)==radialRowTarget+4);
     assert(radialHit(float(panel+240),float(row+1),4,5)==radialRowTarget+5);

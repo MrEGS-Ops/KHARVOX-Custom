@@ -216,6 +216,50 @@ void paintVrHandMenu() {
         RECT rc{x,y,x+width,y+height};SetTextColor(dc,color);
         DrawTextA(dc,value.c_str(),static_cast<int>(value.size()),&rc,DT_LEFT|DT_TOP|DT_WORDBREAK|DT_NOPREFIX);
     };
+    // Calibration instructions use one palette: controls and hold/release
+    // actions yellow, explanatory text (including save/cancel) normal white.
+    // Measure with the currently selected font and wrap at word boundaries.
+    auto calibrationText=[&](int x,int y,int width,int height,const std::string& value){
+        TEXTMETRICA tm{};
+        GetTextMetricsA(dc,&tm);
+        const int lineHeight=tm.tmHeight+tm.tmExternalLeading;
+        const auto lower=[](std::string word){
+            for(char& c:word)if(c>='A'&&c<='Z')c=char(c-'A'+'a');
+            return word;
+        };
+        const auto key=[&](std::string word){
+            while(!word.empty()&&(word.back()==':'||word.back()==';'||word.back()==','||word.back()=='.'))
+                word.pop_back();
+            return lower(word);
+        };
+        int px=x,py=y;
+        size_t i=0;
+        while(i<value.size()){
+            const size_t start=i;
+            const bool space=value[i]==' ';
+            while(i<value.size()&&(value[i]==' ')==space)++i;
+            const std::string token=value.substr(start,i-start);
+            SIZE extent{};
+            GetTextExtentPoint32A(dc,token.c_str(),int(token.size()),&extent);
+            if(space){
+                if(px>x)px+=extent.cx;
+                continue;
+            }
+            if(px>x&&px+extent.cx>x+width){px=x;py+=lineHeight;}
+            if(py+lineHeight>y+height)break;
+            const auto word=key(token);
+            size_t next=i;
+            while(next<value.size()&&value[next]==' ')++next;
+            const auto nextWord=key(value.substr(next,value.find(' ',next)-next));
+            const bool control=word=="hold"||word=="release"||word=="grip"
+                ||word=="sticks"||word=="stick"||word=="trigger"||word=="rt"||word=="lt"
+                ||word=="b"||word=="a"||word=="l3"||word=="r3"
+                ||((word=="left"||word=="right")&&(nextWord=="stick"||nextWord=="grip"))
+                ||(word=="offhand"&&nextWord=="trigger");
+            write(px,py,token,control?RGB(255,225,54):white);
+            px+=extent.cx;
+        }
+    };
     if(disconnectView){
         SelectObject(dc,regular);
         write(bannerX+24,bannerY+13,"CONTROLLERS DISCONNECTED",white);
@@ -469,9 +513,10 @@ void paintVrHandMenu() {
         fill(140,kharvox::calibrationGuideTop,680,70,RGB(21,31,39));
         fill(140,kharvox::calibrationGuideTop,4,70,RGB(84,233,214));
         SelectObject(dc,regular);
-        write(156,kharvox::calibrationGuideTop+5,waiting?"Equipping weapon...":"Point at a weapon. Pull that hand's trigger.",RGB(84,233,214));
+        if(waiting)write(156,kharvox::calibrationGuideTop+5,"Equipping weapon...",RGB(84,233,214));
+        else calibrationText(156,kharvox::calibrationGuideTop+5,648,32,"Point at a weapon. Pull that hand's trigger.");
         SelectObject(dc,smallFont);
-        if(!waiting)write(156,kharvox::calibrationGuideTop+36,"Hold either Grip to switch the pointer.",white);
+        if(!waiting)calibrationText(156,kharvox::calibrationGuideTop+36,648,32,"Hold either Grip to switch the pointer.");
     }else if(radialView){
         using namespace kharvox;
         SelectObject(dc,smallFont);
@@ -1169,15 +1214,15 @@ void paintVrHandMenu() {
         const std::string heading=std::string(m.weapon())+" / "+
             (complete?"Hand profiles saved":hand+(primary?" primary":" support"));
         write(24,top+6,heading,accent);
-        write(24,top+34,!complete&&!m.message.empty()?m.message:complete?"Calibrate the other hand or finish.":!m.previewValid?
+        calibrationText(24,top+34,912,40,!complete&&!m.message.empty()?m.message:complete?"Calibrate the other hand or finish.":!m.previewValid?
             "Waiting for controller tracking.":primary?
             "Sticks move the grip. Hold Grip and rotate your hand.":
-            "Hold support Grip to test aim. Release it to reposition.",white);
+            "Hold support Grip to test aim. Release it to reposition.");
         SelectObject(dc,regular);
         const char* controls=complete?(m.calibrationStartedLeft?"RT: right hand   LT / B: finish":"LT: left hand   RT / B: finish"):
             primary?(m.rightHand?"RT: save   B: cancel":"LT: save   B: cancel"):
             (m.rightHand?"Grip + RT: save   B: cancel":"Grip + LT: save   B: cancel");
-        write(24,buttonY+4,controls,RGB(255,219,134));
+        calibrationText(24,buttonY+4,complete?912:430,36,controls);
         SelectObject(dc,smallFont);
         if(!complete){
             const auto kind=KharvoxWeaponCurrentKind();
@@ -1218,9 +1263,9 @@ void paintVrHandMenu() {
             :!m.previewValid?"Waiting for valid controller tracking"
             :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")
             :"Move support hand into desired grip position";
-        wrap(guideX+14,top+48,guideW-28,50,instruction,white);
+        calibrationText(guideX+14,top+48,guideW-28,50,instruction);
         SelectObject(dc,regular);
-        wrap(guideX+14,top+104,guideW-28,50,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?(m.calibrationStartedLeft?"RT: CONTINUE   LT / B: FINISH":"LT: CONTINUE   RT / B: FINISH"):!zone&&!crouch&&!m.rightHand?"LT: SAVE / NEXT    B: CANCEL CURRENT STAGE":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
+        calibrationText(guideX+14,top+104,guideW-28,50,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?(m.calibrationStartedLeft?"RT: CONTINUE   LT / B: FINISH":"LT: CONTINUE   RT / B: FINISH"):!zone&&!crouch&&!m.rightHand?"LT: SAVE / NEXT    B: CANCEL CURRENT STAGE":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE");
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
