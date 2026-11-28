@@ -10,9 +10,47 @@ struct ActivationInvestigation {
     std::array<unsigned char,0x300> baseline{},previous{};
     std::array<unsigned char,0x300> entityBaseline{},entityPrevious{};
     float priorOrigin[3]{},startOrigin[3]{};
-    unsigned samples{};
+    unsigned samples{},wakeCallsReported{};
 };
 ActivationInvestigation activationInvestigation{};
+// Observe the exact signature-validated rigid-body wake entry. The
+// trampoline preserves native behavior. Only the armed body's calls count.
+using ActivationWakeFn=void (__fastcall*)(void*);
+ActivationWakeFn activationWakeOriginal{};
+std::atomic<std::uintptr_t> activationWakeTarget{},activationWakeCaller{};
+std::atomic<unsigned> activationWakeCalls{},activationWakeThread{};
+std::atomic<unsigned long long> activationWakeAt{},activationWakeSequence{};
+bool activationWakeHookInstalled{},activationWakeHookAttempted{};
+void __fastcall activationWakeObserver(void* body){
+    const auto caller=reinterpret_cast<std::uintptr_t>(_ReturnAddress());
+    activationWakeOriginal(body);
+    if(reinterpret_cast<std::uintptr_t>(body)!=activationWakeTarget.load(std::memory_order_acquire))return;
+    activationWakeCaller.store(caller,std::memory_order_relaxed);
+    activationWakeAt.store(GetTickCount64(),std::memory_order_relaxed);
+    activationWakeThread.store(GetCurrentThreadId(),std::memory_order_relaxed);
+    activationWakeSequence.store(nativeInvestigationSequence.fetch_add(1,std::memory_order_relaxed)+1,std::memory_order_relaxed);
+    activationWakeCalls.fetch_add(1,std::memory_order_release);
+}
+bool installActivationWakeObserver(const ObjectDiscoveryNativeRecord& item){
+    if(activationWakeHookAttempted)return activationWakeHookInstalled;
+    activationWakeHookAttempted=true;
+    auto target=reinterpret_cast<void*>(item.imageBase+0x179A8F0);
+    const auto init=MH_Initialize();
+    if(init!=MH_OK&&init!=MH_ERROR_ALREADY_INITIALIZED)return false;
+    void* original{};
+    if(MH_CreateHook(target,reinterpret_cast<void*>(activationWakeObserver),&original)!=MH_OK)return false;
+    activationWakeOriginal=reinterpret_cast<ActivationWakeFn>(original);
+    // The first native instruction is a 10-byte store. Verify the trampoline
+    // contains that instruction before enabling; other signature checks stay intact.
+    unsigned char bytes[10]{};
+    constexpr unsigned char expected[]{0xC7,0x81,0x70,0x01,0x00,0x00,0xFF,0xFF,0xFF,0xFF};
+    if(!geometryRead(reinterpret_cast<std::uintptr_t>(original),bytes,10)||std::memcmp(bytes,expected,10)){
+        MH_RemoveHook(target);activationWakeOriginal=nullptr;return false;
+    }
+    if(MH_EnableHook(target)!=MH_OK){MH_RemoveHook(target);activationWakeOriginal=nullptr;return false;}
+    activationWakeHookInstalled=true;
+    return true;
+}
 unsigned long long activationInvestigationSerial{};
 void activationLog(const std::string& msg){
     log("[ACTIVATION-INV] id="+std::to_string(activationInvestigation.serial)+" "+msg);
@@ -21,6 +59,7 @@ void objectActivationInvestigatorReset(const char* reason){
     if(activationInvestigation.handle)
         activationLog(std::string("end reason=")+reason+" samples="+std::to_string(activationInvestigation.samples)
             +" motion_seen="+std::to_string(activationInvestigation.motionSeen));
+    activationWakeTarget.store(0,std::memory_order_release);
     activationInvestigation={};
 }
 bool objectActivationInvestigatorPriority(const ObjectDiscoveryNativeRecord& item,
@@ -40,7 +79,11 @@ bool activationSignature(const ObjectDiscoveryNativeRecord& item){
         return n<=sizeof(bytes)&&rva<item.imageSize&&n<=item.imageSize-rva
             &&geometryRead(item.imageBase+rva,bytes,n)&&std::memcmp(bytes,sig,n)==0;
     };
-    return matches(0x179A8F0,wake,sizeof(wake))&&matches(0x179A958,linear,sizeof(linear))
+    unsigned char originalWake[10]{};
+    const bool wakeMatch=activationWakeHookInstalled
+        ?geometryRead(reinterpret_cast<std::uintptr_t>(activationWakeOriginal),originalWake,10)&&std::memcmp(originalWake,wake,10)==0
+        :matches(0x179A8F0,wake,sizeof(wake));
+    return wakeMatch&&matches(0x179A958,linear,sizeof(linear))
         &&matches(0x179AA70,angular,sizeof(angular));
 }
 bool activationRead(const ObjectDiscoveryNativeRecord& item,
@@ -143,6 +186,10 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
         p.handle=aimed->handle;p.entity=aimed->entity;p.body=aimed->body;
         p.generation=generation;p.serial=++activationInvestigationSerial;p.armed=now;p.lastAim=now;
         p.signatureOk=activationSignature(*aimed);
+        const bool hook=installActivationWakeObserver(*aimed);
+        p.wakeCallsReported=activationWakeCalls.load(std::memory_order_acquire);
+        if(hook)activationWakeTarget.store(reinterpret_cast<std::uintptr_t>(p.body),std::memory_order_release);
+        activationLog("WAKE_ENTRY_OBSERVER installed="+std::to_string(hook));
         p.baseline=p.previous=body;p.entityBaseline=p.entityPrevious=entity;
         std::memcpy(p.priorOrigin,aimed->origin,sizeof(p.priorOrigin));
         std::memcpy(p.startOrigin,aimed->origin,sizeof(p.startOrigin));
@@ -160,6 +207,19 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
             if(fn==aimed->imageBase+0x179A8F0||fn==aimed->imageBase+0x179A900||fn==aimed->imageBase+0x179AAD0)
                 activationLog("candidate native slot="+geometryHex(i*sizeof(fn))+" rva="+geometryHex(fn-aimed->imageBase));
         }
+        // Slot 0x48 was consistently identified in the last logs. Record its
+        // entry bytes and unwind range; no guessed callback signature is invoked.
+        std::uintptr_t cb{},vt{},fn{};
+        std::memcpy(&cb,body.data()+0x28,8);
+        if(geometryType(*aimed,cb)=="idEntityPhysicsCallbacks"&&geometryRead(cb,&vt,8)
+            &&geometryRead(vt+0x48,&fn,8)&&geometryInImage(*aimed,fn)){
+            unsigned char bytes[32]{};
+            if(geometryRead(fn,bytes,sizeof(bytes))){
+                std::ostringstream raw;raw<<std::hex<<std::setfill('0');
+                for(auto b:bytes)raw<<std::setw(2)<<static_cast<unsigned>(b);
+                activationLog("CALLBACK_ENTRY_CANDIDATE rva="+geometryHex(fn-aimed->imageBase)+" entry32="+raw.str()+" executed=unverified");
+            }
+        }
         activationSummary(*aimed,body,0,"baseline");
         return;
     }
@@ -168,6 +228,15 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
         objectActivationInvestigatorReset("identity_lost");return;
     }
     if(!item->poseValid||now<item->lastPositionAtMs||now-item->lastPositionAtMs>250)return;
+    const auto calls=activationWakeCalls.load(std::memory_order_acquire);
+    if(calls!=p.wakeCallsReported){
+        const auto caller=activationWakeCaller.load(std::memory_order_relaxed);
+        activationLog("NATIVE_WAKE_ENTRY count_delta="+std::to_string(calls-p.wakeCallsReported)
+            +" sequence="+std::to_string(activationWakeSequence.load())+" at_ms="+std::to_string(activationWakeAt.load())
+            +" thread="+std::to_string(activationWakeThread.load())+" caller="+geometryHex(caller)
+            +" caller_rva="+geometryHex(geometryInImage(*item,caller)?caller-item->imageBase:0));
+        p.wakeCallsReported=calls;nativeResearchEvidence(4u,"NATIVE_WAKE_EXECUTED selected_body=1",true);
+    }
     const bool edge=in.nativeMeleeInputDown&&!p.meleeWasDown;
     p.meleeWasDown=in.nativeMeleeInputDown;
     if(edge){activationLog("ordinary_melee_input_edge armed_ms="+std::to_string(now-p.armed)

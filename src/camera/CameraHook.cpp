@@ -28,6 +28,9 @@
 
 #include <windows.h>
 #include <intrin.h>
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+#include "../../third-party/minhook/include/MinHook.h"
+#endif
 
 #include <algorithm>
 #include <array>
@@ -97,6 +100,11 @@ std::atomic<bool> syncAttackClassifierSupported{};
 std::atomic<bool> playerControlClassifierSupported{};
 std::atomic<unsigned long long> cameraPresentSerial{};
 std::atomic<unsigned long long> playerPhysicsCapturePresent{};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+std::atomic<unsigned> nativeInvestigationMask{};
+std::atomic<unsigned long long> nativeInvestigationSequence{},nativePlayerCaptureSequence{},nativePlayerCaptureAt{};
+std::atomic<unsigned> nativePlayerCaptureThread{};
+#endif
 std::atomic<unsigned long long> levelTransitionGeneration{};
 std::array<std::atomic<float>, 3> hudRenderAnchorOrigin{};
 std::array<std::atomic<float>, 9> hudRenderAnchorAxis{};
@@ -115,6 +123,7 @@ std::atomic<bool> objectDiscoveryEnabled{};
 std::mutex objectDiscoveryMutex;
 KharvoxObjectDiscoverySnapshot objectDiscoverySnapshot{};
 void objectDiscoveryGameTick();
+bool readLivePlayerPhysicsOrigin(float origin[3],uintptr_t* ownerOut);
 std::mutex bodyStanceMutex;
 kharvox::BodyStanceHeight bodyStanceHeight;
 volatile unsigned long long cutsceneFovHits{};
@@ -1399,6 +1408,13 @@ extern "C" const float* __fastcall capturePlayerPhysicsOrigin(void* player) {
                 playerPhysicsCapturePresent.store(
                     cameraPresentSerial.load(std::memory_order_relaxed), std::memory_order_relaxed);
                 playerPhysicsOriginValid.store(true, std::memory_order_release);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+                if(nativeInvestigationMask.load(std::memory_order_relaxed)&(2u|8u|16u)){
+                    nativePlayerCaptureAt.store(GetTickCount64(),std::memory_order_relaxed);
+                    nativePlayerCaptureThread.store(GetCurrentThreadId(),std::memory_order_relaxed);
+                    nativePlayerCaptureSequence.store(nativeInvestigationSequence.fetch_add(1,std::memory_order_relaxed)+1,std::memory_order_release);
+                }
+#endif
             }
         }
     }
@@ -2754,6 +2770,7 @@ void KharvoxCameraSetObjectGripInput(
     frame.activationInvestigator=activationInvestigator;
     frame.releaseInvestigator=releaseInvestigator;
     frame.researchMask=researchMask;frame.researchTestMask=researchTestMask;frame.researchOnly=researchOnly;
+    nativeInvestigationMask.store(researchMask|researchTestMask,std::memory_order_release);
     frame.moveX=moveX;frame.moveY=moveY;frame.playerAtSubmitValid=playerAtSubmit!=nullptr;
     if(playerAtSubmit)std::memcpy(frame.playerAtSubmit,playerAtSubmit,12);
     frame.meleeActivationEnabled=meleeActivationEnabled&&!dynamicSurfaceOffset;

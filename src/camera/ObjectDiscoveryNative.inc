@@ -762,6 +762,29 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
                 float worldBounds[6]{};const bool worldRead=worldOk&&geometryRead(world+0x18,worldBounds,24);
                 log("[NATIVE-RESEARCH] collision handle="+std::to_string(target->handle)+" clip="+geometryHex(clip)+" local_bounds="+geometryFloats(bounds,6)
                     +" world_clip="+geometryHex(world)+" world_bounds_valid="+std::to_string(worldRead)+" world_bounds="+geometryFloats(worldBounds,6));
+                // Capture real clip metadata and executable candidate entry points for
+                // offline identification; never call an unknown native query ABI.
+                static unsigned lastClipHandle{};static unsigned long long lastClipGen{};
+                if(lastClipHandle!=target->handle||lastClipGen!=generation){
+                    lastClipHandle=target->handle;lastClipGen=generation;
+                    std::ostringstream raw;raw<<std::hex<<std::setfill('0');
+                    for(auto ch:bytes)raw<<std::setw(2)<<static_cast<unsigned>(ch);
+                    log("[NATIVE-RESEARCH] CLIP_LAYOUT handle="+std::to_string(target->handle)+" bytes="+raw.str());
+                    const auto slots=[&](const char* name,std::uintptr_t object){
+                        std::uintptr_t table{};
+                        if(!geometryRead(object,&table,8)||!geometryInImage(*target,table))return;
+                        std::ostringstream out;out<<"[NATIVE-RESEARCH] QUERY_CANDIDATES "<<name<<" vtable="<<geometryHex(table-target->imageBase);
+                        for(unsigned j=0;j<96;++j){std::uintptr_t fn{};
+                            if(!geometryRead(table+j*8,&fn,8)||!geometryInImage(*target,fn)||!executableMemory(reinterpret_cast<const void*>(fn)))break;
+                            out<<" "<<j<<":"<<geometryHex(fn-target->imageBase);
+                        }
+                        log(out.str());
+                    };
+                    slots("PROP_CLIP",clip);slots("RIGID_BODY",bp);
+                    if(worldOk)slots("WORLD_CLIP",world);
+                    const auto player=playerPhysicsOwner.load(std::memory_order_acquire);
+                    if(player)slots("PLAYER_PHYSICS",player+0x14e58);
+                }
                 kharvox::GrappleRayAnchor hit{};
                 const bool boundsHit=kharvox::grappleSurfaceBoundsHit(in.rayOrigin,in.aim,origin,axis,bounds,in.reachUnits,hit);
                 bool boundsOk=true;float poseError=0.f;
@@ -779,7 +802,7 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
     const auto present=cameraPresentSerial.load(std::memory_order_acquire);
     const auto capture=playerPhysicsCapturePresent.load(std::memory_order_acquire);
     if(!owner||!playerPhysicsOriginValid.load(std::memory_order_acquire)||!capture||present<capture||present-capture>2)return;
-    if(mask&16u){
+    if(mask&(16u|2u)){
         const auto phys=owner+0x14e58;
         std::uintptr_t vt{};
         const auto base=objectDiscoveryManagedPool.imageBase;
@@ -802,7 +825,7 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
                     if(std::abs(dz)>2.f&&std::abs(dz)*1000.f/elapsed>5.f)nativeVerticalMotion.fetch_add(1,std::memory_order_release);
                 }
                 std::memcpy(prior,state,12);priorGen=generation;priorOwner=owner;priorAt=now;
-                if(comparable&&speed>5.f)nativeResearchEvidence(16u,"outcome=NATIVE_MOVEMENT_SAMPLED measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
+                if((mask&16u)&&comparable&&speed>5.f)nativeResearchEvidence(16u,"outcome=NATIVE_MOVEMENT_SAMPLED measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
                 else log("[NATIVE-RESEARCH] movement baseline/stationary; no action completion");
             }
         }
@@ -1301,8 +1324,14 @@ void objectDiscoveryGameTick() {
             }
         }
         const bool traceAnchor=((input.researchMask|input.researchTestMask)&8u)&&!held.surfaceApproaching&&held.nativeFollowConfirmed;
-        float before[3]{},target[3]{};
-        if(traceAnchor){std::memcpy(before,item->origin,12);std::memcpy(target,desired,12);}
+        float before[3]{},target[3]{},livePlayerBefore[3]{},livePlayerAfter[3]{};
+        unsigned long long anchorSequence=0,captureBefore=0;bool playerBeforeValid=false;
+        if(traceAnchor){
+            std::memcpy(before,item->origin,12);std::memcpy(target,desired,12);
+            captureBefore=nativePlayerCaptureSequence.load(std::memory_order_acquire);
+            anchorSequence=nativeInvestigationSequence.fetch_add(1,std::memory_order_relaxed)+1;
+            playerBeforeValid=readLivePlayerPhysicsOrigin(livePlayerBefore,nullptr);
+        }
         float len2{};
         for(int i=0;i<3;++i){
             float d=desired[i]-item->origin[i];len2+=d*d;
@@ -1364,7 +1393,14 @@ void objectDiscoveryGameTick() {
                     static unsigned lastHandle{};static unsigned long long lastAt{},lastGen{};
                     if(lastHandle!=item->handle||lastGen!=generation||now-lastAt>=40){
                         lastHandle=item->handle;lastGen=generation;lastAt=now;
-                        log("[ANCHOR-MOVEMENT] tick_ms="+std::to_string(now)+" input_ms="+std::to_string(input.frameAtMs)
+                        const bool playerAfterValid=readLivePlayerPhysicsOrigin(livePlayerAfter,nullptr);
+                        const auto afterSequence=nativeInvestigationSequence.fetch_add(1,std::memory_order_relaxed)+1;
+                        log("[ANCHOR-MOVEMENT] anchor_begin_seq="+std::to_string(anchorSequence)+" anchor_end_seq="+std::to_string(afterSequence)
+                            +" capture_before_seq="+std::to_string(captureBefore)+" capture_after_seq="+std::to_string(nativePlayerCaptureSequence.load(std::memory_order_acquire))
+                            +" capture_ms="+std::to_string(nativePlayerCaptureAt.load())+" capture_thread="+std::to_string(nativePlayerCaptureThread.load())+" world_thread="+std::to_string(GetCurrentThreadId())
+                            +" live_before_valid="+std::to_string(playerBeforeValid)+" live_before="+geometryFloats(livePlayerBefore,3)
+                            +" live_after_valid="+std::to_string(playerAfterValid)+" live_after="+geometryFloats(livePlayerAfter,3)
+                            +" tick_ms="+std::to_string(now)+" input_ms="+std::to_string(input.frameAtMs)
                             +" handle="+std::to_string(item->handle)+" stick="+std::to_string(input.moveX)+","+std::to_string(input.moveY)
                             +" player_submit_valid="+std::to_string(input.playerAtSubmitValid)+" player_submit="+geometryFloats(input.playerAtSubmit,3)
                             +" player_world_valid="+std::to_string(playerValid)+" player_world="+geometryFloats(player,3)
