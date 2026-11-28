@@ -14,11 +14,9 @@ int main() {
     const std::string narrow = kharvox::runtimePathA("marker.test");
     if (narrow.empty() || narrow.find("marker.test") == std::string::npos) return 5;
 
-    wchar_t temp[MAX_PATH]{};
-    if(!GetTempPathW(MAX_PATH,temp))return 6;
-    if(kharvox::logPath(L"native_stereo.log")!=std::wstring(temp)+L"KHARVOX-NATIVE-STEREO.log")return 7;
-    if(kharvox::logPath(L"vr_intro.log")!=std::wstring(temp)+L"KHARVOX-VR-INTRO.log")return 8;
-    if(kharvox::logPath(L"native_capture.json")!=std::wstring(temp)+L"KHARVOX-Diagnostics\\native_capture.json")return 9;
+    if(kharvox::logPath(L"native_stereo.log")!=directory+L"\\logs\\KHARVOX-NATIVE-STEREO.log")return 7;
+    if(kharvox::logPath(L"vr_intro.log")!=directory+L"\\logs\\KHARVOX-VR-INTRO.log")return 8;
+    if(kharvox::logPath(L"native_capture.json")!=directory+L"\\logs\\diagnostics\\native_capture.json")return 9;
     if(kharvox::logPathA("native_stereo.log").find("KHARVOX-NATIVE-STEREO.log")==std::string::npos)return 10;
     // Categorized personal files must stay separate from live launch markers,
     // immutable defaults and unrelated legacy configurations.
@@ -53,5 +51,13 @@ int main() {
     if(kharvox::isUserConfigName(L"hand_models_calibration_default.cfg")
         ||kharvox::isUserConfigName(L"CalibrationDefaults/default.cfg"))
         return 14;
+    SetEnvironmentVariableW(L"KHARVOX_SESSION_LAYOUT",L"1");
+#define SESSION_FILE(folder,name) if(kharvox::runtimePath(name)!=directory+L"\\Runtime\\"+folder+L"\\"+name)return 15;
+#include "../src/common/SessionFiles.inc"
+#undef SESSION_FILE
+    if(kharvox::sessionFileFolder(L"offhand_hud.cfg")||kharvox::sessionFileFolder(L"weapon_yaw_saved.cfg")
+        ||kharvox::sessionFileFolder(L"unknown.cfg")||kharvox::sessionFileFolder(L"../enable_xr_session"))return 16;
+    SetEnvironmentVariableW(L"KHARVOX_SESSION_LAYOUT",nullptr);
+    if(kharvox::runtimePath(L"enable_xr_session")!=directory+L"\\enable_xr_session")return 17;
     return 0;
 }

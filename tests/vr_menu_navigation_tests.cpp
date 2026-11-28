@@ -9,6 +9,12 @@
 #include <cassert>
 int main(){
     using namespace kharvox;
+    assert(vrMenuGameplayTurnAllowed(VrHandMenuMode::Menu,VrMenuPage::Mods,false,false,false));
+    assert(!vrMenuGameplayTurnAllowed(VrHandMenuMode::Menu,VrMenuPage::Mods,true,false,false));
+    assert(!vrMenuGameplayTurnAllowed(VrHandMenuMode::Menu,VrMenuPage::Mods,false,true,false));
+    assert(!vrMenuGameplayTurnAllowed(VrHandMenuMode::Calibrating,VrMenuPage::Mods,false,false,false));
+    assert(!vrMenuGameplayTurnAllowed(VrHandMenuMode::Menu,VrMenuPage::Dev,false,false,false));
+    assert(!vrMenuGameplayTurnAllowed(VrHandMenuMode::Menu,VrMenuPage::Mods,false,false,true));
     VrMenuHoldShortcut hold{};
     assert(updateVrMenuHoldShortcut(hold,true,100)==VrMenuShortcutAction::None);
     assert(updateVrMenuHoldShortcut(hold,true,599)==VrMenuShortcutAction::None);

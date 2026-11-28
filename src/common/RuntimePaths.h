@@ -108,6 +108,23 @@ inline bool gameplayWelcomeAcknowledged(){
 inline bool persistGameplayWelcomeAcknowledgement(){
     return persistInstallNoticeAcknowledgement(L"gameplay_welcome.ack");
 }
+// Exact shared inventory, not a wildcard: saved user profiles and developer
+// files outside this list retain their existing paths.
+inline const wchar_t* sessionFileFolder(const wchar_t* name) noexcept {
+    if(!name)return nullptr;
+#define SESSION_FILE(folder,file) if(_wcsicmp(name,file)==0)return folder;
+#include "SessionFiles.inc"
+#undef SESSION_FILE
+    return nullptr;
+}
+inline bool managedSessionLayout() noexcept {
+    wchar_t value[2]{};
+    return GetEnvironmentVariableW(L"KHARVOX_SESSION_LAYOUT",value,2)==1&&value[0]==L'1';
+}
+inline std::wstring sessionFilePath(const std::wstring& root,const wchar_t* name){
+    const auto folder=sessionFileFolder(name);
+    return folder?root+L"\\Runtime\\"+folder+L"\\"+name:root+L"\\"+name;
+}
 inline bool isUserConfigName(const wchar_t* name) noexcept {
     if(!name)return false;
     const std::wstring value(name);
@@ -164,6 +181,8 @@ inline const wchar_t* userConfigFolder(const wchar_t* name) noexcept {
     return nullptr;
 }
 inline std::wstring runtimePath(const wchar_t* name) {
+    if(managedSessionLayout()&&sessionFileFolder(name))
+        return sessionFilePath(runtimeDirectory(),name);
     if(isUserConfigName(name)){
         const auto user=userDataDirectory();
         const std::wstring file(name);

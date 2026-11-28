@@ -1,4 +1,5 @@
 #include "HandRenderer.h"
+#include "../common/RuntimePaths.h"
 #include "../hud/HudHook.h"
 #include "HandSceneDepthCopy.h"
 #include "HandCalibrationPolicy.h"
@@ -626,7 +627,9 @@ void HandRenderer::Impl::writeCalibrationStatus(const char*message)const{
     const auto&value=selectedCalibration();
     const bool weaponProfile=selectHandCalibrationProfile(calibrateLeft,
         calibrationLeftHanded,calibrationWeapon,true).weaponSpecific;
-    const auto path=userHandCalibrationDirectory(root)/L"hand_calibration_status.txt";
+    const auto path=kharvox::managedSessionLayout()
+        ?std::filesystem::path(kharvox::sessionFilePath(root.wstring(),L"hand_calibration_status.txt"))
+        :userHandCalibrationDirectory(root)/L"hand_calibration_status.txt";
     std::ofstream output(path,std::ios::trunc);
     if(!output)return;
     output<<std::fixed<<std::setprecision(3)

@@ -211,6 +211,7 @@ internal static class LauncherUserData
         try
         {
             Directory.CreateDirectory(root);
+            RuntimeStorage.VerifySessionStorage(Path.Combine(root,"runtime-test"));
             foreach (var file in PortableFiles)
                 if (CategoryFor(file) is null)
                     throw new InvalidDataException("Unmapped persistent file: " + file);

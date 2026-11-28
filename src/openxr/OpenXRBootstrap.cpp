@@ -3907,6 +3907,11 @@ void updateGameplayActions(XrTime displayTime){
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
+    // Sample physical turning before the VR overlay can consume input.
+    XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;
+    XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};
+    const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;
+    s.rightStick=turnActive?turnState.currentState:XrVector2f{};
     guidedHover=-1;guidedCursorX=guidedCursorY=-1.f;menuAimRay={};menuAimRayMetres=0.f;
     if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
@@ -4008,7 +4013,6 @@ void updateGameplayActions(XrTime displayTime){
         ||(gameplay&&pistolGrapple.busy())
 #endif
         ;
-    XrActionStateGetInfo turnInfo{XR_TYPE_ACTION_STATE_GET_INFO};turnInfo.action=s.doomTurn;XrActionStateVector2f turnState{XR_TYPE_ACTION_STATE_VECTOR2F};const bool turnActive=XR_SUCCEEDED(s.getActionStateVector2f(s.session,&turnInfo,&turnState))&&turnState.isActive;if(turnActive)s.rightStick=turnState.currentState;else s.rightStick={};
     // Independent vertical deadzone; never rescale X or alter turn sensitivity.
     constexpr float rightStickVerticalDeadzone=.4f;
     const float rightStickY=std::isfinite(s.rightStick.y)

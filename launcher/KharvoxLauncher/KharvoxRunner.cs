@@ -360,16 +360,15 @@ internal static class KharvoxRunner
             await bhaptics.WaitForStartupAsync(statusUpdate);
         var launchSucceeded = false;
 
-        var temporaryFiles = new List<string>();
+        string? sessionOwner = null;
         void WriteTemporary(string name, string? content = null)
         {
-            var path = Path.Combine(runtimeDir, name);
-            File.WriteAllText(path, content ?? string.Empty);
-            temporaryFiles.Add(path);
+            File.WriteAllText(RuntimeStorage.SessionPath(runtimeDir,name),content ?? string.Empty);
         }
 
         try
         {
+            sessionOwner = RuntimeStorage.BeginSession(runtimeDir);
             var steamVrLayerIsolation = UsesSteamVrRuntime();
             var effectiveRenderScale = EffectiveRenderScale(
                 options.RenderScale, steamVrLayerIsolation && !RendererSelection.IsNative(options.RendererMode));
@@ -386,7 +385,7 @@ internal static class KharvoxRunner
             {
                 // Remove a stale gunstock marker left by an interrupted old
                 // launch. The mod must not see that marker in the runtime.
-                var marker = Path.Combine(runtimeDir, "enable_virtual_gunstock");
+                var marker = RuntimeStorage.SessionPath(runtimeDir, "enable_virtual_gunstock");
                 if (File.Exists(marker)) File.Delete(marker);
             }
             WriteTemporary("two_hand_calibration_target.cfg", options.TwoHandCalibrationWeapon);
@@ -403,30 +402,30 @@ internal static class KharvoxRunner
             var nativeStereoEnabled = RendererSelection.IsNative(options.RendererMode);
             var sfsEnabled = RendererSelection.IsSfs(options.RendererMode);
             RendererSelection.ClearObsoleteMarkers(runtimeDir);
-            File.Delete(Path.Combine(runtimeDir, "fsr1_status.txt"));
+            File.Delete(RuntimeStorage.SessionPath(runtimeDir, "fsr1_status.txt"));
             var fsr1Enabled = options.UseFsrUpscaling && effectiveRenderScale < 100m;
             var steamNativeSourceScale = SteamNativeResolutionScale(
                 options.RenderScale, steamVrLayerIsolation && !RendererSelection.IsNative(options.RendererMode));
-            var nvidiaAfwMarker = Path.Combine(runtimeDir, "enable_nvidia_afw");
-            var fsr1Marker = Path.Combine(runtimeDir, "enable_fsr_upscaling");
+            var nvidiaAfwMarker = RuntimeStorage.SessionPath(runtimeDir, "enable_nvidia_afw");
+            var fsr1Marker = RuntimeStorage.SessionPath(runtimeDir, "enable_fsr_upscaling");
             // A killed launcher can leave an optional marker beside the DLL.
             // Clear the exact launcher-owned selections before recreating only
             // the options selected for this run.
             foreach (var staleOptionalMarker in new[] {
-                Path.Combine(runtimeDir,"enable_native_stereo_backend"),
-                Path.Combine(runtimeDir,"enable_native_stereo"),
-                Path.Combine(runtimeDir,"enable_native_two_view"),
-                Path.Combine(runtimeDir,"enable_same_frame_stereo"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_native_stereo_backend"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_native_stereo"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_native_two_view"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_same_frame_stereo"),
                 nvidiaAfwMarker,
                 fsr1Marker,
-                Path.Combine(runtimeDir, "enable_delayed_steam_source_scale"),
-                Path.Combine(runtimeDir, "requested_render_scale.cfg"),
-                Path.Combine(runtimeDir, "enable_immersive_cinematics_and_glory_kills"),
-                Path.Combine(runtimeDir, "enable_immersive_cinematic_freelook"),
-                Path.Combine(runtimeDir, "enable_other_cinematics_in_quad"),
-                Path.Combine(runtimeDir, "enable_cinewindow_head_follow"),
-                Path.Combine(runtimeDir, "enable_show_body"),
-                Path.Combine(runtimeDir, "enable_laser_sight")
+                RuntimeStorage.SessionPath(runtimeDir, "enable_delayed_steam_source_scale"),
+                RuntimeStorage.SessionPath(runtimeDir, "requested_render_scale.cfg"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_immersive_cinematics_and_glory_kills"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_immersive_cinematic_freelook"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_other_cinematics_in_quad"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_cinewindow_head_follow"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_show_body"),
+                RuntimeStorage.SessionPath(runtimeDir, "enable_laser_sight")
             })
             {
                 try { File.Delete(staleOptionalMarker); } catch { }
@@ -521,6 +520,7 @@ internal static class KharvoxRunner
             if (customMods.UninterruptedStory && options.ExtendedLogging)
                 psi.Arguments += " +g_debugScript 1";
             EnableLayerForGame(psi);
+            psi.EnvironmentVariables["KHARVOX_SESSION_LAYOUT"] = "1";
             DisableConflictingOpenXrApiLayers(psi);
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO");
             psi.EnvironmentVariables.Remove("KHARVOX_VR_INTRO_HANDOFF");
@@ -824,6 +824,12 @@ internal static class KharvoxRunner
                             Environment.NewLine);
                     }
                     catch { /* Exit telemetry must never affect process cleanup. */ }
+                    try
+                    {
+                        using var cleanupGate = AcquireLaunchGate();
+                        if (sessionOwner is not null) RuntimeStorage.EndSession(runtimeDir,sessionOwner);
+                    }
+                    catch { /* Startup or a new launch holds the gate; never delete its files. */ }
                 };
             }
             catch { /* Process-exit telemetry is diagnostic only. */ }
@@ -940,10 +946,11 @@ internal static class KharvoxRunner
                         launchId, "after-final-cleanup", key, manifestPath);
             }
             catch { }
-            foreach (var path in temporaryFiles)
-            {
-                try { File.Delete(path); } catch { }
-            }
+            // Runtime inputs remain present throughout gameplay, including
+            // late renderer initialization. Clean only after DOOM has exited.
+            using (var running = FindRunningDoomProcess())
+                if (running is null && sessionOwner is not null)
+                    RuntimeStorage.EndSession(runtimeDir,sessionOwner);
             if (launchSucceeded && currentGame is not null)
             {
                 // Finish the helper handoff before the final startup activation.
@@ -1001,13 +1008,13 @@ internal static class KharvoxRunner
 
     private static void WriteRendererStatus(string runtimeDir, string value)
     {
-        try { File.WriteAllText(Path.Combine(runtimeDir, "renderer_status.txt"), value); }
+        try { File.WriteAllText(RuntimeStorage.SessionPath(runtimeDir, "renderer_status.txt"), value); }
         catch { /* Renderer status is informational and must never block launch. */ }
     }
 
     private static void WriteTwoHandStatus(string runtimeDir, string value)
     {
-        try { File.WriteAllText(Path.Combine(runtimeDir, "two_hand_status.txt"), value); }
+        try { File.WriteAllText(RuntimeStorage.SessionPath(runtimeDir, "two_hand_status.txt"), value); }
         catch { /* Weapon status is informational and must never block launch. */ }
     }
 

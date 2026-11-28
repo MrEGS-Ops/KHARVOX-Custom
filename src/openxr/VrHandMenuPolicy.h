@@ -107,6 +107,10 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
     return VrMenuShortcutAction::None;
 }
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
+inline constexpr bool vrMenuGameplayTurnAllowed(VrHandMenuMode mode,VrMenuPage page,
+    bool wheel,bool waiting,bool developerGrip) noexcept {
+    return mode==VrHandMenuMode::Menu&&page==VrMenuPage::Mods&&!wheel&&!waiting&&!developerGrip;
+}
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
     ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting,GaussTwoHandFire

@@ -108,7 +108,7 @@ void paintVrHandMenu() {
     const bool editingHud=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Stats&&!disconnectView;
     const bool radialView=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods;
     const bool pickingWeapon=m.mode==kharvox::VrHandMenuMode::Menu&&(m.calibrationWheel||m.waitingForEquip);
-    constexpr int radialSize=406,radialX=277,radialY=157;
+    static constexpr int radialSize=406,radialX=277,radialY=157;
     std::vector<unsigned char> radialAlpha;
     int descriptionX=-1,descriptionY=0,descriptionHeight=0;
     float descriptionOpacity=0.f;

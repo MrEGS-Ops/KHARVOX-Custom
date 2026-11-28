@@ -615,7 +615,7 @@ public sealed class MainForm : Form
         if (renderer.IndexOf("SFS", StringComparison.OrdinalIgnoreCase) >= 0)
         {
             status.Text = renderer.Trim().Replace("Renderer: ", "");
-            var fsrStatus = Path.Combine(AppContext.BaseDirectory, "fsr1_status.txt");
+            var fsrStatus = RuntimeStorage.SessionPath(AppContext.BaseDirectory, "fsr1_status.txt");
             if (useFsrUpscaling.Checked && File.Exists(fsrStatus)
                 && File.ReadAllText(fsrStatus).Contains("FSR1 ACTIVE"))
                 status.Text += "; FSR1 active";
@@ -648,16 +648,15 @@ public sealed class MainForm : Form
             }
             if (calibrateHands.Checked)
             {
-                var handPath = Path.Combine(AppContext.BaseDirectory,
-                    "hand_calibration_status.txt");
+                var handPath = RuntimeStorage.SessionPath(AppContext.BaseDirectory, "hand_calibration_status.txt");
                 if (File.Exists(handPath))
                     weaponStatus.Text = File.ReadAllText(handPath).Trim();
             }
-            var weaponPath = Path.Combine(AppContext.BaseDirectory, "two_hand_status.txt");
+            var weaponPath = RuntimeStorage.SessionPath(AppContext.BaseDirectory, "two_hand_status.txt");
             if (!calibrateHands.Checked
                 && File.Exists(weaponPath))
                 weaponStatus.Text = File.ReadAllText(weaponPath).Trim();
-            var rendererPath = Path.Combine(AppContext.BaseDirectory, "renderer_status.txt");
+            var rendererPath = RuntimeStorage.SessionPath(AppContext.BaseDirectory, "renderer_status.txt");
             if (File.Exists(rendererPath))
             {
                 ApplyRendererStatus(File.ReadAllText(rendererPath));

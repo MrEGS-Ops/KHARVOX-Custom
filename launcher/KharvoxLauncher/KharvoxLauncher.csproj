@@ -65,6 +65,7 @@
     <EmbeddedResource Include="..\..\assets\cracktro\amiga\kharvox-amiga.png;..\..\assets\cracktro\amiga\font32.png;..\..\assets\cracktro\amiga\cop.png;..\..\assets\cracktro\amiga\eq.png;..\..\assets\cracktro\amiga\possessed.paula.gz">
       <LogicalName>Kharvox.Cracktro.Amiga.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
+    <EmbeddedResource Include="..\\..\\src\\common\\SessionFiles.inc"><LogicalName>RIPSHIFT.SessionFiles</LogicalName></EmbeddedResource>
     <Reference Include="System.Web.Extensions" />
     <Reference Include="System.Management" />
     <Reference Include="System.Security" />

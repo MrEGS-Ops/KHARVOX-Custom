@@ -1358,10 +1358,23 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
     s.heavyAlternateInputForwarded=liveAltFire;
     if(!rightGrip)m.consumeDevGripUntilRelease=false;
-    if(m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods
-        &&!m.consumeDevGripUntilRelease){
-        updateVirtualLeftStick(s.leftStick,true);updateVirtualRightStick({s.rightStick.x,0.f},true);
-    }else releaseMovement(m.autoSelectingWeapon);
+    const bool menuWalk=kharvox::vrMenuGameplayTurnAllowed(m.mode,m.page,
+        m.calibrationWheel,m.waitingForEquip,m.consumeDevGripUntilRelease);
+    if(menuWalk){
+        if(std::abs(s.rightStick.x)>=s.turnDeadzone)
+            kharvox::cancelPostCinematicYawGuard(s.postCinematicYawGuard);
+        const float manual=nativeManualTurnX(displayTime,gameplay);
+        const float physical=nativePhysicalBodyTurnX(gameplay,manual!=0.f);
+        holdNativeTurnCvars(physical!=0.f?bodyFollowYawSpeed:manualTurnCarrierSpeed());
+        s.previousManualTurnActive=manual!=0.f;
+        updateVirtualLeftStick(s.leftStick,true);
+        updateVirtualRightStick({manual!=0.f?manual:physical,0.f},true);
+    }else{
+        releaseMovement(m.autoSelectingWeapon);
+        s.previousTurnDisplayTime=displayTime;
+        s.previousManualTurnActive=false;
+        s.bodyFollowTurnX=0.f;
+    }
     if(m.calibrationWheel){
         const float dx=m.waitingForEquip?m.wheelAxisX:(m.cursorX-480.f)/190.f;
         const float dy=m.waitingForEquip?m.wheelAxisY:(360.f-m.cursorY)/190.f;
