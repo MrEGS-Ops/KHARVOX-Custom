@@ -17,8 +17,11 @@ constexpr int radialControlWidth=48;
 constexpr double radialStep=6.283185307179586/radialCategoryCount;
 
 inline double radialAngle(int i){return -1.570796326794897+i*radialStep;}
-inline int radialPanelX(int i){return std::cos(radialAngle(i))<-.01?8:692;}
-inline int radialRowY(int i){return radialRowTop+i*radialRowStep;}
+constexpr int radialWeaponGripIndex=0;
+constexpr int radialWeaponGripTop=36;
+inline int radialPanelX(int i){return i==radialWeaponGripIndex?(960-radialPanelWidth)/2:std::cos(radialAngle(i))<-.01?8:692;}
+inline int radialPanelTop(int category){return category==radialWeaponGripIndex?radialWeaponGripTop:radialRowTop;}
+inline int radialRowY(int category,int row){return radialPanelTop(category)+row*radialRowStep;}
 inline int radialDescriptionX(int i){return radialPanelX(i)==8?692:8;}
 // Pixel coverage for the analytic sector/rim, without blurring text or texture.
 struct RadialCoverage {int category{-1};float outer{},inner{};};
@@ -38,9 +41,9 @@ inline RadialCoverage radialCoverage(float dx,float dy){
 inline int radialHit(float x,float y,int category,int count){
     if(radialHasFlyout(category)){
         const int left=radialPanelX(category);
-        if(x>=left&&x<left+radialPanelWidth&&y>=radialRowTop){
-            const int row=int((y-radialRowTop)/radialRowStep);
-            if(row<count&&y<radialRowY(row)+radialRowHeight){
+        if(x>=left&&x<left+radialPanelWidth&&y>=radialPanelTop(category)){
+            const int row=int((y-radialPanelTop(category))/radialRowStep);
+            if(row<count&&y<radialRowY(category,row)+radialRowHeight){
                 const float offset=x-left;
                 const int part=offset<radialControlWidth?0:
                     offset>=radialPanelWidth-radialControlWidth?2:1;
