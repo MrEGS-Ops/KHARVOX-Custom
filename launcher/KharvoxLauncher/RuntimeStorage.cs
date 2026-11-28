@@ -31,6 +31,13 @@ internal static class RuntimeStorage
     }
 
     private static string OwnerPath(string root) => Path.Combine(root,"Runtime","session.owner");
+    internal static bool HasSession(string root) => File.Exists(OwnerPath(root));
+    internal static void EndInactiveSession(string root)
+    {
+        // The caller holds the cross-process launch gate and has checked
+        // that DOOM is absent. This covers a missed process-exit callback.
+        if (HasSession(root)) EndSession(root,File.ReadAllText(OwnerPath(root)));
+    }
 
     // Caller holds the launch gate and has verified DOOM is not running.
     internal static string BeginSession(string root)

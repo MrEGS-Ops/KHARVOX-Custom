@@ -200,6 +200,17 @@ internal static class KharvoxRunner
             currentGame = FindRunningDoomProcess();
             if (currentGame is not null) return true;
             if (Volatile.Read(ref launchInProgress) != 0) return false;
+            // Recover a missed exit callback without touching a new launch.
+            if (RuntimeStorage.HasSession(AppContext.BaseDirectory))
+            {
+                try
+                {
+                    using var cleanupGate = AcquireLaunchGate();
+                    using var running = FindRunningDoomProcess();
+                    if (running is null) RuntimeStorage.EndInactiveSession(AppContext.BaseDirectory);
+                }
+                catch { /* Another launch owns the gate; leave its files alone. */ }
+            }
             StopBhapticsInBackground();
             StopPsvr2InBackground();
             return false;

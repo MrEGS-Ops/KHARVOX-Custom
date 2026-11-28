@@ -18,6 +18,6 @@ internal static class RendererSelection
     };
     internal static void ClearObsoleteMarkers(string runtime)
     {
-        foreach (var marker in ObsoleteMarkers) File.Delete(RuntimeStorage.SessionPath(runtime, marker));
+        foreach (var marker in ObsoleteMarkers) File.Delete(Path.Combine(runtime, marker));
     }
 }

@@ -1374,6 +1374,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         s.previousTurnDisplayTime=displayTime;
         s.previousManualTurnActive=false;
         s.bodyFollowTurnX=0.f;
+        if(m.calibrationWheel||m.waitingForEquip){
+            s.snapTurnActivationPending=false;
+            s.artificialTurnActive=false;
+            s.artificialTurnRemainingDegrees=0.f;
+            publishArtificialTurnYaw();
+        }
     }
     if(m.calibrationWheel){
         const float dx=m.waitingForEquip?m.wheelAxisX:(m.cursorX-480.f)/190.f;
