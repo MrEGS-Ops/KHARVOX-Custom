@@ -110,6 +110,12 @@ struct DeviceDispatch {
     PFN_vkQueuePresentKHR present{};
     PFN_vkCmdPushConstants cmdPushConstants{};
     PFN_vkCmdUpdateBuffer cmdUpdateBuffer{};
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    PFN_vkCmdCopyBuffer meshCopyBuffer{};
+    PFN_vkGetFenceStatus meshFenceStatus{};
+    uint32_t meshQueueFamily{UINT32_MAX};
+    VkPhysicalDeviceMemoryProperties meshMemoryProperties{};
+#endif
     PFN_vkMapMemory mapMemory{};
     PFN_vkUnmapMemory unmapMemory{};
     PFN_vkBindBufferMemory bindBufferMemory{};
@@ -212,11 +218,11 @@ void logLine(const std::string& text, bool operational = false) {
 }
 
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-// Observe only engine-owned buffers already mapped by DOOM. Never map a
-// device-local allocation, change usage flags, enqueue GPU work or stall a queue.
-// All pointers are lifetime-checked against the standard Vulkan map/free calls.
+// Mesh research: mapped reads, bounded upload snapshots, and one fenced
+// readback at a time. Never map game device-local memory or wait on a queue.
+// All geometry remains candidate-only, outside gameplay.
 struct MeshMemory {VkDevice device{};VkDeviceSize size{},mapOffset{},mapSize{};const unsigned char* mapped{};};
-struct MeshBuffer {VkDevice device{};VkDeviceSize size{},memoryOffset{};VkDeviceMemory memory{};};
+struct MeshBuffer {VkDevice device{};VkDeviceSize size{},memoryOffset{};VkDeviceMemory memory{};VkBufferUsageFlags usage{};unsigned long long identity{};};
 struct MeshDrawBindings {
     VkBuffer vertex[4]{},index{};
     VkDeviceSize vertexOffset[4]{},indexOffset{};
@@ -230,6 +236,36 @@ std::unordered_map<VkCommandBuffer,MeshDrawBindings> meshBindings;
 unsigned long long meshBindingEpoch{},meshLastRequest{};
 unsigned meshAttempts{};bool meshCaptured{};
 constexpr size_t kMeshTrackingLimit=16384;
+unsigned long long meshBufferIdentity{};
+struct MeshBytes {VkBuffer buffer{};unsigned long long identity{},request{};VkDeviceSize offset{};std::vector<unsigned char> bytes;};
+std::vector<MeshBytes> meshUploads,meshReadbacks;
+size_t meshUploadBytes{};
+constexpr size_t kMeshUploadBudget=64u*1024u*1024u,kMeshUploadMax=8u*1024u*1024u;
+void meshForgetBytes(VkBuffer b){
+    for(auto it=meshUploads.begin();it!=meshUploads.end();)if(it->buffer==b){meshUploadBytes-=it->bytes.size();it=meshUploads.erase(it);}else ++it;
+    meshReadbacks.erase(std::remove_if(meshReadbacks.begin(),meshReadbacks.end(),[&](const MeshBytes& x){return x.buffer==b;}),meshReadbacks.end());
+}
+struct MeshReadbackRange {VkBuffer buffer{};unsigned long long identity{};VkDeviceSize offset{},size{},stagingOffset{};};
+struct MeshReadbackRequest {
+    VkCommandBuffer command{};unsigned long long serial{},expires{};unsigned handle{};
+    std::vector<MeshReadbackRange> ranges;
+};
+MeshReadbackRequest meshPendingReadback{};
+struct MeshReadbackJob {
+    DeviceDispatch dispatch{};VkCommandPool pool{};VkCommandBuffer command{};VkBuffer staging{};VkDeviceMemory memory{};VkFence fence{};
+    VkDeviceSize bytes{};MeshReadbackRequest request{};bool submitted{},markerSubmitted{};
+};
+MeshReadbackJob meshReadbackJob{};
+unsigned long long meshReadbackEpoch{};
+unsigned meshReadbackTries{};
+void meshReleaseReadback(MeshReadbackJob& j){
+    const auto& d=j.dispatch;const auto& x=d.xr;
+    if(j.fence&&x.destroyFence)x.destroyFence(d.device,j.fence,nullptr);
+    if(j.pool&&x.destroyCommandPool)x.destroyCommandPool(d.device,j.pool,nullptr);
+    if(j.staging&&x.destroyBuffer)x.destroyBuffer(d.device,j.staging,nullptr);
+    if(j.memory&&x.freeMemory)x.freeMemory(d.device,j.memory,nullptr);
+    j={};
+}
 void meshObserveAlloc(VkDevice d,VkDeviceMemory m,VkDeviceSize size){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
     if(meshMemories.size()<kMeshTrackingLimit||meshMemories.count(m))meshMemories[m]={d,size,0,0,nullptr};
@@ -238,7 +274,7 @@ void meshObserveFree(VkDevice d,VkDeviceMemory m){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
     auto it=meshMemories.find(m);
     if(it!=meshMemories.end()&&it->second.device==d)meshMemories.erase(it);
-    for(auto& b:meshBuffers)if(b.second.device==d&&b.second.memory==m)b.second.memory=VK_NULL_HANDLE;
+    for(auto& b:meshBuffers)if(b.second.device==d&&b.second.memory==m){meshForgetBytes(b.first);b.second.memory=VK_NULL_HANDLE;}
 }
 void meshObserveMap(VkDevice d,VkDeviceMemory m,VkDeviceSize off,VkDeviceSize size,void* ptr){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
@@ -254,23 +290,27 @@ void meshObserveUnmap(VkDevice d,VkDeviceMemory m){
     auto it=meshMemories.find(m);
     if(it!=meshMemories.end()&&it->second.device==d){it->second.mapped=nullptr;it->second.mapSize=0;}
 }
-void meshObserveCreate(VkDevice d,VkBuffer b,VkDeviceSize size){
+void meshObserveCreate(VkDevice d,VkBuffer b,VkDeviceSize size,VkBufferUsageFlags usage){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
-    if(meshBuffers.size()<kMeshTrackingLimit||meshBuffers.count(b))meshBuffers[b]={d,size,0,VK_NULL_HANDLE};
+    meshForgetBytes(b);
+    if(meshBuffers.size()<kMeshTrackingLimit||meshBuffers.count(b))meshBuffers[b]={d,size,0,VK_NULL_HANDLE,usage,++meshBufferIdentity};
 }
 void meshObserveDestroy(VkDevice d,VkBuffer b){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
-    auto it=meshBuffers.find(b);if(it!=meshBuffers.end()&&it->second.device==d)meshBuffers.erase(it);
+    auto it=meshBuffers.find(b);if(it!=meshBuffers.end()&&it->second.device==d){meshForgetBytes(b);meshBuffers.erase(it);}
     for(auto& state:meshBindings){auto& x=state.second;if(x.index==b)x.index=VK_NULL_HANDLE;for(auto& z:x.vertex)if(z==b)z=VK_NULL_HANDLE;}
 }
 void meshObserveBind(VkDevice d,VkBuffer b,VkDeviceMemory m,VkDeviceSize off){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
     auto it=meshBuffers.find(b);
-    if(it!=meshBuffers.end()&&it->second.device==d){it->second.memory=m;it->second.memoryOffset=off;}
+    if(it!=meshBuffers.end()&&it->second.device==d){meshForgetBytes(b);it->second.memory=m;it->second.memoryOffset=off;}
 }
 void meshObserveDeviceDestroy(VkDevice d){
     std::lock_guard<std::mutex> lock(meshCaptureMutex);
-    for(auto it=meshBuffers.begin();it!=meshBuffers.end();)if(it->second.device==d)it=meshBuffers.erase(it);else ++it;
+    // Device destruction requires all submitted work to have completed.
+    if(meshReadbackJob.dispatch.device==d)meshReleaseReadback(meshReadbackJob);
+    meshPendingReadback={};
+    for(auto it=meshBuffers.begin();it!=meshBuffers.end();)if(it->second.device==d){meshForgetBytes(it->first);it=meshBuffers.erase(it);}else ++it;
     for(auto it=meshMemories.begin();it!=meshMemories.end();)if(it->second.device==d)it=meshMemories.erase(it);else ++it;
     meshBindings.clear();
 }
@@ -290,6 +330,191 @@ bool meshReadMapped(VkBuffer b,VkDeviceSize offset,void* out,size_t bytes){
     const auto address=reinterpret_cast<std::uintptr_t>(m.mapped);
     if(rel>UINTPTR_MAX-address||bytes>UINTPTR_MAX-address-rel)return false;
     return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address+static_cast<std::uintptr_t>(rel)),out,bytes,&copied)&&copied==bytes;
+}
+bool meshGeometryDestination(const MeshBuffer& b){
+    return (b.usage&(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT))!=0;
+}
+// A recording-time snapshot is a candidate upload, not proof of GPU execution.
+// Invalidate overlapping prior snapshots even when the new source is unreadable.
+void meshInvalidateUpload(VkBuffer b,VkDeviceSize off,VkDeviceSize bytes){
+    const auto overlaps=[&](const MeshBytes& x){return x.buffer==b&&off<x.offset+x.bytes.size()&&x.offset<off+bytes;};
+    for(auto it=meshUploads.begin();it!=meshUploads.end();)if(overlaps(*it)){meshUploadBytes-=it->bytes.size();it=meshUploads.erase(it);}else ++it;
+    meshReadbacks.erase(std::remove_if(meshReadbacks.begin(),meshReadbacks.end(),overlaps),meshReadbacks.end());
+}
+void meshSaveUpload(VkBuffer b,VkDeviceSize off,std::vector<unsigned char>&& bytes){
+    if(bytes.empty()||bytes.size()>kMeshUploadMax)return;
+    const auto bi=meshBuffers.find(b);if(bi==meshBuffers.end())return;
+    while(!meshUploads.empty()&&(meshUploads.size()>=512||meshUploadBytes+bytes.size()>kMeshUploadBudget)){
+        meshUploadBytes-=meshUploads.front().bytes.size();meshUploads.erase(meshUploads.begin());
+    }
+    meshUploadBytes+=bytes.size();
+    meshUploads.push_back({b,bi->second.identity,0,off,std::move(bytes)});
+}
+void meshObserveCopy(VkBuffer src,VkBuffer dst,unsigned count,const VkBufferCopy* regions){
+    if(!regions||!count)return;
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    const auto d=meshBuffers.find(dst);if(d==meshBuffers.end()||!meshGeometryDestination(d->second))return;
+    for(unsigned i=0;i<count;++i){
+        const auto& r=regions[i];
+        if(r.dstOffset>d->second.size||r.size>d->second.size-r.dstOffset)continue;
+        meshInvalidateUpload(dst,r.dstOffset,r.size);
+        if(!r.size||r.size>kMeshUploadMax)continue;
+        std::vector<unsigned char> bytes(static_cast<size_t>(r.size));
+        if(meshReadMapped(src,r.srcOffset,bytes.data(),bytes.size()))meshSaveUpload(dst,r.dstOffset,std::move(bytes));
+    }
+}
+void meshObserveUpdate(VkBuffer dst,VkDeviceSize off,VkDeviceSize size,const void* data){
+    if(!data||!size||size>65536)return;
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    const auto d=meshBuffers.find(dst);if(d==meshBuffers.end()||!meshGeometryDestination(d->second)||off>d->second.size||size>d->second.size-off)return;
+    meshInvalidateUpload(dst,off,size);
+    std::vector<unsigned char> bytes(static_cast<size_t>(size));SIZE_T copied{};
+    if(ReadProcessMemory(GetCurrentProcess(),data,bytes.data(),bytes.size(),&copied)&&copied==bytes.size())
+        meshSaveUpload(dst,off,std::move(bytes));
+}
+bool meshReadAvailable(VkBuffer b,VkDeviceSize off,void* out,size_t bytes,unsigned long long request,unsigned* source=nullptr){
+    const auto bi=meshBuffers.find(b);if(bi==meshBuffers.end())return false;
+    const auto tryCache=[&](const std::vector<MeshBytes>& cache,bool readback){
+        for(auto it=cache.rbegin();it!=cache.rend();++it){
+            if(it->buffer!=b||it->identity!=bi->second.identity||(readback&&it->request!=request)||off<it->offset)continue;
+            const auto delta=off-it->offset;
+            if(delta>it->bytes.size()||bytes>it->bytes.size()-delta)continue;
+            std::memcpy(out,it->bytes.data()+static_cast<size_t>(delta),bytes);if(source)*source=readback?3u:2u;return true;
+        }
+        return false;
+    };
+    if(tryCache(meshReadbacks,true))return true;
+    if(meshReadMapped(b,off,out,bytes)){if(source)*source=1;return true;}
+    return tryCache(meshUploads,false);
+}
+bool meshVertexRange(VkDeviceSize off,int32_t base,unsigned stride,unsigned nv,VkDeviceSize& start,VkDeviceSize& bytes){
+    const int64_t delta=static_cast<int64_t>(base)*stride;
+    if((delta<0&&static_cast<uint64_t>(-delta)>off)||(delta>=0&&static_cast<uint64_t>(delta)>UINT64_MAX-off))return false;
+    start=delta<0?off-static_cast<uint64_t>(-delta):off+static_cast<uint64_t>(delta);
+    bytes=static_cast<VkDeviceSize>(nv)*stride;return true;
+}
+void meshRequestReadback(VkCommandBuffer cb,const MeshDrawBindings& b,const KharvoxMeshDrawRequest& req,unsigned first,int32_t base,unsigned indexSize){
+    if(meshReadbackEpoch!=req.serial){meshReadbackEpoch=req.serial;meshReadbackTries=0;meshPendingReadback={};meshReadbacks.clear();}
+    if(meshReadbackJob.submitted||meshPendingReadback.serial||meshReadbackTries>=3||!indexSize)return;
+    MeshReadbackRequest r{};r.command=cb;r.serial=req.serial;r.expires=req.expires;r.handle=req.handle;
+    VkDeviceSize total{};
+    const auto add=[&](VkBuffer buffer,VkDeviceSize off,VkDeviceSize size){
+        const auto it=meshBuffers.find(buffer);
+        if(it==meshBuffers.end()||!(it->second.usage&VK_BUFFER_USAGE_TRANSFER_SRC_BIT)||off>it->second.size||size>it->second.size-off)return false;
+        if(off>UINT64_MAX-size||off+size>UINT64_MAX-3)return false;
+        const auto start=off&~VkDeviceSize(3),end=(off+size+3)&~VkDeviceSize(3);
+        if(end>it->second.size||end<=start)return false;
+        for(const auto& prior:r.ranges)if(prior.buffer==buffer&&prior.offset<=start&&end-prior.offset<=prior.size)return true;
+        if(end-start>4u*1024u*1024u-total)return false;
+        r.ranges.push_back({buffer,it->second.identity,start,end-start,total});total+=end-start;return true;
+    };
+    if(b.indexOffset>UINT64_MAX-static_cast<VkDeviceSize>(first)*indexSize)return;
+    if(!add(b.index,b.indexOffset+static_cast<VkDeviceSize>(first)*indexSize,static_cast<VkDeviceSize>(req.indices)*indexSize)){
+        logLine("[GEOMETRY-INV] READBACK_SKIP index_not_transfer_source_or_range request="+std::to_string(req.serial),true);
+        ++meshReadbackTries;return;
+    }
+    for(unsigned j=0;j<4;++j)if(b.vertex[j])for(unsigned stride:{12u,16u,24u,32u,40u,48u,64u}){
+        VkDeviceSize start{},size{};
+        if(meshVertexRange(b.vertexOffset[j],base,stride,req.vertices,start,size))add(b.vertex[j],start,size);
+    }
+    if(r.ranges.size()<2){++meshReadbackTries;return;}
+    ++meshReadbackTries;meshPendingReadback=std::move(r);
+    logLine("[GEOMETRY-INV] READBACK_REQUEST request="+std::to_string(req.serial)+" bytes="+std::to_string(total),true);
+}
+// Called only after the marker fence reports completion. No queue waits.
+void meshPollReadback(){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    auto& j=meshReadbackJob;const auto& d=j.dispatch;const auto& x=d.xr;
+    if(!j.submitted||!j.markerSubmitted||!d.meshFenceStatus)return;
+    const auto status=d.meshFenceStatus(d.device,j.fence);
+    if(status==VK_NOT_READY)return;
+    if(status!=VK_SUCCESS){
+        // Device loss or unexpected error: don't read/free potentially pending resources.
+        j.markerSubmitted=false;logLine("[GEOMETRY-INV] READBACK_FENCE_ERROR "+std::to_string(status),true);return;
+    }
+    KharvoxMeshDrawRequest active{};
+    const bool current=KharvoxCameraReadMeshDrawRequest(active)&&active.serial==j.request.serial;
+    if(current){
+        void* data{};
+        if(x.mapMemory(d.device,j.memory,0,j.bytes,0,&data)==VK_SUCCESS&&data){
+            for(const auto& r:j.request.ranges){
+                const auto bi=meshBuffers.find(r.buffer);
+                if(bi==meshBuffers.end()||bi->second.identity!=r.identity)continue;
+                MeshBytes copy{r.buffer,r.identity,j.request.serial,r.offset,{}};
+                copy.bytes.resize(static_cast<size_t>(r.size));
+                std::memcpy(copy.bytes.data(),static_cast<const unsigned char*>(data)+r.stagingOffset,copy.bytes.size());
+                meshReadbacks.push_back(std::move(copy));
+            }
+            x.unmapMemory(d.device,j.memory);
+            meshAttempts=0;
+            logLine("[GEOMETRY-INV] READBACK_COMPLETE request="+std::to_string(j.request.serial)+" bytes="+std::to_string(j.bytes)+" fence_signaled=1",true);
+        }else logLine("[GEOMETRY-INV] READBACK_SKIP staging_map_failed",true);
+    }
+    meshReleaseReadback(j);
+}
+bool meshPrepareReadback(const DeviceDispatch& d,const VkSubmitInfo& info,MeshReadbackJob& j){
+    if(!meshPendingReadback.serial||meshReadbackJob.submitted||!info.pCommandBuffers)return false;
+    auto& request=meshPendingReadback;
+    if(GetTickCount64()>request.expires||!KharvoxCameraMeshDrawIndexCount()){request={};return false;}
+    if(std::find(info.pCommandBuffers,info.pCommandBuffers+info.commandBufferCount,request.command)==info.pCommandBuffers+info.commandBufferCount)return false;
+    j.request=std::move(request);request={};j.dispatch=d;
+    if(info.pNext||d.meshQueueFamily==UINT32_MAX||d.runtimeAuxiliary||!d.meshCopyBuffer||!d.meshFenceStatus){
+        logLine("[GEOMETRY-INV] READBACK_SKIP incompatible_submit_or_queue request="+std::to_string(j.request.serial),true);return false;
+    }
+    const auto& x=d.xr;
+    if(!x.createBuffer||!x.destroyBuffer||!x.getBufferMemoryRequirements||!x.allocateMemory||!x.freeMemory||!x.bindBufferMemory||!x.createCommandPool||!x.destroyCommandPool||!x.allocateCommandBuffers||!x.beginCommandBuffer||!x.endCommandBuffer||!x.cmdPipelineBarrier||!x.createFence||!x.destroyFence||!x.mapMemory||!x.unmapMemory)return false;
+    for(const auto& r:j.request.ranges){
+        const auto bi=meshBuffers.find(r.buffer);
+        if(bi==meshBuffers.end()||bi->second.device!=d.device||bi->second.identity!=r.identity||!bi->second.memory)return false;
+        j.bytes=std::max(j.bytes,r.stagingOffset+r.size);
+    }
+    if(!j.bytes||j.bytes>4u*1024u*1024u)return false;
+    VkBufferCreateInfo buf{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};buf.size=j.bytes;buf.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT;buf.sharingMode=VK_SHARING_MODE_EXCLUSIVE;
+    if(x.createBuffer(d.device,&buf,nullptr,&j.staging)!=VK_SUCCESS)return false;
+    VkMemoryRequirements mr{};x.getBufferMemoryRequirements(d.device,j.staging,&mr);
+    uint32_t type=UINT32_MAX;
+    for(uint32_t i=0;i<d.meshMemoryProperties.memoryTypeCount;++i)if((mr.memoryTypeBits&(1u<<i))&&
+        (d.meshMemoryProperties.memoryTypes[i].propertyFlags&(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))==(VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)){type=i;break;}
+    if(type==UINT32_MAX)return false;
+    VkMemoryAllocateInfo alloc{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};alloc.allocationSize=mr.size;alloc.memoryTypeIndex=type;
+    if(x.allocateMemory(d.device,&alloc,nullptr,&j.memory)!=VK_SUCCESS||x.bindBufferMemory(d.device,j.staging,j.memory,0)!=VK_SUCCESS)return false;
+    VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pool.queueFamilyIndex=d.meshQueueFamily;pool.flags=VK_COMMAND_POOL_CREATE_TRANSIENT_BIT;
+    if(x.createCommandPool(d.device,&pool,nullptr,&j.pool)!=VK_SUCCESS)return false;
+    VkCommandBufferAllocateInfo ca{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};ca.commandPool=j.pool;ca.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;ca.commandBufferCount=1;
+    if(x.allocateCommandBuffers(d.device,&ca,&j.command)!=VK_SUCCESS)return false;
+    VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if(x.beginCommandBuffer(j.command,&begin)!=VK_SUCCESS)return false;
+    VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};barrier.srcAccessMask=VK_ACCESS_MEMORY_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_TRANSFER_READ_BIT;
+    x.cmdPipelineBarrier(j.command,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,1,&barrier,0,nullptr,0,nullptr);
+    for(const auto& r:j.request.ranges){VkBufferCopy copy{r.offset,r.stagingOffset,r.size};d.meshCopyBuffer(j.command,r.buffer,j.staging,1,&copy);}
+    barrier.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;barrier.dstAccessMask=VK_ACCESS_HOST_READ_BIT;
+    x.cmdPipelineBarrier(j.command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,1,&barrier,0,nullptr,0,nullptr);
+    if(x.endCommandBuffer(j.command)!=VK_SUCCESS)return false;
+    VkFenceCreateInfo fc{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    return x.createFence(d.device,&fc,nullptr,&j.fence)==VK_SUCCESS;
+}
+// Append to the SAME engine submit, preserving its waits, signals and fence.
+// Engine resource retirement therefore also covers our transfer. A subsequent
+// empty submit supplies a private completion marker for staging cleanup.
+VkResult meshSubmitLegacy(const DeviceDispatch& d,VkQueue q,uint32_t count,const VkSubmitInfo* infos,VkFence engineFence){
+    meshPollReadback();
+    if(!d.submit)return VK_ERROR_DEVICE_LOST;
+    if(count!=1||!infos||infos[0].commandBufferCount>128)return d.submit(q,count,infos,engineFence);
+    std::unique_lock<std::mutex> lock(meshCaptureMutex);
+    MeshReadbackJob j{};
+    if(!meshPrepareReadback(d,infos[0],j)){
+        if(j.request.serial){logLine("[GEOMETRY-INV] READBACK_SKIP preparation_failed request="+std::to_string(j.request.serial),true);meshReleaseReadback(j);}
+        lock.unlock();return d.submit(q,count,infos,engineFence);
+    }
+    VkSubmitInfo amended=infos[0];std::vector<VkCommandBuffer> commands(amended.pCommandBuffers,amended.pCommandBuffers+amended.commandBufferCount);
+    commands.push_back(j.command);amended.commandBufferCount=static_cast<uint32_t>(commands.size());amended.pCommandBuffers=commands.data();
+    const auto result=d.submit(q,1,&amended,engineFence);
+    if(result!=VK_SUCCESS){meshReleaseReadback(j);return result;}
+    j.submitted=true;
+    j.markerSubmitted=d.submit(q,0,nullptr,j.fence)==VK_SUCCESS;
+    if(!j.markerSubmitted)logLine("[GEOMETRY-INV] READBACK_SKIP marker_submit_failed; retain until device teardown",true);
+    meshReadbackJob=std::move(j);
+    return result;
 }
 MeshDrawBindings* meshBinding(VkCommandBuffer cb,unsigned long long serial){
     if(meshBindingEpoch!=serial){meshBindings.clear();meshBindingEpoch=serial;}
@@ -328,16 +553,18 @@ void meshObserveDraw(VkCommandBuffer cb,unsigned count,unsigned first,int32_t ba
     if(!indexSize||b.indexOffset>UINT64_MAX-static_cast<VkDeviceSize>(first)*indexSize)return;
     const auto indexOffset=b.indexOffset+static_cast<VkDeviceSize>(first)*indexSize;
     std::vector<unsigned char> rawIndices(static_cast<size_t>(count)*indexSize);
-    if(!meshReadMapped(b.index,indexOffset,rawIndices.data(),rawIndices.size())){
-        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=index_not_host_mapped request="+std::to_string(req.serial),true);return;
+    unsigned indexSource{};
+    if(!meshReadAvailable(b.index,indexOffset,rawIndices.data(),rawIndices.size(),req.serial,&indexSource)){
+        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=index_not_cpu_available request="+std::to_string(req.serial),true);
+        meshRequestReadback(cb,b,req,first,baseVertex,indexSize);return;
     }
     std::vector<uint32_t> indices(count);
     for(unsigned j=0;j<count;++j){
         if(indexSize==2){uint16_t x{};std::memcpy(&x,rawIndices.data()+j*2,2);indices[j]=x;}
         else std::memcpy(&indices[j],rawIndices.data()+j*4,4);
-        if(indices[j]>=req.vertices)return;
+        if(indices[j]>=req.vertices){meshRequestReadback(cb,b,req,first,baseVertex,indexSize);return;}
     }
-    unsigned passing=0,chosenStride=0,chosenBinding=0;VkDeviceSize chosenOffset{};
+    unsigned passing=0,chosenStride=0,chosenBinding=0,vertexSource=0;VkDeviceSize chosenOffset{};
     std::vector<std::array<float,3>> points;
     std::vector<unsigned char> chosenRaw;
     for(unsigned binding=0;binding<4;++binding){
@@ -348,7 +575,8 @@ void meshObserveDraw(VkCommandBuffer cb,unsigned count,unsigned first,int32_t ba
             if((delta<0&&static_cast<uint64_t>(-delta)>off)||(delta>=0&&static_cast<uint64_t>(delta)>UINT64_MAX-off))continue;
             const auto start=delta<0?off-static_cast<uint64_t>(-delta):off+static_cast<uint64_t>(delta);
             std::vector<unsigned char> raw(static_cast<size_t>(req.vertices)*stride);
-            if(!meshReadMapped(b.vertex[binding],start,raw.data(),raw.size()))continue;
+            unsigned source{};
+            if(!meshReadAvailable(b.vertex[binding],start,raw.data(),raw.size(),req.serial,&source))continue;
             std::vector<std::array<float,3>> trial(req.vertices);
             float lo[3]{1e30f,1e30f,1e30f},hi[3]{-1e30f,-1e30f,-1e30f};bool valid=true;
             for(unsigned j=0;j<req.vertices&&valid;++j){
@@ -362,21 +590,22 @@ void meshObserveDraw(VkCommandBuffer cb,unsigned count,unsigned first,int32_t ba
                 const float tolerance=std::max(.25f,(req.bounds[k+3]-req.bounds[k])*.025f);
                 valid=std::abs(lo[k]-req.bounds[k])<=tolerance&&std::abs(hi[k]-req.bounds[k+3])<=tolerance;
             }
-            if(valid){++passing;chosenBinding=binding;chosenStride=stride;chosenOffset=start;points=std::move(trial);chosenRaw=std::move(raw);}
+            if(valid){++passing;chosenBinding=binding;chosenStride=stride;chosenOffset=start;vertexSource=source;points=std::move(trial);chosenRaw=std::move(raw);}
         }
     }
     if(passing!=1){
-        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=no_unique_bounds_match count="+std::to_string(passing)+" request="+std::to_string(req.serial),true);return;
+        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=no_unique_bounds_match count="+std::to_string(passing)+" request="+std::to_string(req.serial),true);
+        meshRequestReadback(cb,b,req,first,baseVertex,indexSize);return;
     }
     // Re-read both ranges to reject concurrently changed host bytes.
     std::vector<unsigned char> checkIndex(rawIndices.size()),checkVertex(chosenRaw.size());
-    if(!meshReadMapped(b.index,indexOffset,checkIndex.data(),checkIndex.size())||checkIndex!=rawIndices
-        ||!meshReadMapped(b.vertex[chosenBinding],chosenOffset,checkVertex.data(),checkVertex.size())||checkVertex!=chosenRaw)return;
+    if(!meshReadAvailable(b.index,indexOffset,checkIndex.data(),checkIndex.size(),req.serial)||checkIndex!=rawIndices
+        ||!meshReadAvailable(b.vertex[chosenBinding],chosenOffset,checkVertex.data(),checkVertex.size(),req.serial)||checkVertex!=chosenRaw)return;
     meshCaptured=true;
     lock.unlock(); // Logging can be slow; no graphics tracking lock held.
     logLine("[GEOMETRY-INV] VULKAN_MESH_DECODE request="+std::to_string(req.serial)+" handle="+std::to_string(req.handle)
         +" surface="+std::to_string(req.surface)+" vertices="+std::to_string(req.vertices)+" triangles="+std::to_string(count/3)
-        +" stride="+std::to_string(chosenStride)+" candidate_only=1",true);
+        +" stride="+std::to_string(chosenStride)+" index_source="+std::to_string(indexSource)+" vertex_source="+std::to_string(vertexSource)+" (1=mapped,2=upload_snapshot,3=fenced_gpu_readback) candidate_only=1",true);
     for(unsigned j=0;j<points.size();j+=16){
         std::ostringstream line;line.precision(9);line<<"[GEOMETRY-INV] VULKAN_VERTICES request="<<req.serial<<" first="<<j;
         for(unsigned k=j;k<points.size()&&k<j+16;++k)line<<" "<<points[k][0]<<","<<points[k][1]<<","<<points[k][2];
@@ -878,6 +1107,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue,const VkPresentInfoKHR*
 VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer,VkPipelineLayout,VkShaderStageFlags,uint32_t,uint32_t,const void*);
 VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(VkCommandBuffer,VkBuffer,VkDeviceSize,VkDeviceSize,const void*);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(VkCommandBuffer,VkBuffer,VkBuffer,uint32_t,const VkBufferCopy*);
 VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(VkDevice,const VkMemoryAllocateInfo*,const VkAllocationCallbacks*,VkDeviceMemory*);
 VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice,VkDeviceMemory,const VkAllocationCallbacks*);
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice,const VkBufferCreateInfo*,const VkAllocationCallbacks*,VkBuffer*);
@@ -1039,7 +1269,7 @@ static PFN_vkVoidFunction deviceProcBase(VkDevice d,const char* n){
     }
     auto s=deviceState(key(d));if(d&&s.runtimeAuxiliary)return s.gdpa?s.gdpa(d,n):nullptr; MATCH(vkGetDeviceProcAddr); MATCH(vkDestroyDevice); MATCH(vkGetDeviceQueue); MATCH(vkGetDeviceQueue2); MATCH(vkCreateSwapchainKHR); MATCH(vkDestroySwapchainKHR); MATCH(vkGetSwapchainImagesKHR); MATCH(vkAcquireNextImageKHR); MATCH(vkAcquireNextImage2KHR); MATCH(vkQueueSubmit); MATCH(vkQueueSubmit2); MATCH(vkQueuePresentKHR); MATCH(vkCmdPushConstants); MATCH(vkCmdUpdateBuffer); MATCH(vkMapMemory); MATCH(vkUnmapMemory); MATCH(vkBindBufferMemory); MATCH(vkUpdateDescriptorSets); MATCH(vkCmdBindDescriptorSets); MATCH(vkCmdBindPipeline); MATCH(vkCmdBindVertexBuffers); MATCH(vkCmdBindIndexBuffer); MATCH(vkCmdDraw); MATCH(vkCmdDrawIndexed); MATCH(vkCmdDrawIndirect); MATCH(vkCmdDrawIndexedIndirect); MATCH(vkCmdSetViewport); MATCH(vkCmdSetScissor); MATCH(vkCreateShaderModule); MATCH(vkDestroyShaderModule); MATCH(vkCreateGraphicsPipelines); MATCH(vkDestroyPipeline); MATCH(vkCmdPipelineBarrier); MATCH(vkCreateImage); MATCH(vkDestroyImage); MATCH(vkCreateImageView); MATCH(vkDestroyImageView); MATCH(vkCreateFramebuffer); MATCH(vkDestroyFramebuffer); MATCH(vkCreateRenderPass); MATCH(vkCreateRenderPass2); MATCH(vkDestroyRenderPass); MATCH(vkCmdBeginRenderPass); MATCH(vkCmdBeginRenderPass2); MATCH(vkCmdNextSubpass); MATCH(vkCmdNextSubpass2); MATCH(vkCmdEndRenderPass); MATCH(vkCmdEndRenderPass2);
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    MATCH(vkAllocateMemory); MATCH(vkFreeMemory); MATCH(vkCreateBuffer); MATCH(vkDestroyBuffer);
+    MATCH(vkAllocateMemory); MATCH(vkFreeMemory); MATCH(vkCreateBuffer); MATCH(vkDestroyBuffer); MATCH(vkCmdCopyBuffer);
 #endif
     return s.gdpa?s.gdpa(d,n):nullptr;
 }
@@ -1268,6 +1498,16 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice p,const VkDeviceC
 #define LOAD(field,name) d.field=reinterpret_cast<decltype(d.field)>(kharvox::native::trace::wrap(#name,nextGdpa(*out,#name),true))
       LOAD(destroy,vkDestroyDevice);LOAD(getQueue,vkGetDeviceQueue);LOAD(getQueue2,vkGetDeviceQueue2);LOAD(createSwapchain,vkCreateSwapchainKHR);LOAD(destroySwapchain,vkDestroySwapchainKHR);LOAD(getSwapchainImages,vkGetSwapchainImagesKHR);LOAD(acquire,vkAcquireNextImageKHR);LOAD(acquire2,vkAcquireNextImage2KHR);LOAD(submit,vkQueueSubmit);LOAD(submit2,vkQueueSubmit2);LOAD(present,vkQueuePresentKHR);
       LOAD(cmdPushConstants,vkCmdPushConstants);LOAD(cmdUpdateBuffer,vkCmdUpdateBuffer);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+      LOAD(meshCopyBuffer,vkCmdCopyBuffer);LOAD(meshFenceStatus,vkGetFenceStatus);
+      if(ci->queueCreateInfoCount==1&&ci->pQueueCreateInfos&&ci->pQueueCreateInfos[0].flags==0&&physicalDispatch.getPhysicalDeviceQueueFamilyProperties){
+          uint32_t count=0;physicalDispatch.getPhysicalDeviceQueueFamilyProperties(p,&count,nullptr);
+          std::vector<VkQueueFamilyProperties> families(count);if(count)physicalDispatch.getPhysicalDeviceQueueFamilyProperties(p,&count,families.data());
+          const auto family=ci->pQueueCreateInfos[0].queueFamilyIndex;
+          if(family<count&&(families[family].queueFlags&VK_QUEUE_GRAPHICS_BIT))d.meshQueueFamily=family;
+      }
+      if(auto query=reinterpret_cast<PFN_vkGetPhysicalDeviceMemoryProperties>(physicalDispatch.gipa(physicalDispatch.instance,"vkGetPhysicalDeviceMemoryProperties")))query(p,&d.meshMemoryProperties);
+#endif
       LOAD(mapMemory,vkMapMemory);LOAD(unmapMemory,vkUnmapMemory);LOAD(bindBufferMemory,vkBindBufferMemory);LOAD(updateDescriptorSets,vkUpdateDescriptorSets);LOAD(cmdBindDescriptorSets,vkCmdBindDescriptorSets);LOAD(cmdBindPipeline,vkCmdBindPipeline);LOAD(cmdBindVertexBuffers,vkCmdBindVertexBuffers);LOAD(cmdBindIndexBuffer,vkCmdBindIndexBuffer);LOAD(cmdDraw,vkCmdDraw);LOAD(cmdDrawIndexed,vkCmdDrawIndexed);LOAD(cmdDrawIndirect,vkCmdDrawIndirect);LOAD(cmdDrawIndexedIndirect,vkCmdDrawIndexedIndirect);LOAD(cmdSetViewport,vkCmdSetViewport);LOAD(cmdSetScissor,vkCmdSetScissor);LOAD(createGraphicsPipelines,vkCreateGraphicsPipelines);LOAD(destroyPipeline,vkDestroyPipeline);LOAD(createImage,vkCreateImage);LOAD(destroyImage,vkDestroyImage);LOAD(createImageView,vkCreateImageView);LOAD(destroyImageView,vkDestroyImageView);LOAD(createFramebuffer,vkCreateFramebuffer);LOAD(destroyFramebuffer,vkDestroyFramebuffer);LOAD(createRenderPass,vkCreateRenderPass);LOAD(createRenderPass2,vkCreateRenderPass2);LOAD(destroyRenderPass,vkDestroyRenderPass);LOAD(cmdBeginRenderPass,vkCmdBeginRenderPass);LOAD(cmdBeginRenderPass2,vkCmdBeginRenderPass2);LOAD(cmdNextSubpass,vkCmdNextSubpass);LOAD(cmdNextSubpass2,vkCmdNextSubpass2);LOAD(cmdEndRenderPass,vkCmdEndRenderPass);LOAD(cmdEndRenderPass2,vkCmdEndRenderPass2);
       LOAD(xr.createCommandPool,vkCreateCommandPool);LOAD(xr.destroyCommandPool,vkDestroyCommandPool);LOAD(xr.allocateCommandBuffers,vkAllocateCommandBuffers);LOAD(xr.resetCommandBuffer,vkResetCommandBuffer);LOAD(xr.beginCommandBuffer,vkBeginCommandBuffer);LOAD(xr.endCommandBuffer,vkEndCommandBuffer);LOAD(xr.cmdPipelineBarrier,vkCmdPipelineBarrier);LOAD(xr.cmdBlitImage,vkCmdBlitImage);LOAD(xr.cmdCopyImage,vkCmdCopyImage);LOAD(xr.cmdCopyBufferToImage,vkCmdCopyBufferToImage);LOAD(xr.cmdClearColorImage,vkCmdClearColorImage);LOAD(xr.createImage,vkCreateImage);LOAD(xr.destroyImage,vkDestroyImage);LOAD(xr.getImageMemoryRequirements,vkGetImageMemoryRequirements);LOAD(xr.allocateMemory,vkAllocateMemory);LOAD(xr.freeMemory,vkFreeMemory);LOAD(xr.bindImageMemory,vkBindImageMemory);LOAD(xr.createBuffer,vkCreateBuffer);LOAD(xr.destroyBuffer,vkDestroyBuffer);LOAD(xr.getBufferMemoryRequirements,vkGetBufferMemoryRequirements);LOAD(xr.bindBufferMemory,vkBindBufferMemory);LOAD(xr.mapMemory,vkMapMemory);LOAD(xr.unmapMemory,vkUnmapMemory);
       LOAD(xr.createImageView,vkCreateImageView);LOAD(xr.destroyImageView,vkDestroyImageView);LOAD(xr.createSampler,vkCreateSampler);LOAD(xr.destroySampler,vkDestroySampler);LOAD(xr.createShaderModule,vkCreateShaderModule);LOAD(xr.destroyShaderModule,vkDestroyShaderModule);LOAD(xr.createDescriptorSetLayout,vkCreateDescriptorSetLayout);LOAD(xr.destroyDescriptorSetLayout,vkDestroyDescriptorSetLayout);LOAD(xr.createDescriptorPool,vkCreateDescriptorPool);LOAD(xr.destroyDescriptorPool,vkDestroyDescriptorPool);LOAD(xr.allocateDescriptorSets,vkAllocateDescriptorSets);LOAD(xr.updateDescriptorSets,vkUpdateDescriptorSets);LOAD(xr.createPipelineLayout,vkCreatePipelineLayout);LOAD(xr.destroyPipelineLayout,vkDestroyPipelineLayout);LOAD(xr.createComputePipelines,vkCreateComputePipelines);LOAD(xr.createGraphicsPipelines,vkCreateGraphicsPipelines);LOAD(xr.destroyPipeline,vkDestroyPipeline);LOAD(xr.cmdBindPipeline,vkCmdBindPipeline);LOAD(xr.cmdBindDescriptorSets,vkCmdBindDescriptorSets);LOAD(xr.cmdPushConstants,vkCmdPushConstants);LOAD(xr.cmdDispatch,vkCmdDispatch);LOAD(xr.createRenderPass,vkCreateRenderPass);LOAD(xr.destroyRenderPass,vkDestroyRenderPass);LOAD(xr.createFramebuffer,vkCreateFramebuffer);LOAD(xr.destroyFramebuffer,vkDestroyFramebuffer);LOAD(xr.cmdBeginRenderPass,vkCmdBeginRenderPass);LOAD(xr.cmdEndRenderPass,vkCmdEndRenderPass);LOAD(xr.cmdBindVertexBuffers,vkCmdBindVertexBuffers);LOAD(xr.cmdBindIndexBuffer,vkCmdBindIndexBuffer);LOAD(xr.cmdDrawIndexed,vkCmdDrawIndexed);LOAD(xr.cmdSetViewport,vkCmdSetViewport);LOAD(xr.cmdSetScissor,vkCmdSetScissor);LOAD(xr.createSemaphore,vkCreateSemaphore);LOAD(xr.destroySemaphore,vkDestroySemaphore);LOAD(xr.createFence,vkCreateFence);LOAD(xr.destroyFence,vkDestroyFence);LOAD(xr.resetFences,vkResetFences);LOAD(xr.waitForFences,vkWaitForFences);LOAD(xr.queueSubmit,vkQueueSubmit);LOAD(xr.queueWaitIdle,vkQueueWaitIdle);
@@ -1437,7 +1677,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAcquireNextImage2KHR(VkDevice d,const VkAcquire
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit(VkQueue q,uint32_t c,const VkSubmitInfo*i,VkFence f){
     kharvox::native::trace::SubmitScope traceSubmit("engine-submit",q,c,i,f);
     auto s=deviceState(key(q));const auto n=++submitCount;LARGE_INTEGER enter{},returned{};QueryPerformanceCounter(&enter);if(logFrame(n)){std::ostringstream x;x<<"[Submit "<<n<<"] batches="<<c;logLine(x.str());}
-    VkResult result=VK_ERROR_DEVICE_LOST;{std::lock_guard<std::recursive_mutex>queueLock(queueAccessMutex);result=s.submit?s.submit(q,c,i,f):VK_ERROR_DEVICE_LOST;kharvox::native::submitted(q,c,i,result);}QueryPerformanceCounter(&returned);
+    VkResult result=VK_ERROR_DEVICE_LOST;{std::lock_guard<std::recursive_mutex>queueLock(queueAccessMutex);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+        result=meshSubmitLegacy(s,q,c,i,f);
+#else
+        result=s.submit?s.submit(q,c,i,f):VK_ERROR_DEVICE_LOST;
+#endif
+        kharvox::native::submitted(q,c,i,result);}QueryPerformanceCounter(&returned);
     const double totalMs=elapsedMilliseconds(enter,returned);if(result==VK_ERROR_DEVICE_LOST)logLine("[DEVICE-LOST] vkQueueSubmit returned VK_ERROR_DEVICE_LOST call="+std::to_string(n));if(extendedLoggingEnabled()&&(traceDiagnosticCall(n)||result!=VK_SUCCESS||totalMs>=10.0)){std::ostringstream x;x<<"[SUBMIT] return call="<<n<<" thread="<<GetCurrentThreadId()<<" queue="<<reinterpret_cast<uint64_t>(q)<<" batches="<<c<<" fence="<<reinterpret_cast<uint64_t>(f)<<" result="<<result<<" totalMs="<<totalMs;logExtended(x.str());}traceSubmit.result(result);return result;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue q,uint32_t c,const VkSubmitInfo2*i,VkFence f){
@@ -1472,6 +1718,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue q,const VkPresentInfoKH
     const bool sourcePresent=i&&i->swapchainCount&&kharvox::sfs::sourceSwapchain(s.device,i->pSwapchains[0]);
     if(sourcePresent&&(i->swapchainCount!=1||i->pNext))return VK_ERROR_FEATURE_NOT_PRESENT;
     kharvox::hudgpu::present(n);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    meshPollReadback();
+#endif
     KharvoxCameraCompleteNativeStereoBootstrapAfterRender();
     KharvoxCameraPollDiagnostic();
     bool consumedPresentWaits=false;
@@ -1518,8 +1767,16 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue q,const VkPresentInfoKH
     return presentResult;
 }
 VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer cb,VkPipelineLayout l,VkShaderStageFlags stages,uint32_t off,uint32_t size,const void* values){auto fn=commandFunction(cb,&DeviceDispatch::cmdPushConstants);if(fn)fn(cb,l,stages,off,size,values);}
-VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(VkCommandBuffer cb,VkBuffer dst,VkDeviceSize off,VkDeviceSize size,const void* data){auto fn=commandFunction(cb,&DeviceDispatch::cmdUpdateBuffer);if(fn)fn(cb,dst,off,size,data);}
+VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(VkCommandBuffer cb,VkBuffer dst,VkDeviceSize off,VkDeviceSize size,const void* data){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    meshObserveUpdate(dst,off,size,data);
+#endif
+    auto fn=commandFunction(cb,&DeviceDispatch::cmdUpdateBuffer);if(fn)fn(cb,dst,off,size,data);}
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyBuffer(VkCommandBuffer cb,VkBuffer src,VkBuffer dst,uint32_t count,const VkBufferCopy* regions){
+    auto fn=commandFunction(cb,&DeviceDispatch::meshCopyBuffer);
+    if(fn){meshObserveCopy(src,dst,count,regions);fn(cb,src,dst,count,regions);}
+}
 VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(VkDevice d,const VkMemoryAllocateInfo* info,const VkAllocationCallbacks* a,VkDeviceMemory* out){
     auto s=deviceState(key(d));const auto result=s.xr.allocateMemory?s.xr.allocateMemory(d,info,a,out):VK_ERROR_INITIALIZATION_FAILED;
     if(result==VK_SUCCESS&&info&&out&&!s.runtimeAuxiliary)meshObserveAlloc(d,*out,info->allocationSize);
@@ -1529,8 +1786,18 @@ VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice d,VkDeviceMemory m,const VkAllo
     auto s=deviceState(key(d));if(!s.runtimeAuxiliary)meshObserveFree(d,m);if(s.xr.freeMemory)s.xr.freeMemory(d,m,a);
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice d,const VkBufferCreateInfo* info,const VkAllocationCallbacks* a,VkBuffer* out){
-    auto s=deviceState(key(d));const auto result=s.xr.createBuffer?s.xr.createBuffer(d,info,a,out):VK_ERROR_INITIALIZATION_FAILED;
-    if(result==VK_SUCCESS&&info&&out&&!s.runtimeAuxiliary)meshObserveCreate(d,*out,info->size);
+    auto s=deviceState(key(d));if(!s.xr.createBuffer)return VK_ERROR_INITIALIZATION_FAILED;
+    VkBufferCreateInfo modified{};const VkBufferCreateInfo* effective=info;
+    // Allow readback only for ordinary geometry buffers on a compatible device.
+    // Do not alter sparse, protected, external, extension-chain or auxiliary buffers.
+    if(info&&!s.runtimeAuxiliary&&s.meshQueueFamily!=UINT32_MAX&&info->flags==0&&!info->pNext
+        &&(info->usage&(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT|VK_BUFFER_USAGE_INDEX_BUFFER_BIT))
+        &&!(info->usage&VK_BUFFER_USAGE_TRANSFER_SRC_BIT)){
+        modified=*info;modified.usage|=VK_BUFFER_USAGE_TRANSFER_SRC_BIT;effective=&modified;
+    }
+    auto result=s.xr.createBuffer(d,effective,a,out);
+    if(result!=VK_SUCCESS&&effective!=info){effective=info;result=s.xr.createBuffer(d,info,a,out);}
+    if(result==VK_SUCCESS&&effective&&out&&!s.runtimeAuxiliary)meshObserveCreate(d,*out,effective->size,effective->usage);
     return result;
 }
 VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice d,VkBuffer b,const VkAllocationCallbacks* a){

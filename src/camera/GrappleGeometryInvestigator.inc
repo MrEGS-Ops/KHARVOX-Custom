@@ -18,7 +18,7 @@ void requestGeometryDraw(const ObjectDiscoveryNativeRecord& item,unsigned surfac
     for(unsigned k=0;k<3;++k)if(!std::isfinite(bounds[k])||!std::isfinite(bounds[k+3])||bounds[k]>bounds[k+3])return;
     std::lock_guard<std::mutex> lock(meshDrawMutex);
     meshDrawRequest={};meshDrawRequest.serial=++meshDrawSerial;
-    meshDrawRequest.expires=GetTickCount64()+4000;
+    meshDrawRequest.expires=GetTickCount64()+8000;
     meshDrawRequest.handle=item.handle;meshDrawRequest.surface=surface;
     meshDrawRequest.vertices=nv;meshDrawRequest.indices=ni;
     std::memcpy(meshDrawRequest.bounds,bounds,24);
