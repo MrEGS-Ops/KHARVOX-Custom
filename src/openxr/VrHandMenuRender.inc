@@ -555,12 +555,12 @@ void paintVrHandMenu() {
             if(m.radialDescriptionFadeOut)
                 descriptionOpacity*=1.f-std::clamp(float(now-m.radialDescriptionFadeOut)/120.f,0.f,1.f);
             const char* descriptions[]{
-                "Calibrate weapon grips and adjust hand positioning.",
-                "Customise turning, physical crouching and movement.",
-                "Customise HUD counters and personal records.",
+                "Make every gun feel like an extension of your hands.",
+                "Duck low, turn fast. Make Hell keep up with you.",
+                "Keep score. Beat your best. Die less.",
                 "",
-                "Adjust physical glory kills and execution speed.",
-                "Configure physical holsters and behind-head weapon selection."};
+                "Put your fists to work. Rip and tear at your own pace.",
+                "Draw from the hip. Reach behind your head. Swap like a gunslinger."};
             const int side=radialHasFlyout(m.radialCategory)?m.radialCategory:desc;
             descriptionX=radialDescriptionX(side);descriptionY=radialRowTop;
             RECT rc{0,0,radialPanelWidth-24,0};
