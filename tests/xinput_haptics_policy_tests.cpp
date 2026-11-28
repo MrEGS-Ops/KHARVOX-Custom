@@ -312,6 +312,15 @@ int main() {
         ||controllerZoneCueDurationMilliseconds(zero,hoverCue,7200,100)!=10
         ||!mixControllerZoneCue(zero,hoverCue,7209).active
         ||mixControllerZoneCue(zero,hoverCue,7210).active)return 67;
+    // Weapon calibration buttons reuse the same pointer detent policy.
+    hover={};
+    if(!menuHoverCueEntered(hover,90001,0,8000)
+        ||menuHoverCueEntered(hover,90001,0,8100)
+        ||!menuHoverCueEntered(hover,90001,1,8150)
+        ||!menuHoverCueEntered(hover,90001,2,8200)
+        ||menuHoverCueEntered(hover,90001,-1,8250)
+        ||!menuHoverCueEntered(hover,90001,2,8300)
+        ||!menuHoverCueEntered(hover,90002,2,8350))return 71;
     // Button activation uses precisely the normal save tick, and cannot
     // interrupt a double confirmation even during its silent gap.
     saveCues={};

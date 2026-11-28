@@ -794,8 +794,14 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const auto kind=KharvoxWeaponCurrentKind();
             const int action=kharvox::weaponGuideAction(m.cursorX,m.cursorY,
                 kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun);
-            if(!triggerEdge||action<0||m.weaponCalibrationStage==3)return false;
-            kharvox::queueMenuButtonCue(s.configSaveCues,true,true,GetTickCount64());
+            const int target=m.weaponCalibrationStage==3?-1:action;
+            const int context=90000+int(m.weaponCalibrationStage);
+            const auto hoverNow=GetTickCount64();
+            if(kharvox::menuHoverCueEntered(s.menuHoverCueState,context,target,hoverNow)
+                &&!triggerEdge&&!leftTriggerEdge&&!aEdge)
+                kharvox::queueMenuHoverCue(s.menuHoverCue,hoverNow);
+            if(!triggerEdge||target<0)return false;
+            kharvox::queueMenuButtonCue(s.configSaveCues,true,true,hoverNow);
             if(action==2){
                 m.alternateProfile=!m.alternateProfile;
                 startVrSelectedWeaponCalibration();
@@ -1284,7 +1290,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }
         }
     }
-    if(m.mode!=kharvox::VrHandMenuMode::Menu||m.calibrationWheel||m.waitingForEquip){
+    // The calibration guide is interactive too; do not erase its hover
+    // state/cue every frame. Other capture screens have no pointer buttons.
+    const bool calibrationButtons=m.mode==kharvox::VrHandMenuMode::Calibrating
+        &&m.liveCapture==kharvox::VrLiveCapture::None
+        &&m.weaponCalibrationStage&&m.weaponCalibrationStage!=3;
+    if((m.mode!=kharvox::VrHandMenuMode::Menu&&!calibrationButtons)
+        ||m.calibrationWheel||m.waitingForEquip){
         s.menuHoverCueState={};s.menuHoverCue={};
     }
     // Generic Alt Fire input engages automatically when selected.
