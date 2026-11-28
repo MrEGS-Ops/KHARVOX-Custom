@@ -1347,7 +1347,7 @@ void objectDiscoveryGameTick() {
         }
         // Time-based incoming pull; keep normal held-object tracking unchanged.
         const float pullDt=held.surfaceApproaching?static_cast<float>(std::clamp(now-held.surfaceLastPullAt,8ULL,30ULL))*.001f:0.f;
-        const float followPerTick=held.surfaceApproaching?350.f*pullDt:40.f;
+        const float followPerTick=held.surfaceApproaching?425.f*pullDt:40.f;
         if(held.surfaceApproaching)held.surfaceLastPullAt=now;
         const float factor=len>followPerTick?followPerTick/len:1.f;
         for(int i=0;i<3;++i)
