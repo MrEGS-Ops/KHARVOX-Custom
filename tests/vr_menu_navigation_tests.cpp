@@ -18,6 +18,18 @@ int main(){
     assert(updateVrMenuHoldShortcut(hold,true,1300)==VrMenuShortcutAction::None);
     assert(updateVrMenuHoldShortcut(hold,false,1400)==VrMenuShortcutAction::None);
     assert(!radialHasFlyout(3)&&radialHasFlyout(5));
+    assert(radialDescriptionX(5)==692&&radialDescriptionX(1)==8);
+    const auto rimSample=radialCoverage(0.f,-202.f);
+    assert(rimSample.category==0&&rimSample.outer>.4f&&rimSample.outer<.6f&&rimSample.inner==0.f);
+    assert(radialCoverage(0.f,-137.f).inner==1.f);
+    assert(radialCoverage(0.f,-204.f).outer==0.f);
+    VrLiveSettings savedCrouch{},draftCrouch=savedCrouch;
+    draftCrouch.crouchLoweredSaved=false;
+    assert(vrLiveCapturePoint(draftCrouch,VrLiveCapture::CrouchStanding,{},.1f));
+    assert(!savedCrouch.crouchStandSaved);
+    assert(!vrLiveCapturePoint(draftCrouch,VrLiveCapture::CrouchLowered,{},.05f));
+    assert(vrLiveCapturePoint(draftCrouch,VrLiveCapture::CrouchLowered,{},-.5f));
+    assert(draftCrouch.crouchStandSaved&&draftCrouch.crouchLoweredSaved&&!savedCrouch.crouchLoweredSaved);
     for(int i=0;i<radialCategoryCount;++i)
         assert(radialHit(float(480+137*std::cos(radialAngle(i))),float(360+137*std::sin(radialAngle(i))),-1,0)==100+i);
     assert(weaponGuideAction(800,weaponGuideButtonTop+10,true)==2);

@@ -592,6 +592,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.autoSelectingWeapon=false;
         m.pendingNativeSelection=0;
         m.liveCapture=kharvox::VrLiveCapture::None;
+        m.combinedCrouch=false;
+        m.crouchAwaitRelease=false;
         m.previewValid=false;
         m.shortcut={};
         m.rightTriggerPreviously=rightTrigger;
@@ -615,6 +617,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.radialCategory=m.suppressedCategory=m.radialResetRow=-1;
             m.radialPinned=false;
             m.radialDescription=-1;
+            m.radialDescriptionFadeOut=0;
             m.combinedCrouch=false;
             m.radialDevUnlock.clicks=0;
             m.supportPreviewHeld=m.calibrationWheel=m.waitingForEquip=false;
@@ -652,6 +655,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             m.rotationEdit={};
             m.primaryGripPreviewHeld=false;
             m.liveCapture=kharvox::VrLiveCapture::None;
+            m.combinedCrouch=false;
+            m.crouchAwaitRelease=false;
             m.autoSelectingWeapon=false;
             m.pendingNativeSelection=0;
             s.primaryVisualLocked=false;

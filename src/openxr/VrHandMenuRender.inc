@@ -108,6 +108,11 @@ void paintVrHandMenu() {
     const bool editingHud=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Stats&&!disconnectView;
     const bool radialView=m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods;
     const bool pickingWeapon=m.mode==kharvox::VrHandMenuMode::Menu&&(m.calibrationWheel||m.waitingForEquip);
+    constexpr int radialSize=406,radialX=277,radialY=157;
+    std::vector<unsigned char> radialAlpha;
+    int descriptionX=-1,descriptionY=0,descriptionHeight=0;
+    float descriptionOpacity=0.f;
+    const COLORREF descriptionBackground=RGB(21,31,39);
     const auto& layout=editingHud?m.hudDraft:s.vrLiveSettings;
     const std::array<bool,kharvox::kVrStatsItemCount> statsVisible{
         layout.deathCounterEnabled,
@@ -458,22 +463,35 @@ void paintVrHandMenu() {
             fill(x+1,y+1,w-2,h-2,hover?(m.rightTriggerPreviously?RGB(23,84,87):RGB(36,67,77)):RGB(22,32,42));
             label(x+3,y,w-6,h,value,colour);
         };
-        const auto rim=CreatePen(PS_SOLID,1,RGB(67,87,99));
-        const auto oldPen=SelectObject(dc,rim);
+        // Cached analytic coverage preserves sharp, consistently weighted
+        // circular edges and dividers at native compositor resolution.
+        static const auto coverage=[] {
+            std::vector<RadialCoverage> out(radialSize*radialSize);
+            for(int y=0;y<radialSize;++y)for(int x=0;x<radialSize;++x)
+                out[y*radialSize+x]=radialCoverage(float(radialX+x)+.5f-480.f,float(radialY+y)+.5f-360.f);
+            return out;
+        }();
+        radialAlpha.resize(coverage.size());
+        const bool dev=m.radialDevUnlock.unlocked;
+        const COLORREF rim=RGB(67,87,99);
+        GdiFlush();
+        auto* pixels=static_cast<unsigned char*>(bits);
+        for(int y=0;y<radialSize;++y)for(int x=0;x<radialSize;++x){
+            const int idx=y*radialSize+x;
+            const auto& q=coverage[idx];
+            if(q.outer<=0.f)continue;
+            const bool hot=q.category>=0&&m.hovered==100+q.category;
+            const COLORREF face=q.category<0?(dev&&m.hovered==radialCenter?RGB(25,81,84):RGB(19,31,40)):
+                hot&&m.rightTriggerPreviously?RGB(24,93,96):hot||m.radialCategory==q.category?RGB(34,65,76):RGB(24,33,44);
+            const float t=q.inner/q.outer;
+            const auto blend=[&](int a,int b){return static_cast<unsigned char>(a+(b-a)*t+.5f);};
+            auto* px=pixels+4*((radialY+y)*vrMenuW+radialX+x);
+            px[0]=blend(GetBValue(rim),GetBValue(face));
+            px[1]=blend(GetGValue(rim),GetGValue(face));
+            px[2]=blend(GetRValue(rim),GetRValue(face));
+            radialAlpha[idx]=static_cast<unsigned char>(226*q.outer+.5f);
+        }
         for(int i=0;i<radialCategoryCount;++i){
-            POINT points[36]{};
-            for(int j=0;j<18;++j){
-                const double a=radialAngle(i)+(j/17.0-.5)*(radialStep-.025);
-                points[j]={LONG(480+202*std::cos(a)),LONG(360+202*std::sin(a))};
-                points[35-j]={LONG(480+61*std::cos(a)),LONG(360+61*std::sin(a))};
-            }
-            const bool hot=m.hovered==100+i;
-            const auto brush=CreateSolidBrush(hot&&m.rightTriggerPreviously?RGB(24,93,96):
-                hot||m.radialCategory==i?RGB(34,65,76):RGB(24,33,44));
-            const auto old=SelectObject(dc,brush);
-            Polygon(dc,points,36);
-            SelectObject(dc,old);
-            DeleteObject(brush);
             const int x=int(480+137*std::cos(radialAngle(i))),y=int(360+137*std::sin(radialAngle(i)));
             label(x-72,y-15,144,29,radialGroups[i].name,white);
             if(i==radialPainsawIndex){
@@ -481,14 +499,6 @@ void paintVrHandMenu() {
                 label(x-40,y+10,80,23,on?"ON":"OFF",on?RGB(111,224,156):muted);
             }
         }
-        const bool dev=m.radialDevUnlock.unlocked;
-        const auto brush=CreateSolidBrush(dev&&m.hovered==radialCenter?RGB(25,81,84):RGB(19,31,40));
-        const auto old=SelectObject(dc,brush);
-        Ellipse(dc,420,300,540,420);
-        SelectObject(dc,old);
-        DeleteObject(brush);
-        SelectObject(dc,oldPen);
-        DeleteObject(rim);
         label(423,341,114,38,dev?"Dev Mode":"_RIPSHIFT",accent);
         if(radialHasFlyout(m.radialCategory)){
             const int x=radialPanelX(m.radialCategory);
@@ -537,6 +547,31 @@ void paintVrHandMenu() {
                 const int height=std::min(int(vrMenuH)-y-8,int(measured.bottom-measured.top)+16);
                 if(height>0){fill(x,y,w,height,RGB(22,32,42));wrap(x+8,y+8,w-16,height-16,message,accent);}
             }
+        }
+        const int desc=m.radialDescription;
+        const auto now=GetTickCount64();
+        if(radialHasFlyout(desc)&&now>=m.radialDescriptionSince+200){
+            descriptionOpacity=std::clamp(float(now-m.radialDescriptionSince-200)/120.f,0.f,1.f);
+            if(m.radialDescriptionFadeOut)
+                descriptionOpacity*=1.f-std::clamp(float(now-m.radialDescriptionFadeOut)/120.f,0.f,1.f);
+            const char* descriptions[]{
+                "Calibrate weapon grips and adjust hand positioning.",
+                "Customise turning, physical crouching and movement.",
+                "Customise HUD counters and personal records.",
+                "",
+                "Adjust physical glory kills and execution speed.",
+                "Configure physical holsters and behind-head weapon selection."};
+            const int side=radialHasFlyout(m.radialCategory)?m.radialCategory:desc;
+            descriptionX=radialDescriptionX(side);descriptionY=radialRowTop;
+            RECT rc{0,0,radialPanelWidth-24,0};
+            DrawTextA(dc,descriptions[desc],-1,&rc,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
+            descriptionHeight=int(rc.bottom-rc.top)+24;
+            const bool pointerOver=m.cursorX>=descriptionX&&m.cursorX<descriptionX+radialPanelWidth
+                &&m.cursorY>=descriptionY&&m.cursorY<descriptionY+descriptionHeight;
+            if(descriptionOpacity>0.f&&!pointerOver){
+                fill(descriptionX,descriptionY,radialPanelWidth,descriptionHeight,descriptionBackground);
+                wrap(descriptionX+12,descriptionY+12,radialPanelWidth-24,descriptionHeight-24,descriptions[desc],muted);
+            }else descriptionX=-1;
         }
     }else if(m.page==kharvox::VrMenuPage::Records
         ||m.page==kharvox::VrMenuPage::DevRecords){
@@ -1279,6 +1314,7 @@ void paintVrHandMenu() {
     DeleteObject(title);DeleteObject(regular);DeleteObject(smallFont);
     // GDI's 32-bit DIB uses BGRA. Convert to straight-alpha RGBA required by
     // VK_FORMAT_R8G8B8A8_SRGB. The panel is intentionally opaque.
+    GdiFlush();
     auto* src=static_cast<const unsigned char*>(bits);
     auto* dst=static_cast<unsigned char*>(vrHandMenuSurface.mapped);
     for(size_t i=0;i<size_t(vrMenuW)*vrMenuH;++i){
@@ -1298,7 +1334,18 @@ void paintVrHandMenu() {
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
             :weaponGuide?(x>=12&&x<948&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+kharvox::weaponGuideHeight?225:devPanel&&x>=630&&x<938&&y>=144&&y<576?255:0)
-            :radialView||pickingWeapon?(src[b]||src[b+1]||src[b+2]?226:0)
+            :radialView||pickingWeapon?([&](){
+                if(radialView&&!radialAlpha.empty()&&x>=radialX&&x<radialX+radialSize&&y>=radialY&&y<radialY+radialSize){
+                    const auto alpha=radialAlpha[(y-radialY)*radialSize+x-radialX];
+                    if(alpha)return int(alpha);
+                }
+                if(radialView&&descriptionX>=0&&x>=descriptionX&&x<descriptionX+kharvox::radialPanelWidth
+                    &&y>=descriptionY&&y<descriptionY+descriptionHeight){
+                    const bool background=src[b]==GetBValue(descriptionBackground)&&src[b+1]==GetGValue(descriptionBackground)&&src[b+2]==GetRValue(descriptionBackground);
+                    return int((background?80:205)*descriptionOpacity);
+                }
+                return src[b]||src[b+1]||src[b+2]?226:0;
+            }())
             :editingHud?210
             :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+156?205
             :objectCalibrationView

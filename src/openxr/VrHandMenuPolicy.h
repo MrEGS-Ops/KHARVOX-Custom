@@ -567,7 +567,7 @@ struct VrHandMenuState {
     bool radialPinned{}, supportPreviewHeld{}, resetWeaponPending{};
     int radialResetRow{-1};
     int radialDescription{-1};
-    unsigned long long radialDescriptionSince{};
+    unsigned long long radialDescriptionSince{},radialDescriptionFadeOut{};
     bool combinedCrouch{},crouchAwaitRelease{};
     VrLiveSettings crouchDraft{};
     RadialDevUnlock radialDevUnlock{};

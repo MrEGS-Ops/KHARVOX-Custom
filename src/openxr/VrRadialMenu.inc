@@ -44,8 +44,9 @@ void openCalibrationWheel(){
     m.page=kharvox::VrMenuPage::WeaponGrip;
     KharvoxHudResetWeaponWheelPresentation();
     m.calibrationWheel=true;
-    logVrCalibrationWheelYaw("open");
     m.calibrationWheelLeft=s.weaponHandLeft;
+    m.wheelAxisX=m.wheelAxisY=0.f;
+    logVrCalibrationWheelYaw("open");
     m.waitingForEquip=false;
     m.resetWeaponPending=false;
     m.alternateProfile=false;
@@ -57,8 +58,17 @@ void radialInput(int hit,bool click,bool rightGrip){
     const bool center=hit==radialCenter;
     const bool openDev=m.radialDevUnlock.update(center,rightGrip,click);
     if(hit<100||hit>=100+radialCategoryCount)m.suppressedCategory=-1;
-    const int description=hit>=100&&hit<100+radialCategoryCount&&radialHasFlyout(hit-100)?hit-100:-1;
-    if(description!=m.radialDescription){m.radialDescription=description;m.radialDescriptionSince=GetTickCount64();}
+    const int description=hit>=100&&hit<100+radialCategoryCount&&radialHasFlyout(hit-100)?hit-100:
+        (hit>=radialRowTarget&&m.radialPinned?m.radialCategory:-1);
+    const auto now=GetTickCount64();
+    if(description>=0){
+        if(description!=m.radialDescription||m.radialDescriptionFadeOut){
+            m.radialDescription=description;m.radialDescriptionSince=now;
+        }
+        m.radialDescriptionFadeOut=0;
+    }else if(m.radialDescription>=0&&!m.radialDescriptionFadeOut){
+        m.radialDescriptionFadeOut=now;
+    }
     if(hit>=100&&hit<100+radialCategoryCount){
         const int i=hit-100;
         if(click&&i==radialPainsawIndex){
