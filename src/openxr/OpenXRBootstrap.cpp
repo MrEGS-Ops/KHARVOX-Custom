@@ -345,6 +345,8 @@ struct State {
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
     std::array<kharvox::ControllerZoneCue,2> configSaveCues{}; // independent of preview/zone cues
+    kharvox::MenuHoverCueState menuHoverCueState{};
+    kharvox::ControllerZoneCue menuHoverCue{}; // right-hand pointer only
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
     bool shoulderZoneEntered{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
@@ -1346,6 +1348,7 @@ void updateXInputHaptics(){
         &&s.running&&(focused||s.sessionState==XR_SESSION_STATE_VISIBLE);
     if(!focused&&!testPreview){
         s.configSaveCues={};
+        s.menuHoverCueState={};s.menuHoverCue={};
         s.wheelClicks={};
         s.motionWheelState={};
         s.wheelStickHaptics={};
@@ -1437,6 +1440,9 @@ void updateXInputHaptics(){
         const bool saving=focused&&!previewHand&&!x6RightRumble
             &&now>=saveCue.startedMilliseconds&&now<saveCue.untilMilliseconds;
         if(saving)desired=kharvox::mixControllerZoneCue({},saveCue,now);
+        const bool hovering=focused&&hand==1&&!saving&&!previewHand&&!x6RightRumble
+            &&!desired.active&&kharvox::controllerZoneCuePulseActive(s.menuHoverCue,now);
+        if(hovering)desired=kharvox::mixControllerZoneCue({},s.menuHoverCue,now);
         const bool usingDamage=!saving&&!x6RightRumble&&!previewHand&&focused
             &&damageImpact.active
             &&(!withChainsaw.active || withChainsaw.amplitude < damageImpact.amplitude);
@@ -1462,6 +1468,7 @@ void updateXInputHaptics(){
             clickDesired,s.handZoneCues[hand],now,clickDuration);
         const auto durationMilliseconds=saving
             ?kharvox::controllerZoneCueDurationMilliseconds({},saveCue,now,100)
+            :hovering?kharvox::controllerZoneCueDurationMilliseconds({},s.menuHoverCue,now,100)
             :x6RightRumble
             ?kharvox::xinputHapticPulseDurationMilliseconds
             :usingDamage

@@ -585,6 +585,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     const auto shortcut=kharvox::vrMenuShortcutWithWelcome(
         m.shortcut,rightClick,GetTickCount64(),openFromWelcome);
     if(!gameplay){
+        s.menuHoverCueState={};s.menuHoverCue={};
         if(m.calibrationWheel||m.waitingForEquip)KharvoxWeaponSetWheelPresentationActive(false);
         m.calibrationWheel=m.waitingForEquip=m.supportPreviewHeld=false;
         if(m.weaponCalibrationStage)finishVrWeaponSequence();
@@ -671,6 +672,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.menuBPreviously=menuB;
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
+        s.menuHoverCueState={};s.menuHoverCue={};
         m.rightTriggerPreviously=rightTrigger;
         m.leftTriggerPreviously=leftTrigger;
         m.radialDevUnlock.clicks=0;
@@ -845,6 +847,35 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY,displayTime,
             m.calibrationWheel&&m.calibrationWheelLeft);
         const auto rows=activeVrMenuEntries();
+        // Use the same hit targets as input dispatch. Normal flyout rows
+        // count as one item, while minus/plus stepper controls are separate.
+        int hoverTarget=m.hovered;
+        int hoverContext=static_cast<int>(m.page)*10000;
+        if(m.calibrationWheel||m.waitingForEquip||m.hudDrag>=0){
+            hoverTarget=-1;
+        }else if(m.page==kharvox::VrMenuPage::Mods&&hoverTarget>=kharvox::radialRowTarget){
+            const int category=m.radialCategory;
+            const int row=(hoverTarget-kharvox::radialRowTarget)/3;
+            const int part=(hoverTarget-kharvox::radialRowTarget)%3;
+            if(category>=0&&category<kharvox::radialCategoryCount
+                &&row>=0&&row<int(radialGroups[category].settings.size())){
+                hoverContext+=category+1;
+                const auto control=radialGroups[category].settings[row].control;
+                if(control==RadialControl::Stepper&&part==1)hoverTarget=-1;
+                else if(control!=RadialControl::Stepper&&m.radialResetRow!=row)
+                    hoverTarget=kharvox::radialRowTarget+row*3;
+            }else hoverTarget=-1;
+        }else if(m.page==kharvox::VrMenuPage::Stats){
+            hoverTarget=hudTarget(int(m.cursorX),int(m.cursorY));
+        }else if(m.page==kharvox::VrMenuPage::Dev){
+            if(hoverTarget>=1000&&hoverTarget<1000+100&&hoverTarget-1000>=int(rows.size()))
+                hoverTarget=-1;
+            if(hoverTarget>=110&&hoverTarget<200)hoverContext+=m.selectedRow+1;
+        }
+        const auto hoverNow=GetTickCount64();
+        if(kharvox::menuHoverCueEntered(s.menuHoverCueState,hoverContext,hoverTarget,hoverNow)
+            &&!triggerEdge&&!leftTriggerEdge&&!aEdge)
+            kharvox::queueMenuHoverCue(s.menuHoverCue,hoverNow);
         if(m.calibrationWheel||m.waitingForEquip){
             const bool pointing=m.cursorX>=0&&m.cursorY>=0
                 &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH;
@@ -1342,6 +1373,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 handleVrRecoilCalibrationAction(chosen);
             }
         }
+    }
+    if(m.mode!=kharvox::VrHandMenuMode::Menu||m.calibrationWheel||m.waitingForEquip){
+        s.menuHoverCueState={};s.menuHoverCue={};
     }
     // Generic Alt Fire input engages automatically when selected.
     // This is confined to the hand-calibration page and its live capture.

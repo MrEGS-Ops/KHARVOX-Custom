@@ -292,6 +292,25 @@ inline void queueMenuSaveCue(std::array<ControllerZoneCue,2>& cues,
     bool rightController,bool saved,std::uint64_t now){
     if(saved)queueControllerZoneCue(cues[rightController?1:0],now,20,.45f,170.f);
 }
+// Tiny pointer detents never repeat on a stationary target. A short
+// refractory interval suppresses chatter at neighbouring hit boundaries.
+struct MenuHoverCueState {
+    int context{-1},target{-1};
+    std::uint64_t lastAt{};
+    bool emitted{};
+};
+inline bool menuHoverCueEntered(MenuHoverCueState& state,int context,int target,
+    std::uint64_t now) noexcept {
+    if(context!=state.context){state.context=context;state.target=-1;}
+    if(target==state.target)return false;
+    state.target=target;
+    if(target<0)return false;
+    if(state.emitted&&now>=state.lastAt&&now-state.lastAt<45)return false;
+    state.lastAt=now;state.emitted=true;return true;
+}
+inline void queueMenuHoverCue(ControllerZoneCue& cue,std::uint64_t now){
+    queueControllerZoneCue(cue,now,10,.18f,170.f);
+}
 inline bool controllerZoneCuePulseActive(const ControllerZoneCue& cue,std::uint64_t now){
     return now>=cue.startedMilliseconds&&now<cue.untilMilliseconds
         &&cue.pulsePeriodMilliseconds>0
