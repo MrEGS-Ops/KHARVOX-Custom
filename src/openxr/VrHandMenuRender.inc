@@ -139,7 +139,7 @@ void paintVrHandMenu() {
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
     const bool gunslingerView=statsGameplay&&gunslingerHelperVisible()&&!guideView
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
-    constexpr int helperX=190,helperY=12,helperW=580,helperH=84;
+    constexpr int helperX=145,helperY=24,helperW=670,helperH=108;
     const bool weaponGuide=m.mode==kharvox::VrHandMenuMode::Calibrating&&m.liveCapture==kharvox::VrLiveCapture::None&&m.weaponCalibrationStage;
     const bool calibrationGuide=(guidedCalibrationVisible()||weaponGuide)&&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView;
     constexpr int counterH=60;
@@ -1218,25 +1218,50 @@ void paintVrHandMenu() {
     if(gunslingerView){
         const auto& t=s.gunslingerTutorial;
         fill(helperX,helperY,helperW,helperH,RGB(16,25,32));
-        fill(helperX,helperY,3,helperH,RGB(55,209,214));
+        fill(helperX,helperY,3,helperH,RGB(255,225,54));
         SelectObject(dc,smallFont);
         const bool done=t.step>=kharvox::gunslingerLessonCount;
-        std::string titleText=done?"GUNSLINGER / TRAINING COMPLETE":
-            "GUNSLINGER / "+std::to_string(t.step+1)+" of "+std::to_string(kharvox::gunslingerLessonCount);
-        write(helperX+12,helperY+4,titleText,RGB(84,233,214));
+        const bool assigned=kharvox::gunslingerHolsterConfirmedVisible(t,GetTickCount64());
+        const unsigned shownStep=assigned?t.step:t.step+1;
+        const std::string titleText=done?"GUNSLINGER / TUTORIAL COMPLETE":
+            "GUNSLINGER / "+std::to_string(shownStep)+" OF "+std::to_string(kharvox::gunslingerLessonCount);
+        write(helperX+12,helperY+5,titleText,white);
         const int side=kharvox::gunslingerLessonSide(t.step);
         const std::string hand=side==0?"RIGHT":"LEFT";
         std::string hint;
-        if(done)hint="Now go rip and tear. You can replay training in Gunslinger.";
+        if(done)hint="Now go rip and tear.";
+        else if(assigned)hint="Three quick buzzes confirm your weapon is holstered.";
         else if(t.pendingSide>=0)hint="Waiting for DOOM to equip your selected weapon...";
         else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::WheelEquip){
             if(s.behindHeadWheelActive&&s.behindHeadWheelSide==side)
-                hint=s.wheelSelectionFrozen?"Keep Grip held and pull your hand forward.":"Move your arm to a gun, then hold Grip to lock it.";
-            else hint="Reach behind your head with your "+hand+" hand.";
-        }else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::HipAssign)
-            hint="Hold "+hand+" Grip, lower to that hip, then release Grip.";
-        else hint="Reach into your "+hand+" hip and press Grip to quick draw.";
-        wrap(helperX+12,helperY+30,helperW-24,helperH-32,hint,white);
+                hint="REACH your arm towards a weapon and HOLD GRIP to select it.";
+            else hint="REACH behind your head with your "+hand+" hand.";
+        }else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::HipAssign){
+            if(t.hipReleaseReady)
+                hint="That vibration means you're in the holster zone. RELEASE GRIP.";
+            else hint="HOLD GRIP and LOWER your weapon to your "+hand+" hip.";
+        }else hint="REACH towards your "+hand+" hip and PRESS GRIP to draw your weapon.";
+        // Measure actual font widths so individually coloured words wrap
+        // without clipping or changing spacing. Only approved keywords yellow.
+        const COLORREF yellow=RGB(255,225,54);
+        const int left=helperX+12,right=helperX+helperW-12;
+        int x=left,y=helperY+34;
+        SIZE space{};GetTextExtentPoint32A(dc," ",1,&space);
+        std::istringstream words(hint);
+        std::string word;
+        while(words>>word){
+            const auto stop=word.find_last_not_of(".,!?;:");
+            const std::string key=stop==std::string::npos?word:word.substr(0,stop+1);
+            const bool emphasis=key=="REACH"||key=="HOLD"||key=="RELEASE"
+                ||key=="PRESS"||key=="LOWER"||key=="LEFT"||key=="RIGHT"||key=="GRIP";
+            SIZE width{};GetTextExtentPoint32A(dc,word.c_str(),static_cast<int>(word.size()),&width);
+            if(x!=left&&x+width.cx>right){x=left;y+=26;}
+            if(emphasis&&key.size()<word.size()){
+                SIZE keyWidth{};GetTextExtentPoint32A(dc,key.c_str(),static_cast<int>(key.size()),&keyWidth);
+                write(x,y,key,yellow);write(x+keyWidth.cx,y,word.substr(key.size()),white);
+            }else write(x,y,word,emphasis?yellow:white);
+            x+=width.cx+space.cx;
+        }
     }
     if(guideView){
         const auto& g=guidedRun;const auto plan=guidedPlan(g.id);

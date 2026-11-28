@@ -8,7 +8,9 @@ enum class GunslingerLessonEvent { WheelEquip, HipAssign, HipDraw };
 struct GunslingerTutorial {
     bool enabled{true};
     unsigned step{};
-    std::uint64_t completedAt{}, pendingUntil{};
+    std::uint64_t completedAt{}, pendingUntil{}, holsterConfirmedAt{};
+    bool holsterConfirmation{};
+    bool hipReleaseReady{};
     int pendingSide{-1};
     BackWeaponKind pendingWeapon{BackWeaponKind::Unknown};
 };
@@ -27,10 +29,25 @@ inline bool gunslingerLessonObserve(GunslingerTutorial& t,GunslingerLessonEvent 
     int side,BackWeaponKind weapon,std::uint64_t now) noexcept {
     if(!t.enabled||t.step>=gunslingerLessonCount||weapon==BackWeaponKind::Unknown
         ||side!=gunslingerLessonSide(t.step)||event!=gunslingerLessonEvent(t.step))return false;
+    t.holsterConfirmation=event==GunslingerLessonEvent::HipAssign;
+    t.holsterConfirmedAt=t.holsterConfirmation?now:0;
+    t.hipReleaseReady=false;
     ++t.step;
     gunslingerCancelPending(t);
     if(t.step==gunslingerLessonCount)t.completedAt=now;
     return true;
+}
+// Observe the same armed gesture used by native hip assignment, not a
+// separate approximate tutorial zone. Leaving or disabling it restores HOLD.
+inline void gunslingerHipReady(GunslingerTutorial& t,int side,bool ready) noexcept {
+    if(t.enabled&&t.step<gunslingerLessonCount
+        &&gunslingerLessonEvent(t.step)==GunslingerLessonEvent::HipAssign
+        &&side==gunslingerLessonSide(t.step))t.hipReleaseReady=ready;
+}
+inline bool gunslingerHolsterConfirmedVisible(const GunslingerTutorial& t,
+    std::uint64_t now) noexcept {
+    return t.enabled&&t.holsterConfirmation&&now>=t.holsterConfirmedAt
+        &&now-t.holsterConfirmedAt<2000;
 }
 // Use the existing native wheel sector map. A centered or invalid stick is
 // not a selected gun, even if DOOM still reports the previously held weapon.

@@ -4405,6 +4405,10 @@ void updateGameplayActions(XrTime displayTime){
                 s.quickHolsters,side,inside,held,activeBackWeapon,
                 weaponHandAtThisHip);
             s.hipZoneEntered[side]=inside;
+            const auto& hipGesture=s.quickHolsters.gestures[side];
+            kharvox::gunslingerHipReady(s.gunslingerTutorial,side,
+                inside&&held&&weaponHandAtThisHip&&hipGesture.assignmentArmed
+                    &&!hipGesture.consumed&&activeBackWeapon!=kharvox::BackWeaponKind::Unknown);
             // Only an ACTUAL hip draw may consume Grip. Merely bringing a
             // Gauss/Chaingun into the zone with ALT FIRE held must not
             // drop native weapon-mod input or latch suppression until release.
@@ -4421,10 +4425,10 @@ void updateGameplayActions(XrTime displayTime){
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" zone ENTER");
             }else if(action==kharvox::QuickHipAction::Assign){
-                gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
                 kharvox::queueControllerTriplePulse(
                     s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
                     GetTickCount64());
+                gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" ASSIGN="
                     +backWeaponKindKey(s.quickHolsters.slots[side])
@@ -4472,6 +4476,7 @@ void updateGameplayActions(XrTime displayTime){
         }
     }else{
         s.hipZoneEntered={};
+        s.gunslingerTutorial.hipReleaseReady=false;
         kharvox::resetQuickHipGestures(s.quickHolsters);
     }
     // Quick Hip never changes native weapon visibility.
