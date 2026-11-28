@@ -1,4 +1,9 @@
+#ifdef _WIN32
+#define NOMINMAX
+#include <windows.h>
+#endif
 #include "../src/openxr/VrLiveModsConfig.h"
+#include "../src/openxr/VrRadialGeometry.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -184,6 +189,13 @@ int main(){
     assert(defaults.wheelShift[0].x==0.f
         &&defaults.wheelShift[1].z==0.f);
     VrLiveSettings layout{};
+    for(int category=0;category<7;++category){
+        const auto angle=radialAngle(category);
+        assert(radialHit(float(480+135*std::cos(angle)),float(360+135*std::sin(angle)),-1,0)==100+category);
+    }
+    assert(radialHit(480,360,-1,0)==99);
+    assert(radialHit(480,580,-1,0)==-1);
+    assert(radialHit(float(radialPanelX(4)+20),220,4,7)==201);
     const int pixel=statsPixelPosition(117,348);
     assert(statsPositionValid(pixel));
     assert(statsPanelX(pixel,960,226)==117&&statsPanelY(pixel,720,60)==348);

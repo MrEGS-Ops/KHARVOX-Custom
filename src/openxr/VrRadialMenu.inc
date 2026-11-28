@@ -10,30 +10,20 @@ const RadialGroup radialGroups[]={
     {"Glory Kills",{{"Lower punch threshold",RadialMod::PhysicalGloryKills,130},{"Raise punch threshold",RadialMod::PhysicalGloryKills,131},{"Change punching hands",RadialMod::PhysicalGloryKills,132},{"Reset punch settings",RadialMod::PhysicalGloryKills,133},{"Slower KILLTIME",RadialMod::Killtime,130},{"Faster KILLTIME",RadialMod::Killtime,131},{"Reset KILLTIME",RadialMod::Killtime,132}}},
     {"PAINSAW",{}},{"Physical Crouch",{}}
 };
-constexpr double radialStep=6.283185307179586/7.0;
-double radialAngle(int i){return -1.570796326794897+i*radialStep;}
-int radialPanelX(int i){return std::cos(radialAngle(i))<-.01?8:692;}
+using kharvox::radialAngle;
+using kharvox::radialPanelX;
+using kharvox::radialStep;
 int radialTarget(float x,float y){
-    const auto& m=s.vrHandMenu;
-    if(m.radialCategory>=0&&m.radialCategory<5){
-        const int left=radialPanelX(m.radialCategory);
-        if(x>=left&&x<left+260&&y>=170){
-            const int index=int((y-170)/49);
-            if(index<int(radialGroups[m.radialCategory].settings.size()))return 200+index;
-        }
-    }
-    const float dx=x-480,dy=y-360,rr=dx*dx+dy*dy;
-    if(rr<60*60)return 99;
-    if(rr>202*202)return -1;
-    double angle=std::atan2(dy,dx)-radialAngle(0)+radialStep/2;
-    if(angle<0)angle+=7*radialStep;
-    return 100+int(angle/radialStep)%7;
+    const int category=s.vrHandMenu.radialCategory;
+    const int count=category>=0&&category<5?int(radialGroups[category].settings.size()):0;
+    return kharvox::radialHit(x,y,category,count);
 }
 void openCalibrationWheel(){
     auto& m=s.vrHandMenu;
     if(m.weaponCalibrationStage)finishVrWeaponSequence();
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.page=kharvox::VrMenuPage::WeaponGrip;
+    KharvoxHudResetWeaponWheelPresentation();
     m.calibrationWheel=true;m.waitingForEquip=false;m.resetWeaponPending=false;
     m.supportPreviewHeld=false;
 }

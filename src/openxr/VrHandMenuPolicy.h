@@ -1,6 +1,7 @@
 #pragma once
 #include "RightHandGripConfig.h"
 #include "VrLiveModsConfig.h"
+#include "VrRadialGeometry.h"
 #include "ObjectDiscoverySettingsPolicy.h"
 #include "GrappleAnchorPolicy.h"
 #include <array>
@@ -566,6 +567,7 @@ struct VrHandMenuState {
     bool radialPinned{}, supportPreviewHeld{}, resetWeaponPending{};
     bool calibrationWheel{}, waitingForEquip{};
     unsigned long long wheelReleasedAt{};
+    float wheelAxisX{},wheelAxisY{};
     VrLiveSettings hudDraft{};
     int hudSelection{-1},hudDrag{-1},hudOffsetX{},hudOffsetY{},hudX{},hudY{};
     // Both Gauss and Chaingun: NORMAL / ALT FIRE. The latter is a
