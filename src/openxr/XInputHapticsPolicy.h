@@ -269,6 +269,12 @@ inline void queueControllerZoneCue(ControllerZoneCue& cue,
     cue.pulseLengthMilliseconds=durationMilliseconds;
     cue.pulsePeriodMilliseconds=durationMilliseconds;
 }
+// Save confirmations are local to the physical confirming controller.
+// Do not queue a success pulse for a rejected or failed transaction.
+inline void queueCalibrationSaveCue(std::array<ControllerZoneCue,2>& cues,
+    bool rightController,bool saved,std::uint64_t now){
+    if(saved)queueControllerZoneCue(cues[rightController?1:0],now,190,.80f,185.f);
+}
 inline void queueControllerTriplePulse(ControllerZoneCue& cue,std::uint64_t now){
     cue.startedMilliseconds=now;
     cue.pulseLengthMilliseconds=65;

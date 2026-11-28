@@ -164,6 +164,7 @@ void hudInput(int x,int y,bool press,bool down){
         if(hit==100){
             if(!kharvox::vrLiveSave(kharvox::runtimePathA("vr_live_mods_saved.cfg"),m.hudDraft)){m.message="HUD save failed";return;}
             s.vrLiveSettings=m.hudDraft;
+            kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
         }
         m.mode=kharvox::VrHandMenuMode::Closed;m.consumeMenuTriggerUntilRelease=true;return;
     }

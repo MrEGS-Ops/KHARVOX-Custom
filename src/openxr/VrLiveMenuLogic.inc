@@ -320,6 +320,7 @@ bool saveVrRecoilSettings(){
         return false;
     }
     s.recoilState={};
+    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
     return true;
 }
 bool handleVrRecoilCalibrationAction(int action){
@@ -479,6 +480,7 @@ void captureVrLivePosition(){
         m.liveCapture=VrLiveCapture::None;
         m.mode=kharvox::VrHandMenuMode::Menu;
         m.message="Both crouch heights saved.";
+        kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
         return;
     }
     if(!kharvox::vrLiveCapturePoint(s.vrLiveSettings,capture,p,headDelta)){
@@ -491,7 +493,7 @@ void captureVrLivePosition(){
     }
     if(capture==VrLiveCapture::HipLeft||capture==VrLiveCapture::WheelLeft){
         openVrLiveCapture(capture==VrLiveCapture::HipLeft?VrLiveCapture::HipRight:VrLiveCapture::WheelRight);
-        kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),190,.80f,185.f);
+        kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
         return;
     }
     m.liveCapture=VrLiveCapture::None;
@@ -499,8 +501,7 @@ void captureVrLivePosition(){
     m.gunslingerZoneMoving=false;
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.message="Zone saved to UserData and applied instantly.";
-    kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
-        190,.80f,185.f);
+    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
 }
 // Until native DOOM map identity has been verified, the owner can select
 // their campaign mission explicitly. This makes Level Best usable without

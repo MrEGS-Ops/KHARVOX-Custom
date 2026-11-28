@@ -279,8 +279,7 @@ void saveVrHandMenuCalibration(){
         (alternate?" ALT FIRE":" NORMAL")+
         (m.rightHand?" RIGHT":" LEFT")+
         (primaryHand?" primary pose+rotation":" support position (grab rotation preserved)"));
-    kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),
-        190,.80f,185.f);
+    kharvox::queueCalibrationSaveCue(s.handZoneCues,m.rightHand,ok,GetTickCount64());
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.message=std::string(m.rightHand?"RIGHT":"LEFT")+
         (primaryHand?" PRIMARY":" SUPPORT")+

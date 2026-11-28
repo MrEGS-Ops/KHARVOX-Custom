@@ -2496,6 +2496,7 @@ bool captureTwoHandCalibration(bool triggerDown){
             calibration->aimMode=s.twoHandCalibrationAimMode;
             calibration->valid=true;
             const bool saved=saveTwoHandCalibrations();
+            kharvox::queueCalibrationSaveCue(s.handZoneCues,!s.weaponHandLeft,saved,GetTickCount64());
             std::ostringstream details;
             details<<"[TWO-HAND] "<<KharvoxWeaponKindKey(kind)<<" calibration "<<(saved?"saved":"SAVE FAILED")
                    <<" mode="<<twoHandModeName(calibration->aimMode)
@@ -5658,6 +5659,7 @@ void updateGameplayActions(XrTime displayTime){
                         +" offsetMetres="+std::to_string(pose.offsetMetres[0])
                         +","+std::to_string(pose.offsetMetres[1])
                         +","+std::to_string(pose.offsetMetres[2]));
+                    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,saved,GetTickCount64());
                     if(saved){
                         const auto* verified=kharvox::objectGripSavedPose(
                             s.objectGripProfiles,s.objectGripSessionProfiles,
