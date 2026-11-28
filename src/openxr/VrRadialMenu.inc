@@ -86,7 +86,12 @@ void radialInput(int hit,bool click,bool rightGrip){
         const int i=hit-100;
         if(click&&i==radialPainsawIndex){
             m.selectedMod=RadialMod::Painsaw;
+            m.message.clear();
             handleVrLiveMenuAction(110);
+            // PAINSAW has no flyout: its ON/OFF label is the visual feedback.
+            // Never attach its result to another category's pinned flyout.
+            if(!m.message.empty())log("[PAINSAW] "+m.message);
+            m.message.clear();
         }else if(click&&m.radialPinned&&m.radialCategory==i){
             m.radialPinned=false;
             m.radialCategory=-1;

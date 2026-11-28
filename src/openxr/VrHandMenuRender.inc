@@ -286,7 +286,7 @@ void paintVrHandMenu() {
         SetTextColor(dc,muted);
         DrawTextA(dc,"(This notice will only appear once)",-1,&notice,
             DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
-        fill(setupX+25,setupY+376,setupW-50,55,RGB(28,57,66));
+        fill(setupX+25,setupY+setupH-75,setupW-50,55,RGB(28,57,66));
         SelectObject(dc,regular);
         const std::array<std::string,3> parts{"Press ","L3 + R3"," together to confirm."};
         std::array<SIZE,3> sizes{};
@@ -297,7 +297,7 @@ void paintVrHandMenu() {
         }
         int x=setupX+(setupW-total)/2;
         for(size_t i=0;i<parts.size();++i){
-            write(x,setupY+390,parts[i],i==1?RGB(255,225,54):RGB(84,233,214));
+            write(x,setupY+setupH-61,parts[i],i==1?RGB(255,225,54):RGB(84,233,214));
             x+=sizes[i].cx;
         }
     }else if(gameplayWelcomeView){
