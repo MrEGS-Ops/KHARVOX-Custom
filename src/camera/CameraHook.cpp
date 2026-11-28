@@ -2797,6 +2797,23 @@ void KharvoxCameraSetObjectGripInput(
     (void)meleeActivationEnabled;(void)nativeMeleeInputDown;(void)dynamicSurfaceOffset;(void)activationInvestigator;(void)releaseInvestigator;(void)researchMask;(void)researchTestMask;(void)researchOnly;(void)moveX;(void)moveY;(void)playerAtSubmit;
 #endif
 }
+unsigned KharvoxCameraMeshDrawIndexCount(){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    return (nativeInvestigationMask.load(std::memory_order_acquire)&1u)?meshDrawIndexCount.load(std::memory_order_acquire):0;
+#else
+    return 0;
+#endif
+}
+bool KharvoxCameraReadMeshDrawRequest(KharvoxMeshDrawRequest& out){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!(nativeInvestigationMask.load(std::memory_order_acquire)&1u))return false;
+    std::lock_guard<std::mutex> lock(meshDrawMutex);
+    out=meshDrawRequest;
+    return out.serial&&GetTickCount64()<=out.expires;
+#else
+    (void)out;return false;
+#endif
+}
 unsigned KharvoxCameraNativeResearchReady(){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     if(nativeResearchReadyGeneration.load(std::memory_order_acquire)!=levelTransitionGeneration.load(std::memory_order_acquire))return 0;

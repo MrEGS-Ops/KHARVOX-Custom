@@ -66,6 +66,14 @@ void KharvoxCameraSetObjectGripInput(
     bool dynamicSurfaceOffset=false,bool activationInvestigator=false,
     bool releaseInvestigator=false,unsigned researchMask=0,unsigned researchTestMask=0,bool researchOnly=false,
     float moveX=0.f,float moveY=0.f,const float playerAtSubmit[3]=nullptr);
+// A short-lived render request; no engine pointers cross threads.
+struct KharvoxMeshDrawRequest {
+    unsigned long long serial{},expires{};
+    unsigned handle{},surface{},vertices{},indices{};
+    float bounds[6]{};
+};
+unsigned KharvoxCameraMeshDrawIndexCount();
+bool KharvoxCameraReadMeshDrawRequest(KharvoxMeshDrawRequest& out);
 unsigned KharvoxCameraNativeResearchReady();
 struct KharvoxGuidedEvidence {
     std::array<unsigned,6> collect{},test{};

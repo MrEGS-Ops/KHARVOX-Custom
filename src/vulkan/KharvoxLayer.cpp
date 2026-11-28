@@ -211,6 +211,184 @@ void logLine(const std::string& text, bool operational = false) {
     kharvox::writeRuntimeLog("[KHARVOX]", text, operational);
 }
 
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+// Observe only engine-owned buffers already mapped by DOOM. Never map a
+// device-local allocation, change usage flags, enqueue GPU work or stall a queue.
+// All pointers are lifetime-checked against the standard Vulkan map/free calls.
+struct MeshMemory {VkDevice device{};VkDeviceSize size{},mapOffset{},mapSize{};const unsigned char* mapped{};};
+struct MeshBuffer {VkDevice device{};VkDeviceSize size{},memoryOffset{};VkDeviceMemory memory{};};
+struct MeshDrawBindings {
+    VkBuffer vertex[4]{},index{};
+    VkDeviceSize vertexOffset[4]{},indexOffset{};
+    VkIndexType type{VK_INDEX_TYPE_UINT16};
+    unsigned long long serial{};
+};
+std::mutex meshCaptureMutex;
+std::unordered_map<VkDeviceMemory,MeshMemory> meshMemories;
+std::unordered_map<VkBuffer,MeshBuffer> meshBuffers;
+std::unordered_map<VkCommandBuffer,MeshDrawBindings> meshBindings;
+unsigned long long meshBindingEpoch{},meshLastRequest{};
+unsigned meshAttempts{};bool meshCaptured{};
+constexpr size_t kMeshTrackingLimit=16384;
+void meshObserveAlloc(VkDevice d,VkDeviceMemory m,VkDeviceSize size){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    if(meshMemories.size()<kMeshTrackingLimit||meshMemories.count(m))meshMemories[m]={d,size,0,0,nullptr};
+}
+void meshObserveFree(VkDevice d,VkDeviceMemory m){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    auto it=meshMemories.find(m);
+    if(it!=meshMemories.end()&&it->second.device==d)meshMemories.erase(it);
+    for(auto& b:meshBuffers)if(b.second.device==d&&b.second.memory==m)b.second.memory=VK_NULL_HANDLE;
+}
+void meshObserveMap(VkDevice d,VkDeviceMemory m,VkDeviceSize off,VkDeviceSize size,void* ptr){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    const auto it=meshMemories.find(m);
+    if(it==meshMemories.end()||it->second.device!=d||off>=it->second.size)return;
+    auto& a=it->second;const auto remaining=a.size-off;
+    if(size==VK_WHOLE_SIZE)size=remaining;
+    if(!size||size>remaining)return;
+    a.mapOffset=off;a.mapSize=size;a.mapped=static_cast<const unsigned char*>(ptr);
+}
+void meshObserveUnmap(VkDevice d,VkDeviceMemory m){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    auto it=meshMemories.find(m);
+    if(it!=meshMemories.end()&&it->second.device==d){it->second.mapped=nullptr;it->second.mapSize=0;}
+}
+void meshObserveCreate(VkDevice d,VkBuffer b,VkDeviceSize size){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    if(meshBuffers.size()<kMeshTrackingLimit||meshBuffers.count(b))meshBuffers[b]={d,size,0,VK_NULL_HANDLE};
+}
+void meshObserveDestroy(VkDevice d,VkBuffer b){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    auto it=meshBuffers.find(b);if(it!=meshBuffers.end()&&it->second.device==d)meshBuffers.erase(it);
+    for(auto& state:meshBindings){auto& x=state.second;if(x.index==b)x.index=VK_NULL_HANDLE;for(auto& z:x.vertex)if(z==b)z=VK_NULL_HANDLE;}
+}
+void meshObserveBind(VkDevice d,VkBuffer b,VkDeviceMemory m,VkDeviceSize off){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    auto it=meshBuffers.find(b);
+    if(it!=meshBuffers.end()&&it->second.device==d){it->second.memory=m;it->second.memoryOffset=off;}
+}
+void meshObserveDeviceDestroy(VkDevice d){
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);
+    for(auto it=meshBuffers.begin();it!=meshBuffers.end();)if(it->second.device==d)it=meshBuffers.erase(it);else ++it;
+    for(auto it=meshMemories.begin();it!=meshMemories.end();)if(it->second.device==d)it=meshMemories.erase(it);else ++it;
+    meshBindings.clear();
+}
+bool meshReadMapped(VkBuffer b,VkDeviceSize offset,void* out,size_t bytes){
+    const auto bi=meshBuffers.find(b);if(bi==meshBuffers.end())return false;
+    const auto& buffer=bi->second;
+    if(offset>buffer.size||bytes>buffer.size-offset)return false;
+    const auto mi=meshMemories.find(buffer.memory);
+    if(mi==meshMemories.end()||mi->second.device!=buffer.device)return false;
+    const auto& m=mi->second;
+    if(!m.mapped||buffer.memoryOffset>m.size||offset>m.size-buffer.memoryOffset)return false;
+    const auto absolute=buffer.memoryOffset+offset;
+    if(absolute<m.mapOffset)return false;
+    const auto rel=absolute-m.mapOffset;
+    if(rel>m.mapSize||bytes>m.mapSize-rel||rel>SIZE_MAX)return false;
+    SIZE_T copied{};
+    const auto address=reinterpret_cast<std::uintptr_t>(m.mapped);
+    if(rel>UINTPTR_MAX-address||bytes>UINTPTR_MAX-address-rel)return false;
+    return ReadProcessMemory(GetCurrentProcess(),reinterpret_cast<const void*>(address+static_cast<std::uintptr_t>(rel)),out,bytes,&copied)&&copied==bytes;
+}
+MeshDrawBindings* meshBinding(VkCommandBuffer cb,unsigned long long serial){
+    if(meshBindingEpoch!=serial){meshBindings.clear();meshBindingEpoch=serial;}
+    if(meshBindings.size()>=256&&!meshBindings.count(cb))return nullptr;
+    auto& b=meshBindings[cb];b.serial=serial;return &b;
+}
+void meshObserveVertex(VkCommandBuffer cb,unsigned first,unsigned count,const VkBuffer* buffers,const VkDeviceSize* offsets){
+    if(!KharvoxCameraMeshDrawIndexCount()||!buffers||!offsets||first>=4)return;
+    KharvoxMeshDrawRequest req{};if(!KharvoxCameraReadMeshDrawRequest(req))return;
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);auto* b=meshBinding(cb,req.serial);if(!b)return;
+    for(unsigned i=0;i<count&&i<4-first;++i){b->vertex[first+i]=buffers[i];b->vertexOffset[first+i]=offsets[i];}
+}
+void meshObserveIndex(VkCommandBuffer cb,VkBuffer buffer,VkDeviceSize offset,VkIndexType type){
+    if(!KharvoxCameraMeshDrawIndexCount())return;
+    KharvoxMeshDrawRequest req{};if(!KharvoxCameraReadMeshDrawRequest(req))return;
+    std::lock_guard<std::mutex> lock(meshCaptureMutex);auto* b=meshBinding(cb,req.serial);if(!b)return;
+    b->index=buffer;b->indexOffset=offset;b->type=type;
+}
+void meshObserveDraw(VkCommandBuffer cb,unsigned count,unsigned first,int32_t baseVertex){
+    if(count!=KharvoxCameraMeshDrawIndexCount()||!count)return;
+    KharvoxMeshDrawRequest req{};if(!KharvoxCameraReadMeshDrawRequest(req)||req.indices!=count)return;
+    std::unique_lock<std::mutex> lock(meshCaptureMutex,std::try_to_lock);if(!lock.owns_lock())return;
+    if(meshLastRequest!=req.serial){meshLastRequest=req.serial;meshAttempts=0;meshCaptured=false;}
+    if(meshCaptured||meshAttempts>=16)return;
+    const auto it=meshBindings.find(cb);
+    if(it==meshBindings.end()||it->second.serial!=req.serial)return;
+    const auto& b=it->second;
+    if(!b.index)return;
+    ++meshAttempts;
+    const unsigned indexSize=b.type==VK_INDEX_TYPE_UINT16?2u:b.type==VK_INDEX_TYPE_UINT32?4u:0u;
+    std::ostringstream info;info<<"[GEOMETRY-INV] VULKAN_DRAW_CANDIDATE request="<<req.serial<<" handle="<<req.handle
+        <<" surface="<<req.surface<<" index_count="<<count<<" first_index="<<first<<" vertex_base="<<baseVertex
+        <<" index_buffer="<<b.index<<" index_offset="<<b.indexOffset<<" index_size="<<indexSize;
+    for(unsigned j=0;j<4;++j)if(b.vertex[j])info<<" vb"<<j<<"="<<b.vertex[j]<<"+"<<b.vertexOffset[j];
+    logLine(info.str(),true);
+    if(!indexSize||b.indexOffset>UINT64_MAX-static_cast<VkDeviceSize>(first)*indexSize)return;
+    const auto indexOffset=b.indexOffset+static_cast<VkDeviceSize>(first)*indexSize;
+    std::vector<unsigned char> rawIndices(static_cast<size_t>(count)*indexSize);
+    if(!meshReadMapped(b.index,indexOffset,rawIndices.data(),rawIndices.size())){
+        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=index_not_host_mapped request="+std::to_string(req.serial),true);return;
+    }
+    std::vector<uint32_t> indices(count);
+    for(unsigned j=0;j<count;++j){
+        if(indexSize==2){uint16_t x{};std::memcpy(&x,rawIndices.data()+j*2,2);indices[j]=x;}
+        else std::memcpy(&indices[j],rawIndices.data()+j*4,4);
+        if(indices[j]>=req.vertices)return;
+    }
+    unsigned passing=0,chosenStride=0,chosenBinding=0;VkDeviceSize chosenOffset{};
+    std::vector<std::array<float,3>> points;
+    std::vector<unsigned char> chosenRaw;
+    for(unsigned binding=0;binding<4;++binding){
+        if(!b.vertex[binding]||b.vertexOffset[binding]>INT64_MAX)continue;
+        for(unsigned stride:{12u,16u,24u,32u,40u,48u,64u}){
+            const int64_t delta=static_cast<int64_t>(baseVertex)*stride;
+            const auto off=b.vertexOffset[binding];
+            if((delta<0&&static_cast<uint64_t>(-delta)>off)||(delta>=0&&static_cast<uint64_t>(delta)>UINT64_MAX-off))continue;
+            const auto start=delta<0?off-static_cast<uint64_t>(-delta):off+static_cast<uint64_t>(delta);
+            std::vector<unsigned char> raw(static_cast<size_t>(req.vertices)*stride);
+            if(!meshReadMapped(b.vertex[binding],start,raw.data(),raw.size()))continue;
+            std::vector<std::array<float,3>> trial(req.vertices);
+            float lo[3]{1e30f,1e30f,1e30f},hi[3]{-1e30f,-1e30f,-1e30f};bool valid=true;
+            for(unsigned j=0;j<req.vertices&&valid;++j){
+                std::memcpy(trial[j].data(),raw.data()+static_cast<size_t>(j)*stride,12);
+                for(unsigned k=0;k<3;++k){const float f=trial[j][k];
+                    if(!std::isfinite(f)||std::abs(f)>100000.f){valid=false;break;}
+                    lo[k]=std::min(lo[k],f);hi[k]=std::max(hi[k],f);
+                }
+            }
+            for(unsigned k=0;k<3&&valid;++k){
+                const float tolerance=std::max(.25f,(req.bounds[k+3]-req.bounds[k])*.025f);
+                valid=std::abs(lo[k]-req.bounds[k])<=tolerance&&std::abs(hi[k]-req.bounds[k+3])<=tolerance;
+            }
+            if(valid){++passing;chosenBinding=binding;chosenStride=stride;chosenOffset=start;points=std::move(trial);chosenRaw=std::move(raw);}
+        }
+    }
+    if(passing!=1){
+        logLine("[GEOMETRY-INV] VULKAN_DRAW_REJECT reason=no_unique_bounds_match count="+std::to_string(passing)+" request="+std::to_string(req.serial),true);return;
+    }
+    // Re-read both ranges to reject concurrently changed host bytes.
+    std::vector<unsigned char> checkIndex(rawIndices.size()),checkVertex(chosenRaw.size());
+    if(!meshReadMapped(b.index,indexOffset,checkIndex.data(),checkIndex.size())||checkIndex!=rawIndices
+        ||!meshReadMapped(b.vertex[chosenBinding],chosenOffset,checkVertex.data(),checkVertex.size())||checkVertex!=chosenRaw)return;
+    meshCaptured=true;
+    lock.unlock(); // Logging can be slow; no graphics tracking lock held.
+    logLine("[GEOMETRY-INV] VULKAN_MESH_DECODE request="+std::to_string(req.serial)+" handle="+std::to_string(req.handle)
+        +" surface="+std::to_string(req.surface)+" vertices="+std::to_string(req.vertices)+" triangles="+std::to_string(count/3)
+        +" stride="+std::to_string(chosenStride)+" candidate_only=1",true);
+    for(unsigned j=0;j<points.size();j+=16){
+        std::ostringstream line;line.precision(9);line<<"[GEOMETRY-INV] VULKAN_VERTICES request="<<req.serial<<" first="<<j;
+        for(unsigned k=j;k<points.size()&&k<j+16;++k)line<<" "<<points[k][0]<<","<<points[k][1]<<","<<points[k][2];
+        logLine(line.str(),true);
+    }
+    for(unsigned j=0;j<indices.size();j+=96){
+        std::ostringstream line;line<<"[GEOMETRY-INV] VULKAN_INDICES request="<<req.serial<<" first="<<j;
+        for(unsigned k=j;k<indices.size()&&k<j+96;++k)line<<" "<<indices[k];
+        logLine(line.str(),true);
+    }
+}
+#endif
 bool extendedLoggingEnabled() {
     static const bool enabled=[] {
         char value[16]{};
@@ -699,6 +877,12 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue,uint32_t,const VkSubmitInf
 VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue,const VkPresentInfoKHR*);
 VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer,VkPipelineLayout,VkShaderStageFlags,uint32_t,uint32_t,const void*);
 VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(VkCommandBuffer,VkBuffer,VkDeviceSize,VkDeviceSize,const void*);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(VkDevice,const VkMemoryAllocateInfo*,const VkAllocationCallbacks*,VkDeviceMemory*);
+VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice,VkDeviceMemory,const VkAllocationCallbacks*);
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice,const VkBufferCreateInfo*,const VkAllocationCallbacks*,VkBuffer*);
+VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice,VkBuffer,const VkAllocationCallbacks*);
+#endif
 VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(VkDevice,VkDeviceMemory,VkDeviceSize,VkDeviceSize,VkMemoryMapFlags,void**);
 VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice,VkDeviceMemory);
 VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice,VkBuffer,VkDeviceMemory,VkDeviceSize);
@@ -854,6 +1038,9 @@ static PFN_vkVoidFunction deviceProcBase(VkDevice d,const char* n){
         return dispatch.gdpa?dispatch.gdpa(d,n):nullptr;
     }
     auto s=deviceState(key(d));if(d&&s.runtimeAuxiliary)return s.gdpa?s.gdpa(d,n):nullptr; MATCH(vkGetDeviceProcAddr); MATCH(vkDestroyDevice); MATCH(vkGetDeviceQueue); MATCH(vkGetDeviceQueue2); MATCH(vkCreateSwapchainKHR); MATCH(vkDestroySwapchainKHR); MATCH(vkGetSwapchainImagesKHR); MATCH(vkAcquireNextImageKHR); MATCH(vkAcquireNextImage2KHR); MATCH(vkQueueSubmit); MATCH(vkQueueSubmit2); MATCH(vkQueuePresentKHR); MATCH(vkCmdPushConstants); MATCH(vkCmdUpdateBuffer); MATCH(vkMapMemory); MATCH(vkUnmapMemory); MATCH(vkBindBufferMemory); MATCH(vkUpdateDescriptorSets); MATCH(vkCmdBindDescriptorSets); MATCH(vkCmdBindPipeline); MATCH(vkCmdBindVertexBuffers); MATCH(vkCmdBindIndexBuffer); MATCH(vkCmdDraw); MATCH(vkCmdDrawIndexed); MATCH(vkCmdDrawIndirect); MATCH(vkCmdDrawIndexedIndirect); MATCH(vkCmdSetViewport); MATCH(vkCmdSetScissor); MATCH(vkCreateShaderModule); MATCH(vkDestroyShaderModule); MATCH(vkCreateGraphicsPipelines); MATCH(vkDestroyPipeline); MATCH(vkCmdPipelineBarrier); MATCH(vkCreateImage); MATCH(vkDestroyImage); MATCH(vkCreateImageView); MATCH(vkDestroyImageView); MATCH(vkCreateFramebuffer); MATCH(vkDestroyFramebuffer); MATCH(vkCreateRenderPass); MATCH(vkCreateRenderPass2); MATCH(vkDestroyRenderPass); MATCH(vkCmdBeginRenderPass); MATCH(vkCmdBeginRenderPass2); MATCH(vkCmdNextSubpass); MATCH(vkCmdNextSubpass2); MATCH(vkCmdEndRenderPass); MATCH(vkCmdEndRenderPass2);
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    MATCH(vkAllocateMemory); MATCH(vkFreeMemory); MATCH(vkCreateBuffer); MATCH(vkDestroyBuffer);
+#endif
     return s.gdpa?s.gdpa(d,n):nullptr;
 }
 // These entry points sit OUTSIDE Native's wrappers so no Native bookkeeping
@@ -1113,7 +1300,11 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateDevice(VkPhysicalDevice p,const VkDeviceC
       }
       KharvoxXRSetQueueAccessCallbacks(lockQueueAccess,unlockQueueAccess);KharvoxXRSetDevice(p,*out,d.xr);kharvox::native::setQueueAccessCallbacks(lockQueueAccess,unlockQueueAccess);kharvox::native::setDevice(physicalDispatch.instance,p,*out,nextGdpa,nextGipa);}else {logLine("[VK-STARTUP] device creation failed result="+std::to_string(r),true);stopVulkanStartup("Vulkan/OpenXR device initialization failed. Ensure DOOM and the VR runtime use the same GPU. See the KHARVOX log in %TEMP%.");}return r;
 }
-VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice d,const VkAllocationCallbacks*a){kharvox::sfs::forgetDevice(d);auto k=key(d);auto s=deviceState(k);if(!s.runtimeAuxiliary){logLine("vkDestroyDevice");kharvox::native::beforeDeviceDestroy(d);KharvoxXRDeviceDestroyed();kharvox::hands::handSceneDeviceDestroyed();kharvox::hudgpu::deviceDestroyed();}kharvox::sfs::shutdown(d);if(s.destroy)s.destroy(d,a);std::lock_guard<std::mutex>l(stateMutex);devices.erase(k);}
+VKAPI_ATTR void VKAPI_CALL vkDestroyDevice(VkDevice d,const VkAllocationCallbacks*a){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    meshObserveDeviceDestroy(d);
+#endif
+    kharvox::sfs::forgetDevice(d);auto k=key(d);auto s=deviceState(k);if(!s.runtimeAuxiliary){logLine("vkDestroyDevice");kharvox::native::beforeDeviceDestroy(d);KharvoxXRDeviceDestroyed();kharvox::hands::handSceneDeviceDestroyed();kharvox::hudgpu::deviceDestroyed();}kharvox::sfs::shutdown(d);if(s.destroy)s.destroy(d,a);std::lock_guard<std::mutex>l(stateMutex);devices.erase(k);}
 VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue(VkDevice d,uint32_t f,uint32_t q,VkQueue*out){auto s=deviceState(key(d));if(out)*out=VK_NULL_HANDLE;if(s.getQueue&&out)s.getQueue(d,f,q,out);std::ostringstream x;x<<"Queue acquired family="<<f<<" index="<<q;logLine(x.str());if(out&&*out){KharvoxXRSetQueue(*out,f,q);kharvox::native::setQueue(*out,f,q);}}
 VKAPI_ATTR void VKAPI_CALL vkGetDeviceQueue2(VkDevice d,const VkDeviceQueueInfo2*i,VkQueue*out){auto s=deviceState(key(d));if(out)*out=VK_NULL_HANDLE;if(s.getQueue2&&out&&i)s.getQueue2(d,i,out);std::ostringstream x;x<<"Queue acquired family="<<(i?i->queueFamilyIndex:0)<<" index="<<(i?i->queueIndex:0);logLine(x.str());if(out&&*out&&i){KharvoxXRSetQueue(*out,i->queueFamilyIndex,i->queueIndex);kharvox::native::setQueue(*out,i->queueFamilyIndex,i->queueIndex);}}
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateSwapchainKHR(VkDevice d,const VkSwapchainCreateInfoKHR*i,const VkAllocationCallbacks*a,VkSwapchainKHR*out){
@@ -1328,16 +1519,63 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueuePresentKHR(VkQueue q,const VkPresentInfoKH
 }
 VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer cb,VkPipelineLayout l,VkShaderStageFlags stages,uint32_t off,uint32_t size,const void* values){auto fn=commandFunction(cb,&DeviceDispatch::cmdPushConstants);if(fn)fn(cb,l,stages,off,size,values);}
 VKAPI_ATTR void VKAPI_CALL vkCmdUpdateBuffer(VkCommandBuffer cb,VkBuffer dst,VkDeviceSize off,VkDeviceSize size,const void* data){auto fn=commandFunction(cb,&DeviceDispatch::cmdUpdateBuffer);if(fn)fn(cb,dst,off,size,data);}
-VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(VkDevice d,VkDeviceMemory memory,VkDeviceSize off,VkDeviceSize size,VkMemoryMapFlags flags,void**out){auto s=deviceState(key(d));return s.mapMemory?s.mapMemory(d,memory,off,size,flags,out):VK_ERROR_MEMORY_MAP_FAILED;}
-VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice d,VkDeviceMemory memory){auto s=deviceState(key(d));if(s.unmapMemory)s.unmapMemory(d,memory);}
-VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice d,VkBuffer buffer,VkDeviceMemory memory,VkDeviceSize offset){auto s=deviceState(key(d));return s.bindBufferMemory?s.bindBufferMemory(d,buffer,memory,offset):VK_ERROR_DEVICE_LOST;}
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+VKAPI_ATTR VkResult VKAPI_CALL vkAllocateMemory(VkDevice d,const VkMemoryAllocateInfo* info,const VkAllocationCallbacks* a,VkDeviceMemory* out){
+    auto s=deviceState(key(d));const auto result=s.xr.allocateMemory?s.xr.allocateMemory(d,info,a,out):VK_ERROR_INITIALIZATION_FAILED;
+    if(result==VK_SUCCESS&&info&&out&&!s.runtimeAuxiliary)meshObserveAlloc(d,*out,info->allocationSize);
+    return result;
+}
+VKAPI_ATTR void VKAPI_CALL vkFreeMemory(VkDevice d,VkDeviceMemory m,const VkAllocationCallbacks* a){
+    auto s=deviceState(key(d));if(!s.runtimeAuxiliary)meshObserveFree(d,m);if(s.xr.freeMemory)s.xr.freeMemory(d,m,a);
+}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice d,const VkBufferCreateInfo* info,const VkAllocationCallbacks* a,VkBuffer* out){
+    auto s=deviceState(key(d));const auto result=s.xr.createBuffer?s.xr.createBuffer(d,info,a,out):VK_ERROR_INITIALIZATION_FAILED;
+    if(result==VK_SUCCESS&&info&&out&&!s.runtimeAuxiliary)meshObserveCreate(d,*out,info->size);
+    return result;
+}
+VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice d,VkBuffer b,const VkAllocationCallbacks* a){
+    auto s=deviceState(key(d));if(!s.runtimeAuxiliary)meshObserveDestroy(d,b);if(s.xr.destroyBuffer)s.xr.destroyBuffer(d,b,a);
+}
+#endif
+VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(VkDevice d,VkDeviceMemory memory,VkDeviceSize off,VkDeviceSize size,VkMemoryMapFlags flags,void**out){
+    auto s=deviceState(key(d));const auto result=s.mapMemory?s.mapMemory(d,memory,off,size,flags,out):VK_ERROR_MEMORY_MAP_FAILED;
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(result==VK_SUCCESS&&out&&!s.runtimeAuxiliary)meshObserveMap(d,memory,off,size,*out);
+#endif
+    return result;
+}
+VKAPI_ATTR void VKAPI_CALL vkUnmapMemory(VkDevice d,VkDeviceMemory memory){auto s=deviceState(key(d));
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(!s.runtimeAuxiliary)meshObserveUnmap(d,memory);
+#endif
+    if(s.unmapMemory)s.unmapMemory(d,memory);
+}
+VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice d,VkBuffer buffer,VkDeviceMemory memory,VkDeviceSize offset){auto s=deviceState(key(d));
+    const auto result=s.bindBufferMemory?s.bindBufferMemory(d,buffer,memory,offset):VK_ERROR_DEVICE_LOST;
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(result==VK_SUCCESS&&!s.runtimeAuxiliary)meshObserveBind(d,buffer,memory,offset);
+#endif
+    return result;
+}
 VKAPI_ATTR void VKAPI_CALL vkUpdateDescriptorSets(VkDevice d,uint32_t writeCount,const VkWriteDescriptorSet*writes,uint32_t copyCount,const VkCopyDescriptorSet*copies){kharvox::hudgpu::updateDescriptorSets(writeCount,writes,copyCount,copies);auto s=deviceState(key(d));if(s.updateDescriptorSets)s.updateDescriptorSets(d,writeCount,writes,copyCount,copies);}
 VKAPI_ATTR void VKAPI_CALL vkCmdBindDescriptorSets(VkCommandBuffer cb,VkPipelineBindPoint point,VkPipelineLayout layout,uint32_t firstSet,uint32_t setCount,const VkDescriptorSet*sets,uint32_t dynamicOffsetCount,const uint32_t*dynamicOffsets){kharvox::hudgpu::bindDescriptorSets(cb,point,firstSet,setCount,sets);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindDescriptorSets);if(fn)fn(cb,point,layout,firstSet,setCount,sets,dynamicOffsetCount,dynamicOffsets);}
 VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(VkCommandBuffer cb,VkPipelineBindPoint point,VkPipeline pipeline){kharvox::hands::handSceneBindPipeline(cb,point,pipeline);kharvox::hudgpu::bindPipeline(cb,point,pipeline);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindPipeline);if(fn)fn(cb,point,pipeline);}
-VKAPI_ATTR void VKAPI_CALL vkCmdBindVertexBuffers(VkCommandBuffer cb,uint32_t firstBinding,uint32_t bindingCount,const VkBuffer*buffers,const VkDeviceSize*offsets){kharvox::hudgpu::bindVertexBuffers(cb,firstBinding,bindingCount,buffers,offsets);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindVertexBuffers);if(fn)fn(cb,firstBinding,bindingCount,buffers,offsets);}
-VKAPI_ATTR void VKAPI_CALL vkCmdBindIndexBuffer(VkCommandBuffer cb,VkBuffer buffer,VkDeviceSize offset,VkIndexType indexType){kharvox::hudgpu::bindIndexBuffer(cb,buffer,offset,indexType);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindIndexBuffer);if(fn)fn(cb,buffer,offset,indexType);}
+VKAPI_ATTR void VKAPI_CALL vkCmdBindVertexBuffers(VkCommandBuffer cb,uint32_t firstBinding,uint32_t bindingCount,const VkBuffer*buffers,const VkDeviceSize*offsets){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    meshObserveVertex(cb,firstBinding,bindingCount,buffers,offsets);
+#endif
+    kharvox::hudgpu::bindVertexBuffers(cb,firstBinding,bindingCount,buffers,offsets);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindVertexBuffers);if(fn)fn(cb,firstBinding,bindingCount,buffers,offsets);}
+VKAPI_ATTR void VKAPI_CALL vkCmdBindIndexBuffer(VkCommandBuffer cb,VkBuffer buffer,VkDeviceSize offset,VkIndexType indexType){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    meshObserveIndex(cb,buffer,offset,indexType);
+#endif
+    kharvox::hudgpu::bindIndexBuffer(cb,buffer,offset,indexType);auto fn=commandFunction(cb,&DeviceDispatch::cmdBindIndexBuffer);if(fn)fn(cb,buffer,offset,indexType);}
 VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer cb,uint32_t vertexCount,uint32_t instanceCount,uint32_t firstVertex,uint32_t firstInstance){kharvox::hudgpu::draw(cb,kharvox::hudgpu::DrawKind::Direct,1,uint64_t(vertexCount)*instanceCount);auto fn=commandFunction(cb,&DeviceDispatch::cmdDraw);if(fn)fn(cb,vertexCount,instanceCount,firstVertex,firstInstance);}
-VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexed(VkCommandBuffer cb,uint32_t indexCount,uint32_t instanceCount,uint32_t firstIndex,int32_t vertexOffset,uint32_t firstInstance){kharvox::hudgpu::draw(cb,kharvox::hudgpu::DrawKind::Indexed,1,uint64_t(indexCount)*instanceCount);auto fn=commandFunction(cb,&DeviceDispatch::cmdDrawIndexed);if(fn)fn(cb,indexCount,instanceCount,firstIndex,vertexOffset,firstInstance);}
+VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexed(VkCommandBuffer cb,uint32_t indexCount,uint32_t instanceCount,uint32_t firstIndex,int32_t vertexOffset,uint32_t firstInstance){
+#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
+    if(instanceCount)meshObserveDraw(cb,indexCount,firstIndex,vertexOffset);
+#endif
+    kharvox::hudgpu::draw(cb,kharvox::hudgpu::DrawKind::Indexed,1,uint64_t(indexCount)*instanceCount);auto fn=commandFunction(cb,&DeviceDispatch::cmdDrawIndexed);if(fn)fn(cb,indexCount,instanceCount,firstIndex,vertexOffset,firstInstance);}
 VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndirect(VkCommandBuffer cb,VkBuffer buffer,VkDeviceSize offset,uint32_t drawCount,uint32_t stride){kharvox::hudgpu::draw(cb,kharvox::hudgpu::DrawKind::Indirect,drawCount,drawCount);auto fn=commandFunction(cb,&DeviceDispatch::cmdDrawIndirect);if(fn)fn(cb,buffer,offset,drawCount,stride);}
 VKAPI_ATTR void VKAPI_CALL vkCmdDrawIndexedIndirect(VkCommandBuffer cb,VkBuffer buffer,VkDeviceSize offset,uint32_t drawCount,uint32_t stride){kharvox::hudgpu::draw(cb,kharvox::hudgpu::DrawKind::IndexedIndirect,drawCount,drawCount);auto fn=commandFunction(cb,&DeviceDispatch::cmdDrawIndexedIndirect);if(fn)fn(cb,buffer,offset,drawCount,stride);}
 VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer cb,uint32_t first,uint32_t count,const VkViewport*viewports){kharvox::hudgpu::setViewport(cb,count,viewports);auto fn=commandFunction(cb,&DeviceDispatch::cmdSetViewport);if(fn)fn(cb,first,count,viewports);}

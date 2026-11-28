@@ -9,6 +9,21 @@ struct GrappleGeometryInvestigation {
     unsigned dumps{};
 };
 GrappleGeometryInvestigation grappleGeometryInvestigation{};
+std::mutex meshDrawMutex;
+KharvoxMeshDrawRequest meshDrawRequest{};
+std::atomic<unsigned> meshDrawIndexCount{};
+unsigned long long meshDrawSerial{};
+void requestGeometryDraw(const ObjectDiscoveryNativeRecord& item,unsigned surface,unsigned nv,unsigned ni,const float* bounds){
+    if(nv<3||nv>4096||ni<3||ni>12288||ni%3)return;
+    for(unsigned k=0;k<3;++k)if(!std::isfinite(bounds[k])||!std::isfinite(bounds[k+3])||bounds[k]>bounds[k+3])return;
+    std::lock_guard<std::mutex> lock(meshDrawMutex);
+    meshDrawRequest={};meshDrawRequest.serial=++meshDrawSerial;
+    meshDrawRequest.expires=GetTickCount64()+4000;
+    meshDrawRequest.handle=item.handle;meshDrawRequest.surface=surface;
+    meshDrawRequest.vertices=nv;meshDrawRequest.indices=ni;
+    std::memcpy(meshDrawRequest.bounds,bounds,24);
+    meshDrawIndexCount.store(ni,std::memory_order_release);
+}
 // Bounded per-level cache: repeated ray attempts still run, but duplicate raw dumps do not.
 struct GeometryDumpIdentity {unsigned handle{};std::uintptr_t entity{},body{};};
 std::array<GeometryDumpIdentity,64> geometryDumped{};
@@ -89,9 +104,10 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
         +" game_origin="+geometryFloats(transform,3)+" game_axis="+geometryFloats(transform+3,9)
         +" scale="+geometryFloats(transform+12,3)+" pose_plausible="+std::to_string(pose)
         +" ray="+geometryFloats(in.rayOrigin,3)+" aim="+geometryFloats(in.aim,3));
-    unsigned decoded=0,logged=0,visited=0,totalTriangles=0;
+    unsigned decoded=0,logged=0,visited=0,totalTriangles=0;bool gpuRequested=false;
     float best=in.reachUnits+1.f;std::array<float,3> hitPoint{};
-    for(unsigned si=0;si<count&&si<16&&GetTickCount64()-start<20;++si){
+    for(unsigned scan=0;scan<count&&scan<16&&GetTickCount64()-start<20;++scan){
+        const unsigned si=(scan+static_cast<unsigned>((grappleGeometryInvestigation.serial-1)%count))%count;
         ++visited;
         std::array<unsigned char,0x60> surface{};
         if(!geometryRead(surfaces+si*0x60,surface.data(),surface.size()))break;
@@ -118,7 +134,8 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
             std::ostringstream raw;raw<<std::hex<<std::setfill('0');
             for(auto ch:h)raw<<std::setw(2)<<static_cast<unsigned>(ch);
             geometryLog("GPU_DESCRIPTOR_CANDIDATE surface="+geometryHex(surfaces+si*0x60)+" tri="+geometryHex(tri)+" header="+raw.str()+" gpu_buffer_unverified=1");
-            nativeResearchEvidence(1u,"GPU_RESIDENT_CANDIDATE cpu_geometry_missing=1",false);
+            if(!gpuRequested){requestGeometryDraw(item,si,nv,ni,bounds);gpuRequested=true;}
+            nativeResearchEvidence(1u,"GPU_RESIDENT_CANDIDATE render_draw_search=1",false);
         }
         if(primitive!=0||mask!=0x1801f||!verts||!indices||nv<3||nv>4096||ni<3||ni%3||ni>12288
             ||totalTriangles+ni/3>8192)continue;
@@ -134,7 +151,7 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
         // accept only a unique bounds-consistent interpretation for telemetry.
         std::vector<std::array<float,3>> points;
         unsigned chosen=0,passing=0;
-        for(unsigned stride:{48u,32u}){
+        for(unsigned stride:{48u,32u,24u,40u,64u}){
             std::vector<unsigned char> raw(static_cast<std::size_t>(nv)*stride);
             if(!geometryRead(verts,raw.data(),raw.size()))continue;
             std::vector<std::array<float,3>> trial(nv);
@@ -341,7 +358,9 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
     auto& s=grappleGeometryInvestigation;
     if(!valid||!in.pressed||!((in.researchMask|in.researchTestMask)&1u)||in.calibrating){
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
-        s.down=false;s.pending=false;return;
+        s.down=false;s.pending=false;
+        if(!((in.researchMask|in.researchTestMask)&1u))meshDrawIndexCount.store(0,std::memory_order_release);
+        return;
     }
     if(s.down&&s.generation==generation&&s.handle)return; // one capture per held grip once a target is found
     if(s.down&&s.generation==generation&&now-s.started<1000)return;
