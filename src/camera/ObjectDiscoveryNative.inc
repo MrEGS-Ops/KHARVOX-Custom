@@ -24,6 +24,7 @@ struct ObjectDiscoveryGripFrame {
     bool meleeActivationEnabled{};
     bool nativeMeleeInputDown{},activationInvestigator{},releaseInvestigator{};
     unsigned researchMask{},researchTestMask{};bool researchOnly{};
+    float moveX{},moveY{},playerAtSubmit[3]{};bool playerAtSubmitValid{};
     unsigned poseLockAcknowledged{}; // XR must confirm the NEW lock pose
     float wantedOffset[3]{},wantedAxis[9]{};
 };
@@ -479,101 +480,6 @@ void nativeResearchEvidence(unsigned bit,const std::string& summary,bool validat
 #include "GrappleGeometryInvestigator.inc"
 #include "ObjectActivationInvestigator.inc"
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-// Read-only release trace. Reuse the activation investigator's validated
-// signatures and identity-checked snapshots. No additional physics writes.
-struct ObjectReleaseTrace {
-    unsigned handle{};
-    const void* entity{};
-    void* body{};
-    unsigned long long generation{},started{},lastSample{};
-    float previousOrigin[3]{},previousVelocity[3]{},releaseOrigin[3]{},releaseVelocity[3]{};
-    unsigned long long releaseAt{};
-    bool previousValid{},releaseBaselineValid{};
-};
-ObjectReleaseTrace objectReleaseTrace{};
-bool objectReleaseTraceMatches(const ObjectDiscoveryNativeRecord& item) {
-    const auto& t=objectReleaseTrace;
-    return t.handle&&item.handle==t.handle&&item.entity==t.entity
-        &&item.body==t.body&&item.generation==t.generation;
-}
-void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
-    unsigned long long now,const char* phase) {
-    auto& t=objectReleaseTrace;
-    float origin[3]{},axis[9]{};
-    std::array<unsigned char,0x300> body{},entity{};
-    if(!objectReleaseTraceMatches(item)||!activationSignature(item)
-        ||!objectDiscoveryReadBodyPose(item,origin,axis)
-        ||!activationRead(item,body,entity)){
-        log("[RELEASE-INV] end reason=identity_or_read_failed");t={};return;
-    }
-    float measured[3]{},accel[3]{};
-    const bool priorMeasured=t.previousValid&&t.lastSample>t.started;
-    const bool delta=t.previousValid&&now>t.lastSample;
-    if(delta){
-        const float invDt=1000.f/static_cast<float>(now-t.lastSample);
-        for(int i=0;i<3;++i){
-            measured[i]=(origin[i]-t.previousOrigin[i])*invDt;
-            if(priorMeasured)accel[i]=(measured[i]-t.previousVelocity[i])*invDt;
-        }
-    }
-    std::uintptr_t render{},vt{};
-    float renderPose[12]{};
-    const bool renderOk=geometryRead(reinterpret_cast<std::uintptr_t>(item.entity)+0x408,&render,sizeof(render))
-        &&geometryRead(render,&vt,sizeof(vt))&&geometryInImage(item,vt)
-        &&vt-item.imageBase==0x283f9b8
-        &&geometryRead(render+0x78,renderPose,sizeof(renderPose));
-    if(std::strcmp(phase,"after_clear_and_wake")==0&&item.bodyVtable==item.imageBase+0x2874190){
-        std::memcpy(t.releaseOrigin,origin,12);std::memcpy(t.releaseVelocity,body.data()+0x1d4,12);
-        t.releaseAt=now;t.releaseBaselineValid=true;
-    }
-    if(t.releaseBaselineValid&&now>t.releaseAt){
-        const float dt=static_cast<float>(now-t.releaseAt)*.001f;
-        float gravity[3]{},velocity[3]{},expected[3]{},error[3]{},velError[3]{};
-        std::memcpy(gravity,body.data()+0x44,12);std::memcpy(velocity,body.data()+0x1d4,12);
-        for(unsigned i=0;i<3;++i){expected[i]=t.releaseOrigin[i]+t.releaseVelocity[i]*dt+.5f*gravity[i]*dt*dt;
-            error[i]=origin[i]-expected[i];velError[i]=velocity[i]-(t.releaseVelocity[i]+gravity[i]*dt);}
-        log("[RELEASE-INV] FREE_FALL_COMPARE handle="+std::to_string(item.handle)+" t_ms="+std::to_string(now-t.releaseAt)
-            +" origin_error="+geometryFloats(error,3)+" velocity_error="+geometryFloats(velError,3)
-            +" clock=wall_time contact_or_collision_unverified=1");
-    }
-    log("[RELEASE-INV] handle="+std::to_string(item.handle)
-        +" phase="+phase+" t_ms="+std::to_string(now-t.started)
-        +" origin="+geometryFloats(origin,3)+" axis="+geometryFloats(axis,9)
-        +activationReflectedState(item,body)
-        +" delta_valid="+std::to_string(delta)
-        +" position_velocity="+geometryFloats(measured,3)
-        +" measured_acceleration_valid="+std::to_string(delta&&priorMeasured)
-        +" measured_acceleration="+geometryFloats(accel,3)
-        +" render_pose_valid="+std::to_string(renderOk)
-        +(renderOk?" render_origin="+geometryFloats(renderPose,3)+" render_axis="+geometryFloats(renderPose+3,9):std::string{}));
-    if(delta&&item.bodyVtable==item.imageBase+0x2874190){
-        float gravity[3]{};std::memcpy(gravity,body.data()+0x44,12);
-        float dot=0.f,norm=0.f;for(unsigned k=0;k<3;++k){dot+=accel[k]*gravity[k];norm+=gravity[k]*gravity[k];}
-        const bool usable=priorMeasured&&std::isfinite(dot)&&std::isfinite(norm)&&norm>.001f;
-        nativeResearchEvidence(8u,"release displacement_velocity="+geometryFloats(measured,3)
-            +" gravity_projection="+std::to_string(usable?dot/std::sqrt(norm):0.f)
-            +" outcome="+(usable?(dot>0.f?"ACCEL_WITH_GRAVITY":"ACCEL_NOT_WITH_GRAVITY"):"INCONCLUSIVE")
-            +" native_release_unchanged=1",usable);
-    }
-    std::memcpy(t.previousOrigin,origin,sizeof(origin));
-    if(delta)std::memcpy(t.previousVelocity,measured,sizeof(measured));
-    t.previousValid=true;t.lastSample=now;
-}
-void objectReleaseTraceTick(unsigned long long now,unsigned long long generation,bool enabled){
-    auto& t=objectReleaseTrace;
-    if(!t.handle)return;
-    if(!enabled||t.generation!=generation||now<t.started
-        ||(objectDiscoveryHeld.active&&objectDiscoveryHeld.handle==t.handle)){
-        log("[RELEASE-INV] end reason=context_or_regrab");t={};return;
-    }
-    if(now-t.started>1000){
-        log("[RELEASE-INV] end reason=one_second");t={};return;
-    }
-    if(now<t.lastSample||now-t.lastSample<20)return;
-    auto* item=objectDiscoveryNativeByHandle(t.handle);
-    if(!item){log("[RELEASE-INV] end reason=cache_identity_lost");t={};return;}
-    objectReleaseTraceSample(*item,now,"native_followup");
-}
 #endif
 // Gentle native drop. No artificial downward velocity, kick or force.
 // After previously verified real movement and a successful hold, clear any
@@ -634,27 +540,7 @@ void objectDiscoveryReleaseNative(const char* reason="context_or_follow_failure"
 #endif
         if(auto* item=objectDiscoveryNativeByHandle(objectDiscoveryHeld.handle)){
             if(item->generation==objectDiscoveryHeld.generation){
-#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-                if(objectDiscoveryHeld.releaseInvestigator&&KharvoxCameraWorldActive()){
-                    objectReleaseTrace={};
-                    auto& t=objectReleaseTrace;
-                    t.handle=item->handle;t.entity=item->entity;t.body=item->body;
-                    t.generation=item->generation;t.started=GetTickCount64();
-                    log("[RELEASE-INV] begin reason="+std::string(reason)
-                        +" handle="+std::to_string(item->handle)+" model="+item->modelKey.data()
-                        +" relative_offset="+geometryFloats(objectDiscoveryHeld.relativeOffset,3));
-                    objectReleaseTraceSample(*item,t.started,"before_clear");
-                }
-#endif
-                const bool stopped=objectDiscoveryReleaseToGravity(*item);
-#if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-                if(objectReleaseTraceMatches(*item)){
-                    log("[RELEASE-INV] clear_and_wake_ok="+std::to_string(stopped));
-                    objectReleaseTraceSample(*item,GetTickCount64(),"after_clear_and_wake");
-                }
-#else
-                (void)stopped;
-#endif
+                objectDiscoveryReleaseToGravity(*item);
             }
         }
     }
@@ -958,10 +844,7 @@ void objectDiscoveryGameTick() {
     const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
     const bool worldBlocked=!KharvoxCameraWorldActive()
         ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();
-    objectReleaseTraceTick(now,levelTransitionGeneration.load(std::memory_order_acquire),
-        input.releaseInvestigator&&!worldBlocked);
-    if(objectDiscoveryHeld.active)
-        objectDiscoveryHeld.releaseInvestigator=input.releaseInvestigator;
+
     // A single lost tracking sample / late XR submit must not drop an
     // already-attached rigid body. Retain its last validated hand pose for
     // at most 300ms; NEVER bridge an explicit release or blocked world.
@@ -996,7 +879,7 @@ void objectDiscoveryGameTick() {
         objectMeleeActivationTick(input,false,now,generation);
         objectDiscoveryReleaseNative("scanner_disabled");
         objectDiscoveryNative={};
-        objectReleaseTrace={};
+
         objectDiscoverySourceMode.store(0,std::memory_order_release);
         return;
     }
@@ -1064,7 +947,7 @@ void objectDiscoveryGameTick() {
             &&pending.handle==item.handle&&pending.entity==item.entity
             &&pending.body==item.body&&pending.generation==generation
             &&now>=pending.started&&now-pending.started<=2000;
-        const bool priority=heldHere||pendingHere||objectReleaseTraceMatches(item)
+        const bool priority=heldHere||pendingHere
             ||objectActivationInvestigatorPriority(item,generation,input.activationInvestigator);
         float nearD2{};
         for(int j=0;j<3;++j){
@@ -1235,10 +1118,6 @@ void objectDiscoveryGameTick() {
         held={};held.active=true;held.handle=nearest->handle;
         held.physicalHand=input.physicalHand;
         held.generation=generation;
-        held.releaseInvestigator=input.releaseInvestigator;
-        if(objectReleaseTraceMatches(*nearest)){
-            log("[RELEASE-INV] end reason=regrab");objectReleaseTrace={};
-        }
         // Capture an invariant 6DOF controller-relative target on GRAB,
         // not the body's current position. Otherwise an object one metre
         // away inherits its pickup offset for several frames, making
@@ -1421,6 +1300,9 @@ void objectDiscoveryGameTick() {
                 for(int i=0;i<3;++i)desired[j]-=desiredAxis[3*i+j]*held.surfaceLocalContact[i];
             }
         }
+        const bool traceAnchor=((input.researchMask|input.researchTestMask)&8u)&&!held.surfaceApproaching&&held.nativeFollowConfirmed;
+        float before[3]{},target[3]{};
+        if(traceAnchor){std::memcpy(before,item->origin,12);std::memcpy(target,desired,12);}
         float len2{};
         for(int i=0;i<3;++i){
             float d=desired[i]-item->origin[i];len2+=d*d;
@@ -1475,6 +1357,22 @@ void objectDiscoveryGameTick() {
                     }
                 }else if(std::isfinite(error2)&&error2<1.f)held.nativeFollowConfirmed=true;
                 if(held.nativeFollowConfirmed&&!held.surfaceApproaching)objectDiscoveryReleaseToGravity(*item,false);
+                if(traceAnchor){
+                    static unsigned lastHandle{};static unsigned long long lastAt{},lastGen{};
+                    if(lastHandle!=item->handle||lastGen!=generation||now-lastAt>=40){
+                        lastHandle=item->handle;lastGen=generation;lastAt=now;
+                        log("[ANCHOR-MOVEMENT] tick_ms="+std::to_string(now)+" input_ms="+std::to_string(input.frameAtMs)
+                            +" handle="+std::to_string(item->handle)+" stick="+std::to_string(input.moveX)+","+std::to_string(input.moveY)
+                            +" player_submit_valid="+std::to_string(input.playerAtSubmitValid)+" player_submit="+geometryFloats(input.playerAtSubmit,3)
+                            +" player_world_valid="+std::to_string(playerValid)+" player_world="+geometryFloats(player,3)
+                            +" player_capture_present="+std::to_string(playerPhysicsCapturePresent.load(std::memory_order_relaxed))
+                            +" hand="+geometryFloats(input.origin,3)+" body_before="+geometryFloats(before,3)
+                            +" target="+geometryFloats(target,3)+" commanded="+geometryFloats(desired,3)+" body_after="+geometryFloats(actual,3)
+                            +" pose_error="+std::to_string(std::sqrt(error2))+" movement_order_unverified=1");
+                        if(std::abs(input.moveX)>.15f||std::abs(input.moveY)>.15f)
+                            nativeResearchEvidence(8u,"HELD_MOVEMENT_SAMPLE collision_order_unverified=1",false);
+                    }
+                }
                 std::memcpy(item->origin,actual,sizeof(actual));
                 std::memcpy(item->axis,actualAxis,sizeof(actualAxis));
                 // Discovery markers use actual sampled native physics pose,
@@ -1522,7 +1420,7 @@ void objectDiscoverySeenEntity(const void* entity,std::uintptr_t base,
             if((objectDiscoveryHeld.active
                 &&existing.handle==objectDiscoveryHeld.handle
                 &&existing.generation==objectDiscoveryHeld.generation)
-                ||objectReleaseTraceMatches(existing))
+)
                 continue;
             if(!item||!existing.entity
                 ||(item->entity

@@ -588,6 +588,9 @@ struct VrHandMenuState {
     bool activationInvestigator{}; // session-only passive native wake investigation
     bool releaseInvestigator{}; // session-only observer, can coexist with grabs
     bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
+    bool effectiveDynamicSurfaceOffset() const noexcept {
+        return researchQueueRunning?((activeResearchMask|activeResearchTestMask)&8u)!=0:dynamicSurfaceOffset;
+    }
     bool objectGrappleActive() const noexcept {
         return !activationInvestigator&&(researchQueueRunning?((activeResearchMask|activeResearchTestMask)&8u)!=0:(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled));
     }

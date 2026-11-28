@@ -1,19 +1,48 @@
 // All VR menu inputs are handled before DOOM's native melee/pause/calibration
 // routes. The menu owns both clicks and triggers while it is visible; trigger
 // save is edge-based and cannot fire the selected weapon.
+// Persistent successful-save markers live alongside the editable calibration file.
+std::string vrCalibrationStatusPath(){return kharvox::runtimePathA("offhand_right_hand_positions.cfg")+".status";}
 void refreshVrHandMenuSavedStatus(){
     auto& m=s.vrHandMenu;
-    const auto factory=kharvox::readRightHandGripSettings(
-        kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));
-    for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
-        const std::string key=kharvox::kVrCalibrationWeapons[i];
-        // Factory profiles are shipped into UserData on first run, so they
-        // should display DEFAULT, NOT BOTH. Only modifications to PRIMARY
-        // position/rotation get a left or right custom marker.
-        m.rightSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
-            s.rightGripSettings,factory,key,false);
-        m.leftSaved[i]=kharvox::vrPrimaryPoseChangedFromFactory(
-            s.rightGripSettings,factory,key,true);
+    std::ifstream in(vrCalibrationStatusPath());
+    unsigned right{},left{};
+    if(in>>right>>left&&right<1024&&left<1024){
+        for(size_t j=0;j<kharvox::kVrCalibrationWeapons.size();++j){
+            m.rightSaved[j]=(right&(1u<<j))!=0;m.leftSaved[j]=(left&(1u<<j))!=0;
+        }
+        return;
+    }
+    for(size_t j=0;j<kharvox::kVrCalibrationWeapons.size();++j){
+        const std::string key=kharvox::kVrCalibrationWeapons[j];
+        m.rightSaved[j]=kharvox::vrPrimaryPoseChangedFromFactory(s.rightGripSettings,s.rightGripFactorySettings,key,false);
+        m.leftSaved[j]=kharvox::vrPrimaryPoseChangedFromFactory(s.rightGripSettings,s.rightGripFactorySettings,key,true);
+    }
+}
+bool persistVrCalibrationStatus(){
+    const auto& m=s.vrHandMenu;unsigned right{},left{};
+    for(size_t j=0;j<kharvox::kVrCalibrationWeapons.size();++j){
+        if(m.rightSaved[j])right|=1u<<j;if(m.leftSaved[j])left|=1u<<j;
+    }
+    const auto path=vrCalibrationStatusPath(),tmp=path+".tmp";
+    {std::ofstream out(tmp,std::ios::trunc);out<<right<<" "<<left<<"\n";out.close();if(!out){DeleteFileA(tmp.c_str());return false;}}
+    if(!MoveFileExA(tmp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH)){
+        DeleteFileA(tmp.c_str());return false;
+    }
+    return true;
+}
+void recordVrCalibrationStatus(bool reset=false){
+    auto& m=s.vrHandMenu;refreshVrHandMenuSavedStatus();
+    for(size_t j=0;j<kharvox::kVrCalibrationWeapons.size();++j){
+        if(std::string(kharvox::kVrCalibrationWeapons[j])!=m.weapon())continue;
+        if(reset)m.rightSaved[j]=m.leftSaved[j]=false;
+        else if(s.weaponHandLeft)m.leftSaved[j]=true;
+        else m.rightSaved[j]=true;
+        break;
+    }
+    if(!persistVrCalibrationStatus()){
+        log("[VR-HAND-MENU] profile status persistence FAILED; calibration data write separate");
+        m.message+=" (status file write failed)";
     }
 }
 void updateVrMenuPreview(bool primaryWeaponGripHeld){
@@ -57,7 +86,7 @@ void updateVrMenuPreview(bool primaryWeaponGripHeld){
             m.previewRotation=kharvox::vrCalibrationRelativeRotation(
                 m.rotationEdit,false,{},m.previewRotation);
         }
-        m.previewValid=kharvox::validRightHandVisualPlacement(
+        m.previewValid=m.previewValid&&kharvox::validRightHandVisualPlacement(
                 m.previewPosition)
             &&m.previewRotation.valid
             &&kharvox::validRightHandRotation(m.previewRotation);
@@ -254,7 +283,7 @@ void saveVrHandMenuCalibration(){
     m.previewValid=false;
     m.primaryGripPreviewHeld=false;
     m.rotationEdit={};
-    refreshVrHandMenuSavedStatus();
+    recordVrCalibrationStatus();
     if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==4){
         const auto* support=twoHandCalibrationFor(kind);
         if((support&&support->valid)||alternate){m.weaponCalibrationStage=m.weaponCalibrationStage==1?2:5;m.rightHand=s.weaponHandLeft;startVrSelectedWeaponCalibration();return;}
@@ -295,8 +324,8 @@ void resetVrMenuSelectedWeapon(){
     loadTwoHandCalibrations();
     s.primaryVisualLocked=false;s.supportVisualLocked=false;
     s.twoHandLatched=false;
-    refreshVrHandMenuSavedStatus();
     m.message=std::string("Your factory calibration restored: ")+m.weapon();
+    recordVrCalibrationStatus(true);
     log("[VR-HAND-MENU] "+m.message);
 }
 void startVrSelectedWeaponCalibration(){
@@ -322,9 +351,10 @@ void startVrSelectedWeaponCalibration(){
         &&(kind==KharvoxWeaponKind::GaussCannon
             ||kind==KharvoxWeaponKind::Chaingun);
     const std::string profileKey=m.weapon();
+    const auto& seed=(s.weaponHandLeft&&m.weaponCalibrationStage==4)
+        ?s.rightGripFactorySettings:s.rightGripSettings;
     if(calibratingPrimary)
-        m.fineTuneAccumulated=kharvox::primaryVisualFineTune(
-            s.rightGripSettings,profileKey,s.weaponHandLeft,alternate);
+        m.fineTuneAccumulated=kharvox::primaryVisualFineTune(seed,profileKey,s.weaponHandLeft,alternate);
     const auto savedX=[&](const kharvox::RightHandGripSettings& settings,
                           float& value)->bool {
         if(s.weaponHandLeft){
@@ -343,53 +373,25 @@ void startVrSelectedWeaponCalibration(){
         value=position.x;
         return true;
     };
-    if(!savedX(s.rightGripSettings,m.primaryLateralBase))
+    if(!savedX(seed,m.primaryLateralBase))
         savedX(s.rightGripFactorySettings,m.primaryLateralBase);
     if(calibratingPrimary){
-        // Explicitly seed from this weapon's saved position rather than
-        // the opposite controller: this is a gun-only positional reference.
-        kharvox::RightHandGripOffset savedPosition{};
-        kharvox::RightHandGripRotation unusedRotation{};
-        bool loaded=false;
-        const std::string key=profileKey
-            +(alternate?(kind==KharvoxWeaponKind::GaussCannon
-                ?"_siege":"_turret"):"");
-        if(s.weaponHandLeft){
-            auto it=s.rightGripSettings.leftVisualPositions.find(key);
-            if(it!=s.rightGripSettings.leftVisualPositions.end()){
-                savedPosition=it->second;loaded=true;
-            }
-        }else{
-            loaded=kharvox::rightPrimaryVisualPose(
-                s.rightGripSettings,profileKey,alternate,
-                savedPosition,unusedRotation);
-        }
-        if(!loaded){
-            if(s.weaponHandLeft){
-                auto it=s.rightGripFactorySettings.leftVisualPositions.find(key);
-                if(it!=s.rightGripFactorySettings.leftVisualPositions.end()){
-                    savedPosition=it->second;loaded=true;
-                }
-            }else loaded=kharvox::rightPrimaryVisualPose(
-                s.rightGripFactorySettings,profileKey,alternate,
-                savedPosition,unusedRotation);
-        }
-        m.previewPosition=loaded?savedPosition:kharvox::RightHandGripOffset{
-            s.primaryVisualLocalPosition.x,
-            s.primaryVisualLocalPosition.y,
-            s.primaryVisualLocalPosition.z};
-    }
-    if(calibratingPrimary){
-        // The first frame of calibration, including one entered with
-        // weapon Grip already HELD, must have a real visual wrist pose.
-        // Otherwise an unset quaternion cannot be frozen/saved and the
-        // fine-tune becomes inaccessible until an unrelated grip release.
-        const auto& existing=s.primaryVisualLocalOrientation;
-        m.previewRotation={existing.x,existing.y,existing.z,existing.w,true};
-        if(!kharvox::validRightHandRotation(m.previewRotation))
-            m.previewRotation={0.f,0.f,0.f,1.f,true};
-        m.previewValid=kharvox::validRightHandVisualPlacement(
-            m.previewPosition)&&kharvox::validRightHandRotation(m.previewRotation);
+        kharvox::RightHandGripOffset position{};
+        kharvox::RightHandGripRotation rotation{};
+        const std::string key=profileKey+(alternate?(kind==KharvoxWeaponKind::GaussCannon?"_siege":"_turret"):"");
+        const auto load=[&](const kharvox::RightHandGripSettings& settings){
+            if(!s.weaponHandLeft)return kharvox::rightPrimaryVisualPose(settings,profileKey,alternate,position,rotation);
+            auto pos=settings.leftVisualPositions.find(key);
+            auto rot=settings.leftVisualRotations.find(key);
+            if(pos==settings.leftVisualPositions.end()||rot==settings.leftVisualRotations.end())return false;
+            position=pos->second;rotation=rot->second;return rotation.valid;
+        };
+        const bool loaded=load(seed)||load(s.rightGripFactorySettings);
+        m.previewPosition=position;m.previewRotation=rotation;
+        m.previewValid=loaded&&kharvox::validRightHandVisualPlacement(position)
+            &&kharvox::validRightHandRotation(rotation);
+        log("[VR-HAND-CAL] seed="+std::string(s.weaponHandLeft&&m.weaponCalibrationStage==4?"RIPSHIFT_LEFT_DEFAULT":"CURRENT_PROFILE")
+            +" hand="+(s.weaponHandLeft?"LEFT":"RIGHT")+" valid="+std::to_string(m.previewValid));
     }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
@@ -1137,7 +1139,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     log("[SURFACE-GRAPPLE] "+m.message);
                 }else if(kind==D::NativeInteractionResearch){
                     const int index=chosen-130;
-                    if(!index){m.nativeResearchTestPage=!m.nativeResearchTestPage;m.message=m.nativeResearchTestPage?"TEST: practical release regression only.":"COLLECT: select groups, then close DEV.";}
+                    if(!index){m.nativeResearchTestPage=!m.nativeResearchTestPage;m.message=m.nativeResearchTestPage?"TEST: held movement comparison only.":"COLLECT: select groups, then close DEV.";}
                     else{
                         const unsigned bit=1u<<(index-1);
                         const unsigned ready=KharvoxCameraNativeResearchReady();

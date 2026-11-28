@@ -5707,9 +5707,10 @@ void updateGameplayActions(XrTime displayTime){
         gripPoseValid?nativeRayOrigin:nullptr,
         s.vrHandMenu.objectMeleeActive(),
         s.vrHandMenu.objectMeleeActive()?testNativeMeleeDown:ordinaryNativeMeleeDown,
-        s.vrHandMenu.dynamicSurfaceOffset,s.vrHandMenu.activationInvestigator,
+        s.vrHandMenu.effectiveDynamicSurfaceOffset(),s.vrHandMenu.activationInvestigator,
         s.vrHandMenu.releaseInvestigator,s.vrHandMenu.activeResearchMask,s.vrHandMenu.activeResearchTestMask,
-        s.vrHandMenu.nativeResearchActive()&&!s.vrHandMenu.objectGrappleActive());
+        s.vrHandMenu.nativeResearchActive()&&!s.vrHandMenu.objectGrappleActive(),
+        s.leftStick.x,s.leftStick.y,gripPoseValid?bodyOrigin:nullptr);
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -9282,8 +9283,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             {rotation.x,rotation.y,rotation.z,rotation.w},true};
     }
     // Grab Reach Laser shares the world-space tracking origin and AIM
-    // direction of the free-hand native grab. Its origin is the source-time
-    // physical GRIP, so asynchronous stereo pairs keep both eyes coherent.
+    // direction of the free-hand native grab. Reconstruct AIM origin from
+    // source-time physical GRIP and tracked AIM offset for stereo coherence.
     // The visible laser ends exactly at the fixed 2 metre grab limit.
     kharvox::hands::HandPose grabReachLaser{};
     float grabReachLaserMetres{};
@@ -9313,7 +9314,13 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             const auto up=std::fabs(forward.y)>.9f
                 ?XrVector3f{1.f,0.f,0.f}:XrVector3f{0.f,1.f,0.f};
             const auto directionRotation=quaternionFromForwardUp(forward,up);
+            const XrVector3f localAimOffset=rotateVector(conjugate(liveGrip.orientation),
+                subtractVector(liveAim.position,liveGrip.position));
+            const auto sourceOffset=rotateVector(sourceGripRotation,localAimOffset);
             grabReachLaser=sourceGrip;
+            grabReachLaser.position[0]+=sourceOffset.x;
+            grabReachLaser.position[1]+=sourceOffset.y;
+            grabReachLaser.position[2]+=sourceOffset.z;
             grabReachLaser.orientation[0]=directionRotation.x;
             grabReachLaser.orientation[1]=directionRotation.y;
             grabReachLaser.orientation[2]=directionRotation.z;

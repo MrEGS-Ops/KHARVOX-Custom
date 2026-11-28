@@ -10,10 +10,10 @@ GuidedPlan guidedPlan(unsigned id){
         if(id==2||id==3)return {titles[id],{{S{"Aim at a stationary non-explosive prop; hold Grip",GuideGrip},S{"Keep Grip held until the object attaches",GuideHold},S{"Release Grip normally",GuideRelease}}},3};
         return {titles[id],{{S{"Look around until nearby objects are discovered",GuideScan},S{"Kick a nearby non-explosive prop",GuideMotion},S{"Aim and hold Grip until the object attaches",GuideHold},S{"Release Grip normally",GuideRelease}}},4};
     }
-    const unsigned group=(id-5)%6;const bool test=id>=11;
-    const char* titles[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HOLD / RELEASE","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
-    const char* actions[]{"Aim support hand at a prop; hold Grip","Aim support hand at a prop face; hold Grip","Aim weapon hand at stationary prop; melee normally","Kick a non-explosive prop; grab and release it","Walk, strafe and jump; try a solid wall","Perform a normal native jump and mantle"};
-    if(test&&group==3)return {titles[group],{{S{"Kick a non-explosive prop; grab and hold it",GuideHold},S{"Release Grip normally; repeat as needed",GuideRelease}}},2};
+    const unsigned group=(id-5)%6;
+    const char* titles[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HELD OBJECT / MOVEMENT","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
+    const char* actions[]{"Aim support hand at a prop; hold Grip","Aim support hand at a prop face; hold Grip","Aim weapon hand at stationary prop; melee normally","Kick a non-explosive prop; grab and walk with it","Walk, strafe and jump; try a solid wall","Perform a normal native jump and mantle"};
+    if(group==3)return {titles[group],{{S{"Kick a non-explosive prop; grab it with support Grip",GuideHold},S{"Keep Grip held. Walk forward/back with prop in front, beside and above you",GuideCollect}}},2};
     if(group==4)return {titles[group],{{S{"Walk or strafe on level ground",GuideHorizontal},S{"Jump and land; observe vertical movement",GuideVertical}}},2};
     return {titles[group],{{S{actions[group],GuideCollect}}},1};
 }
@@ -26,8 +26,8 @@ struct GuidedRun {
     std::string previous;
 };
 GuidedRun guidedRun{};
-constexpr int guideX=94,guideY=12,guideW=772,guideH=164;
-constexpr int guideButtonY=127,guideButtonH=32,guideButtonStep=188,guideButtonW=182;
+constexpr int guideX=94,guideY=12,guideW=772,guideH=228;
+constexpr int guideButtonY=182,guideButtonH=38,guideButtonStep=250,guideButtonW=244;
 int guidedHover=-1;
 float guidedCursorX=-1.f,guidedCursorY=-1.f;
 bool guidedTriggerPreviously{},guidedTriggerOwned{};
@@ -94,7 +94,7 @@ void guidedApplyResearchSelection(bool gameplay){
         else m.activeResearchTestMask=m.nativeResearchTestMask&bit;
     }
     m.activationInvestigator=((m.activeResearchMask|m.activeResearchTestMask)&4u)!=0;
-    m.releaseInvestigator=((m.activeResearchMask|m.activeResearchTestMask)&8u)!=0;
+    m.releaseInvestigator=false; // natural release confirmed; bit 8 now collects anchor movement
 }
 bool guidedResponseVisible(){
     return guidedOverlayVisible()&&!guidedRun.completeAt&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed&&!s.objectGripCalibrating;
@@ -134,8 +134,7 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
     if(g.id==5){
         const char* meshStates[]{"Waiting for Grip", "Grip received; searching", "No nearby ray candidate", "Executable signature mismatch", "Model or surface list unavailable", "Model found; layout not validated", "Candidate mesh decoded"};
         g.previous=meshStates[std::min(evidence.meshStage,6u)];
-        if(evidence.meshHandle)g.previous+=" | ID "+std::to_string(evidence.meshHandle);
-        if(evidence.meshRawBytes)g.previous+=" | raw "+std::to_string(evidence.meshRawBytes)+" bytes";
+        // Full object ID, byte count and descriptors stay in the log.
     }
     g.elapsed+=dt;
     bool observed=false;
@@ -160,7 +159,7 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
     g.priorGrip=grip;g.priorMelee=melee;g.held=held;
     // A capture is sticky until the user advances. Native observers keep
     // running, including after a miss or an unsuccessful action.
-    if(g.id>=5&&g.id<17&&evidence.collect[(g.id-5)%6]!=g.evidenceBase)observed=true;
+    if(event==GuideCollect&&g.id>=5&&g.id<17&&evidence.collect[(g.id-5)%6]!=g.evidenceBase)observed=true;
     if(observed&&!g.observed){
         g.observed=true;
         log("[GUIDED-TEST] evidence captured group="+std::to_string(g.id)+" step="+std::to_string(g.step+1));
@@ -172,10 +171,10 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
     if(command==5){
         log("[GUIDED-TEST] user_end group="+std::to_string(g.id)+" step="+std::to_string(g.step+1)
             +" current_data="+std::to_string(g.observed)+" data_retained=1");
-        m.guidedTestingEnabled=false;m.nativeResearchMask=0;m.nativeResearchTestMask=0;
+        m.nativeResearchMask=0;m.nativeResearchTestMask=0;
         m.activeResearchMask=0;m.activeResearchTestMask=0;m.researchQueueRunning=false;
         m.activationInvestigator=false;m.releaseInvestigator=false;
-        g={};g.generation=generation;return;
+        g.finished|=g.activeMask;g.queued=0;g.id=99;g.completeAt=0;return;
     }
     if(command==2||command==3)guidedAdvance(g.observed,evidence,now);
 

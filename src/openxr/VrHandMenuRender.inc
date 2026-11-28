@@ -764,10 +764,10 @@ void paintVrHandMenu() {
                     write(548,top+12,labels[i],white);
                 }
                 write(538,550,"Commands apply after closing DEV.",muted);
-                write(538,577,"OK / FAIL only for manual visual steps.",muted);
+                write(538,577,"NEXT / SKIP preserve recorded evidence.",muted);
             }else if(opt==D::NativeInteractionResearch){
                 const unsigned ready=KharvoxCameraNativeResearchReady();
-                const char* labels[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HOLD / RELEASE","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
+                const char* labels[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HELD OBJECT / MOVEMENT","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
                 for(int i=0;i<7;++i){
                     const int top=186+i*52;const unsigned bit=i?1u<<(i-1):0u;
                     const bool on=i&&((m.nativeResearchTestPage?m.nativeResearchTestMask:m.nativeResearchMask)&bit);
@@ -775,7 +775,7 @@ void paintVrHandMenu() {
                     fill(531,top,384,46,selected?RGB(52,83,99):RGB(39,49,63));
                     write(548,top+4,i?labels[i-1]:(m.nativeResearchTestPage?"MODE: TEST":"MODE: COLLECT"),white);
                     if(i){write(843,top+4,on?"ON":"OFF",on?RGB(128,255,177):muted);
-                        write(548,top+23,m.nativeResearchTestPage?(bit==8u?"Optional drop regression":"No functional test yet"):(ready&bit)?"Candidate data validated":"Awaiting validated data",muted);}
+                        write(548,top+23,m.nativeResearchTestPage?(bit==8u?"Optional held movement test":"No functional test yet"):(ready&bit)?"Candidate data validated":"Awaiting validated data",muted);}
                     else write(548,top+23,"Press A to switch mode",muted);
                 }
                 write(538,558,"Select groups; close DEV to run in order.",muted);
@@ -1159,7 +1159,7 @@ void paintVrHandMenu() {
         write(538,614,"Grip charges; both hands required to fire.",muted);
     }else{
         write(538,556,"Right first; left-handed path optional.",muted);
-        write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
+        write(538,614,"DEFAULT: bundled   L/R/B: saved",muted);
     }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
     write(40,661,m.message.empty()?"Select your weapon to begin.":m.message,RGB(84,233,214));
@@ -1177,14 +1177,14 @@ void paintVrHandMenu() {
         const std::string phase=g.id>=11?"TEST":g.id>=5?"COLLECT":"REGRESSION";
         unsigned total=0,done=0;for(unsigned bit=5;bit<17;++bit){if(g.activeMask&(1u<<bit))++total;if(g.finished&(1u<<bit))++done;}
         const std::string queue=g.id>=5?"  ["+std::to_string(std::min(total,done+(g.completeAt?0u:1u)))+"/"+std::to_string(total)+"]":"";
-        wrap(guideX+14,guideY+5,guideW-28,25,std::string(plan.title)+" / "+phase+queue+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
+        wrap(guideX+14,guideY+5,guideW-28,38,std::string(plan.title)+" / "+phase+queue+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
         const std::string& previous=g.previous;
-        if(!previous.empty())wrap(guideX+14,guideY+30,guideW-28,44,previous,
+        if(!previous.empty())wrap(guideX+14,guideY+46,guideW-28,46,previous,
             previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
         const std::string next=g.completeAt?"Module finished; see log for evidence":plan.steps[g.step].text;
-        wrap(guideX+14,guideY+76,guideW-28,46,next,g.completeAt?RGB(128,255,177):white);
-        fill(guideX+12,guideY+122,guideW-24,3,RGB(58,70,79));
-        fill(guideX+12,guideY+122,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
+        wrap(guideX+14,guideY+100,guideW-28,72,next,g.completeAt?RGB(128,255,177):white);
+        fill(guideX+12,guideY+176,guideW-24,3,RGB(58,70,79));
+        fill(guideX+12,guideY+176,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
         if(guidedResponseVisible()){
             const char* names[]{"NEXT","SKIP","END INVESTIGATION"};
             for(int j=0;j<3;++j){
@@ -1215,8 +1215,8 @@ void paintVrHandMenu() {
             :!m.previewValid?"Waiting for valid controller tracking"
             :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")
             :"Move support hand into desired grip position";
-        wrap(guideX+14,guideY+52,guideW-28,65,instruction,white);
-        wrap(guideX+14,guideY+118,guideW-28,42,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
+        wrap(guideX+14,guideY+54,guideW-28,104,instruction,white);
+        wrap(guideX+14,guideY+164,guideW-28,60,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
