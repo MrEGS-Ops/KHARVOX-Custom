@@ -273,6 +273,20 @@ int main() {
     queueCalibrationSaveCue(saveCues,false,true,5300);
     if(!mixControllerZoneCue(zero,saveCues[0],5300).active
         ||mixControllerZoneCue(zero,saveCues[1],5300).active)return 61;
+    // Ordinary menu saves use a single short, light pulse.
+    saveCues={};
+    queueMenuSaveCue(saveCues,true,false,6000);
+    if(mixControllerZoneCue(zero,saveCues[1],6000).active)return 62;
+    queueMenuSaveCue(saveCues,true,true,6000);
+    if(mixControllerZoneCue(zero,saveCues[0],6000).active
+        ||!near(mixControllerZoneCue(zero,saveCues[1],6000).amplitude,.45f)
+        ||controllerZoneCueDurationMilliseconds(zero,saveCues[1],6000,100)!=45
+        ||!mixControllerZoneCue(zero,saveCues[1],6044).active)return 63;
+    for(auto offset:{45u,85u,115u,230u,295u})
+        if(mixControllerZoneCue(zero,saveCues[1],6000+offset).active)return 64;
+    queueMenuSaveCue(saveCues,false,true,6400);
+    if(!mixControllerZoneCue(zero,saveCues[0],6400).active
+        ||mixControllerZoneCue(zero,saveCues[1],6400).active)return 65;
     // The radial guide overrides old high chainsaw rumble, so the
     // zone centre may genuinely be silent, on the weapon hand only.
     const XInputHapticSignal zoneCentre{};

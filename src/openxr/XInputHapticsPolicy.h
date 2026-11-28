@@ -277,10 +277,15 @@ inline void queueControllerTriplePulse(ControllerZoneCue& cue,std::uint64_t now)
     cue.amplitude=1.f;
     cue.frequencyHz=170.f;
 }
-// All explicit config saves use the same three-pulse success pattern.
+// Physical calibration saves use the same three-pulse success pattern
+// as holstering. Ordinary menu config changes use a light single pulse.
 inline void queueCalibrationSaveCue(std::array<ControllerZoneCue,2>& cues,
     bool rightController,bool saved,std::uint64_t now){
     if(saved)queueControllerTriplePulse(cues[rightController?1:0],now);
+}
+inline void queueMenuSaveCue(std::array<ControllerZoneCue,2>& cues,
+    bool rightController,bool saved,std::uint64_t now){
+    if(saved)queueControllerZoneCue(cues[rightController?1:0],now,45,.45f,170.f);
 }
 inline bool controllerZoneCuePulseActive(const ControllerZoneCue& cue,std::uint64_t now){
     return now>=cue.startedMilliseconds&&now<cue.untilMilliseconds

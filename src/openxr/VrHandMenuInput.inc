@@ -339,7 +339,7 @@ bool resetVrMenuSelectedWeapon(){
     s.twoHandLatched=false;
     m.message=std::string("Your factory calibration restored: ")+m.weapon();
     recordVrCalibrationStatus(true);
-    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+    kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
     log("[VR-HAND-MENU] "+m.message);
     return true;
 }
@@ -1217,7 +1217,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         m.grappleAnchor=previous;
                         m.message="Grapple Anchor: UserData save failed.";
                     }else{
-                        kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                        kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
                         if(m.grappleAnchor.enabled){m.pistolGrappleEnabled=false;m.dynamicSurfaceOffset=false;}
                         m.message=std::string("Grapple Grab ")
                             +(m.grappleAnchor.enabled?"ON":"OFF")
@@ -1244,7 +1244,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             m.grappleAnchor=previous;
                             m.message="Pistol Grapple: unable to save original OFF.";
                         }else{
-                            kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                            kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
                             m.pistolGrappleEnabled=true;m.dynamicSurfaceOffset=false;
                             m.message="Pistol Grapple ON; original OFF.";
                         }
@@ -1295,7 +1295,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                         m.objectDiscovery=previous;
                         m.message="Object Discovery: UserData save failed.";
                     }else{
-                        kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                        kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
                         m.message=std::string("Discovery ")
                             +(m.objectDiscovery.enabled?"ON":"OFF")
                             +" scan="+std::to_string(static_cast<int>(

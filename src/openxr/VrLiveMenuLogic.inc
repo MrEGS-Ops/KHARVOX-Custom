@@ -320,7 +320,7 @@ bool saveVrRecoilSettings(){
         return false;
     }
     s.recoilState={};
-    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+    kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
     return true;
 }
 bool handleVrRecoilCalibrationAction(int action){
@@ -378,14 +378,16 @@ bool handleVrRecoilCalibrationAction(int action){
         +" - saved instantly. Close menu to test.";
     return true;
 }
-bool saveVrLiveSettings(){
+bool saveVrLiveSettings(bool physicalCalibration=false){
     const auto path=kharvox::runtimePathA("vr_live_mods_saved.cfg");
     if(!kharvox::vrLiveSave(path,s.vrLiveSettings)){
         s.vrHandMenu.message="Save failed: UserData/Settings/vr_live_mods_saved.cfg";
         return false;
     }
     applyVrLiveModRuntimeState();
-    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+    if(physicalCalibration)
+        kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+    else kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
     return true;
 }
 void openVrLiveCapture(kharvox::VrLiveCapture capture){
@@ -487,7 +489,7 @@ void captureVrLivePosition(){
         s.vrLiveSettings.crouchLoweredDelta=draft.crouchLoweredDelta;
         s.vrLiveSettings.crouchStandSaved=draft.crouchStandSaved;
         s.vrLiveSettings.crouchLoweredSaved=draft.crouchLoweredSaved;
-        if(!saveVrLiveSettings()){s.vrLiveSettings=before;return;}
+        if(!saveVrLiveSettings(true)){s.vrLiveSettings=before;return;}
         m.combinedCrouch=false;
         m.liveCapture=VrLiveCapture::None;
         m.mode=kharvox::VrHandMenuMode::Menu;
@@ -499,7 +501,7 @@ void captureVrLivePosition(){
         s.vrLiveSettings=before;
         return;
     }
-    if(!saveVrLiveSettings()){
+    if(!saveVrLiveSettings(true)){
         s.vrLiveSettings=before;return;
     }
     if(capture==VrLiveCapture::HipLeft||capture==VrLiveCapture::WheelLeft){

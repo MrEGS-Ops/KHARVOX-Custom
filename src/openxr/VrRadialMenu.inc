@@ -129,7 +129,7 @@ void radialInput(int hit,bool click,bool rightGrip){
             if(!saveGunslingerTutorial()){
                 s.gunslingerTutorial=before;m.message="Could not save tutorial setting.";
             }else{
-                kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
                 m.message=s.gunslingerTutorial.enabled?"Tutorial ready. Close menu to begin.":"Tutorial OFF.";
             }
         }else if(setting.mod==RadialMod::PhysicalCrouch&&setting.action==130)openVrCombinedCrouch();
