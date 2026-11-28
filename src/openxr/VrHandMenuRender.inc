@@ -1180,14 +1180,14 @@ void paintVrHandMenu() {
         wrap(guideX+14,guideY+5,guideW-28,25,std::string(plan.title)+" / "+phase+queue+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
         const std::string& previous=g.previous;
         if(!previous.empty())wrap(guideX+14,guideY+30,guideW-28,44,previous,
-            previous.find("FAIL")==0?RGB(255,130,125):previous.find("TIMEOUT")==0||previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
+            previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
         const std::string next=g.completeAt?"Module finished; see log for evidence":plan.steps[g.step].text;
         wrap(guideX+14,guideY+76,guideW-28,46,next,g.completeAt?RGB(128,255,177):white);
         fill(guideX+12,guideY+122,guideW-24,3,RGB(58,70,79));
         fill(guideX+12,guideY+122,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
         if(guidedResponseVisible()){
-            const char* names[]{"PASS","FAIL","RETRY","SKIP"};
-            for(int j=0;j<4;++j){
+            const char* names[]{"NEXT","SKIP","END INVESTIGATION"};
+            for(int j=0;j<3;++j){
                 const int bx=guideX+12+j*guideButtonStep;
                 fill(bx,guideY+guideButtonY,guideButtonW,guideButtonH,guidedHover==j?RGB(45,101,112):RGB(35,43,52));
                 write(bx+15,guideY+guideButtonY+3,names[j],white);

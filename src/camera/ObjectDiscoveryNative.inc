@@ -486,8 +486,9 @@ struct ObjectReleaseTrace {
     const void* entity{};
     void* body{};
     unsigned long long generation{},started{},lastSample{};
-    float previousOrigin[3]{},previousVelocity[3]{};
-    bool previousValid{};
+    float previousOrigin[3]{},previousVelocity[3]{},releaseOrigin[3]{},releaseVelocity[3]{};
+    unsigned long long releaseAt{};
+    bool previousValid{},releaseBaselineValid{};
 };
 ObjectReleaseTrace objectReleaseTrace{};
 bool objectReleaseTraceMatches(const ObjectDiscoveryNativeRecord& item) {
@@ -521,6 +522,20 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
         &&geometryRead(render,&vt,sizeof(vt))&&geometryInImage(item,vt)
         &&vt-item.imageBase==0x283f9b8
         &&geometryRead(render+0x78,renderPose,sizeof(renderPose));
+    if(std::strcmp(phase,"after_clear_and_wake")==0&&item.bodyVtable==item.imageBase+0x2874190){
+        std::memcpy(t.releaseOrigin,origin,12);std::memcpy(t.releaseVelocity,body.data()+0x1d4,12);
+        t.releaseAt=now;t.releaseBaselineValid=true;
+    }
+    if(t.releaseBaselineValid&&now>t.releaseAt){
+        const float dt=static_cast<float>(now-t.releaseAt)*.001f;
+        float gravity[3]{},velocity[3]{},expected[3]{},error[3]{},velError[3]{};
+        std::memcpy(gravity,body.data()+0x44,12);std::memcpy(velocity,body.data()+0x1d4,12);
+        for(unsigned i=0;i<3;++i){expected[i]=t.releaseOrigin[i]+t.releaseVelocity[i]*dt+.5f*gravity[i]*dt*dt;
+            error[i]=origin[i]-expected[i];velError[i]=velocity[i]-(t.releaseVelocity[i]+gravity[i]*dt);}
+        log("[RELEASE-INV] FREE_FALL_COMPARE handle="+std::to_string(item.handle)+" t_ms="+std::to_string(now-t.releaseAt)
+            +" origin_error="+geometryFloats(error,3)+" velocity_error="+geometryFloats(velError,3)
+            +" clock=wall_time contact_or_collision_unverified=1");
+    }
     log("[RELEASE-INV] handle="+std::to_string(item.handle)
         +" phase="+phase+" t_ms="+std::to_string(now-t.started)
         +" origin="+geometryFloats(origin,3)+" axis="+geometryFloats(axis,9)
@@ -538,7 +553,7 @@ void objectReleaseTraceSample(ObjectDiscoveryNativeRecord& item,
         nativeResearchEvidence(8u,"release displacement_velocity="+geometryFloats(measured,3)
             +" gravity_projection="+std::to_string(usable?dot/std::sqrt(norm):0.f)
             +" outcome="+(usable?(dot>0.f?"ACCEL_WITH_GRAVITY":"ACCEL_NOT_WITH_GRAVITY"):"INCONCLUSIVE")
-            +" native_release_unchanged=1");
+            +" native_release_unchanged=1",usable);
     }
     std::memcpy(t.previousOrigin,origin,sizeof(origin));
     if(delta)std::memcpy(t.previousVelocity,measured,sizeof(measured));

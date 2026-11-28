@@ -6,7 +6,7 @@ struct ActivationInvestigation {
     const void* entity{};
     void* body{};
     unsigned long long generation{},armed{},started{},lastAim{},lastSample{},lastSummary{},serial{};
-    bool meleeWasDown{},signatureOk{},tracing{},motionSeen{};
+    bool meleeWasDown{},signatureOk{},tracing{},motionSeen{},wakeSeen{};
     std::array<unsigned char,0x300> baseline{},previous{};
     std::array<unsigned char,0x300> entityBaseline{},entityPrevious{};
     float priorOrigin[3]{},startOrigin[3]{};
@@ -138,6 +138,7 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
         if(!aimed||in.nativeMeleeInputDown)return;
         std::array<unsigned char,0x300> body{},entity{};
         if(!activationRead(*aimed,body,entity))return;
+        if(aimed->bodyVtable!=aimed->imageBase+0x2874190||!activationSignature(*aimed))return;
         if(static_cast<std::int32_t>(activationWord(body,0x170))<0)return; // require resting baseline
         p.handle=aimed->handle;p.entity=aimed->entity;p.body=aimed->body;
         p.generation=generation;p.serial=++activationInvestigationSerial;p.armed=now;p.lastAim=now;
@@ -169,8 +170,8 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     if(!item->poseValid||now<item->lastPositionAtMs||now-item->lastPositionAtMs>250)return;
     const bool edge=in.nativeMeleeInputDown&&!p.meleeWasDown;
     p.meleeWasDown=in.nativeMeleeInputDown;
-    if(edge)activationLog("ordinary_melee_input_edge armed_ms="+std::to_string(now-p.armed)
-        +" input_not_contact_proof=1");
+    if(edge){activationLog("ordinary_melee_input_edge armed_ms="+std::to_string(now-p.armed)
+        +" input_not_contact_proof=1");nativeResearchEvidence(4u,"MELEE_INPUT_CAPTURED contact_unverified=1",false);}
     const unsigned interval=p.tracing&&now-p.started>2000?100:12;
     if(!edge&&p.lastSample&&now-p.lastSample<interval)return;
     p.lastSample=now;
@@ -181,26 +182,28 @@ void objectActivationInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool va
     const bool wakeChanged=p.signatureOk&&activationWord(body,0x170)!=activationWord(p.previous,0x170);
     const bool velocityChanged=p.signatureOk&&std::memcmp(body.data()+0x1D4,p.previous.data()+0x1D4,72)!=0;
     if(!p.tracing&&(edge||moved||wakeChanged||velocityChanged)){
-        p.tracing=true;p.started=now;p.lastSummary=0;
+        p.tracing=true;p.started=now;p.lastSummary=0;p.motionSeen=false;p.wakeSeen=false;
         p.baseline=p.previous;p.entityBaseline=p.entityPrevious;
         activationLog("trace_start reason="+std::string(edge?"melee_input":wakeChanged?"wake_word_change":velocityChanged?"reflected_state_change":"native_motion")
             +" sampled_order_not_call_trace=1");
         activationSummary(*item,p.previous,0,"pre_event_bytes");
     }
     if(p.tracing){
-        ++p.samples;p.motionSeen=p.motionSeen||moved;
-        if(p.signatureOk&&item->bodyVtable==item->imageBase+0x2874190&&p.motionSeen)nativeResearchEvidence(4u,"outcome=NATIVE_MOTION_OBSERVED pre_rest="+geometryHex(activationWord(p.baseline,0x170))+" rest_word="+geometryHex(activationWord(body,0x170))+" callback_call_observed=0");
+        ++p.samples;
+        if(wakeChanged&&!p.wakeSeen){p.wakeSeen=true;nativeResearchEvidence(4u,"WAKE_WORD_CHANGED pre="+geometryHex(activationWord(p.previous,0x170))+" post="+geometryHex(activationWord(body,0x170))+" callback_call_observed=0",false);}
+        if(moved&&!p.motionSeen){p.motionSeen=true;nativeResearchEvidence(4u,"outcome=FRESH_NATIVE_MOTION_OBSERVED pre_rest="+geometryHex(activationWord(p.baseline,0x170))+" rest_word="+geometryHex(activationWord(body,0x170))+" callback_call_observed=0");}
         const auto elapsed=now-p.started;
         activationDiff("body",p.previous,body,elapsed);
         activationDiff("entity",p.entityPrevious,entity,elapsed);
         if(edge||moved||wakeChanged||velocityChanged||!p.lastSummary||now-p.lastSummary>=1000){
             activationSummary(*item,body,elapsed,"sample");p.lastSummary=now;
         }
-        if(elapsed>=30000){
+        if(elapsed>=3000&&!in.nativeMeleeInputDown){
             activationDiff("body_vs_pre_event",p.baseline,body,elapsed);
             activationDiff("entity_vs_pre_event",p.entityBaseline,entity,elapsed);
             activationSummary(*item,body,elapsed,"final");
-            objectActivationInvestigatorReset("30s_complete");return;
+            nativeResearchEvidence(4u,"ATTEMPT_RECORDED motion="+std::to_string(p.motionSeen)+" wake_change="+std::to_string(p.wakeSeen)+" callback_call_observed=0",false);
+            objectActivationInvestigatorReset("attempt_window_complete_rearm");return;
         }
     }
     p.previous=body;p.entityPrevious=entity;

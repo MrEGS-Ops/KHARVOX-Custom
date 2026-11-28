@@ -3924,10 +3924,10 @@ void updateGameplayActions(XrTime displayTime){
             &&guidedCursorY>=guideY+guideButtonY&&guidedCursorY<guideY+guideButtonY+guideButtonH){
             const float localX=guidedCursorX-guideX-12;
             const int slot=static_cast<int>(localX/guideButtonStep);
-            if(slot>=0&&slot<4&&localX-slot*guideButtonStep<guideButtonW)guidedHover=slot;
+            if(slot>=0&&slot<3&&localX-slot*guideButtonStep<guideButtonW)guidedHover=slot;
         }
         if(guideTrigger&&!guidedTriggerPreviously&&guidedHover>=0){
-            const unsigned commands[]{3,4,1,2};
+            const unsigned commands[]{3,2,5};
             s.vrHandMenu.guidedCommand=commands[guidedHover];
             guidedTriggerOwned=true;
             kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),85,.65f,175.f);

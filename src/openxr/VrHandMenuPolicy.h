@@ -583,7 +583,7 @@ struct VrHandMenuState {
     bool calibrationOriginalWeaponLeft{};
     bool nativeResearchTestPage{};
     bool guidedTestingEnabled{true};
-    unsigned guidedCommand{}; // 1 retry, 2 skip, 3 observed OK, 4 observed failure
+    unsigned guidedCommand{}; // 2 skip, 3 next, 5 end investigation
     bool nativeResearchActive() const noexcept {return (activeResearchMask|activeResearchTestMask)!=0;}
     bool activationInvestigator{}; // session-only passive native wake investigation
     bool releaseInvestigator{}; // session-only observer, can coexist with grabs

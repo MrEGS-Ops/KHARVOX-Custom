@@ -9,6 +9,11 @@ struct GrappleGeometryInvestigation {
     unsigned dumps{};
 };
 GrappleGeometryInvestigation grappleGeometryInvestigation{};
+// Bounded per-level cache: repeated ray attempts still run, but duplicate raw dumps do not.
+struct GeometryDumpIdentity {unsigned handle{};std::uintptr_t entity{},body{};};
+std::array<GeometryDumpIdentity,64> geometryDumped{};
+unsigned geometryDumpedNext{};
+unsigned long long geometryDumpedGeneration{};
 std::string geometryHex(std::uintptr_t value){
     std::ostringstream o;o<<"0x"<<std::hex<<value;return o.str();
 }
@@ -107,6 +112,14 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
             +" cpu_mask="+geometryHex(mask)+" gpu_mask="+geometryHex(gpuMask)
             +" cpu_verts="+geometryHex(verts)+" cpu_indices="+geometryHex(indices)
             +" bounds="+geometryFloats(bounds,6));
+        if(nv>=3&&ni>=3&&(!verts||!indices)&&gpuMask){
+            // Capture the observed surface and tri descriptor, not guessed GPU addresses.
+            // This identifies fields for offline upload-path analysis; no buffer mapping.
+            std::ostringstream raw;raw<<std::hex<<std::setfill('0');
+            for(auto ch:h)raw<<std::setw(2)<<static_cast<unsigned>(ch);
+            geometryLog("GPU_DESCRIPTOR_CANDIDATE surface="+geometryHex(surfaces+si*0x60)+" tri="+geometryHex(tri)+" header="+raw.str()+" gpu_buffer_unverified=1");
+            nativeResearchEvidence(1u,"GPU_RESIDENT_CANDIDATE cpu_geometry_missing=1",false);
+        }
         if(primitive!=0||mask!=0x1801f||!verts||!indices||nv<3||nv>4096||ni<3||ni%3||ni>12288
             ||totalTriangles+ni/3>8192)continue;
         bool boundsOk=true;
@@ -208,6 +221,11 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDisc
         +" observed_ms="+std::to_string(item.observedAtMs)
         +" moved_ms="+std::to_string(item.nativeMovedAtMs));
     geometryReflectedMesh(item,in);
+    if(geometryDumpedGeneration!=item.generation){geometryDumped={};geometryDumpedNext=0;geometryDumpedGeneration=item.generation;}
+    for(const auto& key:geometryDumped)if(key.handle==item.handle&&key.entity==ep&&key.body==bp){
+        geometryLog("RAW_DUMP_REUSED handle="+std::to_string(item.handle));
+        nativeResearchEvidence(1u,"EXISTING_RAW_DUMP_REUSED",false);return;
+    }
     struct Node{std::uintptr_t address{},parent{};unsigned offset{},depth{},limit{};std::string type;};
     std::vector<Node> nodes;
     nodes.push_back({ep,0,0,0,4096,geometryType(item,ep)});
@@ -310,7 +328,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDisc
             ++bounds;
         }
     }
-    if(visited&&rawBytes){nativeMeshRawBytes.store(rawBytes);nativeResearchEvidence(1u,"RAW_GEOMETRY_CAPTURED handle="+std::to_string(item.handle)+" bytes="+std::to_string(rawBytes)+" (not verified mesh)",false);}
+    if(visited&&rawBytes){geometryDumped[geometryDumpedNext++%geometryDumped.size()]={item.handle,ep,bp};nativeMeshRawBytes.store(rawBytes);nativeResearchEvidence(1u,"RAW_GEOMETRY_CAPTURED handle="+std::to_string(item.handle)+" bytes="+std::to_string(rawBytes)+" (not verified mesh)",false);}
     geometryLog("OBJECT_END handle="+std::to_string(item.handle)+" nodes="+std::to_string(visited)
         +" queued="+std::to_string(nodes.size())+" edges="+std::to_string(edges)
         +" bounds="+std::to_string(bounds)+" array_samples="+std::to_string(samples)
@@ -325,6 +343,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
         s.down=false;s.pending=false;return;
     }
+    if(s.down&&s.generation==generation&&s.handle)return; // one capture per held grip once a target is found
     if(s.down&&s.generation==generation&&now-s.started<1000)return;
     nativeMeshStage.store(1);nativeMeshHandle.store(0);nativeMeshRawBytes.store(0);
     s.down=true;s.pending=true;s.generation=generation;++s.serial;s.started=now;s.dumps=0;s.handle=0;
