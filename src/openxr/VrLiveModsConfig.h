@@ -329,6 +329,34 @@ inline VrLivePoint vrLiveZoneCenter(const VrLiveSettings& s,VrLiveCapture target
     return vrLiveShiftedPoint(hip?vrLiveHipDefaultCenter():vrLiveWheelDefaultCenter(),
         hip?s.hipShift[side]:s.wheelShift[side]);
 }
+// Experimental rigid Gunslinger frame. Raw physical yaw only: joystick
+// turns and native camera/body catch-up never enter this state.
+struct VrSpatialZoneLock {
+    bool valid{};
+    float yaw{},sine{},cosine{1.f};
+};
+inline float vrSpatialWrap(float a) noexcept {
+    return std::remainder(a,360.f);
+}
+inline void vrSpatialUpdate(VrSpatialZoneLock& frame,float headYaw,float limit) noexcept {
+    if(!std::isfinite(headYaw))return;
+    limit=std::clamp(limit,30.f,90.f);
+    if(!frame.valid){frame.valid=true;frame.yaw=vrSpatialWrap(headYaw);}
+    const float residual=vrSpatialWrap(headYaw-frame.yaw);
+    frame.yaw=vrSpatialWrap(frame.yaw+residual-std::clamp(residual,-limit,limit));
+    const float radians=frame.yaw*.01745329251994329577f;
+    frame.sine=std::sin(radians);frame.cosine=std::cos(radians);
+}
+inline VrLivePoint vrSpatialToLocal(const VrSpatialZoneLock& f,VrLivePoint p) noexcept {
+    return {f.cosine*p.x-f.sine*p.z,p.y,f.sine*p.x+f.cosine*p.z};
+}
+inline VrLivePoint vrSpatialToTracking(const VrSpatialZoneLock& f,VrLivePoint p) noexcept {
+    return {f.cosine*p.x+f.sine*p.z,p.y,-f.sine*p.x+f.cosine*p.z};
+}
+inline bool vrSpatialInside(VrLivePoint p,VrLivePoint c,bool expanded) noexcept {
+    const float x=p.x-c.x,y=p.y-c.y,z=p.z-c.z,r=vrLiveHipRadius(expanded);
+    return x*x+y*y+z*z<=r*r;
+}
 inline bool vrLiveUpdateZoneDraft(VrLivePoint& draft,bool gripHeld,bool tracked,
                                   VrLivePoint controllerRelative,VrLiveCapture target) noexcept {
     // On the FIRST valid tracked Grip frame, the preview immediately

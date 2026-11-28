@@ -23,6 +23,8 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
             s.customMods.handFocusedRs,D::HandFocus});
         rows.push_back({"Controller Input Monitor",VrLiveMod::Other,
             s.vrHandMenu.devControllerInputs,D::ControllerMonitor});
+        rows.push_back({"Spatial Zone Locking",VrLiveMod::Other,
+            s.vrHandMenu.spatialZoneLock,D::SpatialZoneLock});
         rows.push_back({"Stats / Reset",VrLiveMod::Stats,
             true,D::StatsReset});
         rows.push_back({"Level Records / Reset",VrLiveMod::Stats,
@@ -136,6 +138,9 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Visible ONLY inside Gunslinger",
             "hip or wheel calibration.",
             "Does not change button bindings.","",""}}};
+        case D::SpatialZoneLock:return {{{"Experimental rigid Gunslinger zones.",
+            "Replaces both hip and wheel positions.","Face forward when enabling or recentering.",
+            "Limit adjusts physical yaw compensation.","Normal calibrations preserved; OFF at launch.","Use Gunslinger to place experimental zones."}}};
         case D::LevelRecordsReset:return {{{
             "Reset your saved level-time records.",
             "Current level or all levels.",
@@ -370,7 +375,7 @@ void openVrLiveCapture(kharvox::VrLiveCapture capture){
     m.previewValid=false;
     m.gunslingerZoneDraftValid=kharvox::vrLiveIsGunslingerCapture(capture);
     m.gunslingerZoneDraft=m.gunslingerZoneDraftValid
-        ?kharvox::vrLiveZoneCenter(s.vrLiveSettings,capture):kharvox::VrLivePoint{};
+        ?kharvox::vrLiveZoneCenter(gunslingerPositionSettings(),capture):kharvox::VrLivePoint{};
     m.gunslingerZoneMoving=false;
     m.gunslingerZonePreviewCue={};
     m.mode=kharvox::VrHandMenuMode::Calibrating;
@@ -408,14 +413,21 @@ void updateVrLiveZoneDraft(){
     if(!controller.valid||!controller.positionTracked){
         m.gunslingerZonePreviewCue={};return;
     }
-    const auto relative=controllerRelativeToBodyTrackingOrigin(controller).position;
-    const auto hd=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
-    const kharvox::VrLivePoint point{right?relative.x-hd.x:hd.x-relative.x,
-        relative.y-hd.y,relative.z-hd.z};
+    if(m.spatialZoneLock&&!m.spatialFrame.valid){m.gunslingerZonePreviewCue={};return;}
+    const auto point=gunslingerHandPoint(controller,right);
     if(kharvox::vrLiveUpdateZoneDraft(m.gunslingerZoneDraft,
         gripHeld,true,point,target))m.gunslingerZoneDraftValid=true;
-    if(kharvox::vrLiveZonePreviewEnter(m.gunslingerZonePreviewCue,target,
-        m.gunslingerZoneDraft,point,gripHeld,m.gunslingerZoneDraftValid)){
+    bool entered=false;
+    if(m.spatialZoneLock){
+        auto& cue=m.gunslingerZonePreviewCue;
+        if(gripHeld||!m.gunslingerZoneDraftValid)cue={};
+        else{
+            const bool inside=kharvox::vrSpatialInside(point,m.gunslingerZoneDraft,cue.sampled&&cue.inside);
+            entered=cue.sampled&&!cue.inside&&inside;cue={true,inside};
+        }
+    }else entered=kharvox::vrLiveZonePreviewEnter(m.gunslingerZonePreviewCue,target,
+        m.gunslingerZoneDraft,point,gripHeld,m.gunslingerZoneDraftValid);
+    if(entered){
         kharvox::queuePhysicalZoneEntryCue(s.handZoneCues[right?1:0],
             GetTickCount64());
     }
@@ -468,6 +480,18 @@ void captureVrLivePosition(){
         m.mode=kharvox::VrHandMenuMode::Menu;
         m.message="Both crouch heights saved.";
         return;
+    }
+    if(m.spatialZoneLock&&!crouch){
+        if(!m.spatialFrame.valid||!kharvox::vrLiveCapturePoint(m.spatialOffsets,capture,p,headDelta)){
+            m.message="Invalid experimental zone. Retry.";return;
+        }
+        const bool right=capture==VrLiveCapture::HipRight||capture==VrLiveCapture::WheelRight;
+        kharvox::queueCalibrationSaveCue(s.configSaveCues,right,true,GetTickCount64());
+        if(capture==VrLiveCapture::HipLeft||capture==VrLiveCapture::WheelLeft){
+            openVrLiveCapture(capture==VrLiveCapture::HipLeft?VrLiveCapture::HipRight:VrLiveCapture::WheelRight);return;
+        }
+        m.liveCapture=VrLiveCapture::None;m.gunslingerZoneDraftValid=false;m.gunslingerZoneMoving=false;
+        m.mode=kharvox::VrHandMenuMode::Menu;m.message="Experimental zones saved for this session.";return;
     }
     if(!kharvox::vrLiveCapturePoint(s.vrLiveSettings,capture,p,headDelta)){
         m.message="Invalid pose / too close to standing height. Retry.";
@@ -750,6 +774,13 @@ bool handleVrLiveMenuAction(int action){
             if(option==0)openVrLiveCapture(VrLiveCapture::HipLeft);
             else if(option==1)openVrLiveCapture(VrLiveCapture::WheelLeft);
             else if(option==2){
+                if(m.spatialZoneLock){
+                    m.spatialOffsets.hipShift=s.vrLiveSettings.hipShift;
+                    m.spatialOffsets.wheelShift=s.vrLiveSettings.wheelShift;
+                    m.message="Experimental positions restored from original.";
+                    kharvox::queueMenuSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                    return true;
+                }
                 kharvox::vrLiveResetGunslingerPositions(s.vrLiveSettings);
                 changed=true;
             }

@@ -1670,6 +1670,15 @@ void updateHeadPose(const XrViewState& viewState,XrTime displayTime,bool nativeP
         &&!centeredNativeMenuActive;
     if(positionValid&&(!s.headZeroPositionValid||!worldActive)){s.headZeroPosition=midpoint;s.headZeroPositionValid=true;}
     s.head=ConvertOpenXRToDoom(s.views[0].pose);
+    if(s.vrHandMenu.spatialZoneLock&&positionValid){
+        // Project the raw headset forward axis onto the horizontal plane.
+        // Hold the last heading when looking nearly straight up/down.
+        const auto forward=rotateVector(raw,{0.f,0.f,-1.f});
+        if(forward.x*forward.x+forward.z*forward.z>.04f)
+            kharvox::vrSpatialUpdate(s.vrHandMenu.spatialFrame,
+                std::atan2(-forward.x,-forward.z)*57.2957795131f,
+                s.vrHandMenu.spatialCompensationLimit);
+    }
     // HUD17 steep-pitch control: do not alter the pose. Record the Euler
     // branch and presentation state at the reported down-look boundary so a
     // genuine HUD11 run can distinguish camera singularity from an old HUD
@@ -2089,6 +2098,24 @@ XrVector3f positionRelativeToBodyTrackingOrigin(XrVector3f position){
     const auto inverseAcceptedYaw=conjugate(yawQuaternion(s.controllerFrameYaw.acceptedForPose(s.acceptedPhysicalYaw)));
     const auto pendingSnapYaw=yawQuaternion(s.controllerFrameYaw.turnForPose(artificialTurnVisualYaw()));
     return rotateVector(pendingSnapYaw,rotateVector(inverseAcceptedYaw,relativePositionWorld));
+}
+// All four zones share the leader's rigid frame, based on raw head
+// translation and one compensated yaw. Followers retain their local offsets.
+kharvox::VrLivePoint gunslingerHandPoint(const ControllerPose& hand,bool right){
+    const auto& m=s.vrHandMenu;
+    if(m.spatialZoneLock){
+        const auto p=kharvox::vrSpatialToLocal(m.spatialFrame,{
+            hand.position.x-s.trackingHeadPosition.x,
+            hand.position.y-s.trackingHeadPosition.y,
+            hand.position.z-s.trackingHeadPosition.z});
+        return {right?p.x:-p.x,p.y,p.z};
+    }
+    const auto p=positionRelativeToBodyTrackingOrigin(hand.position);
+    const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
+    return {right?p.x-head.x:head.x-p.x,p.y-head.y,p.z-head.z};
+}
+const kharvox::VrLiveSettings& gunslingerPositionSettings(){
+    return s.vrHandMenu.spatialZoneLock?s.vrHandMenu.spatialOffsets:s.vrLiveSettings;
 }
 WeaponPose controllerRelativeToBodyTrackingOrigin(const ControllerPose& controller){
     const auto inverseBody=conjugate(s.headZero);
@@ -4114,16 +4141,16 @@ void updateGameplayActions(XrTime displayTime){
     bool behindHeadWheelRequested=false;
     if(anyGestureWheelEnabled&&gameplay&&s.trackingHeadPositionValid
         &&s.headZeroValid&&s.headZeroPositionValid){
-        const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
         auto insideZone=[&](int side,bool active)->bool{
             const auto& controller=side==0?s.rightGripController:s.leftGripController;
             if(!controller.valid||!controller.positionTracked)return false;
-            const auto grip=controllerRelativeToBodyTrackingOrigin(controller).position;
-            const float outward=side==0?grip.x-head.x:head.x-grip.x;
-            const float vertical=grip.y-head.y;
-            const float behind=grip.z-head.z;
-            return kharvox::vrLiveWheelInside(
-                {outward,vertical,behind},active,s.vrLiveSettings.wheelShift[side]);
+            if(s.vrHandMenu.spatialZoneLock&&!s.vrHandMenu.spatialFrame.valid)return false;
+            const auto point=gunslingerHandPoint(controller,side==0);
+            const auto& cfg=gunslingerPositionSettings();
+            if(s.vrHandMenu.spatialZoneLock)
+                return kharvox::vrSpatialInside(point,kharvox::vrLiveZoneCenter(cfg,
+                    side==0?kharvox::VrLiveCapture::WheelRight:kharvox::VrLiveCapture::WheelLeft),active);
+            return kharvox::vrLiveWheelInside(point,active,cfg.wheelShift[side]);
         };
         // Independent zone-entry cues for BOTH hands. Wheel-side indices
         // are 0=right,1=left; haptic indices are the inverse.
@@ -4426,18 +4453,14 @@ void updateGameplayActions(XrTime displayTime){
        &&!quickHipTwoHandGuard
        &&!weaponWheelActive&&!s.behindHeadWheelActive&&!s.twoHandCalibrationMode
        &&s.trackingHeadPositionValid&&s.headZeroValid){
-        const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
         for(int side=0;side<2;++side){
             const auto& hand=side==0?s.rightGripController:s.leftGripController;
             bool inside=false;
-            if(hand.valid&&hand.positionTracked){
-                const auto p=controllerRelativeToBodyTrackingOrigin(hand).position;
-                const kharvox::BackWeaponVec3 relative{
-                    side==0?p.x-head.x:head.x-p.x,p.y-head.y,p.z-head.z};
-                inside=kharvox::vrLiveHipInside(
-                    {relative.x,relative.y,relative.z},
-                    s.quickHolsters.gestures[side].inside,
-                    s.vrLiveSettings.hipShift[side]);
+            if(hand.valid&&hand.positionTracked
+                &&(!s.vrHandMenu.spatialZoneLock||s.vrHandMenu.spatialFrame.valid)){
+                const auto p=gunslingerHandPoint(hand,side==0);
+                inside=kharvox::vrLiveHipInside(p,s.quickHolsters.gestures[side].inside,
+                    gunslingerPositionSettings().hipShift[side]);
             }
             const bool held=readFloatAction(side==0
                 ?s.rightWeaponGrip:s.leftWeaponGrip)>.55f;
@@ -10414,6 +10437,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const bool zoneCapturing=zm.mode==kharvox::VrHandMenuMode::Calibrating
         &&kharvox::vrLiveIsGunslingerCapture(zm.liveCapture);
     if(gunslingerZonePreviewReady&&zoneCapturing
+        &&(!zm.spatialZoneLock||zm.spatialFrame.valid)
         &&s.trackingHeadPositionValid&&s.headZeroValid
         &&s.headZeroPositionValid&&s.sessionState==XR_SESSION_STATE_FOCUSED
         &&gunslingerZonePreview.handle!=XR_NULL_HANDLE){
@@ -10422,7 +10446,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const bool hip=target==C::HipRight||target==C::HipLeft;
         const bool right=target==C::HipRight||target==C::WheelRight;
         const auto zoneCenter=zoneCapturing&&zm.gunslingerZoneDraftValid
-            ?zm.gunslingerZoneDraft:kharvox::vrLiveZoneCenter(s.vrLiveSettings,target);
+            ?zm.gunslingerZoneDraft:kharvox::vrLiveZoneCenter(gunslingerPositionSettings(),target);
         const auto head=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
         const XrVector3f bodyCenter{head.x+(right?zoneCenter.x:-zoneCenter.x),
             head.y+zoneCenter.y,head.z+zoneCenter.z};
@@ -10434,12 +10458,18 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const auto bodyRotation=multiply(yawAccepted,yawPendingInv);
         const auto trackingCenter=addVector(s.bodyFollowPosition,
             rotateVector(bodyRotation,bodyCenter));
-        const auto centerWorld=addVector(s.headZeroPosition,
+        auto centerWorld=addVector(s.headZeroPosition,
             rotateVector(s.headZero,trackingCenter));
-        const auto zoneRotation=multiply(s.headZero,bodyRotation);
+        auto zoneRotation=multiply(s.headZero,bodyRotation);
+        if(zm.spatialZoneLock){
+            const auto p=kharvox::vrSpatialToTracking(zm.spatialFrame,{right?zoneCenter.x:-zoneCenter.x,zoneCenter.y,zoneCenter.z});
+            centerWorld=addVector(s.trackingHeadPosition,{p.x,p.y,p.z});
+            zoneRotation=yawQuaternion(zm.spatialFrame.yaw);
+        }
         const float diameter=2.f*kharvox::vrLiveHipRadius();
-        const float width=hip?diameter:.48f,height=hip?diameter:.54f,
-            depth=hip?diameter:.585f;
+        const bool spherical=hip||zm.spatialZoneLock;
+        const float width=spherical?diameter:.48f,height=spherical?diameter:.54f,
+            depth=spherical?diameter:.585f;
         // Orthogonal wireframe rings only: XY, XZ, and YZ.
         // Hip rings use the same spherical entry diameter as hit detection;
         // the existing wheel dimensions remain unchanged.

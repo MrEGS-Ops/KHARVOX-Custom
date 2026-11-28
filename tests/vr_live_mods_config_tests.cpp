@@ -9,6 +9,23 @@
 #include <cstdio>
 int main(){
     using namespace kharvox;
+    VrSpatialZoneLock frame{};
+    vrSpatialUpdate(frame,0,75);
+    vrSpatialUpdate(frame,60,75);
+    assert(frame.valid&&std::abs(frame.yaw)<.001f);
+    vrSpatialUpdate(frame,100,75);
+    assert(std::abs(frame.yaw-25)<.001f);
+    vrSpatialUpdate(frame,25,75);
+    assert(std::abs(frame.yaw-25)<.001f);
+    for(int a=30;a<=1080;a+=5){
+        vrSpatialUpdate(frame,vrSpatialWrap(float(a)),75);
+        assert(std::abs(vrSpatialWrap(float(a)-frame.yaw))<=75.001f);
+    }
+    const VrLivePoint p{.3f,-.8f,.2f};
+    const auto roundtrip=vrSpatialToLocal(frame,vrSpatialToTracking(frame,p));
+    assert(std::abs(p.x-roundtrip.x)<.001f&&std::abs(p.z-roundtrip.z)<.001f);
+    assert(vrSpatialInside(p,p,false));
+    assert(!vrSpatialInside({p.x+.26f,p.y,p.z},p,false));
     VrLiveSettings s{};
     assert(vrLiveValidSettings(s));
     assert(s.enabledOverrides[2]==1&&s.enabledOverrides[5]==1);

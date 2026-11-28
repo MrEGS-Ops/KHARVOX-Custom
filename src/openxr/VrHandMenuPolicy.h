@@ -113,7 +113,7 @@ inline constexpr bool vrMenuGameplayTurnAllowed(VrHandMenuMode mode,VrMenuPage p
 }
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting,GaussTwoHandFire
+    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting,GaussTwoHandFire,SpatialZoneLock
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -621,6 +621,10 @@ struct VrHandMenuState {
     VrMenuNavigation navigation{};
     VrMenuDeveloperReveal devReveal{};
     bool devWeaponAlignment{},devControllerInputs{};
+    bool spatialZoneLock{},spatialOffsetsInitialized{};
+    float spatialCompensationLimit{75.f};
+    VrSpatialZoneLock spatialFrame{};
+    VrLiveSettings spatialOffsets{};
     ObjectDiscoverySettings objectDiscovery{};
     GrappleAnchorSettings grappleAnchor{};
     bool objectMeleeActivation{}; // original path, session only

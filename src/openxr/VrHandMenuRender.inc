@@ -917,7 +917,21 @@ void paintVrHandMenu() {
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
                 :opt==D::GaussTwoHandFire?"PERSISTENT FIRE SETTING":"SESSION-ONLY DEVELOPER TOOL",muted);
-            if(opt==D::GuidedTesting){
+            if(opt==D::SpatialZoneLock){
+                const std::array<std::string,4> labels{
+                    m.spatialZoneLock?"SPATIAL LOCK: ON":"SPATIAL LOCK: OFF",
+                    "LIMIT -5 DEG","LIMIT +5 DEG","RECENTER HEADING"};
+                for(int i=0;i<4;++i){
+                    const int top=186+i*68;
+                    const bool hot=m.hovered==130+i||(m.navigation.usingStick&&m.navigation.actionIndex==i);
+                    fill(531,top,384,58,hot?RGB(52,83,99):RGB(39,49,63));
+                    write(548,top+12,labels[i],i==0&&m.spatialZoneLock?RGB(128,255,177):white);
+                }
+                write(538,474,"Compensation limit: "+std::to_string(int(m.spatialCompensationLimit))+" deg",white);
+                write(538,508,"Face forward before recentering.",muted);
+                write(538,542,"Place zones in normal Gunslinger menu.",muted);
+                write(538,576,"OFF restores original saved positions.",muted);
+            }else if(opt==D::GuidedTesting){
                 const char* labels[]{m.guidedTestingEnabled?"GUIDE HUD: ON":"GUIDE HUD: OFF","RETRY CURRENT STEP","SKIP CURRENT STEP","VISUAL CHECK: OK","VISUAL CHECK: FAIL"};
                 for(int i=0;i<5;++i){
                     const int top=186+i*68;

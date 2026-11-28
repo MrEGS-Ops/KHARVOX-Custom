@@ -517,7 +517,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime,bool left=false
             if(row<0||row>=static_cast<int>(list.size()))return -1;
             const int optionY=186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GuidedTesting?5:list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:list[row].mod==kharvox::VrLiveMod::Gunslinger?3:5;
+                ==kharvox::VrMenuDevOption::SpatialZoneLock?4:list[row].developer==kharvox::VrMenuDevOption::GuidedTesting?5:list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:list[row].mod==kharvox::VrLiveMod::Gunslinger?3:5;
             const bool grappleInline=list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor;
             const bool researchInline=list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch;
             const int optionStep=researchInline?52:grappleInline?60:expInline?91:68;
@@ -1029,7 +1029,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(n>0)m.selectedRow=std::clamp(m.selectedRow,0,n-1);
             const auto optionCount=[&](const VrLiveMenuEntry& entry)->int{
                 using D=kharvox::VrMenuDevOption;
-                return entry.developer==D::Experimental?3:
+                return entry.developer==D::SpatialZoneLock?4:entry.developer==D::Experimental?3:
                     entry.developer==D::GuidedTesting?5:
                     entry.developer==D::NativeInteractionResearch?7:
                     entry.developer==D::GrappleAnchor?4:1;
@@ -1140,7 +1140,24 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
 )){
                 using D=kharvox::VrMenuDevOption;
                 const auto kind=rows[m.selectedRow].developer;
-                if(kind==D::GaussTwoHandFire){
+                if(kind==D::SpatialZoneLock){
+                    if(chosen==130){
+                        m.spatialZoneLock=!m.spatialZoneLock;
+                        if(m.spatialZoneLock&&!m.spatialOffsetsInitialized){
+                            m.spatialOffsets=s.vrLiveSettings;m.spatialOffsetsInitialized=true;
+                        }
+                        m.spatialFrame={};
+                        m.message=m.spatialZoneLock?"Spatial lock ON. Original positions overridden.":"Spatial lock OFF. Original positions restored.";
+                    }else if(chosen==131||chosen==132){
+                        m.spatialCompensationLimit=std::clamp(m.spatialCompensationLimit+(chosen==131?-5.f:5.f),30.f,90.f);
+                        m.message="Compensation limit: "+std::to_string(int(m.spatialCompensationLimit))+" deg";
+                    }else if(chosen==133){
+                        m.spatialFrame={};m.message="Spatial reference recentered.";
+                    }
+                    s.headZoneEntered={};kharvox::resetQuickHipGestures(s.quickHolsters);
+                    s.handZoneCues={};
+                    log("[SPATIAL-ZONES] "+m.message);
+                }else if(kind==D::GaussTwoHandFire){
                     const bool old=s.vrLiveSettings.gaussRequireTwoHandFire;
                     s.vrLiveSettings.gaussRequireTwoHandFire=!old;
                     if(!saveVrLiveSettings())s.vrLiveSettings.gaussRequireTwoHandFire=old;
