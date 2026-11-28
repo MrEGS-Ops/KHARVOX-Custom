@@ -249,7 +249,7 @@ void paintVrHandMenu() {
             "fine-tune it to your liking if needed.",white);
         SelectObject(dc,smallFont);
         write(welcomeX+30,welcomeY+245,
-            "Hold R3 during gameplay to adjust settings.",RGB(84,233,214));
+            "Hold R3 for 0.5 s to adjust settings.",RGB(84,233,214));
         fill(welcomeX+25,welcomeY+308,welcomeW-50,55,RGB(28,57,66));
         SelectObject(dc,regular);
         write(welcomeX+43,welcomeY+323,
@@ -444,7 +444,7 @@ void paintVrHandMenu() {
         SelectObject(dc,regular);
         write(156,kharvox::calibrationGuideTop+5,waiting?"Equipping weapon...":"Point at a weapon. Pull that hand's trigger.",RGB(84,233,214));
         SelectObject(dc,smallFont);
-        if(!waiting)write(156,kharvox::calibrationGuideTop+36,"Hold either Grip to switch the pointer. Centre keeps the current weapon.",white);
+        if(!waiting)write(156,kharvox::calibrationGuideTop+36,"Hold either Grip to switch the pointer.",white);
     }else if(radialView){
         using namespace kharvox;
         SelectObject(dc,smallFont);
@@ -476,7 +476,7 @@ void paintVrHandMenu() {
             DeleteObject(brush);
             const int x=int(480+137*std::cos(radialAngle(i))),y=int(360+137*std::sin(radialAngle(i)));
             label(x-72,y-15,144,29,radialGroups[i].name,white);
-            if(i==radialFlyoutCount){
+            if(i==radialPainsawIndex){
                 const bool on=s.customMods.chainsawTriggerThrottle||s.customMods.motionChainsawKillSpeed;
                 label(x-40,y+10,80,23,on?"ON":"OFF",on?RGB(111,224,156):muted);
             }
@@ -490,7 +490,7 @@ void paintVrHandMenu() {
         SelectObject(dc,oldPen);
         DeleteObject(rim);
         label(423,341,114,38,dev?"Dev Mode":"_RIPSHIFT",accent);
-        if(m.radialCategory>=0&&m.radialCategory<radialFlyoutCount){
+        if(radialHasFlyout(m.radialCategory)){
             const int x=radialPanelX(m.radialCategory);
             const auto& opts=radialGroups[m.radialCategory].settings;
             const int w=radialPanelWidth,h=radialRowHeight,side=radialControlWidth;
@@ -531,9 +531,11 @@ void paintVrHandMenu() {
             }
             if(!m.message.empty()){
                 const int y=radialRowY(int(opts.size()))+1;
-                fill(x,y,w,54,RGB(22,32,42));
-                const auto message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
-                wrap(x+8,y+3,w-16,49,message,accent);
+                const std::string message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
+                RECT measured{0,0,w-16,0};
+                DrawTextA(dc,message.c_str(),-1,&measured,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
+                const int height=std::min(int(vrMenuH)-y-8,int(measured.bottom-measured.top)+16);
+                if(height>0){fill(x,y,w,height,RGB(22,32,42));wrap(x+8,y+8,w-16,height-16,message,accent);}
             }
         }
     }else if(m.page==kharvox::VrMenuPage::Records
@@ -820,7 +822,7 @@ void paintVrHandMenu() {
             write(538,163,opt==D::Experimental
                 ?"OBJECT DISCOVERY MODE"
                 :opt==D::GrappleAnchor?"GRAPPLE GRAB - EXPERIMENTAL"
-                :"SESSION-ONLY DEVELOPER TOOL",muted);
+                :opt==D::GaussTwoHandFire?"PERSISTENT FIRE SETTING":"SESSION-ONLY DEVELOPER TOOL",muted);
             if(opt==D::GuidedTesting){
                 const char* labels[]{m.guidedTestingEnabled?"GUIDE HUD: ON":"GUIDE HUD: OFF","RETRY CURRENT STEP","SKIP CURRENT STEP","VISUAL CHECK: OK","VISUAL CHECK: FAIL"};
                 for(int i=0;i<5;++i){
@@ -868,6 +870,7 @@ void paintVrHandMenu() {
                     ?"OPEN WEAPON RECOIL SETTINGS"
                      :opt==D::StatsReset
                         ?"OPEN STATS RESET SETTINGS"
+                    :opt==D::GaussTwoHandFire?(s.vrLiveSettings.gaussRequireTwoHandFire?"GAUSS 2-HAND FIRE: ON":"GAUSS 2-HAND FIRE: OFF")
                     :opt==D::HandFocus
                         ?(s.customMods.handFocusedRs?"SWITCH TO HEAD FOCUS"
                             :"SWITCH TO HAND FOCUS")
@@ -915,7 +918,10 @@ void paintVrHandMenu() {
                     discoverySource==2?"SCANNER: ACTIVE":"SCANNER: UNAVAILABLE",
                     discoverySource==2?RGB(128,255,177):RGB(255,196,112));
             }
-            if(opt==D::StatsReset){
+            if(opt==D::GaussTwoHandFire){
+                write(538,305,"Applies to Gauss alternate fire.",muted);
+                write(538,348,"Normal fire remains one-handed.",muted);
+            }else if(opt==D::StatsReset){
                 write(538,305,"Separate resets for all three Stats.",muted);
                 write(538,348,"Each requires a second confirmation.",muted);
             }else if(opt!=D::Experimental&&opt!=D::GrappleAnchor&&opt!=D::NativeInteractionResearch&&opt!=D::GuidedTesting){
@@ -1216,13 +1222,16 @@ void paintVrHandMenu() {
             const auto kind=KharvoxWeaponCurrentKind();
             const bool alternate=kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun;
             const int hovered=kharvox::weaponGuideAction(m.cursorX,m.cursorY,alternate);
-            const int left[]{464,626,788};
-            const char* labels[]{m.resetWeaponPending?"Confirm reset":"Reset weapon","Change weapon",m.alternateProfile?"Alt fire":"Normal"};
-            for(int i=0;i<(alternate?3:2);++i){
-                fill(left[i],buttonY,152,40,hovered==i?accent:RGB(65,83,94));
-                fill(left[i]+1,buttonY+1,150,38,hovered==i?RGB(31,68,75):RGB(27,39,49));
-                RECT rc{left[i],buttonY,left[i]+152,buttonY+40};
-                SetTextColor(dc,i==0&&m.resetWeaponPending?RGB(255,219,134):white);
+            const int left[]{464,626,788,864};
+            const int widths[]{152,152,76,76};
+            const char* labels[]{m.resetWeaponPending?"Confirm reset":"Reset weapon","Change weapon","NORMAL","ALT FIRE"};
+            if(alternate)write(788,buttonY-23,"Fire Mode",muted);
+            for(int i=0;i<(alternate?4:2);++i){
+                const bool selected=i>=2&&(m.alternateProfile==(i==3));
+                fill(left[i],buttonY,widths[i],40,hovered==i||selected?accent:RGB(65,83,94));
+                fill(left[i]+1,buttonY+1,widths[i]-2,38,hovered==i||selected?RGB(31,68,75):RGB(27,39,49));
+                RECT rc{left[i],buttonY,left[i]+widths[i],buttonY+40};
+                SetTextColor(dc,i==0&&m.resetWeaponPending?RGB(255,219,134):selected?accent:white);
                 DrawTextA(dc,labels[i],-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
             }
         }
@@ -1242,7 +1251,7 @@ void paintVrHandMenu() {
         wrap(guideX+14,top+8,guideW-28,38,heading,RGB(84,233,214));
         const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object; release to lock":"Sticks fine-tune; offhand trigger = 5 cm; hold Grip to freeze")
             :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move zone; release to preview")
-            :crouch?"Move head to target height; RT captures"
+            :crouch?(m.liveCapture==kharvox::VrLiveCapture::CrouchStanding?"Stand normally; RT captures standing height":"Crouch to target height; RT saves both heights")
             :m.weaponCalibrationStage==3?"Right-handed profiles saved. LT: calibrate left-handed weapon; RT or B: finish"
             :!m.previewValid?"Waiting for valid controller tracking"
             :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")

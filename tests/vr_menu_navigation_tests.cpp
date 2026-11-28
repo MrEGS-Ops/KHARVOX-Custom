@@ -9,6 +9,20 @@
 #include <cassert>
 int main(){
     using namespace kharvox;
+    VrMenuHoldShortcut hold{};
+    assert(updateVrMenuHoldShortcut(hold,true,100)==VrMenuShortcutAction::None);
+    assert(updateVrMenuHoldShortcut(hold,true,599)==VrMenuShortcutAction::None);
+    assert(updateVrMenuHoldShortcut(hold,true,600)==VrMenuShortcutAction::Toggle);
+    assert(updateVrMenuHoldShortcut(hold,true,1200)==VrMenuShortcutAction::None);
+    assert(updateVrMenuHoldShortcut(hold,false,1201)==VrMenuShortcutAction::ConsumedRelease);
+    assert(updateVrMenuHoldShortcut(hold,true,1300)==VrMenuShortcutAction::None);
+    assert(updateVrMenuHoldShortcut(hold,false,1400)==VrMenuShortcutAction::None);
+    assert(!radialHasFlyout(3)&&radialHasFlyout(5));
+    for(int i=0;i<radialCategoryCount;++i)
+        assert(radialHit(float(480+137*std::cos(radialAngle(i))),float(360+137*std::sin(radialAngle(i))),-1,0)==100+i);
+    assert(weaponGuideAction(800,weaponGuideButtonTop+10,true)==2);
+    assert(weaponGuideAction(900,weaponGuideButtonTop+10,true)==3);
+    assert(weaponGuideAction(900,weaponGuideButtonTop+10,false)==-1);
     VrMenuNavigation nav{};
     // Campaign death detection never depends on whether the overlay is
     // visible. Each native death-menu opening is counted exactly once.

@@ -3,7 +3,8 @@
 
 namespace kharvox {
 constexpr int radialCategoryCount=6;
-constexpr int radialFlyoutCount=5;
+constexpr int radialPainsawIndex=3;
+inline constexpr bool radialHasFlyout(int i){return i>=0&&i<radialCategoryCount&&i!=radialPainsawIndex;}
 constexpr int radialPanelWidth=260;
 constexpr int radialRowTop=170;
 constexpr int radialRowStep=48;
@@ -17,7 +18,7 @@ inline double radialAngle(int i){return -1.570796326794897+i*radialStep;}
 inline int radialPanelX(int i){return std::cos(radialAngle(i))<-.01?8:692;}
 inline int radialRowY(int i){return radialRowTop+i*radialRowStep;}
 inline int radialHit(float x,float y,int category,int count){
-    if(category>=0&&category<radialFlyoutCount){
+    if(radialHasFlyout(category)){
         const int left=radialPanelX(category);
         if(x>=left&&x<left+radialPanelWidth&&y>=radialRowTop){
             const int row=int((y-radialRowTop)/radialRowStep);
@@ -61,7 +62,8 @@ inline int weaponGuideAction(float x,float y,bool alternateAvailable){
     if(y<weaponGuideButtonTop||y>=weaponGuideButtonTop+40)return -1;
     if(x>=464&&x<616)return 0;
     if(x>=626&&x<778)return 1;
-    if(alternateAvailable&&x>=788&&x<940)return 2;
+    if(alternateAvailable&&x>=788&&x<864)return 2;
+    if(alternateAvailable&&x>=864&&x<940)return 3;
     return -1;
 }
 }

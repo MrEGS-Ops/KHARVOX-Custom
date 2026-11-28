@@ -81,7 +81,7 @@ inline constexpr bool vrCalibrationNativeAltFireAllowed(
         && calibrationEnabled && selectedWeaponEquipped
         && weaponHandUnchanged && primaryWeaponGripDown;
 }
-// Single physical RIGHT thumbstick hold >= 1000ms opens/closes the menu.
+// Single physical RIGHT thumbstick hold >= 500ms opens/closes the menu.
 // A short click is untouched, so Hand Focus retains its original input.
 struct VrMenuHoldShortcut {
     bool held{},triggered{};
@@ -100,7 +100,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
         state.held=true;state.triggered=false;state.beganAt=nowMs;
     }
     if(!state.triggered&&nowMs>=state.beganAt
-        &&nowMs-state.beganAt>=1000ULL){
+        &&nowMs-state.beganAt>=500ULL){
         state.triggered=true;
         return VrMenuShortcutAction::Toggle;
     }
@@ -109,7 +109,7 @@ inline VrMenuShortcutAction updateVrMenuHoldShortcut(
 enum class VrMenuPage {Mods,Dev,Stats,DevStats,Records,DevRecords,WeaponGrip,WeaponRecoil};
 enum class VrMenuDevOption {
     None,Folder,WeaponStability,WeaponAlignment,HandFocus,
-    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting
+    ControllerMonitor,Experimental,GrappleAnchor,StatsReset,LevelRecordsReset,NativeInteractionResearch,GuidedTesting,GaussTwoHandFire
 };
 // Only show DEV graphics in their intended capture screens. This is a
 // display policy, not an input remap and never changes saved calibration.
@@ -135,7 +135,7 @@ struct VrDevControllerInputSnapshot {
 inline constexpr bool vrMenuDevOptionToggleable(VrMenuDevOption option) noexcept {
     return option==VrMenuDevOption::WeaponAlignment
         ||option==VrMenuDevOption::HandFocus
-        ||option==VrMenuDevOption::ControllerMonitor;
+        ||option==VrMenuDevOption::ControllerMonitor||option==VrMenuDevOption::GaussTwoHandFire;
 }
 // Two independent notices: first-install setup appears on DOOM's front
 // menu and needs a fresh physical L3+R3 chord; the separately persisted
@@ -566,6 +566,10 @@ struct VrHandMenuState {
     int radialCategory{-1}, suppressedCategory{-1};
     bool radialPinned{}, supportPreviewHeld{}, resetWeaponPending{};
     int radialResetRow{-1};
+    int radialDescription{-1};
+    unsigned long long radialDescriptionSince{};
+    bool combinedCrouch{},crouchAwaitRelease{};
+    VrLiveSettings crouchDraft{};
     RadialDevUnlock radialDevUnlock{};
     bool consumeDevGripUntilRelease{};
     bool calibrationWheel{}, waitingForEquip{}, calibrationWheelLeft{};

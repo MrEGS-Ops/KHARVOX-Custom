@@ -16,6 +16,7 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         using D=kharvox::VrMenuDevOption;
         rows.push_back({"Weapon Stability",VrLiveMod::WeaponRecoil,
             kharvox::anyWeaponRecoilEnabled(s.recoilSettings),D::WeaponStability});
+        rows.push_back({"Gauss 2-hand fire",VrLiveMod::Other,s.vrLiveSettings.gaussRequireTwoHandFire,D::GaussTwoHandFire});
         rows.push_back({"Weapon Alignment Debug",VrLiveMod::Other,
             s.vrHandMenu.devWeaponAlignment,D::WeaponAlignment});
         rows.push_back({"Hand Focus",VrLiveMod::HandFocus,
@@ -148,6 +149,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Normal mod settings remain unchanged.","",""}}};
         case D::WeaponStability:
             return vrLiveModOverview(kharvox::VrLiveMod::WeaponRecoil);
+        case D::GaussTwoHandFire:return {{{"Require both physical grips and a","calibrated support latch for Gauss alt fire.","Normal fire remains one-handed.","Saved across sessions.","",""}}};
         case D::WeaponAlignment:return {{{"Display live gun and hand anchor data.",
             "Shown ONLY during Weapon Grip",
             "Calibration's live capture screen.",
@@ -430,6 +432,14 @@ void updateVrLiveZoneDraft(){
     if(kharvox::vrLiveUpdateZoneDraft(m.gunslingerZoneDraft,
         gripHeld,true,point,target))m.gunslingerZoneDraftValid=true;
 }
+void openVrCombinedCrouch(){
+    auto& m=s.vrHandMenu;
+    m.combinedCrouch=true;
+    m.crouchAwaitRelease=true;
+    m.crouchDraft=s.vrLiveSettings;
+    m.crouchDraft.crouchLoweredSaved=false;
+    openVrLiveCapture(kharvox::VrLiveCapture::CrouchStanding);
+}
 void captureVrLivePosition(){
     using kharvox::VrLiveCapture;
     auto& m=s.vrHandMenu;
@@ -448,6 +458,29 @@ void captureVrLivePosition(){
         p=m.gunslingerZoneDraft;
     }
     const float headDelta=s.trackingHeadPosition.y-s.headZeroPosition.y;
+    if(crouch&&m.combinedCrouch){
+        auto draft=m.crouchDraft;
+        if(!kharvox::vrLiveCapturePoint(draft,capture,p,headDelta)){
+            m.message="Invalid height. Retry.";
+            return;
+        }
+        if(capture==VrLiveCapture::CrouchStanding){
+            m.crouchDraft=draft;
+            m.crouchAwaitRelease=true;
+            openVrLiveCapture(VrLiveCapture::CrouchLowered);
+            return;
+        }
+        s.vrLiveSettings.crouchStandDelta=draft.crouchStandDelta;
+        s.vrLiveSettings.crouchLoweredDelta=draft.crouchLoweredDelta;
+        s.vrLiveSettings.crouchStandSaved=draft.crouchStandSaved;
+        s.vrLiveSettings.crouchLoweredSaved=draft.crouchLoweredSaved;
+        if(!saveVrLiveSettings()){s.vrLiveSettings=before;return;}
+        m.combinedCrouch=false;
+        m.liveCapture=VrLiveCapture::None;
+        m.mode=kharvox::VrHandMenuMode::Menu;
+        m.message="Both crouch heights saved.";
+        return;
+    }
     if(!kharvox::vrLiveCapturePoint(s.vrLiveSettings,capture,p,headDelta)){
         m.message="Invalid pose / too close to standing height. Retry.";
         s.vrLiveSettings=before;
