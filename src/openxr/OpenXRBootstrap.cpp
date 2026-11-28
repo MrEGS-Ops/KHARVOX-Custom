@@ -3901,6 +3901,7 @@ void updateGameplayActions(XrTime displayTime){
     serviceHandFocusUseKeyboardPulse(displayTime,gameplay);
     const bool vrRightClick=readBooleanAction(s.leftHanded?s.doomPause:s.doomMelee);
     const bool vrLeftClick=readBooleanAction(s.leftHanded?s.doomMelee:s.doomPause);
+    guidedHover=-1;guidedCursorX=guidedCursorY=-1.f;menuAimRay={};menuAimRayMetres=0.f;
     if(serviceVrHandMenuInput(displayTime,gameplay,vrLeftClick,vrRightClick,
          readFloatAction(s.rightWeaponTrigger)>.55f,
          readFloatAction(s.leftWeaponTrigger)>.55f,
@@ -3916,9 +3917,9 @@ void updateGameplayActions(XrTime displayTime){
     }
     // Use the same physical right-controller ray as the menu.
     const bool guideTrigger=readFloatAction(s.rightWeaponTrigger)>.55f;
-    guidedHover=-1;guidedCursorX=guidedCursorY=-1.f;
     if(gameplay&&guidedResponseVisible()){
-        vrMenuRayTarget(guidedCursorX,guidedCursorY);
+        vrMenuRayTarget(guidedCursorX,guidedCursorY,displayTime);
+        if(guidedCursorX<guideX||guidedCursorX>=guideX+guideW||guidedCursorY<guideY||guidedCursorY>=guideY+guideH)menuAimRay={};
         if(guidedCursorX>=guideX+12&&guidedCursorX<guideX+guideW-12
             &&guidedCursorY>=guideY+guideButtonY&&guidedCursorY<guideY+guideButtonY+guideButtonH){
             const float localX=guidedCursorX-guideX-12;
@@ -9269,7 +9270,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.stereoCacheRevision[currentRenderEye]+1);
     kharvox::hands::HandPose sceneLaser{};
     XrVector3f laserOrigin{},laserDirection{};
-    if(guidedHover<0&&s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
+    if(!menuAimRay.valid&&s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
         &&(!aerSourceMode||aerSourceQualified)
         &&renderedLaserPoseInTrackingSpace(laserOrigin,laserDirection,
             aerSourceQualified?aerCapturedInput.laserBodyTracking:sfsBackend&&nativeFrameValid?nativeFrame.pose.bodyTracking:laserBodyTrackingTransform(),
@@ -9287,8 +9288,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     kharvox::hands::HandPose grabReachLaser{};
     float grabReachLaserMetres{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    if(s.vrHandMenu.objectGrabLaserActive()
-        &&!(guidedHover>=0&&(s.vrHandMenu.activationInvestigator?!s.weaponHandLeft:s.weaponHandLeft))
+    if(!menuAimRay.valid&&s.vrHandMenu.objectGrabLaserActive()
         &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerOnlyLocked.load(std::memory_order_acquire)
         &&(!aerSourceMode||aerSourceQualified)){
@@ -9321,6 +9321,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             grabReachLaserMetres=kharvox::kObjectDiscoveryGrabReachM;
         }
     }
+    if(menuAimRay.valid&&handGameplayActive){grabReachLaser=menuAimRay;grabReachLaserMetres=menuAimRayMetres;}
 #endif
     // Experimental object markers use a last-pass depth-independent overlay;
     // object materials, physics and the scene depth buffer are not modified.

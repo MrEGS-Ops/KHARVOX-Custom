@@ -717,7 +717,7 @@ bool handleVrLiveMenuAction(int action){
         case VrLiveMod::WeaponGrip:
             if(option==0){
                 m.page=kharvox::VrMenuPage::WeaponGrip;
-                m.message="Select weapon, hand and profile. Trigger calibrates.";
+                m.message="Select weapon and profile; start guided calibration.";
             }
             break;
         case VrLiveMod::WeaponRecoil:

@@ -525,7 +525,7 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
             vk.cmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 overlayPipeline);
             if(grabDebugLaser.valid&&std::isfinite(grabLaserLengthMetres)
-                &&grabLaserLengthMetres>=1.f&&grabLaserLengthMetres<=5.f)
+                &&grabLaserLengthMetres>=.01f&&grabLaserLengthMetres<=5.f)
                 drawBeam(grabDebugLaserAsset,grabDebugLaser,
                     grabLaserLengthMetres);
         }

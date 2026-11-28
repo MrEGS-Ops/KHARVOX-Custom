@@ -92,6 +92,7 @@ std::atomic<unsigned> playerLedgeTransitionSerial{};
 std::atomic<int> playerLedgeNativeState{-1};
 std::atomic<unsigned long long> playerLedgeTransitionAt{};
 std::atomic<bool> playerLedgeResearchEnabled{};
+std::atomic<unsigned> playerLedgeResearchEventCount{};
 std::atomic<bool> syncAttackClassifierSupported{};
 std::atomic<bool> playerControlClassifierSupported{};
 std::atomic<unsigned long long> cameraPresentSerial{};
@@ -614,7 +615,7 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     playerLedgeNativeState.store(newState,std::memory_order_relaxed);
     playerLedgeTransitionAt.store(GetTickCount64(),std::memory_order_relaxed);
     playerLedgeTransitionSerial.fetch_add(1,std::memory_order_release);
-    if(playerLedgeResearchEnabled.load(std::memory_order_acquire))log("[NATIVE-RESEARCH] LEDGE_STATE id="+std::to_string(newState)+" at="+std::to_string(GetTickCount64())+" owner="+std::to_string(owner));
+    if(playerLedgeResearchEnabled.load(std::memory_order_acquire)&&owner==playerPhysicsOwner.load(std::memory_order_acquire)){playerLedgeResearchEventCount.fetch_add(1,std::memory_order_release);log("[NATIVE-RESEARCH] LEDGE_STATE id="+std::to_string(newState)+" at="+std::to_string(GetTickCount64())+" owner="+std::to_string(owner));}
 }
 
 bool installPlayerLedgeStateCapture(unsigned char* image) {
@@ -2793,6 +2794,9 @@ KharvoxGuidedEvidence KharvoxCameraGuidedEvidence(){
         out.test[i]=nativeGuidedTest[i].load(std::memory_order_acquire);
     }
     out.releaseCount=nativeGuidedReleaseCount.load(std::memory_order_acquire);
+    out.meshStage=nativeMeshStage.load();out.meshHandle=nativeMeshHandle.load();out.meshRawBytes=nativeMeshRawBytes.load();
+    out.horizontalMotion=nativeHorizontalMotion.load();out.verticalMotion=nativeVerticalMotion.load();
+    out.collect[5]=playerLedgeResearchEventCount.load(std::memory_order_acquire);
 #endif
     return out;
 }

@@ -338,12 +338,11 @@ inline int vrMenuGripGamepadTarget(const VrMenuNavigation& nav,
     int selectedWeapon,bool heavy,bool gauss=false) noexcept {
     if(!nav.settingsColumn)return selectedWeapon>=0&&selectedWeapon<10
         ?selectedWeapon:-1;
-    // No automatic RIGHT-to-LEFT mirroring: each physical hand is
-    // calibrated independently. Preserve CALIBRATE, RESET and BACK.
-    constexpr std::array<int,7> gaussActions{20,21,32,30,31,33,95};
-    constexpr std::array<int,6> heavyActions{20,21,32,30,31,95};
-    constexpr std::array<int,5> normalActions{20,21,30,31,95};
-    const int count=gauss?7:heavy?6:5;
+    // The sequence calibrates right primary first, then optional left primary.
+    constexpr std::array<int,5> gaussActions{32,30,31,33,95};
+    constexpr std::array<int,4> heavyActions{32,30,31,95};
+    constexpr std::array<int,3> normalActions{30,31,95};
+    const int count=gauss?5:heavy?4:3;
     return nav.actionIndex>=0&&nav.actionIndex<count
         ?gauss?gaussActions[nav.actionIndex]
               :heavy?heavyActions[nav.actionIndex]
@@ -579,6 +578,7 @@ struct VrHandMenuState {
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
     unsigned nativeResearchMask{},nativeResearchTestMask{}; // selected queue
     unsigned activeResearchMask{},activeResearchTestMask{}; // one running group
+    bool researchQueueRunning{};
     unsigned weaponCalibrationStage{}; // 0 none, 1 right primary, 2 left support, 3 offer, 4 left primary, 5 right support
     bool calibrationOriginalWeaponLeft{};
     bool nativeResearchTestPage{};
@@ -589,13 +589,13 @@ struct VrHandMenuState {
     bool releaseInvestigator{}; // session-only observer, can coexist with grabs
     bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
     bool objectGrappleActive() const noexcept {
-        return !activationInvestigator&&(nativeResearchActive()?((activeResearchMask|activeResearchTestMask)&8u)!=0:(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled));
+        return !activationInvestigator&&(researchQueueRunning?((activeResearchMask|activeResearchTestMask)&8u)!=0:(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled));
     }
     bool objectMeleeActive() const noexcept {
-        return !nativeResearchActive()&&!activationInvestigator&&!dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
+        return !researchQueueRunning&&!activationInvestigator&&!dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
     }
     bool objectDiscoveryActive() const noexcept {
-        return nativeResearchActive()||activationInvestigator||objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();
+        return researchQueueRunning||nativeResearchActive()||activationInvestigator||objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();
     }
     bool objectGrabLaserActive() const noexcept {
         return objectDiscoveryActive()&&(nativeResearchActive()||activationInvestigator||objectDiscovery.grabReachLaserEnabled||objectGrappleActive()||objectMeleeActive());

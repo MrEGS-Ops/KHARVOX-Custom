@@ -162,7 +162,7 @@ void startVrSelectedWeaponCalibration();
 void finishVrWeaponSequence(){
     auto& m=s.vrHandMenu;
     if(m.weaponCalibrationStage)selectPhysicalWeaponHand(m.calibrationOriginalWeaponLeft,"calibration sequence exit");
-    m.weaponCalibrationStage=0;m.previewValid=false;m.primaryGripPreviewHeld=false;m.rotationEdit={};
+    m.weaponCalibrationStage=0;m.rightHand=!s.weaponHandLeft;m.previewValid=false;m.primaryGripPreviewHeld=false;m.rotationEdit={};
     m.mode=kharvox::VrHandMenuMode::Menu;
 }
 void beginVrWeaponSequence(){
@@ -257,7 +257,7 @@ void saveVrHandMenuCalibration(){
     refreshVrHandMenuSavedStatus();
     if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==4){
         const auto* support=twoHandCalibrationFor(kind);
-        if(support&&support->valid){m.weaponCalibrationStage=m.weaponCalibrationStage==1?2:5;m.rightHand=s.weaponHandLeft;startVrSelectedWeaponCalibration();return;}
+        if((support&&support->valid)||alternate){m.weaponCalibrationStage=m.weaponCalibrationStage==1?2:5;m.rightHand=s.weaponHandLeft;startVrSelectedWeaponCalibration();return;}
     }
     if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==2){m.weaponCalibrationStage=3;m.mode=kharvox::VrHandMenuMode::Calibrating;return;}
     if(m.weaponCalibrationStage)finishVrWeaponSequence();
@@ -443,17 +443,19 @@ void requestVrSelectedWeaponCalibration(XrTime displayTime){
         "... calibration starts after DOOM confirms selection.";
     log(std::string("[VR-MODS] requested available weapon ")+m.weapon());
 }
-int vrMenuRayTarget(float&pixelX,float&pixelY){
-    pixelX=pixelY=-1.f;
+int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime){
+    pixelX=pixelY=-1.f;menuAimRay={};menuAimRayMetres=0.f;
     if(!s.rightController.valid||!s.rightController.positionTracked
         ||!s.trackingHeadPositionValid)return -1;
     // The compositor quad is head-locked in viewSpace at Z=-1.1 m.
-    const XrQuaternionf inverse=conjugate(
-        normalizeQuaternion(s.views[0].pose.orientation));
-    const auto origin=rotateVector(inverse,subtractVector(
-        s.rightController.position,s.trackingHeadPosition));
-    const auto direction=rotateVector(inverse,rotateVector(
-        s.rightController.orientation,{0,0,-1}));
+    XrSpaceLocation view{XR_TYPE_SPACE_LOCATION};
+    if(XR_FAILED(s.locateSpace(s.viewSpace,s.space,displayTime,&view))
+        ||!(view.locationFlags&XR_SPACE_LOCATION_POSITION_VALID_BIT)
+        ||!(view.locationFlags&XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))return -1;
+    const XrQuaternionf inverse=conjugate(normalizeQuaternion(view.pose.orientation));
+    const auto origin=rotateVector(inverse,subtractVector(s.rightController.position,view.pose.position));
+    const auto aim=normalizeQuaternion(s.rightController.orientation);
+    const auto direction=rotateVector(inverse,rotateVector(aim,{0,0,-1}));
     if(direction.z>=-.05f)return -1;
     const float distance=(-1.1f-origin.z)/direction.z;
     if(distance<=.01f||distance>5.f)return -1;
@@ -462,6 +464,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
     pixelX=(x/1.28f+.5f)*float(vrMenuW);
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
+    const auto& pos=s.rightController.position;
+    menuAimRay={{pos.x,pos.y,pos.z},{aim.x,aim.y,aim.z,aim.w},true};menuAimRayMetres=distance;
     if(s.vrHandMenu.page==kharvox::VrMenuPage::Records
         ||s.vrHandMenu.page==kharvox::VrMenuPage::DevRecords){
         const bool dev=s.vrHandMenu.page==kharvox::VrMenuPage::DevRecords;
@@ -562,10 +566,6 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
         for(int i=0;i<10;++i)
             if(pixelY>=136+i*45&&pixelY<176+i*45)return i;
     }
-    if(pixelY>=151&&pixelY<209){
-        if(pixelX>=531&&pixelX<701)return 20;
-        if(pixelX>=715&&pixelX<917)return 21;
-    }
     if(pixelX>=531&&pixelX<915&&pixelY>=306&&pixelY<355)return 32;
     if(pixelX>=531&&pixelX<915&&pixelY>=540&&pixelY<590
         &&KharvoxWeaponKindFromKey(s.vrHandMenu.weapon())
@@ -639,8 +639,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
+            const bool wasMenu=m.mode==kharvox::VrHandMenuMode::Menu;
             if(m.weaponCalibrationStage)finishVrWeaponSequence();
-            m.mode=m.mode==kharvox::VrHandMenuMode::Menu
+            m.mode=wasMenu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
             m.rotationEdit={};
@@ -772,7 +773,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(triggerEdge)saveVrHandMenuCalibration();
         }
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
-        m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY);
+        m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY,displayTime);
         const auto rows=activeVrMenuEntries();
         if(m.page==kharvox::VrMenuPage::Records
             ||m.page==kharvox::VrMenuPage::DevRecords){
@@ -1224,7 +1225,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 ||selectedKind==KharvoxWeaponKind::Chaingun;
             kharvox::vrMenuNavigateStick(m.navigation,s.leftStick.x,s.leftStick.y,
                 10,m.selectedWeapon,selectedKind==KharvoxWeaponKind::GaussCannon
-                    ?7:heavy?6:5);
+                    ?5:heavy?4:3);
             if(previousWeapon!=m.selectedWeapon){
                 m.navigation.actionIndex=0;
                 m.autoSelectingWeapon=false;
@@ -1236,7 +1237,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 ||selectedNow==KharvoxWeaponKind::Chaingun;
             m.navigation.actionIndex=std::clamp(m.navigation.actionIndex,
                 0,selectedNow==KharvoxWeaponKind::GaussCannon
-                    ?6:heavyNow?5:4);
+                    ?4:heavyNow?3:2);
             if(m.autoSelectingWeapon){
                 const auto desired=KharvoxWeaponKindFromKey(m.weapon());
                 if(desired==KharvoxWeaponCurrentKind()){
@@ -1266,12 +1267,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 m.alternateProfile=false;
                             if(aEdge){m.navigation.settingsColumn=true;
                     m.navigation.usingStick=true;}
-            }else if(chosen==20){
-                m.rightHand=false;
-            }else if(chosen==21){
-                m.rightHand=true;
-            }
-            else if(chosen==31)resetVrMenuSelectedWeapon();
+            }else if(chosen==31)resetVrMenuSelectedWeapon();
             else if(chosen==32){
                 if(heavyNow){
                     m.alternateProfile=!m.alternateProfile;

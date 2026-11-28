@@ -2,7 +2,7 @@
 // crosses threads as counters and snapshots, never as engine pointers.
 struct GuidedStep {const char* text;unsigned event;};
 struct GuidedPlan {const char* title;std::array<GuidedStep,5> steps;unsigned count;};
-enum GuidedEvent:unsigned {GuideScan,GuideMotion,GuideGrip,GuideHold,GuideRelease,GuideCollect,GuideTest,GuideVisual,GuideMelee};
+enum GuidedEvent:unsigned {GuideScan,GuideMotion,GuideGrip,GuideHold,GuideRelease,GuideCollect,GuideVisual,GuideMelee,GuideHorizontal,GuideVertical};
 GuidedPlan guidedPlan(unsigned id){
     using S=GuidedStep;
     if(id<5){
@@ -12,13 +12,15 @@ GuidedPlan guidedPlan(unsigned id){
     }
     const unsigned group=(id-5)%6;const bool test=id>=11;
     const char* titles[]{"MESH / SURFACE RAY","COLLISION / STATIC WORLD","ACTIVATION / CALLBACK","HOLD / RELEASE","PLAYER MOVEMENT","NATIVE LEDGE CHECKS"};
-    const char* actions[]{"Aim support hand at a prop; hold Grip","Aim at prop faces and edges; sweep the ray","Aim weapon hand at stationary prop; melee normally","Enable a grab mode; kick, grab and release a prop","Walk, strafe and jump; try a solid wall","Perform a normal native jump and mantle"};
+    const char* actions[]{"Aim support hand at a prop; hold Grip","Aim support hand at a prop face; hold Grip","Aim weapon hand at stationary prop; melee normally","Kick a non-explosive prop; grab and release it","Walk, strafe and jump; try a solid wall","Perform a normal native jump and mantle"};
     if(test)return {titles[group],{{S{"Kick a non-explosive prop; grab and hold it",GuideHold},S{"Release Grip normally",GuideRelease},S{"Does it drop naturally? Select PASS or FAIL",GuideVisual}}},3};
+    if(group==4)return {titles[group],{{S{"Walk or strafe on level ground",GuideHorizontal},S{"Jump and land; observe vertical movement",GuideVertical}}},2};
     return {titles[group],{{S{actions[group],GuideCollect}}},1};
 }
 struct GuidedRun {
     unsigned id{99},step{},finished{},activeMask{},queued{},failures{},inconclusive{},manual{};
-    unsigned evidenceBase{},releaseBase{},heldHandle{};
+    unsigned evidenceBase{},releaseBase{},horizontalBase{},verticalBase{};
+    unsigned completedGroups{},failedGroups{},skippedGroups{};
     unsigned long long generation{},stepStart{},lastTick{},elapsed{},completeAt{},lastSample{};
     bool priorGrip{},priorMelee{},held{},timedOut{};
     std::string previous;
@@ -29,13 +31,15 @@ constexpr int guideButtonY=127,guideButtonH=32,guideButtonStep=188,guideButtonW=
 int guidedHover=-1;
 float guidedCursorX=-1.f,guidedCursorY=-1.f;
 bool guidedTriggerPreviously{},guidedTriggerOwned{};
+kharvox::hands::HandPose menuAimRay{};
+float menuAimRayMetres{};
 bool guidedCalibrationVisible(){
     const auto& m=s.vrHandMenu;
     return s.objectGripCalibrating||m.mode==kharvox::VrHandMenuMode::Calibrating;
 }
 bool guidedOverlayVisible(){
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
-    return s.vrHandMenu.guidedTestingEnabled&&guidedRun.id<17
+    return (s.vrHandMenu.guidedTestingEnabled||s.vrHandMenu.researchQueueRunning)&&guidedRun.id<17
         &&(!guidedRun.completeAt||GetTickCount64()-guidedRun.completeAt<4000);
 #else
     return false;
@@ -57,7 +61,7 @@ unsigned guidedEnabledMask(){
 }
 void guidedBeginStep(const KharvoxGuidedEvidence& e,unsigned long long now){
     auto& g=guidedRun;
-    g.timedOut=false;g.stepStart=now;g.elapsed=0;g.lastTick=now;g.releaseBase=e.releaseCount;
+    g.timedOut=false;g.stepStart=now;g.elapsed=0;g.lastTick=now;g.releaseBase=e.releaseCount;g.horizontalBase=e.horizontalMotion;g.verticalBase=e.verticalMotion;
     if(g.id>=5&&g.id<17){const unsigned group=(g.id-5)%6;g.evidenceBase=g.id>=11?e.test[group]:e.collect[group];}
 }
 void guidedAdvance(const char* result,const KharvoxGuidedEvidence& e,unsigned long long now){
@@ -73,6 +77,11 @@ void guidedAdvance(const char* result,const KharvoxGuidedEvidence& e,unsigned lo
     ++g.step;
     if(g.step>=plan.count){
         g.finished|=1u<<g.id;g.completeAt=now;
+        if(g.failures)++g.failedGroups;else if(g.inconclusive)++g.skippedGroups;else ++g.completedGroups;
+        if(g.id>=5&&!(g.queued&~g.finished)){
+            g.previous="Queue complete: "+std::to_string(g.completedGroups)+" done / "+std::to_string(g.failedGroups)+" failed / "+std::to_string(g.skippedGroups)+" skipped";
+            log("[GUIDED-TEST] "+g.previous);
+        }
         log("[GUIDED-TEST] end group="+std::to_string(g.id)+" failures="+std::to_string(g.failures)
             +" inconclusive="+std::to_string(g.inconclusive)+" manual="+std::to_string(g.manual)+" diagnostic_only=1");
     }else guidedBeginStep(e,now);
@@ -80,6 +89,7 @@ void guidedAdvance(const char* result,const KharvoxGuidedEvidence& e,unsigned lo
 void guidedApplyResearchSelection(bool gameplay){
     auto& m=s.vrHandMenu;const auto& g=guidedRun;
     m.activeResearchMask=0;m.activeResearchTestMask=0;
+    m.researchQueueRunning=gameplay&&((g.queued&~g.finished&~31u)!=0||(g.id>=5&&g.id<17));
     if(gameplay&&m.mode==kharvox::VrHandMenuMode::Closed&&!g.completeAt&&g.id>=5&&g.id<17){
         const unsigned bit=1u<<((g.id-5)%6);
         if(g.id<11)m.activeResearchMask=m.nativeResearchMask&bit;
@@ -87,10 +97,6 @@ void guidedApplyResearchSelection(bool gameplay){
     }
     m.activationInvestigator=((m.activeResearchMask|m.activeResearchTestMask)&4u)!=0;
     m.releaseInvestigator=((m.activeResearchMask|m.activeResearchTestMask)&8u)!=0;
-}
-bool guidedManualStep(){
-    const auto& g=guidedRun;
-    return g.id<17&&!g.completeAt&&g.step<guidedPlan(g.id).count&&guidedPlan(g.id).steps[g.step].event==GuideVisual;
 }
 bool guidedResponseVisible(){
     return guidedOverlayVisible()&&!guidedRun.completeAt&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed&&!s.objectGripCalibrating;
@@ -103,6 +109,7 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
     if(!m.guidedTestingEnabled&&!(m.nativeResearchMask|m.nativeResearchTestMask)){g={};g.generation=generation;m.guidedCommand=0;return;}
     const unsigned mask=guidedEnabledMask();
     const unsigned added=mask&~g.activeMask;
+    if((mask&~31u)&&!(g.activeMask&~31u)){g.completedGroups=g.failedGroups=g.skippedGroups=0;}
     g.finished&=mask;g.queued=(g.queued|added)&mask;g.activeMask=mask;
     if(g.id<17&&!(mask&(1u<<g.id))){log("[GUIDED-TEST] cancelled group="+std::to_string(g.id)+" completed_steps="+std::to_string(g.step)+" remaining=UNASSESSED data_retained=1");g.id=99;g.completeAt=0;}
     const bool playable=gameplay&&m.mode==kharvox::VrHandMenuMode::Closed&&!s.objectGripCalibrating;
@@ -137,6 +144,12 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
         else{g.previous="Waiting for native evidence; use Retry or Skip";log("[GUIDED-TEST] manual pass cannot substitute native evidence");}
         return;
     }
+    if(g.id==5&&!g.timedOut){
+        const char* meshStates[]{"Waiting for Grip", "Grip received; searching", "No nearby ray candidate", "Executable signature mismatch", "Model or surface list unavailable", "Model found; layout not validated", "Candidate mesh decoded"};
+        g.previous=meshStates[std::min(evidence.meshStage,6u)];
+        if(evidence.meshHandle)g.previous+=" | ID "+std::to_string(evidence.meshHandle);
+        if(evidence.meshRawBytes)g.previous+=" | raw "+std::to_string(evidence.meshRawBytes)+" bytes";
+    }
     if(g.timedOut)return;
     g.elapsed+=dt;
     bool observed=false;
@@ -144,9 +157,11 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
     else if(event==GuideHold)observed=held&&feedback.nativeMotionVerified;
     else if(event==GuideRelease)observed=evidence.releaseCount!=g.releaseBase;
     else if(event==GuideMelee)observed=melee&&!g.priorMelee;
-    else if(event==GuideCollect||event==GuideTest){
+    else if(event==GuideHorizontal)observed=evidence.horizontalMotion!=g.horizontalBase;
+    else if(event==GuideVertical)observed=evidence.verticalMotion!=g.verticalBase;
+    else if(event==GuideCollect){
         const unsigned group=(g.id-5)%6;
-        observed=(event==GuideTest?evidence.test[group]:evidence.collect[group])!=g.evidenceBase;
+        observed=evidence.collect[group]!=g.evidenceBase;
     }else if((event==GuideScan||event==GuideMotion)&&(!g.lastSample||now-g.lastSample>=100)){
         g.lastSample=now;KharvoxObjectDiscoverySnapshot snapshot{};
         if(KharvoxCameraReadObjectDiscovery(snapshot)&&snapshot.generation==generation)
@@ -157,13 +172,12 @@ void guidedTick(bool gameplay,bool grip,bool melee,bool held,const KharvoxObject
             }
     }
     g.priorGrip=grip;g.priorMelee=melee;g.held=held;
-    if(observed){guidedAdvance(event==GuideTest?"TEST_SAMPLE_RECORDED":event==GuideCollect?"DATA_RECORDED":"ACTION_OBSERVED",evidence,now);return;}
+    if(observed){const bool raw=event==GuideCollect&&g.id==5&&evidence.meshStage!=6;guidedAdvance(raw?"RAW_DATA_RECORDED_NOT_VALIDATED":event==GuideCollect?"DATA_RECORDED":"ACTION_OBSERVED",evidence,now);return;}
     if(event==GuideVisual)return; // explicit answer, no timeout
-    const unsigned long long limit=(event==GuideCollect||event==GuideTest)?35000:20000;
-    if(g.elapsed>=limit){g.timedOut=true;g.previous="TIMEOUT: retry or skip; see native log";
+    const unsigned long long limit=event==GuideCollect?35000:20000;
+    if(g.elapsed>=limit){g.timedOut=true;g.previous="TIMEOUT: "+(g.id==5?g.previous:std::string("No required action observed"))+"; Retry or Skip";
         log("[GUIDED-TEST] timeout group="+std::to_string(g.id)+" step="+std::to_string(g.step+1)+" waiting_for="+plan.steps[g.step].text);}
 }
 #else
-bool guidedManualStep(){return false;}
 bool guidedResponseVisible(){return false;}
 #endif

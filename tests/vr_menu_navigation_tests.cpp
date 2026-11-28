@@ -807,33 +807,23 @@ int main(){
     assert(vrMenuButtonEdge(true,a));
     assert(vrMenuButtonEdge(true,b));
     assert(!vrMenuButtonEdge(true,b));
-    // Weapon calibration layout maps to the existing pointer actions.
+    // Sequential calibration replaces individual left/right menu buttons.
     nav.settingsColumn=true;nav.actionIndex=0;
-    assert(vrMenuGripGamepadTarget(nav,3,false)==20);
-    nav.actionIndex=1;
-    assert(vrMenuGripGamepadTarget(nav,3,false)==21);
-    nav.actionIndex=2;
     assert(vrMenuGripGamepadTarget(nav,3,false)==30);
-    nav.actionIndex=3;
+    assert(vrMenuGripGamepadTarget(nav,3,true)==32);
+    nav.actionIndex=1;
+    assert(vrMenuGripGamepadTarget(nav,3,false)==31);
     assert(vrMenuGripGamepadTarget(nav,3,true)==30);
-    assert(vrMenuGripGamepadTarget(nav,6,true)==30);
     nav.actionIndex=2;
-    assert(vrMenuGripGamepadTarget(nav,6,true)==32);
-    nav.actionIndex=4;
     assert(vrMenuGripGamepadTarget(nav,6,false)==95);
     assert(vrMenuGripGamepadTarget(nav,6,true)==31);
-    nav.actionIndex=5;
+    nav.actionIndex=3;
     assert(vrMenuGripGamepadTarget(nav,6,true)==95);
+    assert(vrMenuGripGamepadTarget(nav,6,true,true)==33);
     assert(vrMenuGripGamepadTarget(nav,6,false)==-1);
-    nav.actionIndex=6;
+    nav.actionIndex=4;
     assert(vrMenuGripGamepadTarget(nav,6,true)==-1);
-    // Copy RIGHT -> LEFT has been removed: all left-side presets are
-    // calibrated independently. The old button code 33 is unreachable.
-    for(int i=0;i<7;++i){
-        nav.actionIndex=i;
-        assert(vrMenuGripGamepadTarget(nav,6,true)!=33);
-        assert(vrMenuGripGamepadTarget(nav,6,false)!=33);
-    }
+    assert(vrMenuGripGamepadTarget(nav,6,true,true)==95);
     nav.settingsColumn=false;
     assert(vrMenuGripGamepadTarget(nav,8,true)==8);
     // Mods page starts in overview mode. Scrolling through the six

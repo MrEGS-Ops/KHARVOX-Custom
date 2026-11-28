@@ -68,7 +68,7 @@ void KharvoxCameraSetObjectGripInput(
 unsigned KharvoxCameraNativeResearchReady();
 struct KharvoxGuidedEvidence {
     std::array<unsigned,6> collect{},test{};
-    unsigned releaseCount{};
+    unsigned releaseCount{},meshStage{},meshHandle{},meshRawBytes{},horizontalMotion{},verticalMotion{};
 };
 KharvoxGuidedEvidence KharvoxCameraGuidedEvidence();
 void KharvoxCameraSetObjectGripCalibration(

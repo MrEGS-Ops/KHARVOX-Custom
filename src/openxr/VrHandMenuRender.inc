@@ -1099,7 +1099,7 @@ void paintVrHandMenu() {
     write(38,24,"RIPSHIFT VR  /  HAND CALIBRATION",white);
     SelectObject(dc,smallFont);
     write(40,102,"WEAPON PROFILES",muted);
-    write(536,102,"SELECT HAND",muted);
+    write(536,102,"GUIDED CALIBRATION",muted);
     for(size_t i=0;i<kharvox::kVrCalibrationWeapons.size();++i){
         const int y=136+int(i)*45;
         const bool selected=int(i)==m.selectedWeapon;
@@ -1131,16 +1131,9 @@ void paintVrHandMenu() {
                 m.selectedWeapon,heavy,
                 selectedKind==KharvoxWeaponKind::GaussCannon)==action;
     };
-    button(531,151,170,58,!m.rightHand,m.hovered==20||gamepadFocus(20));
-    button(715,151,202,58,m.rightHand,m.hovered==21||gamepadFocus(21));
-    SelectObject(dc,regular);
-    write(555,163,"LEFT",white);write(742,163,"RIGHT",white);
-    SelectObject(dc,smallFont);
-    write(538,233,s.weaponHandLeft?"WEAPON HELD: LEFT":"WEAPON HELD: RIGHT",muted);
-    const bool primarySelected=m.rightHand!=s.weaponHandLeft;
-    write(538,267,primarySelected
-        ?"PRIMARY: position + rotation"
-        :"SUPPORT: position only",muted);
+    write(538,165,"Right primary, then support if available.",white);
+    write(538,205,"Optional left-handed sequence follows.",white);
+    write(538,247,"RT saves; B discards current draft.",muted);
     if(heavy){
         button(531,306,384,49,m.alternateProfile,
             m.hovered==32||gamepadFocus(32));
@@ -1149,9 +1142,7 @@ void paintVrHandMenu() {
                 ?"GAUSS CANNON: ALT FIRE":"MINIGUN: ALT FIRE")
             :"PROFILE: NORMAL",white);
     }else{
-        write(538,306,primarySelected
-            ?"Hand locked to gun"
-            :"Support rotation on grab",muted);
+        write(538,306,"One continuous calibration sequence",muted);
     }
     button(531,363,384,69,false,m.hovered==30||gamepadFocus(30));
     SelectObject(dc,title);
@@ -1171,7 +1162,7 @@ void paintVrHandMenu() {
         write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
     }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
-    write(40,661,m.message.empty()?"Select your weapon and hand to begin.":m.message,RGB(84,233,214));
+    write(40,661,m.message.empty()?"Select your weapon to begin.":m.message,RGB(84,233,214));
         // Back to the list of active mods, leaving weapon profiles intact.
         fill(797,16,129,57,m.hovered==95||gamepadFocus(95)
             ?RGB(47,95,110):RGB(39,49,63));
@@ -1184,11 +1175,13 @@ void paintVrHandMenu() {
         fill(guideX,guideY,4,guideH,RGB(55,209,214));
         SelectObject(dc,smallFont);
         const std::string phase=g.id>=11?"TEST":g.id>=5?"COLLECT":"REGRESSION";
-        write(guideX+14,guideY+5,std::string(plan.title)+" / "+phase+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
+        unsigned total=0,done=0;for(unsigned bit=5;bit<17;++bit){if(g.activeMask&(1u<<bit))++total;if(g.finished&(1u<<bit))++done;}
+        const std::string queue=g.id>=5?"  ["+std::to_string(std::min(total,done+(g.completeAt?0u:1u)))+"/"+std::to_string(total)+"]":"";
+        wrap(guideX+14,guideY+5,guideW-28,25,std::string(plan.title)+" / "+phase+queue+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
         const std::string& previous=g.previous;
         if(!previous.empty())wrap(guideX+14,guideY+30,guideW-28,44,previous,
             previous.find("FAIL")==0?RGB(255,130,125):previous.find("TIMEOUT")==0||previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
-        const std::string next=g.completeAt?"Sequence done; see log for outcomes":plan.steps[g.step].text;
+        const std::string next=g.completeAt?"Module finished; see log for evidence":plan.steps[g.step].text;
         wrap(guideX+14,guideY+76,guideW-28,46,next,g.completeAt?RGB(128,255,177):white);
         fill(guideX+12,guideY+122,guideW-24,3,RGB(58,70,79));
         fill(guideX+12,guideY+122,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));

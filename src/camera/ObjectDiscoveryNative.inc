@@ -457,20 +457,20 @@ std::atomic<unsigned> nativeResearchReady{};
 std::atomic<unsigned long long> nativeResearchReadyGeneration{};
 unsigned nativeResearchTests{};
 std::array<std::atomic<unsigned>,6> nativeGuidedCollect{},nativeGuidedTest{};
-std::atomic<unsigned> nativeGuidedReleaseCount{};
+std::atomic<unsigned> nativeGuidedReleaseCount{},nativeMeshStage{},nativeMeshHandle{},nativeMeshRawBytes{},nativeHorizontalMotion{},nativeVerticalMotion{};
 void nativeResearchEvidence(unsigned bit,const std::string& summary,bool validated=true){
     if(validated){const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
         if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));}
-    log("[NATIVE-RESEARCH] sample group="+std::to_string(bit)+" validated="+std::to_string(validated)+" "+summary);
-    static std::array<unsigned long long,6> lastTest{};
+    static std::array<unsigned long long,6> lastTest{},lastSampleLog{};
     static unsigned long long lastGeneration{};
     const auto generation=nativeResearchReadyGeneration.load(std::memory_order_acquire);
-    if(lastGeneration!=generation){lastTest={};lastGeneration=generation;}
+    if(lastGeneration!=generation){lastTest={};lastSampleLog={};lastGeneration=generation;}
     unsigned index=0;for(unsigned b=bit;b>1;b>>=1)++index;
     if(index>=nativeGuidedCollect.size())return;
     nativeGuidedCollect[index].fetch_add(1,std::memory_order_release);
-    if(!validated||!(nativeResearchTests&bit))return;
     const auto now=GetTickCount64();
+    if(!lastSampleLog[index]||now-lastSampleLog[index]>=500){lastSampleLog[index]=now;log("[NATIVE-RESEARCH] sample group="+std::to_string(bit)+" validated="+std::to_string(validated)+" "+summary);}
+    if(!validated||!(nativeResearchTests&bit))return;
     if(index>=lastTest.size()||(lastTest[index]&&now>=lastTest[index]&&now-lastTest[index]<500))return;
     lastTest[index]=now;nativeGuidedTest[index].fetch_add(1,std::memory_order_release);
     log("[NATIVE-RESEARCH-TEST] group="+std::to_string(bit)+" "+summary);
@@ -841,7 +841,7 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
     if(!(mask&50u)||!valid)return;
     if(!edge&&last&&now>=last&&now-last<500)return;
     last=now;
-    if(mask&2u){
+    if((mask&2u)&&in.pressed){
         const ObjectDiscoveryNativeRecord* target{};float miss=100.f;
         for(const auto& item:objectDiscoveryNative){
             if(!item.entity||!item.body||!item.poseValid||item.generation!=generation||item.bodyVtable!=item.imageBase+0x2874190)continue;
@@ -868,10 +868,9 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
                     boundsOk=boundsOk&&std::isfinite(bounds[k])&&std::isfinite(bounds[k+3])&&bounds[k]<=bounds[k+3]&&std::isfinite(origin[k]);
                     const float e=origin[k]-target->origin[k];poseError+=e*e;
                 }
-                if(boundsOk&&objectDiscoveryAxisOk(axis)&&bytes[8]&&!bytes[9])
-                    nativeResearchEvidence(2u,"clip_bounds_candidate="+std::to_string(boundsHit)
+                nativeResearchEvidence(2u,"clip_bounds_candidate="+std::to_string(boundsHit)
                         +" clip_body_pose_error="+std::to_string(std::sqrt(poseError))
-                        +" outcome="+(boundsHit?"BOUNDS_HIT":"BOUNDS_MISS")+" native_ray_called=0 world_clip_read="+std::to_string(worldRead));
+                        +" outcome="+(boundsHit?"BOUNDS_HIT":"BOUNDS_MISS")+" native_ray_called=0 world_clip_read="+std::to_string(worldRead),boundsOk&&objectDiscoveryAxisOk(axis)&&bytes[8]&&!bytes[9]);
             }
         }
     }
@@ -895,7 +894,12 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
             if(finite&&requestFinite){
                 static unsigned long long priorGen{},priorAt{};static std::uintptr_t priorOwner{};static float prior[3]{};
                 float speed=0.f;const bool comparable=priorGen==generation&&priorOwner==owner&&priorAt&&now>priorAt&&now-priorAt<2000;
-                if(comparable){for(unsigned k=0;k<3;++k){const float e=state[k]-prior[k];speed+=e*e;}speed=std::sqrt(speed)*1000.f/static_cast<float>(now-priorAt);}
+                if(comparable){const float dx=state[0]-prior[0],dy=state[1]-prior[1],dz=state[2]-prior[2];
+                    const float elapsed=static_cast<float>(now-priorAt);
+                    const float horizontal=std::sqrt(dx*dx+dy*dy);speed=std::sqrt(horizontal*horizontal+dz*dz)*1000.f/elapsed;
+                    if(horizontal>2.f&&horizontal*1000.f/elapsed>5.f)nativeHorizontalMotion.fetch_add(1,std::memory_order_release);
+                    if(std::abs(dz)>2.f&&std::abs(dz)*1000.f/elapsed>5.f)nativeVerticalMotion.fetch_add(1,std::memory_order_release);
+                }
                 std::memcpy(prior,state,12);priorGen=generation;priorOwner=owner;priorAt=now;
                 if(comparable&&speed>5.f)nativeResearchEvidence(16u,"outcome=NATIVE_MOVEMENT_SAMPLED measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
                 else log("[NATIVE-RESEARCH] movement baseline/stationary; no action completion");
@@ -935,7 +939,7 @@ void objectDiscoveryGameTick() {
     const auto researchGeneration=levelTransitionGeneration.load(std::memory_order_acquire);
     if(nativeResearchReadyGeneration.load(std::memory_order_acquire)!=researchGeneration){nativeResearchReady.store(0,std::memory_order_release);nativeResearchReadyGeneration.store(researchGeneration,std::memory_order_release);}
     nativeResearchTests=input.researchTestMask&nativeResearchReady.load(std::memory_order_acquire);
-    playerLedgeResearchEnabled.store(((input.researchMask|input.researchTestMask)&32u)!=0,std::memory_order_release);
+    playerLedgeResearchEnabled.store(input.frameAtMs&&now>=input.frameAtMs&&now-input.frameAtMs<180&&((input.researchMask|input.researchTestMask)&32u)!=0,std::memory_order_release);
     const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
     const bool worldBlocked=!KharvoxCameraWorldActive()
         ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();

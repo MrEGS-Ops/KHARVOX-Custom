@@ -64,7 +64,7 @@ bool geometryReflectedSignature(const ObjectDiscoveryNativeRecord& item){
 }
 void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectDiscoveryGripFrame& in){
     const auto start=GetTickCount64();
-    if(!geometryReflectedSignature(item)){geometryLog("MESH_SKIP reason=signature");return;}
+    if(!geometryReflectedSignature(item)){nativeMeshStage.store(3);geometryLog("MESH_SKIP reason=signature");return;}
     std::uintptr_t model{},vt{},surfaces{};
     std::uint32_t count{};
     float transform[15]{};
@@ -73,8 +73,9 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
         ||vt!=item.imageBase+0x283f9b8||!geometryRead(model+0xae0,&surfaces,sizeof(surfaces))
         ||!geometryRead(model+0xae8,&count,sizeof(count))||!geometryRead(model+0xc8,transform,sizeof(transform))
         ||!surfaces||!count||count>128){
-        geometryLog("MESH_SKIP reason=model_or_list model="+geometryHex(model)+" count="+std::to_string(count));return;
+        nativeMeshStage.store(4);geometryLog("MESH_SKIP reason=model_or_list model="+geometryHex(model)+" count="+std::to_string(count));return;
     }
+    nativeMeshStage.store(5);
     bool pose=objectDiscoveryAxisOk(transform+3);
     for(unsigned k=0;k<3;++k)
         pose=pose&&std::isfinite(transform[k])&&std::isfinite(transform[12+k])
@@ -178,7 +179,7 @@ void geometryReflectedMesh(const ObjectDiscoveryNativeRecord& item,const ObjectD
     std::uintptr_t after{};std::uint32_t afterCount{};
     const bool stable=geometryRead(model+0xae0,&after,sizeof(after))&&after==surfaces
         &&geometryRead(model+0xae8,&afterCount,sizeof(afterCount))&&afterCount==count;
-    if(stable&&decoded&&pose)nativeResearchEvidence(1u,"mesh decoded="+std::to_string(decoded)+" candidate_hit="+std::to_string(best<=in.reachUnits)+" depth="+std::to_string(best)+" outcome="+(best<=in.reachUnits?"CANDIDATE_TRIANGLE_HIT":(visited==count&&decoded==count?"CANDIDATE_MISS":"INCONCLUSIVE_PARTIAL_MESH")));
+    if(stable&&decoded&&pose){nativeMeshStage.store(6);nativeResearchEvidence(1u,"mesh decoded="+std::to_string(decoded)+" candidate_hit="+std::to_string(best<=in.reachUnits)+" depth="+std::to_string(best)+" outcome="+(best<=in.reachUnits?"CANDIDATE_TRIANGLE_HIT":(visited==count&&decoded==count?"CANDIDATE_MISS":"INCONCLUSIVE_PARTIAL_MESH")));}
     geometryLog("MESH_END visited="+std::to_string(visited)+" decoded="+std::to_string(decoded)
         +" triangles="+std::to_string(totalTriangles)+" logged="+std::to_string(logged)
         +" list_stable="+std::to_string(stable)+" candidate_hit="+std::to_string(stable&&best<=in.reachUnits)
@@ -309,7 +310,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDisc
             ++bounds;
         }
     }
-    if(visited&&rawBytes)nativeResearchEvidence(1u,"RAW_GEOMETRY_CAPTURED handle="+std::to_string(item.handle)+" bytes="+std::to_string(rawBytes)+" (not verified mesh)",false);
+    if(visited&&rawBytes){nativeMeshRawBytes.store(rawBytes);nativeResearchEvidence(1u,"RAW_GEOMETRY_CAPTURED handle="+std::to_string(item.handle)+" bytes="+std::to_string(rawBytes)+" (not verified mesh)",false);}
     geometryLog("OBJECT_END handle="+std::to_string(item.handle)+" nodes="+std::to_string(visited)
         +" queued="+std::to_string(nodes.size())+" edges="+std::to_string(edges)
         +" bounds="+std::to_string(bounds)+" array_samples="+std::to_string(samples)
@@ -325,6 +326,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
         s.down=false;s.pending=false;return;
     }
     if(s.down&&s.generation==generation&&now-s.started<1000)return;
+    nativeMeshStage.store(1);nativeMeshHandle.store(0);nativeMeshRawBytes.store(0);
     s.down=true;s.pending=true;s.generation=generation;++s.serial;s.started=now;s.dumps=0;s.handle=0;
     geometryLog("BEGIN hand="+std::to_string(in.physicalHand)+" gen="+std::to_string(generation)
         +" grip="+geometryFloats(in.origin,3)+" grip_axis="+geometryFloats(in.axis,9)
@@ -363,8 +365,8 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
             +" pose_age_ms="+std::to_string(now>=item.lastPositionAtMs?now-item.lastPositionAtMs:0)
             +" moving="+std::to_string(item.nativeMotionObserved));
     }
-    if(!candidates.empty())geometryDumpObject(*candidates.front().item,in,"initial_ray_candidate");
-    else geometryLog("NO_CANDIDATE near ray");
+    if(!candidates.empty()){nativeMeshHandle.store(candidates.front().item->handle);geometryDumpObject(*candidates.front().item,in,"initial_ray_candidate");}
+    else{nativeMeshStage.store(2);geometryLog("NO_CANDIDATE near ray");}
 }
 void grappleGeometryInvestigatorAcquired(const ObjectDiscoveryGripFrame& in,
     const ObjectDiscoveryNativeRecord& item,unsigned long long now){
