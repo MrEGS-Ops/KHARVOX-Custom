@@ -181,7 +181,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "Toggle overlay without disabling mods."}}};
         case D::NativeInteractionResearch:return {{{"Collect and test six native systems.",
             "All switches session-only; OFF at launch.",
-            "Tests unlock after usable data.",
+            "Only verified practical tests are offered.",
             "Activation uses weapon hand; pauses grab.",
             "Hold/release uses existing Grapple Grab.",
             "Read-only comparison tests."}}};
@@ -455,6 +455,11 @@ void captureVrLivePosition(){
     if(!saveVrLiveSettings()){
         s.vrLiveSettings=before;return;
     }
+    if(capture==VrLiveCapture::HipLeft||capture==VrLiveCapture::WheelLeft){
+        openVrLiveCapture(capture==VrLiveCapture::HipLeft?VrLiveCapture::HipRight:VrLiveCapture::WheelRight);
+        kharvox::queueControllerZoneCue(s.handZoneCues[1],GetTickCount64(),190,.80f,185.f);
+        return;
+    }
     m.liveCapture=VrLiveCapture::None;
     m.gunslingerZoneDraftValid=false;
     m.gunslingerZoneMoving=false;
@@ -723,11 +728,9 @@ bool handleVrLiveMenuAction(int action){
             }
             break;
         case VrLiveMod::Gunslinger:
-            if(option==0)openVrLiveCapture(VrLiveCapture::HipRight);
-            else if(option==1)openVrLiveCapture(VrLiveCapture::HipLeft);
-            else if(option==2)openVrLiveCapture(VrLiveCapture::WheelRight);
-            else if(option==3)openVrLiveCapture(VrLiveCapture::WheelLeft);
-            else if(option==4){
+            if(option==0)openVrLiveCapture(VrLiveCapture::HipLeft);
+            else if(option==1)openVrLiveCapture(VrLiveCapture::WheelLeft);
+            else if(option==2){
                 kharvox::vrLiveResetGunslingerPositions(s.vrLiveSettings);
                 changed=true;
             }

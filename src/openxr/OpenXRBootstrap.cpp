@@ -3920,9 +3920,10 @@ void updateGameplayActions(XrTime displayTime){
     if(gameplay&&guidedResponseVisible()){
         vrMenuRayTarget(guidedCursorX,guidedCursorY);
         if(guidedCursorX>=guideX+12&&guidedCursorX<guideX+guideW-12
-            &&guidedCursorY>=guideY+91&&guidedCursorY<guideY+123){
-            const int slot=static_cast<int>((guidedCursorX-guideX-12)/145.f);
-            if(slot>=0&&slot<4&&(slot>=2||guidedManualStep()))guidedHover=slot;
+            &&guidedCursorY>=guideY+guideButtonY&&guidedCursorY<guideY+guideButtonY+guideButtonH){
+            const float localX=guidedCursorX-guideX-12;
+            const int slot=static_cast<int>(localX/guideButtonStep);
+            if(slot>=0&&slot<4&&localX-slot*guideButtonStep<guideButtonW)guidedHover=slot;
         }
         if(guideTrigger&&!guidedTriggerPreviously&&guidedHover>=0){
             const unsigned commands[]{3,4,1,2};
@@ -5369,6 +5370,8 @@ void updateGameplayActions(XrTime displayTime){
     KharvoxObjectGripFeedback objectFeedback{};
     const bool objectHeld=KharvoxCameraReadObjectGrip(objectFeedback);
     if(objectHeld)s.objectGripLastFeedbackAtMs=GetTickCount64();
+    guidedTick(gameplay,supportGripDown,ordinaryNativeMeleeDown,objectHeld,objectFeedback,discoveryGeneration);
+    guidedApplyResearchSelection(gameplay);
     const bool objectMode=s.vrHandMenu.objectDiscoveryActive()
         &&gameplay&&s.trackingHeadPositionValid
         &&!controllerOnlyLocked.load(std::memory_order_acquire);
@@ -5622,12 +5625,10 @@ void updateGameplayActions(XrTime displayTime){
     // barrel by invalidating our native pose during calibration.
     const bool attachmentOwnsGrab=s.objectGripWasHeld;
     // Drop stale test permissions when the native level generation changes.
-    s.vrHandMenu.nativeResearchTestMask&=KharvoxCameraNativeResearchReady();
-    s.vrHandMenu.activationInvestigator=((s.vrHandMenu.nativeResearchMask|s.vrHandMenu.nativeResearchTestMask)&4u)!=0;
-    s.vrHandMenu.releaseInvestigator=((s.vrHandMenu.nativeResearchMask|s.vrHandMenu.nativeResearchTestMask)&8u)!=0;
+    // Research selection is applied by the sequential guide before objectMode.
     const bool investigateActivation=s.vrHandMenu.activationInvestigator;
     const bool freeHandClear=objectMode
-        &&(investigateActivation||attachmentOwnsGrab
+        &&(s.vrHandMenu.nativeResearchActive()||investigateActivation||attachmentOwnsGrab
             ||(!s.twoHandLatched&&!s.twoHandCalibrationMode
                 &&!supportGripInCaptureRange()
                 &&!s.behindHeadWheelActive&&!weaponWheelActive
@@ -5706,9 +5707,8 @@ void updateGameplayActions(XrTime displayTime){
         s.vrHandMenu.objectMeleeActive(),
         s.vrHandMenu.objectMeleeActive()?testNativeMeleeDown:ordinaryNativeMeleeDown,
         s.vrHandMenu.dynamicSurfaceOffset,s.vrHandMenu.activationInvestigator,
-        s.vrHandMenu.releaseInvestigator,s.vrHandMenu.nativeResearchMask,s.vrHandMenu.nativeResearchTestMask,
-        s.vrHandMenu.nativeResearchActive()&&!s.vrHandMenu.objectDiscovery.enabled&&!s.vrHandMenu.objectGrappleActive()&&!s.vrHandMenu.objectMeleeActive());
-    guidedTick(gameplay,supportGripDown,ordinaryNativeMeleeDown,objectHeld,objectFeedback,discoveryGeneration);
+        s.vrHandMenu.releaseInvestigator,s.vrHandMenu.activeResearchMask,s.vrHandMenu.activeResearchTestMask,
+        s.vrHandMenu.nativeResearchActive()&&!s.vrHandMenu.objectGrappleActive());
     if(gripPoseValid&&objectHeld){
         KharvoxCameraSetObjectGripCalibration(
             s.objectGripCalibrating||s.objectGripHasProfile
@@ -9269,7 +9269,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.stereoCacheRevision[currentRenderEye]+1);
     kharvox::hands::HandPose sceneLaser{};
     XrVector3f laserOrigin{},laserDirection{};
-    if(s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
+    if(guidedHover<0&&s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
         &&(!aerSourceMode||aerSourceQualified)
         &&renderedLaserPoseInTrackingSpace(laserOrigin,laserDirection,
             aerSourceQualified?aerCapturedInput.laserBodyTracking:sfsBackend&&nativeFrameValid?nativeFrame.pose.bodyTracking:laserBodyTrackingTransform(),
@@ -9288,6 +9288,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     float grabReachLaserMetres{};
 #if KHARVOX_EXPERIMENTAL_WORLD_GRAB
     if(s.vrHandMenu.objectGrabLaserActive()
+        &&!(guidedHover>=0&&(s.vrHandMenu.activationInvestigator?!s.weaponHandLeft:s.weaponHandLeft))
         &&handGameplayActive&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
         &&!controllerOnlyLocked.load(std::memory_order_acquire)
         &&(!aerSourceMode||aerSourceQualified)){

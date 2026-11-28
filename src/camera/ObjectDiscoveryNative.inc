@@ -458,9 +458,10 @@ std::atomic<unsigned long long> nativeResearchReadyGeneration{};
 unsigned nativeResearchTests{};
 std::array<std::atomic<unsigned>,6> nativeGuidedCollect{},nativeGuidedTest{};
 std::atomic<unsigned> nativeGuidedReleaseCount{};
-void nativeResearchEvidence(unsigned bit,const std::string& summary){
-    const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
-    if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));
+void nativeResearchEvidence(unsigned bit,const std::string& summary,bool validated=true){
+    if(validated){const unsigned prior=nativeResearchReady.fetch_or(bit,std::memory_order_acq_rel);
+        if(!(prior&bit))log("[NATIVE-RESEARCH] ready group="+std::to_string(bit));}
+    log("[NATIVE-RESEARCH] sample group="+std::to_string(bit)+" validated="+std::to_string(validated)+" "+summary);
     static std::array<unsigned long long,6> lastTest{};
     static unsigned long long lastGeneration{};
     const auto generation=nativeResearchReadyGeneration.load(std::memory_order_acquire);
@@ -468,7 +469,7 @@ void nativeResearchEvidence(unsigned bit,const std::string& summary){
     unsigned index=0;for(unsigned b=bit;b>1;b>>=1)++index;
     if(index>=nativeGuidedCollect.size())return;
     nativeGuidedCollect[index].fetch_add(1,std::memory_order_release);
-    if(!(nativeResearchTests&bit))return;
+    if(!validated||!(nativeResearchTests&bit))return;
     const auto now=GetTickCount64();
     if(index>=lastTest.size()||(lastTest[index]&&now>=lastTest[index]&&now-lastTest[index]<500))return;
     lastTest[index]=now;nativeGuidedTest[index].fetch_add(1,std::memory_order_release);
@@ -896,8 +897,8 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
                 float speed=0.f;const bool comparable=priorGen==generation&&priorOwner==owner&&priorAt&&now>priorAt&&now-priorAt<2000;
                 if(comparable){for(unsigned k=0;k<3;++k){const float e=state[k]-prior[k];speed+=e*e;}speed=std::sqrt(speed)*1000.f/static_cast<float>(now-priorAt);}
                 std::memcpy(prior,state,12);priorGen=generation;priorOwner=owner;priorAt=now;
-                nativeResearchEvidence(16u,"outcome="+std::string(comparable?"NATIVE_MOVEMENT_SAMPLED":"BASELINE")
-                    +" measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
+                if(comparable&&speed>5.f)nativeResearchEvidence(16u,"outcome=NATIVE_MOVEMENT_SAMPLED measured_speed="+std::to_string(speed)+" no_movement_submitted=1");
+                else log("[NATIVE-RESEARCH] movement baseline/stationary; no action completion");
             }
         }
     }
@@ -911,9 +912,9 @@ void nativeResearchObserve(const ObjectDiscoveryGripFrame& in,bool valid,unsigne
             const bool changed=seen&&(prior!=active||priorSerial!=serial);
             priorSerial=serial;
             log("[NATIVE-RESEARCH] native ledge state active="+std::to_string(active)+" transition="+std::to_string(changed));
-            if(active||changed)nativeResearchEvidence(32u,"outcome="+std::string(changed?"NATIVE_TRANSITION":"NATIVE_ACTIVE")+" active="+std::to_string(active)+" no_custom_climb=1");
+            if(changed)nativeResearchEvidence(32u,"outcome=NATIVE_TRANSITION state="+std::to_string(playerLedgeNativeState.load(std::memory_order_acquire))+" at="+std::to_string(playerLedgeTransitionAt.load(std::memory_order_acquire))+" active="+std::to_string(active)+" no_custom_climb=1");
             seen=true;prior=active;
-        }
+        }else log("[NATIVE-RESEARCH] ledge baseline: no matching mechanic owner yet");
     }
 }
 #endif
@@ -934,6 +935,7 @@ void objectDiscoveryGameTick() {
     const auto researchGeneration=levelTransitionGeneration.load(std::memory_order_acquire);
     if(nativeResearchReadyGeneration.load(std::memory_order_acquire)!=researchGeneration){nativeResearchReady.store(0,std::memory_order_release);nativeResearchReadyGeneration.store(researchGeneration,std::memory_order_release);}
     nativeResearchTests=input.researchTestMask&nativeResearchReady.load(std::memory_order_acquire);
+    playerLedgeResearchEnabled.store(((input.researchMask|input.researchTestMask)&32u)!=0,std::memory_order_release);
     const bool explicitRelease=input.releaseSerial!=objectDiscoveryReleaseSerial;
     const bool worldBlocked=!KharvoxCameraWorldActive()
         ||KharvoxCameraCutsceneActive()||KharvoxCameraBossSequenceActive();

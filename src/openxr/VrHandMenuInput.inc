@@ -158,6 +158,17 @@ void serviceVrWeaponFineTune(bool weaponGripDown){
         +" z="+std::to_string(step.z)
         +" totalX="+std::to_string(m.fineTuneAccumulated.x));
 }
+void startVrSelectedWeaponCalibration();
+void finishVrWeaponSequence(){
+    auto& m=s.vrHandMenu;
+    if(m.weaponCalibrationStage)selectPhysicalWeaponHand(m.calibrationOriginalWeaponLeft,"calibration sequence exit");
+    m.weaponCalibrationStage=0;m.previewValid=false;m.primaryGripPreviewHeld=false;m.rotationEdit={};
+    m.mode=kharvox::VrHandMenuMode::Menu;
+}
+void beginVrWeaponSequence(){
+    auto& m=s.vrHandMenu;m.calibrationOriginalWeaponLeft=s.weaponHandLeft;m.weaponCalibrationStage=1;
+    selectPhysicalWeaponHand(false,"calibration right primary");m.rightHand=true;startVrSelectedWeaponCalibration();
+}
 void saveVrHandMenuCalibration(){
     auto& m=s.vrHandMenu;
     if(!m.previewValid){m.message="Tracking/placement invalid; try again.";return;}
@@ -244,6 +255,12 @@ void saveVrHandMenuCalibration(){
     m.primaryGripPreviewHeld=false;
     m.rotationEdit={};
     refreshVrHandMenuSavedStatus();
+    if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==4){
+        const auto* support=twoHandCalibrationFor(kind);
+        if(support&&support->valid){m.weaponCalibrationStage=m.weaponCalibrationStage==1?2:5;m.rightHand=s.weaponHandLeft;startVrSelectedWeaponCalibration();return;}
+    }
+    if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==2){m.weaponCalibrationStage=3;m.mode=kharvox::VrHandMenuMode::Calibrating;return;}
+    if(m.weaponCalibrationStage)finishVrWeaponSequence();
 }
 void resetVrMenuSelectedWeapon(){
     auto& m=s.vrHandMenu;
@@ -392,7 +409,7 @@ void requestVrSelectedWeaponCalibration(XrTime displayTime){
     // The owner decides which in-game attachment is fitted. Selecting the
     // generic Alt Fire profile needs only one CALIBRATE press.
     if(weapon==KharvoxWeaponCurrentKind()){
-        startVrSelectedWeaponCalibration();
+        beginVrWeaponSequence();
         return;
     }
     // Never guess ownership or manually select an undiscovered weapon.
@@ -518,7 +535,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY){
             if(toggleable&&pixelY>=159&&pixelY<219)return 110;
             const int optionY=toggleable?248:186;
             const int optionCount=list[row].developer
-                ==kharvox::VrMenuDevOption::GuidedTesting?5:list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:5;
+                ==kharvox::VrMenuDevOption::GuidedTesting?5:list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch?7:list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor?4:expInline?3:list[row].mod==kharvox::VrLiveMod::Gunslinger?3:5;
             const bool grappleInline=list[row].developer==kharvox::VrMenuDevOption::GrappleAnchor;
             const bool researchInline=list[row].developer==kharvox::VrMenuDevOption::NativeInteractionResearch;
             const int optionStep=researchInline?52:grappleInline?60:expInline?91:68;
@@ -575,6 +592,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     const auto shortcut=kharvox::updateVrMenuHoldShortcut(
         m.shortcut,rightClick,GetTickCount64());
     if(!gameplay){
+        if(m.weaponCalibrationStage)finishVrWeaponSequence();
         m.mode=kharvox::VrHandMenuMode::Closed;
         m.autoSelectingWeapon=false;
         m.pendingNativeSelection=0;
@@ -621,6 +639,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
+            if(m.weaponCalibrationStage)finishVrWeaponSequence();
             m.mode=m.mode==kharvox::VrHandMenuMode::Menu
                 ?kharvox::VrHandMenuMode::Closed:kharvox::VrHandMenuMode::Menu;
             m.previewValid=false;
@@ -662,7 +681,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         return false;
     }
     const bool triggerEdge=rightTrigger&&!m.rightTriggerPreviously;
-    m.rightTriggerPreviously=rightTrigger;
+    const bool leftTriggerEdge=leftTrigger&&!m.leftTriggerPreviously;
+    m.rightTriggerPreviously=rightTrigger;m.leftTriggerPreviously=leftTrigger;
     // Sample real menu inputs on EVERY frame, including live Gunslinger
     // captures. The DEV monitor renders each bit separately and never
     // rewires gameplay bindings or commits this information to UserData.
@@ -674,6 +694,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     // Mods; from the top-level Mods page it closes the overlay.
     if(bEdge){
         const bool wasLiveModCapture=m.liveCapture!=kharvox::VrLiveCapture::None;
+        const bool wasCalibrating=m.mode==kharvox::VrHandMenuMode::Calibrating;
+        if(m.weaponCalibrationStage)finishVrWeaponSequence();
         m.liveCapture=kharvox::VrLiveCapture::None;
         m.gunslingerZoneDraftValid=false;
         m.gunslingerZoneMoving=false;
@@ -684,13 +706,13 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.rotationEdit={};
         s.primaryVisualLocked=false;
         s.supportVisualLocked=false;
-        if(m.mode==kharvox::VrHandMenuMode::Calibrating){
+        if(wasCalibrating){
             m.mode=kharvox::VrHandMenuMode::Menu;
             // Gunslinger/Crouch capture returns to Mods; weapon grip capture
             // returns to the selected weapon. Neither cancellation saves.
             m.page=wasLiveModCapture?kharvox::VrMenuPage::Mods
                 :kharvox::VrMenuPage::WeaponGrip;
-            m.message="Calibration cancelled. No changes saved.";
+            m.message="Current draft discarded. Earlier confirmed stages retained.";
         }else if(m.page==kharvox::VrMenuPage::Records
             ||m.page==kharvox::VrMenuPage::DevRecords){
             const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
@@ -741,6 +763,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
                 ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
             if(triggerEdge||(crouch&&aEdge))captureVrLivePosition();
+        }else if(m.weaponCalibrationStage==3){
+            if(leftTriggerEdge){m.weaponCalibrationStage=4;selectPhysicalWeaponHand(true,"calibration left primary");m.rightHand=false;startVrSelectedWeaponCalibration();}
+            else if(triggerEdge)finishVrWeaponSequence();
         }else{
             updateVrMenuPreview(primaryWeaponGripDown);
             serviceVrWeaponFineTune(primaryWeaponGripDown);
@@ -866,7 +891,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 switch(mod){
                     case VrLiveMod::WeaponGrip:return 1; // open calibration
                     case VrLiveMod::WeaponRecoil:return 1; // dedicated per-gun page
-                    case VrLiveMod::Gunslinger:return 5;
+                    case VrLiveMod::Gunslinger:return 3;
                     case VrLiveMod::PhysicalCrouch:return 4; // toggle + 3 heights
                     case VrLiveMod::Killtime:return 3;
                     case VrLiveMod::TurnSpeed:return 3;
@@ -1111,17 +1136,15 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     log("[SURFACE-GRAPPLE] "+m.message);
                 }else if(kind==D::NativeInteractionResearch){
                     const int index=chosen-130;
-                    if(!index){m.nativeResearchTestPage=!m.nativeResearchTestPage;m.message=m.nativeResearchTestPage?"TEST: unlocks after usable data.":"COLLECT: toggle groups.";}
+                    if(!index){m.nativeResearchTestPage=!m.nativeResearchTestPage;m.message=m.nativeResearchTestPage?"TEST: practical release regression only.":"COLLECT: select groups, then close DEV.";}
                     else{
                         const unsigned bit=1u<<(index-1);
                         const unsigned ready=KharvoxCameraNativeResearchReady();
                         if(m.nativeResearchTestPage){
                             if(m.nativeResearchTestMask&bit)m.nativeResearchTestMask&=~bit;
-                            else if(ready&bit)m.nativeResearchTestMask|=bit;
-                            else{m.message="Test locked: collect usable data first.";}
+                            else if(bit==8u)m.nativeResearchTestMask|=bit;
+                            else{m.message="No verified functional test yet; collection only.";}
                         }else m.nativeResearchMask^=bit;
-                        m.activationInvestigator=((m.nativeResearchMask|m.nativeResearchTestMask)&4u)!=0;
-                        m.releaseInvestigator=((m.nativeResearchMask|m.nativeResearchTestMask)&8u)!=0;
                         log("[NATIVE-RESEARCH] collect="+std::to_string(m.nativeResearchMask)+" test="+std::to_string(m.nativeResearchTestMask)+" ready="+std::to_string(ready));
                     }
                 }else if(kind==D::Experimental&&chosen<=132){
@@ -1217,7 +1240,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(m.autoSelectingWeapon){
                 const auto desired=KharvoxWeaponKindFromKey(m.weapon());
                 if(desired==KharvoxWeaponCurrentKind()){
-                    startVrSelectedWeaponCalibration();
+                    beginVrWeaponSequence();
                 }else if(GetTickCount64()>=m.autoSelectionDeadlineMs){
                     m.autoSelectingWeapon=false;
                     m.pendingNativeSelection=0;

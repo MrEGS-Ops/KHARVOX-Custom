@@ -577,19 +577,22 @@ struct VrHandMenuState {
     GrappleAnchorSettings grappleAnchor{};
     bool objectMeleeActivation{}; // original path, session only
     bool pistolGrappleEnabled{}; // separate experimental variant, session only
-    unsigned nativeResearchMask{},nativeResearchTestMask{};
+    unsigned nativeResearchMask{},nativeResearchTestMask{}; // selected queue
+    unsigned activeResearchMask{},activeResearchTestMask{}; // one running group
+    unsigned weaponCalibrationStage{}; // 0 none, 1 right primary, 2 left support, 3 offer, 4 left primary, 5 right support
+    bool calibrationOriginalWeaponLeft{};
     bool nativeResearchTestPage{};
     bool guidedTestingEnabled{true};
     unsigned guidedCommand{}; // 1 retry, 2 skip, 3 observed OK, 4 observed failure
-    bool nativeResearchActive() const noexcept {return (nativeResearchMask|nativeResearchTestMask)!=0;}
+    bool nativeResearchActive() const noexcept {return (activeResearchMask|activeResearchTestMask)!=0;}
     bool activationInvestigator{}; // session-only passive native wake investigation
     bool releaseInvestigator{}; // session-only observer, can coexist with grabs
     bool dynamicSurfaceOffset{}; // independent kick-only experiment, session only
     bool objectGrappleActive() const noexcept {
-        return !activationInvestigator&&(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled);
+        return !activationInvestigator&&(nativeResearchActive()?((activeResearchMask|activeResearchTestMask)&8u)!=0:(dynamicSurfaceOffset||grappleAnchor.enabled||pistolGrappleEnabled));
     }
     bool objectMeleeActive() const noexcept {
-        return !activationInvestigator&&!dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
+        return !nativeResearchActive()&&!activationInvestigator&&!dynamicSurfaceOffset&&(objectMeleeActivation||pistolGrappleEnabled);
     }
     bool objectDiscoveryActive() const noexcept {
         return nativeResearchActive()||activationInvestigator||objectDiscovery.enabled||objectGrappleActive()||objectMeleeActive();

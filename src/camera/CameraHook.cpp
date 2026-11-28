@@ -89,6 +89,9 @@ std::atomic<bool> playerPhysicsOriginValid{};
 std::atomic<uintptr_t> playerLedgeTransitionOwner{};
 std::atomic<bool> playerLedgeTransitionActive{};
 std::atomic<unsigned> playerLedgeTransitionSerial{};
+std::atomic<int> playerLedgeNativeState{-1};
+std::atomic<unsigned long long> playerLedgeTransitionAt{};
+std::atomic<bool> playerLedgeResearchEnabled{};
 std::atomic<bool> syncAttackClassifierSupported{};
 std::atomic<bool> playerControlClassifierSupported{};
 std::atomic<unsigned long long> cameraPresentSerial{};
@@ -608,7 +611,10 @@ extern "C" void __fastcall capturePlayerLedgeTransition(
     const uintptr_t owner = *reinterpret_cast<const uintptr_t*>(mechanic + 0x10);
     playerLedgeTransitionOwner.store(owner, std::memory_order_relaxed);
     playerLedgeTransitionActive.store(newState != -1, std::memory_order_release);
+    playerLedgeNativeState.store(newState,std::memory_order_relaxed);
+    playerLedgeTransitionAt.store(GetTickCount64(),std::memory_order_relaxed);
     playerLedgeTransitionSerial.fetch_add(1,std::memory_order_release);
+    if(playerLedgeResearchEnabled.load(std::memory_order_acquire))log("[NATIVE-RESEARCH] LEDGE_STATE id="+std::to_string(newState)+" at="+std::to_string(GetTickCount64())+" owner="+std::to_string(owner));
 }
 
 bool installPlayerLedgeStateCapture(unsigned char* image) {

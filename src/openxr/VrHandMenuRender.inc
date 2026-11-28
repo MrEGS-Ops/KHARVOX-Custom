@@ -160,9 +160,7 @@ void paintVrHandMenu() {
         fill(resultX,resultY,7,resultH,accent);
         fill(resultX+7,resultY,resultW-7,3,accent);
     }else if(objectCalibrationView){
-        fill(38,150,660,421,RGB(16,25,35));
-        fill(38,150,6,421,RGB(55,209,214));
-        fill(38,150,660,65,RGB(28,55,65));
+        // Object calibration uses only the shared top instructor.
     }else if(statsLiveView||guideView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -172,11 +170,6 @@ void paintVrHandMenu() {
             fill(x,y,4,counterH,i>=2&&i!=6?RGB(55,209,214):RGB(210,69,76));
         }
     }else if(calibrationView){
-        // Compact left-anchored help box. Everything outside it is truly
-        // transparent, so the live weapon can be inspected and aimed.
-        fill(22,144,590,432,RGB(15,22,32));
-        fill(22,144,590,74,RGB(27,48,61));
-        fill(22,144,5,432,RGB(55,209,214));
         if(devPanel){
             fill(630,144,308,432,RGB(18,29,41));
             fill(630,144,5,432,RGB(55,209,214));
@@ -203,6 +196,10 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
+    auto wrap=[&](int x,int y,int width,int height,const std::string& value,COLORREF color){
+        RECT rc{x,y,x+width,y+height};SetTextColor(dc,color);
+        DrawTextA(dc,value.c_str(),static_cast<int>(value.size()),&rc,DT_LEFT|DT_TOP|DT_WORDBREAK|DT_NOPREFIX);
+    };
     if(disconnectView){
         SelectObject(dc,regular);
         write(bannerX+24,bannerY+13,"CONTROLLERS DISCONNECTED",white);
@@ -272,31 +269,7 @@ void paintVrHandMenu() {
         write(resultX+27,resultY+92,
             "Completed mission: "+s.levelProgress.verifiedMapKey,muted);
     }else if(objectCalibrationView){
-        SelectObject(dc,regular);
-        write(56,165,"OBJECT GRIP CALIBRATION",RGB(84,233,214));
-        write(57,227,s.objectGripName.empty()
-            ?"Movable Object":s.objectGripName,white);
-        SelectObject(dc,smallFont);
-        write(57,268,s.objectGripPhysicalHand==0
-            ?"LEFT HAND PROFILE":"RIGHT HAND PROFILE",RGB(84,233,214));
-        const bool rotating=s.supportGripPressed;
-        fill(54,308,620,106,rotating?RGB(22,62,61):RGB(31,43,59));
-        write(68,321,rotating?"WORLD FLOAT  -  GRIP HELD"
-            :"FINE-TUNE MODE  -  GRIP RELEASED",RGB(84,233,214));
-        write(68,357,rotating?"OBJECT FROZEN: WALK + TURN FREELY"
-            :"LEFT STICK: horizontal / forward / back",white);
-        write(68,384,rotating?"Move hand to desired position + angle."
-            :"RIGHT STICK Y: vertical (1cm / 5cm quick)",muted);
-        write(57,443,rotating
-            ?"RELEASE GRIP: LOCK TO HAND POSITION + ANGLE"
-            :"Hold OFFHAND TRIGGER: 5 cm quick step (default 1 cm)",muted);
-        write(57,473,"RIGHT TRIGGER: SAVE PROFILE",RGB(108,235,161));
-        write(57,509,"B: CANCEL / DROP OBJECT",white);
-        write(57,541,"GRIP + OFFHAND TRIGGER: RESET UPRIGHT",RGB(84,233,214));
-        write(57,585,s.objectGripKey.empty()
-            ?"Model name unverified: item profile is session-only."
-            :"Profile auto-named from verified model resource.",
-            s.objectGripKey.empty()?RGB(255,196,112):muted);
+        // Instructions rendered by calibrationGuide below.
     }else if(statsLiveView||guideView){
         if(statsLiveView)for(int i=0;i<kharvox::kVrStatsItemCount;++i)if(statsVisible[i]){
             const int width=kharvox::campaignStatsPanelWidth(i);
@@ -358,73 +331,6 @@ void paintVrHandMenu() {
             }
         }
     }else if(calibrationView){
-        // Status is a SECOND ROW beneath the title. No badge/text may
-        // overlap or truncate LIVE CALIBRATION on either controller mode.
-        const bool weaponCapture=m.liveCapture==kharvox::VrLiveCapture::None;
-        const bool primary=weaponCapture&&(m.rightHand!=s.weaponHandLeft);
-        write(39,149,"LIVE CALIBRATION",white);
-        SelectObject(dc,smallFont);
-        write(39,187,!weaponCapture?"ZONE PLACEMENT"
-            :!m.previewValid?"WAITING FOR TRACKING"
-            :primary&&m.calibrationGripHeld?"GLOVE ROTATION ACTIVE"
-            :primary?"GUN FINE-TUNE ACTIVE":"SUPPORT POSITION READY",
-            m.previewValid?RGB(108,235,161):RGB(239,197,116));
-        SelectObject(dc,regular);
-        const auto kind=KharvoxWeaponKindFromKey(m.weapon());
-        const bool heavy=kind==KharvoxWeaponKind::GaussCannon
-            ||kind==KharvoxWeaponKind::Chaingun;
-        if(weaponCapture){
-            const auto name=KharvoxWeaponKindDisplayName(kind);
-            const std::string target=m.rightHand?"RIGHT":"LEFT";
-            const std::string other=m.rightHand?"LEFT":"RIGHT";
-            write(39,219,std::string(name&&*name?name:m.weapon()),white);
-            SelectObject(dc,smallFont);
-            write(39,253,target+(primary?" PRIMARY HAND":" SUPPORT HAND"),
-                RGB(84,233,214));
-            if(primary){
-                // Default = 1cm gun fine-tune. Grip temporarily freezes
-                // the gun; the WEAPON hand rotates the visible glove.
-                const bool rotating=m.calibrationGripHeld;
-                fill(35,289,564,151,rotating?RGB(24,66,65):RGB(31,43,59));
-                fill(35,289,4,151,rotating
-                    ?RGB(108,235,161):RGB(84,233,214));
-                write(49,298,rotating?"GLOVE ROTATION (HOLD GRIP)"
-                    :"GUN FINE-TUNE (NO GRIP)",RGB(84,233,214));
-                if(rotating){
-                    write(49,337,"GUN FROZEN: rotate "+target+" controller.",white);
-                    write(49,373,"Your weapon hand adjusts glove angle.",white);
-                    write(49,411,"Release Grip to lock glove rotation.",muted);
-                }else{
-                    write(49,337,"LEFT STICK: gun left/right/forward/back",white);
-                    write(49,373,"RIGHT STICK: gun up/down (1 cm)",white);
-                    write(49,411,"Hold "+target+" Grip to rotate glove.",muted);
-                }
-                if(heavy)
-                    write(39,450,m.alternateProfile
-                        ?"ALT FIRE PROFILE":"NORMAL PROFILE",RGB(84,233,214));
-            }else{
-                fill(35,289,564,151,RGB(31,43,59));
-                fill(35,289,4,151,RGB(84,233,214));
-                write(49,302,"SUPPORT HAND POSITION",RGB(84,233,214));
-                write(49,344,"Move "+target+" controller to place glove.",white);
-                write(49,381,"Align it with the weapon's support grip.",white);
-                write(49,415,"No primary-hand fine-tune controls.",muted);
-            }
-            // Active mode is displayed below LIVE CALIBRATION in header.
-        }else{
-            const bool crouch=m.liveCapture==kharvox::VrLiveCapture::CrouchStanding
-                ||m.liveCapture==kharvox::VrLiveCapture::CrouchLowered;
-            write(39,235,crouch?"PHYSICAL CROUCH":"GUNSLINGER ZONE",white);
-            SelectObject(dc,smallFont);
-            write(39,295,crouch?"Move HEAD to the target height."
-                :"Hold matching GRIP to move the zone.",white);
-            write(39,340,crouch?"Press RIGHT TRIGGER to capture."
-                :m.gunslingerZoneMoving?"DRAGGING: release GRIP to freeze."
-                :"RELEASED: RIGHT TRIGGER saves.",RGB(84,233,214));
-        }
-        SelectObject(dc,smallFont);
-        write(39,523,"RIGHT TRIGGER: SAVE",RGB(108,235,161));
-        write(39,551,"B: CANCEL",muted);
         if(devPanel){
             // The original diagnostics were only a few words on the
             // instruction strip. A transparent-alpha mask clipped them,
@@ -867,12 +773,13 @@ void paintVrHandMenu() {
                     const bool on=i&&((m.nativeResearchTestPage?m.nativeResearchTestMask:m.nativeResearchMask)&bit);
                     const bool selected=m.hovered==130+i||(m.navigation.usingStick&&m.navigation.actionIndex==i);
                     fill(531,top,384,46,selected?RGB(52,83,99):RGB(39,49,63));
-                    write(548,top+4,i?labels[i-1]:(m.nativeResearchTestPage?"TEST MODE (A: COLLECT)":"COLLECT MODE (A: TEST)"),white);
+                    write(548,top+4,i?labels[i-1]:(m.nativeResearchTestPage?"MODE: TEST":"MODE: COLLECT"),white);
                     if(i){write(843,top+4,on?"ON":"OFF",on?RGB(128,255,177):muted);
-                        write(548,top+23,(ready&bit)?"Data ready / comparison available":(m.nativeResearchTestPage?"LOCKED - collect usable data":"Awaiting usable data"),muted);}
+                        write(548,top+23,m.nativeResearchTestPage?(bit==8u?"Optional drop regression":"No functional test yet"):(ready&bit)?"Candidate data validated":"Awaiting validated data",muted);}
+                    else write(548,top+23,"Press A to switch mode",muted);
                 }
-                write(538,558,"Tests keep collecting. Read-only.",muted);
-                write(538,583,"Activation pauses grabbing; disable to hold.",muted);
+                write(538,558,"Select groups; close DEV to run in order.",muted);
+                write(538,583,"Only the current group runs.",muted);
                 write(538,608,"Research switches reset on restart.",muted);
             }else if(opt==D::GrappleAnchor){
                 for(int i=0;i<4;++i){
@@ -982,9 +889,8 @@ void paintVrHandMenu() {
                     optionCount=1;
                     break;
                 case kharvox::VrLiveMod::Gunslinger:
-                    options={"SET RIGHT HIP","SET LEFT HIP",
-                             "SET RIGHT WHEEL","SET LEFT WHEEL","RESET ZONES"};
-                    optionCount=5;
+                    options={"CALIBRATE HOLSTERS","CALIBRATE WEAPON WHEELS","RESET ZONES"};
+                    optionCount=3;
                     break;
                 case kharvox::VrLiveMod::PhysicalCrouch:
                     options[0]="SET STANDING HEAD HEIGHT";
@@ -1249,7 +1155,7 @@ void paintVrHandMenu() {
     }
     button(531,363,384,69,false,m.hovered==30||gamepadFocus(30));
     SelectObject(dc,title);
-    write(568,376,"CALIBRATE",white);
+    write(548,376,"CALIBRATE BOTH",white);
     button(531,454,384,69,false,m.hovered==31||gamepadFocus(31));
     SelectObject(dc,regular);
     write(572,474,"RESET THIS WEAPON",white);
@@ -1261,7 +1167,7 @@ void paintVrHandMenu() {
             ?"TWO-HAND FIRE: ON":"TWO-HAND FIRE: OFF",white);
         write(538,614,"Grip charges; both hands required to fire.",muted);
     }else{
-        write(538,556,"Calibrate LEFT and RIGHT independently.",muted);
+        write(538,556,"Right first; left-handed path optional.",muted);
         write(538,614,"DEFAULT: factory   L/R/B: custom",muted);
     }
     write(538,640,"STICK: NAV   A: SELECT   B: BACK",muted);
@@ -1279,40 +1185,45 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         const std::string phase=g.id>=11?"TEST":g.id>=5?"COLLECT":"REGRESSION";
         write(guideX+14,guideY+5,std::string(plan.title)+" / "+phase+"  "+std::to_string(std::min(g.step+1,plan.count))+"/"+std::to_string(plan.count),RGB(84,233,214));
-        std::string previous=g.previous;if(previous.size()>54)previous.resize(54);
-        if(!previous.empty())write(guideX+14,guideY+30,previous,
+        const std::string& previous=g.previous;
+        if(!previous.empty())wrap(guideX+14,guideY+30,guideW-28,44,previous,
             previous.find("FAIL")==0?RGB(255,130,125):previous.find("TIMEOUT")==0||previous.find("SKIP")==0?RGB(255,204,128):RGB(128,255,177));
         const std::string next=g.completeAt?"Sequence done; see log for outcomes":plan.steps[g.step].text;
-        write(guideX+14,guideY+56,next,g.completeAt?RGB(128,255,177):white);
-        fill(guideX+12,guideY+85,guideW-24,3,RGB(58,70,79));
-        fill(guideX+12,guideY+85,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
+        wrap(guideX+14,guideY+76,guideW-28,46,next,g.completeAt?RGB(128,255,177):white);
+        fill(guideX+12,guideY+122,guideW-24,3,RGB(58,70,79));
+        fill(guideX+12,guideY+122,static_cast<int>((guideW-24)*g.step/plan.count),3,RGB(55,209,214));
         if(guidedResponseVisible()){
             const char* names[]{"PASS","FAIL","RETRY","SKIP"};
             for(int j=0;j<4;++j){
-                const bool enabled=j>=2||guidedManualStep();
-                const int bx=guideX+12+j*145;
-                fill(bx,guideY+91,139,32,guidedHover==j?RGB(45,101,112):RGB(35,43,52));
-                write(bx+15,guideY+94,names[j],enabled?white:muted);
+                const int bx=guideX+12+j*guideButtonStep;
+                fill(bx,guideY+guideButtonY,guideButtonW,guideButtonH,guidedHover==j?RGB(45,101,112):RGB(35,43,52));
+                write(bx+15,guideY+guideButtonY+3,names[j],white);
             }
             if(guidedHover>=0)
                 fill(static_cast<int>(guidedCursorX)-3,static_cast<int>(guidedCursorY)-3,6,6,RGB(97,255,234));
         }
     }
     if(calibrationGuide){
-        fill(guideX,guideY,guideW,94,RGB(12,17,22));
-        fill(guideX,guideY,4,94,RGB(55,209,214));
+        fill(guideX,guideY,guideW,guideH,RGB(12,17,22));
+        fill(guideX,guideY,4,guideH,RGB(55,209,214));
         SelectObject(dc,smallFont);
         const bool object=s.objectGripCalibrating;
         const bool zone=!object&&kharvox::vrLiveIsGunslingerCapture(m.liveCapture);
-        const bool primary=!object&&!zone&&m.rightHand!=s.weaponHandLeft;
-        write(guideX+14,guideY+5,object?"OBJECT GRIP CALIBRATION":zone?"GUNSLINGER / ZONE PLACEMENT":"WEAPON GRIP CALIBRATION",RGB(84,233,214));
-        const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object":"No Grip: fine-tune; hold Grip to freeze object")
-            :zone?(m.gunslingerZoneMoving?"Move hand to desired zone; release Grip to freeze":"Hold matching Grip to move zone, then release")
+        const bool crouch=!object&&!zone&&m.liveCapture!=kharvox::VrLiveCapture::None;
+        const bool primary=!object&&!zone&&!crouch&&m.rightHand!=s.weaponHandLeft;
+        const bool rightZone=m.liveCapture==kharvox::VrLiveCapture::HipRight||m.liveCapture==kharvox::VrLiveCapture::WheelRight;
+        const bool hip=m.liveCapture==kharvox::VrLiveCapture::HipRight||m.liveCapture==kharvox::VrLiveCapture::HipLeft;
+        const std::string heading=object?"OBJECT GRIP / "+s.objectGripName:zone?std::string("GUNSLINGER / ")+(rightZone?"RIGHT ":"LEFT ")+(hip?"HOLSTER":"WHEEL"):crouch?"PHYSICAL CROUCH":std::string("WEAPON GRIP / ")+m.weapon()+" / "+(m.rightHand?"RIGHT ":"LEFT ")+(primary?"PRIMARY":"SUPPORT");
+        wrap(guideX+14,guideY+5,guideW-28,44,heading,RGB(84,233,214));
+        const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object; release to lock":"Sticks fine-tune; offhand trigger = 5 cm; hold Grip to freeze")
+            :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move zone; release to preview")
+            :crouch?"Move head to target height; RT captures"
+            :m.weaponCalibrationStage==3?"Right-handed profiles saved. LT: calibrate left-handed weapon; RT or B: finish"
             :!m.previewValid?"Waiting for valid controller tracking"
-            :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Sticks fine-tune position; hold Grip to rotate")
+            :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")
             :"Move support hand into desired grip position";
-        write(guideX+14,guideY+32,instruction,white);
-        write(guideX+14,guideY+62,"RIGHT TRIGGER: SAVE     B: CANCEL",RGB(108,235,161));
+        wrap(guideX+14,guideY+52,guideW-28,65,instruction,white);
+        wrap(guideX+14,guideY+118,guideW-28,42,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
@@ -1351,9 +1262,9 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
-            :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+94?205
+            :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH?205
             :objectCalibrationView
-                ?(x>=38&&x<698&&y>=150&&y<571?245:0)
+                ?0
             :(statsLiveView||guideView)
                 ?([&](){
                     if(guideView&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH)return 205;
@@ -1370,7 +1281,6 @@ void paintVrHandMenu() {
                     return 0;
                 }())
             :(!calibrationView
-                ||(x>=22&&x<612&&y>=144&&y<576)
                 ||(devPanel&&x>=630&&x<938&&y>=144&&y<576)?255:0);
     }
     SelectObject(dc,oldBitmap);

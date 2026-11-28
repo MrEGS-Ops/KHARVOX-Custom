@@ -309,6 +309,7 @@ void geometryDumpObject(const ObjectDiscoveryNativeRecord& item,const ObjectDisc
             ++bounds;
         }
     }
+    if(visited&&rawBytes)nativeResearchEvidence(1u,"RAW_GEOMETRY_CAPTURED handle="+std::to_string(item.handle)+" bytes="+std::to_string(rawBytes)+" (not verified mesh)",false);
     geometryLog("OBJECT_END handle="+std::to_string(item.handle)+" nodes="+std::to_string(visited)
         +" queued="+std::to_string(nodes.size())+" edges="+std::to_string(edges)
         +" bounds="+std::to_string(bounds)+" array_samples="+std::to_string(samples)
@@ -323,7 +324,7 @@ void grappleGeometryInvestigatorTick(const ObjectDiscoveryGripFrame& in,bool val
         if(s.down)geometryLog("END elapsed_ms="+std::to_string(now-s.started));
         s.down=false;s.pending=false;return;
     }
-    if(s.down&&s.generation==generation)return;
+    if(s.down&&s.generation==generation&&now-s.started<1000)return;
     s.down=true;s.pending=true;s.generation=generation;++s.serial;s.started=now;s.dumps=0;s.handle=0;
     geometryLog("BEGIN hand="+std::to_string(in.physicalHand)+" gen="+std::to_string(generation)
         +" grip="+geometryFloats(in.origin,3)+" grip_axis="+geometryFloats(in.axis,9)
