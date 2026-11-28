@@ -251,24 +251,33 @@ int main() {
     queueControllerZoneCue(zone,3000,50,.20f,100.f);
     if (!near(mixControllerZoneCue(clickOnly,zone,3010).amplitude,.5f))
         return 51;
-    queueControllerTriplePulse(zone,4000);
-    for(auto offset:{0u,64u,115u,179u,230u,294u}) {
+    ControllerZoneCue entry{};
+    queuePhysicalZoneEntryCue(entry,3900);
+    const auto entrySignal=mixControllerZoneCue(zero,entry,3900);
+    if(!entrySignal.active||!near(entrySignal.amplitude,.85f)
+        ||!near(entrySignal.frequencyHz,175.f)
+        ||controllerZoneCueDurationMilliseconds(zero,entry,3900,100)!=85
+        ||mixControllerZoneCue(zero,entry,3985).active)return 56;
+    queuePhysicalDoublePulse(zone,4000);
+    for(auto offset:{0u,84u,135u,219u}) {
         const auto signal=mixControllerZoneCue(zero,zone,4000+offset);
-        if(!signal.active||!near(signal.amplitude,1.f))return 56;
+        if(!signal.active||!near(signal.amplitude,entrySignal.amplitude)
+            ||!near(signal.frequencyHz,entrySignal.frequencyHz))return 56;
     }
-    for(auto offset:{65u,90u,180u,215u,295u})
+    for(auto offset:{85u,100u,134u,220u,295u})
         if(mixControllerZoneCue(zero,zone,4000+offset).active)return 57;
     if(controllerZoneCueDurationMilliseconds(zero,zone,4115,100)!=65)return 58;
-    // Save confirmation is three pulses on the confirming hand only.
+    // Save confirmation is two zone-strength pulses on the confirming hand only.
     std::array<ControllerZoneCue,2> saveCues{};
     queueCalibrationSaveCue(saveCues,true,false,5000);
     if(mixControllerZoneCue(zero,saveCues[0],5000).active
         ||mixControllerZoneCue(zero,saveCues[1],5000).active)return 59;
     queueCalibrationSaveCue(saveCues,true,true,5000);
-    for(auto offset:{0u,64u,115u,179u,230u,294u})
+    for(auto offset:{0u,84u,135u,219u})
         if(mixControllerZoneCue(zero,saveCues[0],5000+offset).active
-            ||!near(mixControllerZoneCue(zero,saveCues[1],5000+offset).amplitude,1.f))return 60;
-    for(auto offset:{65u,90u,180u,215u,295u})
+            ||!near(mixControllerZoneCue(zero,saveCues[1],5000+offset).amplitude,.85f)
+            ||!near(mixControllerZoneCue(zero,saveCues[1],5000+offset).frequencyHz,175.f))return 60;
+    for(auto offset:{85u,100u,134u,220u,295u})
         if(mixControllerZoneCue(zero,saveCues[1],5000+offset).active)return 60;
     queueCalibrationSaveCue(saveCues,false,true,5300);
     if(!mixControllerZoneCue(zero,saveCues[0],5300).active

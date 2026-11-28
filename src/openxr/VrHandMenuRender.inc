@@ -1230,7 +1230,7 @@ void paintVrHandMenu() {
         const std::string hand=side==0?"RIGHT":"LEFT";
         std::string hint;
         if(done)hint="Now go rip and tear.";
-        else if(assigned)hint="Three quick buzzes confirm your weapon is holstered.";
+        else if(assigned)hint="Two buzzes confirm your weapon is holstered.";
         else if(t.pendingSide>=0)hint="Waiting for DOOM to equip your selected weapon...";
         else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::WheelEquip){
             if(s.behindHeadWheelActive&&s.behindHeadWheelSide==side)

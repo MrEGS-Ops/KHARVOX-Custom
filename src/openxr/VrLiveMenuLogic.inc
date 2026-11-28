@@ -442,9 +442,8 @@ void updateVrLiveZoneDraft(){
         gripHeld,true,point,target))m.gunslingerZoneDraftValid=true;
     if(kharvox::vrLiveZonePreviewEnter(m.gunslingerZonePreviewCue,target,
         m.gunslingerZoneDraft,point,gripHeld,m.gunslingerZoneDraftValid)){
-        const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
-        kharvox::queueControllerZoneCue(s.handZoneCues[right?1:0],
-            GetTickCount64(),hip?85:35,hip?.85f:.32f,hip?175.f:155.f);
+        kharvox::queuePhysicalZoneEntryCue(s.handZoneCues[right?1:0],
+            GetTickCount64());
     }
 }
 void openVrCombinedCrouch(){

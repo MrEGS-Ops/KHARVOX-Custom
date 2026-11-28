@@ -4097,8 +4097,8 @@ void updateGameplayActions(XrTime displayTime){
         for(int side=0;side<2;++side){
             const bool insideHead=insideZone(side,s.headZoneEntered[side]);
             if(insideHead&&!s.headZoneEntered[side]){
-                kharvox::queueControllerZoneCue(
-                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64(),35,.32f,155.f);
+                kharvox::queuePhysicalZoneEntryCue(
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64());
             }
             s.headZoneEntered[side]=insideHead;
         }
@@ -4366,9 +4366,8 @@ void updateGameplayActions(XrTime displayTime){
     const bool shoulderZone=gameplay&&!s.customMods.dynamicShoulderHolster
         &&dynamicShoulderInside;
     if(shoulderZone&&!s.shoulderZoneEntered)
-        kharvox::queueControllerZoneCue(
-            s.handZoneCues[s.weaponHandLeft?0:1],
-            GetTickCount64(),35,.32f,155.f);
+        kharvox::queuePhysicalZoneEntryCue(
+            s.handZoneCues[s.weaponHandLeft?0:1],GetTickCount64());
     s.shoulderZoneEntered=shoulderZone;
 
     // Draw uses the direct native weapon hotkey; no delayed handoff.
@@ -4428,20 +4427,19 @@ void updateGameplayActions(XrTime displayTime){
                 else s.wheelSupportGripSuppressedUntilRelease=true;
             }
             if(action==kharvox::QuickHipAction::Enter){
-                kharvox::queueControllerZoneCue(
-                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
-                    GetTickCount64(),85,.85f,175.f);
+                kharvox::queuePhysicalZoneEntryCue(
+                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],GetTickCount64());
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" zone ENTER");
             }else if(action==kharvox::QuickHipAction::Assign){
-                kharvox::queueControllerTriplePulse(
-                    s.handZoneCues[kharvox::hapticOutputForPhysicalSide(side)],
+                kharvox::queuePhysicalDoublePulse(
+                    s.configSaveCues[kharvox::hapticOutputForPhysicalSide(side)],
                     GetTickCount64());
                 gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" ASSIGN="
                     +backWeaponKindKey(s.quickHolsters.slots[side])
-                    +" (3 strong pulses, slot persists)");
+                    +" (2 zone-strength pulses, slot persists)");
             }else if(action==kharvox::QuickHipAction::Draw){
                 const auto plan=kharvox::quickHipPlanDraw(
                     side,s.quickHolsters.slots[side],activeBackWeapon);

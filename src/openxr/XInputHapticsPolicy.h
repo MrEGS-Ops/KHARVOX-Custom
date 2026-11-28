@@ -269,19 +269,24 @@ inline void queueControllerZoneCue(ControllerZoneCue& cue,
     cue.pulseLengthMilliseconds=durationMilliseconds;
     cue.pulsePeriodMilliseconds=durationMilliseconds;
 }
-inline void queueControllerTriplePulse(ControllerZoneCue& cue,std::uint64_t now){
-    cue.startedMilliseconds=now;
-    cue.pulseLengthMilliseconds=65;
-    cue.pulsePeriodMilliseconds=115;
-    cue.untilMilliseconds=now+295;
-    cue.amplitude=1.f;
-    cue.frequencyHz=170.f;
+// Physical zone entry and confirmation share exactly the same pulse.
+inline constexpr std::uint32_t physicalZonePulseMs=85;
+inline constexpr std::uint32_t physicalConfirmationGapMs=50;
+inline constexpr float physicalZoneAmplitude=.85f;
+inline constexpr float physicalZoneFrequencyHz=175.f;
+inline void queuePhysicalZoneEntryCue(ControllerZoneCue& cue,std::uint64_t now){
+    queueControllerZoneCue(cue,now,physicalZonePulseMs,physicalZoneAmplitude,physicalZoneFrequencyHz);
 }
-// Physical calibration saves use the same three-pulse success pattern
+inline void queuePhysicalDoublePulse(ControllerZoneCue& cue,std::uint64_t now){
+    queuePhysicalZoneEntryCue(cue,now);
+    cue.pulsePeriodMilliseconds=physicalZonePulseMs+physicalConfirmationGapMs;
+    cue.untilMilliseconds=now+2*physicalZonePulseMs+physicalConfirmationGapMs;
+}
+// Physical calibration saves use the same double-pulse success pattern
 // as holstering. Ordinary menu config changes use a light single pulse.
 inline void queueCalibrationSaveCue(std::array<ControllerZoneCue,2>& cues,
     bool rightController,bool saved,std::uint64_t now){
-    if(saved)queueControllerTriplePulse(cues[rightController?1:0],now);
+    if(saved)queuePhysicalDoublePulse(cues[rightController?1:0],now);
 }
 inline void queueMenuSaveCue(std::array<ControllerZoneCue,2>& cues,
     bool rightController,bool saved,std::uint64_t now){
