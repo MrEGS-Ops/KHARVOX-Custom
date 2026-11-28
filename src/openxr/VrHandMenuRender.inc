@@ -511,13 +511,15 @@ void paintVrHandMenu() {
             }
         }
         label(423,341,114,38,dev?"Dev Mode":"_RIPSHIFT",accent);
+        if(m.hovered==100+radialPainsawIndex)
+            label(320,574,320,28,"More fun with the chainsaw.",muted);
         if(radialHasFlyout(m.radialCategory)){
             const int x=radialPanelX(m.radialCategory);
             const auto& opts=radialGroups[m.radialCategory].settings;
             const int w=radialPanelWidth,h=radialRowHeight,side=radialControlWidth;
             for(int i=0;i<int(opts.size());++i){
                 const auto& option=opts[i];
-                const int y=radialRowY(i),target=radialRowTarget+i*3;
+                const int y=radialRowY(m.radialCategory,i),target=radialRowTarget+i*3;
                 const bool hot=m.hovered>=target&&m.hovered<target+3;
                 if(option.control==RadialControl::Stepper||m.radialResetRow==i){
                     const bool reset=m.radialResetRow==i;
@@ -552,7 +554,7 @@ void paintVrHandMenu() {
                 }
             }
             if(!m.message.empty()){
-                const int y=radialRowY(int(opts.size()))+1;
+                const int y=radialRowY(m.radialCategory,int(opts.size()))+1;
                 const std::string message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
                 RECT measured{0,0,w-16,0};
                 DrawTextA(dc,message.c_str(),-1,&measured,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
@@ -567,7 +569,7 @@ void paintVrHandMenu() {
             if(m.radialDescriptionFadeOut)
                 descriptionOpacity*=1.f-std::clamp(float(now-m.radialDescriptionFadeOut)/120.f,0.f,1.f);
             const char* descriptions[]{
-                "Make every gun feel like an extension of your hands.",
+                "Get a grip.",
                 "Duck low, turn fast. Make Hell keep up with you.",
                 "Keep score. Beat your best. Die less.",
                 "",
