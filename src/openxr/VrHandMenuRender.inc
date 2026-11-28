@@ -560,7 +560,7 @@ void paintVrHandMenu() {
                 "Keep score. Beat your best. Die less.",
                 "",
                 "Put your fists to work. Rip and tear at your own pace.",
-                "Reach behind your head or draw from the hip. Shoot like a gunslinger."};
+                "Shoot like a gunslinger: reach behind your head or draw from the hip."};
             const int side=radialHasFlyout(m.radialCategory)?m.radialCategory:desc;
             descriptionX=radialDescriptionX(side);descriptionY=radialRowTop;
             RECT rc{0,0,radialPanelWidth-24,0};
