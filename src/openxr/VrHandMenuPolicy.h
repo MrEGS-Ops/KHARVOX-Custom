@@ -548,6 +548,28 @@ inline RightHandGripRotation vrCalibrationRelativeRotation(
     return result;
 }
 
+// Menu feedback is temporary, unlike instructions or pending confirmations.
+inline constexpr std::uint64_t vrMenuNoticeHoldMs=3000,vrMenuNoticeFadeMs=400;
+struct VrMenuNotice {
+    std::string observed;
+    std::uint64_t started{};
+    bool pinned{};
+    float update(std::string& message,std::uint64_t now,bool keepVisible){
+        if(message.empty()){*this={};return 0.f;}
+        if(message!=observed){
+            observed=message;started=now;pinned=keepVisible;
+        }else if(pinned&&!keepVisible){
+            message.clear();*this={};return 0.f;
+        }
+        if(keepVisible){pinned=true;return 1.f;}
+        const auto elapsed=now>=started?now-started:0;
+        if(elapsed>=vrMenuNoticeHoldMs+vrMenuNoticeFadeMs){
+            message.clear();*this={};return 0.f;
+        }
+        if(elapsed<=vrMenuNoticeHoldMs)return 1.f;
+        return 1.f-float(elapsed-vrMenuNoticeHoldMs)/float(vrMenuNoticeFadeMs);
+    }
+};
 struct VrHandMenuState {
     VrHandMenuMode mode{VrHandMenuMode::Closed};
     VrMenuPage page{VrMenuPage::Mods};
@@ -650,6 +672,7 @@ struct VrHandMenuState {
     RightHandGripRotation previewRotation{};
     std::array<bool,10> rightSaved{},leftSaved{};
     std::string message;
+    VrMenuNotice messageNotice{};
     const char* weapon() const noexcept {return kVrCalibrationWeapons[static_cast<size_t>(selectedWeapon)];}
 };
 // Distinct 20..32 confirmation keys are separate from DEV reset actions

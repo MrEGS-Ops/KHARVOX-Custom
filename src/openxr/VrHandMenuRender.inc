@@ -112,6 +112,11 @@ void paintVrHandMenu() {
     std::vector<unsigned char> radialAlpha;
     int descriptionX=-1,descriptionY=0,descriptionHeight=0;
     float descriptionOpacity=0.f;
+    int noticeX=-1,noticeY=0,noticeW=0,noticeH=0;
+    const auto noticeNow=GetTickCount64();
+    const bool pendingConfirmation=m.radialResetRow>=0||m.resetWeaponPending
+        ||(m.pendingStatsReset>=0&&m.confirmDeathResetUntilMs&&noticeNow<=m.confirmDeathResetUntilMs);
+    const float noticeOpacity=m.messageNotice.update(m.message,noticeNow,pendingConfirmation);
     const COLORREF descriptionBackground=RGB(21,31,39);
     const auto& layout=editingHud?m.hudDraft:s.vrLiveSettings;
     const std::array<bool,kharvox::kVrStatsItemCount> statsVisible{
@@ -212,6 +217,12 @@ void paintVrHandMenu() {
         TextOutA(dc,x,y,text.c_str(),static_cast<int>(text.size()));
     };
     const COLORREF white=RGB(239,246,251),muted=RGB(170,186,202);
+    auto noticeColor=[&](COLORREF color,COLORREF background,float opacity){
+        auto blend=[&](int from,int to){return int(from+(to-from)*opacity+.5f);};
+        return RGB(blend(GetRValue(background),GetRValue(color)),
+            blend(GetGValue(background),GetGValue(color)),blend(GetBValue(background),GetBValue(color)));
+    };
+    const auto footerNoticeColor=noticeColor(RGB(84,233,214),RGB(15,18,24),noticeOpacity);
     auto wrap=[&](int x,int y,int width,int height,const std::string& value,COLORREF color){
         RECT rc{x,y,x+width,y+height};SetTextColor(dc,color);
         DrawTextA(dc,value.c_str(),static_cast<int>(value.size()),&rc,DT_LEFT|DT_TOP|DT_WORDBREAK|DT_NOPREFIX);
@@ -219,7 +230,7 @@ void paintVrHandMenu() {
     // Calibration instructions use one palette: controls and hold/release
     // actions yellow, explanatory text (including save/cancel) normal white.
     // Measure with the currently selected font and wrap at word boundaries.
-    auto calibrationText=[&](int x,int y,int width,int height,const std::string& value){
+    auto calibrationText=[&](int x,int y,int width,int height,const std::string& value,float opacity=1.f){
         TEXTMETRICA tm{};
         GetTextMetricsA(dc,&tm);
         const int lineHeight=tm.tmHeight+tm.tmExternalLeading;
@@ -256,7 +267,7 @@ void paintVrHandMenu() {
                 ||word=="b"||word=="a"||word=="l3"||word=="r3"
                 ||((word=="left"||word=="right")&&(nextWord=="stick"||nextWord=="grip"))
                 ||(word=="offhand"&&nextWord=="trigger");
-            write(px,py,token,control?RGB(255,225,54):white);
+            write(px,py,token,noticeColor(control?RGB(255,225,54):white,RGB(20,29,38),opacity));
             px+=extent.cx;
         }
     };
@@ -609,13 +620,16 @@ void paintVrHandMenu() {
                     control(x,y,w,h,option.label,hot,option.control==RadialControl::Reset?RGB(255,202,137):white);
                 }
             }
-            if(!m.message.empty()){
+            if(!m.message.empty()&&noticeOpacity>0.f){
                 const int y=radialRowY(m.radialCategory,int(opts.size()))+1;
                 const std::string message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
                 RECT measured{0,0,w-16,0};
                 DrawTextA(dc,message.c_str(),-1,&measured,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
                 const int height=std::min(int(vrMenuH)-y-8,int(measured.bottom-measured.top)+16);
-                if(height>0){fill(x,y,w,height,RGB(22,32,42));wrap(x+8,y+8,w-16,height-16,message,accent);}
+                if(height>0){
+                    noticeX=x;noticeY=y;noticeW=w;noticeH=height;
+                    fill(x,y,w,height,RGB(22,32,42));wrap(x+8,y+8,w-16,height-16,message,accent);
+                }
             }
         }
         const int desc=m.radialDescription;
@@ -746,7 +760,7 @@ void paintVrHandMenu() {
                 confirming?RGB(255,207,66):muted);
         }
         write(40,646,"LEFT STICK: browse   A: select   B: back",muted);
-        write(40,676,m.message.substr(0,105),RGB(84,233,214));
+        write(40,676,m.message.substr(0,105),footerNoticeColor);
     }else if(m.page==kharvox::VrMenuPage::DevStats){
         const bool dev=m.page==kharvox::VrMenuPage::DevStats;
         SelectObject(dc,title);
@@ -823,7 +837,7 @@ void paintVrHandMenu() {
         }
         SelectObject(dc,smallFont);
         write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
-        write(40,676,m.message.substr(0,105),RGB(84,233,214));
+        write(40,676,m.message.substr(0,105),footerNoticeColor);
     }else if(m.page==kharvox::VrMenuPage::Dev){
         write(38,24,"RIPSHIFT VR  /  DEV",white);
         SelectObject(dc,smallFont);
@@ -1009,7 +1023,7 @@ void paintVrHandMenu() {
         if(m.navigation.settingsColumn)
             write(538,638,"B: DEV LIST    A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
-            :m.message.substr(0,105),RGB(84,233,214));
+            :m.message.substr(0,105),m.message.empty()?RGB(84,233,214):footerNoticeColor);
     }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
         write(38,24,"RIPSHIFT VR  /  RECOIL CALIBRATION",white);
         SelectObject(dc,smallFont);
@@ -1120,7 +1134,7 @@ void paintVrHandMenu() {
         write(539,614,"Close menu to test. B: BACK",muted);
         write(40,662,m.message.empty()
             ?"Dynamic build-up uses ammo-confirmed shots; Gauss tuned separately."
-            :m.message.substr(0,98),RGB(84,233,214));
+            :m.message.substr(0,98),m.message.empty()?RGB(84,233,214):footerNoticeColor);
         fill(797,16,129,57,m.hovered==95
             ?RGB(47,95,110):RGB(39,49,63));
         write(815,30,"BACK",white);
@@ -1217,7 +1231,8 @@ void paintVrHandMenu() {
         calibrationText(24,top+34,912,40,!complete&&!m.message.empty()?m.message:complete?"Calibrate the other hand or finish.":!m.previewValid?
             "Waiting for controller tracking.":primary?
             "Sticks move the grip. Hold Grip and rotate your hand.":
-            "Hold support Grip to test aim. Release it to reposition.");
+            "Hold support Grip to test aim. Release it to reposition.",
+            !complete&&!m.message.empty()?noticeOpacity:1.f);
         SelectObject(dc,regular);
         const char* controls=complete?(m.calibrationStartedLeft?"RT: right hand   LT / B: finish":"LT: left hand   RT / B: finish"):
             primary?(m.rightHand?"RT: save   B: cancel":"LT: save   B: cancel"):
@@ -1307,6 +1322,8 @@ void paintVrHandMenu() {
                     &&y>=resultY&&y<resultY+resultH?245:0)
             :weaponGuide?(x>=12&&x<948&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+kharvox::weaponGuideHeight?225:devPanel&&x>=630&&x<938&&y>=144&&y<576?255:0)
             :radialView||pickingWeapon?([&](){
+                if(radialView&&noticeX>=0&&x>=noticeX&&x<noticeX+noticeW
+                    &&y>=noticeY&&y<noticeY+noticeH)return int(226*noticeOpacity+.5f);
                 if(radialView&&!radialAlpha.empty()&&x>=radialX&&x<radialX+radialSize&&y>=radialY&&y<radialY+radialSize){
                     const auto alpha=radialAlpha[(y-radialY)*radialSize+x-radialX];
                     if(alpha)return int(alpha);

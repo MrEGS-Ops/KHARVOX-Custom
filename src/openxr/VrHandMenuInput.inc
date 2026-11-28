@@ -702,6 +702,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         primaryWeaponGripDown,menuA,menuB,s.leftStick.x,s.leftStick.y};
     const bool aEdge=kharvox::vrMenuButtonEdge(menuA,m.menuAPreviously);
     const bool bEdge=kharvox::vrMenuButtonEdge(menuB,m.menuBPreviously);
+    // A fresh deliberate action can produce the same feedback again.
+    if(bEdge||aEdge||triggerEdge||leftTriggerEdge)m.messageNotice={};
     // B cancels capture without saving. From weapon profiles B returns to
     // Mods; from the top-level Mods page it closes the overlay.
     if(bEdge&&m.page==kharvox::VrMenuPage::Mods&&m.radialResetRow>=0){
