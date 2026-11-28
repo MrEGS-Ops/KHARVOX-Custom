@@ -1170,14 +1170,13 @@ void paintVrHandMenu() {
             const auto kind=KharvoxWeaponCurrentKind();
             const bool alternate=kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun;
             const int hovered=kharvox::weaponGuideAction(m.cursorX,m.cursorY,alternate);
-            const int left[]{464,626,788,864};
-            const int widths[]{152,152,76,76};
-            const char* labels[]{m.resetWeaponPending?"Confirm reset":"Reset weapon","Change weapon","NORMAL","ALT FIRE"};
-            if(alternate)write(788,buttonY-23,"Fire Mode",muted);
-            for(int i=0;i<(alternate?4:2);++i){
-                const bool selected=i>=2&&(m.alternateProfile==(i==3));
+            const int left[]{464,626,788};
+            const int widths[]{152,152,152};
+            const char* labels[]{m.resetWeaponPending?"Confirm reset":"Reset weapon","Change weapon","ALT FIRE"};
+            for(int i=0;i<(alternate?3:2);++i){
+                const bool selected=i==2&&m.alternateProfile;
                 fill(left[i],buttonY,widths[i],40,hovered==i||selected?accent:RGB(65,83,94));
-                fill(left[i]+1,buttonY+1,widths[i]-2,38,hovered==i||selected?RGB(31,68,75):RGB(27,39,49));
+                fill(left[i]+1,buttonY+1,widths[i]-2,38,selected||(i!=2&&hovered==i)?RGB(31,68,75):RGB(27,39,49));
                 RECT rc{left[i],buttonY,left[i]+widths[i],buttonY+40};
                 SetTextColor(dc,i==0&&m.resetWeaponPending?RGB(255,219,134):selected?accent:white);
                 DrawTextA(dc,labels[i],-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);

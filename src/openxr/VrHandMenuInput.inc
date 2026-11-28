@@ -215,7 +215,7 @@ void saveVrHandMenuCalibration(){
     // Keep the chosen NORMAL / ALT FIRE slot stable for this capture.
     // No attachment-name scan or separate Rotor/Turret confirmation.
     if(m.calibrationAlternateProfile!=m.alternateProfile){
-        m.message="MODE CHANGED: cancel and select Normal or Alt Fire again.";
+        m.message="MODE CHANGED: cancel and select the Alt Fire toggle again.";
         return;
     }
     const bool primaryHand=m.rightHand!=s.weaponHandLeft;
@@ -794,12 +794,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun);
             if(!triggerEdge||action<0||m.weaponCalibrationStage==3)return false;
             kharvox::queueMenuButtonCue(s.configSaveCues,true,true,GetTickCount64());
-            if(action==2||action==3){
-                const bool alternate=action==3;
-                if(m.alternateProfile!=alternate){
-                    m.alternateProfile=alternate;
-                    startVrSelectedWeaponCalibration();
-                }
+            if(action==2){
+                m.alternateProfile=!m.alternateProfile;
+                startVrSelectedWeaponCalibration();
             }else if(action==1)openCalibrationWheel();
             else if(m.resetWeaponPending){
                 m.resetWeaponPending=false;

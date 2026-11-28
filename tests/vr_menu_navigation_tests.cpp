@@ -39,7 +39,10 @@ int main(){
     for(int i=0;i<radialCategoryCount;++i)
         assert(radialHit(float(480+137*std::cos(radialAngle(i))),float(360+137*std::sin(radialAngle(i))),-1,0)==100+i);
     assert(weaponGuideAction(800,weaponGuideButtonTop+10,true)==2);
-    assert(weaponGuideAction(900,weaponGuideButtonTop+10,true)==3);
+    assert(weaponGuideAction(900,weaponGuideButtonTop+10,true)==2);
+    assert(weaponGuideAction(787,weaponGuideButtonTop+10,true)==-1);
+    assert(weaponGuideAction(940,weaponGuideButtonTop+10,true)==-1);
+    assert(weaponGuideAction(800,weaponGuideButtonTop+10,false)==-1);
     assert(weaponGuideAction(900,weaponGuideButtonTop+10,false)==-1);
     VrMenuNavigation nav{};
     // Campaign death detection never depends on whether the overlay is

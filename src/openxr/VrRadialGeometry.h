@@ -80,8 +80,7 @@ inline int weaponGuideAction(float x,float y,bool alternateAvailable){
     if(y<weaponGuideButtonTop||y>=weaponGuideButtonTop+40)return -1;
     if(x>=464&&x<616)return 0;
     if(x>=626&&x<778)return 1;
-    if(alternateAvailable&&x>=788&&x<864)return 2;
-    if(alternateAvailable&&x>=864&&x<940)return 3;
+    if(alternateAvailable&&x>=788&&x<940)return 2;
     return -1;
 }
 }
