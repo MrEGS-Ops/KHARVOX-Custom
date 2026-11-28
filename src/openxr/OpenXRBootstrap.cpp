@@ -10382,19 +10382,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto& zm=s.vrHandMenu;
     const bool zoneCapturing=zm.mode==kharvox::VrHandMenuMode::Calibrating
         &&kharvox::vrLiveIsGunslingerCapture(zm.liveCapture);
-    const bool zoneBrowsing=zm.mode==kharvox::VrHandMenuMode::Menu
-        &&zm.page==kharvox::VrMenuPage::Mods
-        &&zm.selectedMod==kharvox::VrLiveMod::Gunslinger
-        &&zm.navigation.settingsColumn
-        &&zm.navigation.actionIndex>=0&&zm.navigation.actionIndex<4;
-    if(gunslingerZonePreviewReady&&(zoneCapturing||zoneBrowsing)
+    if(gunslingerZonePreviewReady&&zoneCapturing
         &&s.trackingHeadPositionValid&&s.headZeroValid
         &&s.headZeroPositionValid&&s.sessionState==XR_SESSION_STATE_FOCUSED
         &&gunslingerZonePreview.handle!=XR_NULL_HANDLE){
         using C=kharvox::VrLiveCapture;
-        constexpr std::array<C,4> targets{C::HipRight,C::HipLeft,C::WheelRight,C::WheelLeft};
-        const auto target=zoneCapturing?zm.liveCapture
-            :targets[static_cast<size_t>(zm.navigation.actionIndex)];
+        const auto target=zm.liveCapture;
         const bool hip=target==C::HipRight||target==C::HipLeft;
         const bool right=target==C::HipRight||target==C::WheelRight;
         const auto zoneCenter=zoneCapturing&&zm.gunslingerZoneDraftValid

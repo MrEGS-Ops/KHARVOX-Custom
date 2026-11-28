@@ -37,32 +37,6 @@ std::vector<VrLiveMenuEntry> activeVrMenuEntries(){
         rows.push_back({"Guided Instructions",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled,D::GuidedTesting});
         return rows;
     }
-    const auto add=[&](const char* title,VrLiveMod id,bool on,bool showEvenIfOff=false){
-        if(on||showEvenIfOff)rows.push_back({title,id,on});
-    };
-    // Three core features stay on; only Crouch/PAINSAW can be toggled.
-    // Keep Physical Glory Kills settings available without a live checkbox.
-    add("Weapon Grip Calibration",VrLiveMod::WeaponGrip,
-        s.customMods.offHandGripCapture,true);
-    add("Gunslinger",VrLiveMod::Gunslinger,
-        s.customMods.dynamicShoulderHolster||s.customMods.behindHeadWeaponWheel,true);
-    add("KILLTIME",VrLiveMod::Killtime,
-        s.vrLiveKilltimeEnabled,true);
-    // The heading gesture reveals one DEV folder, never loose DEV mods.
-    add("Physical Glory Kills",VrLiveMod::PhysicalGloryKills,
-        s.physicalGlorykillEnabled,true);
-    add("Smooth Turn Speed",VrLiveMod::TurnSpeed,true,true);
-    // Group the two live ON/OFF features together at the bottom.
-    add("Physical Crouch",VrLiveMod::PhysicalCrouch,
-        s.customMods.physicalCrouch,true);
-    add("PAINSAW",VrLiveMod::Painsaw,
-        s.customMods.chainsawTriggerThrottle
-            ||s.customMods.motionChainsawKillSpeed,true);
-    add("Stats",VrLiveMod::Stats,true,true);
-    if(s.vrHandMenu.devReveal.visible)
-        rows.push_back({"DEV  >",VrLiveMod::Other,true,
-            kharvox::VrMenuDevOption::Folder});
-    rows.push_back({"Guided Instructions",VrLiveMod::Other,s.vrHandMenu.guidedTestingEnabled});
     return rows;
 }
 // This is the PLAYABILITY overview, not a calibration tutorial. It appears

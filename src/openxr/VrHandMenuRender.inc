@@ -767,10 +767,9 @@ void paintVrHandMenu() {
         write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
         write(40,676,m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::Dev){
-        const bool devPage=true;
-        write(38,24,devPage?"RIPSHIFT VR  /  DEV":"RIPSHIFT VR  /  MOD SETTINGS",white);
+        write(38,24,"RIPSHIFT VR  /  DEV",white);
         SelectObject(dc,smallFont);
-        write(40,102,devPage?"DEVELOPER TOOLS":"CONFIGURABLE MODS",muted);
+        write(40,102,"DEVELOPER TOOLS",muted);
         write(535,102,m.navigation.settingsColumn?"CONFIG OPTIONS":"MOD OVERVIEW",muted);
         const auto entries=activeVrMenuEntries();
         const int count=static_cast<int>(entries.size());
@@ -783,8 +782,7 @@ void paintVrHandMenu() {
         for(int shown=0;shown<10;++shown){
             const int index=shown+m.modScroll;
             if(index>=count)break;
-            if(!devPage&&index==count-1)continue;
-            const int y=136+shown*45;
+             const int y=136+shown*45;
             const bool active=index==selected;
             const bool hovered=m.hovered==1000+index
                 ||(m.navigation.usingStick&&!m.navigation.settingsColumn
@@ -794,18 +792,9 @@ void paintVrHandMenu() {
             if(active)fill(38,y,5,40,RGB(55,209,214));
             SelectObject(dc,smallFont);
             std::string title=entries[index].title;
-            // Core mods stay fixed; Crouch, PAINSAW and the optional
-            // Campaign Deaths has a legacy live ON/OFF control.
             if(title.size()>29)title.resize(29);
             write(55,y+10,title,entries[index].enabled?white:muted);
-            const bool switchable=!devPage
-                &&kharvox::vrLiveModToggleable(entries[index].mod);
-            // The four fixed-on gameplay mods have no "SET" labels.
-            // Use a simple disclosure arrow; Crouch/PAINSAW show status.
-            write(switchable?436:458,y+10,
-                switchable?(entries[index].enabled?"ON":"OFF"):">",
-                switchable?(entries[index].enabled?RGB(108,235,161)
-                    :RGB(151,158,171)):RGB(84,233,214));
+            write(458,y+10,">",RGB(84,233,214));
         }
         if(count>10){
             SelectObject(dc,smallFont);
@@ -814,7 +803,7 @@ void paintVrHandMenu() {
         }
         // Experimental is the one DEV row whose right-side switches are
         // visible and pointer-clickable as soon as the row is highlighted.
-        const bool expInline=devPage&&count>0
+        const bool expInline=count>0
             &&(entries[selected].developer==kharvox::VrMenuDevOption::Experimental
                 ||entries[selected].developer==kharvox::VrMenuDevOption::GrappleAnchor
                 ||entries[selected].developer==kharvox::VrMenuDevOption::NativeInteractionResearch
@@ -834,28 +823,14 @@ void paintVrHandMenu() {
                 if(text&&*text)
                     write(540,224+line*37,text,line==5?RGB(84,233,214):white);
             }
-            const bool devFolder=!devPage&&count>0
-                &&entries[overviewSelected].developer==kharvox::VrMenuDevOption::Folder;
-            if(!devFolder){
-                fill(531,550,384,59,m.hovered==115
-                    ?RGB(53,95,108):RGB(36,78,92));
-                SelectObject(dc,regular);
-                write(624,563,devPage?"OPEN / TOGGLE >":"CONFIGURE  >",white);
-            }else{
-                SelectObject(dc,smallFont);
-                write(538,563,"Select DEV to enter tools directly.",RGB(84,233,214));
-            }
+            fill(531,550,384,59,m.hovered==115?RGB(53,95,108):RGB(36,78,92));
+            SelectObject(dc,regular);
+            write(624,563,"OPEN / TOGGLE >",white);
             SelectObject(dc,smallFont);
-            write(538,618,devFolder?"A / POINTER: OPEN DEV    B: CLOSE"
-                :"A: OPEN OPTIONS    B: CLOSE",muted);
+            write(538,618,"A: OPEN OPTIONS    B: CLOSE",muted);
         }else{
-        const auto mod=count>0?entries[selected].mod:kharvox::VrLiveMod::Other;
-        const bool editable=kharvox::vrLiveModEditable(mod);
-        const bool toggleable=!devPage&&kharvox::vrLiveModToggleable(mod);
-        const bool enabled=count>0&&entries[selected].enabled;
-        SelectObject(dc,regular);
-        write(536,126,count>0?entries[selected].title:"No active mods",white);
-        if(devPage){
+            SelectObject(dc,regular);
+            write(536,126,count>0?entries[selected].title:"No active mods",white);
             using D=kharvox::VrMenuDevOption;
             const auto opt=count>0?entries[selected].developer:D::Experimental;
             SelectObject(dc,smallFont);
@@ -968,129 +943,13 @@ void paintVrHandMenu() {
                 write(538,332,"Enabled tools only show in the matching",muted);
                 write(538,361,"calibration screen.",muted);
             }
-        }else if(toggleable){
-            const bool focusToggle=m.navigation.usingStick
-                &&m.navigation.settingsColumn&&m.navigation.actionIndex==0;
-            fill(531,159,384,60,focusToggle?RGB(52,83,99):RGB(39,49,63));
-            fill(553,172,36,36,RGB(54,79,91));
-            if(enabled)fill(562,181,18,18,RGB(76,231,167));
-            SelectObject(dc,regular);
-            write(603,169,enabled?"ENABLED   (TOGGLE)":"DISABLED   (TOGGLE)",white);
-        }else{
-            SelectObject(dc,smallFont);
-            write(538,155,kharvox::vrLiveModAlwaysEnabled(mod)
-                ?"CORE FEATURE - ALWAYS ACTIVE":"SETTINGS - NO LIVE ON/OFF SWITCH",muted);
-        }
-        // DEV settings own their right pane; do not draw the ordinary
-        // mod controls over the diagnostic switches.
-        if(!devPage){
-        SelectObject(dc,smallFont);
-        if(!editable)
-            write(545,251,"Configure in desktop launcher only.",muted);
-        else{
-            // Menu controls are shown once in footer to avoid card overlap.
-            std::array<std::string,5> options{};
-            int optionCount{};
-            switch(mod){
-                case kharvox::VrLiveMod::WeaponGrip:
-                    options[0]="OPEN WEAPON CALIBRATION";
-                    optionCount=1;
-                    break;
-                case kharvox::VrLiveMod::WeaponRecoil:
-                    options[0]="OPEN RECOIL CALIBRATION";
-                    optionCount=1;
-                    break;
-                case kharvox::VrLiveMod::Gunslinger:
-                    options={"CALIBRATE HOLSTERS","CALIBRATE WEAPON WHEELS","RESET ZONES"};
-                    optionCount=3;
-                    break;
-                case kharvox::VrLiveMod::PhysicalCrouch:
-                    options[0]="SET STANDING HEAD HEIGHT";
-                    options[1]="SET CROUCHING HEAD HEIGHT";
-                    options[2]="RESET HEIGHTS";
-                    optionCount=3;
-                    break;
-                case kharvox::VrLiveMod::Killtime:
-                    options[0]="SLOWER (+10 HZ)";
-                    options[1]="FASTER (-10 HZ)";
-                    options[2]="RESET SPEED";
-                    optionCount=3;
-                    break;
-                case kharvox::VrLiveMod::TurnSpeed:
-                    options[0]="SLOWER (-25 DEG/S)";
-                    options[1]="FASTER (+25 DEG/S)";
-                    options[2]="USE LAUNCHER SPEED";
-                    optionCount=3;
-                    break;
-                case kharvox::VrLiveMod::DeathCounter:
-                    options={"TOP LEFT","TOP RIGHT","BOTTOM LEFT","BOTTOM RIGHT",""};
-                    optionCount=4;
-                    break;
-                case kharvox::VrLiveMod::PhysicalGloryKills:
-                    options[0]="LOWER PUNCH THRESHOLD";
-                    options[1]="RAISE PUNCH THRESHOLD";
-                    options[2]="CHANGE ACTIVE PUNCH HAND";
-                    options[3]="RESET PUNCH DEFAULTS";
-                    optionCount=4;
-                    break;
-                default:break;
-            }
-            for(int index=0;index<optionCount;++index){
-                const int y=(toggleable?248:186)+68*index;
-                const bool focused=m.hovered==130+index
-                    ||(m.navigation.usingStick&&m.navigation.settingsColumn
-                        &&m.navigation.actionIndex==index+(toggleable?1:0));
-                fill(531,y,384,58,focused
-                     ?RGB(52,83,99):RGB(39,49,63));
-                SelectObject(dc,smallFont);
-                write(548,y+17,options[index],white);
-            }
-            if(mod==kharvox::VrLiveMod::Killtime){
-                write(548,543,"GLORY KILL: "+vrLiveGloryKillSpeedText(),
-                    RGB(84,233,214));
-            }else if(mod==kharvox::VrLiveMod::TurnSpeed){
-                write(548,543,"SMOOTH TURN: "+std::to_string(static_cast<int>(
-                    std::lround(s.smoothTurnDegreesPerSecond)))+" DEG/S",
-                    RGB(84,233,214));
-                write(548,576,"SNAP ANGLE UNCHANGED",muted);
-            }else if(mod==kharvox::VrLiveMod::PhysicalGloryKills){
-                std::ostringstream speed;
-                speed<<std::fixed<<std::setprecision(1)
-                    <<s.vrLiveSettings.punchSpeedMetersPerSec;
-                write(548,543,"PUNCH: "+speed.str()+" m/s  HAND: "+
-                    (s.vrLiveSettings.punchHands==0?"RIGHT"
-                        :s.vrLiveSettings.punchHands==1?"LEFT":"BOTH"),
-                    RGB(84,233,214));
-            }else if(mod==kharvox::VrLiveMod::PhysicalCrouch){
-                write(548,543,s.vrLiveSettings.crouchLoweredSaved
-                    ?"CUSTOM HEIGHTS ACTIVE":"DEFAULT CROUCH HEIGHTS",
-                    RGB(84,233,214));
-                if(!enabled)
-                    write(548,575,"RIGHT STICK DOWN: TOGGLE CROUCH",RGB(84,233,214));
-            }else if(mod==kharvox::VrLiveMod::DeathCounter){
-                write(548,543,"POSITION: "+std::string(kharvox::deathCounterCornerName(
-                    s.vrLiveSettings.deathCounterCorner)),RGB(84,233,214));
-                write(548,574,"DEATHS: "+
-                    std::to_string(KharvoxHudCampaignDeathCount()),muted);
-            }else if(mod==kharvox::VrLiveMod::Painsaw){
-                write(548,270,enabled?"PAINSAW CUSTOM SPEED ACTIVE"
-                    :"NATIVE CHAINSAW SPEED",RGB(84,233,214));
-            }else if(mod==kharvox::VrLiveMod::Gunslinger){
-                write(548,605,"HAND ZONES UPDATE INSTANTLY",RGB(84,233,214));
-            }
-        }
-        } // !devPage: prevent normal mod settings drawing over DEV
         } // close the selected-mod options pane before the shared footer
         SelectObject(dc,smallFont);
-        if(devPage){
-            fill(797,16,129,57,m.hovered==95
-                ?RGB(47,95,110):RGB(39,49,63));
-            SelectObject(dc,smallFont);
-            write(815,30,"BACK",white);
-        }
+        fill(797,16,129,57,m.hovered==95
+            ?RGB(47,95,110):RGB(39,49,63));
+        write(815,30,"BACK",white);
         if(m.navigation.settingsColumn)
-            write(538,638,devPage?"B: DEV LIST    A: SELECT"
-                :"B: BACK TO MODS     A: SELECT",muted);
+            write(538,638,"B: DEV LIST    A: SELECT",muted);
         write(40,662,m.message.empty()?"No restart required. Changes stored in UserData."
             :m.message.substr(0,105),RGB(84,233,214));
     }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
