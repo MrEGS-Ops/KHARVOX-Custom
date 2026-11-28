@@ -280,9 +280,9 @@ int main() {
     queueMenuSaveCue(saveCues,true,true,6000);
     if(mixControllerZoneCue(zero,saveCues[0],6000).active
         ||!near(mixControllerZoneCue(zero,saveCues[1],6000).amplitude,.45f)
-        ||controllerZoneCueDurationMilliseconds(zero,saveCues[1],6000,100)!=45
-        ||!mixControllerZoneCue(zero,saveCues[1],6044).active)return 63;
-    for(auto offset:{45u,85u,115u,230u,295u})
+        ||controllerZoneCueDurationMilliseconds(zero,saveCues[1],6000,100)!=20
+        ||!mixControllerZoneCue(zero,saveCues[1],6019).active)return 63;
+    for(auto offset:{20u,35u,45u,85u,115u,230u,295u})
         if(mixControllerZoneCue(zero,saveCues[1],6000+offset).active)return 64;
     queueMenuSaveCue(saveCues,false,true,6400);
     if(!mixControllerZoneCue(zero,saveCues[0],6400).active
