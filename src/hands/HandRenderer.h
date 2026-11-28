@@ -53,6 +53,7 @@ struct HandCalibration {
 struct HandGameplayState {
     KharvoxWeaponKind weapon{KharvoxWeaponKind::Unknown};
     bool leftHanded{};
+    bool clipMenuBeamToTopQuarter{};
 };
 
 using HandLog = std::function<void(const std::string&)>;

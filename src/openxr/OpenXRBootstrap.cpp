@@ -103,6 +103,7 @@
 #include <functional>
 #include <fstream>
 #include <iomanip>
+#include <cstdio>
 #include <mutex>
 #include <sstream>
 #include <string>
@@ -9246,7 +9247,8 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
     const auto&integratedLeftHandPose=s.integratedPairLeftHand;
     const auto&integratedRightHandPose=s.integratedPairRightHand;
     const auto&integratedHandVisibility=s.integratedPairHandVisibility;
-    const auto&integratedHandGameplay=s.integratedPairHandGameplay;
+    auto integratedHandGameplay=s.integratedPairHandGameplay;
+    integratedHandGameplay.clipMenuBeamToTopQuarter=menuAimRay.valid;
     const bool skipInitialAlternatingCapture=stereoNow&&!nativePackedStereo
         &&s.alternatingStereoSkipInitialCapture;
     const bool settlingAlternatingPipeline=stereoNow&&!nativePackedStereo
@@ -9277,7 +9279,10 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
             s.stereoCacheRevision[currentRenderEye]+1);
     kharvox::hands::HandPose sceneLaser{};
     XrVector3f laserOrigin{},laserDirection{};
-    if(!menuAimRay.valid&&s.laserSightEnabled&&handGameplayActive&&laserWeaponAllowed(KharvoxWeaponCurrentKind())
+    const bool menuOwnsLaser=s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
+        ||guidedResponseVisible();
+    if(!menuOwnsLaser&&!menuAimRay.valid&&s.laserSightEnabled&&handGameplayActive
+        &&laserWeaponAllowed(KharvoxWeaponCurrentKind())
         &&(!aerSourceMode||aerSourceQualified)
         &&renderedLaserPoseInTrackingSpace(laserOrigin,laserDirection,
             aerSourceQualified?aerCapturedInput.laserBodyTracking:sfsBackend&&nativeFrameValid?nativeFrame.pose.bodyTracking:laserBodyTrackingTransform(),

@@ -438,47 +438,104 @@ void paintVrHandMenu() {
             }
         }
     }else if(pickingWeapon){
-        // The native game composites the actual weapon wheel.
+        const bool waiting=m.waitingForEquip;
+        fill(140,kharvox::calibrationGuideTop,680,70,RGB(21,31,39));
+        fill(140,kharvox::calibrationGuideTop,4,70,RGB(84,233,214));
+        SelectObject(dc,regular);
+        write(156,kharvox::calibrationGuideTop+5,waiting?"Equipping weapon...":"Point at a weapon. Pull that hand's trigger.",RGB(84,233,214));
         SelectObject(dc,smallFont);
-        write(192,52,m.waitingForEquip?"Equipping...":"Point at a weapon and pull RT. Centre keeps the equipped weapon.",white);
+        if(!waiting)write(156,kharvox::calibrationGuideTop+36,"Hold either Grip to switch the pointer. Centre keeps the current weapon.",white);
     }else if(radialView){
+        using namespace kharvox;
         SelectObject(dc,smallFont);
+        const auto accent=RGB(112,232,224);
         auto label=[&](int x,int y,int w,int h,const char* value,COLORREF colour){
             RECT rc{x,y,x+w,y+h};SetTextColor(dc,colour);
-            DrawTextA(dc,value,-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+            DrawTextA(dc,value,-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX|DT_END_ELLIPSIS);
         };
-        for(int i=0;i<7;++i){
+        auto control=[&](int x,int y,int w,int h,const char* value,bool hover,COLORREF colour){
+            fill(x,y,w,h,hover?accent:RGB(67,87,99));
+            fill(x+1,y+1,w-2,h-2,hover?(m.rightTriggerPreviously?RGB(23,84,87):RGB(36,67,77)):RGB(22,32,42));
+            label(x+3,y,w-6,h,value,colour);
+        };
+        const auto rim=CreatePen(PS_SOLID,1,RGB(67,87,99));
+        const auto oldPen=SelectObject(dc,rim);
+        for(int i=0;i<radialCategoryCount;++i){
             POINT points[36]{};
             for(int j=0;j<18;++j){
-                const double a=radialAngle(i)+(j/17.0-.5)*(radialStep-.018);
+                const double a=radialAngle(i)+(j/17.0-.5)*(radialStep-.025);
                 points[j]={LONG(480+202*std::cos(a)),LONG(360+202*std::sin(a))};
                 points[35-j]={LONG(480+61*std::cos(a)),LONG(360+61*std::sin(a))};
             }
-            const auto brush=CreateSolidBrush(m.radialCategory==i?RGB(33,77,84):RGB(35,41,47));
-            const auto old=SelectObject(dc,brush);Polygon(dc,points,36);SelectObject(dc,old);DeleteObject(brush);
+            const bool hot=m.hovered==100+i;
+            const auto brush=CreateSolidBrush(hot&&m.rightTriggerPreviously?RGB(24,93,96):
+                hot||m.radialCategory==i?RGB(34,65,76):RGB(24,33,44));
+            const auto old=SelectObject(dc,brush);
+            Polygon(dc,points,36);
+            SelectObject(dc,old);
+            DeleteObject(brush);
             const int x=int(480+137*std::cos(radialAngle(i))),y=int(360+137*std::sin(radialAngle(i)));
             label(x-72,y-15,144,29,radialGroups[i].name,white);
-            if(i>=5){
-                const bool on=i==6?s.customMods.physicalCrouch:(s.customMods.chainsawTriggerThrottle||s.customMods.motionChainsawKillSpeed);
+            if(i==radialFlyoutCount){
+                const bool on=s.customMods.chainsawTriggerThrottle||s.customMods.motionChainsawKillSpeed;
                 label(x-40,y+10,80,23,on?"ON":"OFF",on?RGB(111,224,156):muted);
             }
         }
-        const auto brush=CreateSolidBrush(RGB(24,36,40));const auto old=SelectObject(dc,brush);
-        Ellipse(dc,421,301,539,419);SelectObject(dc,old);DeleteObject(brush);
-        label(423,341,114,38,"RIPSHIFT",RGB(112,232,224));
-        if(m.radialCategory>=0&&m.radialCategory<5){
-            const int x=radialPanelX(m.radialCategory);const auto& opts=radialGroups[m.radialCategory].settings;
+        const bool dev=m.radialDevUnlock.unlocked;
+        const auto brush=CreateSolidBrush(dev&&m.hovered==radialCenter?RGB(25,81,84):RGB(19,31,40));
+        const auto old=SelectObject(dc,brush);
+        Ellipse(dc,420,300,540,420);
+        SelectObject(dc,old);
+        DeleteObject(brush);
+        SelectObject(dc,oldPen);
+        DeleteObject(rim);
+        label(423,341,114,38,dev?"Dev Mode":"_RIPSHIFT",accent);
+        if(m.radialCategory>=0&&m.radialCategory<radialFlyoutCount){
+            const int x=radialPanelX(m.radialCategory);
+            const auto& opts=radialGroups[m.radialCategory].settings;
+            const int w=radialPanelWidth,h=radialRowHeight,side=radialControlWidth;
             for(int i=0;i<int(opts.size());++i){
-                fill(x,170+i*49,260,47,m.hovered==200+i?RGB(35,88,93):RGB(31,40,47));
-                label(x,170+i*49,260,47,opts[i].label,white);
+                const auto& option=opts[i];
+                const int y=radialRowY(i),target=radialRowTarget+i*3;
+                const bool hot=m.hovered>=target&&m.hovered<target+3;
+                if(option.control==RadialControl::Stepper||m.radialResetRow==i){
+                    const bool reset=m.radialResetRow==i;
+                    control(x,y,side,h,reset?"Yes":"-",m.hovered==target,reset?RGB(255,202,137):accent);
+                    control(x+w-side,y,side,h,reset?"No":"+",m.hovered==target+2,accent);
+                    fill(x+side+3,y,w-2*side-6,h,RGB(22,32,42));
+                    std::string value;
+                    if(reset)value=option.label;
+                    else if(option.mod==RadialMod::TurnSpeed){
+                        const float speed=s.vrLiveSettings.smoothTurnSpeedDegreesPerSec;
+                        value=std::to_string(int(speed?speed:s.vrDesktopSmoothTurnSpeed))+" deg/s";
+                    }else if(option.mod==RadialMod::Killtime)value=vrLiveGloryKillSpeedText();
+                    else{
+                        char speed[24]{};
+                        std::snprintf(speed,sizeof(speed),"%.1f m/s",s.vrLiveSettings.punchSpeedMetersPerSec);
+                        value=speed;
+                    }
+                    if(!reset)label(x+side,y+1,w-2*side,21,option.label,muted);
+                    label(x+side,y+(reset?0:20),w-2*side,reset?h:23,value.c_str(),white);
+                }else if(option.control==RadialControl::Toggle||option.control==RadialControl::Choice){
+                    const bool toggle=option.control==RadialControl::Toggle;
+                    const bool on=option.mod==RadialMod::PhysicalCrouch?s.customMods.physicalCrouch:
+                        s.vrLiveSettings.gaussRequireTwoHandFire;
+                    const char* hands[]{"RIGHT","LEFT","BOTH"};
+                    control(x,y,w,h,"",hot,white);
+                    label(x+4,y,174,h,option.label,white);
+                    label(x+177,y,78,h,toggle?(on?"ON":"OFF"):hands[std::clamp(s.vrLiveSettings.punchHands,0,2)],
+                        toggle&&!on?muted:accent);
+                }else{
+                    control(x,y,w,h,option.label,hot,option.control==RadialControl::Reset?RGB(255,202,137):white);
+                }
             }
-            if(m.radialCategory==1||m.radialCategory==4){
-                const auto value=m.radialCategory==1?std::to_string(int(s.vrLiveSettings.smoothTurnSpeedDegreesPerSec?s.vrLiveSettings.smoothTurnSpeedDegreesPerSec:s.vrDesktopSmoothTurnSpeed))+" deg/s":
-                    vrLiveGloryKillSpeedText()+" / "+std::to_string(s.vrLiveSettings.punchSpeedMetersPerSec).substr(0,3)+" m/s";
-                label(x,125,260,42,value.c_str(),white);
+            if(!m.message.empty()){
+                const int y=radialRowY(int(opts.size()))+1;
+                fill(x,y,w,54,RGB(22,32,42));
+                const auto message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
+                wrap(x+8,y+3,w-16,49,message,accent);
             }
         }
-        if(m.hovered==105||m.hovered==106)label(160,577,640,36,m.hovered==105?"Control chainsaw speed with physical motion":"Lower your head to crouch in game",white);
     }else if(m.page==kharvox::VrMenuPage::Records
         ||m.page==kharvox::VrMenuPage::DevRecords){
         const bool dev=m.page==kharvox::VrMenuPage::DevRecords;
@@ -1133,20 +1190,47 @@ void paintVrHandMenu() {
         }
     }
     if(calibrationGuide&&weaponGuide){
-        fill(12,3,936,99,RGB(23,33,39));SelectObject(dc,smallFont);
-        const std::string heading=std::string(m.weapon())+"   /   "+(m.rightHand!=s.weaponHandLeft?"Primary":"Support")
-            +"   /   RH "+(m.rightSaved[m.selectedWeapon]?"saved":"unsaved")+"   LH "+(m.leftSaved[m.selectedWeapon]?"saved":"unsaved");
-        write(24,7,heading,RGB(84,233,214));
-        write(24,33,m.weaponCalibrationStage==3?"Right-handed sequence saved. LT starts left-handed calibration. RT finishes.":
-            m.rightHand!=s.weaponHandLeft?"Grip released: sticks adjust position. Hold Grip and rotate the weapon hand.":
-            "Place support hand, hold its Grip to test aiming, release to reposition.",white);
-        write(24,68,m.weaponCalibrationStage==3?"B: finish":m.rightHand?"RT: save    B: cancel":"LT: save    B: cancel",white);
-        write(465,68,m.resetWeaponPending?"Confirm reset":"Reset weapon",white);write(641,68,"Change weapon",white);
-        if(KharvoxWeaponCurrentKind()==KharvoxWeaponKind::GaussCannon||KharvoxWeaponCurrentKind()==KharvoxWeaponKind::Chaingun)
-            write(799,68,m.alternateProfile?"Alt fire":"Normal",white);
+        const int top=kharvox::calibrationGuideTop;
+        const int buttonY=kharvox::weaponGuideButtonTop;
+        const auto accent=RGB(84,233,214);
+        fill(12,top,936,kharvox::weaponGuideHeight,RGB(20,29,38));
+        fill(12,top,4,kharvox::weaponGuideHeight,accent);
+        SelectObject(dc,smallFont);
+        const bool complete=m.weaponCalibrationStage==3;
+        const bool primary=m.rightHand!=s.weaponHandLeft;
+        const std::string hand=m.rightHand?"Right":"Left";
+        const std::string heading=std::string(m.weapon())+" / "+
+            (complete?"Hand profiles saved":hand+(primary?" primary":" support"));
+        write(24,top+6,heading,accent);
+        write(24,top+34,!complete&&!m.message.empty()?m.message:complete?"Calibrate the other hand or finish.":!m.previewValid?
+            "Waiting for controller tracking.":primary?
+            "Sticks move the grip. Hold Grip and rotate your hand.":
+            "Hold support Grip to test aim. Release it to reposition.",white);
+        SelectObject(dc,regular);
+        const char* controls=complete?(m.calibrationStartedLeft?"RT: right hand   LT / B: finish":"LT: left hand   RT / B: finish"):
+            primary?(m.rightHand?"RT: save   B: cancel":"LT: save   B: cancel"):
+            (m.rightHand?"Grip + RT: save   B: cancel":"Grip + LT: save   B: cancel");
+        write(24,buttonY+4,controls,RGB(255,219,134));
+        SelectObject(dc,smallFont);
+        if(!complete){
+            const auto kind=KharvoxWeaponCurrentKind();
+            const bool alternate=kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun;
+            const int hovered=kharvox::weaponGuideAction(m.cursorX,m.cursorY,alternate);
+            const int left[]{464,626,788};
+            const char* labels[]{m.resetWeaponPending?"Confirm reset":"Reset weapon","Change weapon",m.alternateProfile?"Alt fire":"Normal"};
+            for(int i=0;i<(alternate?3:2);++i){
+                fill(left[i],buttonY,152,40,hovered==i?accent:RGB(65,83,94));
+                fill(left[i]+1,buttonY+1,150,38,hovered==i?RGB(31,68,75):RGB(27,39,49));
+                RECT rc{left[i],buttonY,left[i]+152,buttonY+40};
+                SetTextColor(dc,i==0&&m.resetWeaponPending?RGB(255,219,134):white);
+                DrawTextA(dc,labels[i],-1,&rc,DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+            }
+        }
     }else if(calibrationGuide){
-        fill(guideX,guideY,guideW,guideH,RGB(12,17,22));
-        fill(guideX,guideY,4,guideH,RGB(55,209,214));
+        const int top=kharvox::calibrationGuideTop;
+        constexpr int height=156;
+        fill(guideX,top,guideW,height,RGB(12,17,22));
+        fill(guideX,top,4,height,RGB(55,209,214));
         SelectObject(dc,smallFont);
         const bool object=s.objectGripCalibrating;
         const bool zone=!object&&kharvox::vrLiveIsGunslingerCapture(m.liveCapture);
@@ -1155,7 +1239,7 @@ void paintVrHandMenu() {
         const bool rightZone=m.liveCapture==kharvox::VrLiveCapture::HipRight||m.liveCapture==kharvox::VrLiveCapture::WheelRight;
         const bool hip=m.liveCapture==kharvox::VrLiveCapture::HipRight||m.liveCapture==kharvox::VrLiveCapture::HipLeft;
         const std::string heading=object?"OBJECT GRIP / "+s.objectGripName:zone?std::string("GUNSLINGER / ")+(rightZone?"RIGHT ":"LEFT ")+(hip?"HOLSTER":"WHEEL"):crouch?"PHYSICAL CROUCH":std::string("WEAPON GRIP / ")+m.weapon()+" / "+(m.rightHand?"RIGHT ":"LEFT ")+(primary?"PRIMARY":"SUPPORT");
-        wrap(guideX+14,guideY+5,guideW-28,44,heading,RGB(84,233,214));
+        wrap(guideX+14,top+8,guideW-28,38,heading,RGB(84,233,214));
         const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object; release to lock":"Sticks fine-tune; offhand trigger = 5 cm; hold Grip to freeze")
             :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move zone; release to preview")
             :crouch?"Move head to target height; RT captures"
@@ -1163,8 +1247,9 @@ void paintVrHandMenu() {
             :!m.previewValid?"Waiting for valid controller tracking"
             :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")
             :"Move support hand into desired grip position";
-        wrap(guideX+14,guideY+54,guideW-28,104,instruction,white);
-        wrap(guideX+14,guideY+164,guideW-28,60,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
+        wrap(guideX+14,top+48,guideW-28,50,instruction,white);
+        SelectObject(dc,regular);
+        wrap(guideX+14,top+104,guideW-28,50,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.
@@ -1203,10 +1288,10 @@ void paintVrHandMenu() {
             :resultView
                 ?(x>=resultX&&x<resultX+resultW
                     &&y>=resultY&&y<resultY+resultH?245:0)
-            :weaponGuide?(x>=12&&x<948&&y>=3&&y<102?225:devPanel&&x>=630&&x<938&&y>=144&&y<576?255:0)
+            :weaponGuide?(x>=12&&x<948&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+kharvox::weaponGuideHeight?225:devPanel&&x>=630&&x<938&&y>=144&&y<576?255:0)
             :radialView||pickingWeapon?(src[b]||src[b+1]||src[b+2]?226:0)
             :editingHud?210
-            :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=guideY&&y<guideY+guideH?205
+            :calibrationGuide&&x>=guideX&&x<guideX+guideW&&y>=kharvox::calibrationGuideTop&&y<kharvox::calibrationGuideTop+156?205
             :objectCalibrationView
                 ?0
             :(statsLiveView||guideView)

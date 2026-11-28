@@ -525,9 +525,17 @@ void HandRenderer::Impl::drawGeometry(VkCommandBuffer commandBuffer,
             vk.cmdBindPipeline(commandBuffer,VK_PIPELINE_BIND_POINT_GRAPHICS,
                 overlayPipeline);
             if(grabDebugLaser.valid&&std::isfinite(grabLaserLengthMetres)
-                &&grabLaserLengthMetres>=.01f&&grabLaserLengthMetres<=5.f)
-                drawBeam(grabDebugLaserAsset,grabDebugLaser,
-                    grabLaserLengthMetres);
+                &&grabLaserLengthMetres>=.01f&&grabLaserLengthMetres<=5.f){
+                // The menu pointer shares this beam with the unbounded
+                // world-grab debug laser. Clip only the menu beam in pixels.
+                if(gameplay.clipMenuBeamToTopQuarter){
+                    const VkRect2D menuScissor{{rectX,rectY},{rectWidth,rectHeight/4}};
+                    vk.cmdSetScissor(commandBuffer,0,1,&menuScissor);
+                }
+                drawBeam(grabDebugLaserAsset,grabDebugLaser,grabLaserLengthMetres);
+                if(gameplay.clipMenuBeamToTopQuarter)
+                    vk.cmdSetScissor(commandBuffer,0,1,&scissor);
+            }
         }
         for(unsigned i=0;overlayPipeline&&i<std::min<unsigned>(
             discoveryRingCount,discoveryRings.size());++i){

@@ -195,9 +195,14 @@ void finishVrWeaponSequence(){
     m.weaponCalibrationStage=0;m.rightHand=!s.weaponHandLeft;m.previewValid=false;m.primaryGripPreviewHeld=false;m.rotationEdit={};
     m.mode=kharvox::VrHandMenuMode::Menu;
 }
-void beginVrWeaponSequence(){
-    auto& m=s.vrHandMenu;m.calibrationOriginalWeaponLeft=s.weaponHandLeft;m.weaponCalibrationStage=1;
-    selectPhysicalWeaponHand(false,"calibration right primary");m.rightHand=true;startVrSelectedWeaponCalibration();
+void beginVrWeaponSequence(bool left){
+    auto& m=s.vrHandMenu;
+    m.calibrationOriginalWeaponLeft=s.weaponHandLeft;
+    m.calibrationStartedLeft=left;
+    m.weaponCalibrationStage=left?4:1;
+    selectPhysicalWeaponHand(left,"calibration primary");
+    m.rightHand=!left;
+    startVrSelectedWeaponCalibration();
 }
 void saveVrHandMenuCalibration(){
     auto& m=s.vrHandMenu;
@@ -289,10 +294,18 @@ void saveVrHandMenuCalibration(){
         const auto* support=twoHandCalibrationFor(kind);
         if((support&&support->valid)||alternate){m.weaponCalibrationStage=m.weaponCalibrationStage==1?2:5;m.rightHand=s.weaponHandLeft;startVrSelectedWeaponCalibration();return;}
     }
-    if(m.weaponCalibrationStage==1||m.weaponCalibrationStage==2){m.weaponCalibrationStage=3;m.mode=kharvox::VrHandMenuMode::Calibrating;return;}
+    const bool firstHand=m.calibrationStartedLeft
+        ?m.weaponCalibrationStage>=4
+        :m.weaponCalibrationStage==1||m.weaponCalibrationStage==2;
+    if(m.weaponCalibrationStage&&firstHand){
+        m.weaponCalibrationStage=3;
+        m.supportPreviewHeld=false;
+        m.mode=kharvox::VrHandMenuMode::Calibrating;
+        return;
+    }
     if(m.weaponCalibrationStage)finishVrWeaponSequence();
 }
-void resetVrMenuSelectedWeapon(){
+bool resetVrMenuSelectedWeapon(){
     auto& m=s.vrHandMenu;
     const auto rightFile=kharvox::runtimePathA("offhand_right_hand_positions.cfg");
     const auto leftFile=kharvox::runtimePathA("two_hand_weapon_profiles_saved.cfg");
@@ -317,7 +330,7 @@ void resetVrMenuSelectedWeapon(){
             leftPrimarySupport,defaultLeftSupport,m.weapon(),false,&why)){
         m.message="RESET FAILED: "+why;
         log("[VR-HAND-MENU] "+m.message);
-        return;
+        return false;
     }
     s.rightGripSettings=kharvox::readRightHandGripSettings(rightFile);
     s.twoHandCalibrations={};
@@ -328,6 +341,7 @@ void resetVrMenuSelectedWeapon(){
     m.message=std::string("Your factory calibration restored: ")+m.weapon();
     recordVrCalibrationStatus(true);
     log("[VR-HAND-MENU] "+m.message);
+    return true;
 }
 void startVrSelectedWeaponCalibration(){
     auto& m=s.vrHandMenu;
@@ -396,16 +410,16 @@ void startVrSelectedWeaponCalibration(){
     }
     s.primaryVisualLocked=false;
     s.supportVisualLocked=false;
-    m.message="NO GRIP: sticks move gun 1cm. HOLD "+std::string(m.rightHand?"RIGHT":"LEFT")
-        +" GRIP: gun freezes; rotate weapon hand. TRIGGER: SAVE.";
+    m.message.clear();
     log(std::string("[VR-MODS] calibrating ")+m.weapon()+
         (m.rightHand?" RIGHT":" LEFT")+
         (m.rightHand!=s.weaponHandLeft?" PRIMARY":" SUPPORT"));
 }
 #include "VrRadialMenu.inc"
-int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime){
+int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime,bool left=false){
     pixelX=pixelY=-1.f;menuAimRay={};menuAimRayMetres=0.f;
-    if(!s.rightController.valid||!s.rightController.positionTracked
+    const auto& controller=left?s.leftController:s.rightController;
+    if(!controller.valid||!controller.positionTracked
         ||!s.trackingHeadPositionValid)return -1;
     // The compositor quad is head-locked in viewSpace at Z=-1.1 m.
     XrSpaceLocation view{XR_TYPE_SPACE_LOCATION};
@@ -413,8 +427,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime){
         ||!(view.locationFlags&XR_SPACE_LOCATION_POSITION_VALID_BIT)
         ||!(view.locationFlags&XR_SPACE_LOCATION_ORIENTATION_VALID_BIT))return -1;
     const XrQuaternionf inverse=conjugate(normalizeQuaternion(view.pose.orientation));
-    const auto origin=rotateVector(inverse,subtractVector(s.rightController.position,view.pose.position));
-    const auto aim=normalizeQuaternion(s.rightController.orientation);
+    const auto origin=rotateVector(inverse,subtractVector(controller.position,view.pose.position));
+    const auto aim=normalizeQuaternion(controller.orientation);
     const auto direction=rotateVector(inverse,rotateVector(aim,{0,0,-1}));
     if(direction.z>=-.05f)return -1;
     const float distance=(-1.1f-origin.z)/direction.z;
@@ -424,7 +438,7 @@ int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime){
     pixelX=(x/1.28f+.5f)*float(vrMenuW);
     pixelY=(.5f-y/.96f)*float(vrMenuH);
     if(pixelX<0||pixelX>=vrMenuW||pixelY<0||pixelY>=vrMenuH)return -1;
-    const auto& pos=s.rightController.position;
+    const auto& pos=controller.position;
     menuAimRay={{pos.x,pos.y,pos.z},{aim.x,aim.y,aim.z,aim.w},true};menuAimRayMetres=distance;
     if(s.vrHandMenu.mode==kharvox::VrHandMenuMode::Menu&&s.vrHandMenu.page==kharvox::VrMenuPage::Mods)
         return radialTarget(pixelX,pixelY);
@@ -541,6 +555,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime){
 bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool rightClick,
                             bool rightTrigger,bool leftTrigger,
                             bool primaryWeaponGripDown,bool supportGripDown,bool menuA,bool menuB){
+    const bool rightGrip=s.weaponHandLeft?supportGripDown:primaryWeaponGripDown;
+    const bool leftGrip=s.weaponHandLeft?primaryWeaponGripDown:supportGripDown;
     auto& m=s.vrHandMenu;
     // Display-only: reflect actual physical Grip even if the live preview
     // is invalid. Never gate calibration mechanics or input on this flag.
@@ -569,6 +585,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         m.menuBPreviously=menuB;
         m.consumeMenuFaceUntilRelease=false;
         m.consumeMenuTriggerUntilRelease=false;
+        m.consumeDevGripUntilRelease=false;
+        m.radialDevUnlock.clicks=0;
         return false;
     }
     if(shortcut==kharvox::VrMenuShortcutAction::Toggle){
@@ -580,7 +598,9 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 return true;
             }
             m.mode=kharvox::VrHandMenuMode::Menu;
-            m.radialCategory=m.suppressedCategory=-1;m.radialPinned=false;
+            m.radialCategory=m.suppressedCategory=m.radialResetRow=-1;
+            m.radialPinned=false;
+            m.radialDevUnlock.clicks=0;
             m.supportPreviewHeld=m.calibrationWheel=m.waitingForEquip=false;
             m.page=kharvox::VrMenuPage::Mods;
             // A pending timed-run confirmation must never survive closing
@@ -602,7 +622,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             for(int i=0;i<10;++i)
                 if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])
                     ==equipped)m.selectedWeapon=i;
-            m.message="LEFT stick navigates; A selects; B backs out. RIGHT pointer + trigger also works.";
+            m.message.clear();
             refreshVrHandMenuSavedStatus();
             log("[VR-HAND-MENU] opened by 1-second RIGHT-stick hold");
         }else{
@@ -630,6 +650,12 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     }
     if(m.mode==kharvox::VrHandMenuMode::Closed){
         m.rightTriggerPreviously=rightTrigger;
+        m.leftTriggerPreviously=leftTrigger;
+        m.radialDevUnlock.clicks=0;
+        if(m.consumeDevGripUntilRelease){
+            if(rightGrip)return true;
+            m.consumeDevGripUntilRelease=false;
+        }
         // Swallow held release edges after Stats closes the menu automatically.
         // Never let the confirmation trigger fire a shot on the next frame.
         if(m.consumeMenuTriggerUntilRelease){
@@ -662,7 +688,11 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     const bool bEdge=kharvox::vrMenuButtonEdge(menuB,m.menuBPreviously);
     // B cancels capture without saving. From weapon profiles B returns to
     // Mods; from the top-level Mods page it closes the overlay.
-    if(bEdge){
+    if(bEdge&&m.page==kharvox::VrMenuPage::Mods&&m.radialResetRow>=0){
+        m.radialResetRow=-1;
+        m.message.clear();
+    }else if(bEdge){
+        m.radialDevUnlock.clicks=0;
         m.supportPreviewHeld=m.resetWeaponPending=false;
         if(m.calibrationWheel||m.waitingForEquip)KharvoxWeaponSetWheelPresentationActive(false);
         m.calibrationWheel=m.waitingForEquip=false;
@@ -739,22 +769,32 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(triggerEdge||(crouch&&aEdge))captureVrLivePosition();
         }else if(m.weaponCalibrationStage&&([&]{
             vrMenuRayTarget(m.cursorX,m.cursorY,displayTime);
-            if(!triggerEdge||m.cursorY<61||m.cursorY>99||m.cursorX<460||m.cursorX>=940)return false;
-            if(m.weaponCalibrationStage==3)return false;
-            if(m.cursorX>=790){
-                const auto kind=KharvoxWeaponCurrentKind();
-                if(kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun){
-                    m.alternateProfile=!m.alternateProfile;startVrSelectedWeaponCalibration();
+            const auto kind=KharvoxWeaponCurrentKind();
+            const int action=kharvox::weaponGuideAction(m.cursorX,m.cursorY,
+                kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun);
+            if(!triggerEdge||action<0||m.weaponCalibrationStage==3)return false;
+            if(action==2){
+                m.alternateProfile=!m.alternateProfile;
+                startVrSelectedWeaponCalibration();
+            }else if(action==1)openCalibrationWheel();
+            else if(m.resetWeaponPending){
+                m.resetWeaponPending=false;
+                if(resetVrMenuSelectedWeapon()){
+                    startVrSelectedWeaponCalibration();
+                    m.message="Factory grip restored.";
                 }
-            }else if(m.cursorX>=640)openCalibrationWheel();
-            else if(m.resetWeaponPending){resetVrMenuSelectedWeapon();startVrSelectedWeaponCalibration();}
-            else m.resetWeaponPending=true;
+            }else m.resetWeaponPending=true;
             return true;
         })()){
             m.consumeMenuTriggerUntilRelease=true;
         }else if(m.weaponCalibrationStage==3){
-            if(leftTriggerEdge){m.weaponCalibrationStage=4;selectPhysicalWeaponHand(true,"calibration left primary");m.rightHand=false;startVrSelectedWeaponCalibration();}
-            else if(triggerEdge)finishVrWeaponSequence();
+            const bool otherLeft=!m.calibrationStartedLeft;
+            if(otherLeft?leftTriggerEdge:triggerEdge){
+                m.weaponCalibrationStage=otherLeft?4:1;
+                selectPhysicalWeaponHand(otherLeft,"calibration other primary");
+                m.rightHand=!otherLeft;
+                startVrSelectedWeaponCalibration();
+            }else if(leftTriggerEdge||triggerEdge)finishVrWeaponSequence();
         }else{
             const bool primary=m.rightHand!=s.weaponHandLeft;
             const bool grip=primary?primaryWeaponGripDown:
@@ -767,25 +807,48 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             }
         }
     }else if(!bEdge&&m.mode==kharvox::VrHandMenuMode::Menu){
-        m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY,displayTime);
+        if(m.calibrationWheel){
+            if(triggerEdge||leftTriggerEdge)
+                m.calibrationWheelLeft=leftTriggerEdge&&!triggerEdge;
+            else if(leftGrip!=rightGrip)
+                m.calibrationWheelLeft=leftGrip;
+        }
+        m.hovered=vrMenuRayTarget(m.cursorX,m.cursorY,displayTime,
+            m.calibrationWheel&&m.calibrationWheelLeft);
         const auto rows=activeVrMenuEntries();
         if(m.calibrationWheel||m.waitingForEquip){
-            const bool pointing=m.cursorX>=0&&m.cursorY>=0;
-            const float dx=(m.cursorX-480.f)/190.f,dy=(360.f-m.cursorY)/190.f;
-            if(m.calibrationWheel&&triggerEdge&&pointing){
-                m.wheelAxisX=dx;m.wheelAxisY=dy;
-                m.calibrationWheel=false;m.waitingForEquip=true;m.wheelReleasedAt=GetTickCount64();
-            }else if(m.waitingForEquip&&GetTickCount64()-m.wheelReleasedAt>=400){
-                if(GetTickCount64()-m.wheelReleasedAt>1800){m.waitingForEquip=false;m.page=kharvox::VrMenuPage::Mods;}
+            const bool pointing=m.cursorX>=0&&m.cursorY>=0
+                &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH;
+            if(m.calibrationWheel&&(triggerEdge||leftTriggerEdge)&&pointing){
+                m.wheelAxisX=(m.cursorX-480.f)/190.f;
+                m.wheelAxisY=(360.f-m.cursorY)/190.f;
+                m.wheelPreviousWeapon=int(KharvoxWeaponCurrentKind());
+                m.calibrationWheel=false;
+                m.waitingForEquip=true;
+                m.wheelReleasedAt=GetTickCount64();
+            }else if(m.waitingForEquip){
+                const auto elapsed=GetTickCount64()-m.wheelReleasedAt;
                 const auto kind=KharvoxWeaponCurrentKind();
-                for(int i=0;i<int(kharvox::kVrCalibrationWeapons.size());++i){
-                    if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])==kind){
-                        m.waitingForEquip=false;m.selectedWeapon=i;m.alternateProfile=false;beginVrWeaponSequence();break;
+                if(elapsed>=400&&(int(kind)!=m.wheelPreviousWeapon||elapsed>=1200)){
+                    for(int i=0;i<int(kharvox::kVrCalibrationWeapons.size());++i){
+                        if(KharvoxWeaponKindFromKey(kharvox::kVrCalibrationWeapons[i])!=kind)continue;
+                        m.waitingForEquip=false;
+                        m.selectedWeapon=i;
+                        m.alternateProfile=false;
+                        beginVrWeaponSequence(m.calibrationWheelLeft);
+                        break;
                     }
+                }
+                if(m.waitingForEquip&&elapsed>=1800){
+                    m.waitingForEquip=false;
+                    m.page=kharvox::VrMenuPage::Mods;
+                    m.message="No supported weapon equipped.";
                 }
             }
         }else if(m.page==kharvox::VrMenuPage::Mods){
-            radialInput(m.hovered,triggerEdge,leftClick);
+            if(rightGrip&&m.hovered==kharvox::radialCenter)
+                m.consumeDevGripUntilRelease=true;
+            radialInput(m.hovered,triggerEdge,rightGrip);
         }else if(m.page==kharvox::VrMenuPage::Stats){
             hudInput(int(m.cursorX),int(m.cursorY),triggerEdge,rightTrigger);
         }else if(m.page==kharvox::VrMenuPage::Records
@@ -1254,14 +1317,16 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         log(std::string("[VR-HAND-MENU] live calibration native secondary fire ")
             +(liveAltFire?"ON":"OFF")+" (physical weapon-hand Grip)");
     s.heavyAlternateInputForwarded=liveAltFire;
-    if(m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods){
+    if(!rightGrip)m.consumeDevGripUntilRelease=false;
+    if(m.mode==kharvox::VrHandMenuMode::Menu&&m.page==kharvox::VrMenuPage::Mods
+        &&!m.consumeDevGripUntilRelease){
         updateVirtualLeftStick(s.leftStick,true);updateVirtualRightStick({s.rightStick.x,0.f},true);
     }else releaseMovement(m.autoSelectingWeapon);
     if(m.calibrationWheel||m.waitingForEquip){
         const float dx=m.waitingForEquip?m.wheelAxisX:(m.cursorX-480.f)/190.f;
         const float dy=m.waitingForEquip?m.wheelAxisY:(360.f-m.cursorY)/190.f;
         const float length=std::max(1.f,std::sqrt(dx*dx+dy*dy));
-        updateVirtualRightStick({dx/length,dy/length},m.waitingForEquip||(m.cursorX>=0&&m.cursorY>=0));
+        updateVirtualRightStick({dx/length,dy/length},m.waitingForEquip||(m.cursorX>=0&&m.cursorY>=0&&m.cursorX<vrMenuW&&m.cursorY<vrMenuH));
     }
     KharvoxWeaponSetWheelPresentationActive(m.calibrationWheel);
     // Special BFG/Chainsaw auto-equip uses its native selection channel.

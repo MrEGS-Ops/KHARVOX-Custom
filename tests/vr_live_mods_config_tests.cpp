@@ -189,13 +189,36 @@ int main(){
     assert(defaults.wheelShift[0].x==0.f
         &&defaults.wheelShift[1].z==0.f);
     VrLiveSettings layout{};
-    for(int category=0;category<7;++category){
+    for(int category=0;category<radialCategoryCount;++category){
         const auto angle=radialAngle(category);
         assert(radialHit(float(480+135*std::cos(angle)),float(360+135*std::sin(angle)),-1,0)==100+category);
     }
     assert(radialHit(480,360,-1,0)==99);
     assert(radialHit(480,580,-1,0)==-1);
-    assert(radialHit(float(radialPanelX(4)+20),220,4,7)==201);
+    const int panel=radialPanelX(4), row=radialRowY(1);
+    assert(radialHit(float(panel+20),float(row+1),4,5)==radialRowTarget+3);
+    assert(radialHit(float(panel+130),float(row+1),4,5)==radialRowTarget+4);
+    assert(radialHit(float(panel+240),float(row+1),4,5)==radialRowTarget+5);
+    assert(radialHit(float(panel+20),float(row+radialRowHeight),4,5)==-1);
+    assert(weaponGuideAction(470,weaponGuideButtonTop-1,true)==-1);
+    assert(weaponGuideAction(470,weaponGuideButtonTop,true)==0);
+    assert(weaponGuideAction(630,weaponGuideButtonTop,true)==1);
+    assert(weaponGuideAction(800,weaponGuideButtonTop,false)==-1);
+
+    RadialDevUnlock unlock{};
+    assert(!unlock.update(true,false,true));
+    assert(!unlock.update(true,true,true));
+    assert(!unlock.update(true,true,false));
+    assert(unlock.clicks==1);
+    assert(!unlock.update(false,true,true)&&unlock.clicks==0);
+    assert(!unlock.update(true,true,true));
+    assert(!unlock.update(true,false,false)&&unlock.clicks==0);
+    for(int i=0;i<4;++i){
+        assert(!unlock.update(true,true,true));
+        assert(!unlock.update(true,true,false));
+    }
+    assert(unlock.update(true,true,true)&&unlock.unlocked);
+    assert(unlock.update(true,false,true));
     const int pixel=statsPixelPosition(117,348);
     assert(statsPositionValid(pixel));
     assert(statsPanelX(pixel,960,226)==117&&statsPanelY(pixel,720,60)==348);

@@ -1,21 +1,42 @@
-// Shared menu geometry in compositor texture pixels.
+// Shared controls for the radial render and its pointer hit testing.
 using RadialMod=kharvox::VrLiveMod;
-struct RadialSetting { const char* label; RadialMod mod; int action; };
-struct RadialGroup { const char* name; std::vector<RadialSetting> settings; };
-const RadialGroup radialGroups[]={
-    {"Weapons",{{"Weapon grip calibration",RadialMod::WeaponGrip,130},{"Gauss two-hand firing",RadialMod::WeaponGrip,33}}},
-    {"Movement",{{"Slower turn",RadialMod::TurnSpeed,130},{"Faster turn",RadialMod::TurnSpeed,131},{"Reset turn speed",RadialMod::TurnSpeed,132},{"Standing height",RadialMod::PhysicalCrouch,130},{"Crouching height",RadialMod::PhysicalCrouch,131},{"Reset heights",RadialMod::PhysicalCrouch,132}}},
-    {"HUD / Stats",{{"Edit HUD",RadialMod::Stats,1},{"Level records",RadialMod::Stats,2}}},
-    {"Gunslinger",{{"Set holsters",RadialMod::Gunslinger,130},{"Set wheel zones",RadialMod::Gunslinger,131},{"Reset zones",RadialMod::Gunslinger,132}}},
-    {"Glory Kills",{{"Lower punch threshold",RadialMod::PhysicalGloryKills,130},{"Raise punch threshold",RadialMod::PhysicalGloryKills,131},{"Change punching hands",RadialMod::PhysicalGloryKills,132},{"Reset punch settings",RadialMod::PhysicalGloryKills,133},{"Slower KILLTIME",RadialMod::Killtime,130},{"Faster KILLTIME",RadialMod::Killtime,131},{"Reset KILLTIME",RadialMod::Killtime,132}}},
-    {"PAINSAW",{}},{"Physical Crouch",{}}
+enum class RadialControl { Button, Stepper, Toggle, Choice, Reset };
+struct RadialSetting {
+    const char* label;
+    RadialMod mod;
+    int action;
+    RadialControl control=RadialControl::Button;
 };
-using kharvox::radialAngle;
-using kharvox::radialPanelX;
-using kharvox::radialStep;
+struct RadialGroup { const char* name; std::vector<RadialSetting> settings; };
+const RadialGroup radialGroups[]{
+    {"Weapons",{
+        {"Grip calibration",RadialMod::WeaponGrip,130},
+        {"Gauss 2-hand fire",RadialMod::WeaponGrip,33,RadialControl::Toggle}}},
+    {"Movement",{
+        {"Turn speed",RadialMod::TurnSpeed,130,RadialControl::Stepper},
+        {"Reset turn",RadialMod::TurnSpeed,132,RadialControl::Reset},
+        {"Physical Crouch",RadialMod::PhysicalCrouch,110,RadialControl::Toggle},
+        {"Set standing height",RadialMod::PhysicalCrouch,130},
+        {"Set crouch height",RadialMod::PhysicalCrouch,131},
+        {"Reset heights",RadialMod::PhysicalCrouch,132,RadialControl::Reset}}},
+    {"HUD / Stats",{{"Edit HUD",RadialMod::Stats,1},{"Level records",RadialMod::Stats,2}}},
+    {"Gunslinger",{
+        {"Set holsters",RadialMod::Gunslinger,130},
+        {"Set wheel zones",RadialMod::Gunslinger,131},
+        {"Reset zones",RadialMod::Gunslinger,132,RadialControl::Reset}}},
+    {"Glory Kills",{
+        {"Punch threshold",RadialMod::PhysicalGloryKills,130,RadialControl::Stepper},
+        {"Punch hands",RadialMod::PhysicalGloryKills,132,RadialControl::Choice},
+        {"Reset punch",RadialMod::PhysicalGloryKills,133,RadialControl::Reset},
+        {"KILLTIME",RadialMod::Killtime,130,RadialControl::Stepper},
+        {"Reset KILLTIME",RadialMod::Killtime,132,RadialControl::Reset}}},
+    {"PAINSAW",{}}
+};
+static_assert(sizeof(radialGroups)/sizeof(*radialGroups)==kharvox::radialCategoryCount);
 int radialTarget(float x,float y){
     const int category=s.vrHandMenu.radialCategory;
-    const int count=category>=0&&category<5?int(radialGroups[category].settings.size()):0;
+    const int count=category>=0&&category<kharvox::radialFlyoutCount
+        ?int(radialGroups[category].settings.size()):0;
     return kharvox::radialHit(x,y,category,count);
 }
 void openCalibrationWheel(){
@@ -24,47 +45,88 @@ void openCalibrationWheel(){
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.page=kharvox::VrMenuPage::WeaponGrip;
     KharvoxHudResetWeaponWheelPresentation();
-    m.calibrationWheel=true;m.waitingForEquip=false;m.resetWeaponPending=false;
+    m.calibrationWheel=true;
+    m.calibrationWheelLeft=s.weaponHandLeft;
+    m.waitingForEquip=false;
+    m.resetWeaponPending=false;
+    m.alternateProfile=false;
     m.supportPreviewHeld=false;
 }
-void radialInput(int hit,bool click,bool devChord){
+void radialInput(int hit,bool click,bool rightGrip){
+    using namespace kharvox;
     auto& m=s.vrHandMenu;
-    if(hit<100||hit>=107)m.suppressedCategory=-1;
-    if(hit>=100&&hit<107){
+    const bool center=hit==radialCenter;
+    const bool openDev=m.radialDevUnlock.update(center,rightGrip,click);
+    if(hit<100||hit>=100+radialCategoryCount)m.suppressedCategory=-1;
+    if(hit>=100&&hit<100+radialCategoryCount){
         const int i=hit-100;
-        if(click&&i>=5){
-            m.selectedMod=i==5?RadialMod::Painsaw:RadialMod::PhysicalCrouch;
+        if(click&&i==radialFlyoutCount){
+            m.selectedMod=RadialMod::Painsaw;
             handleVrLiveMenuAction(110);
         }else if(click&&m.radialPinned&&m.radialCategory==i){
-            m.radialPinned=false;m.radialCategory=-1;m.suppressedCategory=i;
-        }else if(i!=m.suppressedCategory&&(click||!m.radialPinned)){
-            m.radialCategory=i;m.radialPinned=click&&i<5;
+            m.radialPinned=false;
+            m.radialCategory=-1;
+            m.radialResetRow=-1;
+            m.suppressedCategory=i;
+        }else if(i!=m.suppressedCategory&&i<radialFlyoutCount&&(click||!m.radialPinned)){
+            if(m.radialCategory!=i){
+                m.radialResetRow=-1;
+                m.message.clear();
+            }
+            m.radialCategory=i;
+            m.radialPinned=click;
         }
-    }else if(click&&hit==99){
-        if(devChord){
-            m.page=kharvox::VrMenuPage::Dev;m.selectedRow=0;m.modScroll=0;m.navigation={};
-        }else m.mode=kharvox::VrHandMenuMode::Closed;
+    }else if(click&&center){
+        if(openDev){
+            m.page=VrMenuPage::Dev;
+            m.selectedRow=0;
+            m.modScroll=0;
+            m.navigation={};
+            m.radialResetRow=-1;
+        }else if(!rightGrip){
+            m.mode=VrHandMenuMode::Closed;
+        }
         m.consumeMenuTriggerUntilRelease=true;
-    }else if(click&&hit>=200&&m.radialCategory>=0){
-        const auto& setting=radialGroups[m.radialCategory].settings.at(hit-200);
+    }else if(click&&hit>=radialRowTarget&&m.radialCategory>=0){
+        const int row=(hit-radialRowTarget)/3;
+        const int part=(hit-radialRowTarget)%3;
+        const auto& setting=radialGroups[m.radialCategory].settings[row];
+        m.consumeMenuTriggerUntilRelease=true;
+        if(setting.control==RadialControl::Stepper&&part==1)return;
+        if(setting.control==RadialControl::Reset){
+            if(m.radialResetRow!=row){
+                m.radialResetRow=row;
+                m.radialPinned=true;
+                m.message="Restore defaults?";
+                return;
+            }
+            if(part!=0){
+                if(part==2){m.radialResetRow=-1;m.message.clear();}
+                return;
+            }
+        }
+        m.radialResetRow=-1;
+        m.message.clear();
+        m.radialPinned=true;
         m.selectedMod=setting.mod;
         if(setting.mod==RadialMod::WeaponGrip&&setting.action==33){
             const bool previous=s.vrLiveSettings.gaussRequireTwoHandFire;
             s.vrLiveSettings.gaussRequireTwoHandFire=!previous;
             if(!saveVrLiveSettings())s.vrLiveSettings.gaussRequireTwoHandFire=previous;
-            else if(!m.radialPinned)m.mode=kharvox::VrHandMenuMode::Closed;
+            else m.message="Gauss setting saved.";
         }else if(setting.mod==RadialMod::WeaponGrip)openCalibrationWheel();
         else if(setting.mod==RadialMod::Stats){
-            m.page=setting.action==1?kharvox::VrMenuPage::Stats:kharvox::VrMenuPage::Records;
-            m.hudDraft=s.vrLiveSettings;m.hudDrag=m.hudSelection=-1;m.navigation={};
+            m.page=setting.action==1?VrMenuPage::Stats:VrMenuPage::Records;
+            m.hudDraft=s.vrLiveSettings;
+            m.hudDrag=m.hudSelection=-1;
+            m.navigation={};
         }else{
-            handleVrLiveMenuAction(setting.action);
-            if(!m.radialPinned&&m.mode==kharvox::VrHandMenuMode::Menu&&m.message=="Applied LIVE and saved to UserData.")
-                m.mode=kharvox::VrHandMenuMode::Closed;
+            const int action=setting.action+(setting.control==RadialControl::Stepper&&part==2?1:0);
+            handleVrLiveMenuAction(action);
         }
-        m.consumeMenuTriggerUntilRelease=true;
     }
 }
+
 int hudTrayY(int item){return 710-(7-item)*37;}
 int hudTarget(int x,int y){
     const auto& m=s.vrHandMenu;

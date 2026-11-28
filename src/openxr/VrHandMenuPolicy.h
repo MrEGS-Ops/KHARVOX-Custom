@@ -565,7 +565,12 @@ struct VrHandMenuState {
     bool rightHand{true};
     int radialCategory{-1}, suppressedCategory{-1};
     bool radialPinned{}, supportPreviewHeld{}, resetWeaponPending{};
-    bool calibrationWheel{}, waitingForEquip{};
+    int radialResetRow{-1};
+    RadialDevUnlock radialDevUnlock{};
+    bool consumeDevGripUntilRelease{};
+    bool calibrationWheel{}, waitingForEquip{}, calibrationWheelLeft{};
+    bool calibrationStartedLeft{};
+    int wheelPreviousWeapon{};
     unsigned long long wheelReleasedAt{};
     float wheelAxisX{},wheelAxisY{};
     VrLiveSettings hudDraft{};
@@ -828,6 +833,7 @@ inline bool resetVrWeaponCalibrationFile(const std::string&path,
         else remaining.push_back(line);
     }
     if(input.bad()){if(why)*why="failed reading calibration";return false;}
+    input.close(); // Windows requires the destination to be closed before replacement.
     if(!removed)return true;
     fs::copy_file(path,path+".before-vr-reset.bak",
         fs::copy_options::overwrite_existing,ec);
