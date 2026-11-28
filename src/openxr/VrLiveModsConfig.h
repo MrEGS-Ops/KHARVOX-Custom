@@ -299,11 +299,16 @@ inline bool vrLiveInsideBounds(VrLivePoint p,VrLivePoint lo,VrLivePoint hi,
         &&p.y>=lo.y+shift.y&&p.y<=hi.y+shift.y
         &&p.z>=lo.z+shift.z&&p.z<=hi.z+shift.z;
 }
+// Spherical hip entry zone replaces the old 39 x 56 x 41 cm box.
+// 25 cm radius balances its previous half-extents; 7 cm radial hysteresis
+// prevents boundary chatter without moving any saved centre.
+inline constexpr float vrLiveHipRadius(bool expanded=false) noexcept {
+    return expanded?.32f:.25f;
+}
 inline bool vrLiveHipInside(VrLivePoint p,bool expanded,VrLivePoint shift){
-    return vrLiveInsideBounds(p,
-        expanded?VrLivePoint{.07f,-1.14f,-.05f}:VrLivePoint{.12f,-1.04f,.02f},
-        expanded?VrLivePoint{.60f,-.38f,.53f}:VrLivePoint{.51f,-.48f,.43f},
-        shift);
+    const auto c=vrLiveShiftedPoint(vrLiveHipDefaultCenter(),shift);
+    const float x=p.x-c.x,y=p.y-c.y,z=p.z-c.z,r=vrLiveHipRadius(expanded);
+    return x*x+y*y+z*z<=r*r;
 }
 inline bool vrLiveWheelInside(VrLivePoint p,bool expanded,VrLivePoint shift){
     return vrLiveInsideBounds(p,

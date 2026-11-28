@@ -137,7 +137,7 @@ void paintVrHandMenu() {
             [](bool on){return on;});
     const bool guideView=statsGameplay&&guidedOverlayVisible()&&m.mode==kharvox::VrHandMenuMode::Closed
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
-    const bool gunslingerView=statsGameplay&&gunslingerHelperVisible()&&!guideView
+    const bool gunslingerView=statsGameplay&&gunslingerTutorialVisibleInGameplay()&&!guideView
         &&!disconnectView&&!firstTimeSetupView&&!gameplayWelcomeView&&!resultView&&!objectCalibrationView;
     constexpr int helperX=145,helperY=24,helperW=670,helperH=108;
     const bool weaponGuide=m.mode==kharvox::VrHandMenuMode::Calibrating&&m.liveCapture==kharvox::VrLiveCapture::None&&m.weaponCalibrationStage;
@@ -766,9 +766,8 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(40,645,"LEFT STICK: select / options   A: confirm   B: back",muted);
         write(40,676,m.message.substr(0,105),RGB(84,233,214));
-    }else if(m.page==kharvox::VrMenuPage::Mods
-        ||m.page==kharvox::VrMenuPage::Dev){
-        const bool devPage=m.page==kharvox::VrMenuPage::Dev;
+    }else if(m.page==kharvox::VrMenuPage::Dev){
+        const bool devPage=true;
         write(38,24,devPage?"RIPSHIFT VR  /  DEV":"RIPSHIFT VR  /  MOD SETTINGS",white);
         SelectObject(dc,smallFont);
         write(40,102,devPage?"DEVELOPER TOOLS":"CONFIGURABLE MODS",muted);
@@ -807,12 +806,6 @@ void paintVrHandMenu() {
                 switchable?(entries[index].enabled?"ON":"OFF"):">",
                 switchable?(entries[index].enabled?RGB(108,235,161)
                     :RGB(151,158,171)):RGB(84,233,214));
-        }
-        if(!devPage){
-            const bool focused=selected==count-1||m.hovered==1000+count-1;
-            fill(38,610,455,40,focused?RGB(32,89,104):RGB(27,32,43));
-            write(55,620,"Guided Instructions",white);
-            write(436,620,m.guidedTestingEnabled?"ON":"OFF",m.guidedTestingEnabled?RGB(108,235,161):muted);
         }
         if(count>10){
             SelectObject(dc,smallFont);
@@ -1231,7 +1224,8 @@ void paintVrHandMenu() {
         std::string hint;
         if(done)hint="Now go rip and tear.";
         else if(assigned)hint="Two buzzes confirm your weapon is holstered.";
-        else if(t.pendingSide>=0)hint="Waiting for DOOM to equip your selected weapon...";
+        else if(kharvox::gunslingerShowLowerHint(t))
+            hint="Keep holding GRIP and LOWER your weapon to your "+hand+" hip.";
         else if(kharvox::gunslingerLessonEvent(t.step)==kharvox::GunslingerLessonEvent::WheelEquip){
             if(s.behindHeadWheelActive&&s.behindHeadWheelSide==side)
                 hint="REACH your arm towards a weapon and HOLD GRIP to select it.";
@@ -1347,13 +1341,15 @@ void paintVrHandMenu() {
         const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object; release to lock":"Sticks fine-tune; offhand trigger = 5 cm; hold Grip to freeze")
             :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move; release, then move out/in to test")
             :crouch?(m.liveCapture==kharvox::VrLiveCapture::CrouchStanding?"Stand normally; RT captures standing height":"Crouch to target height; RT saves both heights")
-            :m.weaponCalibrationStage==3?"Right-handed profiles saved. LT: calibrate left-handed weapon; RT or B: finish"
+            :m.weaponCalibrationStage==3?(m.calibrationStartedLeft
+                ?"Left-handed profiles saved. RT: calibrate right-handed weapon; LT or B: finish"
+                :"Right-handed profiles saved. LT: calibrate left-handed weapon; RT or B: finish")
             :!m.previewValid?"Waiting for valid controller tracking"
             :primary?(m.calibrationGripHeld?"Rotate weapon hand; release Grip to lock":"Left stick: horizontal / depth; right stick: height; hold Grip to rotate")
             :"Move support hand into desired grip position";
         wrap(guideX+14,top+48,guideW-28,50,instruction,white);
         SelectObject(dc,regular);
-        wrap(guideX+14,top+104,guideW-28,50,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?"LT: CONTINUE   RT / B: FINISH":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
+        wrap(guideX+14,top+104,guideW-28,50,object?"RT: SAVE   B: CANCEL / DROP   GRIP + OFFHAND TRIGGER: RESET":m.weaponCalibrationStage==3?(m.calibrationStartedLeft?"RT: CONTINUE   LT / B: FINISH":"LT: CONTINUE   RT / B: FINISH"):!zone&&!crouch&&!m.rightHand?"LT: SAVE / NEXT    B: CANCEL CURRENT STAGE":"RT: SAVE / NEXT    B: CANCEL CURRENT STAGE",RGB(108,235,161));
     }
     // Render the same right-controller pointer on BOTH the main mods page
     // and weapon calibration page. Hit testing already supports both.

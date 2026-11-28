@@ -3532,12 +3532,12 @@ void loadGunslingerTutorial(){
 }
 void gunslingerLesson(kharvox::GunslingerLessonEvent event,int side,kharvox::BackWeaponKind weapon){
     if(kharvox::gunslingerLessonObserve(s.gunslingerTutorial,event,side,weapon,GetTickCount64())){
-        log("[GUNSLINGER-HELPER] step="+std::to_string(s.gunslingerTutorial.step));
+        log("[GUNSLINGER-TUTORIAL] step="+std::to_string(s.gunslingerTutorial.step));
         if(s.gunslingerTutorial.step==kharvox::gunslingerLessonCount&&!saveGunslingerTutorial())
-            log("[GUNSLINGER-HELPER] completion not saved");
+            log("[GUNSLINGER-TUTORIAL] completion not saved");
     }
 }
-bool gunslingerHelperVisible(){
+bool gunslingerTutorialVisibleInGameplay(){
     return s.customMods.behindHeadWeaponWheel&&s.customMods.dynamicShoulderHolster
         &&!s.customMods.disableWeaponWheel&&!s.objectGripCalibrating
         &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed
@@ -4144,6 +4144,7 @@ void updateGameplayActions(XrTime displayTime){
         const auto exitAction=kharvox::classifyGestureWheelExit(
             s.behindHeadWheelActive,behindHeadWheelRequested,wheelGripHeld);
         if(exitAction==kharvox::GestureWheelExit::Cancel){
+            kharvox::gunslingerCancelPending(s.gunslingerTutorial);
             // DO NOT switch back after 300ms: that was the visible flicker.
             // Neutralize selection while the native wheel remains pressed,
             // then release only after the neutral frames were submitted.
@@ -4179,6 +4180,7 @@ void updateGameplayActions(XrTime displayTime){
         s.behindHeadWheelActive=behindHeadWheelRequested;
         s.behindHeadWheelSide=behindHeadWheelRequested?selectedSide:-1;
         if(!behindHeadWheelRequested){
+            s.gunslingerTutorial.wheelSelectionLocked=false;
             s.motionWheelState={};
             s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
         }
@@ -4188,6 +4190,8 @@ void updateGameplayActions(XrTime displayTime){
         s.wheelGripLatched=false;s.wheelSelectionFrozen=false;
         s.wheelCancelDrain.reset();
         s.headZoneEntered={};
+        if(!gameplay||!anyGestureWheelEnabled)kharvox::gunslingerCancelPending(s.gunslingerTutorial);
+        else s.gunslingerTutorial.wheelSelectionLocked=false;
     }
 
     // Sample fire after wheel confirmation; the selected physical trigger owns it.
@@ -4245,7 +4249,7 @@ void updateGameplayActions(XrTime displayTime){
     const auto activeWeaponKind=KharvoxWeaponCurrentKind();
     if(gameplay&&kharvox::gunslingerPollWheel(s.gunslingerTutorial,s.weaponHandLeft?1:0,
         backWeaponKindFromActive(activeWeaponKind),GetTickCount64()))
-        log("[GUNSLINGER-HELPER] wheel equip confirmed");
+        log("[GUNSLINGER-TUTORIAL] wheel equip confirmed");
     // A native keyboard hotkey is immediate, but DOOM may not equip the
     // requested weapon until a later game frame. Keep the previous gun in its
     // original physical hand until the requested weapon is truly equipped.
@@ -4871,7 +4875,13 @@ void updateGameplayActions(XrTime displayTime){
                 log("[WEAPON-WHEEL] Grip held -> sector LOCKED");
             }
             wheelSelectionStick=s.frozenWheelStick;
-        }else s.wheelSelectionFrozen=false;
+            kharvox::gunslingerPreviewWheelLock(s.gunslingerTutorial,s.behindHeadWheelSide,
+                kharvox::gunslingerWheelTarget(s.frozenWheelStick.x,s.frozenWheelStick.y),
+                wheelInput.trackingValid);
+        }else{
+            s.wheelSelectionFrozen=false;
+            s.gunslingerTutorial.wheelSelectionLocked=false;
+        }
         if(!stickOwned&&s.motionWheelState.stickWasActive)
             log("[MOTION-WHEEL] physical stick active (radial deadzone 0.30)");
         if(stickOwned&&!s.motionWheelState.stickWasActive&&weaponWheelActive)
@@ -9189,7 +9199,7 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
              ||s.vrLiveSettings.levelDisplayEnabled[2]);
     if((controllerReconnectBannerVisible()||s.firstTimeSetupNotice.visible
             ||s.gameplayWelcomeNotice.visible||statsLiveView||resultsBannerView
-            ||(deathCounterGameplay&&gunslingerHelperVisible())
+            ||(deathCounterGameplay&&gunslingerTutorialVisibleInGameplay())
             ||(deathCounterGameplay&&guidedOverlayVisible()&&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed)
             ||s.vrHandMenu.mode!=kharvox::VrHandMenuMode::Closed
             ||s.objectGripCalibrating)
@@ -10403,13 +10413,12 @@ void KharvoxXRPresent(VkQueue q,const VkPresentInfoKHR*p,bool* consumedPresentWa
         const auto centerWorld=addVector(s.headZeroPosition,
             rotateVector(s.headZero,trackingCenter));
         const auto zoneRotation=multiply(s.headZero,bodyRotation);
-        const auto lo=hip?kharvox::VrLivePoint{.12f,-1.04f,.02f}
-            :kharvox::VrLivePoint{-.04f,-.18f,.015f};
-        const auto hi=hip?kharvox::VrLivePoint{.51f,-.48f,.43f}
-            :kharvox::VrLivePoint{.44f,.36f,.60f};
-        const float width=hi.x-lo.x,height=hi.y-lo.y,depth=hi.z-lo.z;
+        const float diameter=2.f*kharvox::vrLiveHipRadius();
+        const float width=hip?diameter:.48f,height=hip?diameter:.54f,
+            depth=hip?diameter:.585f;
         // Orthogonal wireframe rings only: XY, XZ, and YZ.
-        // Each is sized to the existing zone's full X/Y/Z dimensions.
+        // Hip rings use the same spherical entry diameter as hit detection;
+        // the existing wheel dimensions remain unchanged.
         // XZ faces UP so the hip-zone circle remains visible looking down.
         std::array<XrQuaternionf,3> ringOrientations{{
             {0.f,0.f,0.f,1.f},                                  // XY

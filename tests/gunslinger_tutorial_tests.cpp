@@ -11,6 +11,15 @@ int main(){
     assert(gunslingerWheelTarget(0,0)==W::Unknown);
     assert(gunslingerWheelTarget(0,1)==W::CombatShotgun);
     assert(gunslingerWheelTarget(-1,0)==W::RocketLauncher);
+    gunslingerPreviewWheelLock(t,1,W::Pistol,true);
+    assert(!gunslingerShowLowerHint(t)&&t.step==0);
+    gunslingerPreviewWheelLock(t,0,W::Pistol,true);
+    assert(gunslingerShowLowerHint(t)&&t.step==0);
+    assert(!gunslingerPollWheel(t,0,W::Pistol,9));
+    gunslingerPreviewWheelLock(t,0,W::Pistol,false);
+    assert(!gunslingerShowLowerHint(t));
+    gunslingerPreviewWheelLock(t,0,W::Unknown,true);
+    assert(!gunslingerShowLowerHint(t));
     gunslingerExpectWheel(t,1,W::Pistol,10);
     assert(!gunslingerPollWheel(t,1,W::Pistol,11));
     gunslingerExpectWheel(t,0,W::Pistol,20);
@@ -27,8 +36,12 @@ int main(){
     assert(gunslingerHolsterConfirmedVisible(t,25));
     assert(gunslingerHolsterConfirmedVisible(t,2024));
     assert(!gunslingerHolsterConfirmedVisible(t,2025));
+    gunslingerPreviewWheelLock(t,1,W::CombatShotgun,true);
+    assert(gunslingerShowLowerHint(t)&&t.step==2);
     gunslingerExpectWheel(t,1,W::CombatShotgun,30);
+    assert(gunslingerShowLowerHint(t)&&t.step==2);
     assert(!gunslingerPollWheel(t,1,W::CombatShotgun,2030));
+    assert(!gunslingerShowLowerHint(t)&&t.step==2);
     gunslingerExpectWheel(t,1,W::CombatShotgun,2040);
     assert(gunslingerPollWheel(t,1,W::CombatShotgun,2041));
     assert(!gunslingerHolsterConfirmedVisible(t,2041));

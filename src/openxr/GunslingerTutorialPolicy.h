@@ -11,6 +11,7 @@ struct GunslingerTutorial {
     std::uint64_t completedAt{}, pendingUntil{}, holsterConfirmedAt{};
     bool holsterConfirmation{};
     bool hipReleaseReady{};
+    bool wheelSelectionLocked{}; // provisional guidance, not an equip event
     int pendingSide{-1};
     BackWeaponKind pendingWeapon{BackWeaponKind::Unknown};
 };
@@ -24,6 +25,7 @@ inline GunslingerLessonEvent gunslingerLessonEvent(unsigned step) noexcept {
 }
 inline void gunslingerCancelPending(GunslingerTutorial& t) noexcept {
     t.pendingSide=-1;t.pendingWeapon=BackWeaponKind::Unknown;t.pendingUntil=0;
+    t.wheelSelectionLocked=false;
 }
 inline bool gunslingerLessonObserve(GunslingerTutorial& t,GunslingerLessonEvent event,
     int side,BackWeaponKind weapon,std::uint64_t now) noexcept {
@@ -61,6 +63,15 @@ inline BackWeaponKind gunslingerWheelTarget(float x,float y) noexcept {
         if(sector.valid&&dot>score){score=dot;best=kind;}
     }
     return best;
+}
+inline void gunslingerPreviewWheelLock(GunslingerTutorial& t,int side,BackWeaponKind weapon,bool locked) noexcept {
+    t.wheelSelectionLocked=locked&&t.enabled&&t.step<gunslingerLessonCount
+        &&gunslingerLessonEvent(t.step)==GunslingerLessonEvent::WheelEquip
+        &&side==gunslingerLessonSide(t.step)&&weapon!=BackWeaponKind::Unknown;
+    if(t.wheelSelectionLocked)t.holsterConfirmation=false;
+}
+inline bool gunslingerShowLowerHint(const GunslingerTutorial& t) noexcept {
+    return t.wheelSelectionLocked||t.pendingSide>=0;
 }
 inline void gunslingerExpectWheel(GunslingerTutorial& t,int side,BackWeaponKind weapon,
     std::uint64_t now) noexcept {

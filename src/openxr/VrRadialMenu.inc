@@ -38,6 +38,18 @@ int radialTarget(float x,float y){
         ?int(radialGroups[category].settings.size()):0;
     return kharvox::radialHit(x,y,category,count);
 }
+int radialInteractiveTarget(int hit){
+    const auto& m=s.vrHandMenu;
+    if(hit<kharvox::radialRowTarget)return hit;
+    const int row=(hit-kharvox::radialRowTarget)/3;
+    const int part=(hit-kharvox::radialRowTarget)%3;
+    if(!kharvox::radialHasFlyout(m.radialCategory)
+        ||row<0||row>=int(radialGroups[m.radialCategory].settings.size()))return -1;
+    const auto control=radialGroups[m.radialCategory].settings[row].control;
+    if(control==RadialControl::Stepper||m.radialResetRow==row)
+        return part==1?-1:hit;
+    return kharvox::radialRowTarget+row*3;
+}
 void openCalibrationWheel(){
     auto& m=s.vrHandMenu;
     if(m.weaponCalibrationStage)finishVrWeaponSequence();
@@ -106,7 +118,7 @@ void radialInput(int hit,bool click,bool rightGrip){
         if(!radialHasFlyout(m.radialCategory)||row<0||row>=int(radialGroups[m.radialCategory].settings.size()))return;
         const auto& setting=radialGroups[m.radialCategory].settings[row];
         m.consumeMenuTriggerUntilRelease=true;
-        if(setting.control==RadialControl::Stepper&&part==1)return;
+        if(radialInteractiveTarget(hit)<0)return;
         if(setting.control==RadialControl::Reset){
             if(m.radialResetRow!=row){
                 m.radialResetRow=row;

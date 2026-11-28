@@ -855,17 +855,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(m.calibrationWheel||m.waitingForEquip||m.hudDrag>=0){
             hoverTarget=-1;
         }else if(m.page==kharvox::VrMenuPage::Mods&&hoverTarget>=kharvox::radialRowTarget){
-            const int category=m.radialCategory;
-            const int row=(hoverTarget-kharvox::radialRowTarget)/3;
-            const int part=(hoverTarget-kharvox::radialRowTarget)%3;
-            if(category>=0&&category<kharvox::radialCategoryCount
-                &&row>=0&&row<int(radialGroups[category].settings.size())){
-                hoverContext+=category+1;
-                const auto control=radialGroups[category].settings[row].control;
-                if(control==RadialControl::Stepper&&part==1)hoverTarget=-1;
-                else if(control!=RadialControl::Stepper&&m.radialResetRow!=row)
-                    hoverTarget=kharvox::radialRowTarget+row*3;
-            }else hoverTarget=-1;
+            hoverContext+=m.radialCategory+1;
+            hoverTarget=radialInteractiveTarget(hoverTarget);
         }else if(m.page==kharvox::VrMenuPage::Stats){
             hoverTarget=hudTarget(int(m.cursorX),int(m.cursorY));
         }else if(m.page==kharvox::VrMenuPage::Dev){
@@ -880,13 +871,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         // A valid on-screen target clicks once, before dispatch. A successful
         // physical save in the same frame replaces this with its double buzz.
         bool buttonActivated=triggerEdge&&hoverTarget>=0;
-        if(buttonActivated&&m.page==kharvox::VrMenuPage::Mods
-            &&m.hovered>=kharvox::radialRowTarget){
-            const int row=(m.hovered-kharvox::radialRowTarget)/3;
-            const int part=(m.hovered-kharvox::radialRowTarget)%3;
-            if(m.radialResetRow==row&&part==1)buttonActivated=false;
-        }
-        if(buttonActivated&&(m.page==kharvox::VrMenuPage::Records
+         if(buttonActivated&&(m.page==kharvox::VrMenuPage::Records
             ||m.page==kharvox::VrMenuPage::DevRecords)&&hoverTarget>=1000){
             const int count=int(kharvox::kCampaignMissions.size())
                 +(m.page==kharvox::VrMenuPage::DevRecords?1:0);
@@ -990,9 +975,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             if(!dev&&(previousRecord!=m.recordSelected
                 ||(chosen>=1000&&chosen<1000+count)||chosen==130))
                 m.hudRecordSelected=m.recordSelected;
-        }else if(m.page==kharvox::VrMenuPage::Stats
-            ||m.page==kharvox::VrMenuPage::DevStats){
-            const bool dev=m.page==kharvox::VrMenuPage::DevStats;
+        }else if(m.page==kharvox::VrMenuPage::DevStats){
+            const bool dev=true;
             const int previous=m.statsSelected;
             if(dev)kharvox::vrMenuNavigateStick(m.navigation,
                 m.navigation.settingsColumn?s.leftStick.x:0.f,
@@ -1043,9 +1027,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                     &&chosen<130+kharvox::kStatsGridCells))){
                 handleVrStatsMenuAction(chosen,dev);
             }
-        }else if(m.page==kharvox::VrMenuPage::Mods
-            ||m.page==kharvox::VrMenuPage::Dev){
-            const bool devPage=m.page==kharvox::VrMenuPage::Dev;
+        }else if(m.page==kharvox::VrMenuPage::Dev){
+            const bool devPage=true;
             const int n=static_cast<int>(rows.size());
             if(n>0)m.selectedRow=std::clamp(m.selectedRow,0,n-1);
             const auto optionCount=[&](const VrLiveMenuEntry& entry)->int{
@@ -1139,25 +1122,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                 }
                 return true;
             };
-            if(!devPage&&n>0&&chosen==1000+n-1){
-                m.selectedRow=n-1;m.selectedMod=kharvox::VrLiveMod::Other;m.navigation.settingsColumn=false;
-                m.guidedTestingEnabled=!m.guidedTestingEnabled;
-                m.message=m.guidedTestingEnabled?"Guided Instructions ON":"Guided Instructions OFF";
-                log("[GUIDED-TEST] "+m.message,true);
-            }else if(chosen==1500){
-                if(kharvox::vrMenuDeveloperTap(m.devReveal,GetTickCount64())){
-                    const int updatedCount=static_cast<int>(activeVrMenuEntries().size());
-                    m.selectedRow=std::clamp(m.selectedRow,0,
-                        std::max(0,updatedCount-1));
-                    m.modScroll=0;
-                    m.navigation={};
-                    m.message=m.devReveal.visible
-                        ?"Developer tools folder revealed."
-                        :"Developer tools folder hidden.";
-                    log(std::string("[VR-MODS] DEV folder ")
-                        +(m.devReveal.visible?"shown":"hidden"));
-                }
-            }else if(chosen>=1000&&chosen<1000+n){
+            if(chosen>=1000&&chosen<1000+n){
                 // Browse changes highlight only: the right panel is a
                 // gameplay description until A/CONFIGURE is explicitly
                 // pressed, never an accidental ON/OFF or capture.
@@ -1355,10 +1320,6 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
                             +(m.objectDiscovery.grabReachLaserEnabled?"ON":"OFF");
                     }
                 }
-            }else if(!devPage&&m.navigation.settingsColumn
-                &&(chosen==110||(chosen>=130&&chosen<=134))){
-                handleVrLiveMenuAction(chosen);
-                if(m.page!=kharvox::VrMenuPage::Mods)m.navigation={};
             }
         }else if(m.page==kharvox::VrMenuPage::WeaponRecoil){
             const int previous=m.selectedRecoilWeapon;

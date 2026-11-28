@@ -37,6 +37,16 @@ int main(){
     assert(std::abs(hips[1].y-.0286265f)<.0000001f);
     assert(std::abs(hips[1].z+.1343255f)<.0000001f);
     assert(vrLiveHipInside({.315f,-.76f,.225f},false,s.hipShift[0]));
+    for(int side=0;side<2;++side){
+        const auto c=vrLiveShiftedPoint(vrLiveHipDefaultCenter(),s.hipShift[side]);
+        for(auto delta:{VrLivePoint{.24f,0,0},VrLivePoint{0,.24f,0},VrLivePoint{0,0,.24f}})
+            assert(vrLiveHipInside(vrLiveShiftedPoint(c,delta),false,s.hipShift[side]));
+        for(auto delta:{VrLivePoint{.26f,0,0},VrLivePoint{0,.26f,0},VrLivePoint{0,0,.26f},VrLivePoint{.18f,.18f,0}}){
+            assert(!vrLiveHipInside(vrLiveShiftedPoint(c,delta),false,s.hipShift[side]));
+            assert(vrLiveHipInside(vrLiveShiftedPoint(c,delta),true,s.hipShift[side]));
+        }
+        assert(!vrLiveHipInside(vrLiveShiftedPoint(c,{.33f,0,0}),true,s.hipShift[side]));
+    }
     assert(vrLiveWheelInside({.20f,.09f,.3075f},false,s.wheelShift[1]));
     // Preview starts at the saved zone. A held Grip snaps to the tracked
     // controller centre (not a delta from old holster placement); release
