@@ -620,16 +620,23 @@ void paintVrHandMenu() {
                     control(x,y,w,h,option.label,hot,option.control==RadialControl::Reset?RGB(255,202,137):white);
                 }
             }
-            if(!m.message.empty()&&noticeOpacity>0.f){
-                const int y=radialRowY(m.radialCategory,int(opts.size()))+1;
-                const std::string message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
-                RECT measured{0,0,w-16,0};
-                DrawTextA(dc,message.c_str(),-1,&measured,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
-                const int height=std::min(int(vrMenuH)-y-8,int(measured.bottom-measured.top)+16);
-                if(height>0){
-                    noticeX=x;noticeY=y;noticeW=w;noticeH=height;
-                    fill(x,y,w,height,RGB(22,32,42));wrap(x+8,y+8,w-16,height-16,message,accent);
-                }
+            // A pending reset is an actionable prompt, not a transient notice.
+            if(m.radialResetRow>=0&&!m.message.empty())
+                label(x,radialRowY(m.radialCategory,int(opts.size()))+1,w,28,m.message.c_str(),accent);
+        }
+        // One consistent, non-interactive notification area for all categories.
+        // Keep the PAINSAW hover description above it and never move the wheel.
+        if(m.radialResetRow<0&&!m.message.empty()&&noticeOpacity>0.f){
+            const std::string message=m.message=="Applied LIVE and saved to UserData."?"Saved.":m.message;
+            RECT measured{0,0,radialNoticeWidth-20,0};
+            DrawTextA(dc,message.c_str(),-1,&measured,DT_CALCRECT|DT_WORDBREAK|DT_NOPREFIX);
+            const int height=std::min(radialNoticeBottom-radialNoticeY,int(measured.bottom-measured.top)+16);
+            if(height>0){
+                noticeX=radialNoticeX;noticeY=radialNoticeY;noticeW=radialNoticeWidth;noticeH=height;
+                fill(noticeX,noticeY,noticeW,noticeH,RGB(22,32,42));
+                RECT rc{noticeX+10,noticeY+8,noticeX+noticeW-10,noticeY+noticeH-8};
+                SetTextColor(dc,accent);
+                DrawTextA(dc,message.c_str(),-1,&rc,DT_CENTER|DT_WORDBREAK|DT_NOPREFIX);
             }
         }
         const int desc=m.radialDescription;

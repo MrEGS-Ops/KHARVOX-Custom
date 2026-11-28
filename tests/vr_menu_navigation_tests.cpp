@@ -41,6 +41,9 @@ int main(){
     assert(updateVrMenuHoldShortcut(hold,false,1400)==VrMenuShortcutAction::None);
     assert(!radialHasFlyout(3)&&radialHasFlyout(5));
     assert(radialDescriptionX(5)==692&&radialDescriptionX(1)==8);
+    assert(radialNoticeX+radialNoticeWidth/2==480);
+    assert(radialNoticeY>=574+28&&radialNoticeBottom<=720);
+    assert(radialHit(480,radialNoticeY+10,0,1)==-1);
     assert(radialPanelX(radialWeaponGripIndex)==350);
     assert(radialRowY(radialWeaponGripIndex,0)==36);
     assert(radialHit(480,58,radialWeaponGripIndex,1)==radialRowTarget+1);

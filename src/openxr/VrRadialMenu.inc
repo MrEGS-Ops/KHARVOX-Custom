@@ -95,13 +95,13 @@ void radialInput(int hit,bool click,bool rightGrip){
         }else if(click&&m.radialPinned&&m.radialCategory==i){
             m.radialPinned=false;
             m.radialCategory=-1;
+            if(m.radialResetRow>=0)m.message.clear();
             m.radialResetRow=-1;
-            m.message.clear();
             m.suppressedCategory=i;
         }else if(i!=m.suppressedCategory&&radialHasFlyout(i)&&(click||!m.radialPinned)){
             if(m.radialCategory!=i){
+                if(m.radialResetRow>=0)m.message.clear();
                 m.radialResetRow=-1;
-                m.message.clear();
             }
             m.radialCategory=i;
             m.radialPinned=click;

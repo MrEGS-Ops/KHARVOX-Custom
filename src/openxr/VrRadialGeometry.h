@@ -14,6 +14,9 @@ constexpr int radialRowHeight=44;
 constexpr int radialCenter=99;
 constexpr int radialRowTarget=200;
 constexpr int radialControlWidth=48;
+// Shared non-interactive feedback area, below the PAINSAW hover text.
+constexpr int radialNoticeWidth=404,radialNoticeX=(960-radialNoticeWidth)/2;
+constexpr int radialNoticeY=608,radialNoticeBottom=712;
 constexpr double radialStep=6.283185307179586/radialCategoryCount;
 
 inline double radialAngle(int i){return -1.570796326794897+i*radialStep;}
