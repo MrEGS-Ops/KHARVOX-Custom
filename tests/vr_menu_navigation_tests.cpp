@@ -505,50 +505,57 @@ int main(){
     for(int i=0;i<20;++i)
         updateVrFirstTimeSetupNotice(interrupted,true,false,false,true);
     assert(!interrupted.visible); // loading transition reset the counter
-    // Gameplay's READY TO PLAY notice is independent of first-install
-    // main-menu setup, persists across restarts and never accepts a lone R3.
+    // READY TO PLAY is independent of first-install setup and opens Mods
+    // using the exact same 500 ms R3 hold. Short or pre-held clicks do not count.
     VrGameplayWelcomeNotice welcome{};
     for(int i=0;i<80;++i)
-        assert(!updateVrGameplayWelcomeNotice(welcome,false,false,false,true));
+        assert(!updateVrGameplayWelcomeNotice(welcome,false,false,true,i));
     assert(!welcome.visible&&!welcome.acknowledged);
     for(int i=0;i<19;++i)
-        assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+        assert(!updateVrGameplayWelcomeNotice(welcome,true,false,true,100+i));
     assert(!welcome.visible);
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
-    assert(welcome.visible&&welcome.bothSticksReleased);
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,true,true));
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,false,true));
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,false));
-    assert(updateVrGameplayWelcomeNotice(welcome,true,true,true,true));
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,true));
-    welcome.acknowledged=true; // persisted to Config/gameplay_welcome.ack
-    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,false,true));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,false,true,119));
+    assert(welcome.visible&&welcome.rightReleased);
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,200));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,699));
+    assert(updateVrGameplayWelcomeNotice(welcome,true,true,true,700));
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,900));
+    // Successful file write hands the consumed R3 hold to the real menu.
+    welcome.acknowledged=true;
+    assert(!updateVrGameplayWelcomeNotice(welcome,true,true,true,901));
     assert(!welcome.visible);
+    VrMenuHoldShortcut handedOff{};
+    assert(vrMenuShortcutWithWelcome(handedOff,true,700,true)==VrMenuShortcutAction::Toggle);
+    assert(vrMenuShortcutWithWelcome(handedOff,true,1500,false)==VrMenuShortcutAction::None);
+    assert(vrMenuShortcutWithWelcome(handedOff,false,1501,false)==VrMenuShortcutAction::ConsumedRelease);
+    assert(vrMenuShortcutWithWelcome(handedOff,true,1600,false)==VrMenuShortcutAction::None);
+    assert(vrMenuShortcutWithWelcome(handedOff,true,2100,false)==VrMenuShortcutAction::Toggle);
     VrGameplayWelcomeNotice preHeldWelcome{};
     for(int i=0;i<20;++i)
-        assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,true));
-    assert(preHeldWelcome.visible&&!preHeldWelcome.bothSticksReleased);
-    assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,false,false,true));
-    assert(updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,true));
+        assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,i));
+    assert(preHeldWelcome.visible&&!preHeldWelcome.rightReleased);
+    assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,1000));
+    assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,false,true,1001));
+    assert(!updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,1010));
+    assert(updateVrGameplayWelcomeNotice(preHeldWelcome,true,true,true,1510));
     VrGameplayWelcomeNotice interruptedWelcome{};
     for(int i=0;i<20;++i)
-        updateVrGameplayWelcomeNotice(interruptedWelcome,true,false,false,true);
+        updateVrGameplayWelcomeNotice(interruptedWelcome,true,false,true,i);
     assert(interruptedWelcome.visible);
-    assert(!updateVrGameplayWelcomeNotice(interruptedWelcome,false,false,false,true));
+    assert(!updateVrGameplayWelcomeNotice(interruptedWelcome,true,true,true,100));
+    assert(!updateVrGameplayWelcomeNotice(interruptedWelcome,true,true,false,400));
     assert(!interruptedWelcome.visible&&!interruptedWelcome.acknowledged);
     for(int i=0;i<20;++i)
-        updateVrGameplayWelcomeNotice(interruptedWelcome,true,false,false,true);
-    assert(interruptedWelcome.visible); // unacknowledged => retry later
-    // Main-menu and gameplay statuses must never automatically acknowledge
-    // one another; only explicit successful file writes update each state.
+        updateVrGameplayWelcomeNotice(interruptedWelcome,true,true,true,800+i);
+    assert(interruptedWelcome.visible&&!interruptedWelcome.rightReleased);
+    assert(!updateVrGameplayWelcomeNotice(interruptedWelcome,true,true,true,1400));
+    // Main-menu and gameplay statuses must never acknowledge one another.
     VrFirstTimeSetupNotice alreadySetup{};
     alreadySetup.acknowledged=true;
     VrGameplayWelcomeNotice freshWelcome{};
     for(int i=0;i<20;++i)
-        updateVrGameplayWelcomeNotice(freshWelcome,true,false,false,true);
-    assert(freshWelcome.visible&&!freshWelcome.acknowledged);
-    assert(alreadySetup.acknowledged);
+        updateVrGameplayWelcomeNotice(freshWelcome,true,false,true,i);
+    assert(freshWelcome.visible&&!freshWelcome.acknowledged&&alreadySetup.acknowledged);
     // Seven fast taps reveal, seven further taps rehide, timing resets.
     VrMenuDeveloperReveal reveal{};
     assert(!reveal.visible);

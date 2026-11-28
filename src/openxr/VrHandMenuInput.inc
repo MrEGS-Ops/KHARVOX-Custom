@@ -568,7 +568,8 @@ int vrMenuRayTarget(float&pixelX,float&pixelY,XrTime displayTime,bool left=false
 }
 bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool rightClick,
                             bool rightTrigger,bool leftTrigger,
-                            bool primaryWeaponGripDown,bool supportGripDown,bool menuA,bool menuB){
+                            bool primaryWeaponGripDown,bool supportGripDown,bool menuA,bool menuB,
+                            bool openFromWelcome=false){
     const bool rightGrip=s.weaponHandLeft?supportGripDown:primaryWeaponGripDown;
     const bool leftGrip=s.weaponHandLeft?primaryWeaponGripDown:supportGripDown;
     auto& m=s.vrHandMenu;
@@ -581,8 +582,8 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
     // Ordinary RS taps still belong to Hand Focus.
     // The menu remains accessible when Weapon Grip Calibration is OFF,
     // otherwise the player could not turn the mod back on from VR.
-    const auto shortcut=kharvox::updateVrMenuHoldShortcut(
-        m.shortcut,rightClick,GetTickCount64());
+    const auto shortcut=kharvox::vrMenuShortcutWithWelcome(
+        m.shortcut,rightClick,GetTickCount64(),openFromWelcome);
     if(!gameplay){
         if(m.calibrationWheel||m.waitingForEquip)KharvoxWeaponSetWheelPresentationActive(false);
         m.calibrationWheel=m.waitingForEquip=m.supportPreviewHeld=false;

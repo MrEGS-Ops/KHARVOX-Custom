@@ -246,25 +246,33 @@ void paintVrHandMenu() {
         write(setupX+30,setupY+452,
             "This notice will only appear once.",muted);
     }else if(gameplayWelcomeView){
+        auto centerLine=[&](int y,const std::string& value,COLORREF color){
+            RECT rc{welcomeX+24,y,welcomeX+welcomeW-24,y+44};
+            SetTextColor(dc,color);
+            DrawTextA(dc,value.c_str(),static_cast<int>(value.size()),&rc,
+                DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
+        };
         SelectObject(dc,title);
-        write(welcomeX+28,welcomeY+19,"RIPSHIFT - READY TO PLAY",white);
+        centerLine(welcomeY+14,"RIPSHIFT - READY TO PLAY",white);
         SelectObject(dc,regular);
-        write(welcomeX+30,welcomeY+108,
-            "Your VR experience is already configured.",white);
-        write(welcomeX+30,welcomeY+150,
-            "Enjoy the default gameplay first, then",white);
-        write(welcomeX+30,welcomeY+183,
-            "fine-tune it to your liking if needed.",white);
+        centerLine(welcomeY+113,"Your basic VR experience is already configured.",white);
+        centerLine(welcomeY+161,"Fine tune it to your liking.",white);
+        fill(welcomeX+25,welcomeY+251,welcomeW-50,70,RGB(28,57,66));
+        SelectObject(dc,title);
+        const std::array<std::string,3> parts{"Hold ","R3"," to adjust settings."};
+        std::array<SIZE,3> sizes{};
+        int total=0;
+        for(size_t i=0;i<parts.size();++i){
+            GetTextExtentPoint32A(dc,parts[i].c_str(),static_cast<int>(parts[i].size()),&sizes[i]);
+            total+=sizes[i].cx;
+        }
+        int x=welcomeX+(welcomeW-total)/2;
+        for(size_t i=0;i<parts.size();++i){
+            write(x,welcomeY+268,parts[i],i==1?RGB(255,225,54):RGB(84,233,214));
+            x+=sizes[i].cx;
+        }
         SelectObject(dc,smallFont);
-        write(welcomeX+30,welcomeY+245,
-            "Hold R3 for 0.5 s to adjust settings.",RGB(84,233,214));
-        fill(welcomeX+25,welcomeY+308,welcomeW-50,55,RGB(28,57,66));
-        SelectObject(dc,regular);
-        write(welcomeX+43,welcomeY+323,
-            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
-        SelectObject(dc,smallFont);
-        write(welcomeX+30,welcomeY+386,
-            "This notice will only appear once.",muted);
+        centerLine(welcomeY+349,"(This notice will only appear once)",muted);
     }else if(resultView){
         const bool newBest=s.levelProgress.bestUpdated;
         const auto accent=newBest?RGB(255,207,66):RGB(84,233,214);

@@ -3765,8 +3765,8 @@ void updateGameplayActions(XrTime displayTime){
     if(s.firstTimeSetupBlocksButtonsUntilRelease&&bothReleased)
         s.firstTimeSetupBlocksButtonsUntilRelease=false;
     // Install-scoped READY TO PLAY guidance appears only inside playable
-    // DOOM gameplay. Unlike the old R3 banner, it stays until an explicit
-    // L3+R3 chord is saved, and can never consume a reconnect acknowledgement.
+    // DOOM gameplay. A fresh 500 ms R3 hold acknowledges it and opens Mods.
+    // Never consume a reconnect acknowledgement.
     if(!s.gameplayWelcomeLoaded){
         s.gameplayWelcomeNotice.acknowledged=kharvox::gameplayWelcomeAcknowledged();
         s.gameplayWelcomeLoaded=true;
@@ -3786,8 +3786,9 @@ void updateGameplayActions(XrTime displayTime){
         &&vrHandMenuSurface.ready;
     const bool welcomeWasVisible=s.gameplayWelcomeNotice.visible;
     const bool welcomeConfirmed=kharvox::updateVrGameplayWelcomeNotice(
-        s.gameplayWelcomeNotice,canShowGameplayWelcome,leftStickClick,
-        rightStickClick,bothProfiles&&bothTracked);
+        s.gameplayWelcomeNotice,canShowGameplayWelcome,rightStickClick,
+        bothProfiles&&bothTracked,GetTickCount64());
+    bool openModsFromWelcome=false;
     if(!welcomeWasVisible&&s.gameplayWelcomeNotice.visible)
         log("[VR-WELCOME] READY TO PLAY shown in DOOM gameplay (install-scoped)");
     if(welcomeConfirmed){
@@ -3795,13 +3796,14 @@ void updateGameplayActions(XrTime displayTime){
             s.gameplayWelcomeNotice.acknowledged=true;
             s.gameplayWelcomeNotice.visible=false;
             s.gameplayWelcomeBlocksButtonsUntilRelease=true;
-            log("[VR-WELCOME] L3+R3 confirmed; saved Config/gameplay_welcome.ack");
+            openModsFromWelcome=true;
+            log("[VR-WELCOME] R3 hold confirmed; saved Config/gameplay_welcome.ack and opening Mods");
         }else log("[VR-WELCOME] acknowledgement not saved; gameplay welcome remains");
     }
     const bool suppressWelcomeButtons=welcomeWasVisible
         ||s.gameplayWelcomeNotice.visible
         ||s.gameplayWelcomeBlocksButtonsUntilRelease;
-    if(s.gameplayWelcomeBlocksButtonsUntilRelease&&bothReleased)
+    if(s.gameplayWelcomeBlocksButtonsUntilRelease&&!rightStickClick)
         s.gameplayWelcomeBlocksButtonsUntilRelease=false;
     // The modal notices and reconnect lock are independent. Always mask
     // ORIGINAL XInput plus synthetic buttons while either notice is shown.
@@ -3915,10 +3917,10 @@ void updateGameplayActions(XrTime displayTime){
     const bool deathMenu=KharvoxHudDeathMenuActive();
     const bool nativeUiMenu=fullscreenMenu&&!pauseMenu&&!deathMenu;
     const bool gameplay=gameplayWorld&&!cutscene&&!pauseMenu&&!fullscreenMenu&&!deathMenu;
-    if(suppressSetupButtons||suppressWelcomeButtons){
-        // Keep both onboarding screens truly modal. Do not allow the
-        // acknowledgement chord to trigger native pause/melee, the R3 menu
-        // shortcut, keyboard USE pulses or residual virtual movement.
+    if(suppressSetupButtons||(suppressWelcomeButtons&&!openModsFromWelcome
+        &&s.vrHandMenu.mode==kharvox::VrHandMenuMode::Closed)){
+        // Keep onboarding modal until the welcome hold is handed to Mods.
+        // Native buttons remain blocked during the consumed opening hold.
         s.vrHandMenu.shortcut={};
         releaseHandFocusUseKeyboardPulse();
         releaseMovement();
@@ -3951,7 +3953,7 @@ void updateGameplayActions(XrTime displayTime){
          readFloatAction(s.weaponHandLeft?s.leftWeaponGrip:s.rightWeaponGrip)>.55f,
          readFloatAction(s.weaponHandLeft?s.rightWeaponGrip:s.leftWeaponGrip)>.55f,
          readBooleanAction(s.doomCrouch), // physical RIGHT A: menu select
-         readBooleanAction(s.doomJump))){ // physical RIGHT B: menu back
+         readBooleanAction(s.doomJump),openModsFromWelcome)){ // physical RIGHT B: menu back
         releaseHandFocusUseKeyboardPulse();
         KharvoxCameraSetFocusHandPose(nullptr,nullptr,false);
         // Menu inputs are muted except the primary weapon Grip's ALT FIRE

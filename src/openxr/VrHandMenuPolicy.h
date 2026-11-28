@@ -174,35 +174,40 @@ inline constexpr bool updateVrFirstTimeSetupNotice(
     notice.chordConsumed=true;
     return true; // caller must persist the install-scoped acknowledgement
 }
-// Independent install-scoped gameplay welcome notice. It is modal, needs
-// a fresh L3+R3 chord, and does not dismiss via a regular face button.
-// The caller is responsible for committing the acknowledgement to Config.
+// Independent install-scoped welcome. A fresh R3 hold uses the same
+// shortcut policy as Mods; successful persistence hands that hold to Mods.
 struct VrGameplayWelcomeNotice {
-    bool acknowledged{},visible{},bothSticksReleased{},chordConsumed{};
+    bool acknowledged{},visible{},rightReleased{};
     unsigned stableGameplayFrames{};
+    VrMenuHoldShortcut hold{};
 };
-inline constexpr bool updateVrGameplayWelcomeNotice(
+inline bool updateVrGameplayWelcomeNotice(
     VrGameplayWelcomeNotice& notice,bool playableGameplay,
-    bool leftClick,bool rightClick,bool trackedControllers) noexcept {
+    bool rightClick,bool trackedControllers,std::uint64_t nowMs) noexcept {
     if(notice.acknowledged){notice.visible=false;return false;}
-    if(!playableGameplay){
+    if(!playableGameplay||!trackedControllers){
         notice.visible=false;
         notice.stableGameplayFrames=0;
-        notice.bothSticksReleased=false;
-        notice.chordConsumed=false;
+        notice.rightReleased=false;
+        notice.hold={};
         return false;
     }
     if(notice.stableGameplayFrames<20)++notice.stableGameplayFrames;
     if(notice.stableGameplayFrames<20)return false;
     notice.visible=true;
-    if(!leftClick&&!rightClick){
-        notice.bothSticksReleased=true;
-        notice.chordConsumed=false;
+    if(!rightClick)notice.rightReleased=true;
+    if(!notice.rightReleased)return false;
+    return updateVrMenuHoldShortcut(notice.hold,rightClick,nowMs)==VrMenuShortcutAction::Toggle;
+}
+inline VrMenuShortcutAction vrMenuShortcutWithWelcome(
+    VrMenuHoldShortcut& shortcut,bool rightClick,std::uint64_t nowMs,
+    bool openFromWelcome) noexcept {
+    if(openFromWelcome){
+        // The already consumed hold opens once, never closes again while held.
+        shortcut={true,true,nowMs};
+        return VrMenuShortcutAction::Toggle;
     }
-    if(!trackedControllers||!notice.bothSticksReleased
-        ||!leftClick||!rightClick||notice.chordConsumed)return false;
-    notice.chordConsumed=true;
-    return true;
+    return updateVrMenuHoldShortcut(shortcut,rightClick,nowMs);
 }
 // Seven pointer-and-trigger taps on the existing MOD SETTINGS heading.
 // This state is transient and defaults to hidden on every new game launch.
