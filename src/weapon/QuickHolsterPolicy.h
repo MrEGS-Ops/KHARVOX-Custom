@@ -2,6 +2,9 @@
 #include "BackWeaponPolicy.h"
 #include <array>
 #include <cmath>
+#include <istream>
+#include <ostream>
+#include <string>
 namespace kharvox {
 struct QuickHolsterZone {
  BackWeaponZoneBounds enter{0.12f,0.51f,-1.04f,-0.48f,0.02f,0.43f};
@@ -19,6 +22,51 @@ struct QuickHolsters {
  std::array<BackWeaponKind,2> slots{BackWeaponKind::Unknown,BackWeaponKind::Unknown};
  std::array<QuickHipGesture,2> gestures{};
 };
+// Stable, named keys instead of enum ordinals. The file stores only the
+// two physical hip assignments, never transient grip or transfer state.
+inline const char* quickHipSlotKey(BackWeaponKind kind){
+ switch(kind){
+ case BackWeaponKind::Pistol:return "pistol";
+ case BackWeaponKind::CombatShotgun:return "shotgun";
+ case BackWeaponKind::PlasmaRifle:return "plasma_rifle";
+ case BackWeaponKind::HeavyAssaultRifle:return "heavy_assault_rifle";
+ case BackWeaponKind::RocketLauncher:return "rocket_launcher";
+ case BackWeaponKind::SuperShotgun:return "super_shotgun";
+ case BackWeaponKind::GaussCannon:return "gauss_cannon";
+ case BackWeaponKind::Chaingun:return "chaingun";
+ case BackWeaponKind::Bfg:return "bfg";
+ case BackWeaponKind::Chainsaw:return "chainsaw";
+ case BackWeaponKind::Unknown:return "empty";
+ default:return nullptr;
+ }
+}
+inline bool quickHipParseSlot(const std::string& key,BackWeaponKind& slot){
+ for(const auto kind:{BackWeaponKind::Unknown,BackWeaponKind::Pistol,
+    BackWeaponKind::CombatShotgun,BackWeaponKind::PlasmaRifle,
+    BackWeaponKind::HeavyAssaultRifle,BackWeaponKind::RocketLauncher,
+    BackWeaponKind::SuperShotgun,BackWeaponKind::GaussCannon,
+    BackWeaponKind::Chaingun,BackWeaponKind::Bfg,BackWeaponKind::Chainsaw}){
+    if(key==quickHipSlotKey(kind)){slot=kind;return true;}
+ }
+ return false;
+}
+inline bool quickHipWriteSlots(std::ostream& out,const QuickHolsters& h){
+ const auto right=quickHipSlotKey(h.slots[0]),left=quickHipSlotKey(h.slots[1]);
+ if(!right||!left)return false;
+ out<<"RIPSHIFT_HOLSTERS 1\nright "<<right<<"\nleft "<<left<<'\n';
+ return bool(out);
+}
+inline bool quickHipReadSlots(std::istream& in,QuickHolsters& h){
+ std::string header,rightLabel,right,leftLabel,left,extra;
+ int version{};
+ std::array<BackWeaponKind,2> slots{};
+ if(!(in>>header>>version>>rightLabel>>right>>leftLabel>>left)
+    ||header!="RIPSHIFT_HOLSTERS"||version!=1||rightLabel!="right"
+    ||leftLabel!="left"||!quickHipParseSlot(right,slots[0])
+    ||!quickHipParseSlot(left,slots[1])||(in>>extra)||in.bad())return false;
+ h.slots=slots;
+ return true;
+}
 enum class QuickHipAction {None,Enter,Assign,Draw};
 // A hip draw requests one native hotkey and its correct physical hand.
 // No delayed handoff, gun hiding or weapon restoration.

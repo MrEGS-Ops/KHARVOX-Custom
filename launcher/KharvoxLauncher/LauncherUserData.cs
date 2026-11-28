@@ -29,7 +29,7 @@ internal static class LauncherUserData
     private static readonly string[] PortableFiles = {
         "kharvox-launcher-settings.json", "kharvox-custom-mods.json",
         "original-kharvox-location.txt", "known-configurations.json",
-        "vr_live_mods_saved.cfg", "hud_headlock.cfg",
+        "vr_live_mods_saved.cfg", "hud_headlock.cfg", "gunslinger_holsters_saved.cfg",
         "offhand_hud.cfg", "offhand_right_hand_positions.cfg",
         "two_hand_weapon_profiles_saved.cfg",
         "two_hand_weapon_profiles_left_primary_saved.cfg",
@@ -51,6 +51,7 @@ internal static class LauncherUserData
             case "kharvox-custom-mods.json":
             case "original-kharvox-location.txt":
             case "vr_live_mods_saved.cfg":
+            case "gunslinger_holsters_saved.cfg":
             case "hud_headlock.cfg":
                 return "Settings";
 
@@ -239,6 +240,7 @@ internal static class LauncherUserData
 
             foreach (var item in new[] {
                 (File: "vr_live_mods_saved.cfg", Folder: "Settings"),
+                (File: "gunslinger_holsters_saved.cfg", Folder: "Settings"),
                 (File: "campaign_death_count.cfg", Folder: "Statistics"),
                 (File: "level_best_records.cfg", Folder: "Records"),
                 (File: "known-configurations.json", Folder: "Profiles"),

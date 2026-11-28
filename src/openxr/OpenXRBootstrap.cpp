@@ -3524,6 +3524,32 @@ bool saveGunslingerTutorial(){
     if(out&&MoveFileExW(temp.c_str(),path.c_str(),MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return true;
     DeleteFileW(temp.c_str());return false;
 }
+bool saveGunslingerHolsters(){
+    const auto path=kharvox::runtimePath(L"gunslinger_holsters_saved.cfg");
+    const auto temp=path+L".tmp";
+    std::ofstream out(std::filesystem::path(temp),std::ios::trunc);
+    const bool written=kharvox::quickHipWriteSlots(out,s.quickHolsters);
+    out.close();
+    if(written&&out&&MoveFileExW(temp.c_str(),path.c_str(),
+        MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH))return true;
+    DeleteFileW(temp.c_str());
+    return false;
+}
+void loadGunslingerHolsters(){
+    const auto path=kharvox::runtimePath(L"gunslinger_holsters_saved.cfg");
+    if(GetFileAttributesW(path.c_str())==INVALID_FILE_ATTRIBUTES){
+        log("[QUICK-HOTKEY] no saved hip assignments; starting empty");
+        return;
+    }
+    std::ifstream in{std::filesystem::path(path)};
+    if(!kharvox::quickHipReadSlots(in,s.quickHolsters)){
+        log("[QUICK-HOTKEY] invalid/unreadable saved hip assignments; not overwritten");
+        return;
+    }
+    log(std::string("[QUICK-HOTKEY] restored RIGHT=")
+        +backWeaponKindKey(s.quickHolsters.slots[0])+" LEFT="
+        +backWeaponKindKey(s.quickHolsters.slots[1]));
+}
 void loadGunslingerTutorial(){
     std::ifstream in(kharvox::runtimePathA("gunslinger_helper_saved.cfg"));
     int value{};std::string extra;
@@ -4443,14 +4469,18 @@ void updateGameplayActions(XrTime displayTime){
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" zone ENTER");
             }else if(action==kharvox::QuickHipAction::Assign){
-                kharvox::queuePhysicalDoublePulse(
-                    s.configSaveCues[kharvox::hapticOutputForPhysicalSide(side)],
-                    GetTickCount64());
-                gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
+                const bool persisted=saveGunslingerHolsters();
+                if(persisted){
+                    kharvox::queuePhysicalDoublePulse(
+                        s.configSaveCues[kharvox::hapticOutputForPhysicalSide(side)],
+                        GetTickCount64());
+                    gunslingerLesson(kharvox::GunslingerLessonEvent::HipAssign,side,s.quickHolsters.slots[side]);
+                }
                 log(std::string("[QUICK-HOTKEY] ")
                     +(side==0?"RIGHT":"LEFT")+" ASSIGN="
                     +backWeaponKindKey(s.quickHolsters.slots[side])
-                    +" (2 zone-strength pulses, slot persists)");
+                    +(persisted?" (2 zone-strength pulses, saved to UserData)"
+                        :" (SAVE FAILED: assignment is session-only; reassign to retry)"));
             }else if(action==kharvox::QuickHipAction::Draw){
                 const auto plan=kharvox::quickHipPlanDraw(
                     side,s.quickHolsters.slots[side],activeBackWeapon);
@@ -6883,6 +6913,7 @@ bool ensureStereoCache(VkExtent2D extent){if(s.stereoCache[0]&&s.stereoCacheExte
 static void initializeOpenXR(VkInstance instance){std::lock_guard<std::mutex>l(mutex);if(s.instance){if(instance)s.vkInstance=instance;return;}char weapon[8]{};const bool weaponEnvironment=GetEnvironmentVariableA("KHARVOX_WEAPON_6DOF",weapon,sizeof(weapon))>0&&strcmp(weapon,"0");const bool weaponMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_6dof_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;s.weapon6Dof=weaponEnvironment||weaponMarker;const bool twoHandMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_weapon").c_str())!=INVALID_FILE_ATTRIBUTES;const bool calibrationMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_two_hand_calibration").c_str())!=INVALID_FILE_ATTRIBUTES;const bool virtualGunstockMarker=GetFileAttributesW(kharvox::runtimePath(L"enable_virtual_gunstock").c_str())!=INVALID_FILE_ATTRIBUTES;s.twoHandEnabled=s.weapon6Dof&&(twoHandMarker||s.customMods.offHandGripCapture);s.twoHandCalibrationMode=s.twoHandEnabled&&calibrationMarker;s.virtualGunstockEnabled=s.twoHandEnabled&&virtualGunstockMarker&&!s.customMods.offHandGripCapture;s.rightGripSettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("offhand_right_hand_positions.cfg"));s.rightGripFactorySettings=kharvox::readRightHandGripSettings(kharvox::runtimePathA("CalibrationDefaults/offhand_right_hand_positions.cfg"));s.vrDesktopMods=s.customMods;
     loadCampaignRunTime();
     loadGunslingerTutorial();
+    loadGunslingerHolsters();
     if(!kharvox::levelRecordsLoad(
         kharvox::runtimePathA("level_best_records.cfg"),s.levelRecords))
         log("[STATS] invalid saved level records; using safe empty records");

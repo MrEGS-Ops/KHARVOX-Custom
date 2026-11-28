@@ -154,6 +154,7 @@ inline const wchar_t* userConfigFolder(const wchar_t* name) noexcept {
     static constexpr Entry entries[]{
         {L"vr_live_mods_saved.cfg",L"Settings"},
         {L"gunslinger_helper_saved.cfg",L"Settings"},
+        {L"gunslinger_holsters_saved.cfg",L"Settings"},
     // Experimental files share one private directory; flat test files are ignored.
     {L"object_discovery.cfg",L"ObjectGrip"},
     {L"object_grip_profiles.cfg",L"ObjectGrip"},

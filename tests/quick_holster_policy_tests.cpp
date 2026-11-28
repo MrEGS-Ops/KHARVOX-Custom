@@ -4,6 +4,7 @@
 #endif
 #include <cassert>
 #include <cmath>
+#include <sstream>
 int main(){
  using namespace kharvox;
  assert(quickHipInside({.27f,-.75f,.35f},false));
@@ -149,6 +150,33 @@ int main(){
  assert(quickHipConsumesGrip(QuickHipAction::Draw));
  resetQuickHipGestures(h);
  assert(h.slots[0]==BackWeaponKind::GaussCannon&&h.slots[1]==BackWeaponKind::SuperShotgun);
+ // Simulate restart: restore only the two physical hip assignments.
+ std::stringstream saved;
+ assert(quickHipWriteSlots(saved,h));
+ QuickHolsters restarted{};
+ assert(quickHipReadSlots(saved,restarted));
+ assert(restarted.slots==h.slots);
+ assert(!restarted.gestures[0].inside&&!restarted.gestures[1].gripWasDown);
+ assert(updateQuickHip(restarted,1,true,false,BackWeaponKind::Pistol,false)==QuickHipAction::Enter);
+ assert(updateQuickHip(restarted,1,true,true,BackWeaponKind::Pistol,false)==QuickHipAction::Draw);
+ assert(restarted.slots[1]==BackWeaponKind::SuperShotgun);
+ for(int i=-1;i<=9;++i){
+    QuickHolsters original{};
+    original.slots[0]=static_cast<BackWeaponKind>(i);
+    std::stringstream file;
+    assert(quickHipWriteSlots(file,original));
+    QuickHolsters restored{};
+    assert(quickHipReadSlots(file,restored));
+    assert(restored.slots==original.slots);
+ }
+ for(const char* bad:{"RIPSHIFT_HOLSTERS 2 right pistol left empty",
+    "RIPSHIFT_HOLSTERS 1 right pistol left nope",
+    "RIPSHIFT_HOLSTERS 1 right pistol",
+    "RIPSHIFT_HOLSTERS 1 right pistol left empty extra"}){
+    std::istringstream broken(bad);
+    assert(!quickHipReadSlots(broken,restarted));
+    assert(restarted.slots==h.slots);
+ }
  // Full two-hand latch: hip zones are disabled for ALL weapons.
  assert(quickHipSuspendedForTwoHand(true,false,false,true));
  // Both held Grips protect heavy-gun alt-fire even before support latch.

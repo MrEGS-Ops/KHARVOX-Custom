@@ -3,7 +3,7 @@
 The portable folders include:
 
 - `UserData/Calibrations/`: per-hand, per-weapon, HUD and recoil calibration.
-- `UserData/Settings/`: launcher, live VR mod/HUD preferences, original KHARVOX location.
+- `UserData/Settings/`: launcher, live VR mod/HUD preferences, original KHARVOX location, and the two persistent Gunslinger weapon assignments (`gunslinger_holsters_saved.cfg`).
 - `UserData/Statistics/`: persistent campaign deaths and accumulated gameplay time.
 - `UserData/Records/`: ranked level records and personal bests.
 - `UserData/Profiles/`: known configuration marks.
