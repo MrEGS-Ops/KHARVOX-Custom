@@ -801,6 +801,7 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
             const int action=kharvox::weaponGuideAction(m.cursorX,m.cursorY,
                 kind==KharvoxWeaponKind::GaussCannon||kind==KharvoxWeaponKind::Chaingun);
             if(!triggerEdge||action<0||m.weaponCalibrationStage==3)return false;
+            kharvox::queueMenuButtonCue(s.configSaveCues,true,true,GetTickCount64());
             if(action==2||action==3){
                 const bool alternate=action==3;
                 if(m.alternateProfile!=alternate){
@@ -876,10 +877,29 @@ bool serviceVrHandMenuInput(XrTime displayTime,bool gameplay,bool leftClick,bool
         if(kharvox::menuHoverCueEntered(s.menuHoverCueState,hoverContext,hoverTarget,hoverNow)
             &&!triggerEdge&&!leftTriggerEdge&&!aEdge)
             kharvox::queueMenuHoverCue(s.menuHoverCue,hoverNow);
+        // A valid on-screen target clicks once, before dispatch. A successful
+        // physical save in the same frame replaces this with its double buzz.
+        bool buttonActivated=triggerEdge&&hoverTarget>=0;
+        if(buttonActivated&&m.page==kharvox::VrMenuPage::Mods
+            &&m.hovered>=kharvox::radialRowTarget){
+            const int row=(m.hovered-kharvox::radialRowTarget)/3;
+            const int part=(m.hovered-kharvox::radialRowTarget)%3;
+            if(m.radialResetRow==row&&part==1)buttonActivated=false;
+        }
+        if(buttonActivated&&(m.page==kharvox::VrMenuPage::Records
+            ||m.page==kharvox::VrMenuPage::DevRecords)&&hoverTarget>=1000){
+            const int count=int(kharvox::kCampaignMissions.size())
+                +(m.page==kharvox::VrMenuPage::DevRecords?1:0);
+            buttonActivated=hoverTarget<1000+count;
+        }
+        if(buttonActivated&&m.page==kharvox::VrMenuPage::DevStats&&hoverTarget>=1000)
+            buttonActivated=hoverTarget<1004;
+        kharvox::queueMenuButtonCue(s.configSaveCues,true,buttonActivated,hoverNow);
         if(m.calibrationWheel||m.waitingForEquip){
             const bool pointing=m.cursorX>=0&&m.cursorY>=0
                 &&m.cursorX<vrMenuW&&m.cursorY<vrMenuH;
             if(m.calibrationWheel&&!m.waitingForEquip&&(triggerEdge||leftTriggerEdge)&&pointing){
+                kharvox::queueMenuButtonCue(s.configSaveCues,!m.calibrationWheelLeft,true,GetTickCount64());
                 m.wheelAxisX=(m.cursorX-480.f)/190.f;
                 m.wheelAxisY=(360.f-m.cursorY)/190.f;
                 m.wheelPreviousWeapon=int(KharvoxWeaponCurrentKind());

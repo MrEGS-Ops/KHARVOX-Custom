@@ -290,7 +290,16 @@ inline void queueCalibrationSaveCue(std::array<ControllerZoneCue,2>& cues,
 }
 inline void queueMenuSaveCue(std::array<ControllerZoneCue,2>& cues,
     bool rightController,bool saved,std::uint64_t now){
-    if(saved)queueControllerZoneCue(cues[rightController?1:0],now,20,.45f,170.f);
+    if(!saved)return;
+    auto& cue=cues[rightController?1:0];
+    // A subsequent button click cannot truncate a physical confirmation.
+    if(cue.pulsePeriodMilliseconds>cue.pulseLengthMilliseconds
+        &&now>=cue.startedMilliseconds&&now<cue.untilMilliseconds)return;
+    queueControllerZoneCue(cue,now,20,.45f,170.f);
+}
+inline void queueMenuButtonCue(std::array<ControllerZoneCue,2>& cues,
+    bool rightController,bool activated,std::uint64_t now){
+    queueMenuSaveCue(cues,rightController,activated,now);
 }
 // Tiny pointer detents never repeat on a stationary target. A short
 // refractory interval suppresses chatter at neighbouring hit boundaries.

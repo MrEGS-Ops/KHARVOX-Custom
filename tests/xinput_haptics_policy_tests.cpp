@@ -266,7 +266,7 @@ int main() {
     }
     for(auto offset:{85u,100u,134u,220u,295u})
         if(mixControllerZoneCue(zero,zone,4000+offset).active)return 57;
-    if(controllerZoneCueDurationMilliseconds(zero,zone,4115,100)!=65)return 58;
+    if(controllerZoneCueDurationMilliseconds(zero,zone,4135,100)!=85)return 58;
     // Save confirmation is two zone-strength pulses on the confirming hand only.
     std::array<ControllerZoneCue,2> saveCues{};
     queueCalibrationSaveCue(saveCues,true,false,5000);
@@ -312,6 +312,18 @@ int main() {
         ||controllerZoneCueDurationMilliseconds(zero,hoverCue,7200,100)!=10
         ||!mixControllerZoneCue(zero,hoverCue,7209).active
         ||mixControllerZoneCue(zero,hoverCue,7210).active)return 67;
+    // Button activation uses precisely the normal save tick, and cannot
+    // interrupt a double confirmation even during its silent gap.
+    saveCues={};
+    queueMenuButtonCue(saveCues,true,false,7300);
+    if(mixControllerZoneCue(zero,saveCues[1],7300).active)return 68;
+    queueMenuButtonCue(saveCues,true,true,7300);
+    if(!near(mixControllerZoneCue(zero,saveCues[1],7300).amplitude,.45f)
+        ||controllerZoneCueDurationMilliseconds(zero,saveCues[1],7300,100)!=20)return 69;
+    queueCalibrationSaveCue(saveCues,true,true,7300);
+    queueMenuButtonCue(saveCues,true,true,7400);
+    if(mixControllerZoneCue(zero,saveCues[1],7400).active
+        ||!near(mixControllerZoneCue(zero,saveCues[1],7435).amplitude,.85f))return 70;
     // The radial guide overrides old high chainsaw rumble, so the
     // zone centre may genuinely be silent, on the weapon hand only.
     const XInputHapticSignal zoneCentre{};
