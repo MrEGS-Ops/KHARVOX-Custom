@@ -140,11 +140,36 @@ jobs:
           $test = Start-Process -FilePath $exe -ArgumentList "--self-test-cactus-hand-hud" -Wait -PassThru -NoNewWindow
           if ($test.ExitCode -ne 0) { throw "Original Cactus v1.1.1 hand-HUD backup/default restoration failed: $($test.ExitCode)" }
 
+      # vcpkg validates every package ABI, but Actions cache keys are immutable.
+      # Fingerprint the toolchain, and use a fresh save key only when needed.
+      - name: Identify SFS dependency toolchain
+        id: sfs-toolchain
+        shell: powershell
+        run: |
+          $root = $env:VCPKG_INSTALLATION_ROOT
+          $exe = Join-Path $root "vcpkg.exe"
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = (& $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json | ConvertFrom-Json | Select-Object -First 1)
+          if (-not $vs) { throw "MSVC installation not found" }
+          $msvc = Get-Content (Join-Path $vs.installationPath "VC\Auxiliary\Build\Microsoft.VCToolsVersion.default.txt") -Raw
+          $inputs = @($env:ImageOS, $env:ImageVersion, $vs.installationVersion, $msvc.Trim(), (Get-FileHash $exe -Algorithm SHA256).Hash)
+          foreach ($relative in @("versions\baseline.json", "triplets\x64-windows-static-md.cmake", "scripts\toolchains\windows.cmake")) {
+            $file = Join-Path $root $relative
+            if (Test-Path $file) { $inputs += (Get-FileHash $file -Algorithm SHA256).Hash }
+          }
+          $sha = [System.Security.Cryptography.SHA256]::Create()
+          try { $fingerprint = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes(($inputs -join "|")))).Replace("-","").ToLowerInvariant() } finally { $sha.Dispose() }
+          "fingerprint=$fingerprint" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          Write-Host "SFS cache fingerprint: $fingerprint; image=$env:ImageVersion; MSVC=$($msvc.Trim()); VS=$($vs.installationVersion)"
+
       - name: Restore vcpkg binary cache
-        uses: actions/cache@v4
+        id: sfs-cache
+        uses: actions/cache/restore@v4
         with:
           path: .vcpkg-bincache
-          key: kharvox-vcpkg-${{ runner.os }}-x64-windows-static-md-v1
+          key: kharvox-vcpkg-v2-${{ runner.os }}-x64-windows-static-md-${{ steps.sfs-toolchain.outputs.fingerprint }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            kharvox-vcpkg-v2-${{ runner.os }}-x64-windows-static-md-${{ steps.sfs-toolchain.outputs.fingerprint }}-
 
       - name: Compile and run native input and gameplay policy tests
         shell: powershell
@@ -165,6 +190,7 @@ jobs:
             kharvox-native-${{ runner.os }}-
 
       - name: Install SFS compiler dependencies
+        id: sfs-install
         # On a vcpkg baseline update, SPIRV-Tools rebuilds both Debug and
         # Release (roughly 10+ minutes) before binaries can be cached.
         timeout-minutes: 25
@@ -174,13 +200,26 @@ jobs:
           $binaryCache = Join-Path $PWD ".vcpkg-bincache"
           New-Item -ItemType Directory -Force -Path $binaryCache | Out-Null
           $env:VCPKG_BINARY_SOURCES = "clear;files,$binaryCache,readwrite"
-          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet"
+          $installLog = Join-Path $env:RUNNER_TEMP "ripshift-vcpkg-install.log"
+          & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install "spirv-cross:$triplet" "glslang:$triplet" "spirv-tools:$triplet" | Tee-Object -FilePath $installLog
+          if ($LASTEXITCODE -ne 0) { throw "SFS dependency installation failed: $LASTEXITCODE" }
+          $rebuilt = [bool](Select-String -LiteralPath $installLog -Pattern "Building [^ ]+:x64-windows-static-md" -Quiet)
+          "rebuilt=$($rebuilt.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           $root = Join-Path $env:VCPKG_INSTALLATION_ROOT "installed\$triplet"
           if (!(Test-Path "$root\include\spirv_cross\spirv_glsl.hpp")) { throw "SPIRV-Cross headers missing" }
           if (!(Test-Path "$root\lib\spirv-cross-glsl.lib")) { throw "SPIRV-Cross glsl lib missing" }
           if (!(Test-Path "$root\include\glslang\Include\glslang_c_interface.h")) { throw "glslang headers missing" }
           if (!(Test-Path "$root\lib\glslang.lib")) { throw "glslang lib missing" }
           "KHARVOX_VCPKG_ROOT=$root" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      # Save immediately, even if later gameplay compilation fails.
+      # A unique key can repair an unexpectedly stale cache without deleting it.
+      - name: Save refreshed SFS dependency cache
+        if: steps.sfs-cache.outputs.cache-matched-key == '' || steps.sfs-install.outputs.rebuilt == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .vcpkg-bincache
+          key: ${{ steps.sfs-cache.outputs.cache-primary-key }}
 
       - name: Configure native
         shell: powershell
