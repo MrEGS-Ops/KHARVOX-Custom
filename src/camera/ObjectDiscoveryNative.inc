@@ -41,7 +41,7 @@ struct ObjectDiscoveryHeld {
     bool active{},calibrating{},nativeFollowConfirmed{},grappleAnchor{};
     bool surfaceApproaching{},releaseInvestigator{};
     float surfaceLocalContact[3]{},surfacePullAxis[9]{};
-    unsigned long long surfaceStarted{};
+    unsigned long long surfaceStarted{},surfaceLastPullAt{};
 };
 std::array<ObjectDiscoveryNativeRecord,512> objectDiscoveryNative{};
 ObjectDiscoveryHeld objectDiscoveryHeld{};
@@ -1159,7 +1159,7 @@ void objectDiscoveryGameTick() {
             std::copy(axis.begin(),axis.end(),held.relativeAxis);
             held.grappleAnchor=true;
             if(input.dynamicSurfaceOffset){
-                held.surfaceApproaching=true;held.surfaceStarted=now;
+                held.surfaceApproaching=true;held.surfaceStarted=now;held.surfaceLastPullAt=now;
                 for(int i=0;i<3;++i){
                     held.surfaceLocalContact[i]=0.f;
                     for(int j=0;j<3;++j)held.surfaceLocalContact[i]+=nearest->axis[3*i+j]
@@ -1316,7 +1316,10 @@ void objectDiscoveryGameTick() {
         if(!std::isfinite(len)||len>1500.f){
             objectDiscoveryReleaseNative();return;
         }
-        const float followPerTick=held.surfaceApproaching?80.f:40.f;
+        // Time-based incoming pull; keep normal held-object tracking unchanged.
+        const float pullDt=held.surfaceApproaching?static_cast<float>(std::clamp(now-held.surfaceLastPullAt,8ULL,30ULL))*.001f:0.f;
+        const float followPerTick=held.surfaceApproaching?350.f*pullDt:40.f;
+        if(held.surfaceApproaching)held.surfaceLastPullAt=now;
         const float factor=len>followPerTick?followPerTick/len:1.f;
         for(int i=0;i<3;++i)
             desired[i]=item->origin[i]

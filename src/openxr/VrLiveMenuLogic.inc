@@ -183,7 +183,7 @@ VrLiveModOverview vrDevOptionOverview(kharvox::VrMenuDevOption option){
             "All switches session-only; OFF at launch.",
             "Only verified practical tests are offered.",
             "Activation uses weapon hand; pauses grab.",
-            ""Held movement auto-enables kick-only grab.",
+            "Held movement auto-enables kick-only grab.",
             "Read-only comparison tests."}}};
         case D::GrappleAnchor:return {{{
             "Grip to pick up movable props.",

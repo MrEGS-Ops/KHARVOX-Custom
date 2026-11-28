@@ -237,7 +237,7 @@ void log(const std::string& text) {
     // Use the same runtime-owned logs/KHARVOX.log as the XR layer and launcher.
     // The previous %TEMP%/KHARVOX.log silently excluded movement diagnostics
     // from the launcher's collected /logs bundle.
-    const bool research=text.rfind("[NATIVE-RESEARCH",0)==0||text.rfind("[ACTIVATION-INV]",0)==0||text.rfind("[RELEASE-INV]",0)==0||text.rfind("[GEOMETRY-INV]",0)==0;
+    const bool research=text.rfind("[NATIVE-RESEARCH",0)==0||text.rfind("[ACTIVATION-INV]",0)==0||text.rfind("[RELEASE-INV]",0)==0||text.rfind("[GEOMETRY-INV]",0)==0||text.rfind("[ANCHOR-MOVEMENT]",0)==0;
     kharvox::writeRuntimeLog("[KHARVOX][CAMERA]", text,research);
 }
 
