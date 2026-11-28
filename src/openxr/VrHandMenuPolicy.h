@@ -564,6 +564,7 @@ struct VrHandMenuState {
     VrLivePoint gunslingerZoneDraft{}; // temporary position; only RT commits
     bool gunslingerZoneDraftValid{};
     bool gunslingerZoneMoving{}; // true only while matching Grip held
+    VrZonePreviewCue gunslingerZonePreviewCue{};
 
     bool autoSelectingWeapon{};
     unsigned long long autoSelectionDeadlineMs{};

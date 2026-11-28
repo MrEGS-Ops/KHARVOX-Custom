@@ -1345,7 +1345,7 @@ void paintVrHandMenu() {
         const std::string heading=object?"OBJECT GRIP / "+s.objectGripName:zone?std::string("GUNSLINGER / ")+(rightZone?"RIGHT ":"LEFT ")+(hip?"HOLSTER":"WHEEL"):crouch?"PHYSICAL CROUCH":std::string("WEAPON GRIP / ")+m.weapon()+" / "+(m.rightHand?"RIGHT ":"LEFT ")+(primary?"PRIMARY":"SUPPORT");
         wrap(guideX+14,top+8,guideW-28,38,heading,RGB(84,233,214));
         const std::string instruction=object?(s.supportGripPressed?"Grip held: walk and align hand to frozen object; release to lock":"Sticks fine-tune; offhand trigger = 5 cm; hold Grip to freeze")
-            :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move zone; release to preview")
+            :zone?(m.gunslingerZoneMoving?"Move hand; release Grip to freeze":std::string("Hold ")+(rightZone?"RIGHT":"LEFT")+" Grip to move; release, then move out/in to test")
             :crouch?(m.liveCapture==kharvox::VrLiveCapture::CrouchStanding?"Stand normally; RT captures standing height":"Crouch to target height; RT saves both heights")
             :m.weaponCalibrationStage==3?"Right-handed profiles saved. LT: calibrate left-handed weapon; RT or B: finish"
             :!m.previewValid?"Waiting for valid controller tracking"

@@ -128,7 +128,10 @@ void radialInput(int hit,bool click,bool rightGrip){
             kharvox::gunslingerTutorialToggle(s.gunslingerTutorial);
             if(!saveGunslingerTutorial()){
                 s.gunslingerTutorial=before;m.message="Could not save tutorial setting.";
-            }else m.message=s.gunslingerTutorial.enabled?"Tutorial ready. Close menu to begin.":"Tutorial OFF.";
+            }else{
+                kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
+                m.message=s.gunslingerTutorial.enabled?"Tutorial ready. Close menu to begin.":"Tutorial OFF.";
+            }
         }else if(setting.mod==RadialMod::PhysicalCrouch&&setting.action==130)openVrCombinedCrouch();
         else if(setting.mod==RadialMod::WeaponGrip)openCalibrationWheel();
         else if(setting.mod==RadialMod::Stats){
@@ -164,7 +167,7 @@ void hudInput(int x,int y,bool press,bool down){
         if(hit==100){
             if(!kharvox::vrLiveSave(kharvox::runtimePathA("vr_live_mods_saved.cfg"),m.hudDraft)){m.message="HUD save failed";return;}
             s.vrLiveSettings=m.hudDraft;
-            kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
+            kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
         }
         m.mode=kharvox::VrHandMenuMode::Closed;m.consumeMenuTriggerUntilRelease=true;return;
     }

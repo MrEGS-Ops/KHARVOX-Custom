@@ -55,6 +55,22 @@ int main(){
         {.10f,-.20f,.80f},VrLiveCapture::HipRight));
     assert(draft.x==.60f&&draft.y==-.65f&&draft.z==.28f);
     assert(s.hipShift[0].x==saved.x&&s.hipShift[0].y==saved.y);
+    VrZonePreviewCue preview{};
+    for(auto target:{VrLiveCapture::HipRight,VrLiveCapture::HipLeft,
+        VrLiveCapture::WheelRight,VrLiveCapture::WheelLeft}){
+        preview={};
+        const VrLivePoint centre{.35f,-.70f,.25f};
+        const VrLivePoint outside{2.f,2.f,2.f};
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,centre,true,true));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,centre,false,true));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,outside,false,true));
+        assert(vrLiveZonePreviewEnter(preview,target,centre,centre,false,true));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,centre,false,true));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,centre,false,false));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,centre,false,true));
+        assert(!vrLiveZonePreviewEnter(preview,target,centre,outside,false,true));
+        assert(vrLiveZonePreviewEnter(preview,target,centre,centre,false,true));
+    }
     // Preview outside the allowed save area still snaps visually; an
     // attempted commit is separately rejected by vrLiveCapturePoint.
     assert(vrLiveUpdateZoneDraft(draft,true,true,

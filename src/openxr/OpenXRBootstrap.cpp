@@ -344,6 +344,7 @@ struct State {
     bool heavyAlternateInputForwarded{}; // native secondary-fire Grip, not upgrade installed
     std::array<kharvox::ControllerClickState,2> wheelClicks{};
     std::array<kharvox::ControllerZoneCue,2> handZoneCues{}; // 0 left; 1 right
+    std::array<kharvox::ControllerZoneCue,2> configSaveCues{}; // independent of preview/zone cues
     std::array<bool,2> headZoneEntered{},hipZoneEntered{};
     bool shoulderZoneEntered{};
     kharvox::WeaponWheelStickHapticState wheelStickHaptics{};
@@ -1344,6 +1345,7 @@ void updateXInputHaptics(){
     const bool testPreview=now<s.hapticLabPreviewUntil
         &&s.running&&(focused||s.sessionState==XR_SESSION_STATE_VISIBLE);
     if(!focused&&!testPreview){
+        s.configSaveCues={};
         s.wheelClicks={};
         s.motionWheelState={};
         s.wheelStickHaptics={};
@@ -1431,7 +1433,11 @@ void updateXInputHaptics(){
         }
         desired=kharvox::prioritizeRightChainsawRevHaptic(
             desired,s.chainsawTriggerHaptic,x6RightRumble);
-        const bool usingDamage=!x6RightRumble&&!previewHand&&focused
+        const auto& saveCue=s.configSaveCues[hand];
+        const bool saving=focused&&!previewHand&&!x6RightRumble
+            &&now>=saveCue.startedMilliseconds&&now<saveCue.untilMilliseconds;
+        if(saving)desired=kharvox::mixControllerZoneCue({},saveCue,now);
+        const bool usingDamage=!saving&&!x6RightRumble&&!previewHand&&focused
             &&damageImpact.active
             &&(!withChainsaw.active || withChainsaw.amplitude < damageImpact.amplitude);
         auto&outputState=s.hapticOutputStates[hand];
@@ -1454,7 +1460,9 @@ void updateXInputHaptics(){
             nativeDesired[hand],s.wheelClicks[hand],now);
         const auto baseDuration=kharvox::controllerZoneCueDurationMilliseconds(
             clickDesired,s.handZoneCues[hand],now,clickDuration);
-        const auto durationMilliseconds=x6RightRumble
+        const auto durationMilliseconds=saving
+            ?kharvox::controllerZoneCueDurationMilliseconds({},saveCue,now,100)
+            :x6RightRumble
             ?kharvox::xinputHapticPulseDurationMilliseconds
             :usingDamage
                 ?std::max<std::uint32_t>(1,std::min<std::uint32_t>(
@@ -2496,7 +2504,7 @@ bool captureTwoHandCalibration(bool triggerDown){
             calibration->aimMode=s.twoHandCalibrationAimMode;
             calibration->valid=true;
             const bool saved=saveTwoHandCalibrations();
-            kharvox::queueCalibrationSaveCue(s.handZoneCues,!s.weaponHandLeft,saved,GetTickCount64());
+            kharvox::queueCalibrationSaveCue(s.configSaveCues,!s.weaponHandLeft,saved,GetTickCount64());
             std::ostringstream details;
             details<<"[TWO-HAND] "<<KharvoxWeaponKindKey(kind)<<" calibration "<<(saved?"saved":"SAVE FAILED")
                    <<" mode="<<twoHandModeName(calibration->aimMode)
@@ -5659,7 +5667,7 @@ void updateGameplayActions(XrTime displayTime){
                         +" offsetMetres="+std::to_string(pose.offsetMetres[0])
                         +","+std::to_string(pose.offsetMetres[1])
                         +","+std::to_string(pose.offsetMetres[2]));
-                    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,saved,GetTickCount64());
+                    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,saved,GetTickCount64());
                     if(saved){
                         const auto* verified=kharvox::objectGripSavedPose(
                             s.objectGripProfiles,s.objectGripSessionProfiles,

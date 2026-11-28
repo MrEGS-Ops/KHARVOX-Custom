@@ -320,7 +320,7 @@ bool saveVrRecoilSettings(){
         return false;
     }
     s.recoilState={};
-    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
+    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
     return true;
 }
 bool handleVrRecoilCalibrationAction(int action){
@@ -385,6 +385,7 @@ bool saveVrLiveSettings(){
         return false;
     }
     applyVrLiveModRuntimeState();
+    kharvox::queueCalibrationSaveCue(s.configSaveCues,true,true,GetTickCount64());
     return true;
 }
 void openVrLiveCapture(kharvox::VrLiveCapture capture){
@@ -395,6 +396,7 @@ void openVrLiveCapture(kharvox::VrLiveCapture capture){
     m.gunslingerZoneDraft=m.gunslingerZoneDraftValid
         ?kharvox::vrLiveZoneCenter(s.vrLiveSettings,capture):kharvox::VrLivePoint{};
     m.gunslingerZoneMoving=false;
+    m.gunslingerZonePreviewCue={};
     m.mode=kharvox::VrHandMenuMode::Calibrating;
     const bool crouch=capture==kharvox::VrLiveCapture::CrouchStanding
         ||capture==kharvox::VrLiveCapture::CrouchLowered;
@@ -417,21 +419,31 @@ void updateVrLiveZoneDraft(){
     XrActionStateGetInfo gripInfo{XR_TYPE_ACTION_STATE_GET_INFO};
     gripInfo.action=right?s.rightWeaponGrip:s.leftWeaponGrip;
     XrActionStateFloat gripState{XR_TYPE_ACTION_STATE_FLOAT};
-    const bool gripHeld=XR_SUCCEEDED(
-        s.getActionStateFloat(s.session,&gripInfo,&gripState))
-        &&gripState.isActive&&gripState.currentState>.55f;
+    const bool gripActive=XR_SUCCEEDED(
+        s.getActionStateFloat(s.session,&gripInfo,&gripState))&&gripState.isActive;
+    const bool gripHeld=gripActive&&gripState.currentState>.55f;
     m.gunslingerZoneMoving=gripHeld;
-    if(!gripHeld||!s.trackingHeadPositionValid||!s.headZeroPositionValid)return;
+    if(!gripActive||!s.trackingHeadPositionValid||!s.headZeroPositionValid){
+        m.gunslingerZonePreviewCue={};return;
+    }
     // No relative drag offset: the very first held tracked frame snaps the
     // marker centre to the controller grip pose, then follows it 1:1.
     const auto& controller=right?s.rightGripController:s.leftGripController;
-    if(!controller.valid||!controller.positionTracked)return;
+    if(!controller.valid||!controller.positionTracked){
+        m.gunslingerZonePreviewCue={};return;
+    }
     const auto relative=controllerRelativeToBodyTrackingOrigin(controller).position;
     const auto hd=positionRelativeToBodyTrackingOrigin(s.trackingHeadPosition);
     const kharvox::VrLivePoint point{right?relative.x-hd.x:hd.x-relative.x,
         relative.y-hd.y,relative.z-hd.z};
     if(kharvox::vrLiveUpdateZoneDraft(m.gunslingerZoneDraft,
         gripHeld,true,point,target))m.gunslingerZoneDraftValid=true;
+    if(kharvox::vrLiveZonePreviewEnter(m.gunslingerZonePreviewCue,target,
+        m.gunslingerZoneDraft,point,gripHeld,m.gunslingerZoneDraftValid)){
+        const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
+        kharvox::queueControllerZoneCue(s.handZoneCues[right?1:0],
+            GetTickCount64(),hip?85:35,hip?.85f:.32f,hip?175.f:155.f);
+    }
 }
 void openVrCombinedCrouch(){
     auto& m=s.vrHandMenu;
@@ -480,7 +492,6 @@ void captureVrLivePosition(){
         m.liveCapture=VrLiveCapture::None;
         m.mode=kharvox::VrHandMenuMode::Menu;
         m.message="Both crouch heights saved.";
-        kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
         return;
     }
     if(!kharvox::vrLiveCapturePoint(s.vrLiveSettings,capture,p,headDelta)){
@@ -493,7 +504,6 @@ void captureVrLivePosition(){
     }
     if(capture==VrLiveCapture::HipLeft||capture==VrLiveCapture::WheelLeft){
         openVrLiveCapture(capture==VrLiveCapture::HipLeft?VrLiveCapture::HipRight:VrLiveCapture::WheelRight);
-        kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
         return;
     }
     m.liveCapture=VrLiveCapture::None;
@@ -501,7 +511,6 @@ void captureVrLivePosition(){
     m.gunslingerZoneMoving=false;
     m.mode=kharvox::VrHandMenuMode::Menu;
     m.message="Zone saved to UserData and applied instantly.";
-    kharvox::queueCalibrationSaveCue(s.handZoneCues,true,true,GetTickCount64());
 }
 // Until native DOOM map identity has been verified, the owner can select
 // their campaign mission explicitly. This makes Level Best usable without

@@ -338,6 +338,25 @@ inline bool vrLiveUpdateZoneDraft(VrLivePoint& draft,bool gripHeld,bool tracked,
     draft=controllerRelative;
     return true;
 }
+// Freeze preview entry state on Grip release; no cue until a genuine
+// outside-to-inside crossing. Reuse gameplay bounds/hysteresis exactly.
+struct VrZonePreviewCue { bool sampled{},inside{}; };
+inline bool vrLiveZonePreviewEnter(VrZonePreviewCue& state,VrLiveCapture target,
+    VrLivePoint draft,VrLivePoint hand,bool gripHeld,bool tracked) noexcept {
+    if(!tracked||gripHeld||!vrLiveIsGunslingerCapture(target)
+        ||!std::isfinite(hand.x)||!std::isfinite(hand.y)||!std::isfinite(hand.z)
+        ||!std::isfinite(draft.x)||!std::isfinite(draft.y)||!std::isfinite(draft.z)){
+        state={};return false;
+    }
+    const bool hip=target==VrLiveCapture::HipRight||target==VrLiveCapture::HipLeft;
+    const auto centre=hip?vrLiveHipDefaultCenter():vrLiveWheelDefaultCenter();
+    const VrLivePoint shift{draft.x-centre.x,draft.y-centre.y,draft.z-centre.z};
+    const bool inside=hip?vrLiveHipInside(hand,state.sampled&&state.inside,shift)
+        :vrLiveWheelInside(hand,state.sampled&&state.inside,shift);
+    const bool entry=state.sampled&&!state.inside&&inside;
+    state={true,inside};
+    return entry;
+}
 inline bool vrLiveCapturePoint(VrLiveSettings& s,VrLiveCapture target,
                                VrLivePoint handRelative,float headDelta){
     if(target==VrLiveCapture::CrouchStanding){
