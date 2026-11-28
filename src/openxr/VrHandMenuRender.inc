@@ -238,13 +238,24 @@ void paintVrHandMenu() {
         SelectObject(dc,smallFont);
         write(setupX+30,setupY+321,
             "Go to DOOM > Settings > Game to change them manually.",muted);
+        RECT notice{setupX+25,setupY+344,setupX+setupW-25,setupY+372};
+        SetTextColor(dc,muted);
+        DrawTextA(dc,"(This notice will only appear once)",-1,&notice,
+            DT_CENTER|DT_VCENTER|DT_SINGLELINE|DT_NOPREFIX);
         fill(setupX+25,setupY+376,setupW-50,55,RGB(28,57,66));
         SelectObject(dc,regular);
-        write(setupX+43,setupY+390,
-            "Press L3 + R3 together to acknowledge.",RGB(84,233,214));
-        SelectObject(dc,smallFont);
-        write(setupX+30,setupY+452,
-            "This notice will only appear once.",muted);
+        const std::array<std::string,3> parts{"Press ","L3 + R3"," together to confirm."};
+        std::array<SIZE,3> sizes{};
+        int total=0;
+        for(size_t i=0;i<parts.size();++i){
+            GetTextExtentPoint32A(dc,parts[i].c_str(),static_cast<int>(parts[i].size()),&sizes[i]);
+            total+=sizes[i].cx;
+        }
+        int x=setupX+(setupW-total)/2;
+        for(size_t i=0;i<parts.size();++i){
+            write(x,setupY+390,parts[i],i==1?RGB(255,225,54):RGB(84,233,214));
+            x+=sizes[i].cx;
+        }
     }else if(gameplayWelcomeView){
         auto centerLine=[&](int y,const std::string& value,COLORREF color){
             RECT rc{welcomeX+24,y,welcomeX+welcomeW-24,y+44};
